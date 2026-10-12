@@ -30,6 +30,25 @@ import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-r
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion } from "../docs/data/public-results.ts"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
+import type { CellState } from "../docs/data/release-scope.ts"
+
+/** One synthetic current run: only the target fields the selection rule reads. */
+type StubRun = { target: { kind: string; id: string; os?: string; permissions?: string | null } }
+
+/**
+ * A stub projection for the selection tests. The projection carries the ONE classified table
+ * (28792 item 1), so each stub run gets a run id and an EMPTY classified row — the selection rule reads
+ * no cells, and `compatibilityTargets` only needs a row to exist for every current run.
+ */
+function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
+  const table: Record<string, Record<string, CellState>> = {}
+  for (const [key, run] of Object.entries(current)) {
+    const runId = `run:${key}`
+    ;(run as StubRun & { runId?: string }).runId = runId
+    table[runId] = {}
+  }
+  return { current, history, table } as unknown as SelectedProjection
+}
 
 interface RunReference extends Pick<
   PublicVersion,
@@ -387,7 +406,7 @@ describe("consumer selection", () => {
   it("requires a reviewed default row for two exact contexts of one terminal", () => {
     const mac = { target: { kind: "app", id: "kitty", os: "macos" } }
     const linux = { target: { kind: "app", id: "kitty", os: "linux" } }
-    const projection = { current: { "app:kitty@mac": mac, "app:kitty@linux": linux } } as unknown as SelectedProjection
+    const projection = stubProjection({ "app:kitty@mac": mac, "app:kitty@linux": linux })
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
@@ -415,10 +434,10 @@ describe("consumer selection", () => {
     const app = { target: { kind: "app", id: "kitty" } }
     const headless = { target: { kind: "headless", id: "kitty" } }
     const library = { target: { kind: "headless", id: "xtermjs" } }
-    const projection = {
-      current: { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
-      history: { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
-    } as unknown as SelectedProjection
+    const projection = stubProjection(
+      { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
+      { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
+    )
     const content = mkdtempSync(join(tmpdir(), "terminfo-kind-selection-"))
     try {
       writeCatalog(content)
@@ -438,14 +457,12 @@ describe("consumer selection", () => {
     const appWezterm = { target: { kind: "app", id: "wezterm" } }
     const headlessAlacritty = { target: { kind: "headless", id: "alacritty" } }
     const appAlacritty = { target: { kind: "app", id: "alacritty" } }
-    const projection = {
-      current: {
-        "headless:wezterm": headlessWezterm,
-        "app:wezterm": appWezterm,
-        "headless:alacritty": headlessAlacritty,
-        "app:alacritty": appAlacritty,
-      },
-    } as unknown as SelectedProjection
+    const projection = stubProjection({
+      "headless:wezterm": headlessWezterm,
+      "app:wezterm": appWezterm,
+      "headless:alacritty": headlessAlacritty,
+      "app:alacritty": appAlacritty,
+    })
     const content = mkdtempSync(join(tmpdir(), "terminfo-released-keys-"))
     try {
       writeCatalog(content)
@@ -473,7 +490,7 @@ describe("consumer selection", () => {
       if (!wezterm) throw new Error("Fixture lacks WezTerm")
       wezterm.headlessBackends = []
       writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
-      const projection = { current: {} } as SelectedProjection
+      const projection = stubProjection({})
       expect(() => compatibilityTargets(projection, content)).toThrow(
         /released key wezterm changed meaning from headless/,
       )
@@ -484,7 +501,7 @@ describe("consumer selection", () => {
 
   it("names the declared xterm app run as a compatibility target", () => {
     const appXterm = { target: { kind: "app", id: "xterm" } }
-    const projection = { current: { "app:xterm": appXterm } } as unknown as SelectedProjection
+    const projection = stubProjection({ "app:xterm": appXterm })
     const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
     try {
       writeCatalog(content)

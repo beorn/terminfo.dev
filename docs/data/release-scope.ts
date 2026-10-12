@@ -24,17 +24,6 @@ export interface ReleaseScope {
   unmeasured: ReleaseFeature[]
 }
 
-export interface MeasuredBar {
-  denominator: number
-  supported: number
-  unsupported: number
-  inconclusive: number
-  errors: number
-  untested: number
-  conclusive: number
-  fillPct: number
-}
-
 /**
  * The five states one measured cell can be in. This is the ONE classification: the bar, the
  * decisive-share CLI and the page templates all read it, so they cannot drift into five copies.
@@ -48,6 +37,17 @@ export function classifyCell(cell: { outcome: string; conclusive?: boolean } | u
   if (cell.conclusive && cell.outcome === "supported") return "supported"
   if (cell.conclusive && cell.outcome === "unsupported") return "unsupported"
   return "inconclusive"
+}
+
+/** Classify a whole cell map with the ONE classifier: the projection's entry point. Its only caller is
+ * `projectResults` in `selected-results.ts`, where every run is classified once into `table`; no consumer
+ * classifies raw cells, and a source-shape test pins both callers (28792 item 1). */
+export function classifyCells(
+  cells: Record<string, { outcome: string; conclusive?: boolean } | undefined>,
+): Record<string, CellState> {
+  const states: Record<string, CellState> = {}
+  for (const [featureId, cell] of Object.entries(cells)) states[featureId] = classifyCell(cell)
+  return states
 }
 
 function utcDate(measuredAt: string): string {
@@ -84,40 +84,56 @@ export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId:
   return Boolean(treeSuiteId) && Boolean(releaseSuiteId) && treeSuiteId !== releaseSuiteId
 }
 
-export function barOverMeasured(
-  cells: Record<string, { outcome: string; conclusive?: boolean }>,
-  measuredIds: readonly string[],
-): MeasuredBar {
-  const count: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
-  for (const id of measuredIds) count[classifyCell(cells[id])]++
-  const denominator = measuredIds.length
-  const supported = count.supported
-  return {
-    denominator,
-    supported,
-    unsupported: count.unsupported,
-    inconclusive: count.inconclusive,
-    errors: count.error,
-    untested: count.untested,
-    conclusive: supported + count.unsupported,
-    fillPct: denominator === 0 ? 0 : Math.round((supported / denominator) * 100),
-  }
+/**
+ * One basis counted over a CLASSIFIED cell map (28792 item 1). This is the ONE aggregation: the
+ * projection classifies every cell once, and every bar, page and CLI view folds that table here
+ * instead of walking raw cells itself. `MeasuredBar` and `barOverMeasured` — the raw-cell fold — are
+ * retired with it, so no second copy can survive behind a parity test.
+ */
+export interface CellAggregate {
+  denominator: number
+  counts: Readonly<Record<CellState, number>>
+  /**
+   * The named ids in each state, in basis order: the row names behind each count, so a view that names
+   * a bucket (the inconclusive rows today) reads them here rather than re-walking the basis.
+   */
+  idsByState: Readonly<Record<CellState, readonly string[]>>
 }
 
-export function coverageSentence(bar: MeasuredBar): string {
-  if (!bar.denominator) return "No selected run"
-  return `${bar.supported} supported · ${bar.unsupported} unsupported · ${bar.inconclusive} inconclusive · ${bar.errors} errors · ${bar.untested} untested`
+/** Fold one basis over a classified cell map. A cell the map does not name is untested, as in the table. */
+export function aggregateCells(cells: Readonly<Record<string, CellState>>, ids: readonly string[]): CellAggregate {
+  const counts: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
+  const idsByState: Record<CellState, string[]> = {
+    supported: [],
+    unsupported: [],
+    inconclusive: [],
+    error: [],
+    untested: [],
+  }
+  for (const id of ids) {
+    const state = cells[id] ?? "untested"
+    counts[state]++
+    idsByState[state].push(id)
+  }
+  return { denominator: ids.length, counts, idsByState }
+}
+
+export function coverageSentence(aggregate: CellAggregate): string {
+  if (!aggregate.denominator) return "No selected run"
+  const { counts } = aggregate
+  return `${counts.supported} supported · ${counts.unsupported} unsupported · ${counts.inconclusive} inconclusive · ${counts.error} errors · ${counts.untested} untested`
 }
 
 /**
- * The bar's supported share, named for what it counts. fillPct is supported/denominator — NOT the
+ * The basis's supported share, named for what it counts. It is supported/denominator — NOT the
  * decisive share, which is conclusive/denominator (supported + unsupported) and is what the D3
  * verdict reads. Calling this one "decisive" put two different numbers under one word on the same
  * page (measured 2026-10-07 on the built site: "pass · 52/52 · 40% decisive of 62").
  */
-export function supportedShare(bar: MeasuredBar): string {
-  if (!bar.denominator) return "No selected run"
-  return `${bar.fillPct}% supported of ${bar.denominator}`
+export function supportedShare(aggregate: CellAggregate): string {
+  if (!aggregate.denominator) return "No selected run"
+  const pct = Math.round((aggregate.counts.supported / aggregate.denominator) * 100)
+  return `${pct}% supported of ${aggregate.denominator}`
 }
 
 /**
@@ -159,8 +175,9 @@ export function d3Verdict(decisive: number, denominator: number): D3Verdict {
 }
 
 /** The verdict of a measured bar, or undefined when nothing was measured. */
-export function barVerdict(bar: MeasuredBar): D3Verdict | undefined {
-  return bar.denominator > 0 ? d3Verdict(bar.conclusive, bar.denominator) : undefined
+export function barVerdict(aggregate: CellAggregate): D3Verdict | undefined {
+  if (aggregate.denominator <= 0) return undefined
+  return d3Verdict(aggregate.counts.supported + aggregate.counts.unsupported, aggregate.denominator)
 }
 
 /**

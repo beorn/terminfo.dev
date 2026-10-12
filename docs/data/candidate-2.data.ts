@@ -214,7 +214,7 @@ export function loadCandidate2Data(): Candidate2Data {
       verdictLabel: share.verdict.label,
       inconclusive: inconclusiveRows(row.run.cells, share),
       remainder: share.remainder,
-      groups: categoryShares(row.run.cells, decidable).map(({ category, share: groupShare }) => ({
+      groups: categoryShares(row.run.states, decidable).map(({ category, share: groupShare }) => ({
         key: category.key,
         decisive: groupShare.decisive,
         denominator: groupShare.denominator,

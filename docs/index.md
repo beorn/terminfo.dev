@@ -43,12 +43,20 @@ const baselineFeatureIds = computed(() => {
 const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode']
 const categoryLabels = data.categoryLabels ?? {}
 
-// Sort backends by score (highest first)
+// ONE basis for this page: the release bar. Its widths, its tooltips and this order all fold the same
+// classified rows, so no two of them can tell a different story about a terminal (28792 item 1). The
+// share read here is the bar's own SUPPORTED share of its denominator — the green segment's fraction.
+function releaseSharePct(backendName) {
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return -1
+  return (bar.counts.supported / bar.denominator) * 100
+}
+
+// Sort backends by that one basis (highest first), then by name so the order is deterministic.
 const sortedBackends = computed(() => {
   return [...data.backends].sort((a, b) => {
-    const aPct = data.stats[a.name]?.pct ?? 0
-    const bPct = data.stats[b.name]?.pct ?? 0
-    return bPct - aPct
+    const delta = releaseSharePct(b.name) - releaseSharePct(a.name)
+    return delta !== 0 ? delta : a.name.localeCompare(b.name)
   })
 })
 
@@ -56,6 +64,10 @@ const sortedBackends = computed(() => {
 const allAppBackends = computed(() => sortedBackends.value.filter(b => b.type === 'app'))
 const headlessBackends = computed(() => sortedBackends.value.filter(b => b.type === 'headless'))
 const muxBackends = computed(() => sortedBackends.value.filter(b => b.type === 'mux'))
+
+// The page names the ONE basis it counts, in a visitor's words: which rows this bar, these tooltips and
+// the order below are about (28792 item 1, increment 5).
+const basisNote = `Bars, tooltips and the order all count the same ${data.releaseScope.scoredIds.length} rows this release scores in apps.`
 
 // Filter app backends by platform
 const appBackends = computed(() => {
@@ -130,37 +142,56 @@ function catLabel(cat) {
 }
 
 function barSegmentTooltip(backendName, segment) {
-  const r = data.results[backendName] ?? {}
+  // The tooltip names the rows of the SEGMENT the reader is hovering, read over the bar's own basis:
+  // the scored rows, in their classified state. Every row of the basis is named exactly once, by its
+  // own state, so no row of the denominator is left unnamed — a red segment lists unsupported rows
+  // only, never the untested ones the old all-results tooltip swept in, and the error and untested
+  // rows the blank remainder holds are named by their own segment (@cto 2026-10-12).
+  const selected = data.selectedByBackend[backendName]?.selected
+  const states = selected ? data.releaseTable[selected.runId] : undefined
+  if (!states) return ''
   const n = data.notes[backendName] ?? {}
   const items = []
-  for (const [id, v] of Object.entries(r)) {
+  for (const id of data.releaseScope.scoredIds) {
+    const state = states[id] ?? 'untested'
     const name = data.featureDescriptions[id]?.name ?? id
-    if (segment === 'yes' && v === 'yes') {
+    if (segment === 'yes' && state === 'supported') {
       items.push(`  ✓ ${name}`)
-    } else if (segment === 'partial' && v === 'partial') {
+    } else if (segment === 'partial' && state === 'inconclusive') {
       const note = n[id]
       items.push(note ? `  ~ ${name}: ${note}` : `  ~ ${name}`)
-    } else if (segment === 'fail' && v !== 'yes' && v !== 'partial') {
+    } else if (segment === 'fail' && state === 'unsupported') {
       const note = n[id]
       items.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
+    } else if (segment === 'remainder' && (state === 'error' || state === 'untested')) {
+      items.push(state === 'error' ? `  ! ${name}: error` : `  · ${name}: untested`)
     }
   }
   if (items.length === 0) return ''
-  const label = segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : 'Not supported'
+  const label =
+    segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : segment === 'fail' ? 'Not supported' : 'Unmeasured'
   return `${label} (${items.length}):\n${items.join('\n')}`
 }
 
 function failBarWidth(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar?.denominator) return '0%'
-  return (bar.unsupported / bar.denominator * 100) + '%'
+  return (bar.counts.unsupported / bar.denominator * 100) + '%'
+}
+
+// The blank remainder: the scored rows that produced no verdict, an error or nothing measured. It is
+// its own segment so every row of the basis has a place that names it.
+function remainderBarWidth(backendName) {
+  const bar = data.releaseBars[backendName]
+  if (!bar?.denominator) return '0%'
+  return ((bar.counts.error + bar.counts.untested) / bar.denominator * 100) + '%'
 }
 
 function barWidth(backendName, segment) {
   const bar = data.releaseBars[backendName]
   if (!bar?.denominator) return '0%'
-  if (segment === 'yes') return (bar.supported / bar.denominator * 100) + '%'
-  if (segment === 'partial') return (bar.inconclusive / bar.denominator * 100) + '%'
+  if (segment === 'yes') return (bar.counts.supported / bar.denominator * 100) + '%'
+  if (segment === 'partial') return (bar.counts.inconclusive / bar.denominator * 100) + '%'
   return '0%'
 }
 
@@ -230,6 +261,7 @@ function backendTooltip(name, version) {
   <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
   <p class="tier-line">{{ data.releaseScope.line }}</p>
   <p v-if="data.releaseScope.libraryOnlyIds.length" class="tier-line">{{ data.releaseScope.libraryOnlyIds.length }} {{ data.releaseScope.libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ data.releaseScope.libraryOnlyIds.join(', ') }}.</p>
+  <p class="tier-line">{{ basisNote }}</p>
   <details class="unmeasured">
     <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
     <ul>
@@ -267,6 +299,7 @@ function backendTooltip(name, version) {
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
@@ -374,6 +407,7 @@ function backendTooltip(name, version) {
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
@@ -446,6 +480,7 @@ function backendTooltip(name, version) {
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
+      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
     <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
     <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
@@ -722,6 +757,12 @@ strips, or mishandles.
 }
 
 .bar-fail {
+  height: 100%;
+  background: transparent;
+  transition: width 0.3s ease;
+}
+
+.bar-remainder {
   height: 100%;
   background: transparent;
   transition: width 0.3s ease;
@@ -1060,7 +1101,8 @@ strips, or mishandles.
 /* Bar segment tooltips appear below with opaque background */
 .bar-yes[data-tooltip]:hover::after,
 .bar-partial[data-tooltip]:hover::after,
-.bar-fail[data-tooltip]:hover::after {
+.bar-fail[data-tooltip]:hover::after,
+.bar-remainder[data-tooltip]:hover::after {
   bottom: auto;
   top: 100%;
   margin-top: 4px;

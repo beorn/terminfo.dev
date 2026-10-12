@@ -31,7 +31,8 @@
  *     projection refused.
  *
  * It never touches content/terminals.json, collectors/probe-defs, the launcher, or any admitted run
- * document. It writes nothing. Bucket math is barOverMeasured's, not a second copy.
+ * document. It writes nothing. Bucket math is the site's own `aggregateCells` over the reader's
+ * classified table, not a second copy.
  *
  * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2] [terminal-id ...]
  * Candidate 1 is the default. Candidate 2 keeps all 125 classics on frozen suite c3d1fbb77561.
@@ -49,6 +50,7 @@ import {
   loadDefaultContextPolicy,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
+import { statesFor } from "../docs/data/selected-results.ts"
 import {
   frozenSuiteIdFor,
   loadReleaseScope,
@@ -57,11 +59,11 @@ import {
 } from "../docs/data/load-release-scope.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
-  barOverMeasured,
-  classifyCell,
+  aggregateCells,
   d3Verdict,
   D3_VERDICT_BAR,
   tier1Included,
+  type CellState,
   type D3Verdict,
 } from "../docs/data/release-scope.ts"
 
@@ -163,32 +165,31 @@ function sharePct(count: number, denominator: number): number {
 }
 
 /**
- * Reduce one cell map to the three buckets over the given tier-1 ids. Counts come from
- * barOverMeasured; the remainder names are a filter of the same cells, cross-checked against the
- * bar's own error+untested totals so the two can never drift apart silently.
+ * Reduce one CLASSIFIED cell map to the three buckets over the given tier-1 ids. Counts come from ONE
+ * `aggregateCells` fold over the reader's table; the remainder is a view of that same table in the
+ * BASIS's own order (the order the retired bar printed), so nothing is re-classified and nothing needs
+ * the old cross-check.
  */
-export function decisiveShare(cells: ShareCells, measuredIds: readonly string[]): DecisiveShare {
-  const bar = barOverMeasured(cells, measuredIds)
+export function decisiveShare(states: Readonly<Record<string, CellState>>, measuredIds: readonly string[]): DecisiveShare {
+  const aggregate = aggregateCells(states, measuredIds)
+  const decisive = aggregate.counts.supported + aggregate.counts.unsupported
+  // The remainder reads the basis in ITS OWN order — error and untested rows interleaved exactly as the
+  // basis names them — over the reader's classified table, so no id is classified twice.
   const remainder: RemainderRow[] = []
-  const inconclusiveIds: string[] = []
   for (const id of measuredIds) {
-    // Names and counts come from the same classifyCell, so they cannot drift apart.
-    const state = classifyCell(cells[id])
-    if (state === "untested") remainder.push({ featureId: id, bucket: "untested" })
-    else if (state === "error") remainder.push({ featureId: id, bucket: "error" })
-    else if (state === "inconclusive") inconclusiveIds.push(id)
+    const state = states[id] ?? "untested"
+    if (state === "error") remainder.push({ featureId: id, bucket: "error" })
+    else if (state === "untested") remainder.push({ featureId: id, bucket: "untested" })
   }
-  const decisivePct = sharePct(bar.conclusive, bar.denominator)
-  const inconclusivePct = sharePct(bar.inconclusive, bar.denominator)
   return {
-    denominator: bar.denominator,
-    decisive: bar.conclusive,
-    decisivePct,
-    inconclusive: bar.inconclusive,
-    inconclusivePct,
-    inconclusiveIds,
+    denominator: aggregate.denominator,
+    decisive,
+    decisivePct: sharePct(decisive, aggregate.denominator),
+    inconclusive: aggregate.counts.inconclusive,
+    inconclusivePct: sharePct(aggregate.counts.inconclusive, aggregate.denominator),
+    inconclusiveIds: [...aggregate.idsByState.inconclusive],
     remainder,
-    verdict: d3Verdict(bar.conclusive, bar.denominator),
+    verdict: d3Verdict(decisive, aggregate.denominator),
   }
 }
 
@@ -253,8 +254,8 @@ export function barRowForContext(args: {
     run: picked.run,
     selection: picked.selection,
     shares: {
-      tier62: decisiveShare(picked.run.cells, args.tier62Ids),
-      tier52: decisiveShare(picked.run.cells, args.tier52Ids),
+      tier62: decisiveShare(picked.run.states, args.tier62Ids),
+      tier52: decisiveShare(picked.run.states, args.tier52Ids),
     },
   }
 }
@@ -323,7 +324,7 @@ function cohortRun(run: ContextCandidate, cohort: ScorableCohort, role: "selecte
   // B, 2026-10-11), and it leaves as a NAMED row, never silently. An id with no probe in the required
   // suite counts as NOT decisive there and is named beside the fraction — the gap is in the suite, not
   // in the cohort (@cto 2026-10-10T15:59Z). Only the per-category block divides over the decidable basis.
-  return { run, measured: true, share: decisiveShare(run.cells, cohort.scoredIds) }
+  return { run, measured: true, share: decisiveShare(run.states, cohort.scoredIds) }
 }
 
 /** Eligibility follows the site's completed selection; history never replaces the selected run. */
@@ -368,7 +369,9 @@ export function buildReport(args: {
     cohort = { ...declared, decidableIds: basis.decidableIds }
   }
   const projection = loadCurrentResults(args.contentDir).projection
-  const current = Object.entries(projection.current).map(([key, selected]) => candidateFromSelected(key, selected))
+  const current = Object.entries(projection.current).map(([key, selected]) =>
+    candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
+  )
   const reviewed = loadDefaultContextPolicy(args.contentDir)
   // The ONE admission gate decides membership: a run the projection put in `exclusions` was refused
   // by admitRun(), so it is named as a refusal WITH that reason and never listed as admitted. Nothing
@@ -386,7 +389,7 @@ export function buildReport(args: {
         legacySkipped++
         continue
       }
-      const candidate = candidateFromSelected(key, selected)
+      const candidate = candidateFromSelected(key, selected, statesFor(projection, selected.runId))
       // Membership, not truthiness: `undefined` is the only thing that means "the projection did not
       // refuse this run". A falsy-but-present reason must never be read as an admission.
       const reason = refusals.get(selected.runId)
@@ -486,8 +489,11 @@ export interface CategoryShare {
 }
 
 /** The per-category decisive shares of a run's cells, one per category, in catalog order. */
-export function categoryShares(cells: ShareCells, categories: readonly CohortCategory[]): CategoryShare[] {
-  return categories.map((category) => ({ category, share: decisiveShare(cells, category.ids) }))
+export function categoryShares(
+  states: Readonly<Record<string, CellState>>,
+  categories: readonly CohortCategory[],
+): CategoryShare[] {
+  return categories.map((category) => ({ category, share: decisiveShare(states, category.ids) }))
 }
 
 /**
@@ -576,7 +582,7 @@ export function formatCohortRow(
     remainderLine(row.share.remainder),
     `  ${categoryBlockHeader(ratifiedCount, decidableCount, row.run.suiteId, libraryOnlyIds.length)}`,
   )
-  for (const { category, share } of categoryShares(row.run.cells, categories)) {
+  for (const { category, share } of categoryShares(row.run.states, categories)) {
     const categoryUnavailable = unavailableIds.filter((id) => (id.split(".")[0] ?? "") === category.key)
     const categoryLibraryOnly = libraryOnlyIds.filter((id) => (id.split(".")[0] ?? "") === category.key)
     lines.push(...formatCategoryRow(category, share, labelWidth, categoryUnavailable, categoryLibraryOnly))
@@ -729,8 +735,8 @@ function main(): void {
   for (const run of report.admittedRuns) {
     console.log(
       `  ${formatAdmittedRun(run, {
-        tier62: decisiveShare(run.cells, report.tier62Ids),
-        tier52: decisiveShare(run.cells, report.tier52Ids),
+        tier62: decisiveShare(run.states, report.tier62Ids),
+        tier52: decisiveShare(run.states, report.tier52Ids),
       })}`,
     )
   }

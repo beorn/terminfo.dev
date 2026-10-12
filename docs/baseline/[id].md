@@ -7,7 +7,6 @@ next: false
 <script setup>
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { classifyCell } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -45,11 +44,13 @@ function barTooltip(s, segment) {
   }
   const items = []
   for (const f of features) {
-    const cell = data.selectedByBackend[s.name]?.selected.cells[f.id]
-    const state = classifyCell(cell)
+    // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
+    // only (a raw field, not a classification), exactly as the compare page reads its evidence method.
+    const entry = data.selectedByBackend[s.name]
+    const state = entry?.states[f.id] ?? 'untested'
     const status = state === 'error' ? 'errors' : state
     if (status !== segment) continue
-    const note = cell?.note
+    const note = entry?.selected.cells[f.id]?.note
     items.push(note ? `  ${labels[segment][1]} ${f.name}: ${note}` : `  ${labels[segment][1]} ${f.name}`)
   }
   if (items.length === 0) return ''

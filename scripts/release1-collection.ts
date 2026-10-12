@@ -28,7 +28,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
-import type { SelectedVersion } from "../docs/data/selected-results.ts"
+import { statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 
@@ -333,7 +333,9 @@ export function linuxLedger(contentDir: string): LinuxLedger {
   const ledger: Record<string, LinuxLedgerEntry> = {}
   for (const id of LINUX_TARGET_IDS) {
     const picked = pickContextRun(
-      (current.get(id) ?? []).map(({ key, selected }) => candidateFromSelected(key, selected)),
+      (current.get(id) ?? []).map(({ key, selected }) =>
+        candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
+      ),
       reviewed[`app:${id}`],
     )
     if (picked !== undefined && "ambiguous" in picked) {
