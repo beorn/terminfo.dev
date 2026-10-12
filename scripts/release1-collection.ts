@@ -19,7 +19,7 @@
  *   4. the ending — `bun run decisive-share` (#27909), so the collection's result is the bar's own
  *      instrument.
  *
- * Read-only over `content/terminals.json`, `content/release-scope.json`, the committed runs, the
+ * Read-only over `content/terminals.json`, the feature catalog's tier-1 labels, the committed runs, the
  * site's own selection (`docs/data/current-results.ts` + `scripts/decisive-share.ts`), probe-defs,
  * the receipt producer and `scripts/admit-run.ts`'s admission rules; no deploy.
  */

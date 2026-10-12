@@ -70,6 +70,23 @@ function featureCatalog(...ids: string[]): string {
   )
 }
 
+/**
+ * A suite manifest that freezes a release: `frozenSuiteIdFor` resolves a release's current suite from
+ * the one manifest whose `freeze.release` names it, so every fixture content dir needs one.
+ */
+function writeFrozenSuite(content: string, probeHash: string): void {
+  mkdirSync(join(content, "suites"), { recursive: true })
+  writeFileSync(
+    join(content, "suites", `${probeHash}.json`),
+    JSON.stringify({
+      probeHash,
+      adapterVersion: "4.0.0",
+      freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
+      probes: { app: [], headless: [], mux: [] },
+    }),
+  )
+}
+
 describe("consumer selection", () => {
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
@@ -141,10 +158,7 @@ describe("consumer selection", () => {
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(root, "content", dir))
       writeCatalog(join(root, "content"))
       writeFileSync(join(root, "content", "features.json"), featureCatalog("sgr.bold"))
-      writeFileSync(
-        join(root, "content", "release-scope-candidate2.json"),
-        '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
-      )
+      writeFrozenSuite(join(root, "content"), "deadbeefcafe")
       writeFileSync(
         join(root, "content", "probes-apps", "kitty-0.46.2-linux.json"),
         JSON.stringify({
@@ -348,10 +362,7 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))
     try {
       writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
-      writeFileSync(
-        join(content, "release-scope-candidate2.json"),
-        '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
-      )
+      writeFrozenSuite(content, "deadbeefcafe")
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
       writeFileSync(join(content, "probes-apps", "bad.json"), "{")
       expect(() => loadCurrentResults(content)).toThrow(/bad\.json: invalid JSON/)
@@ -360,12 +371,14 @@ describe("consumer selection", () => {
     }
   })
 
-  it("fails loudly when the required release declaration is missing", () => {
+  it("fails loudly when the suite registry freezes no suite for the release", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-missing-declaration-"))
     try {
       writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
-      expect(() => loadCurrentResults(content)).toThrow(/release-scope-candidate2\.json/)
+      expect(() => loadCurrentResults(content)).toThrow(/the suite registry is required to name the current suite/)
+      mkdirSync(join(content, "suites"))
+      expect(() => loadCurrentResults(content)).toThrow(/no suite manifest declares freeze.release "candidate2"/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

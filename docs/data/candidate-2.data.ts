@@ -1,9 +1,10 @@
 /**
  * VitePress build-time data loader for the terminfo v0.1 candidate 2 preview page.
  *
- * This page is its own surface for ONE reason: the published matrix keeps its Release-1 scope
- * (`content/release-scope.json`), so the 125 classics the epic (bead 28018) lists need a page that can
- * claim them WITHOUT editing that file, moving the frozen probe suite, or touching the D3 bar.
+ * This page is its own surface for ONE reason: the published matrix keeps its Release-1 tier-1 scope,
+ * so the 125 classics the epic (bead 28018) lists need a page that can claim them WITHOUT moving the
+ * frozen probe suite or touching the D3 bar. Both scopes are labels in the catalog now (item 3): the
+ * tier-1 rows carry a `tier1` field, and the classics are the rows whose category slice is `classics`.
  *
  * It re-derives nothing. The numbers come from the ONE reader (`scripts/decisive-share.ts`
  * `buildReport`), which resolves the ONE selection (`docs/data/current-results.ts`) — so this page and
@@ -110,8 +111,8 @@ export interface Candidate2Data {
 /**
  * Feature display names, from the same catalog the declarations are validated against. The catalog
  * loader refuses a nameless entry before this page ever runs, so a row can never be labelled with its
- * own id through a quiet fallback: every cohort id is in this catalog by construction
- * (`loadFeatureCohort` refuses an unknown feature).
+ * own id through a quiet fallback: every cohort id is a catalog row by construction
+ * (`classicCohortIds` filters the catalog itself).
  */
 function loadCatalogNames(): Record<string, string> {
   const names: Record<string, string> = {}

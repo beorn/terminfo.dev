@@ -51,15 +51,12 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       ),
     )
     writeFileSync(
-      join(root, "content", "release-scope-candidate2.json"),
-      JSON.stringify({ name: "candidate2", frozenSuiteId: snapshot.probeHash, featureIds: ["cursor.position"] }),
-    )
-    writeFileSync(
       join(root, "content", "suites", `${snapshot.probeHash}.json`),
       JSON.stringify({
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
+        freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
         probes: {
           app: fixtureFeatures.slice(0, 4),

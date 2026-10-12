@@ -43,30 +43,30 @@ import { join } from "node:path"
 import { parseArgs } from "node:util"
 import { parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
 import { splitDecidableBasis } from "@terminfo/probe-defs"
-import { loadFeatures } from "@terminfo/catalog"
+import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
-import { loadReleaseScope, loadFeatureCohort, type FeatureCohort } from "../docs/data/load-release-scope.ts"
+import {
+  frozenSuiteIdFor,
+  loadReleaseScope,
+  loadFeatureCohort,
+  type FeatureCohort,
+} from "../docs/data/load-release-scope.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   barOverMeasured,
   classifyCell,
   d3Verdict,
   D3_VERDICT_BAR,
-  F2_MOVERS,
-  INCLUDED_TIER1_COUNT,
-  includedTierOneIds,
   isStaleRelation,
+  tier1Included,
   type D3Verdict,
   type SuiteRelation,
 } from "../docs/data/release-scope.ts"
 
-// The included-52 set and the D3 verdict rule are ONE owner, in docs/data/release-scope.ts, so the
-// site's label and this reader's verdict can never be two copies. Re-exported for the reader's callers.
-export { F2_MOVERS, INCLUDED_TIER1_COUNT, includedTierOneIds }
 import type { SelectedVersion } from "../docs/data/selected-results.ts"
 
 /** The eleven Release 1 desktop contexts (15323 § Release 1; children 27834 Mac, 27835 Linux+Windows). */
@@ -195,13 +195,13 @@ export function decisiveShare(cells: ShareCells, measuredIds: readonly string[])
   }
 }
 
-/** The declared 62 tier-1 ids, validated against the feature catalog by the declaration's owner. */
+/** The declared 62 tier-1 ids: the catalog rows whose slice is `tier1`, ascending. */
 export function tierOneIds(contentDir: string): string[] {
   const catalog = featureCatalog(contentDir)
-  return loadReleaseScope({ catalog, declarationPath: join(contentDir, "release-scope.json") }).measuredIds
+  return loadReleaseScope({ catalog, categories: loadCategories(contentDir) }).measuredIds
 }
 
-function featureCatalog(contentDir: string): Record<string, { name: string }> {
+function featureCatalog(contentDir: string): FeatureCatalog {
   return loadFeatures(contentDir)
 }
 
@@ -425,9 +425,11 @@ export function buildReport(args: {
   let unavailableIds: string[] = []
   let libraryOnlyIds: string[] = []
   if (args.cohort === "candidate2") {
+    const categories = loadCategories(args.contentDir)
     const declared = loadFeatureCohort({
       catalog: featureCatalog(args.contentDir),
-      declarationPath: join(args.contentDir, "release-scope-candidate2.json"),
+      categories,
+      frozenSuiteId: frozenSuiteIdFor(args.contentDir, "candidate2"),
     })
     const manifestPath = join(args.contentDir, "suites", `${declared.frozenSuiteId}.json`)
     const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
@@ -475,7 +477,7 @@ export function buildReport(args: {
   admitted.sort(byRunIdOrder)
   refused.sort((left, right) => byRunIdOrder(left.run, right.run))
   const tier62Ids = tierOneIds(args.contentDir)
-  const tier52Ids = includedTierOneIds(tier62Ids)
+  const tier52Ids = tier1Included(featureCatalog(args.contentDir), tier62Ids)
   const contexts = args.contexts ?? RELEASE_1_CONTEXTS
   const barRows = contexts.map((context) =>
     barRowForContext({

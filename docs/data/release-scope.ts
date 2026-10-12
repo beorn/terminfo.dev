@@ -164,37 +164,11 @@ export function barVerdict(bar: MeasuredBar): D3Verdict | undefined {
 }
 
 /**
- * The included tier-1 52 = the declared 62 minus the ten F2 movers (silent-consumed / fixture-gated
- * osc rows) named in the 27832 audit § "F2 mover list". There is no machine-readable mover list yet;
- * this is the audited list, hard-coded, and the 62-vs-52 disagreement is a separate ruling. The ten
- * are excluded by contract and are never counted as included.
+ * The included tier-1 rows of a declared set: those whose `tier1` label is `included`. The ten rows
+ * excluded by contract (the silent-consumed or fixture-gated osc rows the 27832 audit names) carry
+ * `tier1: "excluded"` in the catalog, so the included set is a filter of a stored label, never a
+ * second hard-coded mover list that can drift from it.
  */
-export const F2_MOVERS = [
-  "extensions.osc777-notify",
-  "extensions.osc666-termprop",
-  "extensions.osc3008-context",
-  "extensions.osc440-audio",
-  "extensions.osc555-flash",
-  "extensions.osc176-app-id",
-  "extensions.osc22-pointer",
-  "extensions.osc52-clipboard",
-  "extensions.osc52-read",
-  "extensions.osc52-write",
-] as const
-
-export const INCLUDED_TIER1_COUNT = 52
-
-/** The included 52: the declared 62 minus the F2 movers, refusing loudly if the audited list no longer fits. */
-export function includedTierOneIds(declaredIds: readonly string[]): string[] {
-  const declared = new Set(declaredIds)
-  const missing = F2_MOVERS.filter((id) => !declared.has(id))
-  if (missing.length) {
-    throw new Error(`F2 movers (27832) are not all in the declared tier-1 set: ${missing.join(", ")}`)
-  }
-  const movers = new Set<string>(F2_MOVERS)
-  const included = declaredIds.filter((id) => !movers.has(id))
-  if (included.length !== INCLUDED_TIER1_COUNT) {
-    throw new Error(`included tier-1 set is ${included.length}, expected ${INCLUDED_TIER1_COUNT}`)
-  }
-  return included
+export function tier1Included(catalog: Readonly<Record<string, { tier1?: string }>>, ids: readonly string[]): string[] {
+  return ids.filter((id) => catalog[id]?.tier1 === "included")
 }

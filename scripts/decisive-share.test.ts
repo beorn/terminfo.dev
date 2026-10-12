@@ -1,7 +1,7 @@
 /**
  * @failure The Release 1 bar's instrument would read a missing row as a decisive 0, fold a
  *   present-but-error row into inconclusive, guess which of several site-selected profiles is the
- *   (terminal, os) row, or drift the included 52 away from the audited mover list — so the D3 verdict
+ *   (terminal, os) row, or drift the included 52 away from the catalog's own tier1 labels — so the D3 verdict
  *   ("pass" at 90% decisive of the included 52, "with gaps" from 70%, "fail" below, the fraction
  *   beside the label) would report the wrong verdict or the wrong denominator.
  * @level l2
@@ -31,17 +31,16 @@ import {
   formatCohortRow,
   parseReaderArgs,
   decisiveShare,
-  F2_MOVERS,
   formatBarRow,
   namedExceptionsLine,
   pickContextRun,
-  INCLUDED_TIER1_COUNT,
-  includedTierOneIds,
   formatRefusedRun,
   refusedRunsSection,
+  tierOneIds,
 } from "./decisive-share.ts"
-import { d3Verdict } from "../docs/data/release-scope.ts"
+import { d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
+import { loadFeatures } from "@terminfo/catalog"
 
 const IDS = ["a.supported", "b.supported", "c.unsupported", "d.inconclusive", "e.error", "f.missing"]
 
@@ -74,33 +73,35 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
 }
 
 describe("release 1 decisive-count reader", () => {
-  it("names required catalog, cohort and frozen manifest failures instead of returning an empty report", () => {
+  it("names required category, feature and frozen-suite failures instead of returning an empty report", () => {
     const contentDir = mkdtempSync(join(tmpdir(), "reader-required-content-"))
     const real = join(import.meta.dirname, "..", "content")
     const load = () => buildReport({ contentDir, cohort: "candidate2" })
     try {
+      const categories = join(contentDir, "categories.json")
+      expect(load).toThrow(categories)
+      writeFileSync(categories, "{")
+      expect(load).toThrow(categories)
+      writeFileSync(categories, readFileSync(join(real, "categories.json")))
       const features = join(contentDir, "features.json")
       expect(load).toThrow(features)
       writeFileSync(features, "{")
       expect(load).toThrow(features)
       writeFileSync(features, readFileSync(join(real, "features.json")))
-      const declaration = join(contentDir, "release-scope-candidate2.json")
-      expect(load).toThrow(declaration)
-      const realDeclaration = readFileSync(join(real, "release-scope-candidate2.json"), "utf8")
-      const requiredSuite = (JSON.parse(realDeclaration) as { frozenSuiteId: string }).frozenSuiteId
-      writeFileSync(declaration, realDeclaration)
-      // The required manifest is the declaration's own frozenSuiteId, so this test tracks the
-      // declaration instead of hardcoding a suite id that a later move would silently stale (28467).
-      const manifest = join(contentDir, "suites", `${requiredSuite}.json`)
-      expect(load).toThrow(manifest)
-      mkdirSync(join(contentDir, "suites"))
-      writeFileSync(manifest, "{}")
-      expect(load).toThrow(manifest)
-      const realManifest = join(real, "suites", `${requiredSuite}.json`)
+      // The release's frozen suite is the suite registry's own pointer (item 3), so no declaration
+      // file names it and no test needs to track one (28467).
+      expect(load).toThrow(/the suite registry is required to name the current suite/)
+      const suites = join(contentDir, "suites")
+      mkdirSync(suites)
+      expect(load).toThrow(/no suite manifest declares freeze.release "candidate2"/)
+      const realManifest = join(real, "suites", "c3d1fbb77561.json")
       const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
-      writeFileSync(manifest, JSON.stringify({ ...raw, probeHash: "wrong-suite" }))
-      expect(load).toThrow(new RegExp(`probeHash wrong-suite does not match required ${requiredSuite}`))
+      const manifest = join(suites, "c3d1fbb77561.json")
+      writeFileSync(manifest, JSON.stringify({ ...raw, freeze: { release: "candidate2", at: "not-a-date" } }))
       expect(load).toThrow(manifest)
+      writeFileSync(manifest, JSON.stringify(raw))
+      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
+      expect(buildReport({ contentDir, cohort: "candidate2" }).candidate2?.frozenSuiteId).toBe("c3d1fbb77561")
     } finally {
       rmSync(contentDir, { recursive: true })
     }
@@ -320,13 +321,16 @@ describe("release 1 decisive-count reader", () => {
     expect(() => d3Verdict(3, 2)).toThrow(/0 <= decisive <= denominator/)
   })
 
-  it("takes the audited F2 movers out of the declared 62 and refuses a mismatched list", () => {
-    const declared = ["device.primary-da", ...F2_MOVERS, ...Array.from({ length: 51 }, (_, i) => `f.${i}`)]
-    const included = includedTierOneIds(declared)
-    expect(included).toHaveLength(INCLUDED_TIER1_COUNT)
-    expect(included).not.toContain(F2_MOVERS[0])
-    expect(() => includedTierOneIds(declared.slice(1))).toThrow(/included tier-1 set is 51/)
-    expect(() => includedTierOneIds(declared.filter((id) => id !== F2_MOVERS[0]))).toThrow(/27832|F2 movers/)
+  it("takes the ten excluded tier-1 rows out of the declared 62 by their catalog label, never a list", () => {
+    const contentDir = join(import.meta.dirname, "..", "content")
+    const catalog = loadFeatures(contentDir)
+    const declared = tierOneIds(contentDir)
+    expect(declared).toHaveLength(62)
+    const included = tier1Included(catalog, declared)
+    expect(included).toHaveLength(52)
+    expect(included).not.toContain("extensions.osc777-notify")
+    expect(catalog["extensions.osc777-notify"]?.tier1).toBe("excluded")
+    expect(catalog["device.primary-da"]?.tier1).toBe("included")
   })
 
   it("resolves a context with no selected run as not measured, never as a zero reading", () => {
@@ -841,19 +845,15 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       for (const name of [
         "features.json",
         "terminals.json",
-        "release-scope.json",
-        "release-scope-candidate2.json",
+        "categories.json",
         "default-contexts.json",
       ]) {
         writeFileSync(join(contentDir, name), readFileSync(join(real, name)))
       }
-      const requiredSuite = (
-        JSON.parse(readFileSync(join(real, "release-scope-candidate2.json"), "utf8")) as { frozenSuiteId: string }
-      ).frozenSuiteId
       mkdirSync(join(contentDir, "suites"))
       writeFileSync(
-        join(contentDir, "suites", `${requiredSuite}.json`),
-        readFileSync(join(real, "suites", `${requiredSuite}.json`)),
+        join(contentDir, "suites", "c3d1fbb77561.json"),
+        readFileSync(join(real, "suites", "c3d1fbb77561.json")),
       )
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
       // One real lib run the projection refuses: a NON-app document, so this reader must not name it

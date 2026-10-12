@@ -33,12 +33,39 @@ export interface FeatureRecord {
   tags?: string[]
   sequence?: string
   group?: string
+  /**
+   * The tier-1 Release 1 label. Only the 62 declared rows carry it: `included` for the 52 that are
+   * scored, `excluded` for the ten silent-consumed or fixture-gated OSC rows the 27832 audit names.
+   * Every other row's slice is its category's slice — see `slice()`.
+   */
+  tier1?: Tier1
   probeStatus?: string
   /** Why a reviewed probeStatus override is what it is; required beside any override. */
   probeStatusReason?: string
 }
 
 export type FeatureCatalog = Readonly<Record<string, FeatureRecord>>
+
+/** The two tier-1 labels a declared Release 1 row can carry. */
+export type Tier1 = "included" | "excluded"
+
+export const TIER1_VALUES: readonly Tier1[] = ["included", "excluded"]
+
+/**
+ * A feature's slice — the scope label the cohorts and scopes filter over. `tier1` is never stored on
+ * the row; it is what `slice()` returns for a row that carries a `tier1` field, so a slice can never
+ * disagree with the category it came from.
+ */
+export type Slice = "tier1" | "classics" | "extensions" | "input" | "modes" | "device"
+
+export const SLICES: readonly Slice[] = ["tier1", "classics", "extensions", "input", "modes", "device"]
+
+/** The only fact `slice()` needs from a category: its slice label. */
+export interface SliceCategory {
+  slice: Slice
+}
+
+export type SliceCatalog = Readonly<Record<string, SliceCategory>>
 
 /** One terminal catalog entry, keyed by its terminal id in `content/terminals.json`. */
 export interface TerminalRecord {
@@ -116,6 +143,14 @@ function optionalNumber(path: string, id: string, field: string, value: unknown)
   return value
 }
 
+function optionalTier1(path: string, id: string, value: unknown): Tier1 | undefined {
+  if (value === undefined) return undefined
+  if (!TIER1_VALUES.includes(value as Tier1)) {
+    throw new Error(`${path}: entry "${id}" has an invalid tier1 "${String(value)}"; expected ${TIER1_VALUES.join(" or ")}`)
+  }
+  return value as Tier1
+}
+
 function entries(path: string, root: Record<string, unknown>): Array<[string, Record<string, unknown>]> {
   const out: Array<[string, Record<string, unknown>]> = []
   for (const [id, value] of Object.entries(root)) {
@@ -139,6 +174,7 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
     tags: optionalStringArray(path, id, "tags", raw.tags),
     sequence: optionalString(path, id, "sequence", raw.sequence),
     group: optionalString(path, id, "group", raw.group),
+    tier1: optionalTier1(path, id, raw.tier1),
     probeStatus: optionalString(path, id, "probeStatus", raw.probeStatus),
     probeStatusReason: optionalString(path, id, "probeStatusReason", raw.probeStatusReason),
   }
@@ -191,4 +227,20 @@ export function loadTerminals(contentDir: string): TerminalCatalog {
   const frozen = Object.freeze(catalog)
   cache.set(cacheKey, frozen)
   return frozen
+}
+
+/**
+ * The ONE slice function: `tier1` when the feature carries a tier1 field, otherwise its category's
+ * slice. It is a function, never a stored field, so a row's slice can never disagree with the
+ * category it belongs to (and storing it on all 273 rows would need a drift check). Cohorts and
+ * scopes are filters over this label.
+ */
+export function slice(features: FeatureCatalog, categories: SliceCatalog, id: string): Slice {
+  const feature = features[id]
+  if (!feature) throw new Error(`slice(): no feature "${id}" in the catalog`)
+  if (feature.tier1 !== undefined) return "tier1"
+  const key = id.split(".")[0] ?? ""
+  const category = categories[key]
+  if (!category) throw new Error(`slice(): feature "${id}" has prefix "${key}", which is not a category`)
+  return category.slice
 }

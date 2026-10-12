@@ -4,7 +4,7 @@
  * @consumer Dynamic feature routes and site metadata consumers.
  * @testonly none
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -87,6 +87,12 @@ test.each(["missing", "malformed", "non-object"] as const)(
 test.each(["terminals", "annotations", "categories"] as const)(
   "page data rejects damaged %s metadata and retries",
   async (name) => {
+    // Read the real categories catalog BEFORE the mock redirects this path: the scope derivation
+    // (`slice()`) needs a category for every feature prefix, so a valid fixture must carry all 13.
+    const realCategories = JSON.parse(readFileSync(join(contentDir, "categories.json"), "utf8")) as Record<
+      string,
+      unknown
+    >
     const directory = mkdtempSync(join(tmpdir(), "terminfo-page-meta-"))
     mkdirSync(join(directory, "content"))
     const path = join(directory, "content", `${name}.json`)
@@ -114,12 +120,12 @@ test.each(["terminals", "annotations", "categories"] as const)(
             }
           : name === "annotations"
             ? { "kitty:sgr.bold": { note: "fixture" } }
-            : { sgr: { label: "Styles", order: 1, description: "styles fixture" } }
+            : { ...realCategories, sgr: { ...(realCategories.sgr as Record<string, unknown>), label: "Styles" } }
       writeFileSync(path, JSON.stringify(valid))
       const data = loadFullProbes()
       if (name === "terminals") expect(data.meta).toMatchObject(valid)
       else if (name === "annotations") expect(data.annotations).toEqual(valid)
-      else expect(data.categoryLabels).toEqual({ sgr: "Styles" })
+      else expect(data.categoryLabels).toMatchObject({ sgr: "Styles" })
     } finally {
       delete fixture.catalogs[name]
       vi.resetModules()

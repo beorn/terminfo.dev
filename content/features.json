@@ -1,5 +1,5 @@
 {
-  "$comment": "Feature metadata for terminfo.dev probes. Keyed by probe dot-path ID.",
+  "$comment": "Feature metadata for terminfo.dev probes. Keyed by probe dot-path ID. Only the 62 tier-1 Release 1 rows carry a tier1 field: 52 included, and 10 excluded by contract as the silent-consumed or fixture-gated OSC rows named in the 27832 audit \u00a7 F2 mover list. Every other feature's slice is its category's slice (content/categories.json).",
   "sgr.bold": {
     "name": "Bold (SGR 1)",
     "slug": "1-bold",
@@ -482,6 +482,7 @@
     "sequence": "ESC [ N E"
   },
   "cursor.position-report": {
+    "tier1": "included",
     "name": "Cursor position report (DSR 6)",
     "slug": "dsr-6-cursor-position-report",
     "url": "https://vt100.net/docs/vt510-rm/DSR.html",
@@ -903,6 +904,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decrqcra": {
+    "tier1": "included",
     "name": "DECRQCRA — checksum rectangular area",
     "slug": "decrqcra-checksum-rectangle",
     "url": "https://vt100.net/docs/vt510-rm/DECRQCRA.html",
@@ -924,6 +926,7 @@
     "probe": "Enable modifyOtherKeys 2 (CSI > 4 ; 2 m), confirm XTEST delivery with plain a, then inject ctrl+i. CSI 27;5;105~ or CSI 105;5u is supported; Tab means the mode was ignored (unsupported). Missing OS XTEST adapter is not tested. Reset with CSI > 4 ; 0 m."
   },
   "input.csi-u": {
+    "tier1": "included",
     "name": "CSI u Key Encoding",
     "slug": "csi-u-encoding",
     "url": "http://www.leonerd.org.uk/hacks/fixterms/",
@@ -1279,6 +1282,7 @@
     "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "extensions.kitty-keyboard": {
+    "tier1": "included",
     "name": "Kitty keyboard protocol",
     "slug": "kitty-keyboard-protocol",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/",
@@ -1289,6 +1293,7 @@
     "sequence": "ESC [ > flags u"
   },
   "extensions.kitty-graphics": {
+    "tier1": "included",
     "name": "Kitty graphics protocol",
     "slug": "kitty-graphics-protocol",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/",
@@ -1341,6 +1346,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc52-clipboard": {
+    "tier1": "excluded",
     "name": "Clipboard access (OSC 52)",
     "slug": "osc-52-clipboard",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -1351,6 +1357,7 @@
     "sequence": "ESC ] 52 ; c ; base64 BEL"
   },
   "extensions.osc10-fg-color": {
+    "tier1": "included",
     "name": "Foreground color query (OSC 10)",
     "slug": "osc-10-fg-color-query",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -1361,6 +1368,7 @@
     "sequence": "ESC ] 10 ; ? BEL"
   },
   "extensions.osc11-bg-color": {
+    "tier1": "included",
     "name": "Background color query (OSC 11)",
     "slug": "osc-11-bg-color-query",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -1882,6 +1890,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "device.primary-da": {
+    "tier1": "included",
     "name": "Primary device attributes (DA1)",
     "slug": "da1-primary-device-attributes",
     "url": "https://vt100.net/docs/vt510-rm/DA1.html",
@@ -1892,6 +1901,7 @@
     "sequence": "ESC [ c"
   },
   "device.status-report": {
+    "tier1": "included",
     "name": "Device status report (DSR 5)",
     "slug": "dsr-5-device-status-report",
     "url": "https://vt100.net/docs/vt510-rm/DSR.html",
@@ -1902,6 +1912,7 @@
     "sequence": "ESC [ 5 n"
   },
   "device.secondary-da": {
+    "tier1": "included",
     "name": "Secondary Device Attributes (DA2)",
     "slug": "da2-secondary-device-attributes",
     "url": "https://vt100.net/docs/vt510-rm/DA2.html",
@@ -1912,6 +1923,7 @@
     "sequence": "ESC [ > c"
   },
   "device.tertiary-da": {
+    "tier1": "included",
     "name": "Tertiary Device Attributes (DA3)",
     "slug": "da3-tertiary-device-attributes",
     "url": "https://vt100.net/docs/vt510-rm/DA3.html",
@@ -1922,6 +1934,7 @@
     "sequence": "ESC [ = c"
   },
   "device.decrqss": {
+    "tier1": "included",
     "name": "Request Setting (DECRQSS)",
     "slug": "decrqss",
     "tags": ["vt510"],
@@ -1932,6 +1945,7 @@
     "sequence": "ESC P $ q setting ESC \\\\"
   },
   "device.xtgettcap": {
+    "tier1": "included",
     "name": "Query Terminfo (XTGETTCAP)",
     "slug": "xtgettcap",
     "tags": ["xterm-extensions"],
@@ -1942,6 +1956,7 @@
     "sequence": "ESC P + q hex-name ESC \\\\"
   },
   "device.decrpm": {
+    "tier1": "included",
     "name": "Mode Report (DECRPM)",
     "slug": "decrpm",
     "url": "https://vt100.net/docs/vt510-rm/DECRPM.html",
@@ -1952,6 +1967,7 @@
     "sequence": "ESC [ ? mode $ p"
   },
   "device.xtversion": {
+    "tier1": "included",
     "name": "Terminal Version (XTVERSION)",
     "slug": "xtversion",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -1982,6 +1998,7 @@
     "sequence": "ESC [ 14 t"
   },
   "device.xtwinops-16": {
+    "tier1": "included",
     "name": "Report cell size in pixels (CSI 16 t)",
     "slug": "xtwinops-16-cell-size-pixels",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
@@ -2002,6 +2019,7 @@
     "sequence": "ESC [ 18 t"
   },
   "device.xtwinops-20": {
+    "tier1": "included",
     "name": "Report icon label (CSI 20 t)",
     "slug": "xtwinops-20-icon-label",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
@@ -2012,6 +2030,7 @@
     "sequence": "ESC [ 20 t"
   },
   "device.xtwinops-21": {
+    "tier1": "included",
     "name": "Report window title (CSI 21 t)",
     "slug": "xtwinops-21-window-title",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
@@ -2042,6 +2061,7 @@
     "sequence": "ESC [ 23 ; 0 t"
   },
   "device.xtreportcolors": {
+    "tier1": "included",
     "name": "XTREPORTCOLORS — report color capabilities (CSI # R)",
     "slug": "xtreportcolors",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2052,6 +2072,7 @@
     "probe": "Send <code>CSI # R</code>, verify response matches <code>CSI Pm # Q</code> pattern."
   },
   "device.xtgetxres": {
+    "tier1": "included",
     "name": "XTGETXRES — query resource value (DCS + Q)",
     "slug": "xtgetxres",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2162,6 +2183,7 @@
     "probeStatusReason": "manual by design: no automatable probe exists for this feature"
   },
   "extensions.osc1337-cellsize": {
+    "tier1": "included",
     "name": "iTerm2 Cell Size Reporting (OSC 1337)",
     "slug": "osc1337-cellsize",
     "tags": ["osc", "iterm2"],
@@ -2171,6 +2193,7 @@
     "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.osc1337-capabilities": {
+    "tier1": "included",
     "name": "iTerm2 Capability Reporting (OSC 1337)",
     "slug": "osc1337-capabilities",
     "tags": ["osc", "iterm2"],
@@ -2180,6 +2203,7 @@
     "url": "https://iterm2.com/documentation-escape-codes.html"
   },
   "extensions.sixel-da1": {
+    "tier1": "included",
     "name": "Sixel support in DA1",
     "slug": "sixel-da1",
     "url": "https://vt100.net/docs/vt510-rm/DA1.html",
@@ -2189,6 +2213,7 @@
     "baseline": "rich"
   },
   "extensions.sixel-geometry-report": {
+    "tier1": "included",
     "name": "Sixel geometry report (CSI ? Pi;Pa;Pv S)",
     "slug": "sixel-geometry-report",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2219,6 +2244,7 @@
     "baseline": "rich"
   },
   "extensions.osc5522-clipboard": {
+    "tier1": "included",
     "name": "OSC 5522 advanced clipboard",
     "slug": "osc5522-clipboard",
     "url": "https://sw.kovidgoyal.net/kitty/clipboard/",
@@ -2333,6 +2359,7 @@
     "probe": "Enable 1000+1006, click button 1 as the delivery control, then inject a wheel-up notch and require the resulting SGR button-4 report. A missing OS XTEST adapter is not tested; a delivery-control failure is an error, never a negative."
   },
   "extensions.kitty-keyboard.disambiguate": {
+    "tier1": "included",
     "name": "Kitty keyboard: DISAMBIGUATE (flag 1)",
     "slug": "kitty-keyboard-disambiguate",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
@@ -2342,6 +2369,7 @@
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-events": {
+    "tier1": "included",
     "name": "Kitty keyboard: REPORT_EVENTS (flag 2)",
     "slug": "kitty-keyboard-report-events",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
@@ -2351,6 +2379,7 @@
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-alternate": {
+    "tier1": "included",
     "name": "Kitty keyboard: REPORT_ALTERNATE (flag 4)",
     "slug": "kitty-keyboard-report-alternate",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
@@ -2360,6 +2389,7 @@
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-all-keys": {
+    "tier1": "included",
     "name": "Kitty keyboard: REPORT_ALL_KEYS (flag 8)",
     "slug": "kitty-keyboard-report-all-keys",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
@@ -2369,6 +2399,7 @@
     "baseline": "rich"
   },
   "extensions.kitty-keyboard.report-text": {
+    "tier1": "included",
     "name": "Kitty keyboard: REPORT_TEXT (flag 16)",
     "slug": "kitty-keyboard-report-text",
     "url": "https://sw.kovidgoyal.net/kitty/keyboard-protocol/#progressive-enhancement",
@@ -2378,6 +2409,7 @@
     "baseline": "rich"
   },
   "extensions.kitty-graphics.transmit": {
+    "tier1": "included",
     "name": "Kitty graphics: transmit",
     "slug": "kitty-graphics-transmit",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#transmitting-data",
@@ -2387,6 +2419,7 @@
     "baseline": "rich"
   },
   "extensions.kitty-graphics.display": {
+    "tier1": "included",
     "name": "Kitty graphics: display",
     "slug": "kitty-graphics-display",
     "url": "https://sw.kovidgoyal.net/kitty/graphics-protocol/#displaying-images",
@@ -2414,6 +2447,7 @@
     "baseline": "rich"
   },
   "extensions.osc52-write": {
+    "tier1": "excluded",
     "name": "OSC 52 clipboard write",
     "slug": "osc52-clipboard-write",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2423,6 +2457,7 @@
     "baseline": "modern"
   },
   "extensions.osc52-read": {
+    "tier1": "excluded",
     "name": "OSC 52 clipboard read",
     "slug": "osc52-clipboard-read",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2442,6 +2477,7 @@
     "sequence": "ESC ] 1 ; Pt BEL"
   },
   "extensions.osc4-palette": {
+    "tier1": "included",
     "name": "Color palette (OSC 4)",
     "slug": "osc-4-color-palette",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2452,6 +2488,7 @@
     "sequence": "ESC ] 4 ; c ; spec BEL"
   },
   "extensions.osc5-special-color": {
+    "tier1": "included",
     "name": "Special color (OSC 5)",
     "slug": "osc-5-special-color",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2462,6 +2499,7 @@
     "sequence": "ESC ] 5 ; c ; spec BEL"
   },
   "extensions.osc12-cursor-color": {
+    "tier1": "included",
     "name": "Cursor color (OSC 12)",
     "slug": "osc-12-cursor-color",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2472,6 +2510,7 @@
     "sequence": "ESC ] 12 ; color BEL"
   },
   "extensions.osc104-reset-palette": {
+    "tier1": "included",
     "name": "Reset color palette (OSC 104)",
     "slug": "osc-104-reset-palette",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2482,6 +2521,7 @@
     "sequence": "ESC ] 104 ; c BEL"
   },
   "extensions.osc110-reset-fg": {
+    "tier1": "included",
     "name": "Reset foreground color (OSC 110)",
     "slug": "osc-110-reset-fg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2492,6 +2532,7 @@
     "sequence": "ESC ] 110 BEL"
   },
   "extensions.osc111-reset-bg": {
+    "tier1": "included",
     "name": "Reset background color (OSC 111)",
     "slug": "osc-111-reset-bg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2502,6 +2543,7 @@
     "sequence": "ESC ] 111 BEL"
   },
   "extensions.osc112-reset-cursor": {
+    "tier1": "included",
     "name": "Reset cursor color (OSC 112)",
     "slug": "osc-112-reset-cursor",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2532,6 +2574,7 @@
     "sequence": "ESC ] 119 BEL"
   },
   "extensions.osc17-highlight-bg": {
+    "tier1": "included",
     "name": "Highlight background (OSC 17)",
     "slug": "osc-17-highlight-bg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2542,6 +2585,7 @@
     "sequence": "ESC ] 17 ; spec BEL"
   },
   "extensions.osc19-highlight-fg": {
+    "tier1": "included",
     "name": "Highlight foreground (OSC 19)",
     "slug": "osc-19-highlight-fg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2552,6 +2596,7 @@
     "sequence": "ESC ] 19 ; spec BEL"
   },
   "extensions.osc22-pointer": {
+    "tier1": "excluded",
     "name": "Pointer shape (OSC 22)",
     "slug": "osc-22-pointer-shape",
     "url": "https://sw.kovidgoyal.net/kitty/pointer-shapes/",
@@ -2576,6 +2621,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc777-notify": {
+    "tier1": "excluded",
     "name": "Notifications (OSC 777)",
     "slug": "osc-777-notify",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2588,6 +2634,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc666-termprop": {
+    "tier1": "excluded",
     "name": "VTE termprop (OSC 666)",
     "slug": "osc-666-termprop",
     "url": "https://gitlab.gnome.org/GNOME/vte",
@@ -2600,6 +2647,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc3008-context": {
+    "tier1": "excluded",
     "name": "Systemd context (OSC 3008)",
     "slug": "osc-3008-systemd-context",
     "url": "https://uapi-group.org/specifications/specs/osc_context/",
@@ -2612,6 +2660,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc113-reset-pointer-fg": {
+    "tier1": "included",
     "name": "Reset pointer fg color (OSC 113)",
     "slug": "osc-113-reset-pointer-fg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2622,6 +2671,7 @@
     "sequence": "ESC ] 113 BEL"
   },
   "extensions.osc114-reset-pointer-bg": {
+    "tier1": "included",
     "name": "Reset pointer bg color (OSC 114)",
     "slug": "osc-114-reset-pointer-bg",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
@@ -2632,6 +2682,7 @@
     "sequence": "ESC ] 114 BEL"
   },
   "extensions.osc21-kitty-color": {
+    "tier1": "included",
     "name": "Kitty color protocol (OSC 21)",
     "slug": "osc-21-kitty-color",
     "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
@@ -2642,6 +2693,7 @@
     "sequence": "ESC ] 21 ; key=value BEL"
   },
   "extensions.osc30001-color-stack-push": {
+    "tier1": "included",
     "name": "Kitty color stack push (OSC 30001)",
     "slug": "osc-30001-color-stack-push",
     "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
@@ -2652,6 +2704,7 @@
     "sequence": "ESC ] 30001 BEL"
   },
   "extensions.osc30101-color-stack-pop": {
+    "tier1": "included",
     "name": "Kitty color stack pop (OSC 30101)",
     "slug": "osc-30101-color-stack-pop",
     "url": "https://sw.kovidgoyal.net/kitty/color-stack/",
@@ -2662,6 +2715,7 @@
     "sequence": "ESC ] 30101 BEL"
   },
   "extensions.osc176-app-id": {
+    "tier1": "excluded",
     "name": "Set Wayland app-id (OSC 176)",
     "slug": "osc-176-app-id",
     "url": "https://codeberg.org/dnkl/foot/wiki",
@@ -2674,6 +2728,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc555-flash": {
+    "tier1": "excluded",
     "name": "Screen flash (OSC 555)",
     "slug": "osc-555-flash",
     "url": "https://codeberg.org/dnkl/foot/wiki",
@@ -2686,6 +2741,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc440-audio": {
+    "tier1": "excluded",
     "name": "Audio sound (OSC 440)",
     "slug": "osc-440-audio",
     "url": "https://mintty.github.io/",
@@ -2698,6 +2754,7 @@
     "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc7770-font-size": {
+    "tier1": "included",
     "name": "Font size query/set (OSC 7770)",
     "slug": "osc-7770-font-size",
     "url": "https://mintty.github.io/",
@@ -2708,6 +2765,7 @@
     "sequence": "ESC ] 7770 ; size BEL"
   },
   "extensions.osc7777-font-window-size": {
+    "tier1": "included",
     "name": "Font + window size (OSC 7777)",
     "slug": "osc-7777-font-window-size",
     "url": "https://mintty.github.io/",
@@ -2718,6 +2776,7 @@
     "sequence": "ESC ] 7777 ; font ; size BEL"
   },
   "extensions.osc701-locale": {
+    "tier1": "included",
     "name": "Locale query/set (OSC 701)",
     "slug": "osc-701-locale",
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
@@ -2728,6 +2787,7 @@
     "sequence": "ESC ] 701 ; locale BEL"
   },
   "extensions.osc702-version": {
+    "tier1": "included",
     "name": "Version query (OSC 702)",
     "slug": "osc-702-version",
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
@@ -2760,6 +2820,7 @@
     "sequence": "ESC ] 720 BEL"
   },
   "extensions.osc776-cell-size": {
+    "tier1": "included",
     "name": "Cell size report (OSC 776)",
     "slug": "osc-776-cell-size",
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
@@ -2817,6 +2878,7 @@
     "baseline": "legacy"
   },
   "device.dsr-996-color-scheme": {
+    "tier1": "included",
     "name": "DSR ?996 — color scheme query",
     "slug": "dsr-996-color-scheme",
     "url": "https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md",

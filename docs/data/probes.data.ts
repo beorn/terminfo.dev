@@ -21,10 +21,10 @@ import {
   coverageSentence,
   d3Verdict,
   classifyCell,
-  includedTierOneIds,
   isStaleRelation,
   staleCaption,
   supportedShare,
+  tier1Included,
   tierLine,
   type D3Verdict,
   type CellState,
@@ -261,10 +261,7 @@ export function loadFullProbes(): ProbeData {
       .map((v) => v.measuredAt)
       .sort()
       .at(-1) ?? ""
-  const release = loadReleaseScope({
-    catalog: featureDescriptions,
-    declarationPath: join(contentDir, "release-scope.json"),
-  })
+  const release = loadReleaseScope({ catalog: featureDescriptions, categories: loadCategories(contentDir) })
   const releaseScope = {
     ...release,
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
@@ -273,10 +270,11 @@ export function loadFullProbes(): ProbeData {
   const releaseShares: Record<string, string> = {}
   const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
-  // The bar and the verdict are over the app denominator, never the declared 62: the ten F2 movers
-  // are excluded by contract and the app-unobservable rows by construction, since no app run can
-  // decide them (docs/data/release-scope.ts and @terminfo/probe-defs own both lists and the D3 rule).
-  const includedIds = includedTierOneIds(release.scoredIds)
+  // The bar and the verdict are over the app denominator, never the declared 62: the ten rows the
+  // 27832 audit excludes by contract carry tier1 "excluded", and the app-unobservable rows are out by
+  // construction, since no app run can decide them (@terminfo/catalog and @terminfo/probe-defs own
+  // the labels and the D3 rule).
+  const includedIds = tier1Included(featureDescriptions, release.scoredIds)
   for (const [key, { selected }] of byTarget) {
     const bar = barOverMeasured(selected.cells, release.scoredIds)
     if (bar.denominator && coverageSentence(bar) === "No selected run") {

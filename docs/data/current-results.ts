@@ -8,9 +8,9 @@ import {
   type SelectedProjection,
   type SelectedVersion,
 } from "./selected-results.ts"
-import { loadFeatureCohort } from "./load-release-scope.ts"
+import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadFeatures, loadTerminals } from "@terminfo/catalog"
+import { loadTerminals } from "@terminfo/catalog"
 
 export interface DefaultContextReview {
   contextKey: string
@@ -123,20 +123,13 @@ export function loadCurrentResults(contentDir: string, options: { artifactDir?: 
 }
 
 /**
- * The release suite this content pins, read through the ONE candidate-2 declaration loader (28450).
- * The declaration is REQUIRED: without it every run measured on the release suite would be relabelled
- * "older suite" and the tree-move banner would vanish, which is the silent fallback this reader exists
- * to prevent. An absent declaration is named here; a present-but-malformed one throws from the loader.
+ * The release suite this content pins: the one suite manifest whose `freeze.release` names the
+ * Release 1 candidate (`frozenSuiteIdFor`, item 3). The pointer is REQUIRED and read from the suite
+ * registry, so it can never name a missing manifest: without it every run measured on the release
+ * suite would be relabelled "older suite" and the tree-move banner would vanish.
  */
 function releaseSuiteIdFor(contentDir: string): string {
-  const declarationPath = join(contentDir, "release-scope-candidate2.json")
-  if (!existsSync(declarationPath)) {
-    throw new Error(
-      `${declarationPath}: the Release 1 measurement declaration is required to name the release suite; ` +
-        'without it every run on that suite is relabelled "older suite" and the tree-move banner is suppressed',
-    )
-  }
-  return loadFeatureCohort({ catalog: loadFeatures(contentDir), declarationPath }).frozenSuiteId
+  return frozenSuiteIdFor(contentDir, "candidate2")
 }
 
 /**

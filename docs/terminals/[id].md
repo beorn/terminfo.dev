@@ -8,7 +8,7 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { barOverMeasured, barVerdict, includedTierOneIds, isStaleRelation, staleCaption } from '../data/release-scope.ts'
+import { barOverMeasured, barVerdict, isStaleRelation, staleCaption, tier1Included } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -22,7 +22,7 @@ const counts = computed(() => selectedRun.value?.counts)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
 const libraryOnlyIds = computed(() => data.releaseScope.libraryOnlyIds)
 const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.scoredIds))
-const includedIds = includedTierOneIds(data.releaseScope.scoredIds)
+const includedIds = tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)
 const measuredVerdict = computed(() => barVerdict(barOverMeasured(selectedRun.value?.cells ?? {}, includedIds)))
 const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
