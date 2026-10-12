@@ -3,35 +3,30 @@
     "label": "SGR (Text Styling)",
     "order": 1,
     "slice": "classics",
-    "sliceOrder": 1,
     "description": "Select Graphic Rendition (SGR) controls text styling: bold, italic, underline variants, colors, strikethrough, and other visual attributes. SGR sequences are the most commonly used escape codes — every TUI framework depends on them for rendering styled text. Support ranges from universal (bold, basic colors) to inconsistent (curly underline, hyperlinks).\n\nSGR was one of the first capabilities defined in ECMA-48 (1976). The parameter space has grown from 10 attributes to over 50, with vendors like Kitty adding sub-parameter syntax (4:3 for curly underline) decades after the standard was written. The original VT100 only had bold, underline, blink, and reverse — and blink was controversial even in 1978. The ANSI committee later added colors, but couldn't agree on which shade of \"blue\" SGR 34 should be, so they left it up to implementors. Forty-eight years later, \"is your terminal blue really blue?\" is still a frequently asked question."
   },
   "cursor": {
     "label": "Cursor",
     "order": 2,
     "slice": "classics",
-    "sliceOrder": 2,
     "description": "Cursor control sequences for positioning, visibility, shape, and save/restore operations. Correct cursor handling is essential for TUI applications that need precise text placement. Differences in DECSC/DECRC behavior and cursor shape support are common sources of cross-terminal bugs.\n\nCursor positioning was the breakthrough that made CRT terminals useful — before CUP (Cursor Position), teletypewriters could only print forward. The VT100's cursor addressing made screen-oriented editors like vi possible. Fun fact: DECSC (Save Cursor) saves not just position but also SGR attributes, character set state, origin mode, and autowrap — it's really \"save everything about how text is being written.\" Many terminal bugs trace to applications assuming DECSC only saves position."
   },
   "text": {
     "label": "Text",
     "order": 3,
     "slice": "classics",
-    "sliceOrder": 3,
     "description": "Basic text output, wrapping, wide character handling (emoji, CJK), tabs, and line control. This category covers the fundamentals of terminal text rendering, including how terminals handle characters that occupy two columns (CJK ideographs, many emoji) and whether text reflows correctly when the terminal is resized. Text output seems simple until you encounter wide characters. A CJK character occupies 2 columns; a family emoji might be 7 Unicode codepoints but 2 columns. Every terminal must agree on every character's width — and they don't."
   },
   "erase": {
     "label": "Erase",
     "order": 4,
     "slice": "classics",
-    "sliceOrder": 5,
     "description": "Line and screen clearing operations for selective content removal. Erase sequences let applications clear portions of the screen or individual lines, optionally preserving or clearing character attributes. These sequences are heavily used by full-screen TUI applications during redraws.\n\nErase operations are the terminal's undo button — they let applications clear portions of the screen without redrawing everything. ED 3 (erase scrollback) is one of the few sequences with security implications, as it permanently destroys terminal history. A malicious script could wipe your scrollback to hide its tracks — which is why some terminals prompt before clearing. ED 2 (erase display) also has a quirk: some terminals fill with the current background color, others fill with default — producing visible differences when your background isn't black."
   },
   "editing": {
     "label": "Editing",
     "order": 5,
     "slice": "classics",
-    "sliceOrder": 4,
     "description": "Insert and delete operations for characters and lines. ICH, DCH, IL, and DL are core VT100/VT220 sequences used by virtually every full-screen terminal application (vim, tmux, less). They allow inserting blank space or removing content at the cursor position, shifting surrounding content to accommodate the change. Without VT220's editing sequences, every text insertion in vim would require redrawing the entire line. ICH and DCH made character-level editing practical — transforming terminals from display devices into interactive editors."
   },
   "modes": {
@@ -44,14 +39,12 @@
     "label": "Scrollback",
     "order": 7,
     "slice": "classics",
-    "sliceOrder": 9,
     "description": "Scroll buffer behavior, reverse index, total line tracking, viewport auto-follow policy, and alternate screen interaction. Scrollback handling is one of the least standardized areas of terminal emulation — terminals differ in buffer size limits, whether alternate screen content enters scrollback, whether new output yanks a scrolled-up viewport back to the live bottom, and how reverse index interacts with scroll regions.\n\nScrollback is the most implementation-specific area of terminal behavior. The ECMA-48 standard says nothing about scroll buffers — it's entirely a terminal emulator convention. Buffer sizes range from 0 lines (Alacritty's default was famously 0 on first release, fixed after user revolt) to 10 million+ (iTerm2). Kitty chose a different approach entirely: infinite scrollback stored efficiently on disk. The debate over whether the alternate screen should preserve scrollback, and whether output should auto-follow while the user is reading history, has generated more terminal GitHub issues than almost any other topic."
   },
   "reset": {
     "label": "Reset",
     "order": 8,
     "slice": "classics",
-    "sliceOrder": 6,
     "description": "Terminal reset operations: SGR attribute reset, full terminal reset (RIS), and programmatic reset. Reset behavior determines how reliably an application can return the terminal to a known state. Differences in what RIS resets (cursor position, modes, scroll regions, character sets) can cause subtle bugs. Reset operations are how applications recover from unknown terminal state. When you run <code>reset</code> after a garbled terminal, it sends RIS (Reset Initial State) — clearing cursor position, modes, scroll regions, character sets, and colors back to defaults."
   },
   "extensions": {
@@ -64,7 +57,6 @@
     "label": "Character Sets",
     "order": 10,
     "slice": "classics",
-    "sliceOrder": 7,
     "description": "Character set designation and invocation sequences from the VT100. The DEC Special Graphics set (activated with ESC ( 0) provides box-drawing characters used by legacy TUI applications for borders and frames. Modern terminals typically default to UTF-8, making explicit character set switching less common — but the DEC Special Graphics set remains widely used. DEC Special Graphics maps ASCII characters to box-drawing glyphs — <code>q</code> becomes <code>─</code>, <code>x</code> becomes <code>│</code>. This 1978 hack is still how tmux and many TUI frameworks draw borders, even though Unicode has proper box-drawing characters."
   },
   "device": {
@@ -83,7 +75,6 @@
     "label": "Unicode",
     "order": 13,
     "slice": "classics",
-    "sliceOrder": 8,
     "description": "Modern terminals are UTF-8 terminals: applications write UTF-8 bytes, the terminal decodes them into Unicode code points, and the screen grid assigns each displayed grapheme a cell width. Encoding is now the easy part; width is where terminals disagree. East Asian ambiguous-width characters, emoji, combining marks, variation selectors, zero-width joiners, wide-character wrapping, and tab stops with mixed-width text all affect cursor alignment. Correct Unicode handling is essential for TUI applications because a one-cell disagreement between the app and terminal shifts every column to the right. The wcwidth() function predates emoji, terminals track different Unicode versions, and there is no single standard for grapheme-cluster width."
   }
 }

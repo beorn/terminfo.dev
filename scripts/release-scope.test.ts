@@ -58,21 +58,25 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     expect(tier1Included(catalog, scope.measuredIds)).not.toContain("extensions.osc777-notify")
   })
 
-  it("derives the 125 classic cohort in its published order and refuses an empty classics slice", () => {
+  it("derives the 125 classic cohort in the category catalog's order and refuses an empty classics slice", () => {
     const ids = classicCohortIds(catalog, categories)
     expect(ids).toHaveLength(125)
     // The two classic rows that also carry a tier1 field stay in the cohort: the filter is the
     // CATEGORY slice, matching 28018's accepted 125.
     expect(ids).toContain("cursor.position-report")
     expect(ids).toContain("editing.decrqcra")
-    // The published cohort order, which decisive-share's byte-identity check hinges on.
-    expect(ids.indexOf("editing.decrqcra")).toBeLessThan(ids.indexOf("erase.character"))
-    expect(ids.indexOf("reset.method")).toBeLessThan(ids.indexOf("scrollback.accumulate"))
+    // ONE category order: the cohort follows each category's own `order`, the same field the site's
+    // category blocks print in, so Erase (order 4) precedes Editing (order 5) and Scrollback (7)
+    // precedes Reset (8). The 125-member SET is pinned by SHA in decisive-share.test.ts.
+    expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
+    expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
     const cohort = loadFeatureCohort({ catalog, categories, frozenSuiteId: "abc123abc123" })
     expect(cohort.name).toBe("candidate2")
     expect(cohort.frozenSuiteId).toBe("abc123abc123")
     expect(cohort.measuredIds).toEqual(ids)
-    expect(() => classicCohortIds(catalog, { sgr: { slice: "extensions" } })).toThrow(/classics cohort is empty/)
+    expect(() => classicCohortIds(catalog, { sgr: { slice: "extensions", order: 1 } })).toThrow(
+      /classics cohort is empty/,
+    )
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
@@ -83,7 +87,9 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
       const at = "2026-10-12T03:33:42.000Z"
       writeSuite(join(dir, "suites"), "aaaa00000000", { release: "candidate2", at })
       expect(frozenSuiteIdFor(dir, "candidate2")).toBe("aaaa00000000")
-      expect(() => frozenSuiteIdFor(dir, "candidate9")).toThrow(/no suite manifest declares freeze.release "candidate9"/)
+      expect(() => frozenSuiteIdFor(dir, "candidate9")).toThrow(
+        /no suite manifest declares freeze.release "candidate9"/,
+      )
       writeSuite(join(dir, "suites"), "bbbb11111111", { release: "candidate2", at })
       expect(() => frozenSuiteIdFor(dir, "candidate2")).toThrow(/2 suite manifests claim release "candidate2"/)
       expect(() => frozenSuiteIdFor(join(dir, "absent"), "candidate2")).toThrow(/the suite registry is required/)

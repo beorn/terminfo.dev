@@ -18,10 +18,10 @@ import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
 const RELEASE_1_TIER = 1
 const RELEASE_1_METHOD = "query/reply"
 
-/** The category facts the classic cohort order needs: its slice label and its cohort position. */
+/** The category facts the classic cohort order needs: its slice label and its site order. */
 export interface CohortCategoryMeta {
   slice: Slice
-  sliceOrder?: number
+  order: number
 }
 
 export interface FeatureCohort {
@@ -36,22 +36,28 @@ export interface FeatureCohort {
 
 /**
  * The candidate-2 cohort in its published order: every catalog row whose CATEGORY slice is `classics`,
- * category by category in `sliceOrder`, each category's ids ascending. The order is a fact of the
- * published cohort (a run's whole-cohort remainder prints in it), so it is stored once — on the
- * classic categories — rather than as a second list of ids. The two classic rows that also carry a
- * `tier1` field stay IN the cohort: the filter is the category's slice, matching 28018's accepted 125.
+ * category by category in the category catalog's own `order`, each category's ids ascending. That is
+ * the ONE category order the site prints (@cto 2026-10-12, item 3), so the cohort cannot disagree
+ * with the category blocks beside it. The two classic rows that also carry a `tier1` field stay IN
+ * the cohort: the filter is the category's slice, matching 28018's accepted 125.
  */
-export function classicCohortIds(catalog: FeatureCatalog, categories: Readonly<Record<string, CohortCategoryMeta>>): string[] {
+export function classicCohortIds(
+  catalog: FeatureCatalog,
+  categories: Readonly<Record<string, CohortCategoryMeta>>,
+): string[] {
   const classic = Object.entries(categories)
     .filter(([, category]) => category.slice === "classics")
-    .sort((left, right) => (left[1].sliceOrder ?? 0) - (right[1].sliceOrder ?? 0))
+    .sort((left, right) => left[1].order - right[1].order)
   const ids: string[] = []
   for (const [key] of classic) {
     const prefix = `${key}.`
-    for (const id of Object.keys(catalog).filter((id) => id.startsWith(prefix)).sort()) ids.push(id)
+    for (const id of Object.keys(catalog)
+      .filter((id) => id.startsWith(prefix))
+      .sort())
+      ids.push(id)
   }
   if (ids.length === 0) {
-    throw new Error("classics cohort is empty: no category carries slice \"classics\"")
+    throw new Error('classics cohort is empty: no category carries slice "classics"')
   }
   return ids
 }
@@ -114,7 +120,7 @@ export function frozenSuiteIdFor(contentDir: string, release: string): string {
   if (!existsSync(dir)) {
     throw new Error(
       `${dir}: the suite registry is required to name the current suite for release "${release}"; ` +
-        "without it every run on the release suite is relabelled \"older suite\" and the tree-move banner is suppressed",
+        'without it every run on the release suite is relabelled "older suite" and the tree-move banner is suppressed',
     )
   }
   const claims: string[] = []

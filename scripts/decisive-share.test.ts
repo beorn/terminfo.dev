@@ -682,10 +682,11 @@ describe("per-category decisive share (28018 AC2)", () => {
     expect(report.candidate2.measuredIds).toHaveLength(125)
     expect(report.candidate2.decidableIds).toHaveLength(121)
     expect(report.candidate2.unavailableIds).toEqual(["scrollback.viewport-hold-output"])
+    // In the cohort's own order — each category's `order`, the one category order the site prints.
     expect(report.candidate2.libraryOnlyIds).toEqual([
-      "reset.method",
       "scrollback.accumulate",
       "scrollback.total-lines",
+      "reset.method",
     ])
     expect(report.candidate2.decidableIds).not.toContain("scrollback.viewport-hold-output")
 
@@ -718,7 +719,7 @@ describe("per-category decisive share (28018 AC2)", () => {
           line.includes(`decisive/${releaseDenominator} `) &&
           line.includes(`/${releaseDenominator} = `) &&
           line.includes(
-            "(unavailable: scrollback.viewport-hold-output; library-only: reset.method, scrollback.accumulate, scrollback.total-lines)",
+            "(unavailable: scrollback.viewport-hold-output; library-only: scrollback.accumulate, scrollback.total-lines, reset.method)",
           ),
       ),
     ).toBe(true)
