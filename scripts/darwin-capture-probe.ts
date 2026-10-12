@@ -22,7 +22,7 @@ import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { command, drawnSurface, textAreaOrigin } from "../packages/terminfo.dev/src/linux-capture.ts"
+import { cellRectangle, command, drawnSurface, textAreaOrigin } from "../packages/terminfo.dev/src/linux-capture.ts"
 
 const GHOSTTY = "/Applications/Ghostty.app/Contents/MacOS/ghostty"
 // The one interior cell the B2 calibration repaints, in the terminal's own 1-based coordinates.
@@ -479,6 +479,48 @@ if (!before || !after) {
       width: cellSize.cellWidth,
       height: cellSize.cellHeight,
     }
+    // Round 2 asks for one known row PLACED with the derived origin, with its region digest moving
+    // around a provable paint. Row 1 is the banner line, which reads "PHASE A" before the phase-B
+    // paint and "PHASE B" after it, so a rectangle placed one row below the derived origin must
+    // change around that paint — and must NOT change around the calibration, which touched row 3.
+    const replies = first.terminalRepliesParsed as {
+      textArea: { textHeight: number; textWidth: number } | null
+      grid: { rows: number; cols: number } | null
+    }
+    const knownRowCells = { top: 1, left: 1, bottom: 1, right: 10 }
+    const third = frames.get("b")
+    let knownRow: Record<string, unknown>
+    if (!replies?.textArea || !replies.grid || !third) {
+      knownRow = {
+        skipped: `a known row needs a 14 t text area, an 18 t grid and a decoded phase-B frame; got textArea=${JSON.stringify(replies?.textArea ?? null)} grid=${JSON.stringify(replies?.grid ?? null)} phaseBFrame=${third ? "decoded" : "absent"}`,
+      }
+    } else {
+      try {
+        const rectangle = cellRectangle({
+          cells: knownRowCells,
+          pixelGeometry: { cellWidth: cellSize.cellWidth, cellHeight: cellSize.cellHeight, ...replies.textArea },
+          textOrigin: derivedOrigin,
+          windowWidth: before.width,
+          windowHeight: before.height,
+        })
+        const phaseA = regionDigest(before, rectangle)
+        const phaseA2 = regionDigest(after, rectangle)
+        const phaseB = regionDigest(third, rectangle)
+        knownRow = {
+          cells: knownRowCells,
+          rectangle,
+          digestPhaseA: phaseA,
+          digestPhaseA2: phaseA2,
+          digestPhaseB: phaseB,
+          changedAroundTheCalibration: phaseA !== phaseA2,
+          changedAroundTheBannerPaint: phaseA2 !== phaseB,
+        }
+      } catch (error) {
+        // A derived origin that cannot place a known row inside the window is a refusal by name, not
+        // a thrown script: the calibration result is the measurement, and losing it would be worse.
+        knownRow = { refused: String(error) }
+      }
+    }
     report.calibration = {
       cell: { row: calRow, col: calCol },
       cellSizeFromTerminal: cellSize,
@@ -491,6 +533,7 @@ if (!before || !after) {
         : null,
       calibratedCell,
       calibratedCellDigest: { a: regionDigest(before, calibratedCell), a2: regionDigest(after, calibratedCell) },
+      knownRowPlacedWithDerivedOrigin: knownRow,
     }
   }
 }
