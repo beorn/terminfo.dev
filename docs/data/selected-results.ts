@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
+import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
   type Observation,
@@ -543,9 +544,7 @@ export function loadSelectedResults(
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
-  const features = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
-  if (!object(features)) fail(featuresPath, "invalid catalog")
-  const catalog = Object.keys(features).filter((id) => !id.startsWith("$"))
+  const catalog = Object.keys(loadFeatures(contentDir))
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
   if (existsSync(suitesDir)) {

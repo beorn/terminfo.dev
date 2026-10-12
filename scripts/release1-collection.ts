@@ -19,7 +19,7 @@
  *   4. the ending — `bun run decisive-share` (#27909), so the collection's result is the bar's own
  *      instrument.
  *
- * Read-only over `content/terminals.json`, `content/release-scope.json`, the committed runs, the
+ * Read-only over `content/terminals.json`, the feature catalog's tier-1 labels, the committed runs, the
  * site's own selection (`docs/data/current-results.ts` + `scripts/decisive-share.ts`), probe-defs,
  * the receipt producer and `scripts/admit-run.ts`'s admission rules; no deploy.
  */
@@ -30,7 +30,8 @@ import { fileURLToPath } from "node:url"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
 import type { SelectedVersion } from "../docs/data/selected-results.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
-import { pickContextRun, type ContextCandidate } from "./decisive-share.ts"
+import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const CONTENT = join(ROOT, "content")
@@ -234,21 +235,6 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
   return Object.keys(backends).filter((name) => backends[name]?.type !== "os")
 }
 
-const asContextCandidate = (key: string, selected: SelectedVersion): ContextCandidate => ({
-  key,
-  kind: String(selected.target.kind),
-  terminalId: selected.target.id,
-  os: selected.target.os ?? "",
-  permissions: selected.target.permissions ?? null,
-  runId: selected.runId,
-  version: selected.target.version ?? "",
-  measuredAt: selected.measuredAt,
-  suiteId: selected.suiteId,
-  suiteFreshness: selected.suiteFreshness,
-  suiteRelation: selected.suiteRelation,
-  cells: selected.cells,
-})
-
 /** The newest admitted Linux app run for a context the site does not currently select. */
 function newestAdmittedLinuxRun(
   history: Readonly<Record<string, readonly SelectedVersion[]>>,
@@ -348,7 +334,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
   const ledger: Record<string, LinuxLedgerEntry> = {}
   for (const id of LINUX_TARGET_IDS) {
     const picked = pickContextRun(
-      (current.get(id) ?? []).map(({ key, selected }) => asContextCandidate(key, selected)),
+      (current.get(id) ?? []).map(({ key, selected }) => candidateFromSelected(key, selected)),
       reviewed[`app:${id}`],
     )
     if (picked !== undefined && "ambiguous" in picked) {

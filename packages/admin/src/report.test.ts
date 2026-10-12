@@ -40,11 +40,15 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     const fixtureFeatures = ["cursor.position", "sgr.bold", "extensions.query", "modes.autowrap", "sgr.italic"]
     writeFileSync(
       join(root, "content", "features.json"),
-      JSON.stringify(Object.fromEntries(fixtureFeatures.map((id) => [id, {}]))),
-    )
-    writeFileSync(
-      join(root, "content", "release-scope-candidate2.json"),
-      JSON.stringify({ name: "candidate2", frozenSuiteId: snapshot.probeHash, featureIds: ["cursor.position"] }),
+      // @terminfo/catalog's one shape requires a full record per row; this fixture only reads the ids.
+      JSON.stringify(
+        Object.fromEntries(
+          fixtureFeatures.map((id) => [
+            id,
+            { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+          ]),
+        ),
+      ),
     )
     writeFileSync(
       join(root, "content", "suites", `${snapshot.probeHash}.json`),
@@ -52,6 +56,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
+        freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
         probes: {
           app: fixtureFeatures.slice(0, 4),

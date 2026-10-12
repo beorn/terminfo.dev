@@ -1,0 +1,25 @@
+{
+  "name": "@terminfo/catalog",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@terminfo/run-parser": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "0.23.0",
+    "typescript": "5.9.3"
+  },
+  "tsdown": {
+    "clean": true,
+    "dts": true,
+    "entry": "src/index.ts",
+    "format": "esm"
+  }
+}

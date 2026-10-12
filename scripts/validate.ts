@@ -11,6 +11,8 @@ import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
+import { probeStatusSummary } from "../docs/data/probe-status.ts"
+import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -55,21 +57,8 @@ function listJsonFiles(dir: string): string[] {
 
 const contentDir = join(import.meta.dir, "..", "content")
 
-const features = loadJson(join(contentDir, "features.json")) as Record<
-  string,
-  {
-    name?: string
-    slug?: string
-    baseline?: string
-    tags?: string[]
-    body?: string
-    probe?: string
-    probeStatus?: string
-    [key: string]: unknown
-  }
->
+const features: Record<string, FeatureRecord> = loadFeatures(contentDir)
 
-const VALID_PROBE_STATUSES = new Set(["automated", "partial", "manual", "unprobed"])
 const MIN_FEATURE_BODY_LENGTH = 260
 
 const standards = loadJson(join(contentDir, "standards.json")) as Record<
@@ -79,18 +68,7 @@ const standards = loadJson(join(contentDir, "standards.json")) as Record<
 
 const categories = loadCategories(contentDir)
 
-const terminals = loadJson(join(contentDir, "terminals.json")) as Record<
-  string,
-  {
-    label: string
-    slug: string
-    description?: string
-    body?: string
-    headlessBackends?: string[]
-    manifestBackend?: string
-    [key: string]: unknown
-  }
->
+const terminals: Record<string, TerminalRecord> = loadTerminals(contentDir)
 
 const platforms = loadJson(join(contentDir, "platforms.json")) as Record<
   string,
@@ -299,20 +277,28 @@ for (const { backendName } of probeFiles) {
   if (!found) info("All feature category prefixes match categories.json")
 }
 
-// 4b. Invalid probeStatus values
+// 4b. probeStatus: every reviewed value is manual or partial with its reason. The bulk derives from
+// the definitions, so it cannot drift; a row the definitions cannot settle and nobody reviewed reads
+// `undeclared`, counted and printed below (28792 item 4; 28801 deletes the value at zero).
 {
   let found = false
   for (const [id, feat] of Object.entries(features)) {
     if (id === "$comment") continue
-    if (feat.probeStatus !== undefined && !VALID_PROBE_STATUSES.has(feat.probeStatus)) {
+    const status = feat.probeStatus
+    if (status === undefined) continue
+    if (status !== "manual" && status !== "partial") {
       error(
-        `Feature "${id}" has invalid probeStatus "${feat.probeStatus}" (must be one of: ${[...VALID_PROBE_STATUSES].join(", ")})`,
+        `Feature "${id}" declares probeStatus "${status}" — only "manual" and "partial" are reviewed values; automated and unprobed derive from the definitions`,
       )
+      errors++
+      found = true
+    } else if (!feat.probeStatusReason) {
+      error(`Feature "${id}" carries the reviewed probeStatus "${status}" without a probeStatusReason`)
       errors++
       found = true
     }
   }
-  if (!found) info("All feature probeStatus values are valid")
+  if (!found) info("All feature probeStatus values are derived, or reviewed with a reason")
 }
 
 // 4c. Duplicate feature names (same display name, different IDs)
@@ -741,21 +727,24 @@ heading("Info (summary)")
     info(`  ${tag}: ${cnt}`)
   }
 
-  // Probe status distribution (default: automated)
-  const statusCounts: Record<string, number> = {
-    automated: 0,
-    partial: 0,
-    manual: 0,
-    unprobed: 0,
-  }
-  for (const [id, feat] of Object.entries(features)) {
-    if (id === "$comment") continue
-    const status = feat.probeStatus ?? "automated"
-    statusCounts[status] = (statusCounts[status] ?? 0) + 1
-  }
+  // Probe status distribution: what the definitions settle, and the undeclared gap that remains.
+  const summary = probeStatusSummary(features)
   info(
-    `Probe status: ${statusCounts.automated} automated, ${statusCounts.partial} partial, ${statusCounts.manual} manual, ${statusCounts.unprobed} unprobed`,
+    `Probe status: ${summary.counts.automated} automated, ${summary.counts.partial} partial, ${summary.counts.manual} manual, ${summary.counts.unprobed} unprobed, ${summary.counts.undeclared} undeclared`,
   )
+  info(
+    `Probe status undeclared: ${summary.undeclared.length} rows — the definition declares no evidence kind on every arm that runs; 28450 declares it in the kind and 28801 deletes the value at zero`,
+  )
+  if (summary.gated.length > 0) {
+    info(
+      `Probe status reviewed over a settled derivation (gated): ${summary.gated.length} — ${summary.gated.join(", ")}`,
+    )
+  }
+  if (summary.noDefinition.length > 0) {
+    info(
+      `  ${summary.noDefinition.length} more carry a reviewed value with no probe definition at all (manual by design)`,
+    )
+  }
 }
 
 // 15. Terminal counts

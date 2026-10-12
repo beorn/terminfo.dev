@@ -527,7 +527,19 @@ export function validateObservationOutcome(value: Record<string, unknown>, path:
   }
 }
 
-export function parseSuiteManifest(path: string, source: string): ProbeSuiteManifest {
+/**
+ * A suite manifest plus the optional `freeze` pointer a freeze act writes on it. The pointer lives on
+ * the manifest itself (the 83 manifests ARE the suite registry), so it can never name a manifest that
+ * does not exist. `ProbeSuiteManifest` in @terminfo/probe-defs is a suite-hashed input, so the field
+ * is added here rather than there; the extra field is erased for every consumer that only reads the
+ * derived record.
+ */
+export interface ParsedSuiteManifest extends ProbeSuiteManifest {
+  /** Written only by a freeze act: the release whose current suite this manifest is. */
+  freeze?: { release: string; at: string }
+}
+
+export function parseSuiteManifest(path: string, source: string): ParsedSuiteManifest {
   const value = parseJsonStrict(path, source)
   if (!object(value)) fail(path, "invalid suite manifest shape")
   // A manifest is legacy-complete (sourceRevision AND generatedAt) or new-minimal (neither): the
@@ -536,7 +548,8 @@ export function parseSuiteManifest(path: string, source: string): ProbeSuiteMani
   // corruption, so it refuses by name. Unknown fields are refused rather than silently accepted.
   const derivedKeys = ["adapterVersion", "probeHash", "probes"]
   const legacyKeys = ["generatedAt", "sourceRevision"]
-  const known = new Set([...derivedKeys, ...legacyKeys])
+  const pointerKeys = ["freeze"]
+  const known = new Set([...derivedKeys, ...legacyKeys, ...pointerKeys])
   const unknown = Object.keys(value)
     .filter((key) => !known.has(key))
     .sort()
@@ -577,12 +590,25 @@ export function parseSuiteManifest(path: string, source: string): ProbeSuiteMani
     }
     probes[kind] = ids
   }
+  let freeze: ParsedSuiteManifest["freeze"]
+  if ("freeze" in value) {
+    const raw = value.freeze
+    if (!object(raw) || Object.keys(raw).sort().join(",") !== "at,release") {
+      fail(path, "invalid suite freeze pointer")
+    }
+    if (typeof raw.release !== "string" || !raw.release.trim()) fail(path, "invalid suite freeze release")
+    if (typeof raw.at !== "string" || !date(raw.at) || new Date(raw.at).toISOString() !== raw.at) {
+      fail(path, "invalid suite freeze at")
+    }
+    freeze = { release: raw.release, at: raw.at }
+  }
   return {
     probeHash,
     adapterVersion,
     probes,
     ...(sourceRevision === undefined ? {} : { sourceRevision }),
     ...(generatedAt === undefined ? {} : { generatedAt }),
+    ...(freeze === undefined ? {} : { freeze }),
   }
 }
 

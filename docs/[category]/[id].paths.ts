@@ -1,18 +1,24 @@
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { loadFeatures } from "@terminfo/catalog"
 import {
   loadProbes,
   featureSlug,
   terminalSlug,
-  loadFeaturesMeta,
   tagLabel as getTagLabel,
   catLabel,
   loadAnalysis,
 } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
+import { probeStatusOf } from "../data/probe-status"
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const contentDir = join(__dirname, "..", "..", "content")
 
 export default {
   paths() {
     const data = loadProbes()
-    const featuresMeta = loadFeaturesMeta()
+    const featuresMeta = loadFeatures(contentDir)
     const allAnalysis = loadAnalysis()
 
     return data.features.map((f) => {
@@ -121,7 +127,7 @@ export default {
           featureBody: linkifyContentExcluding(meta?.body ?? "", selfHrefs),
           probeMethod: linkifyContentExcluding(meta?.probe ?? "", selfHrefs),
           baseline: meta?.baseline ?? "",
-          probeStatus: meta?.probeStatus ?? "automated",
+          probeStatus: probeStatusOf(f.id, featuresMeta),
           sequence: meta?.sequence ?? "",
           featureTags: JSON.stringify(tags),
           backendResults: JSON.stringify(backendResults),

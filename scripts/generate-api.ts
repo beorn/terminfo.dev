@@ -17,6 +17,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadFeatures } from "@terminfo/catalog"
 import { readVerifiedScreenshot, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 
@@ -138,27 +139,7 @@ interface BackendMeta {
 }
 
 function loadFeaturesJson(): Record<string, FeatureMeta> {
-  const path = join(contentDir, "features.json")
-  const raw = parseJsonStrict(path, readFileSync(path, "utf-8"))
-  if (!isRecord(raw)) throw new Error(`${path}: expected feature catalog object`)
-  const result: Record<string, FeatureMeta> = {}
-  for (const [id, val] of Object.entries(raw)) {
-    if (id.startsWith("$")) continue
-    if (typeof val === "string") result[id] = { name: val }
-    else {
-      if (!isRecord(val) || typeof val.name !== "string") throw new Error(`${path}: ${id} requires a feature name`)
-      for (const field of ["slug", "url", "group", "body", "probe", "baseline"]) {
-        if (val[field] !== undefined && typeof val[field] !== "string") {
-          throw new Error(`${path}: invalid ${id}.${field}`)
-        }
-      }
-      if (val.tags !== undefined && (!Array.isArray(val.tags) || !val.tags.every((tag) => typeof tag === "string"))) {
-        throw new Error(`${path}: invalid ${id}.tags`)
-      }
-      result[id] = val as unknown as FeatureMeta
-    }
-  }
-  return result
+  return loadFeatures(contentDir)
 }
 
 function loadBackendMeta(): Record<string, BackendMeta> {
