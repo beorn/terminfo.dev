@@ -381,7 +381,9 @@
     "body": "DECTCEM (DEC Text Cursor Enable Mode) controls cursor visibility. Hide cursor: <code>ESC [ ? 25 l</code>. Show cursor: <code>ESC [ ? 25 h</code>. TUI applications typically hide the cursor during rendering to avoid flicker, then restore it at the final cursor position. Universally supported.",
     "probe": "Headless: measure initial visibility, establish a shown control, check the hidden state and verify restoration. Missing readback or an invalid control stays inconclusive. This measures parser state; app cursor replies do not verify visible pixels.",
     "baseline": "core",
-    "sequence": "ESC [ ? 25 l"
+    "sequence": "ESC [ ? 25 l",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "cursor.shape": {
     "name": "Cursor shape (DECSCUSR)",
@@ -716,7 +718,9 @@
     "body": "ICH inserts N blank characters at the cursor position, shifting existing characters to the right. The sequence is <code>ESC [ N @</code> (default N=1). Characters pushed past the right margin are lost. Used by editors (vim, emacs) and terminal multiplexers (tmux, screen) for inline text insertion without redrawing the entire line.",
     "probe": "Headless: measure seeded cells and cursor position, insert one blank at column 3, and check the shifted text with an unchanged prefix. The app cursor reply does not establish edited cells or rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ N @"
+    "sequence": "ESC [ N @",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.delete-chars": {
     "name": "Delete characters (DCH)",
@@ -726,7 +730,9 @@
     "body": "DCH deletes N characters at the cursor position, shifting subsequent characters to the left. The sequence is <code>ESC [ N P</code> (default N=1). Blank characters are inserted at the right margin to fill the vacated space. The complement of ICH (insert characters).",
     "probe": "Headless: measure eight seeded cells and cursor position, delete at column 3, and check the known shifted span with an unchanged prefix. This does not check right-margin blank filling. The app cursor reply does not establish edited cells or rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ N P"
+    "sequence": "ESC [ N P",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.insert-lines": {
     "name": "Insert lines (IL)",
@@ -736,7 +742,9 @@
     "body": "IL inserts N blank lines at the cursor row, scrolling existing lines down within the scroll region. The sequence is <code>ESC [ N L</code> (default N=1). Lines scrolled past the bottom margin are lost. Used by full-screen applications to make room for new content without redrawing the entire screen.",
     "probe": "Headless: measure four seeded rows and cursor position, insert one blank row at row 2, then check the shifted known rows with row 1 unchanged. The app cursor reply does not establish edited cells or scrolling-region margins.",
     "baseline": "modern",
-    "sequence": "ESC [ N L"
+    "sequence": "ESC [ N L",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.delete-lines": {
     "name": "Delete lines (DL)",
@@ -746,7 +754,9 @@
     "body": "DL deletes N lines at the cursor row, scrolling lines below upward within the scroll region. The sequence is <code>ESC [ N M</code> (default N=1). Blank lines are inserted at the bottom margin. The complement of IL (insert lines).\n\nDL is part of the terminal editing toolbox that predates full-screen repainting. Instead of redrawing every row, an application can delete lines inside the scroll region and let the terminal shift the remaining content. It is still useful for efficient editors, but correctness depends on honoring margins and inserting blank rows at the far edge.",
     "probe": "Headless: measure four seeded rows and cursor position, delete row 2, then check the known rows shifted up with row 1 unchanged. This does not check bottom-margin blank filling; the app cursor reply does not establish edited cells or scrolling-region margins.",
     "baseline": "modern",
-    "sequence": "ESC [ N M"
+    "sequence": "ESC [ N M",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.repeat-char": {
     "name": "Repeat character (REP)",
@@ -756,7 +766,9 @@
     "body": "REP repeats the preceding graphic character N times. The sequence is <code>ESC [ N b</code> (default N=1). This is a bandwidth optimization — instead of sending the same character hundreds of times (e.g., filling a row with dashes), the application sends the character once followed by REP. Not all terminals implement this sequence.",
     "probe": "Headless: measure the preceding X and cursor position, repeat it three times, and check the repeated cells between unchanged controls. The app cursor reply does not establish edited cells or rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ N b"
+    "sequence": "ESC [ N b",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.sl": {
     "name": "SL — shift left (CSI Ps SP @)",
@@ -766,7 +778,9 @@
     "body": "SL (Shift Left) horizontally scrolls the display contents left by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP @</code> — note the literal space character before <code>@</code>, which distinguishes SL from ICH (<code>ESC [ Ps @</code>). Default Ps=1.\n\nColumns shifted off the left edge are discarded; blank columns are inserted at the right edge. SL is the horizontal counterpart of SU (Scroll Up) and is rarely used in modern TUI applications — most full-screen apps redraw their content rather than rely on terminal-side horizontal scrolling. Some xterm-derived terminals implement it for compatibility with applications that drive horizontal panning displays. Originally specified in ECMA-48 alongside SU/SD but not implemented by all terminals.",
     "probe": "Headless: measure the first nine cells of two rows plus incoming source cells through column 11 when present, verify cursor setup, shift left by two, then compare each destination cell to its measured source; require blanks only beyond the screen edge. The app cursor reply does not establish shifted cells or margin behavior.",
     "baseline": "rich",
-    "sequence": "CSI Ps SP @"
+    "sequence": "CSI Ps SP @",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.sr": {
     "name": "SR — shift right (CSI Ps SP A)",
@@ -776,7 +790,9 @@
     "body": "SR (Shift Right) horizontally scrolls the display contents right by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP A</code> — note the literal space character before <code>A</code>, which distinguishes SR from CUU (<code>ESC [ Ps A</code>). Default Ps=1.\n\nColumns shifted off the right edge are discarded; blank columns are inserted at the left edge. SR is the horizontal counterpart of SD (Scroll Down) and the inverse of SL (Shift Left). Like SL, it's rarely used in modern terminal applications and many emulators either don't implement it or treat it as a no-op. Specified in ECMA-48 alongside SU/SD/SL.",
     "probe": "Headless: measure the first nine cells of two rows and cursor setup, shift right by two, then compare each destination cell to its measured source and check the two inserted left blanks. The app cursor reply does not establish shifted cells or margin behavior.",
     "baseline": "rich",
-    "sequence": "CSI Ps SP A"
+    "sequence": "CSI Ps SP A",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decic": {
     "name": "DECIC — insert columns (CSI Ps ' })",
@@ -786,7 +802,9 @@
     "body": "DECIC (DEC Insert Column) inserts N blank columns at the cursor's column position, shifting all content to the right of the cursor further right. The sequence is <code>ESC [ Ps ' }</code> — note the apostrophe (intermediate) before <code>}</code>. Default Ps=1.\n\nColumns shifted past the right margin are discarded. DECIC is the horizontal/column counterpart of IL (Insert Lines): IL inserts blank rows by shifting content down, DECIC inserts blank columns by shifting content right. It only operates on cells within the current scroll region (top/bottom margins) and the current left/right margin region if DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm and some other modern terminals but not universally implemented.",
     "probe": "Headless: measure the first eight cells of three rows and cursor setup, insert two columns at column 3, then check inserted blank cells, shifted cells against their measured sources, and unchanged prefixes. The app cursor reply does not establish column editing or margins.",
     "baseline": "rich",
-    "sequence": "CSI Ps ' }"
+    "sequence": "CSI Ps ' }",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decdc": {
     "name": "DECDC — delete columns (CSI Ps ' ~)",
@@ -796,7 +814,9 @@
     "body": "DECDC (DEC Delete Column) deletes N columns at the cursor's column position, shifting all content to the right of the cursor further left. The sequence is <code>ESC [ Ps ' ~</code> — note the apostrophe (intermediate) before <code>~</code>. Default Ps=1.\n\nBlank columns are inserted at the right margin to fill the vacated space. DECDC is the horizontal counterpart of DL (Delete Lines) and the inverse of DECIC (Insert Column). It only operates within the current scroll region's vertical bounds, and within the left/right margin bounds when DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm but rarely used in practice — most TUI applications redraw their content rather than use column-based editing.",
     "probe": "Headless: measure the first eight cells of three rows plus incoming source cells through column 10 when present, verify cursor setup, delete two columns at column 3, then compare destinations to measured sources and check unchanged prefixes; require right blanks only beyond the screen edge. The app cursor reply does not establish column editing or margins.",
     "baseline": "rich",
-    "sequence": "CSI Ps ' ~"
+    "sequence": "CSI Ps ' ~",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decfra": {
     "name": "DECFRA — fill rectangular area",
@@ -806,7 +826,9 @@
     "baseline": "legacy",
     "body": "DECFRA (<code>CSI Pc ; Pt ; Pl ; Pb ; Pr $ x</code>) fills a rectangular area with character <code>Pc</code> from rows <code>Pt</code> through <code>Pb</code> and columns <code>Pl</code> through <code>Pr</code>. Introduced on the DEC VT420 in 1990 for form-fill applications and spreadsheets that needed to paint rectangular regions of the screen — drawing dividers, padding fields, or clearing a region with a fill character — without touching cells outside the rectangle. xterm and mintty implement DECFRA; nearly every other modern terminal skips it. The character must be in the printable ASCII range or DEC supplemental graphic range.",
     "probe": "Headless: measure a 3x5 seeded area and right-flank controls, fill with X, and read back all target cells. The app cursor reply does not establish filled cells.",
-    "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x"
+    "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decera": {
     "name": "DECERA — erase rectangular area",
@@ -816,7 +838,9 @@
     "baseline": "legacy",
     "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases characters and visual attributes in a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing characters with spaces. It does not preserve characters protected by DECSCA; use DECSERA for selective erasure. Line attributes and the active cursor position are unchanged. Companion to DECFRA.",
     "probe": "Headless: measure a 3x5 nonblank seed and right-flank controls, erase the area, and read back all target cells. The app cursor reply does not establish erased cells.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decsera": {
     "name": "DECSERA — selective erase rectangular area",
@@ -826,7 +850,9 @@
     "baseline": "legacy",
     "body": "DECSERA (<code>CSI Pt ; Pl ; Pb ; Pr $ {</code>) is the selective-erase variant of DECERA: it erases unprotected characters within the rectangle but leaves any cell marked with the DECSCA character protection attribute intact. This is the rectangular companion to DECSED (selective erase in display). On VT420-era hardware, form designers used DECSCA to protect field labels and DECSERA to clear input fields between records without disturbing the form structure.",
     "probe": "Headless: seed one row with protected P, unprotected ABCD and an outside Z; verify that selective erasure clears ABCD and preserves both controls. Multi-row extent and visual attributes are not measured. The app cursor reply does not establish selective erasure.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.deccra": {
     "name": "DECCRA — copy rectangular area",
@@ -836,7 +862,9 @@
     "baseline": "legacy",
     "body": "DECCRA (<code>CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v</code>) copies a rectangular area from one location to another. The source rectangle is <code>Pts</code>;<code>Pls</code>-<code>Pbs</code>;<code>Prs</code> on page <code>Pps</code>; the destination's top-left is <code>Ptd</code>;<code>Pld</code>. The most complex of the VT420 rectangle operations: cells are copied including their SGR attributes, source and destination may overlap (the result is as if the source were captured first), and the operation can cross page boundaries on terminals that implement multi-page memory. xterm implements all of this. Almost nothing else does.",
     "probe": "Headless: measure a 2x5 source at the top and destination at rows 5-6 column 10, copy, then read back both destination rows with source and outside controls. The app cursor reply does not establish copied cells.",
-    "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v"
+    "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.deccara": {
     "name": "DECCARA — change attrs in rectangle",
@@ -846,7 +874,9 @@
     "baseline": "legacy",
     "body": "DECCARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ r</code>) changes the SGR attributes of every cell in a rectangular region without touching the characters themselves. The <code>Ps</code> parameters are SGR codes (1=bold, 4=underline, 7=inverse, etc.), accumulated and applied to the rectangle. Whether DECCARA operates on a true rectangle or on the stream of cells between the corners depends on DECSACE. Used by VT420-era forms to highlight an entire input field, error message, or table cell without rewriting its contents.",
     "probe": "Headless: measure text and initially clear inverse attributes in a 3x5 rectangle, apply inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decrara": {
     "name": "DECRARA — reverse attrs in rectangle",
@@ -856,7 +886,9 @@
     "baseline": "legacy",
     "body": "DECRARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ t</code>) toggles the listed SGR attributes within a rectangular region. Each cell flips the listed bits — bold cells become non-bold, non-bold cells become bold, and so on. Like DECCARA, it leaves the characters alone and obeys DECSACE to operate on a rectangle or a stream. VT420-era applications used DECRARA to flash highlight a field on validation errors or to invert a selected row in a list.",
     "probe": "Headless: measure text and initially set inverse attributes in a 3x5 rectangle, reverse inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decsace": {
     "name": "DECSACE — select attribute-change extent",
@@ -866,7 +898,9 @@
     "baseline": "legacy",
     "body": "DECSACE (<code>CSI Ps * x</code>) selects how DECCARA and DECRARA interpret their coordinates. <code>Ps</code>=1 (the default) treats the corners as endpoints of a stream of cells in scan order, so the operation affects the partial rows at the top and bottom plus every cell on the rows between. <code>Ps</code>=2 treats the coordinates as a true rectangle, affecting only the cells inside the box. Modern users almost always want the rectangle interpretation; the stream default is a relic of how DEC originally specified the operations.",
     "probe": "Not measured: the headless callback checks sequence consumption only, without comparing attribute effects in stream and rectangle modes. The app callback leaves the mode unchanged. Neither establishes attribute-change extent.",
-    "sequence": "CSI Ps * x"
+    "sequence": "CSI Ps * x",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "editing.decrqcra": {
     "name": "DECRQCRA — checksum rectangular area",
@@ -876,7 +910,9 @@
     "baseline": "legacy",
     "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.",
     "probe": "Request a checksum and check for a complete DCS reply with request ID 1 and four hexadecimal digits. The headless request covers five cells; the app request covers one. A positive result establishes reply capability only; checksum arithmetic is not verified.",
-    "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
+    "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "input.modify-other-keys": {
     "name": "modifyOtherKeys",
@@ -1300,7 +1336,9 @@
     "body": "OSC 0 sets both the icon name and window title simultaneously. The sequence is <code>ESC ] 0 ; title ST</code>. In practice, the \"icon name\" is a legacy concept from X11 window managers — most modern terminals treat OSC 0 identically to OSC 2 (window title only).",
     "probe": "Headless title changes are retained as partial diagnostic evidence. Icon-name behavior is not read back, so the combined feature remains inconclusive.",
     "baseline": "modern",
-    "sequence": "ESC ] 0 ; title BEL"
+    "sequence": "ESC ] 0 ; title BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc52-clipboard": {
     "name": "Clipboard access (OSC 52)",
@@ -1806,7 +1844,9 @@
     "tags": ["vt100"],
     "body": "The DEC Special Graphics character set provides box-drawing characters. Activate with <code>ESC ( 0</code> (designate G0 as Special Graphics), deactivate with <code>ESC ( B</code> (restore ASCII). When active, ASCII characters like <code>j k l m q x</code> render as box-drawing glyphs (corners, horizontal/vertical lines).\n\nUsed by legacy TUI applications (dialog, mc, ncurses programs) to draw borders and frames. Modern applications typically use Unicode box-drawing characters (U+2500 block) instead, but DEC Special Graphics remains relevant for environments where UTF-8 is not available.",
     "probe": "Headless: qualify ASCII controls and require exactly U+2500 after DEC Special Graphics designation. The app cursor reply does not establish glyph rendering.",
-    "baseline": "core"
+    "baseline": "core",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "charsets.utf8": {
     "name": "UTF-8 mode",
@@ -1815,7 +1855,9 @@
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
     "probe": "Headless: retain measured ASCII controls and require the sampled characters é and 世 in their target cells. This samples Unicode cell handling; it does not cover all UTF-8 byte forms or app-rendered pixels.",
     "baseline": "core",
-    "url": "https://unicode.org/faq/utf_bom.html"
+    "url": "https://unicode.org/faq/utf_bom.html",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "charsets.g0-g1-switching": {
     "name": "G0/G1 character set switching",
@@ -1824,7 +1866,9 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.",
-    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching."
+    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching.",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "charsets.dec-line-drawing": {
     "name": "DEC line drawing character set",
@@ -1833,7 +1877,9 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.",
-    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured."
+    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured.",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "device.primary-da": {
     "name": "Primary device attributes (DA1)",
@@ -1921,7 +1967,9 @@
     "tags": ["iterm2"],
     "baseline": "rich",
     "body": "TERM_FEATURES carries the feature string defined by iTerm2's feature-reporting specification: encoded feature values are concatenated, without semicolon separators. A terminal may also answer an OSC 1337 Capabilities query. An inherited environment value can be stale or supplied by another process, so its presence alone does not establish the current terminal's capabilities.",
-    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, its presence is inconclusive."
+    "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, its presence is inconclusive.",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "device.xtwinops-14": {
     "name": "Report window size in pixels (CSI 14 t)",
@@ -2157,7 +2205,9 @@
     "tags": ["osc", "conemu"],
     "body": "OSC 9;4 is a ConEmu-originated protocol for reporting task progress to the terminal. The sequence <code>ESC ] 9 ; 4 ; st ; pr BEL</code> sets progress state (st: 0=remove, 1=normal, 2=error, 3=indeterminate, 4=paused) and percentage (pr: 0-100). Terminals render this as a native progress indicator — typically in the tab bar, title bar, or taskbar.\n\nOriginally a ConEmu extension, it has been widely adopted: Ghostty (1.2+), iTerm2 (3.6.6+), Windows Terminal, Konsole, mintty, and WezTerm all support it. This makes it one of the most cross-terminal ways to display progress. CLI tools like curl, wget, and build systems can emit these sequences to provide native progress feedback.",
     "probe": "Send <code>OSC 9;4;1;50 BEL</code> (set 50% progress), verify the sequence is consumed (cursor doesn't advance). Clear with <code>OSC 9;4;0 BEL</code>.",
-    "baseline": "rich"
+    "baseline": "rich",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc66-text-sizing": {
     "name": "OSC 66 text sizing",
@@ -2509,7 +2559,9 @@
     "body": "OSC 22 controls the mouse pointer shape. Kitty extends xterm’s original mechanism with standardized shape names, a push/pop stack and queries. For example, <code>OSC 22 ; ?__current__ ST</code> asks for the selected shape, while <code>OSC 22 ; ?pointer,crosshair ST</code> asks whether named shapes are supported. A reply reports protocol state or recognized names; observing the visible pointer is a separate check.",
     "probe": "The current app probe sends <code>OSC 22 ; pointer BEL</code> and reads the text cursor position. It does not query OSC 22 state or observe the mouse pointer, so the result remains inconclusive. No headless callback is implemented.",
     "baseline": "rich",
-    "sequence": "ESC ] 22 ; shape BEL"
+    "sequence": "ESC ] 22 ; shape BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc99-kitty-notify": {
     "name": "Desktop notifications (OSC 99)",
@@ -2519,7 +2571,9 @@
     "body": "OSC 99 is Kitty's rich desktop notification protocol, extending simple notification sequences (OSC 9, OSC 777) with structured metadata. The sequence <code>ESC ] 99 ; params BEL</code> supports key-value parameters including notification identifiers, action buttons, custom icons, urgency levels, and sound control. Identifiers allow updating or closing existing notifications. The protocol defines a capability query so applications can discover which notification features the terminal supports. Currently supported by Kitty, with partial adoption by other terminals.",
     "probe": "Send a nonce-tagged OSC 99 capability query (<code>i=&lt;id&gt;:p=?</code>) and verify the reply matches the ID and advertises title payloads. Desktop delivery is not tested.",
     "baseline": "rich",
-    "sequence": "ESC ] 99 ; params BEL"
+    "sequence": "ESC ] 99 ; params BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc777-notify": {
     "name": "Notifications (OSC 777)",
@@ -2529,7 +2583,9 @@
     "body": "OSC 777 is the rxvt-unicode (urxvt) notification extension, providing structured desktop notifications with separate title and body fields. The sequence <code>ESC ] 777 ; notify ; title ; body BEL</code> triggers a system notification. Unlike OSC 9 which sends a single message string, OSC 777 separates the title and body, giving notification managers more control over presentation. Originally from rxvt-unicode, it has been adopted by foot, Ghostty, WezTerm, and other modern terminals as a simple cross-terminal notification mechanism.",
     "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
     "baseline": "rich",
-    "sequence": "ESC ] 777 ; notify ; title ; body BEL"
+    "sequence": "ESC ] 777 ; notify ; title ; body BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc666-termprop": {
     "name": "VTE termprop (OSC 666)",
@@ -2539,7 +2595,9 @@
     "body": "OSC 666 is the VTE terminal property protocol, allowing applications to set typed key-value metadata on the terminal session. The sequence <code>ESC ] 666 ; key=value BEL</code> sets a named property. Properties are typed (string, boolean, integer, color, UUID) and can be queried by the terminal emulator or desktop environment. Designed for integration between terminal applications and the GNOME desktop — properties can signal the shell type, current context, user identity, and session metadata. Defined by VTE (the GNOME terminal widget) and supported by GNOME Terminal, Prompt (GNOME's new terminal), and kgx.",
     "probe": "Send <code>OSC 666 ; test-prop=value BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "sequence": "ESC ] 666 ; key=value BEL"
+    "sequence": "ESC ] 666 ; key=value BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc3008-context": {
     "name": "Systemd context (OSC 3008)",
@@ -2549,7 +2607,9 @@
     "body": "OSC 3008 is the systemd/UAPI group context signaling protocol for hierarchical session tracking. The sequence <code>ESC ] 3008 ; params BEL</code> communicates context changes — when a shell enters a container, SSH session, sudo context, or virtual machine. The terminal can display this context hierarchy (e.g., in the title bar or tab) so users always know where their commands execute. Parameters use a key-value format to convey the context type, label, and nesting depth. Defined by the UAPI group (systemd ecosystem), currently supported by VTE-based terminals (GNOME Terminal, Prompt, kgx).",
     "probe": "Send <code>OSC 3008 ; type=test BEL</code> and verify the terminal consumes the context sequence (cursor position unchanged).",
     "baseline": "rich",
-    "sequence": "ESC ] 3008 ; params BEL"
+    "sequence": "ESC ] 3008 ; params BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc113-reset-pointer-fg": {
     "name": "Reset pointer fg color (OSC 113)",
@@ -2609,7 +2669,9 @@
     "body": "OSC 176 sets the Wayland window's app-id at runtime. The sequence is <code>ESC ] 176 ; app-id BEL</code> and is specific to <a href=\"https://codeberg.org/dnkl/foot\" class=\"hover-link\">foot</a>, the Wayland-native terminal emulator. Wayland window managers use the app-id to group windows, apply per-application rules, and select icons — analogous to <code>WM_CLASS</code> on X11. By exposing app-id setting as an escape sequence, foot lets shell scripts and TUIs differentiate themselves at the compositor level (for example, marking a terminal running a specific TUI so a tiling window manager can place it on a dedicated workspace). No other terminal implements OSC 176; on non-foot terminals the sequence is silently consumed or ignored.",
     "probe": "Send <code>OSC 176 ; terminfo-test BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "sequence": "ESC ] 176 ; app-id BEL"
+    "sequence": "ESC ] 176 ; app-id BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc555-flash": {
     "name": "Screen flash (OSC 555)",
@@ -2619,7 +2681,9 @@
     "body": "OSC 555 triggers a visual bell — the terminal briefly flashes its background color, drawing the user's attention without playing an audible bell. The sequence is <code>ESC ] 555 BEL</code> and is foot-specific. Visual bells are commonly bound to shell error events, IRC/chat notifications, or completion of long-running commands. Most terminals expose visual bell behavior through preferences rather than an escape sequence; foot is unusual in giving applications direct control. Other terminals silently consume OSC 555 (no flash) or pass it through unchanged.",
     "probe": "Send <code>OSC 555 BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "rich",
-    "sequence": "ESC ] 555 BEL"
+    "sequence": "ESC ] 555 BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc440-audio": {
     "name": "Audio sound (OSC 440)",
@@ -2629,7 +2693,9 @@
     "body": "OSC 440 plays a WAV audio file as terminal output. The sequence is <code>ESC ] 440 ; wavfile BEL</code> where <code>wavfile</code> is a path or identifier for an audio sample. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-only extension and one of the most unusual terminal features in the wild — no other terminal emulator exposes general-purpose audio playback through an escape sequence. mintty originally added this for accessibility and notification scripting on Windows, where Cygwin/MSYS shell scripts could trigger arbitrary sound effects without a separate player. Other terminals silently consume the sequence; audio playback happens nowhere except mintty.",
     "probe": "Send <code>OSC 440 ; bell.wav BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "legacy",
-    "sequence": "ESC ] 440 ; wavfile BEL"
+    "sequence": "ESC ] 440 ; wavfile BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc7770-font-size": {
     "name": "Font size query/set (OSC 7770)",
@@ -2679,7 +2745,9 @@
     "body": "OSC 710 sets the terminal's normal (regular weight) font. The sequence is <code>ESC ] 710 ; font BEL</code> where <code>font</code> is an X11 logical font description (XLFD) or a fontconfig pattern. <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a> introduced a family of font-setting OSCs with different roles: <strong>OSC 711</strong> for the bold font, <strong>OSC 712</strong> for italic, and <strong>OSC 713</strong> for bold-italic. Together they let applications swap the entire font set on the fly. Outside of urxvt this protocol is essentially unused — modern terminals tie font selection to user preferences and do not expose font swapping over escape sequences.",
     "probe": "Send <code>OSC 710 ; fixed BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
     "baseline": "legacy",
-    "sequence": "ESC ] 710 ; font BEL"
+    "sequence": "ESC ] 710 ; font BEL",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "extensions.osc720-scroll-up": {
     "name": "Scroll view up (OSC 720)",
@@ -2735,7 +2803,9 @@
     "tags": ["vt510"],
     "body": "DECSSCLS (Set Scroll Speed) controls how fast the terminal scrolls when new lines are added at the bottom. The sequence is <code>CSI Ps p</code> where Ps specifies the scroll speed: 0 or 1 for normal speed, 2-8 for progressively faster speeds. Defined in the VT510 reference manual.\n\nThis is a VT510-era feature that controlled the physical scrolling speed of CRT terminals. On modern terminal emulators it has little practical effect since rendering is immediate, but Contour implements it for VT510 compatibility.",
     "probe": "Send DECSSCLS sequence and verify it's accepted without error.",
-    "baseline": "legacy"
+    "baseline": "legacy",
+    "probeStatus": "partial",
+    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
   },
   "modes.decsclm": {
     "name": "DECSCLM — smooth scroll mode",
