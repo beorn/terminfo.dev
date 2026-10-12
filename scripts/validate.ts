@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { verifyTerminalIdentity } from "../packages/terminfo.dev/src/identity-guard.ts"
 import { ALL_PROBES } from "../packages/probe-defs/src/index.ts"
 import { loadCategories } from "../docs/data/categories.ts"
-import { probeStatusOf } from "../docs/data/probe-status.ts"
+import { probeStatusSummary, rowsOnCuratedValue } from "../docs/data/probe-status.ts"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 
 // ---------------------------------------------------------------------------
@@ -277,8 +277,9 @@ for (const { backendName } of probeFiles) {
   if (!found) info("All feature category prefixes match categories.json")
 }
 
-// 4b. Reviewed probeStatus overrides only: manual or partial, each carrying its reason.
-// The bulk (automated / unprobed) is derived from the definitions, so it cannot drift.
+// 4b. probeStatus: every reviewed value is manual or partial with its reason, and no row the
+// definitions cannot settle is left unreviewed. The bulk derives from the definitions, so it cannot
+// drift; the curated remainder is counted and printed below (item 4 step 1, 28792).
 {
   let found = false
   for (const [id, feat] of Object.entries(features)) {
@@ -287,17 +288,24 @@ for (const { backendName } of probeFiles) {
     if (status === undefined) continue
     if (status !== "manual" && status !== "partial") {
       error(
-        `Feature "${id}" declares probeStatus "${status}" — only "manual" and "partial" are reviewed overrides; automated and unprobed derive from the definitions`,
+        `Feature "${id}" declares probeStatus "${status}" — only "manual" and "partial" are reviewed values; automated and unprobed derive from the definitions`,
       )
       errors++
       found = true
     } else if (!feat.probeStatusReason) {
-      error(`Feature "${id}" overrides probeStatus to "${status}" without a probeStatusReason`)
+      error(`Feature "${id}" carries the reviewed probeStatus "${status}" without a probeStatusReason`)
       errors++
       found = true
     }
   }
-  if (!found) info("All feature probeStatus overrides are reviewed (manual or partial, with a reason)")
+  for (const id of probeStatusSummary(features).unreviewed) {
+    error(
+      `Feature "${id}" leaves an arm undeclared, so its probeStatus cannot be derived from the definitions and it carries no reviewed value; add "probeStatus": "partial" with a probeStatusReason, or declare the arm's evidence in the definition`,
+    )
+    errors++
+    found = true
+  }
+  if (!found) info("All feature probeStatus values are derived, or reviewed with a reason")
 }
 
 // 4c. Duplicate feature names (same display name, different IDs)
@@ -726,21 +734,23 @@ heading("Info (summary)")
     info(`  ${tag}: ${cnt}`)
   }
 
-  // Probe status distribution (derived from the definitions, with reviewed overrides)
-  const statusCounts: Record<string, number> = {
-    automated: 0,
-    partial: 0,
-    manual: 0,
-    unprobed: 0,
-  }
-  for (const id of Object.keys(features)) {
-    if (id === "$comment") continue
-    const status = probeStatusOf(id, features)
-    statusCounts[status] = (statusCounts[status] ?? 0) + 1
-  }
+  // Probe status distribution: what the definitions settle, and the curated gap that remains.
+  const summary = probeStatusSummary(features)
   info(
-    `Probe status: ${statusCounts.automated} automated, ${statusCounts.partial} partial, ${statusCounts.manual} manual, ${statusCounts.unprobed} unprobed`,
+    `Probe status: ${summary.counts.automated} automated, ${summary.counts.partial} partial, ${summary.counts.manual} manual, ${summary.counts.unprobed} unprobed`,
   )
+  const curated = rowsOnCuratedValue(summary)
+  info(
+    `Probe status still on a curated value: ${curated} rows (${summary.unsettled.length} leave an arm undeclared; ${summary.gated.length} stand over a settled derivation${summary.gated.length ? `: ${summary.gated.join(", ")}` : ""})`,
+  )
+  if (summary.noDefinition.length > 0) {
+    info(
+      `  ${summary.noDefinition.length} more carry a reviewed value with no probe definition at all (manual by design)`,
+    )
+  }
+  if (summary.unreviewed.length > 0) {
+    info(`  ${summary.unreviewed.length} rows the definitions cannot settle are UNREVIEWED — see the errors above`)
+  }
 }
 
 // 15. Terminal counts

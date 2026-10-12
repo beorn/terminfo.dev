@@ -25,6 +25,8 @@ import {
   startPeakGuard,
 } from "./build-peak-guard.ts"
 import { siteDistDir, siteTempDir } from "./site-out.ts"
+import { loadFeatures } from "@terminfo/catalog"
+import { probeStatusSummary, rowsOnCuratedValue } from "../docs/data/probe-status.ts"
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const tempDir = siteTempDir()
@@ -93,6 +95,21 @@ function reportPeak(status: string): void {
   )
 }
 
+/**
+ * The curated probeStatus gap, printed with every build: rows whose value comes from a review rather
+ * than a derivation, and which of those stand over a settled derivation (a gate). 28792 item 4.
+ */
+function reportCuratedProbeStatus(): void {
+  const summary = probeStatusSummary(loadFeatures(join(repoRoot, "content")))
+  const curated = rowsOnCuratedValue(summary)
+  const gated = summary.gated.length > 0 ? summary.gated.join(", ") : "none"
+  console.log(
+    `site-build: probe status ${summary.counts.automated} automated, ${summary.counts.partial} partial, ` +
+      `${summary.counts.manual} manual, ${summary.counts.unprobed} unprobed; ${curated} rows still on a curated value ` +
+      `(${summary.unsettled.length} leave an arm undeclared, ${summary.gated.length} stand over a settled derivation: ${gated})`,
+  )
+}
+
 try {
   await build(join(repoRoot, "docs"), {
     onAfterConfigResolve(siteConfig) {
@@ -109,4 +126,5 @@ try {
   process.exit(1)
 }
 guard.stop()
+reportCuratedProbeStatus()
 reportPeak("done")
