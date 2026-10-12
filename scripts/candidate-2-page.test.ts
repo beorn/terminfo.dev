@@ -20,6 +20,33 @@ import { inconclusiveRows } from "./decisive-share.ts"
 const root = join(import.meta.dirname, "..")
 const data = loadCandidate2Data()
 
+/** The catalog of record: a page that labelled a row with its own id would disagree with this. */
+function catalogNames(): Record<string, string> {
+  const raw = JSON.parse(readFileSync(join(root, "content", "features.json"), "utf8")) as Record<
+    string,
+    string | { name?: string }
+  >
+  const names: Record<string, string> = {}
+  for (const [id, entry] of Object.entries(raw)) {
+    if (id.startsWith("$")) continue
+    const name = typeof entry === "string" ? entry : entry.name
+    if (name) names[id] = name
+  }
+  return names
+}
+
+describe("candidate-2 page: names come from the catalog, never from the id", () => {
+  it("labels every rendered row with the catalog's own name", () => {
+    const names = catalogNames()
+    const rows = [...data.groups.flatMap((group) => group.capabilities), ...data.libraryOnly, ...data.unavailable]
+    expect(rows.length).toBeGreaterThan(data.ratifiedCount)
+    for (const row of rows) {
+      expect(names[row.id], `${row.id} is missing from content/features.json`).toBeTruthy()
+      expect(row.name, `${row.id} is labelled with something other than its catalog name`).toBe(names[row.id])
+    }
+  })
+})
+
 describe("candidate-2 page: publication rule (AC4)", () => {
   it("publishes a row exactly when its selected run sits on the frozen suite", () => {
     const published = data.contexts.filter((row) => row.published)

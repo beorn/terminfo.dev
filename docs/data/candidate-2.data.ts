@@ -108,7 +108,13 @@ export interface Candidate2Data {
   contexts: Candidate2ContextRow[]
 }
 
-/** Feature display names, from the same catalog the declarations are validated against. */
+/**
+ * Feature display names, from the same catalog the declarations are validated against. A catalog
+ * entry is either a bare string or an object carrying `name`; an id with neither is a LOUD fault, not
+ * a quiet fallback to printing the id twice — every cohort id is in this catalog by construction
+ * (`loadFeatureCohort` refuses an unknown feature), so a nameless entry means the catalog shape
+ * changed under us and the page would otherwise start labelling rows with their own ids.
+ */
 function loadCatalogNames(): Record<string, string> {
   const path = join(contentDir, "features.json")
   const raw = parseJsonStrict(path, readFileSync(path, "utf8"))
@@ -118,7 +124,16 @@ function loadCatalogNames(): Record<string, string> {
   const names: Record<string, string> = {}
   for (const [id, declared] of Object.entries(raw as Record<string, unknown>)) {
     if (id.startsWith("$")) continue
-    names[id] = typeof declared === "string" && declared ? declared : id
+    const name =
+      typeof declared === "string"
+        ? declared
+        : declared !== null && typeof declared === "object" && !Array.isArray(declared)
+          ? (declared as { name?: unknown }).name
+          : undefined
+    if (typeof name !== "string" || !name) {
+      throw new Error(`${path}: ${id} carries no usable name; the page must never label a row with its id`)
+    }
+    names[id] = name
   }
   return names
 }
