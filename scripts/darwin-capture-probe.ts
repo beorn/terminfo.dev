@@ -10,6 +10,9 @@
  *   - the drawn-surface placement basis on a real macOS frame, from the repo's own functions;
  *   - two decoded-pixel digests around a PROVABLE paint, i.e. whether a paint witness is
  *     observable through screenshots at all;
+ *   - the B2 calibration (@cto round 2, plan 28785 §3e): one interior cell repainted between two
+ *     captures, and the changed-pixel rectangle it must produce — a named, non-colour text-area
+ *     origin, with the repo's own geometry-centred placement reported beside it for the delta;
  *   - window owner PID against the app PID, and whether magick is present.
  *
  * Every failure is loud and recorded; nothing is guessed and nothing defaults silently.
@@ -22,6 +25,10 @@ import { join } from "node:path"
 import { command, drawnSurface, textAreaOrigin } from "../packages/terminfo.dev/src/linux-capture.ts"
 
 const GHOSTTY = "/Applications/Ghostty.app/Contents/MacOS/ghostty"
+// The one interior cell the B2 calibration repaints, in the terminal's own 1-based coordinates.
+// Far enough from every edge that a cell rectangle derived from the diff cannot be clipped.
+const calRow = 3
+const calCol = 3
 const out = process.argv[2]
 if (!out) throw new Error("usage: bun scripts/darwin-capture-probe.ts <output-directory>")
 mkdirSync(out, { recursive: true })
@@ -81,13 +88,16 @@ for (const decoder of ["magick", "convert"]) {
 write()
 
 // 2. The marker command the terminal itself runs: paints phase A, answers its own geometry
-//    queries, then paints a DIFFERENT frame (phase B) that a second capture must observe.
+//    queries, changes EXACTLY ONE interior cell's background (the B2 calibration), then paints a
+//    DIFFERENT frame (phase B) that a further capture must observe.
 const marker = join(out, "marker.command")
 writeFileSync(
   marker,
   `#!/bin/bash
 set -u
 OUT=${JSON.stringify(out)}
+CAL_ROW=${calRow}
+CAL_COL=${calCol}
 # read one CSI reply: every reply this probe asks for ends with "t".
 ask() {
   local reply=""
@@ -101,6 +111,32 @@ paint() {
   for i in 1 2 3 4 5 6; do printf 'PHASE%s ROW%s ########## PHASE%s ROW%s\\n' "$1" "$i" "$1" "$i"; done
   printf '\\033[8;1H'
 }
+# B2 — the calibration paint. It changes exactly ONE interior cell: a truecolor magenta BACKGROUND
+# on a blank cell, glyph and cursor untouched, so the pixels that differ between the phase-A and
+# phase-A2 captures must be one cell-sized axis-aligned rectangle and nothing else. This is the
+# named, non-colour source for the text-area origin (@cto round 2, plan §3e).
+calibrate() {
+  printf '\\033[%s;%sH\\033[48;2;255;0;255m \\033[0m' "$CAL_ROW" "$CAL_COL" > /dev/tty
+  printf '\\033[6;1H' > /dev/tty
+}
+# The cursor is hidden for the WHOLE run: a blinking cursor is a pixel that changes without a
+# paint, and it would land inside the calibration diff.
+printf '\\033[?25l' > /dev/tty
+# The driver confirms each capture by writing a file, and the marker advances only on that file, so
+# the calibration can never be captured after the next paint has already happened: a timed sleep
+# would make a late capture a garbage diff instead of a named refusal.
+wait_for_ack() {
+  local file=$1 tries=0
+  while [ ! -f "$OUT/$file" ]; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 900 ]; then
+      printf 'no %s after 180 s of waiting; the calibration window closed without a confirming capture\\n' "$file" > "$OUT/marker-refusal"
+      exit 1
+    fi
+    sleep 0.2
+  done
+  sleep 1
+}
 {
   paint A
   ask '\\033[14t'
@@ -109,8 +145,13 @@ paint() {
   printf 'painted-phase-A %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 } > "$OUT/terminal-replies.txt" 2>&1
 cat "$OUT/terminal-replies.txt" > /dev/tty
+tty > "$OUT/tty"
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-a"
-sleep 12
+wait_for_ack ack-a
+calibrate
+printf 'painted-phase-A2 %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > /dev/tty
+date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-a2"
+wait_for_ack ack-a2
 paint B
 printf 'painted-phase-B %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > /dev/tty
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-b"
@@ -137,6 +178,115 @@ async function waitFor(path: string, ms: number, label: string): Promise<void> {
     if (Date.now() >= deadline) throw new Error(`${label} never appeared within ${ms} ms: ${path}`)
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
+}
+
+/**
+ * The decoded pixels of one capture, kept only in memory: the calibration needs two frames compared
+ * byte by byte, which a digest cannot answer. They are never written into the report — a frame is
+ * megabytes, and the report is the measurement, not the image.
+ */
+interface DecodedFrame {
+  width: number
+  height: number
+  rgba: Buffer
+}
+const frames = new Map<string, DecodedFrame>()
+
+/** True when both images hold the same RGB at this byte offset; alpha is not compared. */
+function samePixel(a: Buffer, b: Buffer, offset: number): boolean {
+  return a[offset] === b[offset] && a[offset + 1] === b[offset + 1] && a[offset + 2] === b[offset + 2]
+}
+
+interface ChangedRectangle {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+  /** maxX-minX+1 by maxY-minY+1: the bounding box, which is what a rectangle check measures. */
+  width: number
+  height: number
+  /** Pixels that differ anywhere in the frame. */
+  changedPixels: number
+  /** width*height, the pixels the bounding box holds. */
+  boundingArea: number
+  /** One solid axis-aligned rectangle: every row in the box is changed across the full box width. */
+  solid: boolean
+  /** Rows inside the box that are not changed across exactly the full box width, by changed span. */
+  raggedRows: { y: number; minX: number; maxX: number; changed: number }[]
+}
+
+/**
+ * The bounding box of the pixels two frames disagree on, plus whether that box is one solid
+ * rectangle. A box that is not solid is reported with the rows that break it, never rounded up to a
+ * rectangle: the calibration's whole claim is that exactly one cell changed.
+ */
+function changedRectangle(a: DecodedFrame, b: DecodedFrame): ChangedRectangle | { refused: string } {
+  if (a.width !== b.width || a.height !== b.height) {
+    return { refused: `capture extents disagree: ${a.width}x${a.height} against ${b.width}x${b.height}` }
+  }
+  if (a.rgba.length !== b.rgba.length || a.rgba.length !== a.width * a.height * 4) {
+    return { refused: "decoded frames are not both a full rgba image of the same extent" }
+  }
+  let minX = a.width
+  let minY = a.height
+  let maxX = -1
+  let maxY = -1
+  let changedPixels = 0
+  const rowSpans: { minX: number; maxX: number; changed: number }[] = Array.from({ length: a.height }, () => ({
+    minX: a.width,
+    maxX: -1,
+    changed: 0,
+  }))
+  for (let y = 0; y < a.height; y++) {
+    const span = rowSpans[y] as { minX: number; maxX: number; changed: number }
+    for (let x = 0; x < a.width; x++) {
+      const offset = (y * a.width + x) * 4
+      if (samePixel(a.rgba, b.rgba, offset)) continue
+      changedPixels++
+      span.changed++
+      if (x < span.minX) span.minX = x
+      if (x > span.maxX) span.maxX = x
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return { refused: "the two captures are pixel-identical: nothing changed" }
+  const width = maxX - minX + 1
+  const height = maxY - minY + 1
+  const raggedRows: { y: number; minX: number; maxX: number; changed: number }[] = []
+  for (let y = minY; y <= maxY; y++) {
+    const span = rowSpans[y] as { minX: number; maxX: number; changed: number }
+    if (span.changed !== width || span.minX !== minX || span.maxX !== maxX) {
+      raggedRows.push({ y, minX: span.minX, maxX: span.maxX, changed: span.changed })
+    }
+  }
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width,
+    height,
+    changedPixels,
+    boundingArea: width * height,
+    solid: raggedRows.length === 0,
+    raggedRows,
+  }
+}
+
+/** A rectangle of one frame, hashed, for a region-level before/after comparison. */
+function regionDigest(frame: DecodedFrame, rectangle: { x: number; y: number; width: number; height: number }) {
+  const { x, y, width, height } = rectangle
+  if (x < 0 || y < 0 || width < 1 || height < 1 || x + width > frame.width || y + height > frame.height) {
+    return `refused: ${JSON.stringify(rectangle)} leaves the ${frame.width}x${frame.height} frame`
+  }
+  const hash = createHash("sha256")
+  for (let row = y; row < y + height; row++) {
+    hash.update(frame.rgba.subarray(row * frame.width * 4 + x * 4, row * frame.width * 4 + (x + width) * 4))
+  }
+  return `sha256:${hash.digest("hex")}`
 }
 await waitFor(join(out, "phase-a"), 60_000, "the terminal's phase-A marker")
 report.phaseAAt = new Date().toISOString()
@@ -241,6 +391,7 @@ async function capture(phase: string): Promise<Record<string, unknown>> {
     }
     if (report.magick && (report.magick as { present: boolean }).present) {
       const rgba = await command("magick", [`${png}`, "-depth", "8", "rgba:-"])
+      frames.set(phase, { width, height, rgba })
       row.decodedBytes = rgba.length
       row.decodedMatchesExtent = rgba.length === width * height * 4
       row.pixelsDigest = `sha256:${createHash("sha256").update(rgba).digest("hex")}`
@@ -273,15 +424,95 @@ async function capture(phase: string): Promise<Record<string, unknown>> {
 }
 
 await capture("a")
+// The marker paints the calibration cell only after this ack, so the phase-A frame is provably the
+// frame before the calibration and the phase-A2 frame provably the one after it.
+writeFileSync(join(out, "ack-a"), `${new Date().toISOString()}\n`)
+await waitFor(join(out, "phase-a2"), 180_000, "the terminal's B2 calibration paint")
+report.phaseA2At = new Date().toISOString()
+await capture("a2")
+writeFileSync(join(out, "ack-a2"), `${new Date().toISOString()}\n`)
 await waitFor(join(out, "phase-b"), 120_000, "the terminal's phase-B paint")
 report.phaseBAt = new Date().toISOString()
 const second = await capture("b")
 const first = report["capture-a"] as Record<string, unknown>
 report.paintObserved = first.pixelsDigest !== undefined && first.pixelsDigest !== second.pixelsDigest
+
+/**
+ * B2 — the calibration measurement (@cto round 2, plan §3e, bead 28785). Between the phase-A and
+ * phase-A2 captures the marker changed exactly ONE interior cell's background to a truecolor
+ * magenta and touched nothing else, so the pixels that differ between the two frames are the
+ * cell-sized axis-aligned rectangle the calibration source promises. The rectangle's top-left, minus
+ * the cell's own offset inside the text area, IS the text-area origin — a named, non-colour source.
+ * Every other outcome is recorded as a refusal by name; nothing is inferred from the geometry
+ * answers and nothing is defaulted.
+ */
+const cellSize = (first.terminalRepliesParsed as { cellSize: { cellHeight: number; cellWidth: number } | null })
+  ?.cellSize
+const before = frames.get("a")
+const after = frames.get("a2")
+if (!before || !after) {
+  report.calibration = {
+    refused:
+      "the phase-A and phase-A2 frames were not both decoded in memory (a magick decode failed or a capture produced no png); the calibration compares pixels, and a digest cannot answer it",
+  }
+} else if (!cellSize) {
+  report.calibration = {
+    refused: "the terminal painted no CSI 16 t cell-size answer, so the diff has nothing to check against",
+  }
+} else {
+  const diff = changedRectangle(before, after)
+  if ("refused" in diff) {
+    report.calibration = { refused: diff.refused, cellSize }
+  } else {
+    const derivedOrigin = {
+      x: diff.minX - (calCol - 1) * cellSize.cellWidth,
+      y: diff.minY - (calRow - 1) * cellSize.cellHeight,
+    }
+    const repoPlacement = first.textAreaPlacement as { origin?: { x: number; y: number } } | undefined
+    const repoOrigin = repoPlacement?.origin ?? null
+    // The cell the calibration painted, in the frame's own pixels and derived from the diff alone.
+    // Its digest must change between the two captures that contain it; a rectangle that does not
+    // change the pixels it was derived from would be a contradiction, not a measurement.
+    const calibratedCell = {
+      x: derivedOrigin.x + (calCol - 1) * cellSize.cellWidth,
+      y: derivedOrigin.y + (calRow - 1) * cellSize.cellHeight,
+      width: cellSize.cellWidth,
+      height: cellSize.cellHeight,
+    }
+    report.calibration = {
+      cell: { row: calRow, col: calCol },
+      cellSizeFromTerminal: cellSize,
+      rectangle: diff,
+      matchesReportedCell: diff.width === cellSize.cellWidth && diff.height === cellSize.cellHeight,
+      derivedOrigin,
+      repoTextAreaOrigin: repoOrigin,
+      originDeltaFromRepoTextAreaOrigin: repoOrigin
+        ? { x: derivedOrigin.x - repoOrigin.x, y: derivedOrigin.y - repoOrigin.y }
+        : null,
+      calibratedCell,
+      calibratedCellDigest: { a: regionDigest(before, calibratedCell), a2: regionDigest(after, calibratedCell) },
+    }
+  }
+}
+write()
 report.terminalReplies = existsSync(join(out, "terminal-replies.txt"))
   ? readFileSync(join(out, "terminal-replies.txt"), "utf8")
   : null
 report.ghosttyLog = existsSync(launchLog) ? readFileSync(launchLog, "utf8").slice(0, 4000) : null
 report.finishedAt = new Date().toISOString()
 write()
-console.log(JSON.stringify({ out, paintObserved: report.paintObserved, magick: report.magick }, null, 2))
+console.log(
+  JSON.stringify(
+    { out, paintObserved: report.paintObserved, magick: report.magick, calibration: report.calibration },
+    null,
+    2,
+  ),
+)
+// A calibration that could not be measured at all is a named failure with artifacts retained above
+// it; a calibration that measured and disagreed with the reported cell size is a RESULT, recorded
+// in full and reported, never a fabricated refusal.
+const calibration = report.calibration as { refused?: string } | undefined
+if (!calibration || calibration.refused) {
+  console.error(`B2 calibration refused: ${calibration?.refused ?? "no calibration block was produced"}`)
+  process.exitCode = 1
+}
