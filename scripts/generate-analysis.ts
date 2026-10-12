@@ -41,7 +41,8 @@ interface FeatureMeta {
 interface TerminalMeta {
   label: string
   slug: string
-  kind?: "app" | "headless" | "mux"
+  /** The catalog loader guarantees a string here, not the narrower union the readers used to assume. */
+  kind?: string
   url?: string
   description?: string
   body?: string

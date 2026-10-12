@@ -11,7 +11,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadFeatures, loadTerminals } from "@terminfo/catalog"
+import { loadFeatures, loadTerminals, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories } from "./categories.ts"
@@ -88,7 +88,7 @@ export interface ProbeData {
   /** "backend:feature" -> { note, url? } from annotations.json */
   annotations: Record<string, { note: string; url?: string; result?: string }>
   /** feature id -> { name, url? } from features.json */
-  featureDescriptions: Record<string, FeatureMeta>
+  featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
   /** Backend name -> baseline conclusive score and full catalog coverage. */
@@ -112,17 +112,6 @@ export interface ProbeData {
   suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
-interface FeatureMeta {
-  name: string
-  slug?: string
-  url?: string
-  tags?: string[]
-  group?: string
-  body?: string
-  probe?: string
-  baseline?: string
-}
-
 interface BaselineStats {
   total: number
   yes: number
@@ -135,7 +124,7 @@ interface BaselineStats {
   untested: number
 }
 
-function loadFeatureDescriptions(): Record<string, FeatureMeta> {
+function loadFeatureDescriptions(): FeatureCatalog {
   // The feature catalog, through its one loader (@terminfo/catalog). The loader already refuses a
   // nameless entry and drops $-prefixed comment keys, so the old string-vs-object normalization and
   // its per-field checks live in one place now.

@@ -28,12 +28,23 @@ function fixture(name: string, files: Record<string, unknown>): string {
   return dir
 }
 
+/**
+ * A catalog is `Readonly<Record<string, T>>`, so reading one key is `T | undefined`. A key the live
+ * catalog does not have is a failed expectation about the catalog, never a type to work around:
+ * name it and fail.
+ */
+function required<T>(catalog: Readonly<Record<string, T>>, key: string): T {
+  const entry = catalog[key]
+  if (entry === undefined) throw new Error(`catalog has no entry "${key}"`)
+  return entry
+}
+
 test("reads the live feature catalog: 273 entries, each with the five required fields", () => {
   const features = loadFeatures(repoContent)
   const ids = Object.keys(features)
   expect(ids.length).toBe(273)
   for (const id of ids) {
-    const entry = features[id]
+    const entry = required(features, id)
     expect(typeof entry.name).toBe("string")
     expect(entry.name.length).toBeGreaterThan(0)
     expect(entry.slug.length).toBeGreaterThan(0)
@@ -41,15 +52,15 @@ test("reads the live feature catalog: 273 entries, each with the five required f
     expect(entry.probe.length).toBeGreaterThan(0)
     expect(entry.baseline.length).toBeGreaterThan(0)
   }
-  expect(features["sgr.bold"].name).toBe("Bold (SGR 1)")
+  expect(required(features, "sgr.bold").name).toBe("Bold (SGR 1)")
 })
 
 test("reads the live terminal catalog: 26 entries, each with the five required fields", () => {
   const terminals = loadTerminals(repoContent)
   expect(Object.keys(terminals).length).toBe(26)
-  expect(terminals.ghostty.label).toBe("Ghostty")
-  expect(terminals.ghostty.platforms).toEqual(["macos", "linux"])
-  expect(terminals.xterm.manifestBackend).toBeUndefined()
+  expect(required(terminals, "ghostty").label).toBe("Ghostty")
+  expect(required(terminals, "ghostty").platforms).toEqual(["macos", "linux"])
+  expect(required(terminals, "xterm").manifestBackend).toBeUndefined()
 })
 
 test("drops $-prefixed comment keys and keeps the entry order of the file", () => {
