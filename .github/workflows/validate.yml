@@ -16,7 +16,12 @@ name: Content Validation
 on:
   schedule:
     - cron: "0 9 * * 1" # Every Monday 9am UTC
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
+    inputs:
+      unit_only:
+        description: Run only the unit suite for cost and regression verification
+        type: boolean
+        default: false
 
 permissions:
   issues: write
@@ -26,7 +31,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  unit:
+    if: github.event_name == 'workflow_dispatch' && inputs.unit_only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: ./.github/actions/source-siblings
+
+      - name: Run unit tests
+        run: bun --bun vitest run --maxWorkers 2
+
   validate:
+    if: github.event_name != 'workflow_dispatch' || !inputs.unit_only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
