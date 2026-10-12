@@ -1,30 +1,12 @@
 /**
- * @failure Fixed editing fixtures emit feature bytes or query CPR when the measured terminal cannot fit the complete edit extent.
+ * @failure Fixed editing fixtures emit feature bytes or query CPR when the measured terminal cannot fit the complete edit extent - or, once a family converts to the region kind, keep a cursor-only fallback that a run with no owned capture can only answer "inconclusive".
  * @level l1
  * @consumer App editing observations collected for terminal support cells.
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { editingProbes } from "./editing.ts"
+import { editingProbes, editingReadbackRows } from "./editing.ts"
 import type { TermContext } from "./types.ts"
-
-const fixtures = [
-  ["editing.insert-chars", 1, 5],
-  ["editing.delete-chars", 1, 5],
-  ["editing.insert-lines", 3, 5],
-  ["editing.delete-lines", 3, 5],
-  ["editing.repeat-char", 1, 6],
-  ["editing.decfra", 3, 5],
-  ["editing.decera", 3, 5],
-  ["editing.decsera", 3, 5],
-  ["editing.deccra", 6, 14],
-  ["editing.deccara", 3, 5],
-  ["editing.decrara", 3, 5],
-  ["editing.sl", 1, 8],
-  ["editing.sr", 1, 9],
-  ["editing.decic", 3, 4],
-  ["editing.decdc", 3, 4],
-] as const
 
 function app(rows: number, cols: number, events: string[]): TermContext {
   const unexpected = (name: string): never => {
@@ -49,8 +31,49 @@ function app(rows: number, cols: number, events: string[]): TermContext {
   }
 }
 
-test("editing fixtures decline incomplete extents before feature bytes or CPR", async () => {
-  for (const [id, minRows, minCols] of fixtures) {
+/**
+ * 28450 slice C: the thirteen converted rows are decided by the region verdict, so a run with no owned
+ * capture can only answer "inconclusive". A fixture that can only answer that is deleted rather than
+ * kept (@cto A2), so every one of them refuses BY NAME and writes nothing - on the smallest grid, on a
+ * grid at the row's own derived need and on a large one alike. This replaces the old per-row
+ * "declines incomplete extents before feature bytes or CPR" test for these ids, which had no meaning
+ * once their cursor-only fallback was deleted.
+ */
+test("every converted row refuses by name and writes nothing without an owned capture", async () => {
+  for (const row of editingReadbackRows) {
+    const definition = editingProbes.find((probe) => probe.id === row.id)
+    if (!definition?.term) throw new Error(`missing app callback for ${row.id}`)
+    expect(definition.termNeedsGeometry, row.id).toBe(true)
+    for (const [rows, cols] of [
+      [1, 1],
+      [4, 24],
+      [24, 80],
+    ] as const) {
+      const events: string[] = []
+      const result = await definition.term(app(rows, cols, events))
+      expect(result.observation, `${row.id} at ${rows}x${cols}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+      })
+      expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
+      expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])
+    }
+  }
+})
+
+/**
+ * The two attribute-rectangle rows stay hand-written (@cto 218ec7fe), so their own CPR callback is
+ * still the no-capture path: it declines an incomplete extent before any feature byte or query, and
+ * reaches CPR at its floor. Their coverage record lives on `EDITING_CAPTURE_SPECS` in editing.ts.
+ */
+const HAND_WRITTEN = [
+  ["editing.deccara", 3, 5],
+  ["editing.decrara", 3, 5],
+] as const
+
+test("the hand-written attribute rows decline incomplete extents before feature bytes or CPR", async () => {
+  for (const [id, minRows, minCols] of HAND_WRITTEN) {
     const definition = editingProbes.find((probe) => probe.id === id)
     if (!definition?.term) throw new Error(`missing app callback for ${id}`)
     const invalidDimensions: Array<readonly [number, number]> = [
@@ -59,7 +82,6 @@ test("editing fixtures decline incomplete extents before feature bytes or CPR", 
       [NaN, minCols],
       [minRows, Infinity],
     ]
-    if (id === "editing.deccra") invalidDimensions.push([5, 10])
     for (const [rows, cols] of invalidDimensions) {
       const events: string[] = []
       const result = await definition.term(app(rows, cols, events))
