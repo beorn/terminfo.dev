@@ -1,114 +1,213 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import {
-  probe,
-  isBlank,
-  parserStateResult,
-  unmeasuredCellResult,
-  selectiveEraseResult,
-  notTestedResult,
-} from "./helpers.ts"
-
-/** Rows whose collector path can decide from the owned window's cells, with 28540's helper. */
-const ERASE_CHARACTER_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 5 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE\x1b[2;1H",
-  edit: "\x1b[1;2H\x1b[2X\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA  DE\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 6,
-}
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { probe, isBlank, parserStateResult, unmeasuredCellResult, notTestedResult } from "./helpers.ts"
 
 /**
- * The measured readback for the remaining erase rows. Each spec restates, as bytes, the expected
- * frame the ungraded `captureEraseFixture` label already names, so the collector decides from its
- * own window instead of asking a reviewer to compare two screenshots. Rows that survive an erase
- * are inside the compared region, so an over-wide erase is unsupported rather than invisible.
+ * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
+ * applied to Erase). Each row holds its claim ONCE: the termless arm reads its seed, its steps and its
+ * target cells against the parser, and the kind derives the capture-region oracle's frames from the
+ * same fields, so the two arms cannot grade two fixtures.
+ *
+ * Two rows stay HAND-WRITTEN, each with its one-line coverage record:
+ *  - erase.el-with-attrs: the claim is a BACKGROUND ATTRIBUTE on the erased cells. The kind's cell
+ *    carries a character only, so before and after are identical by character; a row of it would read
+ *    an ignoring surface supported on the termless arm and wrongly read a correct terminal
+ *    unsupported on the pixel arm - the deccara/decrara case (@cto 218ec7fe).
+ *  - erase.screen.scrollback: the claim is HISTORY (ED3 removes measured scrollback while screen
+ *    geometry stays), not a cell window.
  */
-const ERASE_LINE_FIXTURE = {
-  region: { top: 1, left: 1, bottom: 2, right: 5 },
-  sentinel: { row: 4, col: 1 },
-  cursorRow: 3,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE\x1b[2;1HKEEP!\x1b[3;1H",
-  editAt: "\x1b[1;3H",
-  expectedPrefix: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H",
-  expectedSuffix: "\x1b[2;1HKEEP!\x1b[3;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 5,
-  minCols: 6,
-}
+export const eraseReadbackRows: readonly RegionReadbackRow[] = [
+  {
+    id: "erase.character",
+    expected: "ECH erases the requested cells from the cursor, leaving the preceding column intact",
+    seed: "\x1b[1;1HABCDE",
+    before: [["A", "B", "C", "D", "E"]],
+    steps: [{ write: "\x1b[1;2H\x1b[2X" }],
+    after: [["A", " ", " ", "D", "E"]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 3, char: "D" },
+      { row: 0, col: 4, char: "E" },
+    ],
+    seedNote: "ECH seed was not measured",
+    controlNote: "ECH outside control changed",
+    reset: "",
+  },
+  {
+    id: "erase.line.right",
+    expected: "EL0 erases from the cursor to the end of the row and preserves the adjacent row",
+    seed: "\x1b[1;1HABCDE\x1b[2;1HKEEP!",
+    before: [
+      ["A", "B", "C", "D", "E"],
+      ["K", "E", "E", "P", "!"],
+    ],
+    steps: [{ write: "\x1b[1;3H\x1b[0K" }],
+    after: [
+      ["A", "B", " ", " ", " "],
+      ["K", "E", "E", "P", "!"],
+    ],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "B" },
+      { row: 1, col: 0, char: "K" },
+    ],
+    seedNote: "EL0 seed was not measured",
+    controlNote: "EL0 preserved cell or adjacent row control changed",
+    reset: "",
+  },
+  {
+    id: "erase.line.left",
+    expected: "EL1 erases from the row start through the cursor",
+    seed: "\x1b[1;1HABCDE\x1b[2;1HKEEP!",
+    before: [
+      ["A", "B", "C", "D", "E"],
+      ["K", "E", "E", "P", "!"],
+    ],
+    steps: [{ write: "\x1b[1;3H\x1b[1K" }],
+    after: [
+      [" ", " ", " ", "D", "E"],
+      ["K", "E", "E", "P", "!"],
+    ],
+    controls: [
+      { row: 0, col: 3, char: "D" },
+      { row: 0, col: 4, char: "E" },
+      { row: 1, col: 0, char: "K" },
+    ],
+    seedNote: "EL1 seed was not measured",
+    controlNote: "EL1 preserved cell or adjacent row control changed",
+    reset: "",
+  },
+  {
+    id: "erase.line.all",
+    expected: "EL2 erases the whole row and preserves the adjacent row",
+    seed: "\x1b[1;1HABCDE\x1b[2;1HKEEP!",
+    before: [
+      ["A", "B", "C", "D", "E"],
+      ["K", "E", "E", "P", "!"],
+    ],
+    steps: [{ write: "\x1b[1;3H\x1b[2K" }],
+    after: [
+      [" ", " ", " ", " ", " "],
+      ["K", "E", "E", "P", "!"],
+    ],
+    controls: [{ row: 1, col: 0, char: "K" }],
+    seedNote: "EL2 seed was not measured",
+    controlNote: "EL2 adjacent row control changed",
+    reset: "",
+  },
+  {
+    id: "erase.screen.below",
+    expected: "ED0 erases from the cursor to the end of the screen and preserves the row above",
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC",
+    before: [
+      ["A", "A", "A", "A", "A"],
+      ["B", "B", "B", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+    ],
+    steps: [{ write: "\x1b[2;3H\x1b[0J" }],
+    after: [
+      ["A", "A", "A", "A", "A"],
+      ["B", "B", " ", " ", " "],
+      [" ", " ", " ", " ", " "],
+    ],
+    controls: [{ row: 0, col: 0, char: "A" }],
+    seedNote: "ED0 seed was not measured",
+    controlNote: "ED0 preceding row control changed",
+    reset: "",
+  },
+  {
+    id: "erase.screen.above",
+    expected: "ED1 erases from the screen start through the cursor and preserves the row below",
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC",
+    before: [
+      ["A", "A", "A", "A", "A"],
+      ["B", "B", "B", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+    ],
+    steps: [{ write: "\x1b[2;3H\x1b[1J" }],
+    after: [
+      [" ", " ", " ", " ", " "],
+      [" ", " ", " ", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+    ],
+    controls: [{ row: 2, col: 0, char: "C" }],
+    seedNote: "ED1 seed was not measured",
+    controlNote: "ED1 following row control changed",
+    reset: "",
+  },
+  {
+    id: "erase.screen.all",
+    expected: "ED2 erases the whole screen",
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC",
+    before: [
+      ["A", "A", "A", "A", "A"],
+      ["B", "B", "B", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+    ],
+    steps: [{ write: "\x1b[2;3H\x1b[2J" }],
+    after: [
+      [" ", " ", " ", " ", " "],
+      [" ", " ", " ", " ", " "],
+      [" ", " ", " ", " ", " "],
+    ],
+    controls: [],
+    seedNote: "ED2 seed was not measured",
+    controlNote: "ED2 has no preserved cell",
+    reset: "",
+  },
+  {
+    id: "erase.selective",
+    expected: "Selective erase clears unprotected cells and keeps the DECSCA-protected cell",
+    seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE',
+    before: [["P", "A", "B", "C", "D", "E"]],
+    steps: [{ write: "\x1b[1;1H\x1b[?2J" }],
+    after: [["P", " ", " ", " ", " ", " "]],
+    // NO control, deliberately: the discriminator is the DECSCA-protected P. A terminal that takes it
+    // also clears every other cell, so a flank control would move and the row would read inconclusive
+    // where it must read unsupported (@chief 2026-10-11T22:58Z).
+    controls: [],
+    // A selective erase that drops the protection erases the protected P too - a measured negative.
+    ignored: [[" ", " ", " ", " ", " ", " "]],
+    seedNote: "Selective-erase seed was not measured",
+    controlNote: "Selective erase has no preserved cell besides the protected one",
+    reset: "",
+  },
+  {
+    id: "erase.ed-scroll-region",
+    expected: "ED0 erases below the cursor inside a scroll region and preserves the preceding row",
+    seed: "\x1b[1;1HKEEP!\x1b[3;1HERASE",
+    before: [
+      ["K", "E", "E", "P", "!"],
+      [" ", " ", " ", " ", " "],
+      ["E", "R", "A", "S", "E"],
+    ],
+    steps: [{ write: "\x1b[3;10r\x1b[3;1H\x1b[J" }],
+    after: [
+      ["K", "E", "E", "P", "!"],
+      [" ", " ", " ", " ", " "],
+      [" ", " ", " ", " ", " "],
+    ],
+    controls: [{ row: 0, col: 0, char: "K" }],
+    seedNote: "Scroll-region ED0 seed was not measured",
+    controlNote: "Scroll-region ED0 preceding row control changed",
+    reset: "\x1b[r",
+    cleanup: "\x1b[r",
+    // The sequence sets a scroll region whose bottom is row 10, so the fixture needs ten rows even
+    // though it compares three.
+    minRows: 10,
+  },
+]
 
-const ERASE_LINE_RIGHT_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  ...ERASE_LINE_FIXTURE,
-  edit: `${ERASE_LINE_FIXTURE.editAt}\x1b[0K\x1b[3;1H`,
-  expected: `${ERASE_LINE_FIXTURE.expectedPrefix}AB   ${ERASE_LINE_FIXTURE.expectedSuffix}`,
-}
-
-const ERASE_LINE_LEFT_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  ...ERASE_LINE_FIXTURE,
-  edit: `${ERASE_LINE_FIXTURE.editAt}\x1b[1K\x1b[3;1H`,
-  expected: `${ERASE_LINE_FIXTURE.expectedPrefix}   DE${ERASE_LINE_FIXTURE.expectedSuffix}`,
-}
-
-const ERASE_LINE_ALL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  ...ERASE_LINE_FIXTURE,
-  edit: `${ERASE_LINE_FIXTURE.editAt}\x1b[2K\x1b[3;1H`,
-  expected: `${ERASE_LINE_FIXTURE.expectedPrefix}     ${ERASE_LINE_FIXTURE.expectedSuffix}`,
-}
-
-const ERASE_SCREEN_FIXTURE = {
-  region: { top: 1, left: 1, bottom: 3, right: 5 },
-  sentinel: { row: 5, col: 1 },
-  cursorRow: 4,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1H",
-  editAt: "\x1b[2;3H",
-  expectedPrefix: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H",
-  expectedSuffix: "\x1b[4;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 6,
-  minCols: 6,
-}
-
-const ERASE_SCREEN_BELOW_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  ...ERASE_SCREEN_FIXTURE,
-  edit: `${ERASE_SCREEN_FIXTURE.editAt}\x1b[0J\x1b[4;1H`,
-  expected: `${ERASE_SCREEN_FIXTURE.expectedPrefix}AAAAA\x1b[2;1HBB   \x1b[3;1H     \x1b[4;1H`,
-}
-
-const ERASE_SCREEN_ABOVE_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  ...ERASE_SCREEN_FIXTURE,
-  edit: `${ERASE_SCREEN_FIXTURE.editAt}\x1b[1J\x1b[4;1H`,
-  expected: `${ERASE_SCREEN_FIXTURE.expectedPrefix}     \x1b[2;1H   BB\x1b[3;1HCCCCC\x1b[4;1H`,
-}
-
-const ERASE_SCREEN_ALL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  ...ERASE_SCREEN_FIXTURE,
-  edit: `${ERASE_SCREEN_FIXTURE.editAt}\x1b[2J\x1b[4;1H`,
-  expected: `${ERASE_SCREEN_FIXTURE.expectedPrefix}\x1b[4;1H`,
-}
-
-const ERASE_SELECTIVE_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 6 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: '\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE\x1b[2;1H',
-  edit: "\x1b[1;1H\x1b[?2J\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HP     \x1b[2;1H",
-  // A selective erase that drops the DECSCA protection erases the protected P too: the row's whole
-  // claim is that it survives, so that frame is a measured negative (@chief 2026-10-11T22:58Z).
-  ignored: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 7,
-}
-
+/**
+ * erase.el-with-attrs stays HAND-WRITTEN. This is its one-line coverage record (@cto 218ec7fe,
+ * 2026-10-12): "not a region-readback row: the kind compares characters, and this claim is an
+ * attribute rectangle; it converts when the kind's cell carries attributes". The trigger to convert is
+ * a third attribute-rectangle probe, or folding the SGR family's attribute readback (sgr.ts,
+ * sgrReadbackDecision) into the region kind, whichever comes first - then both arms get an
+ * attribute-carrying cell once, reviewed, and this row converts with it. Its byte-frame readback below
+ * still carries the background through the oracle's pixel digest, so the pixel arm keeps its evidence.
+ */
 const ERASE_EL_WITH_ATTRS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   region: { top: 1, left: 1, bottom: 1, right: 5 },
   sentinel: { row: 3, col: 1 },
@@ -125,181 +224,8 @@ const ERASE_EL_WITH_ATTRS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   minCols: 6,
 }
 
-const ERASE_ED_SCROLL_REGION_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 3, right: 5 },
-  sentinel: { row: 5, col: 1 },
-  cursorRow: 4,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HKEEP!\x1b[3;1HERASE\x1b[4;1H",
-  edit: "\x1b[3;10r\x1b[3;1H\x1b[J\x1b[r\x1b[4;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HKEEP!\x1b[4;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 10,
-  minCols: 6,
-}
-
 const ERASE_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "erase.character": ERASE_CHARACTER_READBACK,
-  "erase.line.right": ERASE_LINE_RIGHT_READBACK,
-  "erase.line.left": ERASE_LINE_LEFT_READBACK,
-  "erase.line.all": ERASE_LINE_ALL_READBACK,
-  "erase.screen.below": ERASE_SCREEN_BELOW_READBACK,
-  "erase.screen.above": ERASE_SCREEN_ABOVE_READBACK,
-  "erase.screen.all": ERASE_SCREEN_ALL_READBACK,
-  "erase.selective": ERASE_SELECTIVE_READBACK,
   "erase.el-with-attrs": ERASE_EL_WITH_ATTRS_READBACK,
-  "erase.ed-scroll-region": ERASE_ED_SCROLL_REGION_READBACK,
-}
-
-type ErasedCell = string | null
-
-function rowCells(ctx: TermlessContext, row: number): ErasedCell[] {
-  return Array.from({ length: 5 }, (_, col) => {
-    const char: unknown = ctx.getCell(row, col).char
-    return typeof char === "string" ? char : null
-  })
-}
-
-/** Record the entire small grid fixture, including cells that must survive the erase. */
-function eraseRowResult(
-  ctx: TermlessContext,
-  setup: string,
-  sequence: string,
-  expected: readonly (string | "blank")[],
-  adjacentRow = false,
-  expectedCursorX?: number,
-): ProbeResult {
-  const rows = ctx.getScrollback().screenLines
-  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < (adjacentRow ? 2 : 1)) {
-    return parserStateResult(
-      null,
-      "Complete erase row fixture",
-      { cols: ctx.cols, rows },
-      "Measured geometry cannot fit the erase fixture",
-    )
-  }
-  ctx.feed(setup)
-  const before = rowCells(ctx, 0)
-  const neighborBefore = adjacentRow ? rowCells(ctx, 1) : undefined
-  const cursorBefore = expectedCursorX === undefined ? undefined : ctx.getCursor()
-  ctx.feed(sequence)
-  const after = rowCells(ctx, 0)
-  const neighborAfter = adjacentRow ? rowCells(ctx, 1) : undefined
-  const response = JSON.stringify({
-    before,
-    ...(cursorBefore && { cursorBefore: { x: cursorBefore.x, y: cursorBefore.y } }),
-    after,
-    ...(adjacentRow && { neighborBefore, neighborAfter }),
-  })
-  const fixtureReady =
-    before.join("") === "ABCDE" &&
-    (!adjacentRow || neighborBefore?.join("") === "KEEP!") &&
-    (expectedCursorX === undefined || (cursorBefore?.x === expectedCursorX && cursorBefore?.y === 0))
-  const measured = [...after, ...(neighborAfter ?? [])]
-  if (!fixtureReady || measured.some((char) => char === null)) {
-    return {
-      pass: false,
-      response,
-      note: "Erase fixture, cursor setup, or cell metadata unavailable",
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state" },
-    }
-  }
-  const exact = expected.every((char, col) => (char === "blank" ? isBlank(after[col] ?? "\0") : after[col] === char))
-  const neighborPreserved = !adjacentRow || neighborAfter?.join("") === "KEEP!"
-  const supported = exact && neighborPreserved
-  return {
-    pass: supported,
-    response,
-    observation: { outcome: supported ? "supported" : "unsupported", evidence: "parser-state" },
-    assertions: [
-      {
-        kind: supported ? "positive" : "negative",
-        expected: `row 0 ${expected.join(",")}${adjacentRow ? "; row 1 KEEP!" : ""}${expectedCursorX === undefined ? "" : `; cursor before ${expectedCursorX},0`}`,
-        observed: response,
-      },
-    ],
-  }
-}
-
-/** ED0/1/2 must change the requested cells while preserving the opposite side. */
-function eraseScreenResult(
-  ctx: TermlessContext,
-  sequence: string,
-  expected: readonly [string, string, string],
-): ProbeResult {
-  const initialScrollback = ctx.getScrollback()
-  const lines = initialScrollback.screenLines
-  if (!Number.isSafeInteger(lines) || lines < 3 || !Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
-    return {
-      pass: false,
-      response: JSON.stringify({ initialScrollback }),
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "parser-state",
-        note: "Screen fixture needs at least three measured rows and six columns",
-      },
-    }
-  }
-  const middle = Math.floor(lines / 2)
-  const rows = [0, middle, lines - 1] as const
-  ctx.feed(`\x1b[1;1HAAAAA\x1b[${middle + 1};1HBBBBB\x1b[${lines};1HCCCCC\x1b[${middle + 1};3H`)
-  const before = rows.map((row) => rowCells(ctx, row))
-  const cursorBefore = ctx.getCursor()
-  const scrollbackBefore = ctx.getScrollback()
-  ctx.feed(sequence)
-  const after = rows.map((row) => rowCells(ctx, row))
-  const cursorAfter = ctx.getCursor()
-  const scrollbackAfter = ctx.getScrollback()
-  const response = JSON.stringify({
-    rows,
-    before,
-    cursorBefore: { x: cursorBefore.x, y: cursorBefore.y },
-    scrollbackBefore,
-    after,
-    cursorAfter: { x: cursorAfter.x, y: cursorAfter.y },
-    scrollbackAfter,
-  })
-  const fixtureReady =
-    before.every((row, i) => row.join("") === ["AAAAA", "BBBBB", "CCCCC"][i]) &&
-    cursorBefore.x === 2 &&
-    cursorBefore.y === middle &&
-    Number.isInteger(scrollbackBefore.totalLines) &&
-    scrollbackBefore.totalLines >= lines &&
-    !after.some((row) => row.some((char) => char === null))
-  if (!fixtureReady) {
-    return {
-      pass: false,
-      response,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "parser-state",
-        note: "Screen fixture, cursor setup, or cell readback unavailable",
-      },
-    }
-  }
-  const cellsMatch = expected.every((expectedRow, row) =>
-    [...expectedRow].every((expectedChar, col) => {
-      const actual = after[row]?.[col]
-      return expectedChar === " " ? isBlank(actual ?? "\0") : actual === expectedChar
-    }),
-  )
-  const preservedCursor = cursorAfter.x === cursorBefore.x && cursorAfter.y === cursorBefore.y
-  // ED0/1/2 specify visible cells; some terminals also move old rows into scrollback.
-  const supported = cellsMatch && preservedCursor
-  return {
-    pass: supported,
-    response,
-    observation: { outcome: supported ? "supported" : "unsupported", evidence: "parser-state" },
-    assertions: [
-      {
-        kind: supported ? "positive" : "negative",
-        expected: `rows ${rows.join(",")}: ${expected.join("/")}; cursor preserved`,
-        observed: response,
-      },
-    ],
-  }
 }
 
 /**
@@ -366,85 +292,6 @@ async function eraseSequenceCapture(
     }
   } finally {
     ctx.write(cleanup)
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
-  }
-}
-
-/** Capture an owned app's erase effect without interpreting its pixels. */
-async function captureEraseFixture(
-  ctx: TermContext,
-  id: string,
-  kind: "line" | "screen",
-  sequence: string,
-  expected: string,
-): Promise<ProbeResult> {
-  const readback = ERASE_READBACK_SPECS[id]
-  if (readback) {
-    // The verdict path owns this row wherever the run can map cells onto its own window; a context
-    // that cannot report its geometry gets a named refusal, not the ungraded pixel path.
-    const verdict = await captureRegionVerdict(ctx, id, readback)
-    if (verdict) return verdict
-  }
-  const rows = ctx.rows
-  const cols = ctx.cols
-  const minRows = kind === "line" ? 2 : 3
-  const capture = ctx.capture
-  if (!capture || !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < 6) {
-    const note = `Erase pixel fixture needs capture and measured ${minRows}x6 geometry; measured ${rows}x${cols}`
-    return {
-      pass: false,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-    }
-  }
-
-  const middle = Math.floor((rows + 1) / 2)
-  const safeCursor = `\x1b[${kind === "line" ? 2 : rows};6H`
-  const seed =
-    kind === "line" ? "\x1b[1;1HABCDE\x1b[2;1HKEEP!" : `\x1b[1;1HAAAAA\x1b[${middle};1HBBBBB\x1b[${rows};1HCCCCC`
-  const eraseAt = `\x1b[${kind === "line" ? 1 : middle};3H`
-  try {
-    ctx.write("\x1b[0m")
-    const blankRow = " ".repeat(cols)
-    // CUP clears pending wrap between full rows without scrolling the bottom row.
-    for (let row = 1; row <= rows; row++) ctx.write(`\x1b[${row};1H${blankRow}`)
-    ctx.write(safeCursor)
-    const blank = await capture({ role: "control", label: "Blank erase comparator" })
-    ctx.write(seed)
-    ctx.write(safeCursor)
-    const before = await capture({ role: "control", label: "Before erase: seeded and unaffected cells" })
-    ctx.write(eraseAt)
-    ctx.write(sequence)
-    ctx.write(safeCursor)
-    const target = await capture({ role: "target", label: "After erase: target and unaffected cells" })
-    const observed = JSON.stringify({
-      rows,
-      cols,
-      middle: kind === "screen" ? middle : undefined,
-      blank,
-      before,
-      target,
-    })
-    return {
-      pass: false,
-      response: observed,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "pixels",
-        screenshotRef: target.ref,
-        frames: [blank, before, target],
-        note: "Blank comparator and seeded target/control pixels captured; erase effect requires independent review",
-      },
-      assertions: [
-        {
-          kind: "positive",
-          expected: `Capture blank comparator, seeded before, and post-${sequence} target at measured geometry; visual expectation ${expected}`,
-          observed,
-          note: "capture-only assertion; no erase support judgment",
-        },
-      ],
-    }
-  } finally {
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
   }
 }
@@ -580,74 +427,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
 }
 
 export const eraseProbes: ProbeDefinition[] = [
-  {
-    ...probe(
-      "erase.line.right",
-      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
-      (ctx) => captureEraseFixture(ctx, "erase.line.right", "line", "\x1b[0K", "row 1 AB___; row 2 KEEP!"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.line.left",
-      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
-      (ctx) => captureEraseFixture(ctx, "erase.line.left", "line", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.line.all",
-      (ctx) =>
-        eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
-      (ctx) => captureEraseFixture(ctx, "erase.line.all", "line", "\x1b[2K", "row 1 _____; row 2 KEEP!"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.screen.below",
-      (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
-      (ctx) =>
-        captureEraseFixture(ctx, "erase.screen.below", "screen", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.screen.above",
-      (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
-      (ctx) =>
-        captureEraseFixture(ctx, "erase.screen.above", "screen", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.screen.all",
-      (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
-      (ctx) => captureEraseFixture(ctx, "erase.screen.all", "screen", "\x1b[2J", "top/middle/bottom _____"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
+  ...regionReadbackProbes(eraseReadbackRows),
 
   {
     ...probe(
@@ -676,93 +456,6 @@ export const eraseProbes: ProbeDefinition[] = [
         )
       },
       scrollbackEraseApp,
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "erase.character",
-      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
-      async (ctx) => {
-        const readback = ERASE_READBACK_SPECS["erase.character"]
-        if (readback) {
-          const verdict = await captureRegionVerdict(ctx, "erase.character", readback)
-          if (verdict) return verdict
-        }
-        const viaCapture = await eraseSequenceCapture(
-          ctx,
-          1,
-          6,
-          "Erase character",
-          ["\x1b[1;1HABCDE"],
-          "\x1b[1;2H",
-          "\x1b[2X",
-          "row 1 A__DE with columns 2-3 blank",
-        )
-        if (viaCapture) return viaCapture
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("ABCD")
-        ctx.write("\x1b[1;2H") // Move to col 2
-        ctx.write("\x1b[2X") // ECH 2
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.selective",
-      (ctx) => selectiveEraseResult(ctx, "\x1b[?2J", false),
-      async (ctx) => {
-        const readback = ERASE_READBACK_SPECS["erase.selective"]
-        if (readback) {
-          const verdict = await captureRegionVerdict(ctx, "erase.selective", readback)
-          if (verdict) return verdict
-        }
-        const viaCapture = await eraseSequenceCapture(
-          ctx,
-          1,
-          6,
-          "Selective erase",
-          ['\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE'],
-          "\x1b[1;1H",
-          "\x1b[?2J",
-          "the DECSCA-protected P survives while ABCDE is erased",
-        )
-        if (viaCapture) return viaCapture
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("ABCDE")
-        ctx.write("\x1b[?2J") // DECSED
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "erased cells or scrollback")
-      },
     ),
     termNeedsGeometry: true,
   },
@@ -856,86 +549,6 @@ export const eraseProbes: ProbeDefinition[] = [
           return unmeasuredCellResult(pos, "erased cells or scrollback")
         } finally {
           ctx.write("\x1b[0m")
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  // ED0 preserves rows preceding the cursor, including above a scrolling region.
-  {
-    ...probe(
-      "erase.ed-scroll-region",
-      (ctx) => {
-        const expected = "ED0 erases measured cells below the cursor and preserves the preceding row"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(rows) || rows < 10 || !Number.isSafeInteger(ctx.cols) || ctx.cols < 10) {
-          return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Need a measured 10x10 fixture")
-        }
-        try {
-          ctx.feed("\x1b[1;1HKEEP!\x1b[3;1HERASE\x1b[3;10r\x1b[3;1H")
-          const before = { control: rowCells(ctx, 0), target: rowCells(ctx, 2), cursor: ctx.getCursor() }
-          if (
-            before.control.join("") !== "KEEP!" ||
-            before.target.join("") !== "ERASE" ||
-            before.cursor.x !== 0 ||
-            before.cursor.y !== 2
-          ) {
-            return parserStateResult(null, expected, { before }, "Erase region seed or cursor setup failed")
-          }
-          ctx.feed("\x1b[J")
-          const after = { control: rowCells(ctx, 0), target: rowCells(ctx, 2) }
-          const valid = after.control.join("") === "KEEP!" && after.target.every((char) => char !== null)
-          return parserStateResult(
-            valid ? after.target.every((char) => char !== null && isBlank(char)) : null,
-            expected,
-            { before, after },
-            valid ? undefined : "Preceding row or cell metadata was not preserved",
-          )
-        } finally {
-          ctx.feed("\x1b[r")
-        }
-      },
-      async (ctx) => {
-        const readback = ERASE_READBACK_SPECS["erase.ed-scroll-region"]
-        if (readback) {
-          const verdict = await captureRegionVerdict(ctx, "erase.ed-scroll-region", readback)
-          if (verdict) return verdict
-        }
-        const viaCapture = await eraseSequenceCapture(
-          ctx,
-          10,
-          10,
-          "ED at scroll region",
-          ["\x1b[1;1HKEEP!", "\x1b[3;1HERASE", "\x1b[3;10r"],
-          "\x1b[3;1H",
-          "\x1b[J",
-          "row 1 KEEP! is preserved while the region cells at and below the cursor are erased",
-          "\x1b[r",
-        )
-        if (viaCapture) return viaCapture
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 10) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 10x10, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[2J\x1b[H") // clear
-        ctx.write("KEEP_THIS\r\n")
-        for (let i = 1; i <= 5; i++) ctx.write(`row${i}\r\n`)
-        try {
-          ctx.write("\x1b[3;10r") // scroll region rows 3-10
-          ctx.write("\x1b[3;1H") // inside region
-          ctx.write("\x1b[J") // ED 0
-          const pos = await ctx.queryCursorPosition()
-          return unmeasuredCellResult(pos, "erased cells or scrollback")
-        } finally {
-          ctx.write("\x1b[r") // Restore the owned fixture to full-screen margins.
         }
       },
     ),

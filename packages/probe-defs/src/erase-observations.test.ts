@@ -7,61 +7,374 @@
  */
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
-import { eraseProbes } from "./erase.ts"
-import { editingProbes } from "./editing.ts"
+import { eraseProbes, eraseReadbackRows } from "./erase.ts"
+import { ALL_PROBES } from "./index.ts"
+import { regionReadbackProbe } from "./region-readback-kind.ts"
+import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
 
-const ids = ["erase.line.right", "erase.line.left", "erase.line.all", "erase.character"] as const
-const screenIds = ["erase.screen.below", "erase.screen.above", "erase.screen.all"] as const
-const capturedIds = ["erase.line.right", "erase.line.left", "erase.line.all", ...screenIds] as const
+/**
+ * The kind table's own rows, one per CONVERTED Erase probe, listed BY NAME so a row that loses its
+ * definition - or a probe that stops being built from its row - fails here rather than as a silently
+ * smaller count in a census taken later.
+ *
+ * `erase.el-with-attrs` and `erase.screen.scrollback` are deliberately absent: the first is an
+ * attribute claim and the second a history claim, and the region kind compares CHARACTERS on a CELL
+ * WINDOW (their one-line coverage records live in erase.ts). `erase-contract.test.ts` binds all eleven
+ * rows beside these nine.
+ */
+const KIND_TABLE_ROWS = eraseReadbackRows.map((row) => ({
+  id: row.id,
+  expected: "decided" as const,
+  claim: row.expected,
+}))
+
+/**
+ * Tests dropped by the 28450 Erase conversion, each named with its replacement (this file used to drive
+ * the nine hand-written termless callbacks through a local `headless`/`screenHeadless` fake):
+ *  - "<id> binds exact erased and preserved cells", "<id> requires exact erased cells and preserved
+ *    controls", "<id> grades cells and cursor even when numeric history grows", "<id> does not blame
+ *    erasure when CHA setup is ignored", "EL 2 preserves a neighboring row" -> "every kind row decides
+ *    from its own cells, through the shared kind" plus "<row> binds its claim to its own cells and
+ *    calibrated controls".
+ *  - "<id> refuses incomplete fixture or cell readback" and "headless erase fixtures require measured
+ *    rows and columns before writes" -> the kind's own geometry and load refusals, asserted below.
+ *  - "ED2 retains scrollback changes as raw context" / "ED2 accepts erased cells and preserved cursor
+ *    with growing history" -> dropped: a kind row reads CELLS, not history. The history-context arms
+ *    belonged to the deleted hand-written callback; no erase capability claim depends on them.
+ *  - "selective erasure observes protected cells and the unprotected target" -> the row's own `ignored`
+ *    measured negative plus the per-row loop; the pixel arm's proof of the same shape is
+ *    region-readback-contract.test.ts.
+ *  - "region erase requires changed cells and a preserved preceding row" -> the row's own `controls`.
+ */
+
+/** A minimal TermlessContext the declared screens below override. */
+function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+  return {
+    cols: 24,
+    feed() {},
+    feedCapture: () => "",
+    getCell: () => ({
+      char: " ",
+      bold: false,
+      dim: false,
+      italic: false,
+      underline: false,
+      strikethrough: false,
+      inverse: false,
+      hidden: false,
+      blink: false,
+      fg: null,
+      bg: null,
+      wide: false,
+    }),
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+    getMode: () => false,
+    getText: () => "",
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
+    getTitle: () => "",
+    reset() {},
+    capabilities: {
+      truecolor: false,
+      kittyKeyboard: false,
+      kittyGraphics: false,
+      sixel: false,
+      osc8Hyperlinks: false,
+      semanticPrompts: false,
+      reflow: false,
+      unicode: "unknown",
+      extensions: new Set(),
+    },
+    ...overrides,
+  }
+}
+
+/**
+ * The same TermContext shape the kept hand-written rows use, plus an event log and measured geometry,
+ * so a converted row is driven at the exact size on which it must refuse.
+ */
+function appWithEvents(rows: number, cols: number, events: string[]): TermContext {
+  const unexpected = (name: string): never => {
+    throw new Error(`Unexpected ${name} in erase geometry fixture`)
+  }
+  return {
+    rows,
+    cols,
+    write(bytes): void {
+      events.push(bytes)
+    },
+    queryCursorPosition: async () => {
+      events.push("CPR")
+      return { row: 3, col: 6 }
+    },
+    measureRenderedWidth: async () => unexpected("measureRenderedWidth"),
+    query: async () => unexpected("query"),
+    queryWithSentinel: async () => unexpected("queryWithSentinel"),
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => unexpected("queryMode"),
+  }
+}
+
+/**
+ * A headless surface whose screen is exactly the grid a test declares for each sequence the row feeds:
+ * a sequence the test does not name leaves the grid unchanged, which is how a test says "this terminal
+ * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
+ * only when its frame agrees with a terminal the test drove independently.
+ */
+function declaredScreen(screens: Record<string, readonly (readonly string[])[]>, cols: number): TermlessContext {
+  let cells: readonly (readonly string[])[] = []
+  return headless({
+    cols,
+    feed: (sequence) => {
+      const next = screens[sequence]
+      if (next !== undefined) cells = next
+    },
+    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+  })
+}
+
+/** The kind reads a blank as `""` or `" "` alike, so a compare normalizes BOTH grids to spaces. */
+const toSpaces = (grid: readonly (readonly string[])[]) =>
+  grid.map((cells) => cells.map((cell) => (cell === "" ? " " : cell)))
+
+const firstStep = (id: string): string => {
+  const row = eraseReadbackRows.find((entry) => entry.id === id)
+  const write = row?.steps[0]?.write
+  if (write === undefined) throw new Error(`missing single step for ${id}`)
+  return write
+}
+
+test("the kind table names every converted erase row, and every row reaches the frozen suite", () => {
+  expect(eraseReadbackRows.map((row) => row.id)).toEqual(KIND_TABLE_ROWS.map((row) => row.id))
+  for (const row of eraseReadbackRows) {
+    expect(
+      eraseProbes.filter((probe) => probe.id === row.id),
+      `${row.id} has exactly one probe`,
+    ).toHaveLength(1)
+    expect(
+      ALL_PROBES.some((probe) => probe.id === row.id),
+      `${row.id} is in the suite`,
+    ).toBe(true)
+  }
+  // Nine converted rows plus the two hand-written ones (el-with-attrs, screen.scrollback).
+  expect(eraseProbes).toHaveLength(11)
+})
+
+/**
+ * The derivation, measured: the probe the kind builds from a row reads THAT row's seed cells and THAT
+ * row's target cells against a surface implementing the claim. A hand-written probe beside the table
+ * cannot satisfy this without also carrying the row's own numbers.
+ */
+test("every kind row decides from its own cells, through the shared kind", async () => {
+  for (const row of eraseReadbackRows) {
+    const probe = eraseProbes.find((entry) => entry.id === row.id)
+    expect(probe, `${row.id} has a kind-built probe`).toBeDefined()
+    if (!probe) continue
+    expect(probe.termNeedsGeometry, row.id).toBe(true)
+    expect(probe.termlessObservationEvidence, row.id).toBe("parser-state")
+    const measured = probe.termless!(headlessContext(createSemanticSurface()))
+    const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
+    expect(toSpaces(state.before), `${row.id} reads the row's seed cells`).toEqual(toSpaces(row.before))
+    expect(toSpaces(state.after), `${row.id} reads the row's target cells`).toEqual(toSpaces(row.after))
+    expect(measured.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(measured.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
+    const contract = KIND_TABLE_ROWS.find((entry) => entry.id === row.id)
+    expect(contract, `${row.id} is named in the table`).toBeDefined()
+    if (!contract) continue
+    const graded = await regradeRow(probe, contract, { headless: headlessContext(createSemanticSurface()) })
+    expect(graded.after, row.id).toBe("supported")
+    expect(graded.satisfies, row.id).toBe(true)
+  }
+})
+
+test("the kind table replays every row deterministically", async () => {
+  for (const row of KIND_TABLE_ROWS) {
+    const probe = eraseProbes.find((entry) => entry.id === row.id)
+    if (!probe) continue
+    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
+    expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
+  }
+})
+
+/**
+ * Each row's claim, read from a screen the test declares: the sequence's own cells read supported, a
+ * terminal that ignored the sequence reads unsupported, and a row whose seed frame or whose never-
+ * written control cell is wrong reads inconclusive - so the table is a measurement, not a stamp.
+ */
+for (const row of eraseReadbackRows) {
+  test(`${row.id} binds its claim to its own cells and calibrated controls`, () => {
+    const probe = eraseProbes.find((entry) => entry.id === row.id)
+    if (!probe?.termless) throw new Error(`Missing headless ${row.id}`)
+    const cols = 24
+    const step = firstStep(row.id)
+    const right = (row.region?.left ?? 1) + (row.before[0]?.length ?? 0) - 1
+
+    const supported = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols))
+    expect(supported.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
+
+    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols))
+    expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored.assertions?.[0], row.id).toMatchObject({ kind: "negative" })
+
+    const badSeed = row.before.map((cells) => cells.map(() => "?"))
+    expect(probe.termless(declaredScreen({ [row.seed]: badSeed }, cols)).observation, row.id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+
+    const control = row.controls[0]
+    if (control !== undefined) {
+      const moved = row.after.map((cells) => [...cells])
+      moved[control.row]![control.col] = "?"
+      expect(
+        probe.termless(declaredScreen({ [row.seed]: row.before, [step]: moved }, cols)).observation,
+        `${row.id} moved control ${control.row},${control.col}`,
+      ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    }
+
+    // A grid narrower than the row's own right edge refuses before a single byte is fed.
+    const narrow = declaredScreen({ [row.seed]: row.before, [step]: row.after }, right - 1)
+    const fed: string[] = []
+    const watched = { ...narrow, feed: (sequence: string) => fed.push(sequence) }
+    expect(probe.termless(watched).observation, `${row.id} at ${right - 1} columns`).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect(fed, `${row.id} fed bytes on a screen narrower than its region`).toEqual([])
+  })
+}
+
+/**
+ * Controls are what stops a fixture failure being read as a capability verdict, so each must be a REAL
+ * control: a column the row's own sequence never writes. This is the shape that let a first revision of
+ * the kind ship a step that rewrote its own control with every test passing, because nothing measured
+ * the control's survival. Here each control cell is covered with a marker AFTER the seed, the row's own
+ * steps run on the reference parser, and the markers must still stand.
+ */
+test("every row's controls survive the row's own steps on the reference parser", () => {
+  for (const row of eraseReadbackRows) {
+    // ED2 has no preserved cell; SL/SR-style rows shift every compared column and declare none.
+    if (row.controls.length === 0) continue
+    const ctx = headlessContext(createSemanticSurface())
+    ctx.feed(row.seed)
+    for (const control of row.controls) ctx.feed(`\x1b[${control.row + 1};${control.col + 1}H\u00b5`)
+    for (const step of row.steps) ctx.feed(step.write)
+    expect(
+      row.controls.map((control) => ctx.getCell(control.row, control.col).char),
+      `${row.id} rewrites its own control`,
+    ).toEqual(row.controls.map(() => "\u00b5"))
+  }
+})
+
+/**
+ * The nine converted rows are decided by the region verdict, so a run with no owned capture can only
+ * answer "inconclusive". A fixture that can only answer that is deleted rather than kept (@cto A2), so
+ * every one of them refuses BY NAME and writes nothing - on the smallest grid, on a grid at the row's
+ * own derived need and on a large one alike. With a capture adapter that answers no CSI 16 t the same
+ * rows refuse through the pixel-geometry path instead.
+ */
+test("every converted row refuses by name and writes nothing without an owned capture", async () => {
+  for (const row of eraseReadbackRows) {
+    const definition = eraseProbes.find((probe) => probe.id === row.id)
+    if (!definition?.term) throw new Error(`missing app callback for ${row.id}`)
+    expect(definition.termNeedsGeometry, row.id).toBe(true)
+    for (const [rows, cols] of [
+      [1, 1],
+      [4, 24],
+      [24, 80],
+    ] as const) {
+      const events: string[] = []
+      const result = await definition.term(appWithEvents(rows, cols, events))
+      expect(result.observation, `${row.id} at ${rows}x${cols}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+      })
+      expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
+      expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])
+    }
+  }
+})
+
+test("every converted row refuses by name when the terminal answers no pixel geometry", async () => {
+  for (const row of eraseReadbackRows) {
+    const definition = eraseProbes.find((probe) => probe.id === row.id)
+    if (!definition?.term) throw new Error(`missing app callback for ${row.id}`)
+    const events: string[] = []
+    const result = await definition.term({
+      ...appWithEvents(24, 80, events),
+      capture: async ({ role, label }) => ({
+        role,
+        label,
+        capturedAt: 1,
+        ref: `sha256:${"1".repeat(64)}`,
+      }),
+    })
+    expect(result.observation, row.id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(String(result.observation?.note), row.id).toContain("CSI 16 t")
+    expect(result.observation?.outcome, row.id).not.toBe("supported")
+    expect(events, row.id).toEqual([])
+  }
+})
+
+/**
+ * NO SILENT ERRORS, at load: a row whose own shape disagrees with itself must never reach a compare
+ * where a missing column is read against a blank and accepted. Each mismatch names the row.
+ */
+test("a row whose shape disagrees with itself refuses at load", () => {
+  const row = eraseReadbackRows[0]
+  expect(row, "the kind table has a first row").toBeDefined()
+  if (!row) return
+  expect(() => regionReadbackProbe({ ...row, before: [] })).toThrow(/at least one compared row/)
+  expect(() => regionReadbackProbe({ ...row, before: [[]] })).toThrow(/at least one compared column/)
+  expect(() => regionReadbackProbe({ ...row, before: [["A", "B"], ["A"]] })).toThrow(/compared row 1 names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, after: [] })).toThrow(/after names 0 rows/)
+  expect(() => regionReadbackProbe({ ...row, after: [["A"]] })).toThrow(/after row 0 names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, ignored: [["A"]] })).toThrow(/ignored row 0 names 1 cells/)
+  expect(() => regionReadbackProbe({ ...row, controls: [{ row: 0, col: 9, char: "A" }] })).toThrow(/outside/)
+  expect(() => regionReadbackProbe({ ...row, controls: [{ row: 3, col: 0, char: "A" }] })).toThrow(
+    /control row 3 is outside/,
+  )
+})
+
+/**
+ * NO SILENT ERRORS, at load (@cto 2026-10-12, must-fix 2): the minimum geometry DERIVES from the row.
+ * An explicit minimum below that need refuses at LOAD and names both numbers; a larger one is for the
+ * row to justify in a line - erase.ed-scroll-region's ten rows are exactly that, for a scroll region
+ * whose bottom is row 10.
+ */
+test("an explicit minimum geometry below what a row uses refuses at load", () => {
+  const row = eraseReadbackRows.find((entry) => entry.id === "erase.ed-scroll-region")
+  expect(row, "the kind table names erase.ed-scroll-region").toBeDefined()
+  if (!row) return
+  // The row compares three five-column rows with its cursor on row 4 and its witness on row 5, so its
+  // derived need is 5 rows by 5 + the family's two-column margin = 7 columns; the ten rows it declares
+  // are for the scroll region, not the compared grid.
+  expect(() => regionReadbackProbe({ ...row, minRows: 4 })).toThrow(/explicit minRows 4 is below the 5 rows/)
+  expect(() => regionReadbackProbe({ ...row, minCols: 6 })).toThrow(/explicit minCols 6 is below the 7 columns/)
+  expect(() => regionReadbackProbe({ ...row, minRows: 10, minCols: 7 })).not.toThrow()
+  expect(() => regionReadbackProbe({ ...row, cursorRow: 6, sentinel: { row: 5, col: 1 } })).not.toThrow()
+  expect(() => regionReadbackProbe({ ...row, cursorRow: 6, sentinel: { row: 5, col: 1 }, minRows: 5 })).toThrow(
+    /explicit minRows 5 is below the 6 rows this row uses \(cursor row 6, sentinel row 5\)/,
+  )
+})
+
 function byId(id: string) {
   const probe = eraseProbes.find((item) => item.id === id)
   if (!probe?.termless || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
   return { ...probe, term: probe.term, termless: probe.termless }
 }
 
-type ScreenRows = readonly [string, string, string]
-
-function screenHeadless(
-  after: ScreenRows,
-  options: {
-    before?: ScreenRows
-    cursorBefore?: { x: number; y: number }
-    cursorAfter?: { x: number; y: number }
-    missing?: { row: number; col: number }
-    historyBefore?: number
-    historyAfter?: number
-  } = {},
-): TermlessContext {
-  const base = headless("ABCDE")
-  const before = options.before ?? (["AAAAA", "BBBBB", "CCCCC"] as const)
-  let erased = false
-  return {
-    ...base,
-    feed(sequence) {
-      if (/^\x1b\[[012]J$/.test(sequence)) erased = true
-    },
-    getCell(row, col) {
-      const char =
-        erased && options.missing?.row === row && options.missing.col === col
-          ? undefined
-          : ((erased ? after : before)[row]?.[col] ?? "")
-      return { ...base.getCell(0, 0), char: char as string }
-    },
-    getCursor: () => {
-      const cursor = erased ? (options.cursorAfter ?? options.cursorBefore) : options.cursorBefore
-      return { x: cursor?.x ?? 2, y: cursor?.y ?? 1, visible: true, style: null }
-    },
-    getScrollback: () => ({
-      viewportOffset: 0,
-      screenLines: 3,
-      totalLines: erased ? (options.historyAfter ?? options.historyBefore ?? 4) : (options.historyBefore ?? 4),
-    }),
-  }
-}
-
-function headless(
+function eraseCellsHeadless(
   after: string,
   adjacentAfter = "KEEP!",
   missingCell?: number,
@@ -136,365 +449,6 @@ function app(position: { row: number; col: number } | null): TermContext {
   }
 }
 
-/** The same fixture, but the terminal answers its own pixel report — the verdict's prerequisite. */
-function appWithPixelReport(position: { row: number; col: number } | null): TermContext {
-  return {
-    ...app(position),
-    async queryWithSentinelOutcome(sequence) {
-      if (sequence === "\x1b[16t") {
-        return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
-      }
-      if (sequence === "\x1b[14t") {
-        return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
-      }
-      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
-    },
-  }
-}
-
-// Existing cell assertions exercise full-size fixtures; they cannot catch app
-// writes that wrap or clamp before an undersized fixture has been declined.
-test.each([
-  ["erase.line.right", 5, 6],
-  ["erase.line.left", 5, 6],
-  ["erase.line.all", 5, 6],
-  ["erase.screen.below", 6, 6],
-  ["erase.screen.above", 6, 6],
-  ["erase.screen.all", 6, 6],
-  ["erase.screen.scrollback", 5, 5],
-  ["erase.character", 3, 6],
-  ["erase.selective", 3, 7],
-  ["erase.el-with-attrs", 3, 6],
-  ["erase.ed-scroll-region", 10, 6],
-] as const)("%s declines undersized app fixtures before any terminal I/O", async (id, rows, cols) => {
-  const probe = byId(id)
-  for (const [measuredRows, measuredCols] of [
-    [rows - 1, cols],
-    [rows, cols - 1],
-    [NaN, cols],
-    [rows, Infinity],
-  ]) {
-    const io: string[] = []
-    const result = await probe.term({
-      ...app({ row: 1, col: 1 }),
-      rows: measuredRows!,
-      cols: measuredCols!,
-      capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `sha256:${"1".repeat(64)}` }),
-      write: (sequence) => io.push(sequence),
-      queryCursorPosition: async () => {
-        io.push("CPR")
-        return { row: 1, col: 1 }
-      },
-    })
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-    })
-    expect(io).toEqual([])
-  }
-  expect(probe.termNeedsGeometry).toBe(true)
-  const writes: string[] = []
-  const result = await probe.term({
-    ...app({ row: 1, col: 1 }),
-    rows,
-    cols,
-    capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `sha256:${"1".repeat(64)}` }),
-    write: (sequence) => writes.push(sequence),
-  })
-  if (id === "erase.screen.scrollback") {
-    expect(writes).toEqual([])
-    expect(result.notTested).toEqual({
-      reason: "no-semantic-observable",
-      noObservable: expect.stringMatching(/XTEST|wheel|scrollback|history/i),
-    })
-    expect(result.observation).toBeUndefined()
-    return
-  }
-  // Every remaining erase row now decides from the owned window with the region verdict: a capture
-  // adapter with no CSI 16 t reply cannot map cells onto the window, so the probe refuses BY NAME
-  // and never paints the ungraded fixture (28638 precedent for erase.character).
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "query",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
-  expect(result.observation?.outcome).not.toBe("supported")
-  expect(writes).toEqual([])
-})
-
-test.each([
-  ["erase.el-with-attrs", "\x1b[42m", "\x1b[0m"],
-  ["erase.ed-scroll-region", "\x1b[3;10r", "\x1b[r"],
-] as const)("%s restores its changed fixture after a write error", async (id, change, restore) => {
-  const writes: string[] = []
-  let changed = false
-  let failed = false
-  const failure = new Error("fixture write failed")
-  await expect(
-    byId(id).term({
-      ...app({ row: 1, col: 1 }),
-      write(sequence) {
-        writes.push(sequence)
-        if (changed && !failed) {
-          failed = true
-          throw failure
-        }
-        if (sequence === change) changed = true
-      },
-    }),
-  ).rejects.toBe(failure)
-  expect(writes.at(-1)).toBe(restore)
-})
-
-// 28450 slice C: the erase rows are decided by the region verdict from the owned window's cells,
-// so the old blank-comparator/seed/target pixel fixture is unreachable. The refusals that remain
-// reachable are asserted here (undersized above, absent capture below, geometry-missing), and the
-// decision itself per id by region-readback-contract.test.ts.
-
-test.each(capturedIds)("%s declines absent capture before writing", async (id) => {
-  const writes: string[] = []
-  const result = await byId(id).term!({ ...app({ row: 1, col: 3 }), write: (sequence) => writes.push(sequence) })
-  expect(writes).toEqual([])
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
-  expect(result.assertions).toBeUndefined()
-})
-
-test.each(["erase.line.right", "erase.screen.below"] as const)(
-  "%s restores the cursor and clears the screen when the verdict capture throws",
-  async (id) => {
-    const writes: string[] = []
-    const failure = new Error("owned capture failed")
-    let count = 0
-    await expect(
-      byId(id).term!({
-        ...appWithPixelReport({ row: 1, col: 3 }),
-        write: (sequence) => writes.push(sequence),
-        capture: async ({ role, label }) => {
-          count++
-          if (count === 2) throw failure
-          return {
-            role,
-            label,
-            capturedAt: count,
-            ref: `sha256:${String(count).padStart(64, "0")}`,
-            regionDigest: `sha256:region-${count}`,
-            pixelsDigest: `sha256:pixels-${count}`,
-          }
-        },
-      }),
-    ).rejects.toBe(failure)
-    expect(writes.at(-1)).toContain("\x1b[2J")
-  },
-)
-
-test.each([
-  ["erase.line.right", "AB   ", "A    ", "  CDE"],
-  ["erase.line.left", "   DE", "    E", "AB   "],
-  ["erase.line.all", "     ", "   DE", "AB   "],
-  ["erase.character", "   DE", "    E", "AB   "],
-] as const)("%s binds exact erased and preserved cells to its observation", (id, expected, overErase, wrongSide) => {
-  const probe = byId(id)
-  const supported = probe.termless!(headless(expected))
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(supported.response).toBeTruthy()
-  expect(supported.assertions).toMatchObject([{ kind: "positive", observed: supported.response }])
-  const raw: unknown = JSON.parse(supported.response ?? "")
-  expect(raw).toMatchObject({ before: "ABCDE".split(""), after: expected.split("") })
-  if (id !== "erase.line.all") {
-    expect(raw).toMatchObject({ cursorBefore: { x: id === "erase.character" ? 0 : 2, y: 0 } })
-  }
-
-  for (const actual of ["ABCDE", overErase, wrongSide]) {
-    if (actual === expected) continue
-    const unsupported = probe.termless!(headless(actual))
-    expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-    expect(unsupported.assertions).toMatchObject([{ kind: "negative", observed: unsupported.response }])
-  }
-
-  const missing = probe.termless!(headless(expected, "KEEP!", 2))
-  expect(missing.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-  })
-  expect(missing.assertions).toBeUndefined()
-})
-
-test.each([
-  ["erase.line.right", "ABCDE"],
-  ["erase.line.left", "     "],
-  ["erase.character", "ABCDE"],
-] as const)("%s does not blame erasure when CHA setup is ignored", (id, actual) => {
-  const result = byId(id).termless!(headless(actual, "KEEP!", undefined, true))
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(result.assertions).toBeUndefined()
-  const raw: unknown = JSON.parse(result.response ?? "")
-  expect(raw).toMatchObject({ cursorBefore: { x: 5, y: 0 } })
-})
-
-test("EL 2 preserves a neighboring row", () => {
-  const el2 = byId("erase.line.all")
-  expect(el2.termless!(headless("     ", "GONE!")).observation).toMatchObject({
-    outcome: "unsupported",
-    evidence: "parser-state",
-  })
-})
-
-// ED0/1/2 act on screen cells, which the earlier EL/ECH row fixtures never inspect.
-test.each([
-  ["erase.screen.below", ["AAAAA", "BB   ", "     "], ["     ", "BBBBB", "CCCCC"], ["AAAAA", "   BB", "CCCCC"]],
-  ["erase.screen.above", ["     ", "   BB", "CCCCC"], ["AAAAA", "BBBBB", "     "], ["AAAAA", "BB   ", "CCCCC"]],
-  ["erase.screen.all", ["     ", "     ", "     "], ["AAAAA", "BBBBB", "CCCCC"], ["AAAAA", "     ", "CCCCC"]],
-] as const)("%s requires exact erased cells and preserved controls", (id, expected, ignored, wrongSide) => {
-  const probe = byId(id)
-  const supported = probe.termless!(screenHeadless(expected))
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(supported.assertions).toMatchObject([{ kind: "positive", observed: supported.response }])
-  const raw: unknown = JSON.parse(supported.response ?? "")
-  expect(raw).toMatchObject({
-    before: ["AAAAA", "BBBBB", "CCCCC"].map((row) => row.split("")),
-    after: expected.map((row) => row.split("")),
-    cursorBefore: { x: 2, y: 1 },
-    cursorAfter: { x: 2, y: 1 },
-  })
-  for (const actual of [ignored, wrongSide, ["     ", "     ", "     "] as const]) {
-    if (actual.join("") === expected.join("")) continue
-    const result = probe.termless!(screenHeadless(actual))
-    expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-    expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
-  }
-})
-
-test.each(screenIds)("%s refuses incomplete fixture or cell readback", (id) => {
-  const expected: ScreenRows =
-    id === "erase.screen.below"
-      ? ["AAAAA", "BB   ", "     "]
-      : id === "erase.screen.above"
-        ? ["     ", "   BB", "CCCCC"]
-        : ["     ", "     ", "     "]
-  const probe = byId(id)
-  for (const context of [
-    screenHeadless(expected, { before: ["AAAAA", "XXXXX", "CCCCC"] }),
-    screenHeadless(expected, { cursorBefore: { x: 0, y: 1 } }),
-    screenHeadless(expected, { missing: { row: 1, col: 2 } }),
-  ]) {
-    const result = probe.termless!(context)
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(result.assertions).toBeUndefined()
-  }
-})
-
-test("ED2 retains scrollback changes as raw context", () => {
-  const all = byId("erase.screen.all")
-  const historyChanged = all.termless!(screenHeadless(["     ", "     ", "     "], { historyAfter: 3 }))
-  expect(historyChanged.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(JSON.parse(historyChanged.response ?? "") as unknown).toMatchObject({
-    scrollbackBefore: { totalLines: 4 },
-    scrollbackAfter: { totalLines: 3 },
-  })
-})
-
-// Alacritty 0.26's retained raw result blanked these rows while history grew 24 to 48.
-// The earlier fixed-history fixtures could not catch that false unsupported conclusion.
-test("ED2 accepts erased cells and preserved cursor with growing history", () => {
-  const result = byId("erase.screen.all").termless!(
-    screenHeadless(["     ", "     ", "     "], { historyBefore: 24, historyAfter: 48 }),
-  )
-  const state = JSON.parse(result.response ?? "") as {
-    before: string[][]
-    after: string[][]
-    cursorBefore: { x: number; y: number }
-    cursorAfter: { x: number; y: number }
-    scrollbackBefore: { totalLines: number }
-    scrollbackAfter: { totalLines: number }
-  }
-  expect(state.before).toEqual(["AAAAA", "BBBBB", "CCCCC"].map((row) => row.split("")))
-  expect(state.after).toEqual(["     ", "     ", "     "].map((row) => row.split("")))
-  expect(state.cursorAfter).toEqual(state.cursorBefore)
-  expect(state.scrollbackBefore.totalLines).toBe(24)
-  expect(state.scrollbackAfter.totalLines).toBe(48)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
-})
-
-// ED0/1 specify which displayed cells are erased. A backend's numeric history
-// growth is retained as context, but cannot turn correct erasure into a failure.
-test.each([
-  ["erase.screen.below", ["AAAAA", "BB   ", "     "]],
-  ["erase.screen.above", ["     ", "   BB", "CCCCC"]],
-] as const)("%s grades cells and cursor even when numeric history grows", (id, expected) => {
-  const correct = byId(id).termless!(screenHeadless(expected, { historyBefore: 24, historyAfter: 48 }))
-  expect(correct.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  expect(correct.assertions).toMatchObject([{ kind: "positive", observed: correct.response }])
-  expect(JSON.parse(correct.response ?? "") as unknown).toMatchObject({
-    before: ["AAAAA", "BBBBB", "CCCCC"].map((row) => row.split("")),
-    after: expected.map((row) => row.split("")),
-    cursorBefore: { x: 2, y: 1 },
-    cursorAfter: { x: 2, y: 1 },
-    scrollbackBefore: { totalLines: 24 },
-    scrollbackAfter: { totalLines: 48 },
-  })
-
-  const ignored = byId(id).termless!(
-    screenHeadless(["AAAAA", "BBBBB", "CCCCC"], { historyBefore: 24, historyAfter: 48 }),
-  )
-  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-  expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
-})
-
-// A responsive terminal can ignore erasure entirely. CPR alone cannot establish
-// changed cells, background preservation, or cleared scrollback.
-test("uncaptured app erases keep cursor-only evidence inconclusive", async () => {
-  for (const definition of eraseProbes) {
-    if ((capturedIds as readonly string[]).includes(definition.id)) continue
-    if (definition.id === "erase.screen.scrollback") continue
-    const probe = byId(definition.id)
-    for (const position of [{ row: 5, col: 5 }, null]) {
-      const result = await probe.term(app(position))
-      expect(result.pass, definition.id).toBe(false)
-      expect(result.observation, definition.id).toMatchObject({
-        outcome: "inconclusive",
-        evidence: "query",
-        reason: position ? "insufficient-evidence" : "no-response",
-      })
-      if (position) expect(result.response, definition.id).toBe("5;5")
-    }
-  }
-})
-
-// Selective erase needs both an erased target and a surviving protected cell. An unchanged screen,
-// or an erase that takes the protected cell with it, is a measured negative rather than an
-// unmeasured one (@chief 2026-10-11T22:58Z): the second is precisely the shape the claim is about.
-test("selective erasure observes protected cells and the unprotected target", () => {
-  for (const [id, sequence, success] of [
-    ["erase.selective", "\x1b[?2J", "P     "],
-    ["editing.decsera", "\x1b[1;1;1;5${", "P    Z"],
-  ]) {
-    const definition = [...eraseProbes, ...editingProbes].find((probe) => probe.id === id)
-    if (!definition?.termless) throw new Error(`Missing ${id}`)
-    for (const [after, expected] of [
-      [success, "supported"],
-      ["PABCDZ", "unsupported"],
-      ["      ", "unsupported"],
-    ]) {
-      const base = headless("ABCDE")
-      let erased = false
-      const result = definition.termless({
-        ...base,
-        feed(bytes) {
-          if (bytes === sequence) erased = true
-        },
-        getCell(row, col) {
-          return { ...base.getCell(row, col), char: ((erased ? after : "PABCDZ") ?? "")[col] ?? "" }
-        },
-      })
-      expect(result.observation, `${id}: ${after}`).toMatchObject({ outcome: expected, evidence: "parser-state" })
-      if (expected !== "inconclusive") expect(result.assertions?.[0]?.observed).toBe(result.response)
-    }
-  }
-})
-
 // These old probes could pass on an empty history, an unerased colored X, or
 // an unchanged region. Keep each target and its prerequisite independently visible.
 test("scrollback erase requires existing history and measured removal", () => {
@@ -503,7 +457,7 @@ test("scrollback erase requires existing history and measured removal", () => {
     [true, false, "unsupported"],
     [false, true, "inconclusive"],
   ] as const) {
-    const base = headless("ABCDE")
+    const base = eraseCellsHeadless("ABCDE")
     let seeded = false
     let erased = false
     const result = byId("erase.screen.scrollback").termless({
@@ -734,7 +688,7 @@ test("background erase measures a blank target with its calibrated background", 
     [null, color, " ", null, "X", "unsupported", true],
     [null, color, " ", undefined, "X", "inconclusive", true],
   ] as const) {
-    const base = headless("ABCDE")
+    const base = eraseCellsHeadless("ABCDE")
     let erased = false
     let coloring = false
     const writes: string[] = []
@@ -757,57 +711,6 @@ test("background erase measures a blank target with its calibrated background", 
     expect(writes.includes("\x1b[K")).toBe(target)
     if (expected === "inconclusive") expect(result.assertions).toBeUndefined()
     expect(writes.at(-1)).toBe("\x1b[0m")
-  }
-})
-
-test("region erase requires changed cells and a preserved preceding row", () => {
-  for (const [changed, control, expected] of [
-    [true, true, "supported"],
-    [false, true, "unsupported"],
-    [true, false, "inconclusive"],
-  ] as const) {
-    const base = headless("ABCDE")
-    let erased = false
-    const result = byId("erase.ed-scroll-region").termless({
-      ...base,
-      feed(bytes) {
-        if (bytes === "\x1b[J") erased = true
-      },
-      getCursor: () => ({ x: 0, y: 2, visible: true, style: null }),
-      getCell(row, col) {
-        return {
-          ...base.getCell(row, col),
-          char:
-            (row === 0 ? (erased && !control ? "?????" : "KEEP!") : erased && changed ? "     " : "ERASE")[col] ?? "",
-        }
-      },
-    })
-    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
-  }
-})
-
-// Geometry is a prerequisite, not an erase failure. Reject before writing a
-// row fixture that would wrap or be clamped into a different part of the screen.
-test("headless erase fixtures require measured rows and columns before writes", () => {
-  for (const id of [...ids, ...screenIds]) {
-    const probe = byId(id)
-    for (const [cols, rows] of [
-      [5, 24],
-      [NaN, 24],
-      [80, 0],
-      [80, Infinity],
-    ]) {
-      const base = headless("ABCDE")
-      const feeds: string[] = []
-      const result = probe.termless({
-        ...base,
-        cols: cols ?? 0,
-        feed: (bytes) => feeds.push(bytes),
-        getScrollback: () => ({ viewportOffset: 0, totalLines: rows ?? 0, screenLines: rows ?? 0 }),
-      })
-      expect(feeds, `${id} ${cols}x${rows}`).toEqual([])
-      expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    }
   }
 })
 
@@ -845,10 +748,12 @@ function regionReadbackApp(rows: number, cols: number, mutations: readonly strin
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     async queryWithSentinelOutcome(sequence) {
-      if (sequence === "\x1b[16t")
+      if (sequence === "\x1b[16t") {
         return { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
-      if (sequence === "\x1b[14t")
+      }
+      if (sequence === "\x1b[14t") {
         return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+      }
       return { match: null, reason: "timeout", raw: "", rawBase64: "" }
     },
     queryMode: async () => null,
@@ -870,18 +775,6 @@ function regionReadbackApp(rows: number, cols: number, mutations: readonly strin
   return { context, writes }
 }
 
-// @chief 2026-10-11T22:58Z: an after-frame that takes the DECSCA-protected P, or an EL that drops
-// the current background, is a measured NEGATIVE, not an unnamed unknown. The app path is the one a
-// real run is scored on, so both rows must read "unsupported" there, not "inconclusive".
-test("the selective erase row names a protection-ignoring surface unsupported, not inconclusive", async () => {
-  const conforming = await byId("erase.selective").term(regionReadbackApp(6, 10).context)
-  expect(conforming.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
-
-  const dropping = await byId("erase.selective").term(regionReadbackApp(6, 10, ["decsca-noop"]).context)
-  expect(dropping.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
-  expect(dropping.assertions?.[0]?.kind).toBe("negative")
-})
-
 test("the EL-with-attrs row names an erase that drops the current background unsupported", async () => {
   const conforming = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10).context)
   expect(conforming.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
@@ -891,4 +784,25 @@ test("the EL-with-attrs row names an erase that drops the current background uns
 
   const noBackground = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-default-bg"]).context)
   expect(noBackground.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+})
+
+test("erase.el-with-attrs restores its changed fixture after a write error", async () => {
+  const writes: string[] = []
+  let changed = false
+  let failed = false
+  const failure = new Error("fixture write failed")
+  await expect(
+    byId("erase.el-with-attrs").term({
+      ...app({ row: 1, col: 1 }),
+      write(sequence) {
+        writes.push(sequence)
+        if (changed && !failed) {
+          failed = true
+          throw failure
+        }
+        if (sequence === "\x1b[42m") changed = true
+      },
+    }),
+  ).rejects.toBe(failure)
+  expect(writes.at(-1)).toBe("\x1b[0m")
 })
