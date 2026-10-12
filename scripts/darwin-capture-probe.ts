@@ -16,7 +16,7 @@
  */
 import { execFileSync, spawn } from "node:child_process"
 import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { command, drawnSurface, textAreaOrigin } from "../packages/terminfo.dev/src/linux-capture.ts"
@@ -38,15 +38,30 @@ write()
 if (process.platform !== "darwin") throw new Error("The darwin capture probe requires Darwin")
 if (!existsSync(GHOSTTY)) throw new Error(`Ghostty binary missing at ${GHOSTTY}`)
 
-/** Every external command is recorded with its exact argv, exit and stderr — no silent step. */
-function record(label: string, argv: string[]): { code: number; stdout: string; stderr: string } {
-  const result = Bun.spawnSync(argv, { stdout: "pipe", stderr: "pipe" })
-  const row = {
-    argv,
-    code: result.exitCode,
-    stdout: String(result.stdout ?? "").slice(0, 4000),
-    stderr: String(result.stderr ?? "").slice(0, 4000),
-  }
+/**
+ * Every external command is recorded with its exact argv, exit, stdout, stderr and whether it had to
+ * be KILLED by the wall-clock bound — no silent step, and no step that can hang the job. The bound
+ * is load-bearing: this repo's own iTerm failure-evidence step already kills screencapture after
+ * 10 s, so an unbounded capture call is a known way to stall a runner.
+ */
+async function record(
+  label: string,
+  argv: string[],
+  wallMs = 15_000,
+): Promise<{ code: number | null; timedOut: boolean; stdout: string; stderr: string }> {
+  const child = spawn(argv[0] as string, argv.slice(1), { stdio: ["ignore", "pipe", "pipe"] })
+  let stdout = ""
+  let stderr = ""
+  child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString("utf8")))
+  child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString("utf8")))
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    child.kill("SIGKILL")
+  }, wallMs)
+  const code = await new Promise<number | null>((resolve) => child.on("close", resolve))
+  clearTimeout(timer)
+  const row = { argv, code, timedOut, stdout: stdout.slice(0, 4000), stderr: stderr.slice(0, 4000) }
   report[label] = row
   write()
   return row
@@ -99,7 +114,7 @@ sleep 12
 paint B
 printf 'painted-phase-B %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > /dev/tty
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-b"
-sleep 60
+sleep 20
 `,
   { mode: 0o755 },
 )
@@ -107,11 +122,12 @@ sleep 60
 // 3. Launch ghostty exactly as the measurement workflow does: a config command, then the binary.
 mkdirSync(join(homedir(), ".config", "ghostty"), { recursive: true })
 writeFileSync(join(homedir(), ".config", "ghostty", "config"), `command = /bin/bash ${marker}\n`)
+// The app's own stdout and stderr go to a FILE, never a pipe: a detached terminal that inherits a
+// step's pipe keeps the step alive until it exits, which is a second way to stall a runner.
 const launchLog = join(out, "ghostty.log")
-const child = spawn(GHOSTTY, { detached: true, stdio: ["ignore", "pipe", "pipe"] })
-let launchOutput = ""
-child.stdout?.on("data", (chunk: Buffer) => (launchOutput += chunk.toString("utf8")))
-child.stderr?.on("data", (chunk: Buffer) => (launchOutput += chunk.toString("utf8")))
+const launchFd = openSync(launchLog, "w")
+const child = spawn(GHOSTTY, { detached: true, stdio: ["ignore", launchFd, launchFd] })
+child.unref()
 report.ghosttyPid = child.pid ?? null
 write()
 
@@ -128,7 +144,7 @@ write()
 
 // A window launched from a background step may never be ordered on screen, so the app is asked to
 // come to the front before the census. Both the request and its outcome are recorded.
-record("activate", ["/usr/bin/open", "-a", "/Applications/Ghostty.app"])
+await record("activate", ["/usr/bin/open", "-a", "/Applications/Ghostty.app"])
 await new Promise((resolve) => setTimeout(resolve, 2000))
 
 // 4. The CoreGraphics census: window number, owner PID, layer and bounds IN POINTS.
@@ -154,10 +170,17 @@ JSON.stringify({ windows: rows });`
 
 async function capture(phase: string): Promise<Record<string, unknown>> {
   const row: Record<string, unknown> = { phase }
-  const censusRaw = execFileSync("/usr/bin/osascript", ["-l", "JavaScript", "-e", censusScript], {
-    encoding: "utf8",
-    timeout: 20_000,
-  }).trim()
+  const censusRun = await record(
+    `osascript-census-${phase}`,
+    ["/usr/bin/osascript", "-l", "JavaScript", "-e", censusScript],
+    20_000,
+  )
+  if (censusRun.code !== 0 || !censusRun.stdout.trim()) {
+    throw new Error(
+      `The CoreGraphics census failed for phase ${phase}: exit ${String(censusRun.code)}, ${censusRun.stderr}`,
+    )
+  }
+  const censusRaw = censusRun.stdout.trim()
   writeFileSync(join(out, `census-${phase}.json`), censusRaw)
   const census = JSON.parse(censusRaw) as {
     windows: {
@@ -195,19 +218,19 @@ async function capture(phase: string): Promise<Record<string, unknown>> {
   row.windowBoundsPoints = target.bounds
 
   const png = join(out, `capture-${phase}.png`)
-  const shot = record(`screencapture-${phase}`, [
-    "/usr/sbin/screencapture",
-    "-l",
-    String(target.number),
-    "-o",
-    "-x",
-    png,
-  ])
+  // The bound matters: this repo's own failure-evidence step kills screencapture after 10 s, so a
+  // capture that never returns is a recorded outcome here, never a stalled job.
+  const shot = await record(
+    `screencapture-${phase}`,
+    ["/usr/sbin/screencapture", "-l", String(target.number), "-o", "-x", png],
+    10_000,
+  )
   row.captureExit = shot.code
+  row.captureTimedOut = shot.timedOut
   row.captureCreated = existsSync(png)
   if (existsSync(png)) {
-    row.pngBytes = execFileSync("/usr/bin/stat", ["-f", "%z", png], { encoding: "utf8" }).trim()
-    const size = record(`sips-${phase}`, ["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", png])
+    row.pngBytes = (await record(`stat-${phase}`, ["/usr/bin/stat", "-f", "%z", png])).stdout.trim()
+    const size = await record(`sips-${phase}`, ["/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", png])
     const width = Number(/pixelWidth: (\d+)/.exec(size.stdout)?.[1])
     const height = Number(/pixelHeight: (\d+)/.exec(size.stdout)?.[1])
     row.capturePixels = { width, height }
@@ -225,7 +248,7 @@ async function capture(phase: string): Promise<Record<string, unknown>> {
       const surface = drawnSurface(frame)
       row.drawnSurface = surface
       const replies = existsSync(join(out, "terminal-replies.txt"))
-        ? execFileSync("/bin/cat", [join(out, "terminal-replies.txt")], { encoding: "utf8" })
+        ? readFileSync(join(out, "terminal-replies.txt"), "utf8")
         : ""
       // The terminal's own answers, parsed from the bytes it painted: cell size (16 t), text area
       // (14 t) and grid (18 t). Each `read -d t` above consumes the terminating "t", so it is optional.
@@ -256,9 +279,9 @@ const second = await capture("b")
 const first = report["capture-a"] as Record<string, unknown>
 report.paintObserved = first.pixelsDigest !== undefined && first.pixelsDigest !== second.pixelsDigest
 report.terminalReplies = existsSync(join(out, "terminal-replies.txt"))
-  ? execFileSync("/bin/cat", [join(out, "terminal-replies.txt")], { encoding: "utf8" })
+  ? readFileSync(join(out, "terminal-replies.txt"), "utf8")
   : null
-report.ghosttyLog = launchOutput.slice(0, 4000)
+report.ghosttyLog = existsSync(launchLog) ? readFileSync(launchLog, "utf8").slice(0, 4000) : null
 report.finishedAt = new Date().toISOString()
 write()
 console.log(JSON.stringify({ out, paintObserved: report.paintObserved, magick: report.magick }, null, 2))
