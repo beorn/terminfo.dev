@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@terminfo/admin": "workspace:*",
+    "@terminfo/catalog": "workspace:*",
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/probes": "workspace:*",
     "@terminfo/run-parser": "workspace:*",
