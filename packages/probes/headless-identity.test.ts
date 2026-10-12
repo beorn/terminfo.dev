@@ -3,24 +3,79 @@
  *   falls through to registryIntegrity and every vterm-family collect dies before a run exists.
  * @level l2
  * @consumer packages/probes/headless-identity.ts (28548)
- * @reach fs-walk bun.lock vendor/vterm/packages/vt100 vendor/vterm/packages/vt220 vendor/vterm/packages/vterm
+ * @reach fs-walk <fixture-only: temporary lockfile, owned Git roots and installed package bytes>
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { fileURLToPath } from "node:url"
-import { expect, test } from "vitest"
+import { fileURLToPath, pathToFileURL } from "node:url"
+import { afterEach, beforeEach, expect, test } from "vitest"
 
-const identityHref = new URL("./headless-identity.ts", import.meta.url).href
+let fixture: ReturnType<typeof identityFixture>
+
+// Standalone CI has no sibling checkouts. Exercise the unchanged loader against real local
+// Git/package resolution and independent file-install bytes, never a fabricated identity receipt.
+function identityFixture() {
+  const root = mkdtempSync(join(tmpdir(), "headless-identity-"))
+  const termless = join(root, "vendor", "termless")
+  const vterm = join(root, "vendor", "vterm")
+  const source = join(root, "vendor", "terminfo.dev", "packages", "probes", "headless-identity.ts")
+  mkdirSync(join(root, "vendor", "terminfo.dev", "packages", "probes"), { recursive: true })
+  writeFileSync(source, readFileSync(fileURLToPath(new URL("./headless-identity.ts", import.meta.url))))
+  const overrides: Record<string, string> = {}
+  for (const name of ["vt100", "vt220", "vterm"]) {
+    const workspace = join(vterm, "packages", name)
+    const adapter = join(termless, "packages", name)
+    const installed = join(root, "node_modules", ".bun", `${name}.js@file`, "node_modules", `${name}.js`)
+    for (const directory of [workspace, adapter]) mkdirSync(join(directory, "src"), { recursive: true })
+    writeFileSync(
+      join(workspace, "package.json"),
+      JSON.stringify({ name: `${name}.js`, version: "0.7.1", main: "src/index.ts" }),
+    )
+    writeFileSync(join(workspace, "src", "index.ts"), `export const engine = ${JSON.stringify(name)}\n`)
+    writeFileSync(
+      join(adapter, "package.json"),
+      JSON.stringify({ name: `@termless/${name}`, version: "0.1.0", main: "src/index.ts" }),
+    )
+    writeFileSync(join(adapter, "src", "index.ts"), "export {}\n")
+    cpSync(workspace, installed, { recursive: true })
+    mkdirSync(join(adapter, "node_modules"), { recursive: true })
+    symlinkSync(installed, join(adapter, "node_modules", `${name}.js`), "dir")
+    mkdirSync(join(root, "node_modules", "@termless"), { recursive: true })
+    symlinkSync(adapter, join(root, "node_modules", "@termless", name), "dir")
+    overrides[`${name}.js`] = `file:vendor/vterm/packages/${name}`
+  }
+  writeFileSync(join(root, "bun.lock"), JSON.stringify({ packages: overrides, overrides }))
+  for (const repository of [termless, vterm]) {
+    const git = (...args: string[]) => {
+      const result = spawnSync("git", ["-C", repository, ...args], { encoding: "utf8" })
+      if (result.status !== 0) throw new Error(`identity fixture git ${args.join(" ")}: ${result.stderr}`)
+    }
+    git("init", "-q")
+    git("add", "packages")
+    git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "identity source")
+    git("remote", "add", "origin", `https://example.invalid/${repository === termless ? "termless" : "vterm"}.git`)
+  }
+  return { root, vterm, identityHref: pathToFileURL(source).href }
+}
+
+beforeEach(() => {
+  fixture = identityFixture()
+})
+
+afterEach(() => {
+  // raw-delete-allow: standalone CI has no removely; root is this test's own mkdtemp fixture
+  rmSync(fixture.root, { recursive: true, force: true })
+})
 
 function runIdentity(name: string, pkg: string) {
   return spawnSync(
     process.execPath,
     [
       "-e",
-      `import { headlessRuntimeIdentity } from ${JSON.stringify(identityHref)};
+      `import { headlessRuntimeIdentity } from ${JSON.stringify(fixture.identityHref)};
        const id = await headlessRuntimeIdentity(${JSON.stringify(name)}, ${JSON.stringify(pkg)}, "js");
        process.stdout.write(JSON.stringify({ ok: true, integrityKind: id.integrity.kind, engineVersion: id.engineVersion }))`,
     ],
@@ -33,7 +88,7 @@ function runRegistryIntegrity(name: string, version: string) {
     process.execPath,
     [
       "-e",
-      `import { registryIntegrity } from ${JSON.stringify(identityHref)};
+      `import { registryIntegrity } from ${JSON.stringify(fixture.identityHref)};
        registryIntegrity(${JSON.stringify(name)}, ${JSON.stringify(version)})`,
     ],
     { encoding: "utf8" },
@@ -46,7 +101,7 @@ function runRegistryIntegrity(name: string, version: string) {
  *   before a run existed.
  * @level l2
  * @consumer packages/probes/headless-identity.ts file: override arm (28548)
- * @reach fs-walk bun.lock vendor/vterm/packages/vt100 vendor/vterm/packages/vt220 vendor/vterm/packages/vterm
+ * @reach fs-walk <fixture-only: lockfile and installed source packages>
  * @testonly none
  */
 for (const [name, pkg] of [
@@ -69,7 +124,7 @@ for (const [name, pkg] of [
  *   file: arm must not weaken that check.
  * @level l2
  * @consumer packages/probes/headless-identity.ts registryIntegrity (28548)
- * @reach fs-walk bun.lock
+ * @reach fs-walk <fixture-only: non-tuple lockfile entry>
  * @testonly registryIntegrity: refuse case imports the helper because identity no longer takes that path for the file: linked engines
  */
 test("a package whose bun.lock entry is not a matching registry tuple is still refused", () => {
@@ -83,12 +138,12 @@ test("a package whose bun.lock entry is not a matching registry tuple is still r
  *   .bun copy could carry workspace provenance (chief ee266575 / review2 821d3bef).
  * @level l2
  * @consumer packages/probes/headless-identity.ts fileLinkIntegrity (28548)
- * @reach fs-walk vendor/vterm/packages/vt100
+ * @reach fs-walk <fixture-only: independent vt100 install and workspace>
  * @testonly fileLinkIntegrity: mismatch case imports the binder because swapping the live .bun
  *   install would poison sibling identity tests
  */
 test("same name and version with different installed bytes is refused", () => {
-  const workspace = fileURLToPath(new URL("../../../vterm/packages/vt100", import.meta.url))
+  const workspace = join(fixture.vterm, "packages", "vt100")
   const tmp = mkdtempSync(join(tmpdir(), "28548-mismatch-"))
   const installed = join(tmp, "installed")
   try {
@@ -99,7 +154,7 @@ test("same name and version with different installed bytes is refused", () => {
       process.execPath,
       [
         "-e",
-        `import { fileLinkIntegrity } from ${JSON.stringify(identityHref)};
+        `import { fileLinkIntegrity } from ${JSON.stringify(fixture.identityHref)};
          fileLinkIntegrity(
            { path: ${JSON.stringify(target)}, directory: ${JSON.stringify(installed)}, version: "0.7.1" },
            ${JSON.stringify(workspace)},
