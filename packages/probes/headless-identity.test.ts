@@ -23,7 +23,7 @@ function identityFixture() {
   const vterm = join(root, "vendor", "vterm")
   const source = join(root, "vendor", "terminfo.dev", "packages", "probes", "headless-identity.ts")
   mkdirSync(join(root, "vendor", "terminfo.dev", "packages", "probes"), { recursive: true })
-  writeFileSync(source, readFileSync(fileURLToPath(new URL("./headless-identity.ts", import.meta.url))))
+  cpSync(fileURLToPath(new URL("./headless-identity.ts", import.meta.url)), source)
   const overrides: Record<string, string> = {}
   for (const name of ["vt100", "vt220", "vterm"]) {
     const workspace = join(vterm, "packages", name)
