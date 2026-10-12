@@ -695,6 +695,7 @@ export default defineConfig({
     nav: [
       { text: "How it works", link: "/how-it-works/" },
       { text: "Matrix", link: "/" },
+      { text: "Candidate 2", link: "/release/candidate-2" },
       {
         text: "Features",
         items: [

@@ -1,6 +1,9 @@
-#!/usr/bin/env bun
 /**
  * Release 1 decisive-count reader (#27909) — the instrument behind the Release 1 bar.
+ *
+ * No shebang: the file is mode 100644, so nothing ever executed it as a program (every caller runs
+ * `bun scripts/decisive-share.ts`, or imports it), and a shebang is what the VitePress data loader
+ * that consumes this reader for the candidate-2 page refuses with a syntax error.
  *
  * Read-only. Two sections:
  *
@@ -126,8 +129,35 @@ export interface DecisiveShare {
   verdict: D3Verdict
 }
 
-/** Minimal cell view barOverMeasured consumes; SelectedCell satisfies it structurally. */
-export type ShareCells = Record<string, { outcome: string; conclusive?: boolean }>
+/**
+ * Minimal cell view barOverMeasured consumes; SelectedCell satisfies it structurally. `reason` and
+ * `note` are carried so a consumer can print the RUN'S OWN words for an inconclusive row (the named
+ * cause, such as a terminal that never answers `CSI 16 t`) instead of paraphrasing one of its own.
+ */
+export type ShareCells = Record<string, { outcome: string; conclusive?: boolean; reason?: string; note?: string }>
+
+/** One inconclusive row, with the run's own reason and note when the cell carries them. */
+export interface InconclusiveRow {
+  featureId: string
+  reason?: string
+  note?: string
+}
+
+/**
+ * The inconclusive ids of a share, each carrying its cell's own `reason`/`note`. The run is the only
+ * source: a row whose cell has gone missing is a loud fault, not an unnamed gap.
+ */
+export function inconclusiveRows(cells: ShareCells, share: DecisiveShare): InconclusiveRow[] {
+  return share.inconclusiveIds.map((id) => {
+    const cell = cells[id]
+    if (!cell) throw new Error(`inconclusive row ${id} has no cell in the run; the share and the run disagree`)
+    return {
+      featureId: id,
+      ...(cell.reason !== undefined && { reason: cell.reason }),
+      ...(cell.note !== undefined && { note: cell.note }),
+    }
+  })
+}
 
 function sharePct(count: number, denominator: number): number {
   return denominator === 0 ? 0 : Math.round((count / denominator) * 100)
