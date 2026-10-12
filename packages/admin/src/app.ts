@@ -18,7 +18,6 @@ import {
   readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
-  saveDaemonProbeRun,
   shellQuote,
   stopOwnedDaemon,
   type DaemonRegistration,
@@ -29,6 +28,7 @@ import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
+import { admitCollectedRun } from "./admit-collected-run.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -37,7 +37,6 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
-const RESULTS_DIR = join(ROOT, "content", "probes-apps")
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
 
@@ -213,8 +212,7 @@ async function probeDaemon(
       ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
     },
   }
-  const path = saveDaemonProbeRun(run, RESULTS_DIR, { kind: "app", id: appId, version })
-  console.log(`  Saved unreviewed raw run ${path}`)
+  admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
   const observed = run.observations.length
   const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
   return { total, observed }
@@ -244,7 +242,7 @@ async function runApp(
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, app.id, version, launch.terminalWindow)
-    console.log(`  ${result.observed}/${result.total} explicit observations (unreviewed)`)
+    console.log(`  ${result.observed}/${result.total} explicit observations (admitted)`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
