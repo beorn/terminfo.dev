@@ -15,6 +15,12 @@
  *     origin, with the repo's own geometry-centred placement reported beside it for the delta;
  *   - window owner PID against the app PID, and whether magick is present.
  *
+ * The runner does not put a partial repaint on screen at once: a capture ~0.5 s after a one-cell
+ * paint was pixel-identical to the frame before it, while a capture ~0.8 s after a full repaint did
+ * see the change (2026-10-12T16:00:02Z). Every capture here therefore POLLS to a settled frame and
+ * records how many captures that took — an early capture is indistinguishable from a paint that
+ * never landed, and that is the trap this measurement exists to remove.
+ *
  * Every failure is loud and recorded; nothing is guessed and nothing defaults silently.
  */
 import { execFileSync, spawn } from "node:child_process"
@@ -148,8 +154,10 @@ cat "$OUT/terminal-replies.txt" > /dev/tty
 tty > "$OUT/tty"
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-a"
 wait_for_ack ack-a
+# The calibration window paints the cell and NOTHING else: a timestamp line printed to the tty here
+# would change pixels of its own, and the diff would then be the union of a cell and a text line
+# instead of one cell. The time of the calibration lives in "$OUT/phase-a2", which is a file.
 calibrate
-printf 'painted-phase-A2 %s\\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > /dev/tty
 date -u '+%Y-%m-%dT%H:%M:%SZ' > "$OUT/phase-a2"
 wait_for_ack ack-a2
 paint B
@@ -216,16 +224,29 @@ interface ChangedRectangle {
 }
 
 /**
- * The bounding box of the pixels two frames disagree on, plus whether that box is one solid
+ * What two frames are to each other: identical, not comparable, or differing by this bounding box.
+ * `identical` is a comparison result and never a refusal — the settle polling below needs to tell a
+ * frame that has not changed yet from a comparison that cannot be made at all.
+ */
+type FrameComparison =
+  | { kind: "identical" }
+  | { kind: "refused"; reason: string }
+  | { kind: "diff"; rectangle: ChangedRectangle }
+
+/**
+ * Compare two frames: their bounding box of changed pixels, plus whether that box is one solid
  * rectangle. A box that is not solid is reported with the rows that break it, never rounded up to a
  * rectangle: the calibration's whole claim is that exactly one cell changed.
  */
-function changedRectangle(a: DecodedFrame, b: DecodedFrame): ChangedRectangle | { refused: string } {
+function compareFrames(a: DecodedFrame, b: DecodedFrame): FrameComparison {
   if (a.width !== b.width || a.height !== b.height) {
-    return { refused: `capture extents disagree: ${a.width}x${a.height} against ${b.width}x${b.height}` }
+    return {
+      kind: "refused",
+      reason: `capture extents disagree: ${a.width}x${a.height} against ${b.width}x${b.height}`,
+    }
   }
   if (a.rgba.length !== b.rgba.length || a.rgba.length !== a.width * a.height * 4) {
-    return { refused: "decoded frames are not both a full rgba image of the same extent" }
+    return { kind: "refused", reason: "decoded frames are not both a full rgba image of the same extent" }
   }
   let minX = a.width
   let minY = a.height
@@ -252,7 +273,7 @@ function changedRectangle(a: DecodedFrame, b: DecodedFrame): ChangedRectangle | 
       if (y > maxY) maxY = y
     }
   }
-  if (maxX < 0) return { refused: "the two captures are pixel-identical: nothing changed" }
+  if (maxX < 0) return { kind: "identical" }
   const width = maxX - minX + 1
   const height = maxY - minY + 1
   const raggedRows: { y: number; minX: number; maxX: number; changed: number }[] = []
@@ -263,16 +284,19 @@ function changedRectangle(a: DecodedFrame, b: DecodedFrame): ChangedRectangle | 
     }
   }
   return {
-    minX,
-    minY,
-    maxX,
-    maxY,
-    width,
-    height,
-    changedPixels,
-    boundingArea: width * height,
-    solid: raggedRows.length === 0,
-    raggedRows,
+    kind: "diff",
+    rectangle: {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      width,
+      height,
+      changedPixels,
+      boundingArea: width * height,
+      solid: raggedRows.length === 0,
+      raggedRows,
+    },
   }
 }
 
@@ -287,6 +311,168 @@ function regionDigest(frame: DecodedFrame, rectangle: { x: number; y: number; wi
     hash.update(frame.rgba.subarray(row * frame.width * 4 + x * 4, row * frame.width * 4 + (x + width) * 4))
   }
   return `sha256:${hash.digest("hex")}`
+}
+/**
+ * The hosted runner does NOT put a partial repaint on screen at once. Measured 2026-10-12T16:00:02Z:
+ * a frame captured ~0.5 s after the marker painted one cell was pixel-identical to the frame taken
+ * before it, while a capture ~0.8 s after the next full repaint did see its change. A fixed sleep is
+ * therefore a coin flip, and worse: a capture that ran early is indistinguishable from a paint that
+ * never landed, which is exactly the bug this measurement exists to remove.
+ *
+ * So every capture here POLLS. `captureSettled` keeps capturing until two frames in a row agree, and
+ * `captureUntilChanged` keeps capturing until one differs from a baseline and a further capture
+ * confirms the new frame stopped changing. Every attempt is recorded, so an adapter that places a
+ * pixel rectangle can bound its own wait on a measured number instead of a guess.
+ */
+const SETTLE_ATTEMPTS = 10
+const SETTLE_GAP_MS = 400
+const settleDelay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+interface SettleAttempt {
+  attempt: number
+  label: string
+  /** sha256 of the decoded frame, or the value the capture recorded when it could not be decoded. */
+  digest: unknown
+  /** Whether this frame matched the frame captured before it; null when it was not decodable. */
+  sameAsPrevious: boolean | null
+}
+
+interface SettledFrame {
+  label: string
+  frame: DecodedFrame
+}
+
+/**
+ * One settle outcome, in a shape the report can hold: the frame itself stays in memory (a frame is
+ * megabytes), and `settledLabel` names the capture row the frame's measurement was recorded under.
+ */
+interface SettleResult {
+  settled: SettledFrame | null
+  /** Why no settled frame exists, when none does. Never a silent empty result. */
+  refused: string | null
+  /** Every capture this poll made, in order, so a late paint is visible rather than inferred. */
+  attempts: SettleAttempt[]
+  /** The changed-pixel rectangle, for a poll that was looking for a change. */
+  rectangle: ChangedRectangle | null
+  /** The capture that confirmed the changed frame had stopped changing. */
+  confirmation: SettleAttempt | null
+}
+
+/** The poll outcome flattened for the report: the frame itself is dropped, its label kept. */
+function settleReport(result: SettleResult): Record<string, unknown> {
+  return {
+    settledLabel: result.settled?.label ?? null,
+    refused: result.refused,
+    attempts: result.attempts,
+    rectangle: result.rectangle,
+    confirmation: result.confirmation,
+  }
+}
+
+/**
+ * Capture until two frames in a row are pixel-identical, and hand back that settled frame. This is
+ * the baseline a later comparison needs: comparing against a frame the window server had not finished
+ * painting would make a one-cell paint look like it changed the whole screen.
+ */
+async function captureSettled(phase: string, attempts = SETTLE_ATTEMPTS): Promise<SettleResult> {
+  const log: SettleAttempt[] = []
+  let previous: SettledFrame | null = null
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const label = `${phase}-settle${attempt}`
+    const row = await capture(label)
+    const frame = frames.get(label)
+    if (!frame) {
+      log.push({ attempt, label, digest: row.pixelsDigest, sameAsPrevious: null })
+      await settleDelay(SETTLE_GAP_MS)
+      continue
+    }
+    const same = previous !== null && compareFrames(previous.frame, frame).kind === "identical"
+    log.push({ attempt, label, digest: row.pixelsDigest, sameAsPrevious: same })
+    if (same && previous !== null) {
+      return { settled: previous, refused: null, attempts: log, rectangle: null, confirmation: null }
+    }
+    previous = { label, frame }
+    await settleDelay(SETTLE_GAP_MS)
+  }
+  return {
+    settled: null,
+    refused: `no two consecutive captures agreed in ${attempts} captures, so the frame was never seen at rest`,
+    attempts: log,
+    rectangle: null,
+    confirmation: null,
+  }
+}
+
+/**
+ * Capture until the frame differs from the baseline, then confirm the new frame stopped changing (one
+ * more capture must be identical to it). The confirmation is what separates "the paint has landed"
+ * from "the paint is landing right now", and it is also what makes a mid-paint snapshot impossible to
+ * measure by accident.
+ */
+async function captureUntilChanged(
+  baseline: SettledFrame,
+  phase: string,
+  attempts = SETTLE_ATTEMPTS,
+): Promise<SettleResult> {
+  const log: SettleAttempt[] = []
+  let lastRefusal: string | null = null
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const label = `${phase}-change${attempt}`
+    const row = await capture(label)
+    const frame = frames.get(label)
+    if (!frame) {
+      log.push({ attempt, label, digest: row.pixelsDigest, sameAsPrevious: null })
+      lastRefusal = `the capture ${label} could not be decoded`
+      await settleDelay(SETTLE_GAP_MS)
+      continue
+    }
+    const comparison = compareFrames(baseline.frame, frame)
+    if (comparison.kind === "refused") {
+      log.push({ attempt, label, digest: row.pixelsDigest, sameAsPrevious: null })
+      return {
+        settled: null,
+        refused: `the frame could not be compared with the baseline ${baseline.label}: ${comparison.reason}`,
+        attempts: log,
+        rectangle: null,
+        confirmation: null,
+      }
+    }
+    if (comparison.kind === "identical") {
+      log.push({ attempt, label, digest: row.pixelsDigest, sameAsPrevious: true })
+      lastRefusal = `the frame was still identical to ${baseline.label} after ${attempt} captures`
+      await settleDelay(SETTLE_GAP_MS)
+      continue
+    }
+    const confirmLabel = `${label}-confirm`
+    const confirmRow = await capture(confirmLabel)
+    const confirmFrame = frames.get(confirmLabel)
+    const confirmation: SettleAttempt = {
+      attempt,
+      label: confirmLabel,
+      digest: confirmRow.pixelsDigest,
+      sameAsPrevious: confirmFrame ? compareFrames(frame, confirmFrame).kind === "identical" : null,
+    }
+    log.push({ attempt, label, digest: row.pixelsDigest, sameAsPrevious: false })
+    if (confirmation.sameAsPrevious === true) {
+      return {
+        settled: { label, frame },
+        refused: null,
+        attempts: log,
+        rectangle: comparison.rectangle,
+        confirmation,
+      }
+    }
+    // Still painting: this frame is a mid-paint snapshot, so keep polling rather than measuring it.
+    lastRefusal = `the frame captured as ${label} was still changing when ${confirmLabel} was taken`
+    await settleDelay(SETTLE_GAP_MS)
+  }
+  return {
+    settled: null,
+    refused: `${lastRefusal ?? "the frame never changed"}; the poll stopped after ${attempts} attempts, each captured and then confirmed`,
+    attempts: log,
+    rectangle: null,
+    confirmation: null,
+  }
 }
 await waitFor(join(out, "phase-a"), 60_000, "the terminal's phase-A marker")
 report.phaseAAt = new Date().toISOString()
@@ -319,7 +505,7 @@ for (var i = 0; i < count; i++) {
 JSON.stringify({ windows: rows });`
 
 async function capture(phase: string): Promise<Record<string, unknown>> {
-  const row: Record<string, unknown> = { phase }
+  const row: Record<string, unknown> = { phase, at: new Date().toISOString() }
   const censusRun = await record(
     `osascript-census-${phase}`,
     ["/usr/bin/osascript", "-l", "JavaScript", "-e", censusScript],
@@ -423,47 +609,69 @@ async function capture(phase: string): Promise<Record<string, unknown>> {
   return row
 }
 
-await capture("a")
-// The marker paints the calibration cell only after this ack, so the phase-A frame is provably the
-// frame before the calibration and the phase-A2 frame provably the one after it.
+// The phase-A content has to be settled before anything is measured against it: comparing a later
+// frame against one the window server had not finished painting would turn a one-cell change into a
+// whole-screen one.
+const baseline = await captureSettled("a")
+report.baseline = settleReport(baseline)
+if (!baseline.settled) throw new Error(`The phase-A frame never settled: ${baseline.refused}`)
+// The marker paints the calibration cell only after this ack, so the baseline is provably the frame
+// before the calibration, and the frame the poll settles on is provably the one after it.
 writeFileSync(join(out, "ack-a"), `${new Date().toISOString()}\n`)
 await waitFor(join(out, "phase-a2"), 180_000, "the terminal's B2 calibration paint")
 report.phaseA2At = new Date().toISOString()
-await capture("a2")
+const calibrated = await captureUntilChanged(baseline.settled, "a2")
+report.calibrationCapture = settleReport(calibrated)
 writeFileSync(join(out, "ack-a2"), `${new Date().toISOString()}\n`)
 await waitFor(join(out, "phase-b"), 120_000, "the terminal's phase-B paint")
 report.phaseBAt = new Date().toISOString()
-const second = await capture("b")
-const first = report["capture-a"] as Record<string, unknown>
-report.paintObserved = first.pixelsDigest !== undefined && first.pixelsDigest !== second.pixelsDigest
+const banner = await captureUntilChanged(baseline.settled, "b")
+report.bannerCapture = settleReport(banner)
+// The paint witness, from the settled frames only: the banner reads PHASE A before the phase-B paint
+// and PHASE B after it, and a frame the poll never saw at rest is not a witness of anything.
+report.paintObserved = banner.settled !== null
 
 /**
- * B2 — the calibration measurement (@cto round 2, plan §3e, bead 28785). Between the phase-A and
- * phase-A2 captures the marker changed exactly ONE interior cell's background to a truecolor
- * magenta and touched nothing else, so the pixels that differ between the two frames are the
- * cell-sized axis-aligned rectangle the calibration source promises. The rectangle's top-left, minus
- * the cell's own offset inside the text area, IS the text-area origin — a named, non-colour source.
- * Every other outcome is recorded as a refusal by name; nothing is inferred from the geometry
- * answers and nothing is defaulted.
+ * B2 — the calibration measurement (@cto round 2, plan §3e, bead 28785). Between the settled phase-A
+ * capture and the settled post-calibration capture the marker changed exactly ONE interior cell's
+ * background to a truecolor magenta and touched nothing else, so the pixels that differ between the
+ * two frames are the cell-sized axis-aligned rectangle the calibration source promises. That
+ * rectangle's top-left, minus the cell's own offset inside the text area, IS the text-area origin — a
+ * named, non-colour source. Every other outcome is recorded as a refusal by name; nothing is inferred
+ * from the geometry answers and nothing is defaulted.
  */
-const cellSize = (first.terminalRepliesParsed as { cellSize: { cellHeight: number; cellWidth: number } | null })
-  ?.cellSize
-const before = frames.get("a")
-const after = frames.get("a2")
-if (!before || !after) {
+const first = report[`capture-${baseline.settled.label}`] as Record<string, unknown>
+const replies = first.terminalRepliesParsed as {
+  cellSize: { cellHeight: number; cellWidth: number } | null
+  textArea: { textHeight: number; textWidth: number } | null
+  grid: { rows: number; cols: number } | null
+}
+const cellSize = replies?.cellSize ?? null
+const before = baseline.settled.frame
+const after = calibrated.settled?.frame ?? null
+const third = banner.settled?.frame ?? null
+if (!after) {
   report.calibration = {
-    refused:
-      "the phase-A and phase-A2 frames were not both decoded in memory (a magick decode failed or a capture produced no png); the calibration compares pixels, and a digest cannot answer it",
+    refused: calibrated.refused ?? "the calibration capture never settled",
+    cellSizeFromTerminal: cellSize,
   }
 } else if (!cellSize) {
   report.calibration = {
     refused: "the terminal painted no CSI 16 t cell-size answer, so the diff has nothing to check against",
+    cellSizeFromTerminal: null,
   }
 } else {
-  const diff = changedRectangle(before, after)
-  if ("refused" in diff) {
-    report.calibration = { refused: diff.refused, cellSize }
+  const comparison = compareFrames(before, after)
+  if (comparison.kind !== "diff") {
+    report.calibration = {
+      refused:
+        comparison.kind === "identical"
+          ? "the settled calibration capture is pixel-identical to the settled frame before it: nothing was painted"
+          : comparison.reason,
+      cellSizeFromTerminal: cellSize,
+    }
   } else {
+    const diff = comparison.rectangle
     const derivedOrigin = {
       x: diff.minX - (calCol - 1) * cellSize.cellWidth,
       y: diff.minY - (calRow - 1) * cellSize.cellHeight,
@@ -483,16 +691,11 @@ if (!before || !after) {
     // around a provable paint. Row 1 is the banner line, which reads "PHASE A" before the phase-B
     // paint and "PHASE B" after it, so a rectangle placed one row below the derived origin must
     // change around that paint — and must NOT change around the calibration, which touched row 3.
-    const replies = first.terminalRepliesParsed as {
-      textArea: { textHeight: number; textWidth: number } | null
-      grid: { rows: number; cols: number } | null
-    }
     const knownRowCells = { top: 1, left: 1, bottom: 1, right: 10 }
-    const third = frames.get("b")
     let knownRow: Record<string, unknown>
     if (!replies?.textArea || !replies.grid || !third) {
       knownRow = {
-        skipped: `a known row needs a 14 t text area, an 18 t grid and a decoded phase-B frame; got textArea=${JSON.stringify(replies?.textArea ?? null)} grid=${JSON.stringify(replies?.grid ?? null)} phaseBFrame=${third ? "decoded" : "absent"}`,
+        skipped: `a known row needs a 14 t text area, an 18 t grid and a settled banner frame; got textArea=${JSON.stringify(replies?.textArea ?? null)} grid=${JSON.stringify(replies?.grid ?? null)} bannerFrame=${third ? "settled" : "absent"}`,
       }
     } else {
       try {
@@ -541,19 +744,30 @@ write()
 report.terminalReplies = existsSync(join(out, "terminal-replies.txt"))
   ? readFileSync(join(out, "terminal-replies.txt"), "utf8")
   : null
+report.markerRefusal = existsSync(join(out, "marker-refusal"))
+  ? readFileSync(join(out, "marker-refusal"), "utf8")
+  : null
 report.ghosttyLog = existsSync(launchLog) ? readFileSync(launchLog, "utf8").slice(0, 4000) : null
 report.finishedAt = new Date().toISOString()
 write()
 console.log(
   JSON.stringify(
-    { out, paintObserved: report.paintObserved, magick: report.magick, calibration: report.calibration },
+    {
+      out,
+      paintObserved: report.paintObserved,
+      magick: report.magick,
+      baseline: report.baseline,
+      calibrationCapture: report.calibrationCapture,
+      bannerCapture: report.bannerCapture,
+      calibration: report.calibration,
+    },
     null,
     2,
   ),
 )
-// A calibration that could not be measured at all is a named failure with artifacts retained above
-// it; a calibration that measured and disagreed with the reported cell size is a RESULT, recorded
-// in full and reported, never a fabricated refusal.
+// A calibration that could not be measured is a named failure with its artifacts retained above it; a
+// calibration that measured and disagreed with the reported cell size is a RESULT, recorded in full
+// and reported, never rounded into a refusal.
 const calibration = report.calibration as { refused?: string } | undefined
 if (!calibration || calibration.refused) {
   console.error(`B2 calibration refused: ${calibration?.refused ?? "no calibration block was produced"}`)
