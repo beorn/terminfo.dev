@@ -27,18 +27,45 @@ const temp = (prefix: string): string => {
 function runFixture(overrides: Record<string, unknown> = {}): string {
   const directory = temp("terminfo-admit-")
   const path = join(directory, "run.json")
+  // Planning now assesses the full run. Reuse a genuinely complete clean collection rather than
+  // letting filename-only fixtures bypass the contract these callers must satisfy.
+  const complete = JSON.parse(
+    readFileSync(
+      join(
+        import.meta.dirname,
+        "..",
+        "content",
+        "probes-apps",
+        "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json",
+      ),
+      "utf8",
+    ),
+  )
+  complete.provenance.runtime.suiteHash = probeSuiteSnapshot().probeHash
   writeFileSync(
     path,
     JSON.stringify({
-      schemaVersion: 2,
+      ...complete,
       probeHash: probeSuiteSnapshot().probeHash,
       runId: "run1",
-      target: { kind: "app", id: "kitty", version: "0.49.2", os: "linux" },
       ...overrides,
     }),
   )
   return path
 }
+
+// AC1 and the CTO's shared-checklist amendment: these real historical runs are complete for their
+// own suites but record dirty collection provenance. Planning must preserve that refusal before
+// adding placement's current-suite requirement. The helper-placement tests cannot see this bypass.
+test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce"])(
+  "planning refuses dirty historical collection %s before placement",
+  (runId) => {
+    const source = join(import.meta.dirname, "..", "content", "probes-apps", `kitty-0.49.2-linux-${runId}.json`)
+    const destination = join(temp("terminfo-dirty-plan-"), "run.json")
+    expect(() => planAdmission(source, destination)).toThrow(/native-provenance-dirty/)
+    expect(existsSync(destination)).toBe(false)
+  },
+)
 
 test("a run is named from its own target and run id", () => {
   const into = join(temp("terminfo-admit-dest-"), "out.json")
