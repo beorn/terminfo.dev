@@ -58,9 +58,19 @@ const reasonExplanations: Record<ObservationReason, string> = {
   "insufficient-evidence": "The recorded observation does not establish support; more evidence is needed.",
 }
 
+const namedCoverage = computed(() =>
+  props.version?.notTestedCoverage.named.find((record) => record.featureId === props.featureId),
+)
+
 const status = computed(() => {
   if (!props.version) return { text: "No reviewed current result", icon: "?", tone: "unknown" }
-  if (!props.cell) return { text: "Not tested by this run", icon: "?", tone: "unknown" }
+  if (!props.cell) {
+    return {
+      text: namedCoverage.value ? "Not tested: no applicable observable" : "Not tested by this run",
+      icon: "?",
+      tone: "unknown",
+    }
+  }
   if (props.cell.outcome === "error") return { text: "Probe error", icon: "!", tone: "error" }
   if (props.cell.outcome === "inconclusive") return { text: "Inconclusive", icon: "~", tone: "ungraded" }
   if (!props.cell.conclusive) return { text: "Ungraded observation", icon: "~", tone: "ungraded" }
@@ -70,7 +80,7 @@ const status = computed(() => {
 })
 const shortLabel = computed(() => {
   if (status.value.text === "No reviewed current result") return "No result"
-  if (status.value.text === "Not tested by this run") return "Not tested"
+  if (status.value.text.startsWith("Not tested")) return "Not tested"
   if (status.value.text === "Ungraded observation") return "Ungraded"
   if (status.value.text === "Probe error") return "Error"
   return status.value.text
@@ -84,7 +94,11 @@ const methodLabel = computed(() =>
 )
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
-  if (!props.cell) return "This feature was not measured by this selected run."
+  if (!props.cell) {
+    return namedCoverage.value
+      ? `This probe ran, but this environment has no applicable observable for ${namedCoverage.value.noObservable}.`
+      : "This feature was not measured by this selected run."
+  }
   return undefined
 })
 const reasonExplanation = computed(() => (props.cell?.reason ? reasonExplanations[props.cell.reason] : undefined))
@@ -455,12 +469,16 @@ onBeforeUnmount(() => {
         </p>
         <p v-else-if="cell?.evidence === 'query'">This query did not establish a yes-or-no result for the feature.</p>
         <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
+        <p v-else-if="namedCoverage">Reason: {{ namedCoverage.reason }}</p>
         <p v-if="selectionExplanation">{{ selectionExplanation }}</p>
         <p v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</p>
         <p v-if="reasonExplanation">{{ reasonExplanation }}</p>
 
         <h3>Evidence</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
+        <p v-else-if="!cell && namedCoverage">
+          The run retains a probe trace, but no supported or unsupported result was established.
+        </p>
         <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
         <template v-else-if="presentation?.state === 'not-reviewed'">
           <p>Original evidence has not been reviewed for presentation.</p>
