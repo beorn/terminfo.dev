@@ -582,13 +582,24 @@ export function placeOwnershipReceipt(
 /** Host composition happens only after a completed Linux attach; bind those bytes to this run. */
 function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
   if (run.target.kind !== "app" || run.target.os !== "linux") return
+  const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
+  const host: unknown = existsSync(hostPath) ? JSON.parse(readFileSync(hostPath, "utf8")) : undefined
+  const launcher =
+    isRecord(host) &&
+    typeof host.preset === "string" &&
+    SAFE_COMPONENT.test(host.preset) &&
+    typeof host.clipboardProfile === "string" &&
+    SAFE_COMPONENT.test(host.clipboardProfile)
+      ? `bash scripts/linux-container-run.sh --target ${run.target.id} --preset ${host.preset} --clipboard-profile ${host.clipboardProfile} <outdir>`
+      : "bun scripts/release1-collection.ts --plan (read this target's exact launcher command)"
+  const cure = `; collect through the launcher to produce an admissible run. From ${ROOT}, run: ${launcher}`
   const path = join(dirname(source), "run-receipt.json")
-  if (!existsSync(path)) throw new Error(`${run.target.id}/linux: missing run-receipt.json next to ${source}`)
+  if (!existsSync(path)) throw new Error(`${run.target.id}/linux: missing run-receipt.json next to ${source}${cure}`)
   let receipt: unknown
   try {
     receipt = JSON.parse(readFileSync(path, "utf8"))
   } catch (cause) {
-    throw new Error(`Cannot read Linux completion receipt ${path}`, { cause })
+    throw new Error(`Cannot read Linux completion receipt ${path}${cure}`, { cause })
   }
   if (
     !isRecord(receipt) ||
@@ -596,15 +607,14 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
     receipt.probeRun.runId !== run.runId ||
     receipt.probeRun.sha256 !== run.sha256
   ) {
-    throw new Error(`Linux completion receipt ${path} does not bind probeRun.runId and sha256 to ${source}`)
+    throw new Error(`Linux completion receipt ${path} does not bind probeRun.runId and sha256 to ${source}${cure}`)
   }
-  const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
   if (!existsSync(hostPath)) {
-    throw new Error(`Linux completion receipt ${path} requires missing host receipt ${hostPath}`)
+    throw new Error(`Linux completion receipt ${path} requires missing host receipt ${hostPath}${cure}`)
   }
   const hostSha256 = createHash("sha256").update(readFileSync(hostPath)).digest("hex")
   if (!isRecord(receipt.receiptInputs) || receipt.receiptInputs.hostSha256 !== hostSha256) {
-    throw new Error(`Linux completion receipt ${path} does not bind receiptInputs.hostSha256 to ${hostPath}`)
+    throw new Error(`Linux completion receipt ${path} does not bind receiptInputs.hostSha256 to ${hostPath}${cure}`)
   }
 }
 

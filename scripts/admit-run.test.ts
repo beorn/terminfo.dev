@@ -11,7 +11,8 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import {
   admitRun,
@@ -89,6 +90,41 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
   )
   return path
 }
+
+// AC3: the real daemon writer enriches/reserializes raw collector bytes. Its private output
+// cannot borrow the composer's original byte binding, and refusal must name the supported cure.
+test("daemon-saved enriched run names the launcher cure without content placement", () => {
+  const source = runFixture()
+  const raw = readFileSync(source, "utf8")
+  const document = parseJsonStrict(source, raw)
+  if (!object(document) || typeof document.sourceRevision !== "string") {
+    throw new Error("Collector fixture lacks source revision")
+  }
+  const decoded = decodeCollectorRun(source, raw, derivedSuiteManifest(probeSuiteSnapshot()), document.sourceRevision)
+  const staged = saveDaemonProbeRun(
+    {
+      ...decoded.run,
+      rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
+    },
+    dirname(source),
+  )
+  const content = join(temp("terminfo-daemon-cure-"), "content")
+  const destination = join(content, "probes-apps", "run.json")
+  let refusal: unknown
+  try {
+    planAdmission(staged, destination)
+  } catch (error) {
+    refusal = error
+  }
+  expect(refusal).toBeInstanceOf(Error)
+  if (!(refusal instanceof Error)) throw new Error("Daemon-saved run was unexpectedly accepted")
+  expect(refusal.message).toMatch(/collect through the launcher to produce an admissible run/)
+  expect(refusal.message).toContain(
+    "bash scripts/linux-container-run.sh --target kitty --preset current --clipboard-profile default <outdir>",
+  )
+  expect(existsSync(destination)).toBe(false)
+  expect(existsSync(content)).toBe(false)
+})
 
 // Placement must prove that the host composer completed THIS raw run, before authoring anything.
 test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-hash"] as const)(
