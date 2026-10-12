@@ -1,6 +1,7 @@
 {
   "name": "terminfo.dev-root",
   "private": true,
+  "packageManager": "bun@1.4.3",
   "license": "CC-BY-4.0",
   "workspaces": [
     "packages/*"
