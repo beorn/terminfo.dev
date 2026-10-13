@@ -38,8 +38,10 @@ export function notTestedResult(noObservable: string, state: object): ProbeResul
  * measured 8-bit (ISO-8859-1) decoding means the expected frame paints a different string from the
  * one the row claims, so the row cannot be decided in this context: it is inconclusive and NAMES
  * the cause. The run is NOT refused — a refusal is a new gate, and a named cause loses nothing.
- * Null (no measurement available) leaves the row to its own oracle: a context that answers no
- * query already fails its geometry and width reads by name.
+ * The two named non-measurements — `silent` (no cursor report arrived) and `unusable` (one arrived
+ * the measurement cannot read) — involve no measured decoding and claim none, so they leave the row
+ * to its own oracle: a context that cannot answer this round trip already fails its geometry and
+ * width reads by name (@dev/review2).
  */
 export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise<ProbeResult | null> {
   if (!ctx.utf8Decoding) return null
@@ -50,7 +52,7 @@ export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       evidence: "query",
-      note: `${id}: this run decodes plain-written UTF-8 as ISO-8859-1 (measured: a two-byte character advanced the cursor two cells, not one), so the expected frame paints a different string from the one this row claims; the pinned locale is the context to correct, not a capability of this terminal`,
+      note: `${id}: this run decodes plain-written UTF-8 as ISO-8859-1 (measured: the Neutral-width sample ë advanced the cursor two cells, not one), so the expected frame paints a different string from the one this row claims; the pinned locale is the context to correct, not a capability of this terminal`,
     },
   }
 }

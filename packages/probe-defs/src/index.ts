@@ -8,6 +8,7 @@ export type {
   ClipboardFixture,
   InputFixture,
   Utf8Decoding,
+  Utf8DecodingReading,
   CaptureCells,
   CapturePixelGeometry,
   CaptureRequest,

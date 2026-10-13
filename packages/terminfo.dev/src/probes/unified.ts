@@ -19,7 +19,7 @@ import {
   type ProbeResult,
   type TermContext,
   type UngradedDiagnostic,
-  type Utf8Decoding,
+  type Utf8DecodingReading,
 } from "@terminfo/probe-defs"
 import {
   query,
@@ -75,7 +75,7 @@ function createTermContext({
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
   geometry?: Extract<GeometryMeasurement, { status: "measured" }>
-  utf8Decoding: () => Promise<Utf8Decoding | null>
+  utf8Decoding: () => Promise<Utf8DecodingReading>
 }): TermContext {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
@@ -297,13 +297,17 @@ export async function runProbeBatch(
   // written two-byte UTF-8 character. A row whose oracle compares plainly written glyphs asks for
   // it before grading; the first ask measures, every later ask reads the same answer, and the raw
   // reply is recorded beside the other collector facts so a reader can see what was measured.
-  let measuredDecoding: Utf8Decoding | null | undefined
-  const readUtf8Decoding = async (): Promise<Utf8Decoding | null> => {
-    if (measuredDecoding === undefined) {
-      measuredDecoding = await measureUtf8Decoding()
-      batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({ decoding: measuredDecoding })
-    }
-    return measuredDecoding
+  // The ATTEMPT is the memo, not its fulfilled value (@dev/review2): two rows that ask before the
+  // first round trip returns share ONE measurement instead of racing a second, and an attempt that
+  // fails stays failed for the batch rather than being retried by every later row — so the run's
+  // recorded fact and the answer each row grades against are always the same single attempt.
+  let decodingAttempt: Promise<Utf8DecodingReading> | undefined
+  const readUtf8Decoding = (): Promise<Utf8DecodingReading> => {
+    decodingAttempt ??= measureUtf8Decoding().then((reading) => {
+      batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({ decoding: reading })
+      return reading
+    })
+    return decodingAttempt
   }
   for (const probe of selected) {
     const writes: string[] = []
