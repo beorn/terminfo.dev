@@ -61,7 +61,14 @@ function build(target: string): void {
   // The marker the health probe reads while this rebuild runs (28268 AC4); see `writeSiteRebuildMarker` for why it
   // is cleared only on success.
   const clearMarker = writeSiteRebuildMarker(target)
-  const result = spawnSync("bun", ["run", "build"], { cwd: repoRoot, stdio: "inherit", env: process.env })
+  // The build records the CODE gitlink it was made from into the dist's stamp, so the health probe can read which
+  // CODE pin the served corpus belongs to straight from /build.json with no walk of the CODE root (28620). This
+  // checkout's HEAD is that pin, and `target` is it; the build has no other way to know a landing is the caller.
+  const result = spawnSync("bun", ["run", "build"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: { ...process.env, TERMINFO_SITE_CODE_GITLINK: target },
+  })
   if (result.error) {
     console.error(`terminfo-site: cannot run the site build: ${result.error.message}`)
     process.exit(1)
