@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   drainStdin,
   measureRenderedWidth,
+  measureUtf8Decoding,
   query,
   queryMode,
   queryOutcome,
@@ -431,5 +432,63 @@ describe("sentinel grace override", () => {
     expect(() => sentinelGraceMs("0")).toThrow(/positive whole number/)
     expect(() => sentinelGraceMs("1.5")).toThrow(/whole number of milliseconds/)
     expect(() => sentinelGraceMs("9007199254740993")).toThrow(/positive whole number/)
+  })
+})
+
+/**
+ * The decode-context measurement is the decision every UTF-8-dependent row now rests on, so each
+ * branch gets a row of its own: one cell, two cells, an unverified origin, an unexpected column, and
+ * silence. The writes are asserted whole, because the cursor save/restore and the erase of the glyph
+ * it painted into the calling row's screen are part of the contract (#28752, @cto).
+ */
+describe("UTF-8 decode context measurement", () => {
+  function harness(replies: Array<string | null>) {
+    const writes: string[] = []
+    let asked = 0
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk === "\x1b[6n") {
+          const next = replies[asked++]
+          if (next) reply(next)
+        }
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    return { out, writes }
+  }
+
+  it("reads a two-byte glyph that advanced one cell as utf8, erasing it before the cursor is restored", async () => {
+    const { out, writes } = harness(["\x1b[2;1R", "\x1b[2;2R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("utf8")
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b[0m\u00e9", "\x1b[6n", "\x1b[2;1H\x1b[2X", "\x1b8"])
+  })
+
+  it("reads the same glyph advancing two cells as 8-bit", async () => {
+    const { out, writes } = harness(["\x1b[2;1R", "\x1b[2;3R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("8-bit")
+    expect(writes).toContain("\x1b[0m\u00e9")
+    expect(writes).toContain("\x1b[2;1H\x1b[2X")
+    expect(writes.at(-1)).toBe("\x1b8")
+  })
+
+  it("declines without painting or erasing when the origin cannot be verified", async () => {
+    const { out, writes } = harness(["\x1b[1;1R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBeNull()
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b8"])
+  })
+
+  it("declines without painting or erasing when the terminal answers nothing", async () => {
+    const { out, writes } = harness([])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBeNull()
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b8"])
+  })
+
+  it("declines a column that is neither one nor two cells past the origin, erasing what it painted", async () => {
+    const { out, writes } = harness(["\x1b[2;1R", "\x1b[2;5R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBeNull()
+    expect(writes).toContain("\x1b[2;1H\x1b[2X")
+    expect(writes.at(-1)).toBe("\x1b8")
   })
 })

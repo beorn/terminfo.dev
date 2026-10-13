@@ -334,18 +334,29 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
 export async function measureUtf8Decoding(): Promise<Utf8Decoding | null> {
   return withTTYOperation(async () => {
     currentTTYOutput().write("\x1b7")
+    let painted = false
     try {
       currentTTYOutput().write("\x1b[2;1H")
       const origin = await queryCursorPosition()
       if (origin?.[0] !== 2 || origin[1] !== 1) return null
       // U+00E9 is two UTF-8 bytes: one cell decoded as UTF-8, two cells decoded as ISO-8859-1.
-      currentTTYOutput().write("\u00e9")
+      // Default SGR first: an erase inherits the current background, so a glyph painted in a
+      // caller's colours would leave a coloured blank behind instead of the screen it found.
+      currentTTYOutput().write("\x1b[0m\u00e9")
+      painted = true
       const position = await queryCursorPosition()
       if (position?.[0] !== 2) return null
       if (position[1] === 2) return "utf8"
       if (position[1] === 3) return "8-bit"
       return null
     } finally {
+      // This measurement writes into whatever screen the calling row inherited. The batch has no
+      // between-row reset of its own: every compared region is preceded by the row's own clear (the
+      // seed strings in charsets.ts, written as each step's first write in region-readback.ts). So
+      // the measurement erases exactly the cells it painted -- ECH 2 covers the one UTF-8 cell and
+      // the two ISO-8859-1 cells -- before restoring the cursor, and no later row can inherit a
+      // stray glyph. (#28752, @cto)
+      if (painted) currentTTYOutput().write("\x1b[2;1H\x1b[2X")
       currentTTYOutput().write("\x1b8")
     }
   })
