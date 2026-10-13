@@ -113,8 +113,9 @@ test("no probe hands a non-ASCII glyph to a run measured 8-bit without asking it
       const received = latin1.handed.filter((text) => NON_ASCII.test(text))
       // The whole claim: an 8-bit run is a named cause, never a grade, so it must receive no glyph —
       // in either pass, because a row can reach the glyph by one route and not the other.
-      if (received.length > 0)
+      if (received.length > 0) {
         offenders.push(`${probe.id} (${answers ? "answering" : "quiet"} pass) handed ${JSON.stringify(received)}`)
+      }
     }
   }
   expect(
