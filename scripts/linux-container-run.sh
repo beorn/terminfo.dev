@@ -191,6 +191,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   target_launch_args=()
   target_command_lead=()
   target_clipboard_args=()
+  # The rendering pin this target launches under, recorded in observed.json beside the locale and the
+  # decoding (28752) so a run's context STATES it and an old run is told apart from a new one. Empty
+  # means the terminal renders as it ships. (#28829)
+  target_render_pin=
   target_xtversion_mode=
   target_xtversion_expect=
   # Pure bash: the image's runtime tools are a measured set and an unlisted dependency is a
@@ -225,9 +229,17 @@ if [[ "${1:-}" == "--inside" ]]; then
       # claim ("q" + U+2500 + "q" became "q" + U+00E2 + "q"), so the row could never match (#28752),
       # and a run now MEASURES the decoding it got (collector.utf8Decoding) instead of assuming the
       # pin took.
+      # Rendering is PINNED so that a repaint is byte-exact (#28829). With Xft antialiasing on, a
+      # plainly painted frame carries one extra partial-coverage edge pixel relative to the same
+      # frame reached by an edit sequence, so the exact-digest oracle reads a one-pixel residual
+      # and cannot classify the row (xterm/linux editing.decdc, editing.decic, editing.sl). Turning
+      # antialiasing off makes the target frame byte-identical to the expected frame — measured
+      # locally on xterm 411 + DejaVu Sans Mono 16 at window 1304x814: AA on 1 px differing at
+      # (28,76), AA off 0 px. Exact equality only: no tolerance, no similarity (CTO ruling #28752).
       target_launch_args=(-name "terminfo-$target_id-container-daemon" -u8 -fa 'DejaVu Sans Mono'
-        -fs 16 -geometry 100x30)
+        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false')
       target_command_lead=(-e)
+      target_render_pin=xft-antialias-off
       parse_version() {
         local line
         IFS= read -r line
@@ -639,8 +651,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     if has("decoding") then (.decoding // "silent") else "not-measured" end' /out/v2-run.json)
   jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --argjson capture "$capture_receipt" \
     --arg decoding "$decoding" \
-    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,capture:$capture,
-      context:"linux-x86_64-xvfb-llvmpipe",locale:"C.UTF-8",decoding:$decoding}' \
+    --arg render "${target_render_pin:-terminal-default}" \
+    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,capture:$capture,context:"linux-x86_64-xvfb-llvmpipe",locale:"C.UTF-8",decoding:$decoding,render:$render}' \
     > /out/observed.json
   read -r invocation_sha invocation_path < /out/invocation.sha256
   read -r source_sha source_path < /out/source-archive.sha256

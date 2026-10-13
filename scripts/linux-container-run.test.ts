@@ -544,6 +544,31 @@ describe("Xvfb screen fits the launched xterm window (#28580)", () => {
 })
 
 /**
+ * @failure xterm renders with Xft antialiasing, so a plainly painted frame carries one more
+ *   partial-coverage edge pixel than the same frame reached by an edit sequence; the exact-digest
+ *   oracle then reads a one-pixel residual (255,255,255 vs 239,239,239) and cannot classify
+ *   editing.decdc / editing.decic / editing.sl.
+ * @level l1 — reads the launcher's xterm launch args, the production rendering context.
+ * @consumer scripts/linux-container-run.sh xterm rendering pin (#28829)
+ */
+describe("xterm rendering is pinned AND RECORDED so a repaint is byte-exact (#28829)", () => {
+  it("launches xterm with Xft antialiasing off, same font and geometry, and records the pin", () => {
+    const source = readFileSync(launcher, "utf8")
+    const start = source.indexOf("\n    xterm)")
+    if (start < 0) throw new Error("xterm case not found in scripts/linux-container-run.sh")
+    const xtermCase = source.slice(start, source.indexOf("parse_version", start))
+    expect(xtermCase).toContain("-fa 'DejaVu Sans Mono'")
+    expect(xtermCase).toContain("-fs 16 -geometry 100x30")
+    expect(xtermCase).toContain("-xrm 'Xft.antialias: false'")
+    // The pin must be RECORDED, not only applied: the run's context states it so an old run (which
+    // carries no render key) is told apart from a new one. CTO O1: pin AND record.
+    expect(xtermCase).toContain("target_render_pin=xft-antialias-off")
+    expect(source).toContain("--arg render ")
+    expect(source).toMatch(/context:"linux-x86_64-xvfb-llvmpipe"[^\n]*render:\$render/)
+  })
+})
+
+/**
  * @failure split 120s curl / 180s attach budgets kill slow-but-complete groups (ghostty 140.6s,
  *   xterm 157.9s curl-28; wezterm attach-killed at 177s) so Candidate 2 rows go missing.
  * @level l1 — reads the launcher's declared probe-batch timeout.
