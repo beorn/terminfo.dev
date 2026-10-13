@@ -22,9 +22,9 @@ function git(repoRoot: string, ...args: string[]): string {
 }
 
 /**
- * The CODE gitlink the caller built for, read from `TERMINFO_SITE_CODE_GITLINK`. Absent means "this build is not
- * serving a CODE landing" and is recorded as `null`; a present-but-malformed value is a caller bug and throws, so a
- * broken pin never reaches the stamp as a plausible-looking string (NO SILENT ERRORS).
+ * The CODE gitlink the caller built for, read from `TERMINFO_SITE_CODE_GITLINK`. An ABSENT or BLANK value means "this
+ * build is not serving a CODE landing" and is recorded as `null`; any other value that is not 40 hex characters is a
+ * caller bug and throws, so a broken pin never reaches the stamp as a plausible-looking string (NO SILENT ERRORS).
  */
 function codeGitlinkFromEnv(env: NodeJS.ProcessEnv): string | null {
   const raw = env["TERMINFO_SITE_CODE_GITLINK"]?.trim()
