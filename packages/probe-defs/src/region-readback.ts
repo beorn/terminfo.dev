@@ -26,6 +26,7 @@
  * miss the edited cells and leave seed and expected equal — inconclusive BY NAME, never a verdict.
  */
 import type { CaptureCells, CapturePixelGeometry, ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import { utf8DecodingRefusal } from "./helpers.ts"
 
 export type CellRegion = CaptureCells
 export type PixelGeometry = CapturePixelGeometry
@@ -85,6 +86,13 @@ export interface RegionReadback {
    * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
    */
   ignored?: string
+  /**
+   * This row's expected frame is written PLAINLY, so deciding it assumes the run decodes plain
+   * UTF-8. The measured context fact is read before the first capture: a run measured 8-bit is
+   * inconclusive BY NAME instead of being compared against glyphs its terminal cannot paint
+   * (#28752).
+   */
+  requiresUtf8?: true
   /** The terminal's own pixel report, carried into every capture request. */
   pixelGeometry: PixelGeometry
   /** Bound on one paint witness, in ms. A timeout is inconclusive by name, never unsupported. */
@@ -337,6 +345,10 @@ export async function captureRegionReadbackDecision(
   if (!read) return null
   const refusal = regionRefusal(id, spec, ctx.rows, ctx.cols)
   if (refusal) return refusal
+  if (spec.requiresUtf8 === true) {
+    const decodingRefusal = await utf8DecodingRefusal(ctx, id)
+    if (decodingRefusal) return decodingRefusal
+  }
   const witnessCell: CellRegion = {
     top: spec.sentinel.row,
     left: spec.sentinel.col,

@@ -213,6 +213,46 @@ test("an edit that matches neither the seed nor the expected frame is inconclusi
   expect(result.observation.note).toContain("matched none of the compared frames (seed, expected)")
 })
 
+// 28752: a row whose expected frame is written PLAINLY assumes the run decodes plain UTF-8. The
+// measured context fact decides that, so an 8-bit run is inconclusive BY NAME — never a capability
+// negative, and never a run refusal.
+test("a measured 8-bit decoding context refuses by name before any capture", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  let asked = 0
+  fake.ctx.utf8Decoding = async () => {
+    asked += 1
+    return "8-bit"
+  }
+  const result = await decide(fake, { requiresUtf8: true })
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.reason).toBe("insufficient-evidence")
+  expect(result.observation.evidence).toBe("query")
+  expect(result.observation.note).toContain("decodes plain-written UTF-8 as ISO-8859-1")
+  expect(result.assertions).toBeUndefined()
+  expect(asked).toBe(1)
+  expect(fake.requests).toEqual([])
+  expect(fake.writes).toEqual([])
+})
+
+test("a measured utf8 decoding context leaves a plain-written row to its pixel oracle", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 2, regionDigest: painter({ applied: "edited" }) })
+  fake.ctx.utf8Decoding = async () => "utf8"
+  const result = await decide(fake, { requiresUtf8: true })
+  expect(result.observation.outcome).toBe("supported")
+})
+
+test("a row that declares no plain-written assumption never reads the fact", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 2, regionDigest: painter({ applied: "edited" }) })
+  let asked = 0
+  fake.ctx.utf8Decoding = async () => {
+    asked += 1
+    return "8-bit"
+  }
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("supported")
+  expect(asked).toBe(0)
+})
+
 // A spec whose four compared planes each paint a distinct frame, so a run can be told apart by the
 // plane it showed. The optional fourth plane is the frame the sequence would leave if it ignored
 // the one attribute its row claims (a DECSCA-protected cell erased, an EL that drops the current

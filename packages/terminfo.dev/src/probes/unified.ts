@@ -19,6 +19,7 @@ import {
   type ProbeResult,
   type TermContext,
   type UngradedDiagnostic,
+  type Utf8Decoding,
 } from "@terminfo/probe-defs"
 import {
   query,
@@ -27,6 +28,7 @@ import {
   queryWithSentinelOutcome,
   queryCursorPosition,
   measureRenderedWidth,
+  measureUtf8Decoding,
   queryMode,
   readResponse,
   withTTYOperation,
@@ -66,12 +68,14 @@ function createTermContext({
   events,
   probe,
   geometry,
+  utf8Decoding,
 }: {
   out: NodeJS.WriteStream
   writes?: string[]
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
   geometry?: Extract<GeometryMeasurement, { status: "measured" }>
+  utf8Decoding: () => Promise<Utf8Decoding | null>
 }): TermContext {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
@@ -115,6 +119,7 @@ function createTermContext({
     get rows() {
       return size().rows
     },
+    utf8Decoding,
   }
 }
 
@@ -288,6 +293,18 @@ export async function runProbeBatch(
         }
       : { kind: "shared" },
   )
+  // ONE measured context fact for the whole run (28752): how this terminal decodes a plainly
+  // written two-byte UTF-8 character. A row whose oracle compares plainly written glyphs asks for
+  // it before grading; the first ask measures, every later ask reads the same answer, and the raw
+  // reply is recorded beside the other collector facts so a reader can see what was measured.
+  let measuredDecoding: Utf8Decoding | null | undefined
+  const readUtf8Decoding = async (): Promise<Utf8Decoding | null> => {
+    if (measuredDecoding === undefined) {
+      measuredDecoding = await measureUtf8Decoding()
+      batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({ decoding: measuredDecoding })
+    }
+    return measuredDecoding
+  }
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -358,6 +375,7 @@ export async function runProbeBatch(
       events,
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
+      utf8Decoding: readUtf8Decoding,
     })
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard

@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
-import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
+import type { TerminalQueryOutcome, Utf8Decoding } from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -317,6 +317,34 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
       currentTTYOutput().write("A")
       const next = await queryCursorPosition()
       return next?.[0] === 1 && next[1] === pos[1] + 1 ? pos[1] - 1 : null
+    } finally {
+      currentTTYOutput().write("\x1b8")
+    }
+  })
+}
+
+/**
+ * Measure how this terminal decodes a plainly written two-byte UTF-8 character — the CONTEXT a
+ * pixel oracle assumes when it compares a sequence with the same terminal's rendering of the
+ * literal glyph (#28752). A UTF-8 context advances the cursor one cell per code point; a terminal
+ * in an 8-bit (ISO-8859-1) locale advances one cell per BYTE, so an expected frame written plainly
+ * paints a different string from the one the row claims. Measured, never assumed, through the same
+ * DSR 6n round trip the width probe already uses; null means the terminal answered nothing.
+ */
+export async function measureUtf8Decoding(): Promise<Utf8Decoding | null> {
+  return withTTYOperation(async () => {
+    currentTTYOutput().write("\x1b7")
+    try {
+      currentTTYOutput().write("\x1b[2;1H")
+      const origin = await queryCursorPosition()
+      if (origin?.[0] !== 2 || origin[1] !== 1) return null
+      // U+00E9 is two UTF-8 bytes: one cell decoded as UTF-8, two cells decoded as ISO-8859-1.
+      currentTTYOutput().write("\u00e9")
+      const position = await queryCursorPosition()
+      if (position?.[0] !== 2) return null
+      if (position[1] === 2) return "utf8"
+      if (position[1] === 3) return "8-bit"
+      return null
     } finally {
       currentTTYOutput().write("\x1b8")
     }

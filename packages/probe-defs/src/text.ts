@@ -1,5 +1,5 @@
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { isBlank, parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
+import { isBlank, parserStateResult, probe, unmeasuredCellResult, utf8DecodingRefusal } from "./helpers.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 
 /**
@@ -685,6 +685,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1f389}")
         if (ascii !== 2 || width === null) {
@@ -737,6 +739,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.cjk")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u4e2d")
         if (ascii !== 2 || width === null) {
@@ -1494,6 +1498,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-flags")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
         if (ascii !== 2 || width === null) {
@@ -1533,6 +1539,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-vs16")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
         if (ascii !== 2 || width === null) {
@@ -1572,6 +1580,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-zwj")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
         if (ascii !== 2 || width === null) {
