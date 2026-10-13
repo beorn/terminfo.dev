@@ -20,6 +20,11 @@ import { ALL_PROBES, type ProbeDefinition, type TermContext } from "../index.ts"
  * an answering one whose cursor position advances and whose widths are plausible — and judges the
  * UNION of both, each member in both 8-bit passes. The ninth row (unicode.east-asian-ambiguous) is
  * what the quiet pass alone found; the answering pass exists for the shape that hid behind it.
+ *
+ * M2 (@cto, same day): the 8-bit side now drives ALL app probes in both passes, not only the rows
+ * the utf8 census happened to see, so the claim is "no app probe hands a non-ASCII string to an
+ * 8-bit run" and no longer depends on what the utf8 pass saw. The union stays below as the
+ * non-vacuity evidence that real probes do hand real glyphs to a utf8 run.
  */
 
 const GEOMETRY = { rows: 24, cols: 80 } as const
@@ -88,7 +93,7 @@ test("no probe hands a non-ASCII glyph to a run measured 8-bit without asking it
   const onlyAnswering = union.filter((id) => !quiet.includes(id))
 
   // Non-vacuity: the census is only evidence if real probes hand real non-ASCII glyphs to the
-  // terminal. Eight did through the quiet pass when this test was written, so a smaller union means
+  // terminal. Nine did through the quiet pass (measured 2026-10-13 at M1), so a smaller union means
   // the check stopped seeing rows, not that the rows stopped needing it. Both counts are quoted so
   // a row that only the answering pass reaches is visible in the failure, not folded into a total.
   const censusLine =
@@ -101,9 +106,7 @@ test("no probe hands a non-ASCII glyph to a run measured 8-bit without asking it
   expect(union.length, censusLine).toBeGreaterThanOrEqual(8)
 
   const offenders: string[] = []
-  for (const id of union) {
-    const probe = APP_PROBES.find((candidate) => candidate.id === id)
-    if (!probe) throw new Error(`the census named ${id}, which is not an app probe`)
+  for (const probe of APP_PROBES) {
     for (const answers of [false, true]) {
       const latin1 = recordingTerm("8-bit", answers)
       await probe.term!(latin1.ctx)
@@ -111,7 +114,7 @@ test("no probe hands a non-ASCII glyph to a run measured 8-bit without asking it
       // The whole claim: an 8-bit run is a named cause, never a grade, so it must receive no glyph —
       // in either pass, because a row can reach the glyph by one route and not the other.
       if (received.length > 0)
-        offenders.push(`${id} (${answers ? "answering" : "quiet"} pass) handed ${JSON.stringify(received)}`)
+        offenders.push(`${probe.id} (${answers ? "answering" : "quiet"} pass) handed ${JSON.stringify(received)}`)
     }
   }
   expect(
