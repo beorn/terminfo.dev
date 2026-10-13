@@ -9,11 +9,14 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { SLICES, type Slice } from "@terminfo/catalog"
 
 export interface CategoryMeta {
   label: string
   order: number
   description: string
+  /** The scope label the cohorts filter over; `slice()` in @terminfo/catalog reads it. */
+  slice: Slice
 }
 
 /** Load and shape-check `content/categories.json` from a content directory. Throws on any defect. */
@@ -27,7 +30,7 @@ export function loadCategories(contentDir: string): Record<string, CategoryMeta>
   const categories: Record<string, CategoryMeta> = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (key.startsWith("$")) continue
-    const entry = value as { label?: unknown; order?: unknown; description?: unknown } | null
+    const entry = value as { label?: unknown; order?: unknown; description?: unknown; slice?: unknown } | null
     if (!entry || typeof entry.label !== "string" || !entry.label) {
       throw new Error(`${path}: category "${key}" is missing a label`)
     }
@@ -37,7 +40,18 @@ export function loadCategories(contentDir: string): Record<string, CategoryMeta>
     if (typeof entry.description !== "string") {
       throw new Error(`${path}: category "${key}" is missing a description`)
     }
-    categories[key] = { label: entry.label, order: entry.order, description: entry.description }
+    if (!SLICES.includes(entry.slice as Slice)) {
+      throw new Error(
+        `${path}: category "${key}" has an invalid slice "${String(entry.slice)}"; expected ${SLICES.join(", ")}`,
+      )
+    }
+    const slice = entry.slice as Slice
+    categories[key] = {
+      label: entry.label,
+      order: entry.order,
+      description: entry.description,
+      slice,
+    }
   }
   return categories
 }

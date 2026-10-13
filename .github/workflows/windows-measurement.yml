@@ -77,18 +77,19 @@ jobs:
           case "$APP_ID" in
             windows-terminal)
               WT_DIR="$RUNNER_TEMP/windows-terminal"
+              WT_ZIP="$RUNNER_TEMP/measurement-artifacts/wt.zip"
               if [ -e "$WT_DIR" ]; then
                 echo "Target directory $WT_DIR already exists; refusing reuse" >&2
                 exit 1
               fi
-              curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
-              powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
+              curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$WT_ZIP"
+              powershell -NoProfile -Command "Expand-Archive -Path '$WT_ZIP' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
               mkdir -p "$WT_DIR"
               cp -r "$RUNNER_TEMP"/wt_unpacked/terminal-*/* "$WT_DIR/"
               touch "$WT_DIR/.portable"
               mkdir -p "$WT_DIR/settings"
               printf '%s\n' '{"$schema":"https://aka.ms/terminal-profiles-schema","profiles":{"defaults":{"closeOnExit":"always"}}}' > "$WT_DIR/settings/settings.json"
-              test -f "$WT_DIR/wt.exe" || { echo "Windows Terminal binary missing at $WT_DIR/wt.exe" >&2; exit 1; }
+              test -f "$WT_DIR/WindowsTerminal.exe" || { echo "Windows Terminal binary missing at $WT_DIR/WindowsTerminal.exe" >&2; exit 1; }
               ;;
             *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
           esac
@@ -108,11 +109,12 @@ jobs:
           NODE_DIR="$(cygpath -w "$(dirname "$(command -v node)")")"
           TERMINFO_DIR="$(cygpath -w "$(dirname "$(command -v terminfo)")")"
           WT_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
+          WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe")"
+          WIN_ZIP="$(cygpath -w "$OUT/wt.zip")"
 
           cat > "$COMMAND_PATH" <<PS1
           \$ErrorActionPreference = "Continue"
           \$env:PATH = "$WT_DIR;$NODE_DIR;$TERMINFO_DIR;" + \$env:PATH
-          \$env:TERMINFO_TARGET_VERSION = "1.21.2361.0"
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
 
           \$attempts = 0
@@ -129,7 +131,14 @@ jobs:
           # The owned terminal reads TERMINFO_RUN_ID and refuses an empty launch id (owned-terminal.ts).
           # The id only exists once the launched step emitted the receipt, so it is read here, after the
           # readiness wait and before the collector (27917: hosted runs never set it).
-          \$env:TERMINFO_RUN_ID = (Get-Content -Raw "$WIN_OUT\\host-measured.json" | ConvertFrom-Json).runId
+          \$receipt = Get-Content -Raw "$WIN_OUT\\host-measured.json" | ConvertFrom-Json
+          if (\$receipt.appLaunch.platform -cne "win32" -or [string]::IsNullOrWhiteSpace(\$receipt.appLaunch.productVersion) -or \$receipt.appLaunch.executablePath -ine "$WIN_EXECUTABLE") {
+            Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt lacks the measured launched WindowsTerminal.exe path or ProductVersion; collection refused"
+            Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
+            exit 1
+          }
+          \$env:TERMINFO_TARGET_VERSION = \$receipt.appLaunch.productVersion
+          \$env:TERMINFO_RUN_ID = \$receipt.runId
           if ([string]::IsNullOrWhiteSpace(\$env:TERMINFO_RUN_ID)) {
             Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt has no launch run ID; collection refused"
             Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
@@ -145,12 +154,13 @@ jobs:
 
           case "$APP_ID" in
             windows-terminal)
-              "$RUNNER_TEMP/windows-terminal/wt.exe" -d "$WIN_OUT" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
+              "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe" -d "$WIN_OUT" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
               ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
 
           sleep 3
+          export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_ZIP"
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           touch "$OUT/collector-ready"
 

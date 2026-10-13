@@ -1,69 +1,120 @@
 /**
- * @failure Syncing callback presence erased reviewed partial probe status and reported counts from callbacks instead of saved metadata.
- * @level l1
- * @consumer The probe-status CLI and curated feature metadata.
+ * @failure probeStatus drifts from the probe definitions again, or a row the definitions cannot
+ *   settle silently claims more than its evidence — which is how the ten 27832 F2 movers wore a
+ *   full-probe badge while the release contract excluded them.
+ * @level l2
+ * @consumer the feature pages, the terminal pages and the Release 1 front-page bars
  * @testonly none
  */
-import { spawnSync } from "node:child_process"
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { expect, test } from "vitest"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { describe, expect, it } from "vitest"
+import { probe, type ProbeDefinition } from "@terminfo/probe-defs"
+import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
+import { derivedProbeStatus, probeStatusOf, probeStatusSummary } from "../docs/data/probe-status.ts"
 
-function withSyncFixture(run: (fixtureRoot: string, script: string, featurePath: string) => void) {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), "terminfo-probe-status-"))
-  try {
-    const scriptsDir = join(fixtureRoot, "scripts")
-    const contentDir = join(fixtureRoot, "content")
-    mkdirSync(scriptsDir)
-    mkdirSync(contentDir)
-    const script = join(scriptsDir, "sync-probe-status.ts")
-    copyFileSync(join(import.meta.dirname, "sync-probe-status.ts"), script)
-    symlinkSync(join(import.meta.dirname, "..", "packages"), join(fixtureRoot, "packages"), "dir")
-    symlinkSync(join(import.meta.dirname, "..", "node_modules"), join(fixtureRoot, "node_modules"), "dir")
-    run(fixtureRoot, script, join(contentDir, "features.json"))
-  } finally {
-    rmSync(fixtureRoot, { recursive: true, force: true })
-  }
-}
+const termlessArm = (() => ({ pass: true })) as unknown as ProbeDefinition["termless"]
+const termArm = (async () => ({ pass: true })) as unknown as ProbeDefinition["term"]
 
-test("sync preserves reviewed statuses and counts the resulting metadata", () => {
-  withSyncFixture((fixtureRoot, script, featurePath) => {
-    const features = {
-      "extensions.osc0-icon-title": { probeStatus: "partial", name: "Icon and title", probe: "reviewed partial" },
-      "input.modify-other-keys": { probeStatus: "manual", name: "Modified keys", probe: "manual event capture" },
-      "extensions.reflow": { probeStatus: "unprobed", name: "Resize reflow", probe: "needs controlled resize" },
-      "extensions.osc8": { probeStatus: "automated", name: "OSC 8", probe: "automated metadata" },
-      "extensions.osc22-pointer": { name: "Pointer shape", probe: "no headless callback" },
-    }
-    writeFileSync(featurePath, JSON.stringify(features, null, 2) + "\n")
+/** A definition with both arms, then whatever the case under test overrides. */
+const definition = (over: Partial<ProbeDefinition> = {}): ProbeDefinition => ({
+  ...probe("test.probe", termlessArm, termArm),
+  ...over,
+})
 
-    const result = spawnSync(process.execPath, [script], { cwd: fixtureRoot, encoding: "utf8", timeout: 10_000 })
-    expect(result.error).toBeUndefined()
-    expect(result.status, result.stderr).toBe(0)
-    const saved = JSON.parse(readFileSync(featurePath, "utf8"))
-    expect(saved).toEqual({
-      ...features,
-      "extensions.osc8": { name: "OSC 8", probe: "automated metadata" },
-      "extensions.osc22-pointer": { name: "Pointer shape", probe: "no headless callback", probeStatus: "partial" },
-    })
-    const output = result.stdout.replace(/\x1b\[[\d;]*m/g, "")
-    expect(output).toContain("Final: 1 automated, 2 partial, 1 manual, 1 unprobed (of 5 with probes)")
+/** A catalog holding only the rows a case needs. */
+const catalog = (rows: Record<string, string>): FeatureCatalog =>
+  Object.fromEntries(
+    Object.entries(rows).map(([id, probeStatus]) => [id, { probeStatus }]),
+  ) as unknown as FeatureCatalog
+
+describe("derivedProbeStatus", () => {
+  it("reads automated only when every running arm declares measuring evidence", () => {
+    expect(
+      derivedProbeStatus(definition({ termObservationEvidence: "query", termlessObservationEvidence: "parser-state" })),
+    ).toBe("automated")
+  })
+
+  it("reads partial when an arm is absent, even if the other arm measures", () => {
+    expect(derivedProbeStatus(definition({ termless: null, termObservationEvidence: "query" }))).toBe("partial")
+  })
+
+  it("reads partial when a declared arm carries acceptance-only evidence", () => {
+    expect(
+      derivedProbeStatus(definition({ termObservationEvidence: "query", termlessObservationEvidence: "consumed" })),
+    ).toBe("partial")
+  })
+
+  it("lets the consumption signal outrank an undeclared arm, so the row is partial and not undeclared", () => {
+    expect(derivedProbeStatus(definition({ termlessObservationEvidence: "consumed" }))).toBe("partial")
+  })
+
+  it("cannot settle a row that leaves an arm undeclared", () => {
+    expect(derivedProbeStatus(definition({ termlessObservationEvidence: "parser-state" }))).toBeNull()
   })
 })
 
-// Malformed catalogs must fail at the CLI boundary, before success or a write.
-test.each(["[]", "null", "42", '"text"', '{"extensions.osc8":null}', '{"extensions.osc8":[]}', "{"])(
-  "sync rejects invalid feature metadata without changing it: %s",
-  (source) => {
-    withSyncFixture((fixtureRoot, script, featurePath) => {
-      writeFileSync(featurePath, source)
-      const result = spawnSync(process.execPath, [script], { cwd: fixtureRoot, encoding: "utf8", timeout: 10_000 })
-      expect(result.error).toBeUndefined()
-      expect(result.status).toBe(1)
-      expect(result.stderr).toContain(featurePath)
-      expect(result.stdout).not.toContain("No changes needed")
-      expect(readFileSync(featurePath, "utf8")).toBe(source)
-    })
-  },
-)
+describe("probeStatusOf", () => {
+  it("lets a reviewed value win, so a gate the definitions cannot express still reads partial", () => {
+    const gated = definition({ termObservationEvidence: "behavior", termlessObservationEvidence: "query" })
+    expect(derivedProbeStatus(gated)).toBe("automated")
+    expect(probeStatusOf("test.probe", catalog({ "test.probe": "partial" }))).toBe("partial")
+  })
+
+  it("reads undeclared, never automated, for a row the definitions cannot settle", () => {
+    expect(probeStatusOf("extensions.truecolor", catalog({}))).toBe("undeclared")
+  })
+
+  it("reads unprobed for a row with no probe definition at all", () => {
+    expect(probeStatusOf("absent.probe", catalog({}))).toBe("unprobed")
+  })
+})
+
+describe("probeStatusSummary", () => {
+  it("names each home of a reviewed value, and counts the undeclared rows", () => {
+    const summary = probeStatusSummary(
+      catalog({
+        "sgr.bold": "", // settled by the definitions: automated
+        "extensions.osc52-read": "partial", // gated: a review stands over a settled derivation
+        "extensions.truecolor": "", // unsettled: shown as undeclared, and counted
+        "device.env-term": "manual", // no definition at all, reviewed by hand
+        "absent.probe": "", // no definition at all, unreviewed
+      }),
+    )
+    expect(summary.counts).toEqual({ automated: 1, partial: 1, manual: 1, unprobed: 1, undeclared: 1 })
+    expect(summary.undeclared).toEqual(["extensions.truecolor"])
+    expect(summary.gated).toEqual(["extensions.osc52-read"])
+    expect(summary.noDefinition).toEqual(["device.env-term"])
+  })
+})
+
+describe("the real catalog", () => {
+  const contentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
+
+  it("settles, reviews or names every feature, leaving no row unaccounted for", () => {
+    const features = loadFeatures(contentDir)
+    const summary = probeStatusSummary(features)
+    const total = Object.values(summary.counts).reduce((sum, count) => sum + count, 0)
+    expect(total).toBe(Object.keys(features).filter((id) => !id.startsWith("$")).length)
+    // An undeclared row is named, not silently defaulted; 28801 deletes the value when this reaches 0.
+    expect(summary.undeclared.length).toBeGreaterThan(0)
+    expect(summary.undeclared.every((id) => features[id]?.probeStatus === undefined)).toBe(true)
+  })
+
+  it("keeps the ten 27832 section F2 movers partial, as the release contract requires", () => {
+    const features = loadFeatures(contentDir)
+    const movers = [
+      "extensions.osc22-pointer",
+      "extensions.osc52-clipboard",
+      "extensions.osc52-read",
+      "extensions.osc52-write",
+      "extensions.osc176-app-id",
+      "extensions.osc3008-context",
+      "extensions.osc440-audio",
+      "extensions.osc555-flash",
+      "extensions.osc666-termprop",
+      "extensions.osc777-notify",
+    ]
+    for (const id of movers) expect(probeStatusOf(id, features), id).toBe("partial")
+  })
+})

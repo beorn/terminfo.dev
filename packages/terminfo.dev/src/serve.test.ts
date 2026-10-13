@@ -238,16 +238,18 @@ describe("private finite daemon startup", () => {
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       import { parseRunProvenance } from "@terminfo/run-parser"
+      import { parseAppLaunchReceipt } from "./packages/run-parser/src/app-launch.ts"
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c", disposed = 0, calls = []
       let launch
+      let terminal={name:"kitty",version:"",os:"linux",osVersion:"fixture"}
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
-      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => ({name:"kitty",version:"",os:"linux",osVersion:"fixture"}) }))
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => terminal }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned, createOwnedTerminal: async () => ({
         geometryAtGrant:{status:"measured",rows:24,cols:80},summary:"owned fixture",dispose:async()=>{disposed++}
       })}))
@@ -307,6 +309,18 @@ describe("private finite daemon startup", () => {
       assert.equal(nonowned.target.version,"unknown")
       assert.equal(nonowned.rawReplies["collector.xtversion"],undefined)
       assert.deepEqual(calls,[])
+      // Actual run 38303792334 reported stale detection 1.23.20211.0 despite measured executable
+      // ProductVersion 1.21.240823001. Earlier macOS/receipt-copy assertions did not cover this.
+      terminal={name:"windows-terminal",version:"1.23.20211.0",os:"windows",osVersion:"fixture"}
+      for(const productVersion of ["1.21.240823001","1.21.240823001-build42"]){
+        launch=parseAppLaunchReceipt({platform:"win32",executablePath:"C:/runner/WindowsTerminal.exe",
+          productVersion,executableSha256:"c3".repeat(32),
+          sourceArtifact:{kind:"portable-zip",path:"C:/runner/wt.zip",sha256:"d4".repeat(32)}},"collector","app","fixture")
+        process.env.TERMINFO_TARGET_VERSION=productVersion.trim()
+        const windows=await collectProbeRun({ids:["device.xtversion"]})
+        assert.equal(windows.target.version,productVersion)
+        assert.deepEqual(windows.origin.appLaunch,launch)
+      }
     `,
       ],
       { cwd: packageRoot, env: { ...process.env, HOME: home }, encoding: "utf8", timeout: 5000 },

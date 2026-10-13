@@ -12,6 +12,7 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { SelectedCell, SelectedVersion } from "../docs/data/selected-results.ts"
+import { classifyCells, type CellState } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import type { EvidenceDocument, PublicVersion } from "../docs/data/public-results.ts"
 
@@ -172,15 +173,35 @@ const fixture = vi.hoisted(() => {
   }
 })
 
-vi.mock("../docs/data/current-results.ts", () => ({
-  loadCurrentResults: () => ({ projection: fixture.projection }),
-  compatibilityTargets: () =>
-    new Map([
-      ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
-      ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
-      ["screen", { contextKey: "mux:screen", selected: fixture.screen }],
-    ]),
-}))
+vi.mock("../docs/data/current-results.ts", async () => {
+  // The projection owns the ONE classified table every reader folds (28792 item 1), so the fixture
+  // classifies its own runs with the same function `loadFullProbes` would read from the real reader.
+  const { classifyCells } = await import("../docs/data/release-scope.ts")
+  const build = () => {
+    const runs = [
+      ...Object.values(fixture.projection.current),
+      ...Object.values(fixture.projection.versions).flat(),
+      ...Object.values(fixture.projection.history).flat(),
+      // The mock's targets are fixed, so a test that removes a run from the projection still needs a
+      // classified row for the run its target names (28792 item 1).
+      fixture.selected,
+      fixture.mux,
+      fixture.screen,
+    ]
+    const table: Record<string, Record<string, CellState>> = {}
+    for (const run of runs) table[run.runId] = classifyCells(run.cells)
+    return { ...fixture.projection, table }
+  }
+  return {
+    loadCurrentResults: () => ({ projection: build() }),
+    compatibilityTargets: () =>
+      new Map([
+        ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
+        ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
+        ["screen", { contextKey: "mux:screen", selected: fixture.screen }],
+      ]),
+  }
+})
 
 import probesLoader from "../docs/data/probes.data.ts"
 import { loadProbes } from "../docs/data/load-probes.ts"
@@ -368,10 +389,10 @@ it("analysis rejects malformed required catalogs before replacing its output", (
       "frameworks",
       "glossary",
       "annotations",
-      "release-scope-candidate2",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
+    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     const control = spawnSync(process.execPath, [script, "--dry-run"], { cwd: out, encoding: "utf8", timeout: 10_000 })
     expect(control.error).toBeUndefined()
     expect(control.status, control.stderr).toBe(0)
@@ -423,10 +444,10 @@ it("analysis validation refuses stale live values and key drift but labels histo
       "frameworks",
       "glossary",
       "annotations",
-      "release-scope-candidate2",
     ]) {
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
+    cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
     const run = (args: string[]) =>
       spawnSync(process.execPath, [script, ...args], { cwd: out, encoding: "utf8", timeout: 10_000 })
     const generated = run([])
@@ -964,11 +985,16 @@ describe("selected-run consumer parity", () => {
 
   it("limits comparison claims to the same recorded scope and jointly conclusive evidence method", () => {
     const data = loadProbes()
-    const kitty = data.selectedByBackend.kitty?.selected
-    const screen = data.selectedByBackend.screen?.selected
-    const tmux = data.selectedByBackend.tmux?.selected
+    const kittyEntry = data.selectedByBackend.kitty
+    const screenEntry = data.selectedByBackend.screen
+    const tmuxEntry = data.selectedByBackend.tmux
+    const kitty = kittyEntry?.selected
+    const screen = screenEntry?.selected
+    const tmux = tmuxEntry?.selected
     const bold = kitty?.cells["sgr.bold"]
-    if (!screen || !tmux || !bold) throw new Error("Missing comparison fixture cells")
+    if (!screen || !tmux || !bold || !screenEntry || !tmuxEntry) {
+      throw new Error("Missing comparison fixture cells")
+    }
 
     const mixed = comparePaths
       .paths()
@@ -1000,6 +1026,11 @@ describe("selected-run consumer parity", () => {
         outcome: "supported",
         evidence: "query",
       }
+      // The reader's states are the ONE classification of the run's cells, taken once per build. A
+      // fixture that overrides raw cells re-derives them the same way, so the compare page reads the
+      // cells the fixture named (28792 item 1).
+      Object.assign(screenEntry.states, classifyCells(screen.cells))
+      Object.assign(tmuxEntry.states, classifyCells(tmux.cells))
       const pair = comparePaths
         .paths()
         .find(
@@ -1029,6 +1060,8 @@ describe("selected-run consumer parity", () => {
     } finally {
       Object.assign(screen, originalScreen)
       Object.assign(tmux, originalTmux)
+      Object.assign(screenEntry.states, classifyCells(screen.cells))
+      Object.assign(tmuxEntry.states, classifyCells(tmux.cells))
     }
   })
 

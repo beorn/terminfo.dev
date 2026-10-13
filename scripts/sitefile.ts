@@ -15,6 +15,7 @@
 
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadFeatures, loadTerminals } from "@terminfo/catalog"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -571,8 +572,7 @@ async function generateLockfile() {
 
   // Count features from features.json
   const featuresPath = path.join(contentDir, "features.json")
-  const featuresJson = parseJsonStrict(featuresPath, fs.readFileSync(featuresPath, "utf8")) as Record<string, unknown>
-  const featureKeys = Object.keys(featuresJson).filter((k) => k !== "$comment")
+  const featureKeys = Object.keys(loadFeatures(contentDir))
   const totalFeatures = featureKeys.length
 
   // Count features per family
@@ -599,10 +599,7 @@ async function generateLockfile() {
   const { projection } = loadCurrentResults(contentDir)
   const selected = [...compatibilityTargets(projection, contentDir).values()]
   const catalogPath = path.join(contentDir, "terminals.json")
-  const catalog = parseJsonStrict(catalogPath, fs.readFileSync(catalogPath, "utf8")) as Record<
-    string,
-    { kind: string; slug: string }
-  >
+  const catalog = loadTerminals(contentDir)
   const terminalLock = terminals.map((terminal) => {
     const declarations = Object.entries(catalog).filter(([id, row]) => id === terminal.id || row.slug === terminal.id)
     if (declarations.length !== 1) {
@@ -611,7 +608,7 @@ async function generateLockfile() {
     const chosenDeclaration = declarations[0]
     if (!chosenDeclaration) throw new Error(`${catalogPath}: missing tracked terminal ${terminal.id}`)
     const [targetId, declaration] = chosenDeclaration
-    const kind = terminal.probeMethod === "termless" ? "headless" : declaration.kind
+    const kind: string | undefined = terminal.probeMethod === "termless" ? "headless" : declaration.kind
     const entry = selected.find(({ selected: run }) => run.target.kind === kind && run.target.id === targetId)
     const run = entry?.selected
     return {

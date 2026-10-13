@@ -1,13 +1,12 @@
-import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { loadFeatures, loadTerminals as loadTerminalCatalog, type TerminalRecord } from "@terminfo/catalog"
 import {
   loadProbes,
   featureSlug,
   catLabel,
   categoryDescriptions,
   terminalSlug,
-  loadFeaturesMeta,
   getAllTags,
   getFeaturesForTag,
   tagLabel,
@@ -19,11 +18,11 @@ import {
 import { linkifyContentExcluding } from "./data/linkify-content"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const contentDir = join(__dirname, "..", "content")
 
-/** Load terminals.json for historical terminal body content */
-function loadTerminals(): Record<string, { body?: string; [k: string]: unknown }> {
-  const path = join(__dirname, "..", "content", "terminals.json")
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, { body?: string }>
+/** The terminal catalog for historical terminal body content, through its one loader. */
+function loadTerminals(): Record<string, TerminalRecord> {
+  return loadTerminalCatalog(contentDir)
 }
 
 /** Map standard/tag IDs to their corresponding historical terminal entry in terminals.json */
@@ -37,7 +36,7 @@ const tagToHistoricalTerminal: Record<string, string> = {
 export default {
   paths() {
     const data = loadProbes()
-    const featuresMeta = loadFeaturesMeta()
+    const featuresMeta = loadFeatures(contentDir)
 
     // Sort backends by score (highest first)
     const sortedBackends = [...data.backends].sort((a, b) => {

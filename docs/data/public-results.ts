@@ -2,7 +2,8 @@
 import { createHash } from "node:crypto"
 import type { Observation, ProbeAssertion, ProbeTarget, RunOrigin } from "@terminfo/probe-defs"
 import type { CurrentResult } from "./current-results.ts"
-import type { SelectedCell, SelectedProjection, SelectedVersion } from "./selected-results.ts"
+import { statesFor, type SelectedCell, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
+import type { CellState } from "./release-scope.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
 type PublicFrame = Omit<NonNullable<SelectedCell["record"]["frames"]>[number], "sourceRef">
@@ -48,6 +49,12 @@ export interface PublicProjection {
 
 export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
   selected: PublicVersion
+  /**
+   * The reader's classified states for this backend's selected run, keyed by feature id. A page that
+   * names a backend (its bar, its tooltip) reads the state here, so it never classifies the run's raw
+   * cells a second time (28792 item 1).
+   */
+  states: Readonly<Record<string, CellState>>
 }
 
 /** Only web references are links in public summaries; internal paths remain in the source record. */
@@ -197,6 +204,8 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       {
         contextKey: value.contextKey,
         selected: mapVersion(value.selected),
+        // The selected run's states come from the projection's ONE table, never a second classification.
+        states: statesFor(projection, value.selected.runId),
         ...(value.policy && {
           policy: {
             contextKey: value.policy.contextKey,

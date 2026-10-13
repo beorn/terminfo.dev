@@ -1,32 +1,25 @@
-/** Node-only loader for the Release 1 measurement declaration. */
-import { readFileSync } from "node:fs"
-import { parseJsonStrict } from "@terminfo/run-parser"
+/**
+ * Node-only loader for the Release 1 measurement scope and the candidate-2 classic cohort.
+ *
+ * Both are DERIVED from the catalogs, never from a declaration file (@cto 2026-10-12, item 3): the
+ * declared tier-1 rows are the catalog rows `slice()` labels `tier1` (52 `included`, ten `excluded`),
+ * and the candidate-2 cohort is every catalog row whose CATEGORY slice is `classics` (125). The two
+ * scope files (`content/release-scope.json`, `content/release-scope-candidate2.json`) are deleted; a
+ * release's frozen suite is the one suite manifest whose `freeze.release` names it.
+ */
 import { splitAppObservable } from "@terminfo/probe-defs"
+import { slice, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
+export { frozenSuiteIdFor } from "../../scripts/suite-manifest.ts"
 
-interface ReleaseDeclaration {
-  tier: number
-  method: string
-  featureIds: string[]
-}
+/** Release 1's own two constants, the ones its tier line prints. */
+const RELEASE_1_TIER = 1
+const RELEASE_1_METHOD = "query/reply"
 
-interface CatalogEntry {
-  name: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function validateFeatureIds(ids: unknown[], catalog: Record<string, CatalogEntry>, path: string): string[] {
-  if (ids.some((id) => typeof id !== "string" || !id)) {
-    throw new Error(`${path}: featureIds must be nonempty strings`)
-  }
-  const measuredIds = [...new Set(ids as string[])]
-  if (measuredIds.length !== ids.length) throw new Error(`${path}: featureIds must be unique`)
-  const missing = measuredIds.filter((id) => !catalog[id])
-  if (missing.length) throw new Error(`${path}: unknown features ${missing.join(", ")}`)
-  return measuredIds
+/** The category facts the classic cohort order needs: its slice label and its site order. */
+export interface CohortCategoryMeta {
+  slice: Slice
+  order: number
 }
 
 export interface FeatureCohort {
@@ -39,67 +32,73 @@ export interface FeatureCohort {
   libraryOnlyIds: string[]
 }
 
-export function loadFeatureCohort(args: {
-  catalog: Record<string, CatalogEntry>
-  declarationPath: string
-}): FeatureCohort {
-  const raw: unknown = parseJsonStrict(args.declarationPath, readFileSync(args.declarationPath, "utf8"))
-  if (
-    !isRecord(raw) ||
-    raw.name !== "candidate2" ||
-    typeof raw.frozenSuiteId !== "string" ||
-    !raw.frozenSuiteId.trim() ||
-    !Array.isArray(raw.featureIds) ||
-    raw.featureIds.length === 0
-  ) {
-    throw new Error(
-      `${args.declarationPath}: expected { name: "candidate2", frozenSuiteId: nonempty string, featureIds: nonempty array }`,
-    )
+/**
+ * The candidate-2 cohort in its published order: every catalog row whose CATEGORY slice is `classics`,
+ * category by category in the category catalog's own `order`, each category's ids ascending. That is
+ * the ONE category order the site prints (@cto 2026-10-12, item 3), so the cohort cannot disagree
+ * with the category blocks beside it. The two classic rows that also carry a `tier1` field stay IN
+ * the cohort: the filter is the category's slice, matching 28018's accepted 125.
+ */
+export function classicCohortIds(
+  catalog: FeatureCatalog,
+  categories: Readonly<Record<string, CohortCategoryMeta>>,
+): string[] {
+  const classic = Object.entries(categories)
+    .filter(([, category]) => category.slice === "classics")
+    .sort((left, right) => left[1].order - right[1].order)
+  const ids: string[] = []
+  for (const [key] of classic) {
+    const prefix = `${key}.`
+    for (const id of Object.keys(catalog)
+      .filter((id) => id.startsWith(prefix))
+      .sort()) {
+      ids.push(id)
+    }
   }
-  const measuredIds = validateFeatureIds(raw.featureIds, args.catalog, args.declarationPath)
+  if (ids.length === 0) {
+    throw new Error('classics cohort is empty: no category carries slice "classics"')
+  }
+  return ids
+}
+
+/** The candidate-2 cohort derived from the catalog, with the release's frozen suite named. */
+export function loadFeatureCohort(args: {
+  catalog: FeatureCatalog
+  categories: Readonly<Record<string, CohortCategoryMeta>>
+  frozenSuiteId: string
+}): FeatureCohort {
+  const measuredIds = classicCohortIds(args.catalog, args.categories)
   const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
   return {
-    name: raw.name,
-    frozenSuiteId: raw.frozenSuiteId,
+    name: "candidate2",
+    frozenSuiteId: args.frozenSuiteId,
     measuredIds,
     scoredIds: [...scoredIds],
     libraryOnlyIds: [...libraryOnlyIds],
   }
 }
 
-export function loadReleaseScope(args: {
-  catalog: Record<string, CatalogEntry>
-  declarationPath: string
-}): ReleaseScope {
-  const raw: unknown = JSON.parse(readFileSync(args.declarationPath, "utf8"))
-  if (
-    !isRecord(raw) ||
-    typeof raw.tier !== "number" ||
-    typeof raw.method !== "string" ||
-    !Array.isArray(raw.featureIds)
-  ) {
-    throw new Error(`${args.declarationPath}: expected { tier, method, featureIds }`)
-  }
-  const declaration = raw as unknown as ReleaseDeclaration
-  const measuredIds = validateFeatureIds(declaration.featureIds, args.catalog, args.declarationPath)
-  const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
+/**
+ * The Release 1 tier-1 scope, derived from the catalog: every row `slice()` labels `tier1`. The
+ * unmeasured rows keep the reader's own name and status, in catalog-id order.
+ */
+export function loadReleaseScope(args: { catalog: FeatureCatalog; categories: SliceCatalog }): ReleaseScope {
   const catalogIds = Object.keys(args.catalog)
+  const measuredIds = catalogIds.filter((id) => slice(args.catalog, args.categories, id) === "tier1").sort()
+  if (measuredIds.length === 0) throw new Error("Release 1 scope is empty: no catalog row carries a tier1 field")
+  const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
   const measured = new Set(measuredIds)
-  const unmeasured = catalogIds
-    .filter((id) => !measured.has(id))
-    .sort()
-    .map((id) => {
-      const entry = args.catalog[id]
-      if (!entry) throw new Error(`${args.declarationPath}: catalog lost ${id} while listing unmeasured features`)
-      return {
-        id,
-        name: entry.name,
-        status: "not measured in this release" as const,
-      } satisfies ReleaseFeature
-    })
+  const unmeasured: ReleaseFeature[] = []
+  for (const id of catalogIds) {
+    if (measured.has(id)) continue
+    const entry = args.catalog[id]
+    if (!entry) throw new Error(`catalog lost ${id} while listing unmeasured features`)
+    unmeasured.push({ id, name: entry.name, status: "not measured in this release" })
+  }
+  unmeasured.sort((left, right) => left.id.localeCompare(right.id))
   return {
-    tier: declaration.tier,
-    method: declaration.method,
+    tier: RELEASE_1_TIER,
+    method: RELEASE_1_METHOD,
     measuredIds,
     scoredIds: [...scoredIds],
     libraryOnlyIds: [...libraryOnlyIds],

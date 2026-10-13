@@ -2,7 +2,8 @@
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
-import { treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
+import { classifyCells, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
+import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
   type Observation,
@@ -16,20 +17,24 @@ import {
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
-  measuredVersionTokens,
-  parseJsonStrict,
   parseSuiteManifest,
   parseRun,
   parseObservationFrames,
-  validateObservationOutcome,
   validateObservation,
+  validateObservationOutcome,
 } from "@terminfo/run-parser"
+import { assessRunAdmission, type IdentityAdmission } from "../../scripts/admit-run.ts"
 import {
-  deriveIdentity,
-  verifyTerminalIdentity,
-  TERMINAL_IDENTITY_RULES,
-  type TerminalIdentityRule,
-} from "terminfo.dev/src/identity-guard.ts"
+  activeInterpretations,
+  applies,
+  fail,
+  hasPresentationDecision,
+  nonempty,
+  parseInterpretations,
+  validatePresentationShape,
+  validatePresentationSupersession,
+} from "../../scripts/interpretations.ts"
+export { parseInterpretations } from "../../scripts/interpretations.ts"
 
 export interface SelectedCell extends Observation {
   conclusive: boolean
@@ -62,13 +67,7 @@ export interface SelectedCell extends Observation {
   }
 }
 
-export interface IdentityAdmission {
-  rule: string
-  da1?: string
-  xtversion?: string
-  receipt?: { cfBundleShortVersionString: string }
-  executable?: { version: string; sha256: string }
-}
+export type { IdentityAdmission } from "../../scripts/admit-run.ts"
 
 export interface SelectedVersion {
   runId: string
@@ -108,9 +107,24 @@ export interface SelectedVersion {
   }
 }
 
+/**
+ * The reader's one product: the classified state of every cell of every run the projection read, keyed
+ * by run id. Every bar, page and CLI view folds THIS table (`aggregateCells` in `release-scope.ts`)
+ * rather than walking raw cells, so `classifyCell` runs once per cell, here, and no consumer can drift
+ * into a second copy of the classification (28792 item 1).
+ *
+ * The key is the run id, not the context key: a consumer of the SELECTED run reads
+ * `table[current[context].runId]`, while `decisive-share` also cuts bars over the runs in `history`
+ * (its ADMITTED RUNS section), and one run belongs to exactly one context, so this key covers both
+ * without re-classifying anything.
+ */
+export type CellTable = Readonly<Record<string, Readonly<Record<string, CellState>>>>
+
 export interface SelectedProjection {
   current: Record<string, SelectedVersion>
   versions: Record<string, SelectedVersion[]>
+  /** The classified state of every run's cells, keyed by run id and then by feature id. */
+  table: CellTable
   /** Includes every valid raw run, even ones excluded from selection. */
   history: Record<string, SelectedVersion[]>
   exclusions: Array<{ runId: string; path: string; reason: string }>
@@ -122,337 +136,12 @@ export interface SelectedProjection {
   treeMovedPastRelease: boolean
 }
 
-const object = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-const nonempty = (value: unknown): value is string => typeof value === "string" && value.length > 0
-function fail(path: string, message: string): never {
-  throw new Error(`${path}: ${message}`)
-}
-const asString = (value: unknown, path: string, name: string): string =>
-  nonempty(value) ? value : fail(path, `missing ${name}`)
-
-const hasPresentationDecision = (entry: object): boolean => Object.hasOwn(entry, "presentsEvidence")
-
-function validatePresentationShape(entry: Record<string, unknown>, path: string, catalog: ReadonlySet<string>): void {
-  if (!hasPresentationDecision(entry)) return
-  const id = nonempty(entry.id) ? entry.id : "unnamed"
-  if (typeof entry.presentsEvidence !== "boolean") fail(path, `presentation ${id}: invalid presentsEvidence`)
-  for (const field of ["reviewed", "verifiesIdentity", "observation", "origin"]) {
-    if (Object.hasOwn(entry, field)) fail(path, `presentation ${id} cannot set ${field}`)
-  }
-  if (!nonempty(entry.runId)) fail(path, `presentation ${id} requires exact runId`)
-  if (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256)) {
-    fail(path, `presentation ${id} requires exact run SHA256`)
-  }
-  if (!nonempty(entry.featureId) || !catalog.has(entry.featureId)) {
-    fail(path, `presentation ${id} requires catalog featureId`)
-  }
-  if (!nonempty(entry.reviewer) || !nonempty(entry.reason)) {
-    fail(path, `presentation ${id} requires reviewer and reason`)
-  }
-  if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
-    fail(path, `presentation ${id} requires sources`)
-  }
-  if (
-    !object(entry.scope) ||
-    !object(entry.scope.target) ||
-    !["app", "headless", "mux"].includes(String(entry.scope.target.kind)) ||
-    !nonempty(entry.scope.target.id) ||
-    !Array.isArray(entry.scope.versions) ||
-    entry.scope.versions.length !== 2 ||
-    !entry.scope.versions.every(nonempty) ||
-    !Array.isArray(entry.scope.suites) ||
-    entry.scope.suites.length !== 2 ||
-    !entry.scope.suites.every(nonempty)
-  ) {
-    fail(path, `presentation ${id} requires a valid scope`)
-  }
-}
-
-function validatePresentationSupersession(entries: readonly Interpretation[], path: string): void {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]))
-  for (const entry of entries) {
-    for (const priorId of entry.supersedes) {
-      const prior = byId.get(priorId)
-      if (!prior) fail(path, `interpretation ${entry.id} supersedes unknown ${priorId}`)
-      const currentPresentation = hasPresentationDecision(entry)
-      const priorPresentation = hasPresentationDecision(prior)
-      if (
-        (currentPresentation || priorPresentation) &&
-        (!currentPresentation ||
-          !priorPresentation ||
-          entry.runId !== prior.runId ||
-          entry.runSha256 !== prior.runSha256 ||
-          entry.featureId !== prior.featureId)
-      ) {
-        fail(path, `presentation ${entry.id} cannot supersede ${prior.id} outside the same exact run/SHA/feature`)
-      }
-    }
-  }
-}
-
 const TEMPORAL_PIXEL_FEATURES = new Set([
   "sgr.blink",
   "extensions.kitty-graphics.animation",
   "modes.synchronized-output",
   "extensions.osc555-flash",
 ])
-
-export function parseInterpretations(path: string, source: string, catalogIds: readonly string[]): Interpretation[] {
-  const raw = parseJsonStrict(path, source)
-  if (!Array.isArray(raw)) fail(path, "interpretations must be an array")
-  const ids = new Set<string>()
-  const catalog = new Set(catalogIds)
-  for (const entry of raw) {
-    if (!object(entry)) fail(path, "invalid interpretation")
-    const id = asString(entry.id, path, "interpretation.id")
-    if (ids.has(id)) fail(path, `duplicate interpretation ${id}`)
-    ids.add(id)
-    asString(entry.reviewer, path, `reviewer for ${id}`)
-    asString(entry.reason, path, `reason for ${id}`)
-    if (
-      !object(entry.scope) ||
-      !object(entry.scope.target) ||
-      !["app", "headless", "mux"].includes(String(entry.scope.target.kind)) ||
-      !nonempty(entry.scope.target.id)
-    ) {
-      fail(path, `invalid scope target for ${id}`)
-    }
-    if (
-      !Array.isArray(entry.scope.versions) ||
-      entry.scope.versions.length !== 2 ||
-      !entry.scope.versions.every(nonempty)
-    ) {
-      fail(path, `invalid versions for ${id}`)
-    }
-    if (!Array.isArray(entry.scope.suites) || entry.scope.suites.length !== 2 || !entry.scope.suites.every(nonempty)) {
-      fail(path, `invalid suites for ${id}`)
-    }
-    if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
-      fail(path, `missing sources for ${id}`)
-    }
-    if (!Array.isArray(entry.supersedes) || !entry.supersedes.every(nonempty)) {
-      fail(path, `invalid supersedes for ${id}`)
-    }
-    if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id)) {
-      fail(path, `duplicate/self supersedes for ${id}`)
-    }
-    if (entry.runId !== undefined && !nonempty(entry.runId)) fail(path, `invalid runId for ${id}`)
-    if (
-      entry.runSha256 !== undefined &&
-      (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256))
-    ) {
-      fail(path, `invalid run SHA256 for ${id}`)
-    }
-    validatePresentationShape(entry, path, catalog)
-    for (const flag of ["reviewed", "verifiesIdentity"] as const) {
-      if (entry[flag] !== undefined && typeof entry[flag] !== "boolean") fail(path, `invalid ${flag} for ${id}`)
-    }
-    if (entry.verifiesIdentity || entry.reviewed) {
-      if (!nonempty(entry.runId)) fail(path, `identity/community review ${id} requires exact runId`)
-      if (typeof entry.runSha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.runSha256)) {
-        fail(path, `identity/community review ${id} requires exact run SHA256`)
-      }
-    }
-    if (entry.featureId !== undefined && (!nonempty(entry.featureId) || !catalog.has(entry.featureId))) {
-      fail(path, `unknown feature ${String(entry.featureId)}`)
-    }
-    if (entry.origin === "documentation" && entry.observation) {
-      fail(path, `documentation ${id} cannot be an observation`)
-    }
-    if (entry.observation !== undefined) {
-      if (!object(entry.observation)) fail(path, `invalid observation in ${id}`)
-      if (!nonempty(entry.featureId) || entry.observation.featureId !== entry.featureId) {
-        fail(path, `observation feature mismatch in ${id}`)
-      }
-      validateObservationOutcome(entry.observation, path, entry.featureId)
-      if (entry.observation.evidence === "pixels" && !nonempty(entry.observation.screenshotRef)) {
-        fail(path, `pixels correction ${id} requires screenshotRef`)
-      }
-      if (entry.observation.evidence === "query" && !nonempty(entry.observation.rawReplyRef)) {
-        fail(path, `query correction ${id} requires rawReplyRef`)
-      }
-    }
-  }
-  validatePresentationSupersession(raw as Interpretation[], path)
-  return raw as Interpretation[]
-}
-
-function inRange(value: string, [low, high]: [string, string]): boolean {
-  return (
-    value.localeCompare(low, undefined, { numeric: true }) >= 0 &&
-    value.localeCompare(high, undefined, { numeric: true }) <= 0
-  )
-}
-
-function applies(entry: Interpretation, run: LoadedRun): boolean {
-  return (
-    entry.scope.target.kind === run.target.kind &&
-    entry.scope.target.id === run.target.id &&
-    (!entry.runId || entry.runId === run.runId) &&
-    (!entry.runSha256 || entry.runSha256 === run.sha256) &&
-    inRange(run.target.version, entry.scope.versions) &&
-    inRange(run.suiteId, entry.scope.suites)
-  )
-}
-
-function xtversionVersionEquals(payload: string, declared: string): boolean {
-  const paren = /^(?:[A-Za-z][\w.+-]*)\(([^)]+)\)$/.exec(payload)
-  if (paren) return paren[1] === declared
-  return payload === declared || payload.endsWith(` ${declared}`) || payload.endsWith(`/${declared}`)
-}
-
-const ADMISSION_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
-  ...TERMINAL_IDENTITY_RULES,
-  alacritty: {
-    terminal: "alacritty",
-    da1Pattern: /\?6c/,
-    forbidXtversion: true,
-  },
-}
-
-function identityMatch(run: LoadedRun): IdentityAdmission | null {
-  if (run.target.kind === "headless") {
-    const receipt = run.runtimeIdentity
-    if (!receipt || receipt.engineVersion !== run.target.version) return null
-    if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
-      return null
-    }
-    const versionReply = run.schemaVersion === 2 ? deriveIdentity(run.rawReplies).xtversionPayload : undefined
-    return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : { rule: "runtime-identity" }
-  }
-  const rule = ADMISSION_IDENTITY_RULES[run.target.id]
-  if (!rule) return null
-  const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
-  const verification = TERMINAL_IDENTITY_RULES[run.target.id]
-    ? verifyTerminalIdentity(run.target.id, run.rawReplies, results)
-    : { ok: true, checked: true }
-  if (!verification.checked || !verification.ok) return null
-  const identity = deriveIdentity(run.rawReplies)
-  if (!nonempty(identity.da1)) return null
-  if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
-  if (rule.forbidXtversion) {
-    const os = (run.target.os ?? "").toLowerCase()
-    // Linux: a terminal that answers no XTVERSION (alacritty) is attested by the APPARATUS, not by
-    // itself. The container launcher runs the launched binary's own --version and exits on a
-    // disagreement, and records the executable's path and sha256; parseRunProvenance carries that
-    // receipt here as `provenance` (@cto 2026-10-07, 31d5bdd0 option b). `?6c` alone is too weak to
-    // identify — VT102 is a whole class — so the executable version CONFIRMS what DA1 only bounds.
-    if (os.startsWith("linux")) {
-      const provenance = run.provenance
-      if (run.target.version === "unknown" || !provenance || !provenance.runtime.cleanTree) return null
-      const { version, sha256 } = provenance.executable
-      if (!/^[a-f0-9]{64}$/.test(sha256)) return null
-      const tokens = measuredVersionTokens(version)
-      if (tokens.length !== 1 || tokens[0] !== run.target.version) return null
-      return { rule: run.target.id, da1: identity.da1, executable: { version, sha256 } }
-    }
-    // macOS: unchanged. The launched bundle's CFBundleShortVersionString must equal the declared version.
-    if (os.startsWith("mac") || os.startsWith("darwin")) {
-      const receipt = run.origin.appLaunch
-      if (!receipt || run.target.version === "unknown" || receipt.cfBundleShortVersionString !== run.target.version) {
-        return null
-      }
-      return {
-        rule: run.target.id,
-        da1: identity.da1,
-        receipt: { cfBundleShortVersionString: receipt.cfBundleShortVersionString },
-      }
-    }
-    // Any other OS has no apparatus we trust: refused, with no fallback to either branch.
-    return null
-  }
-  const versionReply = identity.xtversionPayload
-  if (!versionReply || !xtversionVersionEquals(versionReply, run.target.version)) return null
-  return { rule: run.target.id, da1: identity.da1, xtversion: versionReply }
-}
-
-function pinnedIdentity(run: LoadedRun, active: readonly Interpretation[]): boolean {
-  return active.some(
-    (entry) =>
-      entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.verifiesIdentity,
-  )
-}
-
-/** Identity, then provenance, then source/community/suite. Pin is one identity input. */
-function identityDecision(run: LoadedRun, active: readonly Interpretation[]): string | null {
-  if (run.identity === "disputed") return "identity-disputed"
-  const pin = pinnedIdentity(run, active)
-  if (run.target.kind === "headless") {
-    if (run.schemaVersion !== 2 && !pin) {
-      return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
-    }
-    return identityMatch(run) ? null : "runtime-identity-unverified"
-  }
-  if (!ADMISSION_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
-  if (run.schemaVersion !== 2) {
-    if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
-    return identityMatch(run) ? null : "identity-replies-mismatch"
-  }
-  return identityMatch(run) ? null : "identity-replies-mismatch"
-}
-
-/**
- * The run fields the native-provenance gate reads, written structurally so the SITE and the Release 1
- * re-collection runner (`scripts/release1-collection.ts`) share ONE gate: the runner reads unknown
- * documents, and a document it cannot recognise must be judged, never crash.
- */
-export interface ProvenanceSubject {
-  readonly target?: { readonly kind?: unknown; readonly os?: unknown }
-  readonly provenance?: { readonly runtime?: { readonly cleanTree?: unknown } }
-}
-
-/**
- * The ONE native-provenance gate (#27929 D6). Only a LINUX APP run must carry a provenance block, and
- * any run that carries one must prove its tree was clean. `scripts/linux-container-run.sh` is the only
- * collector that writes a provenance block, so a headless or macOS run has none BY CONSTRUCTION — a
- * gate that demanded `cleanTree === true` would refuse every such run as `native-provenance-dirty`,
- * and no headless row could ever be admitted.
- */
-export function provenanceRefusal(subject: ProvenanceSubject): string | null {
-  const kind = subject.target?.kind
-  const os = typeof subject.target?.os === "string" ? subject.target.os.toLowerCase() : undefined
-  if (kind === "app" && os?.startsWith("linux") && !subject.provenance) return "native-provenance-missing"
-  if (subject.provenance && !subject.provenance.runtime?.cleanTree) return "native-provenance-dirty"
-  return null
-}
-
-function provenanceDecision(run: LoadedRun): string | null {
-  return provenanceRefusal(run)
-}
-
-function admitRun(run: LoadedRun, active: readonly Interpretation[], reviewed: boolean): string | null {
-  return (
-    identityDecision(run, active) ??
-    provenanceDecision(run) ??
-    (!/^[0-9a-f]{40}$/.test(run.sourceRevision ?? "") ? "source-uncommitted" : null) ??
-    (run.origin.kind === "community-issue" && !reviewed ? "community-unreviewed" : null) ??
-    (!run.suiteComplete ? "suite-incomplete" : null)
-  )
-}
-
-function activeInterpretations(entries: readonly Interpretation[]): Interpretation[] {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]))
-  if (byId.size !== entries.length) throw new Error("duplicate interpretation ID")
-  const visited = new Set<string>()
-  const visiting = new Set<string>()
-  const superseded = new Set<string>()
-  const visit = (id: string): void => {
-    if (visiting.has(id)) throw new Error(`interpretation supersession cycle at ${id}`)
-    if (visited.has(id)) return
-    const entry = byId.get(id)
-    if (!entry) throw new Error(`unknown superseded interpretation ${id}`)
-    visiting.add(id)
-    for (const prior of entry.supersedes) {
-      superseded.add(prior)
-      visit(prior)
-    }
-    visiting.delete(id)
-    visited.add(id)
-  }
-  for (const entry of entries) visit(entry.id)
-  return entries.filter((entry) => !superseded.has(entry.id))
-}
 
 function observationRecord(run: LoadedRun, observation: Observation): SelectedCell["record"] {
   const { rawReplyRef, screenshotRef } = observation
@@ -484,6 +173,7 @@ function projectRun(
   catalogIds: readonly string[],
   currentProbeHash: string,
   releaseSuiteId: string | null,
+  identityAdmission: IdentityAdmission | null,
 ): SelectedVersion {
   const cells: Record<string, SelectedCell> = {}
   const correctedFeatures = new Set<string>()
@@ -652,7 +342,6 @@ function projectRun(
         : suiteRelation === "tree"
           ? `tree suite ${currentProbeHash}`
           : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
-  const identityAdmission = identityMatch(run)
   return {
     runId: run.runId,
     target: run.target,
@@ -785,16 +474,17 @@ export function projectResults(
   const history: SelectedProjection["history"] = {}
   const exclusions: SelectedProjection["exclusions"] = []
   const groups = new Map<string, LoadedRun[]>()
+  const assessments = new Map<string, ReturnType<typeof assessRunAdmission>>()
   for (const run of runs) {
     const key = keyFor(run)
     history[key] ??= []
-    history[key].push(projectRun(run, active, catalogIds, policy.currentProbeHash, releaseSuiteId))
-    const reviewed = active.some(
-      (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
+    const assessment = assessRunAdmission(run, active, { mode: "historical" })
+    assessments.set(run.runId, assessment)
+    history[key].push(
+      projectRun(run, active, catalogIds, policy.currentProbeHash, releaseSuiteId, assessment.identityAdmission),
     )
-    const reason = admitRun(run, active, reviewed)
-    if (reason) {
-      exclusions.push({ runId: run.runId, path: run.path, reason })
+    if (!assessment.accepted) {
+      exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
       continue
     }
     if (!groups.has(key)) groups.set(key, [])
@@ -822,14 +512,26 @@ export function projectResults(
       })
       const chosen = choices[0]
       if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
-      versions[key].push(projectRun(chosen, active, catalogIds, policy.currentProbeHash, releaseSuiteId))
+      const assessment = assessments.get(chosen.runId)
+      if (!assessment) throw new Error(`Missing admission assessment for selected run ${chosen.runId}`)
+      versions[key].push(
+        projectRun(chosen, active, catalogIds, policy.currentProbeHash, releaseSuiteId, assessment.identityAdmission),
+      )
     }
     const selected = versions[key][0]
     if (!selected) throw new Error(`missing selected version for ${key}`)
     current[key] = selected
   }
+  // One classification per cell, for every run the projection read: `current` and `versions` are drawn
+  // from `history`, so classifying the history covers every consumer, and a run's cells are classified
+  // once rather than once per reader.
+  const table: Record<string, Record<string, CellState>> = {}
+  for (const list of Object.values(history)) {
+    for (const version of list) table[version.runId] = classifyCells(version.cells)
+  }
   return {
     current,
+    table,
     versions,
     history,
     exclusions,
@@ -837,6 +539,16 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
+}
+
+/**
+ * The classified states for one run, BY NAME: a run the projection never read is a loud error, never a
+ * silent empty map that would read as a zero-row basis (28792 item 1).
+ */
+export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, CellState>> {
+  const states = projection.table[runId]
+  if (!states) throw new Error(`The projection classified no row for run ${runId}`)
+  return states
 }
 
 /** Read only the exact PNG bytes named by a digest-backed screenshot reference. */
@@ -863,9 +575,7 @@ export function loadSelectedResults(
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
-  const features = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
-  if (!object(features)) fail(featuresPath, "invalid catalog")
-  const catalog = Object.keys(features).filter((id) => !id.startsWith("$"))
+  const catalog = Object.keys(loadFeatures(contentDir))
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
   if (existsSync(suitesDir)) {

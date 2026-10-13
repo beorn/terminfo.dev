@@ -9,6 +9,39 @@ import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { probeSuiteSnapshot, type ProbeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 
+/**
+ * The one suite manifest whose `freeze.release` names this release. The 83 manifests ARE the suite
+ * registry, so the pointer cannot name a suite no manifest carries. Two manifests claiming one
+ * release, or a release no manifest freezes, is refused loudly — a silent fallback would relabel
+ * every run on the release suite "older" and suppress the tree-move banner.
+ */
+export function frozenSuiteIdFor(contentDir: string, release: string): string {
+  const dir = join(contentDir, "suites")
+  if (!existsSync(dir)) {
+    throw new Error(
+      `${dir}: the suite registry is required to name the current suite for release "${release}"; ` +
+        'without it every run on the release suite is relabelled "older suite" and the tree-move banner is suppressed',
+    )
+  }
+  const claims: string[] = []
+  for (const name of readdirSync(dir)
+    .filter((file) => file.endsWith(".json"))
+    .sort()) {
+    const path = join(dir, name)
+    const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+    if (manifest.freeze?.release === release) claims.push(manifest.probeHash)
+  }
+  if (claims.length === 0) {
+    throw new Error(`${dir}: no suite manifest declares freeze.release "${release}"`)
+  }
+  if (claims.length > 1) {
+    throw new Error(`${dir}: ${claims.length} suite manifests claim release "${release}": ${claims.join(", ")}`)
+  }
+  const [suiteId] = claims
+  if (!suiteId) throw new Error(`${dir}: release "${release}" resolved to no suite`)
+  return suiteId
+}
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const SUITES_DIR = join(ROOT, "content", "suites")
 const RUN_DIRS = ["probes-apps", "probes-libs", "probes-mux"] as const

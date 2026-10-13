@@ -15,8 +15,9 @@ import {
   projectResults,
   readVerifiedScreenshot,
 } from "../docs/data/selected-results.ts"
+import { assessRunAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import { isStaleRelation } from "../docs/data/release-scope.ts"
+import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -128,7 +129,18 @@ function temporaryContent() {
   for (const [hash, declaration] of manifests) {
     writeFileSync(join(path, "suites", `${hash}.json`), JSON.stringify(declaration))
   }
-  writeFileSync(join(path, "features.json"), JSON.stringify(Object.fromEntries(catalog.map((id) => [id, {}]))))
+  // @terminfo/catalog's one shape requires a full record per row; this fixture only reads the ids.
+  writeFileSync(
+    join(path, "features.json"),
+    JSON.stringify(
+      Object.fromEntries(
+        catalog.map((id) => [
+          id,
+          { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+        ]),
+      ),
+    ),
+  )
   return path
 }
 
@@ -448,6 +460,44 @@ describe("selected results", () => {
     expect(onOther?.suiteFreshness).toMatch(/^older suite \(\d+ probes\)$/)
     expect(onOther?.suiteRelation).toBe("older")
     expect(isStaleRelation(onOther!.suiteRelation)).toBe(true)
+  })
+
+  it("classifies every read run once into the projection table, one row per feature, named per basis (28792)", () => {
+    const parsed = parseRun(
+      "table-parity.json",
+      JSON.stringify(
+        run("table-parity", {
+          observations: [
+            observation("extensions.query", "supported", "query"),
+            observation("extensions.graphics", "error", "behavior", "timeout"),
+          ],
+        }),
+      ),
+      catalog,
+    )
+    const projection = projectResults([parsed], [reviewFor(parsed)], catalog, { currentProbeHash: "current" })
+    const versions = Object.values(projection.history).flat()
+    expect(versions.length).toBeGreaterThan(0)
+    // Every run the projection read has exactly one classified row, and no run is classified twice.
+    expect(Object.keys(projection.table).sort()).toEqual(versions.map((value) => value.runId).sort())
+    for (const version of versions) {
+      const table = projection.table[version.runId]!
+      // The table IS the classification: one call per cell, made once in the projection.
+      for (const [featureId, cell] of Object.entries(version.cells)) {
+        expect(table[featureId]).toBe(classifyCell(cell))
+      }
+      const present = Object.keys(version.cells)
+      // Every basis shape the consumers use: the run's own cells, a basis naming an absent cell, and none.
+      for (const ids of [present, [...present, "not.a.catalog.id"], []]) {
+        const aggregate = aggregateCells(table, ids)
+        // The fold's denominator is the basis, and every basis id lands in exactly one named state.
+        expect(aggregate.denominator).toBe(ids.length)
+        expect(Object.values(aggregate.counts).reduce((sum, count) => sum + count, 0)).toBe(ids.length)
+        expect(Object.values(aggregate.idsByState).flat()).toHaveLength(ids.length)
+      }
+    }
+    // The selected run is one of them, so a bar consumer reads `table[current[context].runId]`.
+    expect(projection.table[projection.current["app:kitty"]!.runId]).toBeDefined()
   })
 
   it("verifies screenshot bytes without writing and refuses missing, modified, or non-PNG artifacts", () => {
@@ -943,6 +993,9 @@ describe("selected results", () => {
     const published = publicResults(
       {
         current: { "app:kitty": selected },
+        table: {
+          "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])),
+        },
         versions: {},
         history: {},
         exclusions: [],
@@ -2136,6 +2189,59 @@ describe("identity self-admission", () => {
     executableSha256: RECEIPT_EXECUTABLE_SHA256,
     sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: RECEIPT_SOURCE_SHA256 },
   }
+
+  // MUST 3: receipt refusal is a public code, not private path text or copied identity.
+  it("keeps receipt refusals private and fails loudly on receipt I/O faults", () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-receipt-refusal-"))
+    contentDirs.push(directory)
+    const source = run("private-receipt", {
+      rawReplies: {
+        ...identityReplies,
+        "extensions.query": "ACK",
+        "extensions.graphics": "NO",
+        "collector.disposableOwnership": JSON.stringify({
+          kind: "github-hosted-runner",
+          receiptSha256: "ab".repeat(32),
+        }),
+      },
+    })
+    const loaded = parseRun(join(directory, "probes-apps", "run.json"), JSON.stringify(source), catalog)
+    const projection = project([loaded])
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({
+        runId: loaded.runId,
+        reason: "ownership-receipt-missing",
+      }),
+    )
+    expect(projection.history["app:kitty"]?.[0]?.identityAdmission).toBeUndefined()
+    const receiptPath = join(directory, "receipt-directory")
+    mkdirSync(receiptPath)
+    try {
+      assessRunAdmission(loaded, [], { mode: "historical", receiptPath, contentDir: directory })
+      throw new Error("Receipt I/O fault was swallowed")
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).cause).toMatchObject({ code: "EISDIR" })
+    }
+  })
+
+  it("refuses mux identities without an identity profile", () => {
+    const parsed = parseRun(
+      "mux.json",
+      JSON.stringify(
+        run("mux-no-profile", {
+          target: { ...target, kind: "mux", id: "tmux" },
+        }),
+      ),
+      catalog,
+    )
+    expect(project([parsed]).exclusions).toContainEqual(
+      expect.objectContaining({
+        runId: "mux-no-profile",
+        reason: "identity-no-profile",
+      }),
+    )
+  })
 
   it("excludes a schema-v2 kitty run whose XTVERSION is missing", () => {
     const parsed = parseRun(
