@@ -120,3 +120,40 @@ describe("a measured receipt still parses", () => {
     expect(parsed.sourceArtifact.sha256).toBe("c3".repeat(32))
   })
 })
+
+// The existing macOS receipt cases cannot catch Windows measurements being mistaken for bundle
+// fields. Admission compares the measured version; this parser owns only the strict receipt shape.
+describe("a measured Windows launch uses the same parser", () => {
+  const windows = {
+    platform: "win32",
+    executablePath: String.raw`C:\runner\terminal\WindowsTerminal.exe`,
+    productVersion: "1.21.2361.0",
+    executableSha256: "c3".repeat(32),
+    sourceArtifact: { kind: "portable-zip", path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
+  }
+  it("preserves the measured Windows executable, version and ZIP without bundle fields", () => {
+    expect(parse(windows)).toEqual(windows)
+  })
+  it.each([
+    [{ ...windows, platform: "darwin" }, /unknown appLaunch.platform/],
+    [{ ...windows, bundlePath: "/Applications/Terminal.app" }, /fields/],
+    [{ ...windows, productVersion: "" }, /productVersion/],
+    [{ ...windows, productVersion: " " }, /productVersion/],
+    [{ ...windows, productVersion: " 1.21.240823001" }, /productVersion/],
+    [{ ...windows, productVersion: "1.21.240823001 " }, /productVersion/],
+    [{ ...windows, productVersion: "1.21.240823001\n" }, /productVersion/],
+    [{ ...windows, productVersion: "1.21.\n240823001" }, /productVersion/],
+    [{ ...windows, executablePath: "WindowsTerminal.exe" }, /absolute/],
+    [{ ...windows, executablePath: String.raw`\terminal\WindowsTerminal.exe` }, /absolute/],
+    [{ ...windows, executableSha256: ZEROS }, /placeholder/],
+    [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, path: "wt.zip" } }, /absolute/],
+    [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, sha256: ZEROS } }, /placeholder/],
+    [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, kind: "archive" } }, /portable-zip/],
+    [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, bundlePath: "/Applications/Terminal.app" } }, /fields/],
+  ])("refuses malformed or mixed Windows receipt %#", (receipt, diagnostic) => {
+    expect(() => parse(receipt)).toThrow(diagnostic)
+  })
+  it("refuses Windows fields mixed into the existing absent-platform macOS shape", () => {
+    expect(() => parse({ ...appLaunchOf(MEASURED), productVersion: windows.productVersion })).toThrow(/mixed/)
+  })
+})

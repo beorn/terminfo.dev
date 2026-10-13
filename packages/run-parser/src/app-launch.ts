@@ -12,7 +12,14 @@
  * digest nothing measured with the same rule (27874), and a second copy of that rule is the same
  * drift this module exists to prevent.
  */
-import type { AppLaunchReceipt, DerivedSourceTreeArtifact, ProbeTarget, RunOrigin } from "@terminfo/probe-defs"
+import { win32 } from "node:path"
+import type {
+  AppLaunchReceipt,
+  AppSourceArtifact,
+  DerivedSourceTreeArtifact,
+  ProbeTarget,
+  RunOrigin,
+} from "@terminfo/probe-defs"
 
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -77,6 +84,44 @@ export function parseAppLaunchReceipt(
   if (originKind !== "collector" || targetKind !== "app" || !object(value)) {
     fail(path, "appLaunch requires an app collector run")
   }
+  if (Object.hasOwn(value, "platform") && value.platform !== "win32") {
+    fail(path, "unknown appLaunch.platform")
+  }
+  if (value.platform === "win32") {
+    if (
+      Object.keys(value).sort().join(",") !== "executablePath,executableSha256,platform,productVersion,sourceArtifact"
+    ) {
+      fail(path, "invalid win32 appLaunch fields; Windows and bundle fields cannot be mixed")
+    }
+    const executablePath = asString(value.executablePath, path, "appLaunch.executablePath")
+    if (!win32.isAbsolute(executablePath) || win32.parse(executablePath).root.length <= 1) {
+      fail(path, "win32 appLaunch.executablePath must be absolute")
+    }
+    const productVersion = asString(value.productVersion, path, "appLaunch.productVersion")
+    if (productVersion.trim().length === 0) fail(path, "missing appLaunch.productVersion")
+    if (productVersion !== productVersion.trim() || /[\r\n]/.test(productVersion)) {
+      fail(path, "appLaunch.productVersion has surrounding whitespace or a newline")
+    }
+    const executableSha256 = measuredDigest(value.executableSha256, path, "appLaunch.executableSha256")
+    if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
+    if (value.sourceArtifact.kind !== "portable-zip") fail(path, "win32 appLaunch.sourceArtifact must be portable-zip")
+    if (Object.keys(value.sourceArtifact).sort().join(",") !== "kind,path,sha256") {
+      fail(path, "invalid win32 appLaunch.sourceArtifact fields")
+    }
+    const sourcePath = asString(value.sourceArtifact.path, path, "appLaunch.sourceArtifact.path")
+    if (!win32.isAbsolute(sourcePath) || win32.parse(sourcePath).root.length <= 1) {
+      fail(path, "win32 appLaunch.sourceArtifact.path must be absolute")
+    }
+    const sha256 = measuredDigest(value.sourceArtifact.sha256, path, "appLaunch.sourceArtifact.sha256")
+    return {
+      platform: "win32",
+      executablePath,
+      productVersion,
+      executableSha256,
+      sourceArtifact: { kind: "portable-zip", path: sourcePath, sha256 },
+    }
+  }
+  if (Object.hasOwn(value, "productVersion")) fail(path, "mixed Windows and bundle appLaunch fields")
   const bundlePath = asString(value.bundlePath, path, "appLaunch.bundlePath")
   const cfBundleShortVersionString = asString(
     value.cfBundleShortVersionString,
@@ -90,7 +135,7 @@ export function parseAppLaunchReceipt(
   }
   const executableSha256 = measuredDigest(value.executableSha256, path, "appLaunch.executableSha256")
   if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
-  let sourceArtifact: AppLaunchReceipt["sourceArtifact"]
+  let sourceArtifact: AppSourceArtifact
   if (value.sourceArtifact.kind === "sealed-macos-system-volume") {
     if (
       Object.keys(value.sourceArtifact).sort().join(",") !==

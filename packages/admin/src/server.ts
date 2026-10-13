@@ -7,16 +7,8 @@
  * bare:    list running daemons
  */
 
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
-import {
-  readRetainedDaemonProbeResponse,
-  requestDaemonProbe,
-  saveDaemonProbeRun,
-} from "terminfo.dev/src/daemon-client.ts"
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = join(__dirname, "..", "..", "..")
+import { readRetainedDaemonProbeResponse, requestDaemonProbe } from "terminfo.dev/src/daemon-client.ts"
+import { admitCollectedRun } from "./admit-collected-run.ts"
 
 export async function handleServer(
   daemon: string | undefined,
@@ -94,8 +86,7 @@ export async function handleServer(
         ...data,
         rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
       }
-      const dir = join(ROOT, "content", "probes-apps")
-      saveDaemonProbeRun(run, dir)
+      admitCollectedRun(run, retained.path)
       saved++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -108,6 +99,6 @@ export async function handleServer(
     }
   }
 
-  if (saved > 0) console.log(`\n${saved} result(s) saved to content/probes-apps/`)
+  if (saved > 0) console.log(`\n${saved} result(s) admitted to content/probes-apps/`)
   if (failures.length > 0) throw new Error(`Daemon collection failed: ${failures.join("; ")}`)
 }

@@ -15,6 +15,7 @@ import {
   projectResults,
   readVerifiedScreenshot,
 } from "../docs/data/selected-results.ts"
+import { assessRunAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
@@ -992,7 +993,9 @@ describe("selected results", () => {
     const published = publicResults(
       {
         current: { "app:kitty": selected },
-        table: { "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])) },
+        table: {
+          "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])),
+        },
         versions: {},
         history: {},
         exclusions: [],
@@ -2186,6 +2189,59 @@ describe("identity self-admission", () => {
     executableSha256: RECEIPT_EXECUTABLE_SHA256,
     sourceArtifact: { path: "/System/Library/Assets/com.apple.Terminal.pkg", sha256: RECEIPT_SOURCE_SHA256 },
   }
+
+  // MUST 3: receipt refusal is a public code, not private path text or copied identity.
+  it("keeps receipt refusals private and fails loudly on receipt I/O faults", () => {
+    const directory = mkdtempSync(join(tmpdir(), "terminfo-receipt-refusal-"))
+    contentDirs.push(directory)
+    const source = run("private-receipt", {
+      rawReplies: {
+        ...identityReplies,
+        "extensions.query": "ACK",
+        "extensions.graphics": "NO",
+        "collector.disposableOwnership": JSON.stringify({
+          kind: "github-hosted-runner",
+          receiptSha256: "ab".repeat(32),
+        }),
+      },
+    })
+    const loaded = parseRun(join(directory, "probes-apps", "run.json"), JSON.stringify(source), catalog)
+    const projection = project([loaded])
+    expect(projection.exclusions).toContainEqual(
+      expect.objectContaining({
+        runId: loaded.runId,
+        reason: "ownership-receipt-missing",
+      }),
+    )
+    expect(projection.history["app:kitty"]?.[0]?.identityAdmission).toBeUndefined()
+    const receiptPath = join(directory, "receipt-directory")
+    mkdirSync(receiptPath)
+    try {
+      assessRunAdmission(loaded, [], { mode: "historical", receiptPath, contentDir: directory })
+      throw new Error("Receipt I/O fault was swallowed")
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).cause).toMatchObject({ code: "EISDIR" })
+    }
+  })
+
+  it("refuses mux identities without an identity profile", () => {
+    const parsed = parseRun(
+      "mux.json",
+      JSON.stringify(
+        run("mux-no-profile", {
+          target: { ...target, kind: "mux", id: "tmux" },
+        }),
+      ),
+      catalog,
+    )
+    expect(project([parsed]).exclusions).toContainEqual(
+      expect.objectContaining({
+        runId: "mux-no-profile",
+        reason: "identity-no-profile",
+      }),
+    )
+  })
 
   it("excludes a schema-v2 kitty run whose XTVERSION is missing", () => {
     const parsed = parseRun(

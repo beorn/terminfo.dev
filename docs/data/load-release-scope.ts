@@ -7,12 +7,10 @@
  * scope files (`content/release-scope.json`, `content/release-scope-candidate2.json`) are deleted; a
  * release's frozen suite is the one suite manifest whose `freeze.release` names it.
  */
-import { existsSync, readFileSync, readdirSync } from "node:fs"
-import { join } from "node:path"
-import { parseSuiteManifest } from "@terminfo/run-parser"
 import { splitAppObservable } from "@terminfo/probe-defs"
 import { slice, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
+export { frozenSuiteIdFor } from "../../scripts/suite-manifest.ts"
 
 /** Release 1's own two constants, the ones its tier line prints. */
 const RELEASE_1_TIER = 1
@@ -53,8 +51,9 @@ export function classicCohortIds(
     const prefix = `${key}.`
     for (const id of Object.keys(catalog)
       .filter((id) => id.startsWith(prefix))
-      .sort())
+      .sort()) {
       ids.push(id)
+    }
   }
   if (ids.length === 0) {
     throw new Error('classics cohort is empty: no category carries slice "classics"')
@@ -107,37 +106,4 @@ export function loadReleaseScope(args: { catalog: FeatureCatalog; categories: Sl
     catalogCount: catalogIds.length,
     unmeasured,
   }
-}
-
-/**
- * The one suite manifest whose `freeze.release` names this release. The 83 manifests ARE the suite
- * registry, so the pointer cannot name a suite no manifest carries. Two manifests claiming one
- * release, or a release no manifest freezes, is refused loudly — a silent fallback would relabel
- * every run on the release suite "older" and suppress the tree-move banner.
- */
-export function frozenSuiteIdFor(contentDir: string, release: string): string {
-  const dir = join(contentDir, "suites")
-  if (!existsSync(dir)) {
-    throw new Error(
-      `${dir}: the suite registry is required to name the current suite for release "${release}"; ` +
-        'without it every run on the release suite is relabelled "older suite" and the tree-move banner is suppressed',
-    )
-  }
-  const claims: string[] = []
-  for (const name of readdirSync(dir)
-    .filter((file) => file.endsWith(".json"))
-    .sort()) {
-    const path = join(dir, name)
-    const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-    if (manifest.freeze?.release === release) claims.push(manifest.probeHash)
-  }
-  if (claims.length === 0) {
-    throw new Error(`${dir}: no suite manifest declares freeze.release "${release}"`)
-  }
-  if (claims.length > 1) {
-    throw new Error(`${dir}: ${claims.length} suite manifests claim release "${release}": ${claims.join(", ")}`)
-  }
-  const [suiteId] = claims
-  if (!suiteId) throw new Error(`${dir}: release "${release}" resolved to no suite`)
-  return suiteId
 }

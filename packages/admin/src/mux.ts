@@ -18,7 +18,6 @@ import {
   readRetainedDaemonProbeResponse,
   removeProbeRun,
   requestDaemonProbe,
-  saveDaemonProbeRun,
   shellQuote,
   stopOwnedDaemon,
   type DaemonRegistration,
@@ -27,10 +26,10 @@ import {
 } from "terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { sourceSuiteEnvironment } from "../versions.ts"
+import { admitCollectedRun } from "./admit-collected-run.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
-const RESULTS_DIR = join(ROOT, "content", "probes-mux")
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
 const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
 
@@ -125,21 +124,20 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   muxId: string,
   version: string,
-): Promise<{ total: number; observed: number } | null> {
+): Promise<{ total: number; observed: number }> {
   try {
     const res = await requestDaemonProbe(daemon)
 
     const retained = await readRetainedDaemonProbeResponse(res)
     console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
     const data = retained.run
-    const path = saveDaemonProbeRun(data, RESULTS_DIR, { kind: "mux", id: muxId, version })
-    console.log(`  Saved unreviewed raw run ${path}`)
+    admitCollectedRun(data, retained.path, { kind: "mux", id: muxId, version })
     const observed = data.observations.length
     const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
     return { total, observed }
   } catch (err) {
     console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
-    return null
+    throw err
   }
 }
 
@@ -167,8 +165,7 @@ async function runMux(
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, mux.id, version)
-    if (!result) throw new Error("Probe failed")
-    console.log(`  ${result.observed}/${result.total} explicit observations (unreviewed)`)
+    console.log(`  ${result.observed}/${result.total} explicit observations (admitted)`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -268,5 +265,5 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
       `Mux collection failed: ${failures.map(({ mux, result }) => `${mux.id}: ${result.error}`).join("; ")}`,
     )
   }
-  console.log(`\nResults saved to content/probes-mux/`)
+  console.log(`\nResults admitted to content/probes-mux/`)
 }

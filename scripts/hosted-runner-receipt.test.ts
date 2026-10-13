@@ -253,18 +253,26 @@ console.log(values[process.argv[3]] ?? "");
 
 test("the hosted producer supports Windows and refuses degenerate identities by name", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-win-"))
-  let raw = {
+  const raw = {
     mac: "00-15-5D-12-34-56",
     uuid: "12345678-ABCD-1234-ABCD-123456789ABC",
     boot: "2026-10-07T07:57:50.5000000Z",
   }
+  const executablePath = String.raw`C:\runner\windows-terminal\WindowsTerminal.exe`
+  const zipPath = String.raw`C:\runner\wt.zip`
+  const executableBytes = "fixture WindowsTerminal executable bytes\n"
+  const zipBytes = "fixture retained portable ZIP bytes\n"
+  let productVersion = "1.21.2361.0"
   const server = createServer((_req, res) => {
     res.setHeader("content-type", "application/json")
     res.end(JSON.stringify({ jobs: [{ id: 7777, runner_name: "win-runner", status: "in_progress" }] }))
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   try {
+    await writeFile(join(dir, "WindowsTerminal.exe"), executableBytes)
+    await writeFile(join(dir, "wt.zip"), zipBytes)
     const fakePs = () => `#!${process.execPath}
+const {readFileSync}=require('node:fs'); const {createHash}=require('node:crypto');
 const cmd = process.argv.slice(2).join(' ');
 if (cmd.includes('Get-NetAdapter')) {
   console.log('${raw.mac}');
@@ -272,6 +280,9 @@ if (cmd.includes('Get-NetAdapter')) {
   console.log('${raw.uuid}');
 } else if (cmd.includes('Win32_OperatingSystem')) {
   console.log('${raw.boot}');
+} else if (cmd.includes('ProductVersion')) {
+  const hash=(name)=>createHash('sha256').update(readFileSync(${JSON.stringify(dir)}+'/'+name)).digest('hex');
+  console.log(JSON.stringify({platform:'win32',executablePath:${JSON.stringify(executablePath)},productVersion:${JSON.stringify(productVersion)},executableSha256:hash('WindowsTerminal.exe'),sourceArtifact:{kind:'portable-zip',path:${JSON.stringify(zipPath)},sha256:hash('wt.zip')}}));
 } else {
   console.log('');
 }
@@ -282,6 +293,9 @@ if (cmd.includes('Get-NetAdapter')) {
     const env = {
       ...process.env,
       PATH: `${dir}:${process.env.PATH}`,
+      APP_ID: "windows-terminal",
+      APP_EXECUTABLE: executablePath,
+      APP_SOURCE_ARTIFACT: zipPath,
       RUNNER_ENVIRONMENT: "github-hosted",
       RUNNER_NAME: "win-runner",
       RUNNER_OS: "Windows",
@@ -311,14 +325,31 @@ if (cmd.includes('Get-NetAdapter')) {
     const bytes = await readFile(receipt, "utf8")
     const parsed = parseDisposableReceipt(bytes)
     expect(parsed.kind).toBe("github-hosted-runner")
-    // Only a macOS job measures a launch receipt; this one carries none, by absence.
-    expect(parsed.appLaunch).toBeUndefined()
+    // The same producer/parser carry the measured Windows app and retained archive, never wt.exe.
+    expect(parsed.appLaunch).toEqual({
+      platform: "win32",
+      executablePath,
+      productVersion,
+      executableSha256: createHash("sha256").update(executableBytes).digest("hex"),
+      sourceArtifact: {
+        kind: "portable-zip",
+        path: zipPath,
+        sha256: createHash("sha256").update(zipBytes).digest("hex"),
+      },
+    })
     const decoded = JSON.parse(bytes) as {
       vm: { identityAtJobStart: Record<string, string> }
     }
     expect(decoded.vm.identityAtJobStart.machineIdSha256).toBe(createHash("sha256").update(raw.mac).digest("hex"))
     expect(decoded.vm.identityAtJobStart.productUuidSha256).toBe(createHash("sha256").update(raw.uuid).digest("hex"))
     expect(decoded.vm.identityAtJobStart.bootIdSha256).toBe(createHash("sha256").update(raw.boot).digest("hex"))
+
+    // Existing machine identity cases cannot catch a launch version silently omitted from emit.
+    productVersion = ""
+    await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
+    await expect(run("emit", start, join(dir, "missing-product-version.json"))).rejects.toThrow(/productVersion/)
+    productVersion = "1.21.2361.0"
+    await writeFile(join(dir, "powershell.exe"), fakePs(), { mode: 0o755 })
 
     // Refusal test 1: All-zero UUID
     raw.uuid = "00000000-0000-0000-0000-000000000000"
