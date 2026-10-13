@@ -215,7 +215,9 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
     // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
     const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
     const picked = pickContextRun(
-      group.map((entry) => candidateFromSelected(entry.contextKey, entry.selected, statesFor(projection, entry.selected.runId))),
+      group.map((entry) =>
+        candidateFromSelected(entry.contextKey, entry.selected, statesFor(projection, entry.selected.runId)),
+      ),
       review,
     )
     if (picked === undefined) throw new Error(`No current run for ${targetKey}`)
