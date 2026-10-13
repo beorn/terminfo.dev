@@ -170,7 +170,10 @@ function sharePct(count: number, denominator: number): number {
  * BASIS's own order (the order the retired bar printed), so nothing is re-classified and nothing needs
  * the old cross-check.
  */
-export function decisiveShare(states: Readonly<Record<string, CellState>>, measuredIds: readonly string[]): DecisiveShare {
+export function decisiveShare(
+  states: Readonly<Record<string, CellState>>,
+  measuredIds: readonly string[],
+): DecisiveShare {
   const aggregate = aggregateCells(states, measuredIds)
   const decisive = aggregate.counts.supported + aggregate.counts.unsupported
   // The remainder reads the basis in ITS OWN order — error and untested rows interleaved exactly as the
