@@ -14,11 +14,15 @@ const PROBE_DEFS_DIR = join(REPO_ROOT, "packages", "probe-defs", "src")
 const ADAPTER_PACKAGE_PATH = "packages/terminfo.dev/package.json"
 // Include the collector's executed local imports: ownership and identity affect the observation too.
 const ADAPTER_SOURCE_PATHS = [
+  "packages/probes/collect-headless.ts",
   "packages/probes/headless-batch.ts",
+  "packages/probes/headless-identity.ts",
+  "packages/admin/versions.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",
+  "packages/terminfo.dev/src/disposable-receipt.ts",
   "packages/terminfo.dev/src/linux-capture.ts",
   "packages/terminfo.dev/src/capture-core.ts",
   "packages/terminfo.dev/src/darwin-capture.ts",
@@ -27,7 +31,8 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/serve.ts",
   "packages/terminfo.dev/src/detect.ts",
   "packages/terminfo.dev/src/identity-guard.ts",
-  "packages/terminfo.dev/src/terminal-app-window.ts",
+  "packages/run-parser/src/index.ts",
+  "packages/run-parser/src/app-launch.ts",
 ]
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 
