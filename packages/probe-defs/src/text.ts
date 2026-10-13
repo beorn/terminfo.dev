@@ -1064,6 +1064,10 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        // The claim compares a plainly written combining sample, so it assumes the run decodes
+        // plain UTF-8: an 8-bit run paints one glyph as two bytes, not one column (#28752, #28828).
+        const decoding = await utf8DecodingRefusal(ctx, "text.combining")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("A")
         const width = await ctx.measureRenderedWidth("e\u0301")
         if (ascii !== 1 || width === null) {

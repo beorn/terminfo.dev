@@ -119,6 +119,8 @@ test("a measured 8-bit decoding context names the cause instead of grading a pla
     "text.wide.emoji-flags",
     "text.wide.emoji-vs16",
     "text.wide.emoji-zwj",
+    "text.combining",
+    "unicode.grapheme-cursor",
   ]) {
     const probe = byId(id)
     let widthCalls = 0
@@ -141,6 +143,33 @@ test("a measured 8-bit decoding context names the cause instead of grading a pla
     expect(result.assertions, id).toBeUndefined()
     expect(result.pass, id).toBe(false)
   }
+})
+
+// 28828 census: this row grades the CURSOR ADVANCE of a plainly written CJK glyph, so an 8-bit
+// context is named before it writes anything, not graded as a wrap negative.
+test("a measured 8-bit decoding context names the cause for the wide-wrap cursor row before it writes", async () => {
+  const probe = byId("unicode.wrap-boundary")
+  const writes: string[] = []
+  let cursorQueries = 0
+  const result = await probe.term(
+    app({
+      utf8Decoding: async () => "8-bit",
+      write: (text) => writes.push(text),
+      queryCursorPosition: async () => {
+        cursorQueries += 1
+        return null
+      },
+    }),
+  )
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+  })
+  expect(String(result.observation?.note)).toContain("decodes plain-written UTF-8 as ISO-8859-1")
+  expect(cursorQueries).toBe(0)
+  expect(writes).toEqual([])
+  expect(result.assertions).toBeUndefined()
 })
 
 test("a measured utf8 decoding context leaves the wide rows to their own width oracle", async () => {
