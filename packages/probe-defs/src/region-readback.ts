@@ -463,6 +463,14 @@ export async function captureRegionReadbackDecision(
     // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
     const unsupported = after === seed || (ignored !== undefined && after === ignored)
     if (!supported && !unsupported) {
+      // The three compared planes are pairwise distinct: the seed and the expected frame already
+      // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
+      // equals neither, so this branch is a THIRD distinct frame. Naming it as such is the point:
+      // "matched none" told the reader nothing. The sequence did change the screen (the effect is
+      // real, not a stale window and not a no-op) and the repaint is simply not byte-identical to
+      // the plainly painted expected frame — the mode #28829 measured on xterm/linux, where a
+      // single anti-aliased edge pixel (255,255,255 vs 239,239,239) is the whole residual. The
+      // oracle stays exact-digest equality: no tolerance, no similarity (CTO ruling on #28752).
       return {
         pass: false,
         response: observed,
@@ -472,7 +480,7 @@ export async function captureRegionReadbackDecision(
           evidence: "pixels",
           screenshotRef: frames[3]?.ref,
           frames,
-          note: `${id}: the post-sequence region matched none of the compared frames (${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
+          note: `${id}: the post-sequence region is a third distinct frame: it differs from the expected frame after a witnessed paint (and from the seed), while the seed and the expected frame differ from each other — so the sequence did change the screen and the repaint is simply not byte-identical to the plainly painted expected frame. The oracle is exact-digest equality and has no rule between equal and unequal; compared frames were (${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
         },
       }
     }

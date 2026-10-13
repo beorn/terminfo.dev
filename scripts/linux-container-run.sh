@@ -217,8 +217,15 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_xtversion_expect="kitty($target_version)"
       ;;
     xterm)
+      # Rendering is PINNED so that a repaint is byte-exact (#28829). With Xft antialiasing on, a
+      # plainly painted frame carries one extra partial-coverage edge pixel relative to the same
+      # frame reached by an edit sequence, so the exact-digest oracle reads a one-pixel residual
+      # and cannot classify the row (xterm/linux editing.decdc, editing.decic, editing.sl). Turning
+      # antialiasing off makes the target frame byte-identical to the expected frame — measured
+      # locally on xterm 411 + DejaVu Sans Mono 16 at window 1304x814: AA on 1 px differing at
+      # (28,76), AA off 0 px. Exact equality only: no tolerance, no similarity (CTO ruling #28752).
       target_launch_args=(-name "terminfo-$target_id-container-daemon" -fa 'DejaVu Sans Mono'
-        -fs 16 -geometry 100x30)
+        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false')
       target_command_lead=(-e)
       parse_version() {
         local line
