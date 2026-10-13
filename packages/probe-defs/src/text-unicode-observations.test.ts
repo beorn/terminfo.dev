@@ -5,8 +5,11 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { textProbes } from "./text.ts"
+import { textProbes, textReadbackRows } from "./text.ts"
 import { unicodeProbes } from "./unicode.ts"
+import { regionReadbackProbe } from "./region-readback-kind.ts"
+import { headlessContext } from "./testing/group-harness.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 function app(overrides: Partial<TermContext> = {}): TermContext {
@@ -786,8 +789,11 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
   expect(unicodeTooShort).toEqual([])
 })
 
-test("tab fixtures and reverse-index region restore after a failed cursor query", async () => {
-  for (const id of ["text.tab", "text.hts", "unicode.tab-stops", "text.reverse-index-scroll"]) {
+test("tab fixtures restore after a failed cursor query", async () => {
+  // text.reverse-index-scroll is no longer here: it is a region-readback kind row now, so its app arm
+  // asks the terminal's pixel report rather than the cursor, and a cursor-transport failure never
+  // reaches it (@cto Q2(b), 2026-10-12).
+  for (const id of ["text.tab", "text.hts", "unicode.tab-stops"]) {
     const writes: string[] = []
     await expect(
       byId(id).term(
@@ -801,11 +807,8 @@ test("tab fixtures and reverse-index region restore after a failed cursor query"
         }),
       ),
     ).rejects.toThrow("cursor transport failed")
-    if (id === "text.reverse-index-scroll") expect(writes.at(-1)).toBe("\x1b[r")
-    else {
-      expect(writes.join("")).toContain("\x1b[3g")
-      expect(writes.at(-1)).toContain("\x1b[1;57H\x1bH")
-    }
+    expect(writes.join("")).toContain("\x1b[3g")
+    expect(writes.at(-1)).toContain("\x1b[1;57H\x1bH")
   }
 })
 
@@ -843,6 +846,44 @@ test("headless tab and reverse-index fixtures restore after parser inspection th
     if (id === "text.reverse-index-scroll") expect(feeds.at(-1)).toBe("\x1b[r")
     else expect(feeds.at(-1)).toContain("\x1b[1;57H\x1bH")
   }
+})
+
+/**
+ * @cto Q2(b), 2026-10-12: the row's reset restores the FULL-SCREEN region, and it must not be "" or
+ * every later probe sharing this terminal inherits margins 3-10. Measured on the reference surface
+ * rather than asserted as a string: once the row's own termless arm has run, a reverse index at the
+ * SCREEN top must scroll the whole screen - which it can only do while the margins are the default
+ * 1..rows again.
+ */
+test("text.reverse-index-scroll leaves default margins so a later probe does not inherit 3-10", () => {
+  const row = textReadbackRows.find((entry) => entry.id === "text.reverse-index-scroll")
+  expect(row, "the kind table names text.reverse-index-scroll").toBeDefined()
+  if (!row) return
+  expect(row.reset, "the row restores the full-screen region").toBe("\x1b[r")
+  const ctx = headlessContext(createSemanticSurface({ rows: 24, cols: 80 }))
+  expect(regionReadbackProbe(row).termless!(ctx).observation?.outcome).toBe("supported")
+  // The row left "KEEPS!" on screen row 1. With default margins a screen-top RI scrolls it away; while
+  // margins 3-10 stand, row 1 sits ABOVE the region and cannot move.
+  expect(ctx.getCell(0, 0).char, "the control row is exposed to a screen scroll").toBe("K")
+  ctx.feed("\x1b[H\x1bM")
+  expect(ctx.getCell(0, 0).char, "a screen-top RI scrolled the whole screen").toBe(" ")
+})
+
+/**
+ * @cto Q2(b): minRows comes from the region bottom (10) plus the kind's own cursor and sentinel rows,
+ * declared explicitly exactly as erase.ed-scroll-region does - and the kind ENFORCES it at LOAD, so a
+ * terminal smaller than the fixture addresses is refused rather than driven.
+ */
+test("text.reverse-index-scroll declares the ten rows its 3-10 scroll region needs", () => {
+  const row = textReadbackRows.find((entry) => entry.id === "text.reverse-index-scroll")
+  expect(row, "the kind table names text.reverse-index-scroll").toBeDefined()
+  if (!row) return
+  // It compares four six-column rows with its cursor parked on row 5 and its witness on row 6, so the
+  // derived need is 6 rows by 6 + the family's two-column margin = 8 columns; the ten rows it declares
+  // are for the scroll region, not the compared grid.
+  expect(() => regionReadbackProbe({ ...row, minRows: 5 })).toThrow(/explicit minRows 5 is below the 6 rows/)
+  expect(() => regionReadbackProbe({ ...row, minCols: 7 })).toThrow(/explicit minCols 7 is below the 8 columns/)
+  expect(() => regionReadbackProbe({ ...row, minRows: 10, minCols: 8 })).not.toThrow()
 })
 
 test("invalid headless geometry never feeds wrap or tab fixtures", () => {

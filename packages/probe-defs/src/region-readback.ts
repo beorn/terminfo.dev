@@ -25,7 +25,14 @@
  * offset rectangle reads the same pixels in all three frames, so the worst a wrong one can do is
  * miss the edited cells and leave seed and expected equal — inconclusive BY NAME, never a verdict.
  */
-import type { CaptureCells, CapturePixelGeometry, ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import type {
+  CaptureCells,
+  CapturePixelGeometry,
+  ObservationFrame,
+  ProbeResult,
+  TermContext,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import { utf8DecodingRefusal } from "./helpers.ts"
 
 export type CellRegion = CaptureCells
@@ -86,6 +93,24 @@ export interface RegionReadback {
    * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
    */
   ignored?: string
+  /** The terminal's own pixel report, carried into every capture request. */
+  pixelGeometry: PixelGeometry
+  /**
+   * WHERE that report came from, in words, so a reader can tell a geometry problem from a slow paint
+   * (@cto 2026-10-12, 28763 fix 1): a terminal that answers CSI 16 t is `reported by CSI 16 t`, and one
+   * that answers only 14 t and 18 t is `derived from CSI 14 t / CSI 18 t`. Every number then names its
+   * basis instead of leaving a derived cell size looking like a reported one.
+   */
+  geometrySource?: GeometrySource
+  /**
+   * A write the run needs AFTER its frames — a mode or a scroll region the last frame leaves set,
+   * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
+   * so it lands exactly when this oracle wrote bytes: a refusal that wrote none leaves a zero-byte
+   * trace, which run-parser's zero-byte rule requires of every `none` observation. Named for the JOB
+   * (@cto 2026-10-12): `afterVerdict` named the moment it runs, and this is the write that clears the
+   * mode the last frame left set.
+   */
+  cleanup?: string
   /**
    * This row's expected frame is written PLAINLY, so deciding it assumes the run decodes plain
    * UTF-8. The measured context fact is read before the first capture: a run measured 8-bit is
@@ -93,8 +118,6 @@ export interface RegionReadback {
    * (#28752).
    */
   requiresUtf8?: true
-  /** The terminal's own pixel report, carried into every capture request. */
-  pixelGeometry: PixelGeometry
   /** Bound on one paint witness, in ms. A timeout is inconclusive by name, never unsupported. */
   timeoutMs: number
   /** Floor between witness reads. The collector's own capture settle dominates it. */
@@ -235,11 +258,12 @@ async function awaitPaintWitness(options: {
   label: string
   witnessCell: CellRegion
   pixelGeometry: PixelGeometry
+  geometrySource?: GeometrySource
   baseline: RegionCapture
   timeoutMs: number
   pollMs: number
 }): Promise<{ witness: RegionCapture } | ProbeResult> {
-  const { read, id, label, witnessCell, pixelGeometry, baseline, timeoutMs, pollMs } = options
+  const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs } = options
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const painted = await read({
@@ -254,7 +278,7 @@ async function awaitPaintWitness(options: {
       return inconclusive(
         id,
         frameMoved
-          ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context`
+          ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
           : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one`,
         "timeout",
         "pixels",
@@ -275,12 +299,28 @@ function witnessed(result: { witness: RegionCapture } | ProbeResult): result is 
  * The terminal's own pixel report: CSI 16 t (cell size in pixels) and CSI 14 t (text area in
  * pixels). A context that answers neither cannot map cells onto the captured window at all, and
  * says so BY NAME instead of falling back to a window width divided by a column count.
+ *
+ * A terminal that answers no 16 t — alacritty, on Linux and macOS — is not a terminal without a
+ * report: it answers the SAME text area twice, in pixels (14 t) and in characters (18 t), so its
+ * cell size is the whole-number division of the two (28763).
  */
-export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: PixelGeometry } | { missing: string }> {
+/** The two bases a pixel geometry can rest on, named once so a reader sees one spelling. */
+const GEOMETRY_REPORTED = "reported by CSI 16 t"
+const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
+
+/**
+ * The two bases named above, as a literal union (@dev/3's review note, @cto's call 2026-10-12): the
+ * bare `string` this field carried let a THIRD spelling reach the payload without a type error, so a
+ * reader could no longer tell a reported geometry from a derived one. Nothing else changes — the
+ * constants are the only values ever assigned, so this is a type-only tightening.
+ */
+export type GeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DERIVED
+
+export async function queryPixelGeometry(
+  ctx: TermContext,
+): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
-  if (cell.reason !== "reply") {
-    return { missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cell.reason}` }
-  }
+  if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   if (text.reason !== "reply") {
     return { missing: `the terminal answered CSI 14 t (text area in pixels) with ${text.reason}` }
@@ -299,7 +339,52 @@ export async function queryPixelGeometry(ctx: TermContext): Promise<{ geometry: 
   ) {
     return { missing: `the terminal's pixel report did not parse as positive numbers: ${JSON.stringify(geometry)}` }
   }
-  return { geometry }
+  return { geometry, source: GEOMETRY_REPORTED }
+}
+
+/**
+ * The cell size of a terminal that answers no 16 t, from the two replies it does answer: the text
+ * area in pixels (14 t) and that same area in rows and columns (18 t). The division IS the
+ * measurement, so it has to be exact — 640 pixels over 80 columns and 384 over 24 rows is an 8x16
+ * cell, and 641 over 80 is not a cell size at all, but two replies that disagree about the text
+ * area. A rounded cell would put the compared rectangle on the wrong pixels, which this oracle,
+ * which has no tolerance, must never do. Every way it can fail is named, so the refusal says which
+ * reply was asked for and what came back.
+ */
+async function deriveCellSizeFromTextArea(
+  ctx: TermContext,
+  cellReason: TerminalQueryOutcome["reason"],
+): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
+  const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
+  if (text.reason !== "reply") {
+    return {
+      missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 14 t (text area in pixels) with ${text.reason}, so no cell size can be mapped`,
+    }
+  }
+  const area = await ctx.queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
+  if (area.reason !== "reply") {
+    return {
+      missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 18 t (text area in characters) with ${area.reason}, so no cell size can be mapped`,
+    }
+  }
+  const textHeight = Number(text.match?.[1])
+  const textWidth = Number(text.match?.[2])
+  const rows = Number(area.match?.[1])
+  const columns = Number(area.match?.[2])
+  if (!positive(textHeight) || !positive(textWidth) || !positive(rows) || !positive(columns)) {
+    return {
+      missing: `the terminal reported a text area that did not parse as positive numbers: ${textWidth}x${textHeight} pixels over ${columns}x${rows} characters`,
+    }
+  }
+  if (textHeight % rows !== 0 || textWidth % columns !== 0) {
+    return {
+      missing: `the terminal reported a ${textWidth}x${textHeight} pixel text area over ${columns}x${rows} characters, which does not divide into a whole-pixel cell size`,
+    }
+  }
+  return {
+    geometry: { cellHeight: textHeight / rows, cellWidth: textWidth / columns, textHeight, textWidth },
+    source: GEOMETRY_DERIVED,
+  }
 }
 
 /**
@@ -328,7 +413,12 @@ export async function captureRegionVerdict(
       "query",
     )
   }
-  return captureRegionReadbackDecision(ctx, id, { ...spec, pixelGeometry: reported.geometry }, read)
+  return captureRegionReadbackDecision(
+    ctx,
+    id,
+    { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
+    read,
+  )
 }
 
 /**
@@ -412,6 +502,7 @@ export async function captureRegionReadbackDecision(
         label: step.label,
         witnessCell,
         pixelGeometry: spec.pixelGeometry,
+        geometrySource: spec.geometrySource,
         baseline,
         timeoutMs,
         pollMs,
@@ -446,6 +537,7 @@ export async function captureRegionReadbackDecision(
       sentinel: spec.sentinel,
       cursorRow: spec.cursorRow,
       pixelGeometry: spec.pixelGeometry,
+      geometrySource: spec.geometrySource,
       seed,
       after,
       expected,
@@ -515,7 +607,10 @@ export async function captureRegionReadbackDecision(
       ],
     }
   } finally {
-    // DECTCEM restored and the screen reset, so a refused or thrown run leaves no hidden cursor.
+    // The row's own cleanup first — it clears the mode the last frame left set, which the prelude
+    // below cannot reach — then DECTCEM restored and the screen reset, so a refused or thrown run
+    // leaves no hidden cursor and no inherited mode.
+    if (spec.cleanup !== undefined) ctx.write(spec.cleanup)
     ctx.write("\x1b[?25h")
     ctx.write("\x1b[0m\x1b[2J\x1b[H")
   }

@@ -68,8 +68,8 @@ function find(id: string): ProbeDefinition {
 /**
  * 28450 slice C moved every editing capture row onto the region verdict, so the ungraded
  * pre-edit-control/post-edit-target pixel pair is no longer reachable for any of them. The decision
- * itself is asserted per id by `region-readback-contract.test.ts`; what stays unique to this file is
- * the guard behaviour, asserted below.
+ * itself is asserted per id by `testing/region-readback-contract.test.ts`; what stays unique to this
+ * file is the guard behaviour, asserted below.
  */
 test("every editing capture row asks the terminal's pixel report before painting", async () => {
   for (const id of CAPTURE_IDS) {
@@ -184,7 +184,8 @@ test("an undersized terminal refuses an editing capture before writing", async (
 })
 
 test("a seed at the very edge refuses so it cannot wrap or scroll the captured region", async () => {
-  // insert-chars paints a nine-column row with the witness on row 3, so the spec's floor is 3x10.
+  // insert-chars compares one nine-column row with its witness on row 3, so the kind DERIVES a floor of
+  // 3 rows by 9 + the family's two-column margin = 11 columns.
   const tight = captureContext(1, 8)
   expect((await find("editing.insert-chars").term!(tight.context)).observation).toMatchObject({
     outcome: "inconclusive",
@@ -192,7 +193,7 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
     evidence: "none",
   })
   expect(tight.writes).toEqual([])
-  const margins = captureContext(2, 10)
+  const margins = captureContext(2, 11)
   const refused = await find("editing.insert-chars").term!(margins.context)
   expect(refused.observation).toMatchObject({
     outcome: "inconclusive",
@@ -201,8 +202,17 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   })
   expect(margins.writes).toEqual([])
   expect(margins.frames).toEqual([])
-  // Exactly the spec's floor opens the guards: the row moves on to the pixel report, no paint yet.
-  const fit = captureContext(3, 10)
+  // One column short of the derived floor still refuses: the margin is what stops the seed wrapping.
+  const narrow = captureContext(3, 10)
+  expect((await find("editing.insert-chars").term!(narrow.context)).observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(narrow.writes).toEqual([])
+  expect(narrow.frames).toEqual([])
+  // Exactly the derived floor opens the guards: the row moves on to the pixel report, no paint yet.
+  const fit = captureContext(3, 11)
   expect((await find("editing.insert-chars").term!(fit.context)).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
@@ -217,10 +227,23 @@ test("the capture set covers the cell-edit probes and leaves non-cell probes unt
   expect(captured).toHaveLength(15)
 })
 
-test("without a capture adapter the cursor-only fallback is unchanged", async () => {
-  const { context } = captureContext(24, 80, false)
+/**
+ * 28450 slice C deleted the cursor-only fallback for the thirteen converted rows: a run with no owned
+ * capture can only answer "inconclusive", so the row refuses BY NAME and writes nothing rather than
+ * keeping an ungraded CPR fixture alive (@cto A2). `editing.decsace` and the two attribute rows keep
+ * their own callbacks, covered by the test below and by `editing-geometry.test.ts`.
+ */
+test("without a capture adapter a converted row refuses by name and writes nothing", async () => {
+  const { context, writes, frames } = captureContext(24, 80, false)
   const result = await find("editing.insert-chars").term!(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(String(result.observation?.note)).toContain("no owned capture adapter")
+  expect(writes).toEqual([])
+  expect(frames).toEqual([])
 })
 
 test("editing.decsace stays a non-capture probe even when a capture adapter exists", async () => {

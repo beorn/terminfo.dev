@@ -61,6 +61,18 @@ export {
   type RegionReadback,
 } from "./region-readback.ts"
 
+// The kind tables, so a real-backend test (packages/probes) can run every kind row's parser arm
+// against a terminal that actually implements the sequences (@cto 28450 must-fix 1, 2026-10-12).
+// The list is COMPLETE, and `region-readback-xterm.test.ts` fails when a table declared under src/
+// is not exported here: a family this list drops is invisible to that test, which is how must-fix 1's
+// protection skipped four charsets rows (@cto 28450 census check, 2026-10-12).
+export { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+export { charsetReadbackRows } from "./charsets.ts"
+export { editingReadbackRows } from "./editing.ts"
+export { eraseReadbackRows } from "./erase.ts"
+export { textReadbackRows } from "./text.ts"
+export { scrollbackReadbackRows } from "./scrollback.ts"
+
 import { sgrProbes } from "./sgr.ts"
 import { cursorProbes } from "./cursor.ts"
 import { textProbes } from "./text.ts"

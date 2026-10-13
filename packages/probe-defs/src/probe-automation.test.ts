@@ -1188,8 +1188,9 @@ describe("headless charset cell evidence", () => {
         )
         expect(result.observation, item.id).toMatchObject({ outcome, evidence: "parser-state" })
         expect(JSON.parse(result.response ?? "null"), item.id).toMatchObject({
-          before: item.before,
-          after,
+          // The kind reads a GRID: one string[] per compared row, one entry per compared column.
+          before: [item.before],
+          after: [after],
           setup:
             item.id === "charsets.utf8"
               ? [
