@@ -74,7 +74,7 @@ test("suite identity changes with executable collection, ownership, capture and 
 /**
  * 28786: `ADAPTER_SOURCE_PATHS` is a HAND-TYPED list of "the collector's executed local imports", and a
  * hand-typed list silently falls behind (the bead's own bug: disposable-receipt.ts and run-parser omitted,
- * terminal-app-window.ts listed though nothing runs it). A set whose members can be DERIVED must be checked
+ * terminal-app-window.ts listed though neither collector entry reaches it). A set whose members can be DERIVED must be checked
  * against its derivation. This walks the static local import closure of both collector entries and asserts
  * the two sets are EQUAL, naming every file on one side only — so a newly reached source fails here until it
  * is hashed, and a listed source nothing runs fails until it is removed.
@@ -140,13 +140,17 @@ test("28786: the hashed adapter sources EQUAL the collector's static import clos
 })
 
 /**
- * 28786, negative control: a source the collector NEVER runs must not move the suite.
- * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts), never by a
- * collection path, so listing it lets a change move the suite without touching any observation.
+ * 28786, negative control: a source NEITHER collector entry reaches must not move the suite.
+ * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts); neither
+ * collector entry (serve.ts, collect-headless.ts) reaches it, so listing it would move the suite without
+ * touching any observation those entries make. (The admin app collection DOES execute it — that is a
+ * different entry, and it is not one of the entries this suite declares.)
  */
-test("28786: a source the collector never runs does not move the suite hash", () => {
+test("28786: a source neither collector entry reaches does not move the suite hash", () => {
   const baseline = probeHash()
   changed.file = "packages/terminfo.dev/src/terminal-app-window.ts"
-  expect(probeHash(), "terminal-app-window.ts is never executed by the collector").toBe(baseline)
+  expect(probeHash(), "terminal-app-window.ts is unreached from the collector entries serve.ts and collect-headless.ts").toBe(
+    baseline,
+  )
   changed.file = ""
 })
