@@ -1,664 +1,98 @@
-import type { ProbeDefinition } from "./types.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import { parserStateResult, probe } from "./helpers.ts"
-
-/** DEC Special Graphics sample on row 1; paint witness on row 3, matching 28540's helper. */
-const DEC_SPECIAL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 3 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1Hqqq\x1b[2;1H",
-  edit: "\x1b[1;2H\x1b(0q\x1b(B\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1Hq─q\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 4,
-  minCols: 6,
-}
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
- * The measured readback for the remaining charset rows: the same three-frame shape as
- * DEC_SPECIAL_READBACK, with the expected frame written PLAINLY in the same run. The claims match
- * the termless fixtures beside the probes, so the app and parser-state paths grade one effect.
+ * The Character Sets family, as one region-readback kind table (@cto A2; 28450 slice B).
+ *
+ * Each row is seed / sequence / expected over one row of cells, and BOTH arms derive from it: the
+ * termless arm reads the seed, the steps and the target cells against the parser, and the kind builds
+ * the capture-region oracle's seed / edit / expected frames from the same fields. The row holds the
+ * claim once, and a probe that needs more than this adds a KIND, not a callback.
+ *
+ * The app arm no longer paints its own control/target fixture: the region oracle's verdict already
+ * decided every one of these rows, so those fixtures were unreachable writes kept alive by their own
+ * maintenance cost (and one of them disagreed with the oracle's own geometry).
  */
-const UTF8_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 5 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HAxy?Z\x1b[2;1H",
-  edit: "\x1b[1;2H\u00e9\x1b[1;3H\u4e16\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HA\u00e9\u4e16Z\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 6,
-}
 
-const G0_G1_SWITCHING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 5 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HAlllZ\x1b[2;1H",
-  edit: "\x1b[1;2H\x1b(B\x1b)0l\x0el\x0fl\x0f\x1b(B\x1b)B\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1HAl\u250clZ\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 6,
-}
-
-const DEC_LINE_DRAWING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 7 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1Hjklmqxj\x1b[2;1H",
-  edit: "\x1b[1;1H\x1b(0jklmqx\x1b(B\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x0f\x1b(B\x1b)B\x1b[1;1H\u2518\u2510\u250c\u2514\u2500\u2502j\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 8,
-}
-
-const CHARSET_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "charsets.utf8": UTF8_READBACK,
-  "charsets.g0-g1-switching": G0_G1_SWITCHING_READBACK,
-  "charsets.dec-line-drawing": DEC_LINE_DRAWING_READBACK,
-}
-
-export const charsetsProbes: ProbeDefinition[] = [
+/** The 4 Character Sets capabilities, one row each: seed, the sequence under test, and its cells. */
+export const charsetReadbackRows: readonly RegionReadbackRow[] = [
   {
-    ...probe(
-      "charsets.dec-special",
-      (ctx) => {
-        const expected = "ASCII q controls flank DEC Special Graphics q mapped to U+2500"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols },
-            "Need at least three measured columns for charset controls",
-          )
-        }
-        try {
-          ctx.feed("\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kqqq")
-          const before = Array.from({ length: 3 }, (_, col) => ctx.getCell(0, col).char)
-          if (before.join("") !== "qqq") {
-            return parserStateResult(null, expected, { before }, "ASCII seed was not measured before DEC designation")
-          }
-          ctx.feed("\x1b[1;2H")
-          const cursor = ctx.getCursor()
-          const setup = [{ x: cursor.x, y: cursor.y }]
-          if (cursor.x !== 1 || cursor.y !== 0) {
-            return parserStateResult(null, expected, { before, setup }, "Target CUP did not reach DEC graphics cell")
-          }
-          ctx.feed("\x1b(0q\x1b(Bq")
-          const after = Array.from({ length: 3 }, (_, col) => ctx.getCell(0, col).char)
-          const controlsValid = after[0] === "q" && after[2] === "q"
-          return parserStateResult(
-            controlsValid ? after[1] === "─" : null,
-            expected,
-            { before, setup, after },
-            controlsValid ? undefined : "ASCII flank control changed after DEC designation",
-          )
-        } finally {
-          ctx.feed("\x0f\x1b(B\x1b)B")
-        }
-      },
-      async (ctx) => {
-        const verdict = await captureRegionVerdict(ctx, "charsets.dec-special", DEC_SPECIAL_READBACK)
-        if (verdict) return verdict
-        const capture = ctx.capture
-        if (capture) {
-          const rows = ctx.rows
-          const cols = ctx.cols
-          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 6) {
-            return {
-              pass: false,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "none",
-                note: `Charset capture fixture needs at least 4x6, measured ${rows}x${cols}`,
-              },
-            }
-          }
-          try {
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
-            ctx.write("\x1b[1;1H     \x1b[1;1Hqqq")
-            ctx.write("\x1b[2;1H     \x1b[2;1Hq─q")
-            ctx.write("\x1b[3;1H     \x1b[3;1Hqqq")
-            ctx.write("\x1b[4;1H     \x1b[4;1Hqqq")
-            ctx.write("\x1b[4;6H")
-            const control = await capture({
-              role: "control",
-              label: "ASCII q controls on rows 1, 3 and 4; direct Unicode q─q on row 2",
-            })
-            ctx.write("\x1b[3;2H\x1b(0q\x1b(Bq")
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[4;1Hqqq\x1b[4;6H")
-            const target = await capture({
-              role: "target",
-              label: "DEC Special Graphics sample at row 3, column 2; restored ASCII qqq on row 4",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows,
-                cols,
-                sampleCell: { row: 3, col: 2 },
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Sampled row 3, column 2 horizontal-line appearance relative to row 2 Unicode and ASCII q controls requires independent review; pixels do not measure a numeric codepoint or the whole charset",
-              },
-            }
-          } finally {
-            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
-            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
-          }
-        }
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Charset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b(0") // Switch to DEC special graphics
-        ctx.write("q") // should render as horizontal line
-        ctx.write("\x1b(B") // Switch back to ASCII
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return {
-            pass: false,
-            note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
-          }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          note: "Cursor movement does not verify charset glyph rendering or mapping",
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor movement does not verify charset glyph rendering or mapping",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
+    id: "charsets.dec-special",
+    expected: "ASCII q controls flank DEC Special Graphics q mapped to U+2500",
+    seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kqqq",
+    before: [["q", "q", "q"]],
+    steps: [
+      { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "Target CUP did not reach DEC graphics cell" } },
+      // DEC Special Graphics q paints U+2500 into the middle cell. The flanks are the seed's own
+      // ASCII qs and the sequence never writes them, so they are real controls.
+      { write: "\x1b(0q\x1b(B" },
+    ],
+    after: [["q", "\u2500", "q"]],
+    controls: [
+      { row: 0, col: 0, char: "q" },
+      { row: 0, col: 2, char: "q" },
+    ],
+    seedNote: "ASCII seed was not measured before DEC designation",
+    controlNote: "ASCII flank control changed after DEC designation",
+    reset: "\x0f\x1b(B\x1b)B",
   },
-
   {
-    ...probe(
-      "charsets.utf8",
-      (ctx) => {
-        const expected = "Sampled Unicode characters é and 世 occupy their target cells with ASCII controls intact"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 5) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols },
-            "Need at least five measured columns for Unicode controls",
-          )
-        }
-        ctx.feed("\x1b[1;1H\x1b[2KAxy?Z")
-        const before = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
-        if (before.join("") !== "Axy?Z") {
-          return parserStateResult(null, expected, { before }, "ASCII seed was not measured before Unicode samples")
-        }
-        ctx.feed("\x1b[1;2H")
-        const first = ctx.getCursor()
-        const setup = [{ x: first.x, y: first.y }]
-        if (first.x !== 1 || first.y !== 0) {
-          return parserStateResult(
-            null,
-            expected,
-            { before, setup },
-            "First target CUP did not reach Unicode sample cell",
-          )
-        }
-        ctx.feed("\u00e9")
-        ctx.feed("\x1b[1;3H")
-        const second = ctx.getCursor()
-        setup.push({ x: second.x, y: second.y })
-        if (second.x !== 2 || second.y !== 0) {
-          return parserStateResult(
-            null,
-            expected,
-            { before, setup },
-            "Second target CUP did not reach Unicode sample cell",
-          )
-        }
-        ctx.feed("\u4e16")
-        const after = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
-        const controlsValid = after[0] === "A" && after[4] === "Z"
-        return parserStateResult(
-          controlsValid ? after[1] === "é" && after[2] === "世" : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "ASCII control changed after Unicode samples",
-        )
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const rows = ctx.rows
-          const cols = ctx.cols
-          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 6) {
-            return {
-              pass: false,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "none",
-                note: `Charset capture fixture needs at least 4x6, measured ${rows}x${cols}`,
-              },
-            }
-          }
-          const readback = CHARSET_READBACK_SPECS["charsets.utf8"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "charsets.utf8", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
-            // A??Z puts the right flank on col 4, outside the two-cell U+4E16 sample at cols 2-3,
-            // so a correctly rendered wide glyph cannot destroy the advertised Z flank.
-            ctx.write("\x1b[1;1H     \x1b[1;1HA??Z")
-            ctx.write("\x1b[2;1H     \x1b[2;1HA??Z")
-            ctx.write("\x1b[3;1H     \x1b[3;1HA??Z")
-            ctx.write("\x1b[4;1H     \x1b[4;1HA??Z")
-            ctx.write("\x1b[4;4H")
-            const control = await capture({
-              role: "control",
-              label:
-                "ASCII placeholder controls A??Z on rows 1-4; cols 1 and 4 are the A/Z flanks, cols 2-3 are the sample cells",
-            })
-            ctx.write("\x1b[1;2H\u00e9\x1b[2;2H\u4e16\x1b[4;4H")
-            const target = await capture({
-              role: "target",
-              label:
-                "UTF-8 samples: U+00E9 at row 1 col 2 and U+4E16 occupying row 2 cols 2-3; ASCII A/Z flanks on cols 1 and 4 intact",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows,
-                cols,
-                sampleCells: [
-                  { row: 1, col: 2 },
-                  { row: 2, col: 2 },
-                  { row: 2, col: 3 },
-                ],
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Sampled U+00E9 and U+4E16 glyphs relative to the ASCII A/Z flanks require independent pixel review; pixels do not measure a codepoint or the whole charset",
-              },
-            }
-          } finally {
-            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
-            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
-          }
-        }
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 2) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Charset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\u00e9") // e-acute (2-byte UTF-8, 1 column)
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return {
-            pass: false,
-            note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
-          }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          note: "Cursor movement does not verify charset glyph rendering or mapping",
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor movement does not verify charset glyph rendering or mapping",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
+    id: "charsets.utf8",
+    expected: "Sampled Unicode characters \u00e9 and \u4e16 occupy their target cells with ASCII controls intact",
+    seed: "\x1b[1;1H\x1b[2KAxy?Z",
+    before: [["A", "x", "y", "?", "Z"]],
+    steps: [
+      { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "First target CUP did not reach Unicode sample cell" } },
+      { write: "\u00e9" },
+      { write: "\x1b[1;3H", cursor: { x: 2, y: 0, note: "Second target CUP did not reach Unicode sample cell" } },
+      { write: "\u4e16" },
+    ],
+    // U+4E16 is one WIDE cell: it claims column 3 and its follower claims column 4, whose cell the
+    // wide glyph owns. The `?` the seed painted there is what witnesses the takeover.
+    after: [["A", "\u00e9", "\u4e16", "", "Z"]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 4, char: "Z" },
+    ],
+    seedNote: "ASCII seed was not measured before Unicode samples",
+    controlNote: "ASCII control changed after Unicode samples",
+    reset: "\x0f\x1b(B\x1b)B",
   },
-
-  // G0/G1 switching via SI/SO with independent ASCII flank controls.
   {
-    ...probe(
-      "charsets.g0-g1-switching",
-      (ctx) => {
-        const expected = "G0 ASCII l, SO-selected G1 DEC l→U+250C, then SI-selected G0 ASCII l, within A/Z controls"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 5) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols },
-            "Need at least five measured columns for G0/G1 controls",
-          )
-        }
-        try {
-          ctx.feed("\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2KAlllZ")
-          const before = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
-          if (before.join("") !== "AlllZ") {
-            return parserStateResult(null, expected, { before }, "ASCII seed was not measured before G0/G1 switching")
-          }
-          ctx.feed("\x1b[1;2H")
-          const cursor = ctx.getCursor()
-          const setup = [{ x: cursor.x, y: cursor.y }]
-          if (cursor.x !== 1 || cursor.y !== 0) {
-            return parserStateResult(
-              null,
-              expected,
-              { before, setup },
-              "Target CUP did not reach G0/G1 switching cells",
-            )
-          }
-          ctx.feed("\x1b(B\x1b)0l\x0el\x0fl")
-          const after = Array.from({ length: 5 }, (_, col) => ctx.getCell(0, col).char)
-          const controlsValid = after[0] === "A" && after[4] === "Z"
-          return parserStateResult(
-            controlsValid ? after[1] === "l" && after[2] === "┌" && after[3] === "l" : null,
-            expected,
-            { before, setup, after },
-            controlsValid ? undefined : "ASCII A/Z control changed after G0/G1 switching",
-          )
-        } finally {
-          ctx.feed("\x0f\x1b(B\x1b)B")
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const rows = ctx.rows
-          const cols = ctx.cols
-          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 6) {
-            return {
-              pass: false,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "none",
-                note: `Charset capture fixture needs at least 4x6, measured ${rows}x${cols}`,
-              },
-            }
-          }
-          const readback = CHARSET_READBACK_SPECS["charsets.g0-g1-switching"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "charsets.g0-g1-switching", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
-            ctx.write("\x1b[1;1H     \x1b[1;1HAlllZ")
-            ctx.write("\x1b[2;1H     \x1b[2;1HAlllZ")
-            ctx.write("\x1b[3;1H     \x1b[3;1HAlllZ")
-            ctx.write("\x1b[4;1H     \x1b[4;1HAlllZ")
-            ctx.write("\x1b[4;6H")
-            const control = await capture({
-              role: "control",
-              label: "ASCII lll controls on rows 1 through 3; row 4 is the restored-ASCII reference row",
-            })
-            ctx.write("\x1b[1;2H\x1b(B\x1b)0l\x0el\x0fl")
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[4;1HAlllZ\x1b[4;6H")
-            const target = await capture({
-              role: "target",
-              label:
-                "G1 DEC Special Graphics l maps to U+250C on row 1 col 3 after SO, restored by SI; row 4 shows restored ASCII lll",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows,
-                cols,
-                sampleCell: { row: 1, col: 3 },
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Sampled G1 DEC Special Graphics U+250C relative to ASCII l controls requires independent pixel review; pixels do not measure a codepoint or the whole charset",
-              },
-            }
-          } finally {
-            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
-            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
-          }
-        }
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 3) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Charset fixture needs at least 1x3, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x0f\x1b(B\x1b)0") // G0 ASCII, G1 DEC Special Graphics
-        ctx.write("l\x0el\x0fl") // G0 l, SO-selected G1 ┌, SI-selected G0 l
-        ctx.write("\x1b)B") // normalize the owned G1 designation
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return {
-            pass: false,
-            note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
-          }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          note: "Cursor movement does not verify charset glyph rendering or mapping",
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor movement does not verify charset glyph rendering or mapping",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
+    // G0/G1 switching via SI/SO with independent ASCII flank controls.
+    id: "charsets.g0-g1-switching",
+    expected: "G0 ASCII l, SO-selected G1 DEC l\u2192U+250C, then SI-selected G0 ASCII l, within A/Z controls",
+    seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2KAlllZ",
+    before: [["A", "l", "l", "l", "Z"]],
+    steps: [
+      { write: "\x1b[1;2H", cursor: { x: 1, y: 0, note: "Target CUP did not reach G0/G1 switching cells" } },
+      // G0 l, SO-selected G1 DEC l -> U+250C, then SI-selected G0 ASCII l.
+      { write: "\x1b(B\x1b)0l\x0el\x0fl" },
+    ],
+    after: [["A", "l", "\u250c", "l", "Z"]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 4, char: "Z" },
+    ],
+    seedNote: "ASCII seed was not measured before G0/G1 switching",
+    controlNote: "ASCII A/Z control changed after G0/G1 switching",
+    reset: "\x0f\x1b(B\x1b)B",
   },
-
-  // DEC line drawing — six box-drawing samples.
   {
-    ...probe(
-      "charsets.dec-line-drawing",
-      (ctx) => {
-        const expected = "DEC jklmqx map exactly to ┘┐┌└─│ while trailing ASCII j remains unchanged"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 7) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols },
-            "Need at least seven measured columns for line-drawing controls",
-          )
-        }
-        try {
-          ctx.feed("\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kjklmqxj")
-          const before = Array.from({ length: 7 }, (_, col) => ctx.getCell(0, col).char)
-          if (before.join("") !== "jklmqxj") {
-            return parserStateResult(null, expected, { before }, "ASCII seed was not measured before line drawing")
-          }
-          ctx.feed("\x1b[1;1H")
-          const cursor = ctx.getCursor()
-          const setup = [{ x: cursor.x, y: cursor.y }]
-          if (cursor.x !== 0 || cursor.y !== 0) {
-            return parserStateResult(
-              null,
-              expected,
-              { before, setup },
-              "Target CUP did not reach line-drawing start cell",
-            )
-          }
-          ctx.feed("\x1b(0jklmqx\x1b(B")
-          const after = Array.from({ length: 7 }, (_, col) => ctx.getCell(0, col).char)
-          const controlsValid = after[6] === "j"
-          return parserStateResult(
-            controlsValid ? after.slice(0, 6).join("") === "┘┐┌└─│" : null,
-            expected,
-            { before, setup, after },
-            controlsValid ? undefined : "Trailing ASCII j control changed after DEC line drawing",
-          )
-        } finally {
-          ctx.feed("\x0f\x1b(B\x1b)B")
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const rows = ctx.rows
-          const cols = ctx.cols
-          if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 4 || cols < 7) {
-            return {
-              pass: false,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "none",
-                note: `Charset capture fixture needs at least 4x7, measured ${rows}x${cols}`,
-              },
-            }
-          }
-          const readback = CHARSET_READBACK_SPECS["charsets.dec-line-drawing"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "charsets.dec-line-drawing", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[0m")
-            ctx.write("\x1b[1;1H       \x1b[1;1Hjklmqxj")
-            ctx.write("\x1b[2;1H       \x1b[2;1Hjklmqxj")
-            ctx.write("\x1b[3;1H       \x1b[3;1Hjklmqxj")
-            ctx.write("\x1b[4;1H       \x1b[4;1Hjklmqxj")
-            ctx.write("\x1b[4;8H")
-            const control = await capture({
-              role: "control",
-              label: "ASCII jklmqxj controls on rows 1 through 3; row 4 is the restored-ASCII reference row",
-            })
-            ctx.write("\x1b[1;1H\x1b(0jklmqx\x1b(B")
-            ctx.write("\x0f\x1b(B\x1b)B\x1b[4;1Hjklmqxj\x1b[4;8H")
-            const target = await capture({
-              role: "target",
-              label: "DEC Special Graphics jklmqx on row 1 mapping to ┘┐┌└─│; row 4 shows restored ASCII jklmqxj",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows,
-                cols,
-                sampleCells: [
-                  { row: 1, col: 1 },
-                  { row: 1, col: 2 },
-                  { row: 1, col: 3 },
-                  { row: 1, col: 4 },
-                  { row: 1, col: 5 },
-                  { row: 1, col: 6 },
-                ],
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Sampled six DEC Special Graphics box-drawing cells relative to ASCII jklmqxj controls requires independent pixel review; pixels do not measure codepoints or the whole charset",
-              },
-            }
-          } finally {
-            // Normalize the owned disposable fixture, not arbitrary prior terminal state.
-            ctx.write("\x1b[0m\x0f\x1b(B\x1b)B")
-          }
-        }
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 7) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Charset fixture needs at least 1x7, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b(0") // DEC Special Graphics
-        ctx.write("jklmqx") // box-drawing chars
-        ctx.write("\x1b(B") // back to ASCII
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return {
-            pass: false,
-            note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
-          }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          note: "Cursor movement does not verify charset glyph rendering or mapping",
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor movement does not verify charset glyph rendering or mapping",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
+    // DEC line drawing — six box-drawing samples.
+    id: "charsets.dec-line-drawing",
+    expected: "DEC jklmqx map exactly to \u2518\u2510\u250c\u2514\u2500\u2502 while trailing ASCII j remains unchanged",
+    seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kjklmqxj",
+    before: [["j", "k", "l", "m", "q", "x", "j"]],
+    steps: [
+      { write: "\x1b[1;1H", cursor: { x: 0, y: 0, note: "Target CUP did not reach line-drawing start cell" } },
+      { write: "\x1b(0jklmqx\x1b(B" },
+    ],
+    after: [["\u2518", "\u2510", "\u250c", "\u2514", "\u2500", "\u2502", "j"]],
+    controls: [{ row: 0, col: 6, char: "j" }],
+    seedNote: "ASCII seed was not measured before line drawing",
+    controlNote: "Trailing ASCII j control changed after DEC line drawing",
+    reset: "\x0f\x1b(B\x1b)B",
   },
 ]
+
+export const charsetsProbes = regionReadbackProbes(charsetReadbackRows)

@@ -1,13 +1,12 @@
 import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
   parserStateResult,
   probe,
-  isBlank,
   REPLY_AFTER_SENTINEL_NOTE,
   sentinelNegativeResult,
   unmeasuredCellResult,
-  selectiveEraseResult,
 } from "./helpers.ts"
 
 // DECRQCRA is a reply capability probe, not a checksum-correctness oracle.
@@ -36,10 +35,10 @@ function checksumResult(response: string, lateNote?: string): ProbeResult {
 }
 
 /**
- * Editing capture fixtures. An editing probe's application callback can only prove the
- * sequence was consumed (cursor advance); that collector has no cell readback. The capture
- * path records a pre-edit control and a post-edit target so a reviewer can judge the claimed
- * effect on pixels. Each seed mirrors the termless fixture so both paths assert the same claim.
+ * Editing capture fixtures, kept ONLY for the two attribute-rectangle rows the region kind cannot
+ * carry. An editing probe's application callback proves the sequence was consumed (cursor advance);
+ * that collector has no cell readback, so the capture path records a pre-edit control and a
+ * post-edit target for a reviewer to judge the claimed effect on pixels.
  */
 interface EditingCaptureSpec {
   /** Rows the seed draws on. */
@@ -52,79 +51,18 @@ interface EditingCaptureSpec {
   note: string
 }
 
+/**
+ * DECCARA and DECRARA stay HAND-WRITTEN. This is their one-line coverage record (@cto 218ec7fe,
+ * 2026-10-12): "not a region-readback row: the kind compares characters, and this claim is an
+ * attribute rectangle; it converts when the kind's cell carries attributes". Both arms CAN observe
+ * attributes; the kind just does not carry them, so a row of it would read the characters unchanged
+ * and grade an ignoring surface supported on the termless arm, while its pixel arm would wrongly
+ * read a correct terminal unsupported. The trigger to convert is a third attribute-rectangle probe,
+ * or folding the SGR family's attribute readback (sgr.ts, sgrReadbackDecision) into the region kind,
+ * whichever comes first - then both arms get an attribute-carrying cell once, reviewed, and these two
+ * convert with it.
+ */
 const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
-  "editing.insert-chars": {
-    minRows: 1,
-    minCols: 8,
-    seed: "\x1b[1;1HABCDEZQH",
-    edit: "\x1b[1;3H\x1b[1@",
-    region: { row: 1, col: 1, rows: 1, cols: 8 },
-    note: "ICH at column 3 should blank column 3 and shift the measured text right; compare the pre-edit control",
-  },
-  "editing.delete-chars": {
-    minRows: 1,
-    minCols: 8,
-    seed: "\x1b[1;1HABCDEZQH",
-    edit: "\x1b[1;3H\x1b[1P",
-    region: { row: 1, col: 1, rows: 1, cols: 8 },
-    note: "DCH at column 3 should delete column 3 and shift the measured text left; compare the pre-edit control",
-  },
-  "editing.insert-lines": {
-    minRows: 4,
-    minCols: 5,
-    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
-    edit: "\x1b[2;1H\x1b[1L",
-    region: { row: 1, col: 1, rows: 4, cols: 5 },
-    note: "IL at row 2 should insert a blank row and shift measured rows down; row 1 is the intact control",
-  },
-  "editing.delete-lines": {
-    minRows: 4,
-    minCols: 5,
-    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
-    edit: "\x1b[2;1H\x1b[1M",
-    region: { row: 1, col: 1, rows: 4, cols: 5 },
-    note: "DL at row 2 should remove row 2 and shift measured rows up; row 1 is the intact control",
-  },
-  "editing.repeat-char": {
-    minRows: 1,
-    minCols: 6,
-    seed: "\x1b[1;1HAX   Z",
-    edit: "\x1b[1;2HX\x1b[3b",
-    region: { row: 1, col: 1, rows: 1, cols: 6 },
-    note: "REP should repeat X into three cells between the intact A and Z flanks",
-  },
-  "editing.decfra": {
-    minRows: 3,
-    minCols: 6,
-    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
-    edit: "\x1b[1;1H\x1b[88;1;1;3;5$x",
-    region: { row: 1, col: 1, rows: 3, cols: 6 },
-    note: "DECFRA should fill the measured 3x5 area with X and preserve the sampled right flank",
-  },
-  "editing.decera": {
-    minRows: 3,
-    minCols: 6,
-    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
-    edit: "\x1b[1;1H\x1b[1;1;3;5$z",
-    region: { row: 1, col: 1, rows: 3, cols: 6 },
-    note: "DECERA should blank the measured 3x5 area and preserve the sampled right flank",
-  },
-  "editing.decsera": {
-    minRows: 1,
-    minCols: 6,
-    seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ',
-    edit: "\x1b[1;1;1;5${",
-    region: { row: 1, col: 1, rows: 1, cols: 6 },
-    note: "DECSERA should clear ABCD while the DECSCA-protected P and the Z flank survive",
-  },
-  "editing.deccra": {
-    minRows: 6,
-    minCols: 14,
-    seed: "\x1b[1;1HABCDE.........\x1b[2;1HFGHIJ.........\x1b[5;1H.........12345\x1b[6;1H.........67890",
-    edit: "\x1b[1;1H\x1b[1;1;2;5;1;5;10$v",
-    region: { row: 5, col: 10, rows: 2, cols: 5 },
-    note: "DECCRA should copy ABCDE/FGHIJ to row 5 column 10 and leave the source rows intact",
-  },
   "editing.deccara": {
     minRows: 1,
     minCols: 6,
@@ -141,171 +79,9 @@ const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
     region: { row: 1, col: 1, rows: 1, cols: 5 },
     note: "DECRARA (one row) should clear inverse on the five measured cells and leave the sixth-column flank already-plain",
   },
-  "editing.sl": {
-    minRows: 2,
-    minCols: 9,
-    seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
-    edit: "\x1b[1;1H\x1b[2 @",
-    region: { row: 1, col: 1, rows: 2, cols: 9 },
-    note: "SL should shift the first nine measured cells of two rows left by two columns",
-  },
-  "editing.sr": {
-    minRows: 2,
-    minCols: 9,
-    seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
-    edit: "\x1b[1;1H\x1b[2 A",
-    region: { row: 1, col: 1, rows: 2, cols: 9 },
-    note: "SR should shift the first nine measured cells of two rows right by two columns",
-  },
-  "editing.decic": {
-    minRows: 3,
-    minCols: 8,
-    seed: "\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX",
-    edit: "\x1b[2;3H\x1b[2'}",
-    region: { row: 1, col: 1, rows: 3, cols: 8 },
-    note: "DECIC should insert two blank columns at column 3 on three measured rows",
-  },
-  "editing.decdc": {
-    minRows: 3,
-    minCols: 10,
-    seed: "\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab",
-    edit: "\x1b[2;3H\x1b[2'~",
-    region: { row: 1, col: 1, rows: 3, cols: 8 },
-    note: "DECDC should delete two columns at column 3 on three measured rows",
-  },
 }
 
-/**
- * The cell-aligned readback for the DCH row. The compared region is the edited row itself, the
- * cursor is parked on row 2 by the fixture and by the edit's own tail so it is outside the region,
- * and the witness cell sits on row 3. The expected frame is the post-edit row written PLAINLY in
- * the same run: DCH at column 3 deletes C and shifts the survivors left, so cells 1-8 read
- * ABDEZQH and a blank.
- */
-const DELETE_CHARS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 8 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEZQH\x1b[2;1H",
-  edit: "\x1b[1;3H\x1b[1P\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABDEZQH \x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 9,
-}
-
-/**
- * The measured readback for the remaining editing rows. Each spec has the same three-frame shape as
- * DELETE_CHARS_READBACK: a seed frame, the sequence applied on top of it, and the frame that
- * sequence must leave, written PLAINLY in the same run. The expected frame restates the claim the
- * termless fixture beside the probe already asserts, so both paths grade the same effect; a
- * terminal whose edit lands anywhere else reads inconclusive BY NAME, never unsupported.
- */
-const INSERT_CHARS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 9 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEZQH\x1b[2;1H",
-  edit: "\x1b[1;3H\x1b[1@\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB CDEZQH\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 10,
-}
-
-const INSERT_LINES_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 4, right: 5 },
-  sentinel: { row: 6, col: 1 },
-  cursorRow: 5,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD\x1b[5;1H",
-  edit: "\x1b[2;1H\x1b[1L\x1b[5;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1H     \x1b[3;1HBBBBB\x1b[4;1HCCCCC\x1b[5;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 6,
-  minCols: 6,
-}
-
-const DELETE_LINES_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 4, right: 5 },
-  sentinel: { row: 6, col: 1 },
-  cursorRow: 5,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD\x1b[5;1H",
-  edit: "\x1b[2;1H\x1b[1M\x1b[5;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAAAAA\x1b[2;1HCCCCC\x1b[3;1HDDDDD\x1b[4;1H     \x1b[5;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 6,
-  minCols: 6,
-}
-
-const REPEAT_CHAR_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 6 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAX   Z\x1b[2;1H",
-  edit: "\x1b[1;2HX\x1b[3b\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAXXXXZ\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 7,
-}
-
-const DECFRA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 3, right: 6 },
-  sentinel: { row: 5, col: 1 },
-  cursorRow: 4,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW\x1b[4;1H",
-  edit: "\x1b[1;1H\x1b[88;1;1;3;5$x\x1b[4;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HXXXXXZ\x1b[2;1HXXXXXY\x1b[3;1HXXXXXW\x1b[4;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 5,
-  minCols: 7,
-}
-
-const DECERA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 3, right: 6 },
-  sentinel: { row: 5, col: 1 },
-  cursorRow: 4,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX\x1b[4;1H",
-  edit: "\x1b[1;1H\x1b[1;1;3;5$z\x1b[4;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H     Z\x1b[2;1H     Y\x1b[3;1H     X\x1b[4;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 5,
-  minCols: 7,
-}
-
-const DECSERA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 6 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: '\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ\x1b[2;1H',
-  edit: "\x1b[1;1H\x1b[1;1;1;5${\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HP    Z\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 7,
-}
-
-const DECCRA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 5, left: 10, bottom: 6, right: 14 },
-  sentinel: { row: 8, col: 1 },
-  cursorRow: 7,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDE\x1b[2;1HFGHIJ\x1b[5;1H.........12345\x1b[6;1H.........67890\x1b[7;1H",
-  edit: "\x1b[1;1H\x1b[1;1;2;5;1;5;10$v\x1b[7;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[5;10HABCDE\x1b[6;10HFGHIJ\x1b[7;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 8,
-  minCols: 15,
-}
-
+/** The attribute-rectangle readbacks: the two rows the character-grid kind cannot express. */
 const DECCARA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   region: { top: 1, left: 1, bottom: 1, right: 5 },
   sentinel: { row: 3, col: 1 },
@@ -332,76 +108,370 @@ const DECRARA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   minCols: 7,
 }
 
-const SL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 2, right: 9 },
-  sentinel: { row: 4, col: 1 },
-  cursorRow: 3,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR\x1b[3;1H",
-  edit: "\x1b[1;1H\x1b[2 @\x1b[3;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HCDEFGHI  \x1b[2;1HLMNOPQR  \x1b[3;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 5,
-  minCols: 10,
-}
-
-const SR_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 2, right: 9 },
-  sentinel: { row: 4, col: 1 },
-  cursorRow: 3,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR\x1b[3;1H",
-  edit: "\x1b[1;1H\x1b[2 A\x1b[3;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H  ABCDEFG\x1b[2;1H  JKLMNOP\x1b[3;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 5,
-  minCols: 10,
-}
-
-const DECIC_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 3, right: 8 },
-  sentinel: { row: 5, col: 1 },
-  cursorRow: 4,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX\x1b[4;1H",
-  edit: "\x1b[2;3H\x1b[2'}\x1b[4;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB  CDEF\x1b[2;1HIJ  KLMN\x1b[3;1HQR  STUV\x1b[4;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 6,
-  minCols: 9,
-}
-
-const DECDC_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 3, right: 8 },
-  sentinel: { row: 5, col: 1 },
-  cursorRow: 4,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab\x1b[4;1H",
-  edit: "\x1b[2;3H\x1b[2'~\x1b[4;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HABEFGHIJ\x1b[2;1HIJMNOPQR\x1b[3;1HQRUVWXab\x1b[4;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 6,
-  minCols: 12,
-}
-
 /** Rows whose collector path can decide from the owned window's cells, with the same helper. */
 const EDITING_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "editing.insert-chars": INSERT_CHARS_READBACK,
-  "editing.delete-chars": DELETE_CHARS_READBACK,
-  "editing.insert-lines": INSERT_LINES_READBACK,
-  "editing.delete-lines": DELETE_LINES_READBACK,
-  "editing.repeat-char": REPEAT_CHAR_READBACK,
-  "editing.decfra": DECFRA_READBACK,
-  "editing.decera": DECERA_READBACK,
-  "editing.decsera": DECSERA_READBACK,
-  "editing.deccra": DECCRA_READBACK,
   "editing.deccara": DECCARA_READBACK,
   "editing.decrara": DECRARA_READBACK,
-  "editing.sl": SL_READBACK,
-  "editing.sr": SR_READBACK,
-  "editing.decic": DECIC_READBACK,
-  "editing.decdc": DECDC_READBACK,
 }
+
+/**
+ * The 13 measured editing rows, as one region-readback kind table (@cto A2; 28450 slice C). Each row
+ * holds its claim ONCE: the termless arm reads its seed, its steps and its target cells against the
+ * parser, and the kind derives the capture-region oracle's seed / edit / expected frames from the
+ * same fields, so the two arms cannot grade two different fixtures.
+ *
+ * Two notes this table carries to @cto, both named in the diff:
+ *  - DECERA's two hand-written copies of the fixture disagreed: the capture spec seeded the third
+ *    row's flank "W", while the readback seeded "X" AND expected that flank preserved. One row ends
+ *    the disagreement, and the readback's "X" - the flank the termless arm also used - is what it
+ *    keeps.
+ *  - DECCRA's region covers its SOURCE rows as well as its destination (rows 1..6, columns 1..14),
+ *    because the claim is two-sided: "copies ... WITHOUT changing the source". The hand-written
+ *    pixel spec compared the destination only, so a destination-only region would have dropped the
+ *    source control its own termless arm asserted; one rectangle spanning both keeps the whole claim
+ *    on both arms.
+ */
+export const editingReadbackRows: readonly RegionReadbackRow[] = [
+  {
+    id: "editing.insert-chars",
+    expected: "ICH inserts a blank cell at column 3 and shifts measured text right; prefix stays intact",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDEZQH",
+    before: [["A", "B", "C", "D", "E", "Z", "Q", "H", " "]],
+    steps: [{ write: "\x1b[1;3H\x1b[1@" }],
+    after: [["A", "B", " ", "C", "D", "E", "Z", "Q", "H"]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "B" },
+    ],
+    seedNote: "ICH seed was not measured before the edit",
+    controlNote: "ICH prefix control changed during the edit",
+    reset: "",
+  },
+  {
+    id: "editing.delete-chars",
+    expected: "DCH deletes the cell at column 3 and shifts measured text left; prefix stays intact",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDEZQH",
+    before: [["A", "B", "C", "D", "E", "Z", "Q", "H"]],
+    steps: [{ write: "\x1b[1;3H\x1b[1P" }],
+    after: [["A", "B", "D", "E", "Z", "Q", "H", " "]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "B" },
+    ],
+    seedNote: "DCH seed was not measured before the edit",
+    controlNote: "DCH prefix control changed during the edit",
+    reset: "",
+  },
+  {
+    id: "editing.insert-lines",
+    expected: "IL inserts a blank row 2 and shifts measured rows down while row 1 stays intact",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
+    before: [
+      ["A", "A", "A", "A", "A"],
+      ["B", "B", "B", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+      ["D", "D", "D", "D", "D"],
+    ],
+    steps: [{ write: "\x1b[2;1H\x1b[1L" }],
+    after: [
+      ["A", "A", "A", "A", "A"],
+      [" ", " ", " ", " ", " "],
+      ["B", "B", "B", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+    ],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "A" },
+      { row: 0, col: 2, char: "A" },
+      { row: 0, col: 3, char: "A" },
+      { row: 0, col: 4, char: "A" },
+    ],
+    cursorRow: 5,
+    sentinel: { row: 6, col: 1 },
+    seedNote: "IL source rows were not measured before the edit",
+    controlNote: "IL first-row control changed during the edit",
+    reset: "",
+  },
+  {
+    id: "editing.delete-lines",
+    expected: "DL removes row 2 and shifts measured rows up while row 1 stays intact",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
+    before: [
+      ["A", "A", "A", "A", "A"],
+      ["B", "B", "B", "B", "B"],
+      ["C", "C", "C", "C", "C"],
+      ["D", "D", "D", "D", "D"],
+    ],
+    steps: [{ write: "\x1b[2;1H\x1b[1M" }],
+    after: [
+      ["A", "A", "A", "A", "A"],
+      ["C", "C", "C", "C", "C"],
+      ["D", "D", "D", "D", "D"],
+      [" ", " ", " ", " ", " "],
+    ],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "A" },
+      { row: 0, col: 2, char: "A" },
+      { row: 0, col: 3, char: "A" },
+      { row: 0, col: 4, char: "A" },
+    ],
+    cursorRow: 5,
+    sentinel: { row: 6, col: 1 },
+    seedNote: "DL source rows were not measured before the edit",
+    controlNote: "DL first-row control changed during the edit",
+    reset: "",
+  },
+  {
+    id: "editing.repeat-char",
+    expected: "REP repeats the immediately preceding X into three target cells without changing flank controls",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HAX   Z",
+    before: [["A", "X", " ", " ", " ", "Z"]],
+    steps: [{ write: "\x1b[1;2HX\x1b[3b" }],
+    after: [["A", "X", "X", "X", "X", "Z"]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 5, char: "Z" },
+    ],
+    cursorRow: 2,
+    sentinel: { row: 3, col: 1 },
+    seedNote: "REP flank and blank seed was not measured",
+    controlNote: "REP flank control changed during the edit",
+    reset: "",
+  },
+  {
+    id: "editing.decfra",
+    expected: "DECFRA fills the measured 3x5 area and preserves its measured right flank",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
+    before: [
+      ["a", "a", "a", "a", "a", "Z"],
+      ["b", "b", "b", "b", "b", "Y"],
+      ["c", "c", "c", "c", "c", "W"],
+    ],
+    steps: [{ write: "\x1b[1;1H\x1b[88;1;1;3;5$x" }],
+    after: [
+      ["X", "X", "X", "X", "X", "Z"],
+      ["X", "X", "X", "X", "X", "Y"],
+      ["X", "X", "X", "X", "X", "W"],
+    ],
+    controls: [
+      { row: 0, col: 5, char: "Z" },
+      { row: 1, col: 5, char: "Y" },
+      { row: 2, col: 5, char: "W" },
+    ],
+    cursorRow: 4,
+    sentinel: { row: 5, col: 1 },
+    seedNote: "DECFRA seed was not measured",
+    controlNote: "DECFRA outside control changed",
+    reset: "",
+  },
+  {
+    id: "editing.decera",
+    expected: "DECERA blanks measured 3x5 cells and preserves their measured right flank",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX",
+    before: [
+      ["a", "a", "a", "a", "a", "Z"],
+      ["b", "b", "b", "b", "b", "Y"],
+      ["c", "c", "c", "c", "c", "X"],
+    ],
+    steps: [{ write: "\x1b[1;1H\x1b[1;1;3;5$z" }],
+    after: [
+      [" ", " ", " ", " ", " ", "Z"],
+      [" ", " ", " ", " ", " ", "Y"],
+      [" ", " ", " ", " ", " ", "X"],
+    ],
+    controls: [
+      { row: 0, col: 5, char: "Z" },
+      { row: 1, col: 5, char: "Y" },
+      { row: 2, col: 5, char: "X" },
+    ],
+    cursorRow: 4,
+    sentinel: { row: 5, col: 1 },
+    seedNote: "DECERA seed was not measured",
+    controlNote: "DECERA outside control changed",
+    reset: "",
+  },
+  {
+    id: "editing.decsera",
+    expected: "DECSCA-protected P survives while selective erase clears ABCD",
+    region: { top: 1, left: 1 },
+    seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ',
+    before: [["P", "A", "B", "C", "D", "Z"]],
+    // DECSERA names its rectangle in its own parameters, so the sequence is issued where the seed left
+    // the cursor - exactly as the hand-written termless helper did. No CUP: it would move the cursor
+    // and buy nothing, and erase-observations.test.ts drives this row through a terminal that performs
+    // the erase when it receives THESE bytes.
+    steps: [{ write: "\x1b[1;1;1;5${" }],
+    after: [["P", " ", " ", " ", " ", "Z"]],
+    // NO control, deliberately. DECSERA's rectangle is columns 1-5, so Z at column 6 lies OUTSIDE it
+    // and survives whatever the sequence does; as a control it could never fire, and a never-firing
+    // control is vacuous. Every discriminating cell (the protected P, and the ABCD the sequence
+    // clears) sits INSIDE the rectangle, where the sequence DOES write, so none of them may be a
+    // control. By @chief's ruling (2026-10-11T22:58Z) an erase that takes the protected P is a measured
+    // NEGATIVE, and `ignored` names the frame such a terminal would leave — P gone, Z kept — so taking
+    // the protected cell reads unsupported instead of unattributable.
+    controls: [],
+    ignored: [[" ", " ", " ", " ", " ", "Z"]],
+    cursorRow: 2,
+    sentinel: { row: 3, col: 1 },
+    seedNote: "Selective erase seed was not measured",
+    controlNote: "Outside-rectangle control failed; cannot attribute selective erase",
+    reset: "",
+  },
+  {
+    id: "editing.deccra",
+    expected: "DECCRA copies measured 2x5 source cells to row 5 column 10 without changing the source",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDE.........\x1b[2;1HFGHIJ.........\x1b[5;1H.........12345\x1b[6;1H.........67890",
+    before: [
+      ["A", "B", "C", "D", "E", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      ["F", "G", "H", "I", "J", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [" ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " "],
+      [" ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " "],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", "1", "2", "3", "4", "5"],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", "6", "7", "8", "9", "0"],
+    ],
+    steps: [{ write: "\x1b[1;1H\x1b[1;1;2;5;1;5;10$v" }],
+    after: [
+      ["A", "B", "C", "D", "E", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      ["F", "G", "H", "I", "J", ".", ".", ".", ".", ".", ".", ".", ".", "."],
+      [" ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " "],
+      [" ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " ", " "],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", "A", "B", "C", "D", "E"],
+      [".", ".", ".", ".", ".", ".", ".", ".", ".", "F", "G", "H", "I", "J"],
+    ],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "B" },
+      { row: 0, col: 2, char: "C" },
+      { row: 0, col: 3, char: "D" },
+      { row: 0, col: 4, char: "E" },
+      { row: 1, col: 0, char: "F" },
+      { row: 1, col: 1, char: "G" },
+      { row: 1, col: 2, char: "H" },
+      { row: 1, col: 3, char: "I" },
+      { row: 1, col: 4, char: "J" },
+    ],
+    cursorRow: 7,
+    sentinel: { row: 8, col: 1 },
+    seedNote: "DECCRA source and destination were not measured",
+    controlNote: "DECCRA source or outside control changed",
+    reset: "",
+  },
+  {
+    id: "editing.sl",
+    expected: "SL shifts the first nine observed cells of two rows left by two columns",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
+    before: [
+      ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+      ["J", "K", "L", "M", "N", "O", "P", "Q", "R"],
+    ],
+    steps: [{ write: "\x1b[1;1H\x1b[2 @" }],
+    after: [
+      ["C", "D", "E", "F", "G", "H", "I", " ", " "],
+      ["L", "M", "N", "O", "P", "Q", "R", " ", " "],
+    ],
+    controls: [],
+    cursorRow: 3,
+    sentinel: { row: 4, col: 1 },
+    seedNote: "SL seed was not measured",
+    controlNote: "SL's unchanged columns are not part of this row's claim",
+    reset: "",
+  },
+  {
+    id: "editing.sr",
+    expected: "SR shifts the first nine measured cells of two rows right by two columns",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
+    before: [
+      ["A", "B", "C", "D", "E", "F", "G", "H", "I"],
+      ["J", "K", "L", "M", "N", "O", "P", "Q", "R"],
+    ],
+    steps: [{ write: "\x1b[1;1H\x1b[2 A" }],
+    after: [
+      [" ", " ", "A", "B", "C", "D", "E", "F", "G"],
+      [" ", " ", "J", "K", "L", "M", "N", "O", "P"],
+    ],
+    controls: [],
+    cursorRow: 3,
+    sentinel: { row: 4, col: 1 },
+    seedNote: "SR seed was not measured",
+    controlNote: "SR's unchanged columns are not part of this row's claim",
+    reset: "",
+  },
+  {
+    id: "editing.decic",
+    expected: "DECIC inserts two blank columns at column 3 on three measured rows",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX",
+    before: [
+      ["A", "B", "C", "D", "E", "F", "G", "H"],
+      ["I", "J", "K", "L", "M", "N", "O", "P"],
+      ["Q", "R", "S", "T", "U", "V", "W", "X"],
+    ],
+    steps: [{ write: "\x1b[2;3H\x1b[2'}" }],
+    after: [
+      ["A", "B", " ", " ", "C", "D", "E", "F"],
+      ["I", "J", " ", " ", "K", "L", "M", "N"],
+      ["Q", "R", " ", " ", "S", "T", "U", "V"],
+    ],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "B" },
+      { row: 1, col: 0, char: "I" },
+      { row: 1, col: 1, char: "J" },
+      { row: 2, col: 0, char: "Q" },
+      { row: 2, col: 1, char: "R" },
+    ],
+    cursorRow: 4,
+    sentinel: { row: 5, col: 1 },
+    seedNote: "DECIC seed was not measured",
+    controlNote: "DECIC unchanged-prefix control changed",
+    reset: "",
+  },
+  {
+    id: "editing.decdc",
+    expected: "DECDC deletes two columns at column 3 on three measured rows",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab",
+    // Ten compared columns, not eight: the seed writes ten, and the two incoming columns the delete
+    // pulls left into the compared span (row 1 I,J; row 2 Q,R; row 3 a,b) are part of the claim. At
+    // eight the ninth and tenth seed cells were stored but never verified, so a seed that wrote blanks
+    // there could only fail later with an unattributable note (@cto 28450 should-fix).
+    before: [
+      ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+      ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"],
+      ["Q", "R", "S", "T", "U", "V", "W", "X", "a", "b"],
+    ],
+    steps: [{ write: "\x1b[2;3H\x1b[2'~" }],
+    after: [
+      ["A", "B", "E", "F", "G", "H", "I", "J", " ", " "],
+      ["I", "J", "M", "N", "O", "P", "Q", "R", " ", " "],
+      ["Q", "R", "U", "V", "W", "X", "a", "b", " ", " "],
+    ],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 0, col: 1, char: "B" },
+      { row: 1, col: 0, char: "I" },
+      { row: 1, col: 1, char: "J" },
+      { row: 2, col: 0, char: "Q" },
+      { row: 2, col: 1, char: "R" },
+    ],
+    cursorRow: 4,
+    sentinel: { row: 5, col: 1 },
+    seedNote: "DECDC seed and incoming sources were not measured",
+    controlNote: "DECDC unchanged-prefix control changed",
+    reset: "",
+  },
+]
 
 async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
   const spec = EDITING_CAPTURE_SPECS[id]
@@ -452,520 +522,7 @@ async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
 }
 
 const editingProbeDefinitions: ProbeDefinition[] = [
-  {
-    ...probe(
-      "editing.insert-chars",
-      (ctx) => {
-        const expected = "ICH inserts a blank cell at column 3 and shifts measured text right; prefix stays intact"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols },
-            "Need eight measured columns for the ICH fixture",
-          )
-        }
-        ctx.feed("\x1b[1;1H\x1b[2KABCDEZQH")
-        const before = Array.from({ length: 8 }, (_, col) => ctx.getCell(0, col).char)
-        if (before.join("") !== "ABCDEZQH") {
-          return parserStateResult(null, expected, { before }, "ICH seed was not measured before the edit")
-        }
-        ctx.feed("\x1b[1;3H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 2 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "ICH cursor setup did not reach column 3")
-        }
-        ctx.feed("\x1b[1@")
-        const after = Array.from({ length: 8 }, (_, col) => ctx.getCell(0, col).char)
-        const controlsValid = after[0] === "A" && after[1] === "B"
-        return parserStateResult(
-          controlsValid ? isBlank(after[2] ?? "") && after.slice(3).join("") === "CDEZQ" : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "ICH prefix control changed during the edit",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K") // Clear line
-        ctx.write("ABCD")
-        ctx.write("\x1b[1;2H") // Move to col 2
-        ctx.write("\x1b[1@") // ICH 1
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.delete-chars",
-      (ctx) => {
-        const expected = "DCH deletes the cell at column 3 and shifts measured text left; prefix stays intact"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols },
-            "Need eight measured columns for the DCH fixture",
-          )
-        }
-        ctx.feed("\x1b[1;1H\x1b[2KABCDEZQH")
-        const before = Array.from({ length: 8 }, (_, col) => ctx.getCell(0, col).char)
-        if (before.join("") !== "ABCDEZQH") {
-          return parserStateResult(null, expected, { before }, "DCH seed was not measured before the edit")
-        }
-        ctx.feed("\x1b[1;3H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 2 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "DCH cursor setup did not reach column 3")
-        }
-        ctx.feed("\x1b[1P")
-        // The next unmeasured cell can shift into column 8; assert only the known source span.
-        const after = Array.from({ length: 7 }, (_, col) => ctx.getCell(0, col).char)
-        const controlsValid = after[0] === "A" && after[1] === "B"
-        return parserStateResult(
-          controlsValid ? after.slice(2).join("") === "DEZQH" : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DCH prefix control changed during the edit",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K") // Clear line
-        ctx.write("ABCD")
-        ctx.write("\x1b[1;2H") // Move to col 2
-        ctx.write("\x1b[1P") // DCH 1
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.insert-lines",
-      (ctx) => {
-        const expected = "IL inserts a blank row 2 and shifts measured rows down while row 1 stays intact"
-        const screenLines = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(screenLines) || screenLines < 4) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols, screenLines },
-            "Need six measured columns and four measured screen lines for IL",
-          )
-        }
-        const seed = ["AAAAA", "BBBBB", "CCCCC", "DDDDD"]
-        for (const [row, text] of seed.entries()) ctx.feed(`\x1b[${row + 1};1H\x1b[2K${text}`)
-        const before = seed.map((_, row) => Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char))
-        if (before.some((cells, row) => cells.join("") !== seed[row])) {
-          return parserStateResult(null, expected, { before }, "IL source rows were not measured before the edit")
-        }
-        ctx.feed("\x1b[2;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 1) {
-          return parserStateResult(null, expected, { before, setup }, "IL cursor setup did not reach row 2 column 1")
-        }
-        ctx.feed("\x1b[1L")
-        const after = seed.map((_, row) => Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char))
-        const controlsValid = after[0]?.join("") === "AAAAA"
-        return parserStateResult(
-          controlsValid
-            ? after[1]?.every(isBlank) === true && after[2]?.join("") === "BBBBB" && after[3]?.join("") === "CCCCC"
-            : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "IL first-row control changed during the edit",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[3;5H") // Move to row 3, col 5
-        ctx.write("\x1b[1L") // IL 1
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.delete-lines",
-      (ctx) => {
-        const expected = "DL removes row 2 and shifts measured rows up while row 1 stays intact"
-        const screenLines = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(screenLines) || screenLines < 4) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols, screenLines },
-            "Need six measured columns and four measured screen lines for DL",
-          )
-        }
-        const seed = ["AAAAA", "BBBBB", "CCCCC", "DDDDD"]
-        for (const [row, text] of seed.entries()) ctx.feed(`\x1b[${row + 1};1H\x1b[2K${text}`)
-        const before = seed.map((_, row) => Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char))
-        if (before.some((cells, row) => cells.join("") !== seed[row])) {
-          return parserStateResult(null, expected, { before }, "DL source rows were not measured before the edit")
-        }
-        ctx.feed("\x1b[2;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 1) {
-          return parserStateResult(null, expected, { before, setup }, "DL cursor setup did not reach row 2 column 1")
-        }
-        ctx.feed("\x1b[1M")
-        // Row 4's incoming source is unmeasured when the screen is taller than four rows.
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 5 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        const controlsValid = after[0]?.join("") === "AAAAA"
-        return parserStateResult(
-          controlsValid ? after[1]?.join("") === "CCCCC" && after[2]?.join("") === "DDDDD" : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DL first-row control changed during the edit",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[3;5H") // Move to row 3, col 5
-        ctx.write("\x1b[1M") // DL 1
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.repeat-char",
-      (ctx) => {
-        const expected =
-          "REP repeats the immediately preceding X into three target cells without changing flank controls"
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
-          return parserStateResult(null, expected, { cols: ctx.cols }, "Need six measured columns for the REP fixture")
-        }
-        ctx.feed("\x1b[1;1H\x1b[2KAX   Z")
-        const seed = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
-        if (seed.join("") !== "AX   Z") {
-          return parserStateResult(null, expected, { seed }, "REP flank and blank seed was not measured")
-        }
-        ctx.feed("\x1b[1;2H")
-        const targetPosition = ctx.getCursor()
-        if (targetPosition.x !== 1 || targetPosition.y !== 0) {
-          return parserStateResult(null, expected, { seed, targetPosition }, "REP cursor setup did not reach column 2")
-        }
-        ctx.feed("X")
-        const before = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
-        const setup = ctx.getCursor()
-        if (before.join("") !== "AX   Z" || setup.x !== 2 || setup.y !== 0) {
-          return parserStateResult(
-            null,
-            expected,
-            { seed, targetPosition, before, setup },
-            "REP X setup was not measured",
-          )
-        }
-        ctx.feed("\x1b[3b")
-        const after = Array.from({ length: 6 }, (_, col) => ctx.getCell(0, col).char)
-        const controlsValid = after[0] === "A" && after[5] === "Z"
-        return parserStateResult(
-          controlsValid ? after.slice(1, 5).join("") === "XXXX" : null,
-          expected,
-          { seed, targetPosition, before, setup, after },
-          controlsValid ? undefined : "REP flank control changed during the edit",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K") // clear line
-        ctx.write("X") // write X (cursor at col 2)
-        ctx.write("\x1b[4b") // REP 4
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  // ── VT420 Rectangular Area Operations (1990) ──
-
-  {
-    ...probe(
-      "editing.decfra",
-      (ctx) => {
-        const expected = "DECFRA fills the measured 3x5 area and preserves its measured right flank"
-        if (
-          !Number.isSafeInteger(ctx.cols) ||
-          ctx.cols < 6 ||
-          !Number.isSafeInteger(ctx.getScrollback().screenLines) ||
-          ctx.getScrollback().screenLines < 3
-        ) {
-          return parserStateResult(
-            null,
-            expected,
-            { cols: ctx.cols, rows: ctx.getScrollback().screenLines },
-            "Need a measured 3x6 fixture",
-          )
-        }
-        ctx.feed("\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW")
-        const before = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char).join(""),
-        )
-        if (before.join("|") !== "aaaaaZ|bbbbbY|cccccW") {
-          return parserStateResult(null, expected, { before }, "DECFRA seed was not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "DECFRA cursor setup failed")
-        }
-        ctx.feed("\x1b[88;1;1;3;5$x")
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char).join(""),
-        )
-        const controlsValid = after.every((line, row) => line[5] === before[row]?.[5])
-        return parserStateResult(
-          controlsValid ? after.every((line) => line.slice(0, 5) === "XXXXX") : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECFRA outside control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[88;1;1;3;5$x") // DECFRA fill 'X'
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.decera",
-      (ctx) => {
-        const expected = "DECERA blanks measured 3x5 cells and preserves their measured right flank"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < 3) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x6 fixture")
-        }
-        const seeds = ["aaaaaZ", "bbbbbY", "cccccX"]
-        ctx.feed("\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX")
-        const before = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
-          return parserStateResult(null, expected, { before }, "DECERA seed was not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "DECERA cursor setup failed")
-        }
-        ctx.feed("\x1b[1;1;3;5$z")
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        const controlsValid = after.every((line, row) => line[5] === before[row]?.[5])
-        return parserStateResult(
-          controlsValid ? after.every((line) => line.slice(0, 5).every(isBlank)) : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECERA outside control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[1;1;3;5$z") // DECERA
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.decsera",
-      (ctx) => selectiveEraseResult(ctx, "\x1b[1;1;1;5${", true),
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[1;1;3;5${") // DECSERA
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "editing.deccra",
-      (ctx) => {
-        const expected = "DECCRA copies measured 2x5 source cells to row 5 column 10 without changing the source"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 14 || !Number.isSafeInteger(rows) || rows < 6) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 6x14 fixture")
-        }
-        ctx.feed(
-          "\x1b[1;1HABCDE.........\x1b[2;1HFGHIJ.........\x1b[3;1H..............\x1b[4;1H..............\x1b[5;1H.........12345\x1b[6;1H.........67890",
-        )
-        const before = Array.from({ length: 6 }, (_, row) =>
-          Array.from({ length: 14 }, (_, col) => ctx.getCell(row, col).char).join(""),
-        )
-        if (
-          before.join("|") !==
-          "ABCDE.........|FGHIJ.........|..............|..............|.........12345|.........67890"
-        ) {
-          return parserStateResult(null, expected, { before }, "DECCRA source and destination were not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "DECCRA cursor setup failed")
-        }
-        ctx.feed("\x1b[1;1;2;5;1;5;10$v")
-        const after = Array.from({ length: 6 }, (_, row) =>
-          Array.from({ length: 14 }, (_, col) => ctx.getCell(row, col).char).join(""),
-        )
-        const controlsValid =
-          after.slice(0, 4).every((line, row) => line === before[row]) &&
-          after[4]?.slice(0, 9) === before[4]?.slice(0, 9) &&
-          after[5]?.slice(0, 9) === before[5]?.slice(0, 9)
-        return parserStateResult(
-          controlsValid ? after[4]?.slice(9) === "ABCDE" && after[5]?.slice(9) === "FGHIJ" : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECCRA source or outside control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 6 || ctx.cols < 14) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 6x14, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[1;1;2;5;1;5;10$v") // DECCRA
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
+  ...regionReadbackProbes(editingReadbackRows),
 
   {
     ...probe(
@@ -1160,264 +717,6 @@ const editingProbeDefinitions: ProbeDefinition[] = [
       }
     },
   ),
-
-  // ── Column Editing Operations ──
-  // SL/SR (ECMA-48) and DECIC/DECDC (VT420) horizontally shift or insert/delete
-  // columns within the scrolling region.
-
-  // SL — Shift Left (CSI Ps SP @). Shifts all columns left by Ps positions.
-  // Content at the left edge is lost; blank columns appear at the right edge.
-  {
-    ...probe(
-      "editing.sl",
-      (ctx) => {
-        const expected = "SL shifts the first nine observed cells of two rows left by two columns"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 9 || !Number.isSafeInteger(rows) || rows < 2) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 2x9 fixture")
-        }
-        const measuredWidth = Math.min(ctx.cols, 11)
-        const seeds = ["ABCDEFGHIJK".slice(0, measuredWidth), "JKLMNOPQRST".slice(0, measuredWidth)]
-        ctx.feed(`\x1b[1;1H${seeds[0]}\x1b[2;1H${seeds[1]}`)
-        const before = Array.from({ length: 2 }, (_, row) =>
-          Array.from({ length: measuredWidth }, (_, col) => ctx.getCell(row, col).char),
-        )
-        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
-          return parserStateResult(null, expected, { before }, "SL seed and incoming sources were not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "SL cursor setup failed")
-        }
-        ctx.feed("\x1b[2 @")
-        const after = Array.from({ length: 2 }, (_, row) =>
-          Array.from({ length: 9 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        return parserStateResult(
-          after.every((line, row) =>
-            line.every((char, col) => (col + 2 < ctx.cols ? char === before[row]?.[col + 2] : isBlank(char))),
-          ),
-          expected,
-          { before, setup, after },
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 8) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 1x8, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("1234567")
-        ctx.write("\x1b[2 @") // SL 2
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  // SR — Shift Right (CSI Ps SP A). Shifts all columns right by Ps positions.
-  // Content at the right edge is lost; blank columns appear at the left edge.
-  {
-    ...probe(
-      "editing.sr",
-      (ctx) => {
-        const expected = "SR shifts the first nine measured cells of two rows right by two columns"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 9 || !Number.isSafeInteger(rows) || rows < 2) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 2x9 fixture")
-        }
-        const seeds = ["ABCDEFGHI", "JKLMNOPQR"]
-        ctx.feed("\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR")
-        const before = Array.from({ length: 2 }, (_, row) =>
-          Array.from({ length: 9 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
-          return parserStateResult(null, expected, { before }, "SR seed was not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "SR cursor setup failed")
-        }
-        ctx.feed("\x1b[2 A")
-        const after = Array.from({ length: 2 }, (_, row) =>
-          Array.from({ length: 9 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        return parserStateResult(
-          after.every((line, row) =>
-            line.every((char, col) => (col < 2 ? isBlank(char) : char === before[row]?.[col - 2])),
-          ),
-          expected,
-          { before, setup, after },
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 9) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 1x9, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("1234567")
-        ctx.write("\x1b[2 A") // SR 2
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  // DECIC — DEC Insert Column (CSI Ps ' }). Inserts Ps blank columns at the
-  // cursor's column position, shifting existing columns right.
-  {
-    ...probe(
-      "editing.decic",
-      (ctx) => {
-        const expected = "DECIC inserts two blank columns at column 3 on three measured rows"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 3) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x8 fixture")
-        }
-        const seeds = ["ABCDEFGH", "IJKLMNOP", "QRSTUVWX"]
-        ctx.feed("\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX")
-        const before = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
-          return parserStateResult(null, expected, { before }, "DECIC seed was not measured")
-        }
-        ctx.feed("\x1b[2;3H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 2 || setup.y !== 1) {
-          return parserStateResult(null, expected, { before, setup }, "DECIC cursor setup failed")
-        }
-        ctx.feed("\x1b[2'}")
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        const controlsValid = after.every((line, row) =>
-          line.slice(0, 2).every((char, col) => char === before[row]?.[col]),
-        )
-        return parserStateResult(
-          controlsValid
-            ? after.every((line, row) =>
-                line.every((char, col) => (col < 2 ? true : col < 4 ? isBlank(char) : char === before[row]?.[col - 2])),
-              )
-            : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECIC unchanged-prefix control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 4) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x4, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[3;3H")
-        ctx.write("\x1b[2'}") // DECIC 2
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  // DECDC — DEC Delete Column (CSI Ps ' ~). Deletes Ps columns at the cursor's
-  // column position, shifting remaining columns left. Blank columns fill the right.
-  {
-    ...probe(
-      "editing.decdc",
-      (ctx) => {
-        const expected = "DECDC deletes two columns at column 3 on three measured rows"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 3) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x8 fixture")
-        }
-        const measuredWidth = Math.min(ctx.cols, 10)
-        const seeds = ["ABCDEFGHIJ", "IJKLMNOPQR", "QRSTUVWXab"].map((line) => line.slice(0, measuredWidth))
-        ctx.feed(`\x1b[1;1H${seeds[0]}\x1b[2;1H${seeds[1]}\x1b[3;1H${seeds[2]}`)
-        const before = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: measuredWidth }, (_, col) => ctx.getCell(row, col).char),
-        )
-        if (!before.every((line, row) => line.every((char, col) => char === seeds[row]?.[col]))) {
-          return parserStateResult(null, expected, { before }, "DECDC seed and incoming sources were not measured")
-        }
-        ctx.feed("\x1b[2;3H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 2 || setup.y !== 1) {
-          return parserStateResult(null, expected, { before, setup }, "DECDC cursor setup failed")
-        }
-        ctx.feed("\x1b[2'~")
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col).char),
-        )
-        const controlsValid = after.every((line, row) =>
-          line.slice(0, 2).every((char, col) => char === before[row]?.[col]),
-        )
-        return parserStateResult(
-          controlsValid
-            ? after.every((line, row) =>
-                line.every((char, col) =>
-                  col < 2 ? true : col + 2 < ctx.cols ? char === before[row]?.[col + 2] : isBlank(char),
-                ),
-              )
-            : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECDC unchanged-prefix control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 4) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x4, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[3;3H")
-        ctx.write("\x1b[2'~") // DECDC 2
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
 ]
 
 export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map((definition) => {

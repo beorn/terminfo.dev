@@ -1,113 +1,176 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { probe, isBlank, parserStateResult } from "./helpers.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import { probe, parserStateResult } from "./helpers.ts"
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
- * The measured readback for the scrollback rows the VIEWPORT can actually see. Same three-frame
- * shape as the editing specs: seed, the sequence applied on top of it, and the frame it must
- * leave, written PLAINLY in the same run. History-buffer cells that leave the window are not in
- * any of these regions; they stay named unavailable, never graded as a terminal failure.
+ * The measured readback for the scrollback rows the VIEWPORT can actually see, as one
+ * region-readback kind table (@cto A2; 28450 slices B and C). Same three-frame shape as the editing
+ * specs: seed, the sequence applied on top of it, and the frame it must leave. History-buffer cells
+ * that leave the window lie in NO row's region; they stay named unavailable, never graded as a
+ * terminal failure.
+ *
+ * Each row keeps the region WIDTH, the cursor row and the sentinel the hand-written spec measured,
+ * and each declares its own mode reset, so nothing about the fixture is implied twice. `region` is a
+ * top-left corner — its bottom and right derive from the grid, so a region can no longer disagree
+ * with the cells it compares — and the MINIMUM GEOMETRY derives from the cursor row, the sentinel and
+ * the region (the kind's `assertRegionReadbackShape`), because a hand-picked minimum was itself a
+ * hiding place: reverse-index's explicit 7 was the only thing keeping a cursor-row-6 fixture inside a
+ * need of 5.
+ *
+ * Two deliberate changes, both named in the diff that carries this table to @cto:
+ *  - scroll-up's region is rows 1..5, not rows 2..4: its claim ("A and E stay") controls the rows
+ *    just outside the scrolled band, and only a region that covers them lets BOTH arms check them.
+ *  - the derived edit parks the cursor at the row's own cursorRow, which two of the hand-written
+ *    edits declared but never reached.
  */
-const SCROLLBACK_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "scrollback.reverse-index": {
-    region: { top: 1, left: 1, bottom: 3, right: 1 },
-    sentinel: { row: 5, col: 1 },
+export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
+  {
+    id: "scrollback.scroll-up",
+    expected: "Interior-region SU shifts the measured middle and bottom rows up, clearing the region bottom",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD\x1b[5;1HE\x1b[2;4r",
+    before: [["A"], ["B"], ["C"], ["D"], ["E"]],
+    steps: [{ write: "\x1b[2;1H" }, { write: "\x1b[S" }, { write: "\x1b[r" }],
+    after: [["A"], ["C"], ["D"], [""], ["E"]],
+    controls: [
+      { row: 0, col: 0, char: "A" },
+      { row: 4, col: 0, char: "E" },
+    ],
     cursorRow: 6,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[6;1H",
-    edit: "\x1b[H\x1bM\x1b[6;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1HA\x1b[3;1HB\x1b[6;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 7,
-    minCols: 2,
-  },
-  "scrollback.scroll-up": {
-    region: { top: 2, left: 1, bottom: 4, right: 1 },
     sentinel: { row: 7, col: 1 },
-    cursorRow: 6,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD\x1b[5;1HE\x1b[2;4r\x1b[6;1H",
-    edit: "\x1b[2;1H\x1b[S\x1b[r\x1b[6;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[2;1HC\x1b[3;1HD\x1b[5;1HE\x1b[6;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 8,
-    minCols: 2,
+    reset: "\x1b[r",
+    cleanup: "\x1b[r",
+    seedNote: "Interior-region SU seed or history was not established",
+    controlNote: "Interior-region SU controls or output were not measured",
   },
-  "scrollback.scroll-down": {
-    region: { top: 1, left: 1, bottom: 3, right: 5 },
-    sentinel: { row: 6, col: 1 },
+  {
+    id: "scrollback.reverse-index",
+    expected: "A blank row is inserted above the measured A marker, pushing it down one row",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC",
+    before: [["A"], ["B"], ["C"]],
+    steps: [{ write: "\x1b[H" }, { write: "\x1bM" }],
+    after: [[""], ["A"], ["B"]],
+    controls: [],
+    cursorRow: 6,
+    sentinel: { row: 5, col: 1 },
+    reset: "",
+    seedNote: "Seed marker rows were not measured",
+    controlNote: "Seed marker rows were lost or did not move together; cannot attribute a blank-row insertion",
+  },
+  {
+    id: "scrollback.scroll-down",
+    expected: "A blank row is inserted above the measured LINE1 row, pushing the three measured lines down",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HLINE1\x1b[2;1HLINE2\x1b[3;1HLINE3",
+    before: [
+      ["L", "I", "N", "E", "1"],
+      ["L", "I", "N", "E", "2"],
+      ["L", "I", "N", "E", "3"],
+    ],
+    steps: [{ write: "\x1b[H" }, { write: "\x1b[T" }],
+    after: [
+      ["", "", "", "", ""],
+      ["L", "I", "N", "E", "1"],
+      ["L", "I", "N", "E", "2"],
+    ],
+    controls: [],
     cursorRow: 5,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HLINE1\x1b[2;1HLINE2\x1b[3;1HLINE3\x1b[5;1H",
-    edit: "\x1b[H\x1b[T\x1b[5;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1HLINE1\x1b[3;1HLINE2\x1b[5;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 7,
-    minCols: 6,
+    sentinel: { row: 6, col: 1 },
+    reset: "",
+    seedNote: "Seed marker rows were not measured",
+    controlNote: "Marker rows were lost or did not move together; cannot attribute a blank-row insertion",
   },
-  "scrollback.set-region": {
-    region: { top: 1, left: 1, bottom: 7, right: 1 },
-    sentinel: { row: 12, col: 1 },
+  {
+    id: "scrollback.set-region",
+    expected: "DECSTBM sets the region: a marker on the requested top row scrolls out while the row above it stays",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HFIXED\x1b[5;1HA\x1b[6;1HB\x1b[7;1HC",
+    before: [["F"], [""], [""], [""], ["A"], ["B"], ["C"]],
+    steps: [{ write: "\x1b[5;10r" }, { write: "\x1b[10;1H" }, { write: "\n" }, { write: "\x1b[r" }],
+    after: [["F"], [""], [""], [""], ["B"], ["C"], [""]],
+    controls: [{ row: 0, col: 0, char: "F" }],
     cursorRow: 11,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[5;1HA\x1b[6;1HB\x1b[7;1HC\x1b[11;1H",
-    edit: "\x1b[5;10r\x1b[10;1H\n\x1b[r\x1b[11;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[5;1HB\x1b[6;1HC\x1b[11;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 13,
-    minCols: 2,
+    sentinel: { row: 12, col: 1 },
+    reset: "\x1b[r",
+    cleanup: "\x1b[r",
+    seedNote: "Region-top markers were not measured",
+    controlNote: "The row above the region moved with the region",
   },
-  "scrollback.alt-screen": {
-    // Rows 1-2, one frame, three behaviours. The edit enters the alt grid, paints the SAME marker on
-    // row 2 there, leaves with 1049l, and scrolls up. On a surface that really left the alt grid the
-    // restored row 1 marker is scrolled off and row 2 is blank — the seed marker never reappears. A
-    // surface that ignored 1049h (or 1049l) still has the edit's row-2 marker, and the scroll lifts it
-    // onto row 1, reproducing the seed frame exactly. So the entry and the restore are both read back,
-    // and ignoring either one reads the seed, never the expected frame.
-    region: { top: 1, left: 1, bottom: 2, right: 18 },
-    sentinel: { row: 4, col: 1 },
+  {
+    // The claim is two-sided — ENTER the alt grid and LEAVE it — so the frame after ONE pass has to
+    // witness both: main row 1 restored AND a live mark written on main row 2 after the leave (@cto
+    // 2026-10-12, must-fix 1). A different marker inside the alt grid plus a live marker on main
+    // separates the failures that a bare enter/leave could not:
+    //  - ignoring 1049 leaves the alt marker on main row 2, so OK overwrites only its first two cells;
+    //  - staying on the alt grid leaves main row 1 blank;
+    //  - clearing main on exit leaves main row 1 blank too.
+    // Each differs from `after`, and `after` differs from the seed frame, so no survivor reads supported.
+    id: "scrollback.alt-screen",
+    expected: "ESC[?1049h swaps to a separate alt grid and ESC[?1049l restores the measured main grid",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HMAIN_SCREEN_MARKER",
+    before: [
+      ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"],
+      ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+    ],
+    steps: [
+      { write: "\x1b[?1049h" },
+      { write: "\x1b[2;1HALT_SCREEN_MARKER" },
+      { write: "\x1b[?1049l" },
+      { write: "\x1b[2;1HOK" },
+    ],
+    after: [
+      ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"],
+      ["O", "K", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+    ],
+    // The frame a surface that IGNORES 1049 leaves: the alt marker stays on main row 2 and OK
+    // overwrites only its first two cells. A measured negative, so it reads unsupported BY NAME.
+    ignored: [
+      ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"],
+      ["O", "K", "T", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R", ""],
+    ],
+    controls: [],
     cursorRow: 3,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HMAIN_SCREEN_MARKER",
-    edit: "\x1b[?1049h\x1b[2;1HMAIN_SCREEN_MARKER\x1b[?1049l\x1b[S",
-    expected: "\x1b[0m\x1b[2J\x1b[H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 4,
-    minCols: 19,
+    sentinel: { row: 4, col: 1 },
+    reset: "\x1b[?1049l",
+    cleanup: "\x1b[?1049l",
+    seedNote: "Main-screen marker was not measured",
+    controlNote: "The main grid changed while the alt grid was active",
   },
-  "scrollback.decstbm": {
-    // Rows 1-5: row 3 changes from A to B only when the region confines the scroll. A terminal that
-    // ignores the region lets the row-6 line feed walk the cursor to row 7 instead, leaving the seed.
-    region: { top: 1, left: 1, bottom: 5, right: 1 },
-    sentinel: { row: 8, col: 1 },
+  {
+    id: "scrollback.decstbm",
+    expected: "DECSTBM confines the scroll: the inner marker scrolls while the row above the region stays",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HFIXED\x1b[3;1HA\x1b[4;1HB\x1b[5;1HC",
+    before: [["F"], [""], ["A"], ["B"], ["C"]],
+    steps: [{ write: "\x1b[3;6r" }, { write: "\x1b[6;1H" }, { write: "\n" }, { write: "\x1b[r" }],
+    after: [["F"], [""], ["B"], ["C"], [""]],
+    controls: [{ row: 0, col: 0, char: "F" }],
     cursorRow: 7,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[3;1HA\x1b[4;1HB\x1b[5;1HC",
-    edit: "\x1b[3;6r\x1b[6;1H\n\x1b[r",
-    expected: "\x1b[r\x1b[0m\x1b[2J\x1b[H\x1b[1;1HFIXED\x1b[3;1HB\x1b[4;1HC",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 8,
-    minCols: 8,
-  },
-  "scrollback.decstbm-reset": {
-    // Rows 1-2: the edit sets a rows 4-6 scroll region, scrolls once inside it, resets with ESC[r, and
-    // scrolls again. Only a surface that honoured the reset scrolls the FULL screen the second time,
-    // lifting row 3's A onto row 2 — the expected frame. A surface still holding rows 4-6 scrolls that
-    // region twice, and a surface that ignored DECSTBM scrolls the full screen twice; the first scroll
-    // leaves row 3's A where it is and the second carries it to row 1, so both ignored shapes reproduce
-    // the seed frame and neither can be mistaken for a working reset.
-    region: { top: 1, left: 1, bottom: 2, right: 1 },
     sentinel: { row: 8, col: 1 },
-    cursorRow: 6,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HA\x1b[3;1HA",
-    edit: "\x1b[4;6r\x1b[S\x1b[r\x1b[S",
-    expected: "\x1b[r\x1b[0m\x1b[2J\x1b[H\x1b[2;1HA",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 8,
-    minCols: 8,
+    reset: "\x1b[r",
+    cleanup: "\x1b[r",
+    seedNote: "FIXED_TOP or the inner markers were not measured",
+    controlNote: "FIXED_TOP outside the region moved with the region",
   },
-}
+  {
+    id: "scrollback.decstbm-reset",
+    expected: "After ESC[r the full screen scrolls again, lifting the row-3 marker onto the measured row 2",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HA\x1b[3;1HA",
+    before: [["A"], [""]],
+    steps: [{ write: "\x1b[4;6r" }, { write: "\x1b[S" }, { write: "\x1b[r" }, { write: "\x1b[S" }],
+    after: [[""], ["A"]],
+    controls: [],
+    cursorRow: 6,
+    sentinel: { row: 8, col: 1 },
+    reset: "\x1b[r",
+    cleanup: "\x1b[r",
+    seedNote: "The row-3 marker or the row-1 control was not measured",
+    controlNote: "The measured rows did not move as a full-screen scroll, so the reset cannot be read",
+  },
+]
 
 function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
@@ -124,43 +187,6 @@ function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | u
 
 function validSize(value: number, minimum: number): boolean {
   return Number.isSafeInteger(value) && value >= minimum
-}
-
-function insertedRowResult(
-  ctx: TermlessContext,
-  markers: readonly [string, string, string],
-  sequence: string,
-): ProbeResult {
-  const cols = Math.max(...markers.map((marker) => marker.length))
-  if (!validSize(ctx.getScrollback().screenLines, 4) || !validSize(ctx.cols, cols)) {
-    return {
-      pass: false,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-    }
-  }
-  const readRows = () =>
-    Array.from({ length: 4 }, (_, row) => Array.from({ length: cols }, (_, col) => ctx.getCell(row, col).char).join(""))
-  const expected = "A blank top row is inserted and all three measured marker rows move down one row"
-  ctx.feed("\x1b[H")
-  ctx.feed(markers.join("\r\n"))
-  const before = readRows()
-  if (!markers.every((marker, row) => before[row] === marker)) {
-    return parserStateResult(null, expected, { before }, "Seed marker rows were not measured")
-  }
-  ctx.feed(sequence)
-  const after = readRows()
-  const shifted =
-    Array.from({ length: cols }, (_, col) => ctx.getCell(0, col).char).every(isBlank) &&
-    markers.every((marker, row) => after[row + 1] === marker)
-  const unchanged = before.every((row, index) => after[index] === row)
-  return parserStateResult(
-    shifted ? true : unchanged ? false : null,
-    expected,
-    { before, after },
-    shifted || unchanged
-      ? undefined
-      : "Marker rows were lost or did not move together; cannot attribute a blank-row insertion",
-  )
 }
 
 export const scrollbackProbes: ProbeDefinition[] = [
@@ -341,753 +367,5 @@ export const scrollbackProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  {
-    ...probe(
-      "scrollback.scroll-up",
-      (ctx) => {
-        const initial = ctx.getScrollback()
-        const rows = initial.screenLines
-        if (!validSize(rows, 5) || !validSize(ctx.cols, 3) || initial.totalLines !== rows) {
-          return {
-            pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-          }
-        }
-        const expected = "Interior-region SU shifts the measured middle and bottom rows up, clearing the region bottom"
-        ctx.feed("\x1b[2J")
-        for (const [row, marker] of ["A", "B", "C", "D", "E"].entries()) {
-          ctx.feed(`\x1b[${row + 1};1H${marker}`)
-        }
-        try {
-          ctx.feed("\x1b[2;4r")
-          const seed = Array.from({ length: 5 }, (_, row) => ctx.getCell(row, 0).char)
-          const beforeScroll = ctx.getScrollback()
-          if (seed.join("") !== "ABCDE" || beforeScroll.totalLines !== rows) {
-            return parserStateResult(
-              null,
-              expected,
-              { seed, beforeScroll },
-              "Interior-region SU seed or history was not established",
-            )
-          }
-          ctx.feed("\x1b[S")
-          const after = Array.from({ length: 5 }, (_, row) => ctx.getCell(row, 0).char)
-          const afterScroll = ctx.getScrollback()
-          const controlsValid = after[0] === "A" && after[4] === "E" && afterScroll.totalLines === rows
-          const shifted = after[1] === "C" && after[2] === "D" && isBlank(after[3] ?? "\0")
-          const unchanged = after.join("") === "ABCDE"
-          return parserStateResult(
-            controlsValid ? (shifted ? true : unchanged ? false : null) : null,
-            expected,
-            { seed, beforeScroll, after, afterScroll },
-            controlsValid && (shifted || unchanged)
-              ? undefined
-              : "Interior-region SU controls or output were not measured",
-          )
-        } finally {
-          ctx.feed("\x1b[r")
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 5, 3)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.scroll-up"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.scroll-up", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            for (const [row, marker] of ["A", "B", "C", "D", "E"].entries()) {
-              ctx.write(`\x1b[${row + 1};1H${marker}`)
-            }
-            ctx.write("\x1b[2;4r") // scroll region rows 2-4
-            ctx.write("\x1b[5;2H")
-            const control = await capture({
-              role: "control",
-              label: "Seed markers A-E on rows 1-5 with scroll region rows 2-4 set",
-            })
-            ctx.write("\x1b[S") // SU 1 inside the region
-            ctx.write("\x1b[5;2H")
-            const target = await capture({
-              role: "target",
-              label: "After SU in region rows 2-4: A and E stay, B-D shift up, and the region bottom row is cleared",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "Interior-region SU shifting B-D up while A and E stay put requires independent pixel review; the region boundary is not readable from a query",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 5, 5)
-        if (refusal) return refusal
-        ctx.write("\x1b[5;5H") // Move to row 5, col 5
-        ctx.write("\x1b[1S") // SU 1
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "Cursor position does not measure scroll-up contents",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "scrollback.reverse-index",
-      (ctx) => insertedRowResult(ctx, ["A", "B", "C"], "\x1b[H\x1bM"),
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 3, 3)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.reverse-index"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.reverse-index", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("A\r\nB\r\nC")
-            const control = await capture({
-              role: "control",
-              label: "Before reverse index: A on row 1 with B on row 2 and C on row 3",
-            })
-            ctx.write("\x1b[H\x1bM") // home then RI
-            const target = await capture({
-              role: "target",
-              label: "After RI at row 1: a blank row is inserted above, pushing A to row 2",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "A blank row inserted above the A marker after RI requires independent pixel review; cursor position alone does not measure the inserted row",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 1, 5)
-        if (refusal) return refusal
-        ctx.write("\x1b[1;5H") // row 1, col 5
-        ctx.write("\x1bM") // RI — reverse index
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "Cursor position does not measure reverse-index contents",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "scrollback.scroll-down",
-      (ctx) => insertedRowResult(ctx, ["LINE1", "LINE2", "LINE3"], "\x1b[T"),
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 3, 5)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.scroll-down"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.scroll-down", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("LINE1\r\nLINE2\r\nLINE3")
-            const control = await capture({
-              role: "control",
-              label: "Before scroll down: LINE1 on row 1 with LINE2 and LINE3 below",
-            })
-            ctx.write("\x1b[H\x1b[T") // home then SD
-            const target = await capture({
-              role: "target",
-              label: "After SD at row 1: a blank row is inserted above, pushing LINE1 to row 2",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "A blank row inserted above the LINE1 marker after SD requires independent pixel review; cursor position alone does not measure the inserted row",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 5, 5)
-        if (refusal) return refusal
-        ctx.write("\x1b[5;5H") // Move to row 5, col 5
-        ctx.write("\x1b[1T") // SD 1
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "Cursor position does not measure scroll-down contents",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "scrollback.set-region",
-      (ctx) => {
-        const rows = ctx.getScrollback().screenLines
-        if (!validSize(rows, 10) || !validSize(ctx.cols, 3)) {
-          return {
-            pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-          }
-        }
-        const readRow = (row: number) => Array.from({ length: 3 }, (_, col) => ctx.getCell(row, col).char).join("")
-        const expected =
-          "DECSTBM sets the region: a marker on the requested top row scrolls out while the row above it stays"
-        ctx.feed("\x1b[H\x1b[2J")
-        ctx.feed("\x1b[4;1HAAA") // row 4, one above the requested region top
-        ctx.feed("\x1b[5;1HTTT") // row 5, the requested region top
-        const before = { above: readRow(3), top: readRow(4) }
-        try {
-          ctx.feed("\x1b[5;10r")
-          ctx.feed("\x1b[10;1H\n") // LF at the region bottom: only rows 5-10 may move
-          const after = { above: readRow(3), top: readRow(4) }
-          const state = { before, after }
-          if (before.above !== "AAA" || before.top !== "TTT") {
-            return parserStateResult(null, expected, state, "Region-top markers were not measured")
-          }
-          return parserStateResult(after.above === "AAA" && after.top !== "TTT", expected, state)
-        } finally {
-          ctx.feed("\x1b[r")
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 10, 6)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.set-region"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.set-region", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("\x1b[1;1HFIXED")
-            for (let row = 5; row <= 10; row++) ctx.write(`\x1b[${row};1HR${row}`)
-            ctx.write("\x1b[10;6H")
-            const control = await capture({
-              role: "control",
-              label: "FIXED on row 1 and R5-R10 markers before a scroll region is set",
-            })
-            ctx.write("\x1b[5;10r") // set scroll region rows 5-10
-            ctx.write("\x1b[10;1H")
-            for (let i = 0; i < 6; i++) ctx.write("down\r\n")
-            ctx.write("\x1b[10;6H")
-            const target = await capture({
-              role: "target",
-              label: "After scrolling at the region bottom: R5-R10 shift while FIXED on row 1 stays outside the region",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "DECSTBM constraining scrolling to rows 5-10 while FIXED on row 1 stays put requires independent pixel review; the region boundary is not readable from a query",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 10, 1)
-        if (refusal) return refusal
-        try {
-          ctx.write("\x1b[5;10r") // Set scroll region rows 5-10
-          const pos = await ctx.queryCursorPosition()
-          if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-          }
-          return {
-            pass: false,
-            response: JSON.stringify(pos),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "Cursor position does not measure the scrolling region",
-            },
-          }
-        } finally {
-          ctx.write("\x1b[r") // Reset scroll region
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "scrollback.alt-screen",
-      (ctx) => {
-        const marker = "MAIN_SCREEN_MARKER"
-        const rows = ctx.getScrollback().screenLines
-        if (!validSize(rows, 2) || !validSize(ctx.cols, marker.length)) {
-          return {
-            pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-          }
-        }
-        const readRow = (row: number) =>
-          Array.from({ length: marker.length }, (_, col) => ctx.getCell(row, col).char).join("")
-        const expected = "ESC[?1049h swaps to a separate alt grid and ESC[?1049l restores the measured main grid"
-        ctx.feed("\x1b[H\x1b[2J")
-        ctx.feed(marker)
-        const main = readRow(0)
-        const modeBefore = ctx.getMode("altScreen")
-        try {
-          ctx.feed("\x1b[?1049h")
-          const alt = readRow(0)
-          const modeAlt = ctx.getMode("altScreen")
-          ctx.feed("\x1b[2;1HALT_SCREEN")
-          ctx.feed("\x1b[?1049l")
-          const restored = readRow(0)
-          const modeAfter = ctx.getMode("altScreen")
-          const state = { main, modeBefore, alt, modeAlt, restored, modeAfter }
-          if (main !== marker) {
-            return parserStateResult(null, expected, state, "Main-screen marker was not measured")
-          }
-          // The grid is the semantic observable; the mode reads are recorded beside it, never used to
-          // stand in for the separation itself.
-          return parserStateResult(alt !== marker && restored === marker, expected, state)
-        } finally {
-          ctx.feed("\x1b[?1049l")
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 2, 19)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.alt-screen"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.alt-screen", readback)
-            if (verdict) {
-              // The last frame may sit in the alt grid on a surface that ignores 1049l; leave the main
-              // grid active and clean, exactly as the capture-only finally block did, before any later
-              // probe shares this terminal.
-              ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
-              return verdict
-            }
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("MAIN_SCREEN_MARKER")
-            const control = await capture({
-              role: "control",
-              label: "Main screen shows MAIN_SCREEN_MARKER on row 1 before entering the alt screen",
-            })
-            ctx.write("\x1b[?1049h")
-            ctx.write("\x1b[2;1HALT_SCREEN")
-            const altActive = await capture({
-              role: "control",
-              label: "Alt screen active: ALT_SCREEN on row 2 and no MAIN_SCREEN_MARKER on row 1",
-            })
-            ctx.write("\x1b[?1049l")
-            const target = await capture({
-              role: "target",
-              label: "After leaving the alt screen: MAIN_SCREEN_MARKER is restored on row 1 and ALT_SCREEN is gone",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                altActive: altActive.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, altActive, target],
-                note: "Three frames: the main screen with MAIN_SCREEN_MARKER, the alt screen showing ALT_SCREEN with no marker, and the restored main screen. A terminal that ignores both 1049 sequences shows MAIN_SCREEN_MARKER in the middle frame; mode metadata alone does not measure retained contents",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[?1049l\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 1, 19)
-        if (refusal) return refusal
-        ctx.write("\x1b[2J\x1b[H")
-        ctx.write("MAIN_SCREEN_MARKER")
-        const pos1 = await ctx.queryCursorPosition()
-        if (!pos1) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        // Enter alt screen
-        try {
-          ctx.write("\x1b[?1049h")
-          ctx.write("\x1b[2J\x1b[H")
-          ctx.write("ALT_SCREEN")
-        } finally {
-          ctx.write("\x1b[?1049l")
-        }
-        const pos2 = await ctx.queryCursorPosition()
-        if (!pos2) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-        }
-        return {
-          pass: false,
-          response: JSON.stringify({ pos1, pos2 }),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "query",
-            note: "Cursor positions do not measure retained main-screen contents",
-          },
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  // DECSTBM constrains scrolling — text above the region should not scroll
-  {
-    ...probe(
-      "scrollback.decstbm",
-      (ctx) => {
-        const rows = ctx.getScrollback().screenLines
-        if (!validSize(rows, 10) || !validSize(ctx.cols, 9)) {
-          return {
-            pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-          }
-        }
-        ctx.feed("FIXED_TOP\r\n")
-        const before = ctx.getCell(0, 0)
-        ctx.feed("\x1b[3;10r")
-        try {
-          ctx.feed("\x1b[3;1HINNER")
-          const innerBefore = ctx.getCell(2, 0)
-          ctx.feed("\x1b[10;1HZ\r\n") // only an active region scrolls row 3 at row 10
-          const innerAfter = ctx.getCell(2, 0)
-          const topAfter = ctx.getCell(0, 0)
-          const state = { before, innerBefore, innerAfter, topAfter }
-          const expected = "DECSTBM scrolls the inner marker while preserving FIXED_TOP outside the region"
-          if (before.char !== "F" || innerBefore.char !== "I" || innerAfter.char === "I") {
-            return parserStateResult(null, expected, state, "Top marker or inner scrolling control was not established")
-          }
-          return parserStateResult(topAfter.char === "F", expected, state)
-        } finally {
-          ctx.feed("\x1b[r") // reset
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 10, 10)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.decstbm"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.decstbm", readback)
-            if (verdict) {
-              // The decision's last frame holds the scrolled region; reset it before any later probe
-              // shares this terminal, exactly as the capture-only finally block did.
-              ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-              return verdict
-            }
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("FIXED_TOP\r\n")
-            for (let row = 3; row <= 10; row++) ctx.write(`\x1b[${row};1HINNER${row}`)
-            ctx.write("\x1b[10;10H")
-            const control = await capture({
-              role: "control",
-              label: "FIXED_TOP on row 1 and INNER3-INNER10 inside the rows 3-10 region",
-            })
-            ctx.write("\x1b[3;10r") // scroll region rows 3-10
-            ctx.write("\x1b[10;1H")
-            for (let i = 0; i < 8; i++) ctx.write("scroll\r\n")
-            ctx.write("\x1b[10;10H")
-            const target = await capture({
-              role: "target",
-              label: "After scrolling at the region bottom: INNER rows shift while FIXED_TOP on row 1 stays put",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "DECSTBM scrolling the INNER markers while preserving FIXED_TOP outside the region requires independent pixel review; the region boundary is not readable from a query",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 10, 10)
-        if (refusal) return refusal
-        ctx.write("\x1b[2J\x1b[H") // clear
-        ctx.write("FIXED_TOP\r\n")
-        try {
-          ctx.write("\x1b[3;10r") // scroll region rows 3-10
-          ctx.write("\x1b[3;1H") // move into region
-          for (let i = 0; i < 20; i++) ctx.write(`scroll-${i}\r\n`)
-          const pos = await ctx.queryCursorPosition()
-          if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-          }
-          return {
-            pass: false,
-            response: JSON.stringify(pos),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "Cursor position does not measure whether FIXED_TOP survived scrolling",
-            },
-          }
-        } finally {
-          ctx.write("\x1b[r") // reset
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  // DECSTBM reset — ESC [ r with no params resets to full screen
-  {
-    ...probe(
-      "scrollback.decstbm-reset",
-      (ctx) => {
-        const baseline = ctx.getScrollback()
-        const rows = baseline.screenLines
-        if (!validSize(rows, 10) || !validSize(ctx.cols, `line-${rows + 9}`.length)) {
-          return {
-            pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-          }
-        }
-        const expected = "After ESC[r the full screen scrolls into history where an active region's bottom row does not"
-        const overflow = (): void => {
-          ctx.feed("\x1b[H")
-          for (let i = 0; i < rows + 10; i++) ctx.feed(`line-${i}\r\n`)
-        }
-        try {
-          // Control: a region is set and then ESC[r clears it, so the same overflow reaches history.
-          ctx.feed("\x1b[5;10r")
-          ctx.feed("\x1b[r")
-          overflow()
-          const afterReset = ctx.getScrollback()
-          // Pair: the identical body with the region still active, so the overflow stays inside rows 5-10.
-          ctx.feed("\x1b[5;10r")
-          overflow()
-          const regionActive = ctx.getScrollback()
-          const state = { baseline, afterReset, regionActive }
-          const resetGrowth = afterReset.totalLines - baseline.totalLines
-          const activeGrowth = regionActive.totalLines - afterReset.totalLines
-          if (resetGrowth <= 0) {
-            return parserStateResult(
-              null,
-              expected,
-              state,
-              "Full-screen overflow grew no history; cannot attribute the reset",
-            )
-          }
-          return parserStateResult(activeGrowth < resetGrowth, expected, state)
-        } finally {
-          ctx.feed("\x1b[r")
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 10, 9)
-          if (refusal) return refusal
-          const readback = SCROLLBACK_READBACK_SPECS["scrollback.decstbm-reset"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "scrollback.decstbm-reset", readback)
-            if (verdict) {
-              // The last frame is painted with the region reset; restore it before any later probe
-              // shares this terminal, exactly as the capture-only finally block did.
-              ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-              return verdict
-            }
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("FIXED_TOP")
-            const control = await capture({
-              role: "control",
-              label: "FIXED_TOP on row 1 before a scroll region is set",
-            })
-            ctx.write("\x1b[5;10r") // set region rows 5-10
-            ctx.write("\x1b[10;1H")
-            for (let i = 0; i < 8; i++) ctx.write(`region-${i}\r\n`) // scrolls only inside rows 5-10
-            const activeRegion = await capture({
-              role: "control",
-              label:
-                "Region rows 5-10 active: region-* stays confined inside rows 5-10 while FIXED_TOP on row 1 is untouched",
-            })
-            ctx.write("\x1b[r") // reset to full screen
-            ctx.write("\x1b[2;1H") // start below row 1 so FIXED_TOP leaves only by scrolling
-            const lineCount = ctx.rows + 10
-            for (let i = 0; i < lineCount; i++) ctx.write(`line-${i}\r\n`)
-            const target = await capture({
-              role: "target",
-              label: `After reset and ${lineCount} lines: FIXED_TOP has scrolled off row 1, showing full-screen scrolling resumed`,
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                lineCount,
-                control: control.label,
-                activeRegion: activeRegion.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, activeRegion, target],
-                note: "Three frames: FIXED_TOP before the region, region-* confined to rows 5-10 while that region is active, and FIXED_TOP scrolled off after reset. The middle frame discriminates by confinement: a terminal ignoring the region writes region-* past row 10 into rows 11-17, whereas FIXED_TOP on row 1 is untouched either way and is not the discriminator. Retained-history existence and count are not readable from the screen",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        if (!validSize(ctx.rows, 10) || !validSize(ctx.cols, 1)) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "DECSTBM fixture needs at least 10 rows",
-            },
-          }
-        }
-        try {
-          ctx.write("\x1b[5;10r") // set region
-          ctx.write("\x1b[r") // reset to full screen
-          ctx.write("\x1b[H")
-          // Verify cursor can reach the bottom of the screen
-          ctx.write(`\x1b[${ctx.rows}B`) // CUD past the measured bottom
-          const pos = await ctx.queryCursorPosition()
-          if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
-          }
-          return {
-            pass: false,
-            response: `${pos.row};${pos.col}`,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "CUD and cursor position do not measure scrollback after DECSTBM reset",
-            },
-          }
-        } finally {
-          ctx.write("\x1b[r") // restore full-screen region even after an interrupted reset
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
+  ...regionReadbackProbes(scrollbackReadbackRows),
 ]

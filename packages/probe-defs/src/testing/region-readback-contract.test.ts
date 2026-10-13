@@ -39,8 +39,16 @@ function sentinelOutcome(sequence: string, mode: Mode): unknown {
   if (mode === "sentinel" && sequence === "\u001b[16t") {
     return { match: null, reason: "sentinel", raw: "\u001b[?6c", rawBase64: "G1s/NmM=" }
   }
-  const reply = sequence === "\u001b[16t" ? ["6;18;36", "18", "36"] : ["4;480;640", "480", "640"]
-  return { match: reply, reason: "reply", raw: sequence, rawBase64: "" }
+  if (sequence === "\u001b[16t") {
+    return { match: ["6;18;36", "18", "36"], reason: "reply", raw: sequence, rawBase64: "" }
+  }
+  if (sequence === "\u001b[14t") {
+    return { match: ["4;480;640", "480", "640"], reason: "reply", raw: sequence, rawBase64: "" }
+  }
+  // Every other query — CSI 18 t included — gets the DA1 sentinel: this fixture models a terminal
+  // that reports its cell size and its text area, and nothing else. Answering it with the 14 t frame
+  // would let an 18 t caller read a text area in characters out of a reply that is not one (28763).
+  return { match: null, reason: "sentinel", raw: "\u001b[?6c", rawBase64: "G1s/NmM=" }
 }
 
 /**
