@@ -152,8 +152,9 @@ test("28786: the hashed adapter sources EQUAL the collector's static import clos
 test("28786: a source neither collector entry reaches does not move the suite hash", () => {
   const baseline = probeHash()
   changed.file = "packages/terminfo.dev/src/terminal-app-window.ts"
-  expect(probeHash(), "terminal-app-window.ts is unreached from the collector entries serve.ts and collect-headless.ts").toBe(
-    baseline,
-  )
+  expect(
+    probeHash(),
+    "terminal-app-window.ts is unreached from the collector entries serve.ts and collect-headless.ts",
+  ).toBe(baseline)
   changed.file = ""
 })
