@@ -1,14 +1,20 @@
 /**
  * @failure A region-readback kind row grades a correct terminal unsupported — or a wrong one supported — because its blank cells are compared against a single spelling and the fixture never meets a real parser.
  * @level l1
- * @consumer Region-readback kind rows (editing, erase, text) in the app/headless probe table.
+ * @consumer Region-readback kind rows (charsets, editing, erase, text) in the app/headless probe table.
  * @reach runs each kind row's parser arm on real xterm.js through the production headless context
  * @note the collector makes a FRESH backend per probe (`headless-batch.ts`:286), so a row's fixture
  * never inherits the previous row's terminal state and one row cannot mask another.
  * @testonly none
  */
 import { createXtermBackend } from "@termless/xtermjs"
-import { editingReadbackRows, eraseReadbackRows, regionReadbackProbes, textReadbackRows } from "@terminfo/probe-defs"
+import {
+  charsetReadbackRows,
+  editingReadbackRows,
+  eraseReadbackRows,
+  regionReadbackProbes,
+  textReadbackRows,
+} from "@terminfo/probe-defs"
 import { expect, test } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
 
@@ -22,7 +28,10 @@ import { collectBatch } from "./headless-batch.ts"
 const XTERM_ABSENT = ["editing.decfra", "editing.decera", "editing.decsera", "editing.deccra"]
 
 test("every region-readback kind row grades its real xterm.js outcome", async () => {
-  const rows = [...editingReadbackRows, ...eraseReadbackRows, ...textReadbackRows]
+  // Charsets joined this list under the 28450 row-61 review: its four kind rows carried the same
+  // blank-cell and wide-follower shapes, but the barrel never exported them, so the must-fix-1
+  // protection never reached them. They grade supported on xterm.js, measured here rather than assumed.
+  const rows = [...charsetReadbackRows, ...editingReadbackRows, ...eraseReadbackRows, ...textReadbackRows]
   const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", regionReadbackProbes(rows))
   const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`
   // No row may be absent from the batch: a row with no observation is a fixture that never ran.
