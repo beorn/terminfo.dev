@@ -19,12 +19,14 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
   "packages/terminfo.dev/src/owned-terminal.ts",
+  "packages/terminfo.dev/src/disposable-receipt.ts",
   "packages/terminfo.dev/src/linux-capture.ts",
   "packages/terminfo.dev/src/linux-input.ts",
   "packages/terminfo.dev/src/serve.ts",
   "packages/terminfo.dev/src/detect.ts",
   "packages/terminfo.dev/src/identity-guard.ts",
-  "packages/terminfo.dev/src/terminal-app-window.ts",
+  "packages/run-parser/src/index.ts",
+  "packages/run-parser/src/app-launch.ts",
 ]
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 

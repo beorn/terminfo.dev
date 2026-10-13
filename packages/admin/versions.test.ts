@@ -59,3 +59,33 @@ test("suite identity changes with executable collection, ownership, capture and 
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/tty.ts")
   expect(snapshot.sourcePaths).toContain("packages/terminfo.dev/src/linux-input.ts")
 })
+
+/**
+ * 28786: the sourcePaths list must cover EVERY source the collector EXECUTES.
+ * A change to an executed source that is omitted keeps the old probe hash, so an admitted run can cite a suite
+ * that no longer describes the collector — the reverse of the falsification the hash exists for.
+ */
+test("28786: a collector-executed source omitted from the list lets the suite hash go stale", () => {
+  const baseline = probeHash()
+  for (const file of [
+    "packages/terminfo.dev/src/disposable-receipt.ts",
+    "packages/run-parser/src/index.ts",
+    "packages/run-parser/src/app-launch.ts",
+  ]) {
+    changed.file = file
+    expect(probeHash(), `${file} is executed by the collector and must move the suite hash`).not.toBe(baseline)
+  }
+  changed.file = ""
+})
+
+/**
+ * 28786, negative control: a source the collector NEVER runs must not move the suite.
+ * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts), never by a
+ * collection path, so listing it lets a change move the suite without touching any observation.
+ */
+test("28786: a source the collector never runs does not move the suite hash", () => {
+  const baseline = probeHash()
+  changed.file = "packages/terminfo.dev/src/terminal-app-window.ts"
+  expect(probeHash(), "terminal-app-window.ts is never executed by the collector").toBe(baseline)
+  changed.file = ""
+})
