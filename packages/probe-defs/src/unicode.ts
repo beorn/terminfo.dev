@@ -50,6 +50,10 @@ export const unicodeProbes: ProbeDefinition[] = [
             },
           }
         }
+        // The row grades the rendered width of a plainly written ambiguous glyph, so it assumes
+        // the run decodes plain UTF-8: an 8-bit run measures bytes, not columns (#28752, #28828).
+        const decoding = await utf8DecodingRefusal(ctx, "unicode.east-asian-ambiguous")
+        if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("●")
         if (width === null) {
           return {

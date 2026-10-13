@@ -121,6 +121,7 @@ test("a measured 8-bit decoding context names the cause instead of grading a pla
     "text.wide.emoji-zwj",
     "text.combining",
     "unicode.grapheme-cursor",
+    "unicode.east-asian-ambiguous",
   ]) {
     const probe = byId(id)
     let widthCalls = 0
