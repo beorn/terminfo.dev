@@ -70,6 +70,8 @@ export interface OwnedTerminal {
   readonly geometryAtGrant: GeometryMeasurement
   readonly geometrySource: Exclude<GeometrySource, "unavailable: no verified output device">
   readonly summary: string
+  /** The PID of the receipt-named hosted app, measured from this collector's process ancestry. */
+  readonly hostedAppPid?: number
   readonly clipboard?: LinuxClipboardAdapter
   readGeometry(): Promise<GeometryMeasurement>
   dispose(): Promise<void>
@@ -486,6 +488,7 @@ export async function createOwnedTerminal(options: {
       geometryAtGrant,
       geometrySource: source,
       summary,
+      ...(hostedAncestor && { hostedAppPid: hostedAncestor.pid }),
       ...(clipboard && { clipboard }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")

@@ -1,5 +1,6 @@
 import type { InputFixture } from "@terminfo/probe-defs"
-import { command, kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
+import { command } from "./capture-core.ts"
+import { kittyAncestor, type LiveExecutable } from "./linux-capture.ts"
 
 export type LinuxInputAdapter = InputFixture
 
