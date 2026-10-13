@@ -469,9 +469,10 @@ describe("UTF-8 decode context measurement", () => {
   }
 
   it("takes a sample no width policy can move: U+00EB is Neutral, and so are both ISO-8859-1 bytes it splits into", () => {
-    // é (U+00E9) is `00E8..00EA ; A` and legitimately two cells under cjkWidth; ë (U+00EB) is
-    // `00EB..00EC ; N`, and its bytes C3/AB are `00C0..00C5 ; N` and `00BB ; N`. So one cell is
-    // UTF-8 and two cells is 8-bit however the run treats Ambiguous characters (UCD EastAsianWidth).
+    // é (U+00E9) is "00E8..00EA ; A" and legitimately two cells under cjkWidth; ë (U+00EB) is
+    // "00EB ; N" alone, and its bytes are U+00C3 'Ã' ("00C0..00C5 ; N") and U+00AB '«' ("00AB ; N").
+    // So one cell is UTF-8 and two cells is 8-bit however the run treats Ambiguous characters. Each
+    // citation is EastAsianWidth-18.0.0.txt quoted exactly, by line number.
     expect(UTF8_DECODE_SAMPLE).toBe("\u00eb")
     expect([...new TextEncoder().encode(UTF8_DECODE_SAMPLE)]).toEqual([0xc3, 0xab])
   })
