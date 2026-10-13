@@ -3,8 +3,13 @@
  * @level l1
  * @consumer Headless probe cache and selected-run suite identity
  * @testonly none
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/ vendor/terminfo.dev/packages/run-parser/src/ vendor/terminfo.dev/packages/admin/
  */
+import { readFileSync } from "node:fs"
+import { createRequire } from "node:module"
+import { dirname, join, relative } from "node:path"
+import { fileURLToPath } from "node:url"
+import ts from "typescript"
 import { expect, test, vi } from "vitest"
 
 const changed = vi.hoisted(() => ({ file: "" }))
@@ -34,16 +39,22 @@ test("suite hash changes when either imported mode or extension definitions chan
 test("suite identity changes with executable collection, ownership, capture and identity source", () => {
   const baseline = probeHash()
   for (const file of [
+    "packages/probes/collect-headless.ts",
     "packages/probes/headless-batch.ts",
+    "packages/probes/headless-identity.ts",
+    "packages/admin/versions.ts",
     "packages/terminfo.dev/src/probes/unified.ts",
     "packages/terminfo.dev/src/tty.ts",
     "packages/terminfo.dev/src/linux-clipboard.ts",
     "packages/terminfo.dev/src/owned-terminal.ts",
+    "packages/terminfo.dev/src/disposable-receipt.ts",
     "packages/terminfo.dev/src/linux-capture.ts",
     "packages/terminfo.dev/src/linux-input.ts",
     "packages/terminfo.dev/src/serve.ts",
     "packages/terminfo.dev/src/detect.ts",
     "packages/terminfo.dev/src/identity-guard.ts",
+    "packages/run-parser/src/index.ts",
+    "packages/run-parser/src/app-launch.ts",
   ]) {
     changed.file = file
     expect(probeHash(), file).not.toBe(baseline)
@@ -61,21 +72,71 @@ test("suite identity changes with executable collection, ownership, capture and 
 })
 
 /**
- * 28786: the sourcePaths list must cover EVERY source the collector EXECUTES.
- * A change to an executed source that is omitted keeps the old probe hash, so an admitted run can cite a suite
- * that no longer describes the collector — the reverse of the falsification the hash exists for.
+ * 28786: `ADAPTER_SOURCE_PATHS` is a HAND-TYPED list of "the collector's executed local imports", and a
+ * hand-typed list silently falls behind (the bead's own bug: disposable-receipt.ts and run-parser omitted,
+ * terminal-app-window.ts listed though nothing runs it). A set whose members can be DERIVED must be checked
+ * against its derivation. This walks the static local import closure of both collector entries and asserts
+ * the two sets are EQUAL, naming every file on one side only — so a newly reached source fails here until it
+ * is hashed, and a listed source nothing runs fails until it is removed.
  */
-test("28786: a collector-executed source omitted from the list lets the suite hash go stale", () => {
-  const baseline = probeHash()
-  for (const file of [
-    "packages/terminfo.dev/src/disposable-receipt.ts",
-    "packages/run-parser/src/index.ts",
-    "packages/run-parser/src/app-launch.ts",
-  ]) {
-    changed.file = file
-    expect(probeHash(), `${file} is executed by the collector and must move the suite hash`).not.toBe(baseline)
+const COLLECTOR_ENTRIES = ["packages/terminfo.dev/src/serve.ts", "packages/probes/collect-headless.ts"]
+const SUITE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
+
+/**
+ * The static local import closure of the collector entries: repo sources only, tests and node_modules excluded.
+ * The scanner is `typescript`'s own `preProcessFile` — a declared devDependency of this package — so it reads the
+ * import forms the bundler does, and resolution is Node's `createRequire`, which follows each workspace `exports`.
+ */
+function collectorImportClosure(): { found: string[]; unresolved: string[] } {
+  const seen = new Set<string>()
+  const unresolved: string[] = []
+  const queue = COLLECTOR_ENTRIES.map((entry) => join(SUITE_ROOT, entry))
+  while (queue.length > 0) {
+    const file = queue.pop()!
+    if (seen.has(file)) continue
+    seen.add(file)
+    const { importedFiles } = ts.preProcessFile(readFileSync(file, "utf8"), true, true)
+    for (const { fileName } of importedFiles) {
+      if (fileName.startsWith("node:") || fileName.startsWith("bun:") || fileName === "bun") continue
+      let resolved: string
+      try {
+        resolved = createRequire(file).resolve(fileName)
+      } catch (error) {
+        unresolved.push(`${relative(SUITE_ROOT, file)} -> ${fileName}: ${String(error)}`)
+        continue
+      }
+      if (resolved.includes("/node_modules/") || !resolved.startsWith(`${join(SUITE_ROOT, "packages")}/`)) continue
+      if (/\.(test|spec)\.tsx?$/.test(resolved)) continue
+      queue.push(resolved)
+    }
   }
-  changed.file = ""
+  return { found: [...seen].map((file) => relative(SUITE_ROOT, file)).sort(), unresolved }
+}
+
+/**
+ * probeSuiteSnapshot() also hashes two families it DISCOVERS by scanning a directory (the probe files and the
+ * probe-defs sources), plus the probe test config and the adapter package manifest. None is reached by an
+ * import, so the closure cannot derive them and both sides of the equality drop them.
+ */
+const scannedSuiteFamily = (path: string): boolean =>
+  path.startsWith("packages/probe-defs/src/") || (path.startsWith("packages/probes/") && path.endsWith(".probe.ts"))
+const NOT_IMPORTED_SUITE_INPUTS = new Set(["packages/probes/vitest.config.ts", "packages/terminfo.dev/package.json"])
+
+test("28786: the hashed adapter sources EQUAL the collector's static import closure", () => {
+  const { found, unresolved } = collectorImportClosure()
+  expect(unresolved, "every first-party import in the closure must resolve").toEqual([])
+
+  const derived = found.filter((path) => !scannedSuiteFamily(path))
+  const declared = probeSuiteSnapshot()
+    .sourcePaths.filter((path) => !scannedSuiteFamily(path) && !NOT_IMPORTED_SUITE_INPUTS.has(path))
+    .sort()
+
+  const missing = derived.filter((path) => !declared.includes(path))
+  const extra = declared.filter((path) => !derived.includes(path))
+  expect({ missing, extra }, "the hashed adapter list must equal the collector's import closure").toEqual({
+    missing: [],
+    extra: [],
+  })
 })
 
 /**
