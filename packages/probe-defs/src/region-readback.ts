@@ -463,6 +463,15 @@ export async function captureRegionReadbackDecision(
     // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
     const unsupported = after === seed || (ignored !== undefined && after === ignored)
     if (!supported && !unsupported) {
+      // The three compared planes are pairwise distinct: the seed and the expected frame already
+      // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
+      // equals neither. State that OBSERVATION and nothing more: "matched none" told the reader
+      // nothing, but naming a cause would be wrong, because a third distinct frame is also exactly
+      // what a WRONG effect looks like (a DECDC that deleted the wrong column also yields
+      // after != seed and after != expected). This oracle cannot tell an incorrect effect from a
+      // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
+      // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
+      // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
       return {
         pass: false,
         response: observed,
@@ -472,7 +481,7 @@ export async function captureRegionReadbackDecision(
           evidence: "pixels",
           screenshotRef: frames[3]?.ref,
           frames,
-          note: `${id}: the post-sequence region matched none of the compared frames (${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
+          note: `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
         },
       }
     }

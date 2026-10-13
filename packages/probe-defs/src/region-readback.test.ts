@@ -205,12 +205,19 @@ test("a frame that moves while the witness cell stands still names the geometry,
   expect(result.observation.note).toContain("cells-to-pixels geometry is wrong")
 })
 
-test("an edit that matches neither the seed nor the expected frame is inconclusive by name", async () => {
+test("an edit that is a third distinct frame is inconclusive, stating the observation only", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "other" }) })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.reason).toBe("insufficient-evidence")
-  expect(result.observation.note).toContain("matched none of the compared frames (seed, expected)")
+  // The three compared planes are pairwise distinct. The note states that fact and nothing more:
+  // no implied cause (a third distinct frame is also what a WRONG effect looks like), no "simply"
+  // (#28829, CTO).
+  expect(result.observation.note).toContain("a third distinct frame")
+  expect(result.observation.note).toContain("cannot tell an incorrect effect from a rendering difference")
+  expect(result.observation.note).toContain("compared frames: seed, expected")
+  expect(result.observation.note).not.toContain("matched none of the compared frames")
+  expect(result.observation.note).not.toContain("simply")
 })
 
 // A spec whose four compared planes each paint a distinct frame, so a run can be told apart by the
