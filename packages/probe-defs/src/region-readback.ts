@@ -243,6 +243,9 @@ function regionRefusal(id: string, spec: RegionReadback, rows: number, cols: num
  * Read the witness cell until it differs from the baseline. The two failure shapes are named apart:
  * the frame moving while the witness cell stands still means the paint landed outside the sentinel
  * region (the geometry is wrong), and nothing moving at all means no paint witness within the bound.
+ * BOTH shapes name the basis the rectangle was measured with, so a timeout never leaves a reader
+ * unable to tell a reported geometry from a derived one (@dev/review2 on 28763: the ordinary branch
+ * returned before the payload carrying the source was built).
  */
 async function awaitPaintWitness(options: {
   read: RegionRead
@@ -271,7 +274,7 @@ async function awaitPaintWitness(options: {
         id,
         frameMoved
           ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
-          : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one`,
+          : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one (cell geometry ${geometrySource ?? "unknown"})`,
         "timeout",
         "pixels",
         { screenshotRef: painted.frame.ref },

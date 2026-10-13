@@ -187,11 +187,26 @@ test("a terminal that leaves the edit in place is unsupported only because the w
 
 test("a stale window is inconclusive by name, never unsupported: kitty answers the cursor report and never repaints", async () => {
   const fake = ownedWindow({ repaintAfterPolls: "never", regionDigest: () => "seed" })
-  const result = await decide(fake)
+  // The same fixture answers no CSI 16 t, so its cell size is DERIVED from 14 t / 18 t — and that
+  // basis must survive the ORDINARY timeout too, not only the frame-moved one (28763, @dev/review2:
+  // an unchanged window made the timeout drop the basis the caller supplied).
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if (!("geometry" in mapped)) throw new Error(`expected a mapped cell size, got: ${mapped.missing}`)
+  const result = await decide(fake, { pixelGeometry: mapped.geometry, geometrySource: mapped.source })
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.reason).toBe("timeout")
   expect(result.observation.note).toContain("no paint witness within 200 ms")
   expect(result.observation.note).toContain("cannot separate a painted frame from a stale one")
+  expect(result.observation.note).toContain("cell geometry derived from CSI 14 t / CSI 18 t")
   expect(result.assertions).toBeUndefined()
 })
 
