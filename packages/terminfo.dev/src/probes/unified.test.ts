@@ -14,7 +14,15 @@ import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/pr
 import { decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
+import { measureUtf8Decoding } from "../tty.ts"
 import { runProbeBatch } from "./unified.ts"
+
+// 28752: the decode-context measurement is the ONE tty round trip this file must not perform; every
+// other tty export stays real, so the batch path under test is unchanged.
+vi.mock("../tty.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../tty.ts")>()
+  return { ...actual, measureUtf8Decoding: vi.fn(actual.measureUtf8Decoding) }
+})
 
 const linuxGeometrySource = "stty size on a /proc/self/fd reopen of the verified output device" as const
 const darwinGeometrySource = "stty size on a /dev/fd reopen of the verified output device" as const
@@ -1480,4 +1488,108 @@ it("refuses a receipt that names a target when the caller supplied no run target
     /no run target was supplied to bind it to/,
   )
   expect(writes).toEqual([])
+})
+
+// 28752: the run measures how its terminal decodes plain-written UTF-8 ONCE, records the fact
+// beside the other collector facts, and hands every row the same answer — the context a
+// plain-written oracle assumes is measured, never inherited from whatever locale launched it.
+it("measures the decode context once per run and records it beside the other collector facts", async () => {
+  verifiedBatchFixture()
+  vi.mocked(measureUtf8Decoding).mockResolvedValue("8-bit")
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  const seen: Array<string | null> = []
+  definition.term = async (ctx) => {
+    if (!ctx.utf8Decoding) throw new Error("collector did not install the measured decode context")
+    seen.push(await ctx.utf8Decoding())
+    seen.push(await ctx.utf8Decoding())
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+    }
+  }
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(seen).toEqual(["8-bit", "8-bit"])
+    expect(vi.mocked(measureUtf8Decoding)).toHaveBeenCalledTimes(1)
+    expect(batch.rawReplies["collector.utf8Decoding"]).toBe(JSON.stringify({ decoding: "8-bit" }))
+  } finally {
+    definition.term = originalTerm
+    vi.mocked(measureUtf8Decoding).mockRestore()
+  }
+})
+
+// @dev/review2: the memo has to hold the ATTEMPT, not its fulfilled value. A row that asks again
+// while the first round trip is still in flight must join it, not start a second one.
+it("joins the in-flight attempt, so a row asking before it returns measures nothing twice", async () => {
+  verifiedBatchFixture()
+  const measured = vi.mocked(measureUtf8Decoding)
+  const original = measured.getMockImplementation()
+  let attempts = 0
+  let release: (reading: "8-bit") => void = () => {}
+  measured.mockImplementation(() => {
+    attempts += 1
+    return new Promise<"8-bit">((resolve) => {
+      release = resolve
+    })
+  })
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  definition.term = async (ctx) => {
+    if (!ctx.utf8Decoding) throw new Error("collector did not install the measured decode context")
+    const first = ctx.utf8Decoding()
+    const second = ctx.utf8Decoding()
+    release("8-bit")
+    const seen = await Promise.all([first, second])
+    expect(seen).toEqual(["8-bit", "8-bit"])
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+    }
+  }
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(attempts).toBe(1)
+    expect(batch.rawReplies["collector.utf8Decoding"]).toBe(JSON.stringify({ decoding: "8-bit" }))
+  } finally {
+    definition.term = originalTerm
+    if (original) measured.mockImplementation(original)
+    else measured.mockReset()
+  }
+})
+
+// @dev/review2: a failed attempt must stay failed for the batch. Retrying it per row would hide the
+// failure behind a later, differently-contexted measurement and re-open the round trip every row.
+it("keeps a failed attempt failed for the batch, so no later row re-measures the same context", async () => {
+  verifiedBatchFixture()
+  const measured = vi.mocked(measureUtf8Decoding)
+  const original = measured.getMockImplementation()
+  let attempts = 0
+  measured.mockImplementation(() => {
+    attempts += 1
+    return Promise.reject(new Error("the decode round trip failed"))
+  })
+  const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
+  const originalTerm = definition.term
+  const seen: string[] = []
+  definition.term = async (ctx) => {
+    if (!ctx.utf8Decoding) throw new Error("collector did not install the measured decode context")
+    for (let ask = 0; ask < 2; ask += 1) {
+      seen.push(await ctx.utf8Decoding().catch((error: Error) => `failed: ${error.message}`))
+    }
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+    }
+  }
+  try {
+    const batch = await runProbeBatch({ ids: [definition.id] })
+    expect(attempts).toBe(1)
+    expect(seen).toEqual(["failed: the decode round trip failed", "failed: the decode round trip failed"])
+    expect(batch.rawReplies["collector.utf8Decoding"]).toBeUndefined()
+  } finally {
+    definition.term = originalTerm
+    if (original) measured.mockImplementation(original)
+    else measured.mockReset()
+  }
 })

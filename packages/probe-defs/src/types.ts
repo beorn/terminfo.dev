@@ -402,6 +402,24 @@ export interface TermlessContext {
   }
 }
 
+/**
+ * How the run's terminal decodes a plainly written two-byte UTF-8 character, MEASURED by the
+ * owning collector through one DSR 6n round trip: a UTF-8 context advances the cursor one cell per
+ * code point, an 8-bit (ISO-8859-1) context advances one cell per BYTE. A pixel oracle that
+ * compares a sequence's pixels with the same terminal's rendering of the literal glyph assumes
+ * the first, so the second is a fact about the CONTEXT, never a terminal capability (#28752).
+ */
+export type Utf8Decoding = "utf8" | "8-bit"
+
+/**
+ * A measured decode context, or the NAMED reason this run could not measure one (#28752, review2):
+ * `silent` is a terminal that answered no cursor report, and `unusable` is a terminal that answered
+ * at a coordinate the measurement cannot read. Neither is a decoding and neither is claimed to be
+ * silence, so a record can say which happened. A context with no collector measuring it at all is
+ * absent, which is the launcher's own `not-measured`.
+ */
+export type Utf8DecodingReading = Utf8Decoding | "silent" | "unusable"
+
 /** Context for real terminal probing (async TTY I/O) */
 export interface TerminalQueryOutcome {
   match: string[] | null
@@ -440,6 +458,16 @@ export interface TermContext {
   queryOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryWithSentinelOutcome(sequence: string, pattern: RegExp, timeoutMs?: number): Promise<TerminalQueryOutcome>
   queryMode(modeNum: number): Promise<"set" | "reset" | "unknown" | null>
+  /**
+   * The decoding this run gives a plainly written two-byte UTF-8 character, measured at most once
+   * per run by the collector that owns the terminal (see Utf8DecodingReading). `silent` means no
+   * cursor report arrived and `unusable` that one arrived this measurement cannot read, so an
+   * answered-but-unreadable reply is never recorded as silence; absent means this context has no
+   * collector that measures it. A row whose oracle compares plainly written glyphs reads it before
+   * grading, so a Latin-1 context is named as the cause instead of being read as a terminal
+   * capability negative (#28752).
+   */
+  utf8Decoding?: () => Promise<Utf8DecodingReading>
   /** An owned Linux collector installs this only after verifying the launch receipt. */
   withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */

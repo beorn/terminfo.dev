@@ -191,6 +191,10 @@ if [[ "${1:-}" == "--inside" ]]; then
   target_launch_args=()
   target_command_lead=()
   target_clipboard_args=()
+  # The rendering pin this target launches under, recorded in observed.json beside the locale and the
+  # decoding (28752) so a run's context STATES it and an old run is told apart from a new one. Empty
+  # means the terminal renders as it ships. (#28829)
+  target_render_pin=
   target_xtversion_mode=
   target_xtversion_expect=
   # Pure bash: the image's runtime tools are a measured set and an unlisted dependency is a
@@ -217,9 +221,25 @@ if [[ "${1:-}" == "--inside" ]]; then
       target_xtversion_expect="kitty($target_version)"
       ;;
     xterm)
-      target_launch_args=(-name "terminfo-$target_id-container-daemon" -fa 'DejaVu Sans Mono'
-        -fs 16 -geometry 100x30)
+      # `-u8` is this terminal's declared UTF-8 mode (it implies wide characters), and it cannot stand
+      # in for a locale: MEASURED on xterm 411 (2026-10-13), `-u8` under LC_ALL=C still advanced the
+      # cursor TWO cells for a two-byte character (ISO-8859-1), while under LC_ALL=C.UTF-8 it advanced
+      # ONE. The LOCALE is the load-bearing pin; the flag is the declaration beside it. Without that
+      # locale the plain-written expected frame of a charsets row painted a DIFFERENT string from the
+      # claim ("q" + U+2500 + "q" became "q" + U+00E2 + "q"), so the row could never match (#28752),
+      # and a run now MEASURES the decoding it got (collector.utf8Decoding) instead of assuming the
+      # pin took.
+      # Rendering is PINNED so that a repaint is byte-exact (#28829). With Xft antialiasing on, a
+      # plainly painted frame carries one extra partial-coverage edge pixel relative to the same
+      # frame reached by an edit sequence, so the exact-digest oracle reads a one-pixel residual
+      # and cannot classify the row (xterm/linux editing.decdc, editing.decic, editing.sl). Turning
+      # antialiasing off makes the target frame byte-identical to the expected frame — measured
+      # locally on xterm 411 + DejaVu Sans Mono 16 at window 1304x814: AA on 1 px differing at
+      # (28,76), AA off 0 px. Exact equality only: no tolerance, no similarity (CTO ruling #28752).
+      target_launch_args=(-name "terminfo-$target_id-container-daemon" -u8 -fa 'DejaVu Sans Mono'
+        -fs 16 -geometry 100x30 -xrm 'Xft.antialias: false')
       target_command_lead=(-e)
+      target_render_pin=xft-antialias-off
       parse_version() {
         local line
         IFS= read -r line
@@ -622,8 +642,17 @@ if [[ "${1:-}" == "--inside" ]]; then
   else
     : > /out/capture-hashes.txt
   fi
+  # The decode context is a MEASURED fact, never the pin's promise (28752): the probe run records it
+  # beside the other collector facts, and it is copied into the run's context here. A selection that
+  # ran no plain-written row measured nothing, and a terminal that answered no cursor report is
+  # silent: each state is named, rather than implying a decoding; a value that is present and
+  # unparsable aborts the run instead of silently reporting the default.
+  decoding=$(jq -r '(.rawReplies["collector.utf8Decoding"] // "{}") | fromjson |
+    if has("decoding") then (.decoding // "silent") else "not-measured" end' /out/v2-run.json)
   jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --argjson capture "$capture_receipt" \
-    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,capture:$capture,context:"linux-x86_64-xvfb-llvmpipe"}' \
+    --arg decoding "$decoding" \
+    --arg render "${target_render_pin:-terminal-default}" \
+    '{status:"raw-unreviewed-history",runId:$run,probeRunId:$probe,capture:$capture,context:"linux-x86_64-xvfb-llvmpipe",locale:"C.UTF-8",decoding:$decoding,render:$render}' \
     > /out/observed.json
   read -r invocation_sha invocation_path < /out/invocation.sha256
   read -r source_sha source_path < /out/source-archive.sha256
@@ -918,6 +947,9 @@ selection_env=()
 # asked for it, so an ordinary collection keeps the measured floor.
 grace_env=()
 [[ -z "${TERMINFO_SENTINEL_GRACE_MS:-}" ]] || grace_env=(--env "TERMINFO_SENTINEL_GRACE_MS=$TERMINFO_SENTINEL_GRACE_MS")
+# The declared locale every collector-owned terminal launch runs under (28752): the container's
+# shell, the terminal and the collector all inherit ONE value, so a run's decode context is pinned
+# rather than whatever the launching shell happened to carry. Recorded in observed.json below.
 container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-only \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 2g --cpus 2 \
   --tmpfs "/tmp:rw,nosuid,nodev,mode=1777" \
@@ -926,6 +958,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --mount "type=bind,src=$prep/receipt,dst=/receipt,readonly" \
   --mount "type=bind,src=$prep/passwd,dst=/etc/passwd,readonly" \
   --mount "type=bind,src=$prep/group,dst=/etc/group,readonly" \
+  --env "LC_ALL=C.UTF-8" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
