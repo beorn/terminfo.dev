@@ -333,9 +333,11 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
  *     advances exactly one cell whether or not Ambiguous characters are widened.
  *   - Its UTF-8 bytes C3 and AB are ISO-8859-1 'Ã' (`00C0..00C5 ; N`) and '«' (`00BB ; N`), so an
  *     8-bit context advances exactly two cells under the same policy.
- * One cell is therefore UTF-8 and two cells is 8-bit BY DATA, not by assumption; three or more
- * cells is still 8-bit — a width policy widened one of the two split bytes on top of the byte-by-byte
- * reading — never an unreadable answer.
+ * One cell is therefore UTF-8 and two cells is 8-bit BY DATA, not by assumption. Any other advance
+ * is evidence outside BOTH hypotheses: a width policy can widen neither Neutral sample byte, so a
+ * three-cell (or wildly larger) cursor move is an answered coordinate this measurement cannot read
+ * and is recorded `unusable`, never a diagnosis (@dev/review2 2026-10-14 — a 3- or 998-cell advance
+ * had been falsely read as 8-bit).
  */
 export const UTF8_DECODE_SAMPLE = "\u00eb"
 
@@ -372,8 +374,13 @@ export async function measureUtf8Decoding(): Promise<Utf8DecodingReading> {
       // A sample that did not advance at all is an answered coordinate this cannot read, never a
       // decoding: neither hypothesis predicts a zero-cell advance.
       if (position[1] <= 1) return "unusable"
+      // One cell is UTF-8; two cells is the byte-by-byte 8-bit decode BY DATA (the sample's own
+      // note establishes both its UTF-8 form and its two split bytes are Neutral, so no width policy
+      // can forge either). Any LARGER advance answers outside both hypotheses — evidence this
+      // measurement cannot read — so it is `unusable`, never a diagnosis (@dev/review2 2026-10-14).
       if (position[1] === 2) return "utf8"
-      return "8-bit"
+      if (position[1] === 3) return "8-bit"
+      return "unusable"
     } finally {
       // This measurement writes into whatever screen the calling row inherited. The batch has no
       // between-row reset of its own: every compared region is preceded by the row's own clear (the
