@@ -183,6 +183,120 @@ export async function sgrReadbackDecision(
 }
 
 /**
+ * DECRQCRA — the terminal's own checksum of a rectangle (`CSI Pid;Pt;Pl;Pb;Pr * y` →
+ * `DCS Pid ! ~ xxxx ST`). A timeout, DA1 sentinel, or unrecognized reply returns null. A missing
+ * readback is never a negative.
+ */
+export async function queryRectangularChecksum(
+  ctx: TermContext,
+  rect: { top: number; left: number; bottom: number; right: number },
+  requestId = 1,
+): Promise<string | null> {
+  const sequence = `\x1b[${requestId};${rect.top};${rect.left};${rect.bottom};${rect.right}*y`
+  const outcome = await ctx.queryWithSentinelOutcome(
+    sequence,
+    new RegExp(`\\x1bP${requestId}!~([0-9A-Fa-f]+)\\x1b\\\\`),
+  )
+  if (outcome.reason !== "reply") return null
+  return outcome.match?.[1] ?? null
+}
+
+export interface ChecksumReadback {
+  minRows: number
+  minCols: number
+  expected: readonly string[]
+  seed: readonly string[]
+  applyAt: string
+  sequence: string
+  rect: { top: number; left: number; bottom: number; right: number }
+  cleanup?: string
+}
+
+/**
+ * Same shape as sgrReadbackDecision: the terminal's own report decides when it answers, and null
+ * (never a negative) leaves the probe's capture/cursor path in place. Three DECRQCRA queries, in
+ * order: expected frame, seed frame, post-sequence frame.
+ */
+export async function checksumReadbackDecision(
+  ctx: TermContext,
+  id: string,
+  spec: ChecksumReadback,
+): Promise<ProbeResult | null> {
+  const { rows, cols } = ctx
+  if (
+    !Number.isSafeInteger(rows) ||
+    !Number.isSafeInteger(cols) ||
+    rows < spec.minRows ||
+    cols < spec.minCols
+  ) {
+    return null
+  }
+  // Ask once before any fixture bytes. A silent DECRQCRA is never a negative and must not
+  // paint over the capture/cursor path's write-order contract.
+  const speaks = await queryRectangularChecksum(ctx, spec.rect)
+  if (speaks === null) return null
+  try {
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    for (const step of spec.expected) ctx.write(step)
+    const expected = await queryRectangularChecksum(ctx, spec.rect)
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    for (const step of spec.seed) ctx.write(step)
+    const seed = await queryRectangularChecksum(ctx, spec.rect)
+    ctx.write(spec.applyAt)
+    ctx.write(spec.sequence)
+    const after = await queryRectangularChecksum(ctx, spec.rect)
+    if (expected === null || seed === null || after === null) return null
+    if (seed === expected) return null
+    if (after !== expected && after !== seed) {
+      return {
+        pass: false,
+        response: JSON.stringify({ expected, seed, after }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "query",
+          note: `${id}: DECRQCRA post-sequence checksum matched neither expected nor seed`,
+        },
+      }
+    }
+    const ok = after === expected
+    return {
+      pass: ok,
+      response: JSON.stringify({ expected, seed, after }),
+      observation: { outcome: ok ? "supported" : "unsupported", evidence: "query" },
+      assertions: [
+        {
+          kind: ok ? "positive" : "negative",
+          expected: `${id}: DECRQCRA of the target rect matches the expected frame after ${JSON.stringify(spec.sequence)}`,
+          observed: after,
+        },
+      ],
+    }
+  } finally {
+    if (spec.cleanup) ctx.write(spec.cleanup)
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/**
+ * Shared wrap luna4's 23c41184 exported as withSgrReadback (dropped on 24edf395 as unused by sgr.ts).
+ * This slice consumes it: a decide() of null is never a negative and keeps the existing term path.
+ */
+export function withSgrReadback(
+  def: ProbeDefinition,
+  decide: (ctx: TermContext) => Promise<ProbeResult | null>,
+): ProbeDefinition {
+  const term = def.term
+  if (!term) return def
+  return {
+    ...def,
+    async term(ctx) {
+      return (await decide(ctx)) ?? term(ctx)
+    },
+  }
+}
+
+/**
  * SGR probe — feed SGR sequence + "X", verify cell attribute (termless) or cursor position (term).
  *
  * A capture fixture renders at row 3 column 3; a smaller measured terminal clamps CUP or

@@ -1,9 +1,10 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe } from "./helpers.ts"
+import { checksumReadbackDecision, parserStateResult, probe, withSgrReadback } from "./helpers.ts"
 
 export const charsetsProbes: ProbeDefinition[] = [
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "charsets.dec-special",
       (ctx) => {
         const expected = "ASCII q controls flank DEC Special Graphics q mapped to U+2500"
@@ -131,6 +132,18 @@ export const charsetsProbes: ProbeDefinition[] = [
           },
         }
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "charsets.dec-special", {
+          minRows: 4,
+          minCols: 6,
+          expected: ["\x1b[3;1Hq─q"],
+          seed: ["\x1b[3;1Hqqq"],
+          applyAt: "\x1b[3;2H",
+          sequence: "\x1b(0q\x1b(B",
+          rect: { top: 3, left: 2, bottom: 3, right: 2 },
+          cleanup: "\x0f\x1b(B\x1b)B",
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -138,7 +151,8 @@ export const charsetsProbes: ProbeDefinition[] = [
   },
 
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "charsets.utf8",
       (ctx) => {
         const expected = "Sampled Unicode characters é and 世 occupy their target cells with ASCII controls intact"
@@ -284,6 +298,18 @@ export const charsetsProbes: ProbeDefinition[] = [
           },
         }
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "charsets.utf8", {
+          minRows: 4,
+          minCols: 6,
+          expected: ["\x1b[1;1HA\u00e9Z", "\x1b[2;1HA\u4e16Z"],
+          seed: ["\x1b[1;1HA??Z", "\x1b[2;1HA??Z"],
+          applyAt: "\x1b[1;2H",
+          sequence: "\u00e9\x1b[2;2H\u4e16",
+          rect: { top: 1, left: 1, bottom: 2, right: 4 },
+          cleanup: "\x0f\x1b(B\x1b)B",
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -292,7 +318,8 @@ export const charsetsProbes: ProbeDefinition[] = [
 
   // G0/G1 switching via SI/SO with independent ASCII flank controls.
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "charsets.g0-g1-switching",
       (ctx) => {
         const expected = "G0 ASCII l, SO-selected G1 DEC l→U+250C, then SI-selected G0 ASCII l, within A/Z controls"
@@ -426,6 +453,18 @@ export const charsetsProbes: ProbeDefinition[] = [
           },
         }
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "charsets.g0-g1-switching", {
+          minRows: 4,
+          minCols: 6,
+          expected: ["\x1b[3;1HAl┌lZ"],
+          seed: ["\x1b[3;1HAlllZ"],
+          applyAt: "\x1b[3;2H",
+          sequence: "\x1b(B\x1b)0l\x0el\x0fl",
+          rect: { top: 3, left: 1, bottom: 3, right: 5 },
+          cleanup: "\x0f\x1b(B\x1b)B",
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -434,7 +473,8 @@ export const charsetsProbes: ProbeDefinition[] = [
 
   // DEC line drawing — six box-drawing samples.
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "charsets.dec-line-drawing",
       (ctx) => {
         const expected = "DEC jklmqx map exactly to ┘┐┌└─│ while trailing ASCII j remains unchanged"
@@ -574,6 +614,18 @@ export const charsetsProbes: ProbeDefinition[] = [
           },
         }
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "charsets.dec-line-drawing", {
+          minRows: 4,
+          minCols: 7,
+          expected: ["\x1b[3;1H┘┐┌└─│j"],
+          seed: ["\x1b[3;1Hjklmqxj"],
+          applyAt: "\x1b[3;1H",
+          sequence: "\x1b(0jklmqx\x1b(Bj",
+          rect: { top: 3, left: 1, bottom: 3, right: 7 },
+          cleanup: "\x0f\x1b(B\x1b)B",
+        }),
     ),
     termNeedsGeometry: true,
 

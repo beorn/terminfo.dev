@@ -45,7 +45,10 @@ function app(
     query: async () => unexpected("query"),
     queryWithSentinel: async () => unexpected("queryWithSentinel"),
     queryOutcome: async () => unexpected("queryOutcome"),
-    queryWithSentinelOutcome: async () => unexpected("queryWithSentinelOutcome"),
+    queryWithSentinelOutcome: async (sequence: string) => {
+      events.push(sequence)
+      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    },
     queryMode: async () => {
       events.push("mode")
       return null
@@ -139,9 +142,13 @@ test("DEC special pixels retain independent glyph controls, exact designation or
     "\x1b[4;1H     \x1b[4;1Hqqq",
     "\x1b[4;6H",
   ]
-  expect(snapshots).toEqual([
-    controlWrites,
-    [...controlWrites, "\x1b[3;2H\x1b(0q\x1b(Bq", "\x0f\x1b(B\x1b)B\x1b[4;1Hqqq\x1b[4;6H"],
+  expect(snapshots[0]?.[0]).toContain("*y")
+  expect(snapshots[0]?.slice(1)).toEqual(controlWrites)
+  expect(snapshots[1]?.[0]).toContain("*y")
+  expect(snapshots[1]?.slice(1)).toEqual([
+    ...controlWrites,
+    "\x1b[3;2H\x1b(0q\x1b(Bq",
+    "\x0f\x1b(B\x1b)B\x1b[4;1Hqqq\x1b[4;6H",
   ])
   expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
   expect(frames[0]?.label).toContain("row 2")

@@ -6,6 +6,8 @@ import {
   unmeasuredCellResult,
   selectiveEraseResult,
   notTestedResult,
+  checksumReadbackDecision,
+  withSgrReadback,
 } from "./helpers.ts"
 
 type ErasedCell = string | null
@@ -430,33 +432,22 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
 
 export const eraseProbes: ProbeDefinition[] = [
   {
-    ...probe(
-      "erase.line.right",
-      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
-      (ctx) => captureEraseFixture(ctx, "line", "\x1b[0K", "row 1 AB___; row 2 KEEP!"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.line.left",
-      (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
-      (ctx) => captureEraseFixture(ctx, "line", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"),
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "erase.line.all",
+    ...withSgrReadback(
+      probe(
+        "erase.line.right",
+        (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[K", ["A", "B", "blank", "blank", "blank"], false, 2),
+        (ctx) => captureEraseFixture(ctx, "line", "\x1b[0K", "row 1 AB___; row 2 KEEP!"),
+      ),
       (ctx) =>
-        eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
-      (ctx) => captureEraseFixture(ctx, "line", "\x1b[2K", "row 1 _____; row 2 KEEP!"),
+        checksumReadbackDecision(ctx, "erase.line.right", {
+          minRows: 2,
+          minCols: 6,
+          expected: ["\x1b[1;1HAB   ", "\x1b[2;1HKEEP!"],
+          seed: ["\x1b[1;1HABCDE", "\x1b[2;1HKEEP!"],
+          applyAt: "\x1b[1;3H",
+          sequence: "\x1b[0K",
+          rect: { top: 1, left: 1, bottom: 2, right: 5 },
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -464,10 +455,22 @@ export const eraseProbes: ProbeDefinition[] = [
   },
 
   {
-    ...probe(
-      "erase.screen.below",
-      (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
-      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"),
+    ...withSgrReadback(
+      probe(
+        "erase.line.left",
+        (ctx) => eraseRowResult(ctx, "ABCDE\x1b[3G", "\x1b[1K", ["blank", "blank", "blank", "D", "E"], false, 2),
+        (ctx) => captureEraseFixture(ctx, "line", "\x1b[1K", "row 1 ___DE; row 2 KEEP!"),
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.line.left", {
+          minRows: 2,
+          minCols: 6,
+          expected: ["\x1b[1;1H   DE", "\x1b[2;1HKEEP!"],
+          seed: ["\x1b[1;1HABCDE", "\x1b[2;1HKEEP!"],
+          applyAt: "\x1b[1;3H",
+          sequence: "\x1b[1K",
+          rect: { top: 1, left: 1, bottom: 2, right: 5 },
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -475,10 +478,23 @@ export const eraseProbes: ProbeDefinition[] = [
   },
 
   {
-    ...probe(
-      "erase.screen.above",
-      (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
-      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"),
+    ...withSgrReadback(
+      probe(
+        "erase.line.all",
+        (ctx) =>
+          eraseRowResult(ctx, "ABCDE\r\nKEEP!\x1b[1;3H", "\x1b[2K", ["blank", "blank", "blank", "blank", "blank"], true),
+        (ctx) => captureEraseFixture(ctx, "line", "\x1b[2K", "row 1 _____; row 2 KEEP!"),
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.line.all", {
+          minRows: 2,
+          minCols: 6,
+          expected: ["\x1b[2;1HKEEP!"],
+          seed: ["\x1b[1;1HABCDE", "\x1b[2;1HKEEP!"],
+          applyAt: "\x1b[1;3H",
+          sequence: "\x1b[2K",
+          rect: { top: 1, left: 1, bottom: 2, right: 5 },
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -486,10 +502,68 @@ export const eraseProbes: ProbeDefinition[] = [
   },
 
   {
-    ...probe(
-      "erase.screen.all",
-      (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
-      (ctx) => captureEraseFixture(ctx, "screen", "\x1b[2J", "top/middle/bottom _____"),
+    ...withSgrReadback(
+      probe(
+        "erase.screen.below",
+        (ctx) => eraseScreenResult(ctx, "\x1b[0J", ["AAAAA", "BB   ", "     "]),
+        (ctx) => captureEraseFixture(ctx, "screen", "\x1b[0J", "top AAAAA; middle BB___; bottom _____"),
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.screen.below", {
+          minRows: 3,
+          minCols: 6,
+          expected: ["\x1b[1;1HAAAAA", "\x1b[2;1HBB   "],
+          seed: ["\x1b[1;1HAAAAA", "\x1b[2;1HBBBBB", "\x1b[3;1HCCCCC"],
+          applyAt: "\x1b[2;3H",
+          sequence: "\x1b[0J",
+          rect: { top: 1, left: 1, bottom: 3, right: 5 },
+        }),
+    ),
+    termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
+  },
+
+  {
+    ...withSgrReadback(
+      probe(
+        "erase.screen.above",
+        (ctx) => eraseScreenResult(ctx, "\x1b[1J", ["     ", "   BB", "CCCCC"]),
+        (ctx) => captureEraseFixture(ctx, "screen", "\x1b[1J", "top _____; middle ___BB; bottom CCCCC"),
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.screen.above", {
+          minRows: 3,
+          minCols: 6,
+          expected: ["\x1b[2;4HBB", "\x1b[3;1HCCCCC"],
+          seed: ["\x1b[1;1HAAAAA", "\x1b[2;1HBBBBB", "\x1b[3;1HCCCCC"],
+          applyAt: "\x1b[2;3H",
+          sequence: "\x1b[1J",
+          rect: { top: 1, left: 1, bottom: 3, right: 5 },
+        }),
+    ),
+    termNeedsGeometry: true,
+
+    termlessObservationEvidence: "parser-state",
+  },
+
+  {
+    ...withSgrReadback(
+      probe(
+        "erase.screen.all",
+        (ctx) => eraseScreenResult(ctx, "\x1b[2J", ["     ", "     ", "     "]),
+        (ctx) => captureEraseFixture(ctx, "screen", "\x1b[2J", "top/middle/bottom _____"),
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.screen.all", {
+          minRows: 3,
+          minCols: 6,
+          expected: [],
+          seed: ["\x1b[1;1HAAAAA", "\x1b[2;1HBBBBB", "\x1b[3;1HCCCCC"],
+          applyAt: "\x1b[2;3H",
+          sequence: "\x1b[2J",
+          rect: { top: 1, left: 1, bottom: 3, right: 5 },
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -528,7 +602,8 @@ export const eraseProbes: ProbeDefinition[] = [
   },
 
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "erase.character",
       (ctx) => eraseRowResult(ctx, "ABCDE\x1b[1G", "\x1b[3X", ["blank", "blank", "blank", "D", "E"], false, 0),
       async (ctx) => {
@@ -561,6 +636,17 @@ export const eraseProbes: ProbeDefinition[] = [
         const pos = await ctx.queryCursorPosition()
         return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.character", {
+          minRows: 1,
+          minCols: 6,
+          expected: ["\x1b[1;1HA  DE"],
+          seed: ["\x1b[1;1HABCDE"],
+          applyAt: "\x1b[1;2H",
+          sequence: "\x1b[2X",
+          rect: { top: 1, left: 1, bottom: 1, right: 5 },
+        }),
     ),
     termNeedsGeometry: true,
 
@@ -568,7 +654,8 @@ export const eraseProbes: ProbeDefinition[] = [
   },
 
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "erase.selective",
       (ctx) => selectiveEraseResult(ctx, "\x1b[?2J", false),
       async (ctx) => {
@@ -600,13 +687,26 @@ export const eraseProbes: ProbeDefinition[] = [
         const pos = await ctx.queryCursorPosition()
         return unmeasuredCellResult(pos, "erased cells or scrollback")
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.selective", {
+          minRows: 1,
+          minCols: 6,
+          expected: ['\x1b[1;1H\x1b[1"qP'],
+          seed: ['\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE'],
+          applyAt: "\x1b[1;1H",
+          sequence: "\x1b[?2J",
+          rect: { top: 1, left: 1, bottom: 1, right: 6 },
+          cleanup: '\x1b[0"q',
+        }),
     ),
     termNeedsGeometry: true,
   },
 
   // EL with background color — erased cells should inherit current bg
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "erase.el-with-attrs",
       (ctx) => {
         const expected = "EL erases X while preserving its measured non-default background"
@@ -687,13 +787,26 @@ export const eraseProbes: ProbeDefinition[] = [
           ctx.write("\x1b[0m")
         }
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.el-with-attrs", {
+          minRows: 1,
+          minCols: 6,
+          expected: ["\x1b[42m\x1b[1;1H     "],
+          seed: ["\x1b[42m\x1b[1;1HXXXXX"],
+          applyAt: "\x1b[1;1H\x1b[42m",
+          sequence: "\x1b[K",
+          rect: { top: 1, left: 1, bottom: 1, right: 5 },
+          cleanup: "\x1b[0m",
+        }),
     ),
     termNeedsGeometry: true,
   },
 
   // ED0 preserves rows preceding the cursor, including above a scrolling region.
   {
-    ...probe(
+    ...withSgrReadback(
+      probe(
       "erase.ed-scroll-region",
       (ctx) => {
         const expected = "ED0 erases measured cells below the cursor and preserves the preceding row"
@@ -762,6 +875,18 @@ export const eraseProbes: ProbeDefinition[] = [
           ctx.write("\x1b[r") // Restore the owned fixture to full-screen margins.
         }
       },
+      ),
+      (ctx) =>
+        checksumReadbackDecision(ctx, "erase.ed-scroll-region", {
+          minRows: 10,
+          minCols: 10,
+          expected: ["\x1b[1;1HKEEP!"],
+          seed: ["\x1b[1;1HKEEP!", "\x1b[3;1HERASE"],
+          applyAt: "\x1b[3;10r\x1b[3;1H",
+          sequence: "\x1b[J",
+          rect: { top: 1, left: 1, bottom: 3, right: 5 },
+          cleanup: "\x1b[r",
+        }),
     ),
     termNeedsGeometry: true,
   },
