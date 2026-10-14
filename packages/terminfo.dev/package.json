@@ -41,7 +41,7 @@
     "@silvery/ansi": "0.26.0",
     "@silvery/commander": "0.26.0",
     "commander": "15.0.0",
-    "react": "19.3.0",
+    "react": "19.3.1",
     "silvery": "0.26.0"
   },
   "engines": {
