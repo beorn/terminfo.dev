@@ -83,6 +83,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     "packages/admin/src/termless.ts",
     "packages/admin/versions.ts",
     "scripts/suite-manifest.ts",
+    "packages/admin/suite-manifest.ts",
   ])
   const sourceDirty =
     execFileSync("git", ["status", "--porcelain", "--", ...sourcePaths], { cwd: ROOT, encoding: "utf8" })

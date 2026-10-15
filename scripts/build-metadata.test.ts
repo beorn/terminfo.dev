@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { buildStamp, createBuildMetadata } from "./build-metadata.ts"
+import { CONTENT_DIR } from "../packages/admin/run-admission.ts"
+import { citedSuiteHashes } from "./suite-manifest.ts"
 
 let repo: string
 
@@ -34,6 +36,14 @@ afterEach(() => {
 })
 
 describe("website build identity", () => {
+  it("keeps admission and suite defaults rooted at the original component content directory", () => {
+    const originalContentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
+    expect(CONTENT_DIR).toBe(originalContentDir)
+    const defaultCitations = citedSuiteHashes()
+    expect(defaultCitations.size).toBeGreaterThan(0)
+    expect(defaultCitations).toEqual(citedSuiteHashes(dirname(originalContentDir)))
+  })
+
   it("loads the actual VitePress configuration through its production config bundler", async () => {
     // Direct Bun imports do not exercise Vite's config bundle: importing an executable script
     // through the admission reader broke the live site while those direct-import tests passed.
@@ -47,7 +57,7 @@ describe("website build identity", () => {
       { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 20_000 },
     )
     expect(JSON.parse(stdout)).toEqual({ root: join(siteRoot, "docs") })
-  })
+  }, 25_000)
 
   it("accepts only the exact validated clean CI build from the deployed HTTP endpoint", async () => {
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")

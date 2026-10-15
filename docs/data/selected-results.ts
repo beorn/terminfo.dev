@@ -23,7 +23,7 @@ import {
   validateObservation,
   validateObservationOutcome,
 } from "@terminfo/run-parser"
-import { assessRunAdmission, type IdentityAdmission } from "../../scripts/admit-run.ts"
+import { assessRunAdmission, type IdentityAdmission } from "../../packages/admin/run-admission.ts"
 import {
   activeInterpretations,
   applies,
@@ -67,7 +67,7 @@ export interface SelectedCell extends Observation {
   }
 }
 
-export type { IdentityAdmission } from "../../scripts/admit-run.ts"
+export type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
 
 export interface SelectedVersion {
   runId: string
