@@ -328,11 +328,13 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
  * chosen so that NO legitimate width policy can forge either reading (#28752, @dev/review2), which
  * the earlier sample U+00E9 could not promise: é is East Asian Width A, and xterm's cjkWidth
  * legally advances an Ambiguous character two cells in genuine UTF-8, which read as a false 8-bit
- * context and made nine plain-written rows inconclusive under a wrong diagnosis.
- *   - U+00EB itself is Width N (UCD EastAsianWidth.txt `00EB..00EC ; N`), so a UTF-8 context
- *     advances exactly one cell whether or not Ambiguous characters are widened.
- *   - Its UTF-8 bytes C3 and AB are ISO-8859-1 'Ã' (`00C0..00C5 ; N`) and '«' (`00BB ; N`), so an
- *     8-bit context advances exactly two cells under the same policy.
+ * context and made nine plain-written rows inconclusive under a wrong diagnosis. Each citation is
+ * from EastAsianWidth-18.0.0.txt (unicode.org/Public/UCD/latest), with its line number:
+ *   - U+00EB is Neutral — line 112: "00EB ; N" — so UTF-8 advances exactly one cell.
+ *   - Its UTF-8 byte C3 is ISO-8859-1 U+00C3 'Ã', Neutral — line 99: "00C0..00C5 ; N".
+ *   - Its UTF-8 byte AB is ISO-8859-1 U+00AB '«', Neutral — line 82: "00AB ; N".
+ *   - The replaced U+00E9 is Ambiguous — line 111: "00E8..00EA ; A".
+ * Thus an 8-bit context advances exactly two cells whether or not Ambiguous characters widen.
  * One cell is therefore UTF-8 and two cells is 8-bit BY DATA, not by assumption. Any other advance
  * is evidence outside BOTH hypotheses: a width policy can widen neither Neutral sample byte, so a
  * three-cell (or wildly larger) cursor move is an answered coordinate this measurement cannot read
