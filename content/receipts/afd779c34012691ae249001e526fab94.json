@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "97dc5b0688610afc63cd6152f0e85b1b",
+  "collectedAt": "2026-10-15T23:33:41.025Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/main",
+    "githubRunId": "38824064929",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "116727247151"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000047581",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20261013.0424.1",
+    "trackingId": "github_8ed1dcd7-d111-4389-aaed-b7ef7ed8c7c5"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "dacf47a3933664f14e7dedcab696e1312bc256ee09f16764b1bb6cb885de73e4",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "2aeca8ec587dbcbaa63d40ea4ac45c1a898afcd9b4e3cf0940e1ea588ff8ba5c"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "dacf47a3933664f14e7dedcab696e1312bc256ee09f16764b1bb6cb885de73e4",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "2aeca8ec587dbcbaa63d40ea4ac45c1a898afcd9b4e3cf0940e1ea588ff8ba5c"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/Alacritty.app",
+    "cfBundleShortVersionString": "0.17.0",
+    "cfBundleVersion": "1",
+    "executablePath": "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+    "executableSha256": "444055799f1211d6adbe9f18ab2660c57155de4f0e88d42458d6ae4fb539dcda",
+    "sourceArtifact": {
+      "path": "/Users/runner/work/_temp/Alacritty.dmg",
+      "sha256": "ad8d7de35fb38e43184776cac6dfee05ca325caa0b6639a06a55e54e4b026620"
+    }
+  }
+}
