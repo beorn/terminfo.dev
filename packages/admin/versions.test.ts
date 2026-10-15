@@ -6,7 +6,6 @@
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/ vendor/terminfo.dev/packages/run-parser/src/ vendor/terminfo.dev/packages/admin/
  */
 import { readFileSync } from "node:fs"
-import { createRequire } from "node:module"
 import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import ts from "typescript"
@@ -88,8 +87,16 @@ const SUITE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 /**
  * The static local import closure of the collector entries: repo sources only, tests and node_modules excluded.
  * The scanner is `typescript`'s own `preProcessFile` — a declared devDependency of this package — so it reads the
- * import forms the bundler does, and resolution is Node's `createRequire`, which follows each workspace `exports`.
+ * import forms the bundler does, and resolution is `typescript`'s own resolver, which follows each workspace
+ * `exports`. Resolution only maps a specifier to a path: no module is loaded, so no second CommonJS instance
+ * can appear (the singleton-split class the repo's no-createRequire guard exists to catch).
  */
+const MODULE_RESOLUTION: ts.CompilerOptions = {
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  module: ts.ModuleKind.Preserve,
+  allowImportingTsExtensions: true,
+}
+
 function collectorImportClosure(): { found: string[]; unresolved: string[] } {
   const seen = new Set<string>()
   const unresolved: string[] = []
@@ -101,13 +108,12 @@ function collectorImportClosure(): { found: string[]; unresolved: string[] } {
     const { importedFiles } = ts.preProcessFile(readFileSync(file, "utf8"), true, true)
     for (const { fileName } of importedFiles) {
       if (fileName.startsWith("node:") || fileName.startsWith("bun:") || fileName === "bun") continue
-      let resolved: string
-      try {
-        resolved = createRequire(file).resolve(fileName)
-      } catch (error) {
-        unresolved.push(`${relative(SUITE_ROOT, file)} -> ${fileName}: ${String(error)}`)
+      const { resolvedModule } = ts.resolveModuleName(fileName, file, MODULE_RESOLUTION, ts.sys)
+      if (!resolvedModule) {
+        unresolved.push(`${relative(SUITE_ROOT, file)} -> ${fileName}: unresolved`)
         continue
       }
+      const resolved = resolvedModule.resolvedFileName
       if (resolved.includes("/node_modules/") || !resolved.startsWith(`${join(SUITE_ROOT, "packages")}/`)) continue
       if (/\.(test|spec)\.tsx?$/.test(resolved)) continue
       queue.push(resolved)
