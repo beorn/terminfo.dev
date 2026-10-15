@@ -35,9 +35,9 @@
  * classified table, not a second copy.
  *
  * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2] [terminal-id ...]
- * Candidate 1 is the default. Candidate 2 keeps all 125 classics on frozen suite c3d1fbb77561.
- * When live selection moves past it, bar rows are ineligible: selected run on suite X, required
- * c3d1fbb77561. The 125 verdict then lives only in admitted history for that suite's runs.
+ * Candidate 1 is the default. Candidate 2 keeps all 125 classics on the suite registry's current freeze.
+ * When live selection moves past it, bar rows name the selected run's suite and required frozen suite
+ * as ineligible. Only admitted history on that required suite then receives the 125 verdict.
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"

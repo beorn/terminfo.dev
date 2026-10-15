@@ -102,7 +102,10 @@ describe("release 1 decisive-count reader", () => {
       const manifest = join(suites, "c3d1fbb77561.json")
       writeFileSync(manifest, JSON.stringify({ ...raw, freeze: { release: "candidate2", at: "not-a-date" } }))
       expect(load).toThrow(manifest)
-      writeFileSync(manifest, JSON.stringify(raw))
+      writeFileSync(
+        manifest,
+        JSON.stringify({ ...raw, freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" } }),
+      )
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
       expect(buildReport({ contentDir, cohort: "candidate2" }).candidate2?.frozenSuiteId).toBe("c3d1fbb77561")
     } finally {
@@ -239,7 +242,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "c3d1fbb77561")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "0fb194cf6cea")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -260,14 +263,14 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "c3d1fbb77561")
+      expect(row.measured).toBe(row.run.suiteId === "0fb194cf6cea")
       // The RELEASE share is the operator's D3 over the ratified cohort (125) MINUS the app-unobservable
       // rows the @chief option-B ruling moved out (three here, so 122); only the per-category block
       // divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(122)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required c3d1fbb77561`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 0fb194cf6cea`)
       }
     }
   })
@@ -702,14 +705,14 @@ describe("per-category decisive share (28018 AC2)", () => {
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    // 28450 Shape B: the required suite is now c3d1fbb77561, and the site SELECTS the admitted
-    // kitty/linux run on it as the current row — so the row is real. The 28018-era construction built
-    // this from the refused 95ea run; that run is no longer the required suite's, so it would print
-    // the wrong suite in the block header.
-    const row = report.candidate2.barRows.find(
+    // This historical formatting witness keeps its real selected kitty/linux run bound to c3.
+    // Moving the current freeze does not create a measured run on the new suite.
+    const selected = report.barRows.find(
       (entry) => entry.measured && entry.context.terminalId === "kitty" && entry.context.os === "linux",
     )
-    if (!row || !row.measured || !("run" in row)) throw new Error("kitty/linux measured bar row absent")
+    if (!selected) throw new Error("kitty/linux selected bar row absent")
+    const row = cohortRowForSelected(selected, { ...report.candidate2, frozenSuiteId: "c3d1fbb77561" })
+    if (!row.measured || !("run" in row)) throw new Error("historical kitty/linux measured bar row absent")
     expect(row.run.suiteId).toBe("c3d1fbb77561")
     const printed = formatCohortRow(
       row,
@@ -856,9 +859,11 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
         writeFileSync(join(contentDir, name), readFileSync(join(real, name)))
       }
       mkdirSync(join(contentDir, "suites"))
+      const historicalPath = join(real, "suites", "c3d1fbb77561.json")
+      const historical = parseSuiteManifest(historicalPath, readFileSync(historicalPath, "utf8"))
       writeFileSync(
         join(contentDir, "suites", "c3d1fbb77561.json"),
-        readFileSync(join(real, "suites", "c3d1fbb77561.json")),
+        JSON.stringify({ ...historical, freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" } }),
       )
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
       // One real lib run the projection refuses: a NON-app document, so this reader must not name it
