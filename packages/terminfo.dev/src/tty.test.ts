@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   drainStdin,
   measureRenderedWidth,
+  UTF8_DECODE_SAMPLE,
+  measureUtf8Decoding,
   query,
   queryMode,
   queryOutcome,
@@ -431,5 +433,93 @@ describe("sentinel grace override", () => {
     expect(() => sentinelGraceMs("0")).toThrow(/positive whole number/)
     expect(() => sentinelGraceMs("1.5")).toThrow(/whole number of milliseconds/)
     expect(() => sentinelGraceMs("9007199254740993")).toThrow(/positive whole number/)
+  })
+})
+
+/**
+ * The decode-context measurement is the decision every UTF-8-dependent row now rests on, so each
+ * branch gets a row of its own: one cell, two cells, a widened byte, an unverified origin, an
+ * unexpected column, and each of the two ways a measurement can fail. The writes are asserted whole,
+ * because the cursor save/restore and the erase of the glyph it painted into the calling row's
+ * screen are part of the contract (#28752, @cto).
+ *
+ * The first row is the one @dev/review2 asked for: it is the CJK counterexample itself. The sample
+ * must be immune to a width policy, because the previous sample é is East Asian Ambiguous and
+ * xterm's cjkWidth legitimately advances it two cells in genuine UTF-8 — which the row would have
+ * read as an 8-bit decoding. The two cells a widened AMBIGUOUS character can produce are therefore
+ * covered from both sides: the sample cannot produce them, and a widening of an 8-bit byte still
+ * reads 8-bit instead of degrading to unreadable.
+ */
+describe("UTF-8 decode context measurement", () => {
+  function harness(replies: Array<string | null>) {
+    const writes: string[] = []
+    let asked = 0
+    const out = {
+      columns: 12,
+      write(chunk: string) {
+        writes.push(chunk)
+        if (chunk === "\x1b[6n") {
+          const next = replies[asked++]
+          if (next) reply(next)
+        }
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    return { out, writes }
+  }
+
+  it("takes a sample no width policy can move: U+00EB is Neutral, and so are both ISO-8859-1 bytes it splits into", () => {
+    // é (U+00E9) is "00E8..00EA ; A" and legitimately two cells under cjkWidth; ë (U+00EB) is
+    // "00EB ; N" alone, and its bytes are U+00C3 'Ã' ("00C0..00C5 ; N") and U+00AB '«' ("00AB ; N").
+    // So one cell is UTF-8 and two cells is 8-bit however the run treats Ambiguous characters. Each
+    // citation is EastAsianWidth-18.0.0.txt quoted exactly, by line number.
+    expect(UTF8_DECODE_SAMPLE).toBe("\u00eb")
+    expect([...new TextEncoder().encode(UTF8_DECODE_SAMPLE)]).toEqual([0xc3, 0xab])
+  })
+
+  it("reads a sample that advanced one cell as utf8, erasing it before the cursor is restored", async () => {
+    const { out, writes } = harness(["\x1b[2;1R", "\x1b[2;2R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("utf8")
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b[0m\u00eb", "\x1b[6n", "\x1b[2;1H\x1b[2X", "\x1b8"])
+  })
+
+  it("reads the same sample advancing the two cells of a byte-by-byte decode as 8-bit", async () => {
+    const { out, writes } = harness(["\x1b[2;1R", "\x1b[2;3R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("8-bit")
+    expect(writes).toContain("\x1b[0m\u00eb")
+    expect(writes).toContain("\x1b[2;1H\x1b[2X")
+    expect(writes.at(-1)).toBe("\x1b8")
+  })
+
+  it("reads a wider advance as 8-bit too, so an Ambiguous byte a width policy widens cannot blur the split decode into no answer", async () => {
+    const { out } = harness(["\x1b[2;1R", "\x1b[2;4R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("8-bit")
+  })
+
+  it("names an answered coordinate it cannot read unusable, before painting anything at a foreign origin", async () => {
+    const { out, writes } = harness(["\x1b[1;1R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("unusable")
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b8"])
+  })
+
+  it("names a cursor report that never arrived silent, without painting anything", async () => {
+    const { out, writes } = harness([])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("silent")
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[6n", "\x1b8"])
+  })
+
+  it("names a sample that never advanced unusable, erasing what it painted", async () => {
+    const zero = harness(["\x1b[2;1R", "\x1b[2;1R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), zero.out)).toBe("unusable")
+    expect(zero.writes).toContain("\x1b[2;1H\x1b[2X")
+    expect(zero.writes.at(-1)).toBe("\x1b8")
+  })
+
+  it("names a terminal that goes silent after the glyph is painted silent, erasing the glyph it did paint", async () => {
+    const { out, writes } = harness(["\x1b[2;1R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("silent")
+    expect(writes).toContain("\x1b[0m\u00eb")
+    expect(writes).toContain("\x1b[2;1H\x1b[2X")
+    expect(writes.at(-1)).toBe("\x1b8")
   })
 })

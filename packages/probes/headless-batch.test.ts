@@ -94,7 +94,7 @@ for (const [name, create, available] of [
   })
 }
 
-test("real vterm grades interior-region SU without creating scrollback history", async () => {
+test("real vterm grades interior-region SU without moving the row above into history", async () => {
   const id = "scrollback.scroll-up"
   const probe = ALL_PROBES.find((item) => item.id === id)
   if (!probe) throw new Error(`Missing ${id} registry definition`)
@@ -104,10 +104,15 @@ test("real vterm grades interior-region SU without creating scrollback history",
   expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive" }])
   const raw = batch.rawReplies[id]
   if (!raw) throw new Error(`Missing ${id} raw measurement`)
+  // The row is a region-readback kind row now, so its raw state is a GRID (one string[] per compared
+  // row), not the deleted hand-written spec's flat `seed` plus numeric history counts. The old
+  // "without creating scrollback history" claim is carried in CELL form: row 0 keeps its A marker, so a
+  // terminal that scrolled the row above the region into history moves it and fails on this grid. The
+  // numeric history observable belongs to the scrollback history rows (scrollback.accumulate,
+  // scrollback.total-lines), which own that measurement.
   expect(JSON.parse(raw)).toMatchObject({
-    seed: ["A", "B", "C", "D", "E"],
-    beforeScroll: { totalLines: 24, screenLines: 24 },
-    afterScroll: { totalLines: 24, screenLines: 24 },
+    before: [["A"], ["B"], ["C"], ["D"], ["E"]],
+    after: [["A"], ["C"], ["D"], [""], ["E"]],
   })
 })
 

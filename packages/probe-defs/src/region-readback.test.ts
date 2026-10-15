@@ -13,13 +13,21 @@ import { expect, test } from "vitest"
 import {
   captureRegionReadbackDecision,
   captureRegionVerdict,
+  queryPixelGeometry,
   type CellRegion,
   type PixelGeometry,
   type RegionCapture,
   type RegionRead,
   type RegionReadback,
 } from "./region-readback.ts"
-import type { CaptureCells, CapturePixelGeometry, MeasuredProbeResult, ObservationFrame, TermContext } from "./types.ts"
+import type {
+  CaptureCells,
+  CapturePixelGeometry,
+  MeasuredProbeResult,
+  ObservationFrame,
+  TermContext,
+  TerminalQueryOutcome,
+} from "./types.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -205,12 +213,59 @@ test("a frame that moves while the witness cell stands still names the geometry,
   expect(result.observation.note).toContain("cells-to-pixels geometry is wrong")
 })
 
-test("an edit that matches neither the seed nor the expected frame is inconclusive by name", async () => {
+test("an edit that is a third distinct frame is inconclusive, stating the observation only", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "other" }) })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.reason).toBe("insufficient-evidence")
-  expect(result.observation.note).toContain("matched none of the compared frames (seed, expected)")
+  // The three compared planes are pairwise distinct. The note states that fact and nothing more:
+  // no implied cause (a third distinct frame is also what a WRONG effect looks like), no "simply"
+  // (#28829, CTO).
+  expect(result.observation.note).toContain("a third distinct frame")
+  expect(result.observation.note).toContain("cannot tell an incorrect effect from a rendering difference")
+  expect(result.observation.note).toContain("compared frames: seed, expected")
+  expect(result.observation.note).not.toContain("matched none of the compared frames")
+  expect(result.observation.note).not.toContain("simply")
+})
+
+// 28752: a row whose expected frame is written PLAINLY assumes the run decodes plain UTF-8. The
+// measured context fact decides that, so an 8-bit run is inconclusive BY NAME — never a capability
+// negative, and never a run refusal.
+test("a measured 8-bit decoding context refuses by name before any capture", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  let asked = 0
+  fake.ctx.utf8Decoding = async () => {
+    asked += 1
+    return "8-bit"
+  }
+  const result = await decide(fake, { requiresUtf8: true })
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.reason).toBe("insufficient-evidence")
+  expect(result.observation.evidence).toBe("query")
+  expect(result.observation.note).toContain("decodes plain-written UTF-8 as ISO-8859-1")
+  expect(result.assertions).toBeUndefined()
+  expect(asked).toBe(1)
+  expect(fake.requests).toEqual([])
+  expect(fake.writes).toEqual([])
+})
+
+test("a measured utf8 decoding context leaves a plain-written row to its pixel oracle", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 2, regionDigest: painter({ applied: "edited" }) })
+  fake.ctx.utf8Decoding = async () => "utf8"
+  const result = await decide(fake, { requiresUtf8: true })
+  expect(result.observation.outcome).toBe("supported")
+})
+
+test("a row that declares no plain-written assumption never reads the fact", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 2, regionDigest: painter({ applied: "edited" }) })
+  let asked = 0
+  fake.ctx.utf8Decoding = async () => {
+    asked += 1
+    return "8-bit"
+  }
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("supported")
+  expect(asked).toBe(0)
 })
 
 // A spec whose four compared planes each paint a distinct frame, so a run can be told apart by the
@@ -398,6 +453,147 @@ test("a pixel query answered with a sentinel reports query evidence, not a zero-
   expect(result.observation.outcome).toBe("inconclusive")
   expect(result.observation.evidence).toBe("query")
   expect(result.observation.note).toContain("CSI 16 t")
+})
+
+/**
+ * @failure A terminal that answers no CSI 16 t (alacritty, on Linux and macOS) reads as having no
+ *   pixel report at all, so every region row on it stays undecided although the same terminal
+ *   reports the text area twice — in pixels and in characters (28763).
+ * @level l1
+ * @consumer The capture-region readback, on every app row that needs a cells-to-pixels rectangle.
+ * @testonly none
+ */
+test("a terminal with no CSI 16 t maps cells from its own 14 t and 18 t text area by whole-number division", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const asked: string[] = []
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    asked.push(sequence)
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if (!("geometry" in mapped)) throw new Error(`expected a mapped cell size, got: ${mapped.missing}`)
+  expect(asked).toEqual(["\x1b[16t", "\x1b[14t", "\x1b[18t"])
+  expect(mapped.geometry).toEqual({ cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 })
+  // @cto fix 1 (2026-10-12): every number names its basis.
+  expect(mapped.source).toBe("derived from CSI 14 t / CSI 18 t")
+  // And the row DECIDES with it, which is the whole point of the mapping: the same fixture that
+  // answers no cell size now reads its compared cells at the derived 8x16 — and its observation
+  // records WHERE that geometry came from, beside the geometry itself.
+  const result = await decide(fake, { pixelGeometry: mapped.geometry, geometrySource: mapped.source })
+  expect(result.observation.outcome).toBe("supported")
+  expect(result.observation.evidence).toBe("pixels")
+  for (const { pixelGeometry } of fake.requests) expect(pixelGeometry).toEqual(mapped.geometry)
+  expect(JSON.parse(result.response ?? "null")).toMatchObject({
+    pixelGeometry: mapped.geometry,
+    geometrySource: "derived from CSI 14 t / CSI 18 t",
+  })
+  // A terminal that DOES answer 16 t names the other basis, so the two are never confused.
+  const reporting = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  reporting.ctx.queryWithSentinelOutcome = async (sequence) =>
+    sequence === "\x1b[16t"
+      ? { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply", raw: "", rawBase64: "" }
+      : { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+  const reported = await queryPixelGeometry(reporting.ctx)
+  if (!("geometry" in reported)) throw new Error("16 t and 14 t both replied, so a cell size is reported")
+  expect(reported.source).toBe("reported by CSI 16 t")
+})
+
+test("a text area that does not divide into whole pixels refuses BY NAME and maps nothing", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;385;640t", "385", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if ("geometry" in mapped) throw new Error("385 pixels over 24 rows is not a cell height to round")
+  // 385 pixels over 24 rows is not a cell height at all: these are two replies that disagree about
+  // the text area, so the refusal names the numbers instead of picking one.
+  expect(mapped.missing).toContain("640x385 pixel text area over 80x24 characters")
+  expect(mapped.missing).toContain("does not divide into a whole-pixel cell size")
+})
+
+/**
+ * 28763 fix 2 (@cto 2026-10-12): the failure NAMES are the contract, so each one gets its own test.
+ * Every case asserts the reply it names AND that no geometry is mapped — a refusal is not a guess.
+ */
+test("a terminal that answers neither CSI 16 t nor CSI 14 t names both replies it got", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  const reasons: Record<string, TerminalQueryOutcome["reason"]> = {
+    "\x1b[16t": "sentinel",
+    "\x1b[14t": "timeout",
+  }
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => ({
+    match: null,
+    reason: reasons[sequence] ?? "timeout",
+    raw: "\x1b[?6c",
+    rawBase64: "",
+  })
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if ("geometry" in mapped) throw new Error("a terminal that answered neither report has no cell size to map")
+  expect(mapped.missing).toContain("CSI 16 t")
+  expect(mapped.missing).toContain("sentinel")
+  expect(mapped.missing).toContain("CSI 14 t")
+  expect(mapped.missing).toContain("timeout")
+})
+
+test("a 14 t reply behind a silent CSI 16 t names 16 t and the 18 t that never came", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  fake.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const mapped = await queryPixelGeometry(fake.ctx)
+  if ("geometry" in mapped) throw new Error("18 t is what makes the division exact, so its absence maps nothing")
+  expect(mapped.missing).toContain("CSI 16 t")
+  expect(mapped.missing).toContain("sentinel")
+  expect(mapped.missing).toContain("CSI 18 t")
+})
+
+test("a report that parses to zero or to non-numbers names the numbers, on both paths", async () => {
+  // The 16 t / 14 t path: the cell size came back zero, so the refusal quotes the parsed geometry.
+  const reported = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  reported.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[16t") {
+      return { match: ["\x1b[6;0;8t", "0", "8"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;384;640t", "384", "640"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const zeroCell = await queryPixelGeometry(reported.ctx)
+  if ("geometry" in zeroCell) throw new Error("a zero cell height is not a pixel report")
+  expect(zeroCell.missing).toContain("did not parse as positive numbers")
+  expect(zeroCell.missing).toContain('"cellHeight":0')
+
+  // The derived path: both text areas parsed, but as zeros, so the refusal quotes them by number.
+  const derived = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
+  derived.ctx.queryWithSentinelOutcome = async (sequence) => {
+    if (sequence === "\x1b[14t") {
+      return { match: ["\x1b[4;0;0t", "0", "0"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    if (sequence === "\x1b[18t") {
+      return { match: ["\x1b[8;24;80t", "24", "80"], reason: "reply", raw: "", rawBase64: "" }
+    }
+    return { match: null, reason: "sentinel", raw: "\x1b[?6c", rawBase64: "" }
+  }
+  const zeroArea = await queryPixelGeometry(derived.ctx)
+  if ("geometry" in zeroArea) throw new Error("a 0x0 text area is not a measurement")
+  expect(zeroArea.missing).toContain("did not parse as positive numbers")
+  expect(zeroArea.missing).toContain("0x0 pixels over 80x24 characters")
 })
 
 test("an unstable capture cites the capture it took, so the run stays writable", async () => {

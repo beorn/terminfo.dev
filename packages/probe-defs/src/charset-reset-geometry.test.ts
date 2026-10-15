@@ -12,10 +12,6 @@ import type { ObservationFrame, TermContext } from "./types.ts"
 afterEach(() => vi.useRealTimers())
 
 const fixtures = [
-  ["charsets.dec-special", 1, 2],
-  ["charsets.utf8", 1, 2],
-  ["charsets.g0-g1-switching", 1, 3],
-  ["charsets.dec-line-drawing", 1, 7],
   ["reset.sgr", 1, 2],
   ["reset.ris", 5, 5],
   ["reset.soft", 5, 5],
@@ -80,26 +76,7 @@ test("fixed charset and reset fixtures require valid measured room before any by
       })
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
-    if (id.startsWith("charsets.")) {
-      const events: string[] = []
-      const valid = await definition.term(app(minRows, minCols, events))
-      expect(events.length, id).toBeGreaterThan(1)
-      expect(events.at(-1), id).toBe("CPR")
-      expect(valid.pass, id).toBe(false)
-      expect(valid.response, id).toBe(JSON.stringify({ row: 1, col: 2 }))
-      expect(valid.observation, id).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "consumed",
-        note: expect.stringContaining("Cursor movement does not verify charset glyph rendering"),
-      })
-      if (id === "charsets.g0-g1-switching") {
-        // This app path must exercise G1 through SO and restore G0 through SI; a G0-only
-        // designation cannot collect evidence about switching, even when the result is inconclusive.
-        expect(events.join("")).toContain("\x1b)0")
-        expect(events.join("")).toContain("l\x0el\x0fl")
-      }
-    } else if (id === "reset.ris") {
+    if (id === "reset.ris") {
       const events: string[] = []
       const valid = await definition.term(
         app(minRows, minCols, events, [
@@ -121,6 +98,35 @@ test("fixed charset and reset fixtures require valid measured room before any by
         evidence: "query",
       })
       expect(events.at(-1), id).toBe(id === "reset.soft" ? "mode" : "CPR")
+    }
+  }
+})
+
+/**
+ * 28450 slice B (@cto 2026-10-12): a charset row whose run installs no owned capture adapter cannot
+ * read a window back at all, and its old fallback wrote bytes whose control/target frames the region
+ * oracle had already made unreachable. It now refuses BY NAME and writes nothing, so a run that
+ * cannot decide stays writable instead of carrying evidence no reader ever read.
+ */
+test("a charset row with no owned capture refuses by name and writes nothing", async () => {
+  const ids = ["charsets.dec-special", "charsets.utf8", "charsets.g0-g1-switching", "charsets.dec-line-drawing"]
+  for (const id of ids) {
+    const definition = charsetsProbes.find((probe) => probe.id === id)
+    if (!definition?.term) throw new Error(`missing app callback for ${id}`)
+    for (const [rows, cols] of [
+      [1, 2],
+      [24, 80],
+    ] as const) {
+      const events: string[] = []
+      const result = await definition.term(app(rows, cols, events))
+      expect(events, `${id} at ${rows}x${cols}`).toEqual([])
+      expect(result.pass, id).toBe(false)
+      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+        note: expect.stringContaining("no owned capture adapter"),
+      })
     }
   }
 })
@@ -175,17 +181,17 @@ test("DEC special pixels take the 28540 region-readback verdict, not ungraded co
   expect(events.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
 
-test("DEC special capture requires safe measured 4x6 before writes or captures", async () => {
+test("DEC special capture requires safe measured 3x5 before writes or captures", async () => {
   const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
   if (!definition?.term) throw new Error("missing app DEC special callback")
   for (const [rows, cols] of [
-    [3, 6],
-    [4, 5],
-    [NaN, 6],
-    [4, Infinity],
-    [4.5, 6],
-    [4, 6.5],
-    [Number.MAX_SAFE_INTEGER + 1, 6],
+    [2, 5],
+    [3, 4],
+    [NaN, 5],
+    [3, Infinity],
+    [2.5, 5],
+    [3, 4.5],
+    [Number.MAX_SAFE_INTEGER + 1, 5],
   ]) {
     const events: string[] = []
     const context = app(rows!, cols!, events)
@@ -204,7 +210,7 @@ test("DEC special capture requires safe measured 4x6 before writes or captures",
       reason: "insufficient-evidence",
       evidence: "none",
     })
-    expect(result.observation?.note).toContain(`4x6`)
+    expect(result.observation?.note).toContain(`3x5`)
     expect(result.observation?.note).toContain(`measured ${rows}x${cols}`)
   }
 })
@@ -250,36 +256,6 @@ test.each([1, 2])("DEC special restores DECTCEM when capture %i rejects", async 
   expect(events.at(-2)).toBe("\x1b[?25h")
   expect(events.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
-
-test.each([{ row: 1, col: 2 }, null])(
-  "DEC special without capture preserves exact legacy writes and CPR labels for %j",
-  async (cursor) => {
-    const definition = charsetsProbes.find((probe) => probe.id === "charsets.dec-special")
-    if (!definition?.term) throw new Error("missing app DEC special callback")
-    const events: string[] = []
-    const result = await definition.term(app(1, 2, events, [cursor]))
-    expect(events).toEqual(["\x1b[1;1H\x1b[2K", "\x1b(0", "q", "\x1b(B", "CPR"])
-    expect(result).toEqual(
-      cursor
-        ? {
-            pass: false,
-            response: JSON.stringify(cursor),
-            note: "Cursor movement does not verify charset glyph rendering or mapping",
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "consumed",
-              note: "Cursor movement does not verify charset glyph rendering or mapping",
-            },
-          }
-        : {
-            pass: false,
-            note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
-          },
-    )
-  },
-)
 
 function decaln() {
   const definition = resetProbes.find((probe) => probe.id === "reset.decaln")
@@ -453,7 +429,7 @@ test("charsets.utf8 asks the terminal's pixel report before painting its two-cel
   const events: string[] = []
   // "silent" models a terminal that answers no query: with no CSI 16 t reply the region verdict
   // cannot map cells onto the owned window, so it refuses BY NAME and never paints the A??Z fixture.
-  const context = app(4, 6, events, [{ row: 1, col: 2 }], "silent")
+  const context = app(4, 7, events, [{ row: 1, col: 2 }], "silent")
   const frames: ObservationFrame[] = []
   context.capture = async ({ role, label }) => {
     const frame = { role, label, capturedAt: frames.length + 1, ref: `sha256:${String(frames.length + 1).repeat(64)}` }
@@ -469,4 +445,40 @@ test("charsets.utf8 asks the terminal's pixel report before painting its two-cel
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(frames).toEqual([])
   expect(events).toEqual([])
+})
+
+// 28752: every charset row whose expected frame is written PLAINLY declares the context it assumes,
+// so an 8-bit run is inconclusive BY NAME rather than compared against glyphs the terminal cannot
+// paint. This is the wiring proof: each of the four rows reaches the measured fact and reads no
+// pixels at all.
+test("every plain-written charset row names an 8-bit decoding context before it captures", async () => {
+  for (const id of ["charsets.dec-special", "charsets.utf8", "charsets.g0-g1-switching", "charsets.dec-line-drawing"]) {
+    const definition = charsetsProbes.find((probe) => probe.id === id)
+    if (!definition?.term) throw new Error(`missing app callback for ${id}`)
+    const events: string[] = []
+    // Twelve columns, not eight: under the region-readback KIND the row's need DERIVES from the
+    // grid it addresses (dec-line-drawing compares seven columns, plus the kind's two-column
+    // margin), so a fixture narrower than the row addresses is refused by geometry before the
+    // decode context is ever read — and this row's subject is the decode context.
+    const context = app(4, 12, events)
+    context.utf8Decoding = async () => "8-bit"
+    context.queryWithSentinelOutcome = async (sequence) =>
+      sequence === "\x1b[16t"
+        ? { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "\x1b[6;16;8t", rawBase64: "" }
+        : { match: ["\x1b[4;320;128t", "320", "128"], reason: "reply" as const, raw: "\x1b[4;320;128t", rawBase64: "" }
+    let captured = false
+    context.capture = async () => {
+      captured = true
+      throw new Error("an 8-bit decoding context must not capture pixels")
+    }
+    const result = await definition.term(context)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(String(result.observation?.note), id).toContain("decodes plain-written UTF-8 as ISO-8859-1")
+    expect(captured, id).toBe(false)
+    expect(events, id).toEqual([])
+  }
 })

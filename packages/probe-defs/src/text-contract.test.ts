@@ -29,7 +29,7 @@ const TEXT_CONTRACT: GroupContract = [
   { id: "text.tab", expected: "decided", claim: "HT moves X to the owned stop at column 9" },
   { id: "text.wide.emoji", expected: "decided", claim: "the declared emoji sample claims two parser columns" },
   { id: "text.wide.cjk", expected: "decided", claim: "the CJK sample occupies a wide parser cell" },
-  { id: "text.overwrite", expected: "decided", claim: "C overwrites A while B remains" },
+  { id: "text.overwrite", expected: "decided", claim: "writing X over the second cell overwrites B while A remains" },
   { id: "text.cr", expected: "decided", claim: "CR returns C to the first column while B remains" },
   { id: "text.backspace", expected: "decided", claim: "BS lets C overwrite B while A remains" },
   { id: "text.index", expected: "decided", claim: "IND advances the parser cursor one row" },
@@ -37,7 +37,7 @@ const TEXT_CONTRACT: GroupContract = [
   {
     id: "text.reverse-index-scroll",
     expected: "decided",
-    claim: "RI moves the measured MARKER to the second row",
+    claim: "reverse index at the top of a non-default scroll region scrolls only that region",
   },
   { id: "text.combining", expected: "decided", claim: "a combining accent keeps X in the next parser cell" },
   { id: "text.hts", expected: "decided", claim: "HTS makes the tab advance to column 6" },

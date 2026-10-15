@@ -1,38 +1,79 @@
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { isBlank, parserStateResult, probe, unmeasuredCellResult } from "./helpers.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { isBlank, parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
 /**
- * The measured readback for the two text rows that capture an owned window. Same three-frame shape
- * as the editing specs: seed, the sequence applied on top of it, and the frame it must leave,
- * written PLAINLY in the same run, so the app path decides from its own cells.
+ * The measured region-readback rows of Text (28450; @cto 218ec7fe's rule applied to Text). A row
+ * holds its claim ONCE: the termless arm reads its seed, its step and its target cells against the
+ * parser, and the kind derives the capture-region oracle's frames from the same fields, so the two
+ * arms cannot grade two fixtures.
+ *
+ * Decision named in this diff: `text.overwrite` shipped TWO fixtures that disagreed — a termless one
+ * that wrote C at column 1 and expected "CB", and the readback one below that writes X at column 2
+ * and expects "AX". One row removes the disagreement; the READBACK fixture wins, exactly as it did
+ * for `erase.character` and DECERA. The claim is the readback's.
+ *
+ * Decision named in this diff, `text.reverse-index-scroll` (@cto Q2(b), 2026-10-12): it is NOT the
+ * same claim as the converted `scrollback.reverse-index` — this one is RI at the top margin of a
+ * NON-DEFAULT scroll region, which the scrollback family never exercises, and terminals get the
+ * margin interaction wrong independently. It is kept as its own row and its three disagreeing
+ * fixtures collapse to ONE: the READBACK fixture wins (region 3-10, with a painted control row
+ * ABOVE the region), and the termless `1;5r` fixture and the pixel fallback's copy go. `reset` is
+ * `CSI r`, never "": the fixture sets margins 3-10 and a terminal that kept them would hand every
+ * later probe a region it never asked for.
  */
-const TEXT_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "text.overwrite": {
-    region: { top: 1, left: 1, bottom: 1, right: 2 },
-    sentinel: { row: 3, col: 1 },
-    cursorRow: 2,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAB\x1b[2;1H",
-    edit: "\x1b[1;2HX\x1b[2;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HAX\x1b[2;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 3,
-    minCols: 3,
+export const textReadbackRows: readonly RegionReadbackRow[] = [
+  {
+    id: "text.overwrite",
+    expected: "writing X over the second cell overwrites B while A remains",
+    seed: "\x1b[1;1HAB",
+    before: [["A", "B"]],
+    steps: [{ write: "\x1b[1;2HX" }],
+    after: [["A", "X"]],
+    controls: [{ row: 0, col: 0, char: "A" }],
+    seedNote: "AB control was not measured",
+    controlNote: "the overwrite control cell changed",
+    reset: "",
   },
-  "text.reverse-index-scroll": {
-    region: { top: 1, left: 1, bottom: 2, right: 7 },
-    sentinel: { row: 7, col: 1 },
-    cursorRow: 6,
-    seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;5r\x1b[1;1HMARKER\x1b[6;1H",
-    edit: "\x1b[1;1H\x1bM\x1b[r\x1b[6;1H",
-    expected: "\x1b[0m\x1b[2J\x1b[H\x1b[2;1HMARKER\x1b[6;1H",
-    timeoutMs: 5000,
-    pollMs: 250,
-    minRows: 8,
-    minCols: 8,
+  {
+    id: "text.reverse-index-scroll",
+    expected: "reverse index at the top of a non-default scroll region scrolls only that region",
+    // The scroll region is rows 3-10 (set by the seed) while the compared grid is rows 1-4. The
+    // control row sits ABOVE the region, so a scroll that moved the whole screen would blank row 1
+    // and fail the control instead of reading as a region scroll.
+    seed: "\x1b[3;10r\x1b[1;1HKEEPS!\x1b[3;1HMARKER",
+    before: [
+      ["K", "E", "E", "P", "S", "!"],
+      [" ", " ", " ", " ", " ", " "],
+      ["M", "A", "R", "K", "E", "R"],
+      [" ", " ", " ", " ", " ", " "],
+    ],
+    steps: [{ write: "\x1b[3;1H\x1bM" }],
+    after: [
+      ["K", "E", "E", "P", "S", "!"],
+      [" ", " ", " ", " ", " ", " "],
+      [" ", " ", " ", " ", " ", " "],
+      ["M", "A", "R", "K", "E", "R"],
+    ],
+    // The row above the region is the control: RI scrolls the region only, so row 1 cannot move.
+    controls: [{ row: 0, col: 0, char: "K" }],
+    // A terminal that ignores reverse index leaves the grid exactly as the seed painted it — a
+    // measured negative, not a refusal.
+    ignored: [
+      ["K", "E", "E", "P", "S", "!"],
+      [" ", " ", " ", " ", " ", " "],
+      ["M", "A", "R", "K", "E", "R"],
+      [" ", " ", " ", " ", " ", " "],
+    ],
+    seedNote: "Scroll-region reverse-index seed was not measured",
+    controlNote: "the row above the scroll region moved, so the screen - not the region - scrolled",
+    reset: "\x1b[r",
+    cleanup: "\x1b[r",
+    // The sequence sets a scroll region whose bottom is row 10, so the fixture needs ten rows even
+    // though it compares four (@cto Q2(b)).
+    minRows: 10,
   },
-}
+]
 
 /** Each tab probe owns its stops; the app runner supplies a disposable terminal fixture. */
 function installTabFixture(write: (sequence: string) => void): void {
@@ -380,6 +421,8 @@ function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: Declared
 }
 
 export const textProbes: ProbeDefinition[] = [
+  ...regionReadbackProbes(textReadbackRows),
+
   {
     ...probe(
       "text.basic",
@@ -685,6 +728,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1f389}")
         if (ascii !== 2 || width === null) {
@@ -737,6 +782,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.cjk")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u4e2d")
         if (ascii !== 2 || width === null) {
@@ -764,80 +811,6 @@ export const textProbes: ProbeDefinition[] = [
             },
           ],
         }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
-      "text.overwrite",
-      (ctx) => {
-        ctx.feed("AB")
-        const before = [ctx.getCell(0, 0), ctx.getCell(0, 1)]
-        ctx.feed("\x1b[1GC")
-        const first = ctx.getCell(0, 0)
-        const second = ctx.getCell(0, 1)
-        const ready = before[0]?.char === "A" && before[1]?.char === "B"
-        return parserStateResult(
-          ready ? first.char === "C" && second.char === "B" : null,
-          "C overwrites A while B remains",
-          { before, first, second },
-          ready ? undefined : "AB control was not measured",
-        )
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 1, 3)
-          if (refusal) return refusal
-          const readback = TEXT_READBACK_SPECS["text.overwrite"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "text.overwrite", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
-            ctx.write("AB")
-            const control = await capture({
-              role: "control",
-              label: "Row 1 shows AB before the overwrite write",
-            })
-            ctx.write("\x1b[1;2H")
-            ctx.write("X")
-            const target = await capture({
-              role: "target",
-              label: "Row 1 shows AX after writing X over B at column 2",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "The second cell changing from B to X requires independent pixel review; cursor position does not measure cell contents",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[0m\x1b[1;1H\x1b[2K")
-          }
-        }
-        const refusal = tooSmall(ctx, 1, 3)
-        if (refusal) return refusal
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("AB") // cursor at col 3
-        ctx.write("\x1b[1;2H") // move back to col 2
-        ctx.write("X") // overwrite B
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "overwritten B cell")
       },
     ),
     termNeedsGeometry: true,
@@ -1072,96 +1045,6 @@ export const textProbes: ProbeDefinition[] = [
 
   {
     ...probe(
-      "text.reverse-index-scroll",
-      (ctx) => {
-        if (!validSize(ctx.getScrollback().screenLines, 5)) {
-          return {
-            pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
-          }
-        }
-        try {
-          ctx.feed("\x1b[1;5r") // Set scroll region to lines 1-5
-          ctx.feed("\x1b[H") // Move to top (row 0)
-          ctx.feed("MARKER")
-          const before = ctx.getCell(0, 0)
-          ctx.feed("\x1b[H") // Back to top
-          ctx.feed("\x1bM") // Reverse index at top — should scroll region down
-          // MARKER should have moved from row 0 to row 1
-          const cell = ctx.getCell(1, 0)
-          return parserStateResult(
-            before.char === "M" ? cell.char === "M" : null,
-            "RI moves the measured MARKER to row 2",
-            { before, cell },
-            before.char === "M" ? undefined : "MARKER control was not measured",
-          )
-        } finally {
-          ctx.feed("\x1b[r") // reset scroll region
-        }
-      },
-      async (ctx) => {
-        const capture = ctx.capture
-        if (capture) {
-          const refusal = tooSmall(ctx, 10, 7)
-          if (refusal) return refusal
-          const readback = TEXT_READBACK_SPECS["text.reverse-index-scroll"]
-          if (readback) {
-            const verdict = await captureRegionVerdict(ctx, "text.reverse-index-scroll", readback)
-            if (verdict) return verdict
-          }
-          try {
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-            ctx.write("\x1b[3;10r") // scroll region rows 3-10
-            ctx.write("\x1b[3;1HMARKER")
-            ctx.write("\x1b[4;1Hregion4")
-            const control = await capture({
-              role: "control",
-              label: "MARKER on row 3 at the region top with region4 on row 4",
-            })
-            ctx.write("\x1b[3;1H\x1bM") // RI at the region top
-            const target = await capture({
-              role: "target",
-              label: "After reverse index at the region top: MARKER moved down to row 4",
-            })
-            return {
-              pass: false,
-              response: JSON.stringify({
-                rows: ctx.rows,
-                cols: ctx.cols,
-                control: control.label,
-                target: target.label,
-              }),
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: target.ref,
-                frames: [control, target],
-                note: "MARKER shifting down one row after RI at the region top requires independent pixel review; cursor position does not measure region contents",
-              },
-            }
-          } finally {
-            ctx.write("\x1b[r\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        const refusal = tooSmall(ctx, 10, 1)
-        if (refusal) return refusal
-        try {
-          ctx.write("\x1b[3;10r") // scroll region rows 3-10
-          ctx.write("\x1b[3;1H") // move to row 3 (top of region)
-          ctx.write("\x1bM") // RI — reverse index at top of region
-          const pos = await ctx.queryCursorPosition()
-          return unmeasuredCellResult(pos, "RI scrolling of region contents")
-        } finally {
-          ctx.write("\x1b[r") // reset scroll region
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-  },
-
-  {
-    ...probe(
       "text.combining",
       (ctx) => {
         ctx.feed("AB")
@@ -1181,6 +1064,10 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        // The claim compares a plainly written combining sample, so it assumes the run decodes
+        // plain UTF-8: an 8-bit run paints one glyph as two bytes, not one column (#28752, #28828).
+        const decoding = await utf8DecodingRefusal(ctx, "text.combining")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("A")
         const width = await ctx.measureRenderedWidth("e\u0301")
         if (ascii !== 1 || width === null) {
@@ -1494,6 +1381,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-flags")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F1FA}\u{1F1F8}")
         if (ascii !== 2 || width === null) {
@@ -1533,6 +1422,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 3)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-vs16")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u263A\uFE0F")
         if (ascii !== 2 || width === null) {
@@ -1572,6 +1463,8 @@ export const textProbes: ProbeDefinition[] = [
       async (ctx) => {
         const refusal = tooSmall(ctx, 1, 4)
         if (refusal) return refusal
+        const decoding = await utf8DecodingRefusal(ctx, "text.wide.emoji-zwj")
+        if (decoding) return decoding
         const ascii = await ctx.measureRenderedWidth("AA")
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
         if (ascii !== 2 || width === null) {

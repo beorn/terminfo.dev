@@ -1,5 +1,5 @@
 import type { ProbeDefinition } from "./types.ts"
-import { parserStateResult, probe } from "./helpers.ts"
+import { parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
 
 function validSize(value: number, minimum: number): boolean {
   return Number.isSafeInteger(value) && value >= minimum
@@ -50,6 +50,10 @@ export const unicodeProbes: ProbeDefinition[] = [
             },
           }
         }
+        // The row grades the rendered width of a plainly written ambiguous glyph, so it assumes
+        // the run decodes plain UTF-8: an 8-bit run measures bytes, not columns (#28752, #28828).
+        const decoding = await utf8DecodingRefusal(ctx, "unicode.east-asian-ambiguous")
+        if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("●")
         if (width === null) {
           return {
@@ -123,6 +127,10 @@ export const unicodeProbes: ProbeDefinition[] = [
             },
           }
         }
+        // The claim compares a plainly written ZWJ sequence, so it assumes the run decodes plain
+        // UTF-8: an 8-bit run counts bytes where the row counts columns (#28752, #28828).
+        const decoding = await utf8DecodingRefusal(ctx, "unicode.grapheme-cursor")
+        if (decoding) return decoding
         const width = await ctx.measureRenderedWidth("\u{1F468}\u200D\u{1F469}\u200D\u{1F467}")
         if (width === null) {
           return {
@@ -193,6 +201,10 @@ export const unicodeProbes: ProbeDefinition[] = [
             },
           }
         }
+        // The row grades the cursor advance of a plainly written CJK glyph, so it assumes the run
+        // decodes plain UTF-8: an 8-bit run advances by bytes (#28752, #28828).
+        const decoding = await utf8DecodingRefusal(ctx, "unicode.wrap-boundary")
+        if (decoding) return decoding
         ctx.write("\x1b[1;1H\x1b[2J")
         ctx.write("A".repeat(cols - 1))
         ctx.write("\u4e2d") // CJK char (2 cols wide)

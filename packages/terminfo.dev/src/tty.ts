@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
-import type { TerminalQueryOutcome } from "@terminfo/probe-defs"
+import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -318,6 +318,72 @@ export async function measureRenderedWidth(text: string): Promise<number | null>
       const next = await queryCursorPosition()
       return next?.[0] === 1 && next[1] === pos[1] + 1 ? pos[1] - 1 : null
     } finally {
+      currentTTYOutput().write("\x1b8")
+    }
+  })
+}
+
+/**
+ * The sample the decode-context measurement writes: ë, LATIN SMALL LETTER E WITH DIAERESIS. It is
+ * chosen so that NO legitimate width policy can forge either reading (#28752, @dev/review2), which
+ * the earlier sample U+00E9 could not promise: é is East Asian Width A, and xterm's cjkWidth
+ * legally advances an Ambiguous character two cells in genuine UTF-8, which read as a false 8-bit
+ * context and made nine plain-written rows inconclusive under a wrong diagnosis. Every claim below
+ * quotes EastAsianWidth-18.0.0.txt (unicode.org/Public/UCD/latest) exactly, with its line number:
+ *   - U+00EB is Neutral and stands alone, not inside a range — line 112: "00EB ; N"
+ *   - its second UTF-8 byte AB is U+00AB '«', Neutral — line 82: "00AB ; N"
+ *   - its first UTF-8 byte C3 is U+00C3 'Ã', Neutral — line 99: "00C0..00C5 ; N"
+ *   - U+00E9, the sample this replaced, is Ambiguous — line 111: "00E8..00EA ; A"
+ * So one cell means one code point (UTF-8) and two cells mean two (ISO-8859-1) under EVERY width
+ * policy: BY THIS DATA, not by assumption. Three or more cells is still 8-bit — a width policy
+ * widened one of the two split bytes on top of the byte-by-byte reading — never an unreadable
+ * answer.
+ */
+export const UTF8_DECODE_SAMPLE = "\u00eb"
+
+/**
+ * Measure how this terminal decodes a plainly written two-byte UTF-8 character — the CONTEXT a
+ * pixel oracle assumes when it compares a sequence with the same terminal's rendering of the
+ * literal glyph (#28752). A UTF-8 context advances the cursor one cell per code point; a terminal
+ * in an 8-bit (ISO-8859-1) locale advances one cell per BYTE, so an expected frame written plainly
+ * paints a different string from the one the row claims. Measured, never assumed, through the same
+ * DSR 6n round trip the width probe already uses. The two ways this run can fail to measure are
+ * NAMED apart: `silent` for a cursor report that never arrived, `unusable` for one that arrived
+ * where the measurement cannot read it — an answered-but-unreadable reply is never recorded as
+ * silence (@dev/review2).
+ */
+export async function measureUtf8Decoding(): Promise<Utf8DecodingReading> {
+  return withTTYOperation(async () => {
+    currentTTYOutput().write("\x1b7")
+    let painted = false
+    try {
+      currentTTYOutput().write("\x1b[2;1H")
+      const origin = await queryCursorPosition()
+      if (origin === null) return "silent"
+      // Answered, but not at the cell this measurement paints: nothing can be read from it.
+      if (origin[0] !== 2 || origin[1] !== 1) return "unusable"
+      // Two UTF-8 bytes: one cell decoded as UTF-8, two cells decoded as ISO-8859-1 (see the
+      // sample's own note for why neither reading can come from a width policy).
+      // Default SGR first: an erase inherits the current background, so a glyph painted in a
+      // caller's colours would leave a coloured blank behind instead of the screen it found.
+      currentTTYOutput().write(`\x1b[0m${UTF8_DECODE_SAMPLE}`)
+      painted = true
+      const position = await queryCursorPosition()
+      if (position === null) return "silent"
+      if (position[0] !== 2) return "unusable"
+      // A sample that did not advance at all is an answered coordinate this cannot read, never a
+      // decoding: neither hypothesis predicts a zero-cell advance.
+      if (position[1] <= 1) return "unusable"
+      if (position[1] === 2) return "utf8"
+      return "8-bit"
+    } finally {
+      // This measurement writes into whatever screen the calling row inherited. The batch has no
+      // between-row reset of its own: every compared region is preceded by the row's own clear (the
+      // seed strings in charsets.ts, written as each step's first write in region-readback.ts). So
+      // the measurement erases exactly the cells it painted -- ECH 2 covers the one UTF-8 cell and
+      // the two ISO-8859-1 cells -- before restoring the cursor, and no later row can inherit a
+      // stray glyph. (#28752, @cto)
+      if (painted) currentTTYOutput().write("\x1b[2;1H\x1b[2X")
       currentTTYOutput().write("\x1b8")
     }
   })
