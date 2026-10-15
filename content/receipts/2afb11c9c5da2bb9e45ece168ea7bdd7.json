@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-15T22:54:45Z",
+  "runId": "d4459251501c923f3775c495461ad9f6",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-29",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-u1cB9tKZ0nVmV8UHi6zq0esnSFX4flh3K0JjIQh5CE8=",
+    "revision": "cab25161054c50fd6c705db4ceefef0f1e5a9575"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev10/15323/final-0fb194cf6cea/wezterm-default-01/d4459251501c923f3775c495461ad9f6/prep/runner-bundle.tar",
+    "sha256": "2a7b6bd4a7ad3e537eb7111763a6540ba22b38d8a3f27842b8b3721db15fa5fb",
+    "narSha256": "sha256-OVWrWBPextR+hl/U3vTp1FuwIGMoU2HAlkMhwqHVcTQ=",
+    "frozenRunnerSha256": "6fc5805af8d1153c7d92de6db4feac6ec05dc3fbe67d64f95ec0dec9176a4226",
+    "buildReceiptSha256": "aa0ae3c1be77eaee0c26c65f416517231b9a110b065cfa0d7ad21f69c0dbc97a",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "0fb194cf6cea",
+      "collectorRevision": "7e7c2917520ca742fd002c39c8c49961d417657e",
+      "manifestSha256": "f2ba949195f31c1d76f21844810f09fe3bb90ec9b1cf4391b542604317f0b2e4",
+      "bundleSha256": "628c73e1d035f139579373859c08ca2a97a1c417c742f63b113ee76b2c426b83"
+    },
+    "rootBunLockSha256": "24c1fd9ad329470d539ddbcee354c50ed37c99f4908ff1a0ce3ed585682c2c89"
+  },
+  "runtime": {
+    "imageId": "sha256:bc922c26dfeed5b793e967bb04c2a8421c5fba75542dc7530d81465799020b8d",
+    "imageTarSha256": "bd61643aba16855f8201cccb9739229b541dab55af857592a73e84e30fc9f83d",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "7e7c2917520ca742fd002c39c8c49961d417657e",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "2825589e73e34d6651e75a92962d23d3c13e3717",
+    "suiteHash": "0fb194cf6cea"
+  },
+  "status": "raw-unreviewed-history"
+}

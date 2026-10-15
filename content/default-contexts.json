@@ -36,10 +36,10 @@
       "sources": ["content/probes-apps/alacritty-0.17.0-macos-d436c4ecd6e652a3427f245cda6b1204.json"]
     },
     "app:wezterm": {
-      "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/mmvpz8sgpp4gg1lwsjv68knvkzqmsdwk-wezterm-0-unstable-2026-09-17/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun /nix/store/ps46shfhpf5kqs33q3hi0lgd9s626bh3-terminfo-linux-runner/index.js test --serve \",null]",
-      "reviewer": "@dev/12 (automated review)",
-      "reason": "The clean-tree WezTerm run on main's suite 7c4ead653220, after 27919, 52/52 decisive (27915). 27916's identity profile makes every clean WezTerm app run current, and the context key carries the runner's store path, so the stale-suite runs ed1a16b8 (16f4067cfb88), c02903f0 (1ee91a75f7c9), 4dfdb6e7 (3917e7e5e9f9), 9b013dcf (f173b3679f36) and 5f4df380 (621e92ea4818) stay current as separate contexts; this row picks the current-suite one.",
-      "sources": ["content/probes-apps/wezterm-0-unstable-2026-09-17-linux-087598267b683cf2ed27e2d463345885.json"]
+      "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/xnhj580cb50yzv8qk89i9f6c4vlvr4y6-wezterm-0-unstable-2026-09-29/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun <terminfo-linux-runner> test --serve \",null]",
+      "reviewer": "@dev/10 (automated review)",
+      "reason": "Reviewed the existing default Linux fixture with measured WezTerm 0-unstable-2026-09-29 on frozen suite 0fb194cf6cea: one complete 260-ID app run from source 7e7c2917, bound host/collector receipts and retained captures. Historical executable/configuration results remain admitted history.",
+      "sources": ["probes-apps/wezterm-0-unstable-2026-09-29-linux-2afb11c9c5da2bb9e45ece168ea7bdd7.json"]
     }
   }
 }
