@@ -1,5 +1,5 @@
 /**
- * @failure A website build labels the wrong source, drops sidebar metadata, or deployment accepts stale live identity.
+ * @failure A website config cannot load, labels the wrong source, drops sidebar metadata, or deployment accepts stale live identity.
  * @level l1 — real Git producer and actual deployment shell against isolated HTTP responses.
  * @consumer docs/.vitepress/config.ts metadata and .github/workflows/deploy.yml live readback.
  * @testonly none
@@ -34,6 +34,21 @@ afterEach(() => {
 })
 
 describe("website build identity", () => {
+  it("loads the actual VitePress configuration through its production config bundler", async () => {
+    // Direct Bun imports do not exercise Vite's config bundle: importing an executable script
+    // through the admission reader broke the live site while those direct-import tests passed.
+    const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
+    const { stdout } = await promisify(execFile)(
+      "bun",
+      [
+        "-e",
+        'import { resolveConfig } from "vitepress"; const config = await resolveConfig("./docs", "build"); console.log(JSON.stringify({ root: config.root }));',
+      ],
+      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 20_000 },
+    )
+    expect(JSON.parse(stdout)).toEqual({ root: join(siteRoot, "docs") })
+  })
+
   it("accepts only the exact validated clean CI build from the deployed HTTP endpoint", async () => {
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
     const workflow = readFileSync(join(siteRoot, ".github/workflows/deploy.yml"), "utf8")
