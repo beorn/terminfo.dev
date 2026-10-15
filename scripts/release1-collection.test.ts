@@ -8,13 +8,25 @@
  *   propagate from the single owner before the caller credits coverage.
  * @level l2
  * @consumer Release 1 final re-collection runner (scripts/release1-collection.ts)
+ * @reach fs-walk <fixture-only: read-only content projection in a temporary directory>
  * @testonly none
  */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { existsSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
 import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
+import { parseSuiteManifest } from "@terminfo/run-parser"
 import { RELEASE_1_CONTEXTS } from "./decisive-share.ts"
 import {
   admitProducedRuns,
@@ -190,21 +202,45 @@ describe("release 1 Linux launcher flags", () => {
   // linuxLedger reads the whole committed corpus, which grows with every admitted run, so this row carries the
   // budget the corpus-reading consumer-selection rows use (CI took 5054 ms against the 5000 ms default).
   it("reads the five Linux invocations back from the committed runs in the corpus", () => {
-    const ledger = linuxLedger(CONTENT)
-    expect(Object.keys(ledger).sort()).toEqual(["alacritty", "ghostty", "kitty", "wezterm", "xterm"])
-    // Every assertion here is a property of the READ-BACK, not of today's corpus: which run the site
-    // selects changes as clean runs land (alacritty and wezterm linux moved from excluded to selected
-    // while this change was in flight), so a test that pinned that would fail for a non-regression.
-    for (const [id, row] of Object.entries(ledger)) {
-      expect(row.version).not.toBe("")
-      expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
-      expect(existsSync(join(CONTENT, row.file))).toBe(true)
-      expect(["default", "allow", "deny-read"]).toContain(row.clipboardProfile)
-      expect(["default", "baseline", "current"]).toContain(row.preset)
-      // A row outside the site's selection must name why it is; a selected row carries no exclusion.
-      if (row.selection === "newest-admitted") expect(row.exclusion).toBeTruthy()
-      else expect(row.exclusion).toBeNull()
-      if (id === "kitty") expect(row.preset).not.toBe("default")
+    // Retiring the old freeze preference leaves multiple current Kitty profiles. Refuse the
+    // real ambiguity before exercising launcher readback on an explicit historical witness.
+    expect(() => linuxLedger(CONTENT)).toThrow(/kitty\/linux:.*more than one run.*refusing to guess/)
+    const fixture = mkdtempSync(join(tmpdir(), "release1-historical-launchers-"))
+    try {
+      for (const name of readdirSync(CONTENT)) {
+        if (name !== "suites") symlinkSync(join(CONTENT, name), join(fixture, name))
+      }
+      mkdirSync(join(fixture, "suites"))
+      for (const name of readdirSync(join(CONTENT, "suites"))) {
+        const path = join(CONTENT, "suites", name)
+        const manifest = { ...parseSuiteManifest(path, readFileSync(path, "utf8")) }
+        delete manifest.freeze
+        // Restore only the historical fixture's declaration, as committed at d7c37731.
+        if (name === "c3d1fbb77561.json") {
+          manifest.freeze = { release: "candidate2", at: "2026-10-12T03:33:42.000Z" }
+        }
+        writeFileSync(join(fixture, "suites", name), JSON.stringify(manifest))
+      }
+      // Every measured run and policy remains byte-identical to the complete committed corpus.
+      const ledger = linuxLedger(fixture)
+      expect(ledger.kitty?.runId).toBe("dfd4cd08416fb5f3be3eaeed5acce782")
+      expect(Object.keys(ledger).sort()).toEqual(["alacritty", "ghostty", "kitty", "wezterm", "xterm"])
+      // Every assertion here is a property of the READ-BACK, not of today's corpus: which run the site
+      // selects changes as clean runs land (alacritty and wezterm linux moved from excluded to selected
+      // while this change was in flight), so a test that pinned that would fail for a non-regression.
+      for (const [id, row] of Object.entries(ledger)) {
+        expect(row.version).not.toBe("")
+        expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
+        expect(existsSync(join(CONTENT, row.file))).toBe(true)
+        expect(["default", "allow", "deny-read"]).toContain(row.clipboardProfile)
+        expect(["default", "baseline", "current"]).toContain(row.preset)
+        // A row outside the site's selection must name why it is; a selected row carries no exclusion.
+        if (row.selection === "newest-admitted") expect(row.exclusion).toBeTruthy()
+        else expect(row.exclusion).toBeNull()
+        if (id === "kitty") expect(row.preset).not.toBe("default")
+      }
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
     }
   }, 30_000)
 

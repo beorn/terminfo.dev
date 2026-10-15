@@ -13,12 +13,41 @@
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+import * as reader from "./decisive-share.ts"
 import { loadCandidate2Data } from "../docs/data/candidate-2.data.ts"
 import { inconclusiveRows } from "./decisive-share.ts"
 
 const root = join(import.meta.dirname, "..")
 const data = loadCandidate2Data()
+
+// An explicit historical witness, never a substitute for the live frozen suite's empty rows.
+// Reuse the admitted run and the reader's classifier; the page mapping still runs in full.
+const report = reader.buildReport({ contentDir: join(root, "content"), cohort: "candidate2" })
+const currentCohort = report.candidate2
+if (!currentCohort) throw new Error("candidate2 cohort absent")
+const historicalRun = report.admittedRuns.find((run) => run.runId === "dfd4cd08416fb5f3be3eaeed5acce782")
+if (!historicalRun) throw new Error("historical kitty/linux admitted run absent")
+const historicalCohort = { ...currentCohort, frozenSuiteId: "c3d1fbb77561" }
+const historicalRow = reader.cohortRowForSelected(
+  reader.barRowForContext({
+    context: { terminalId: "kitty", os: "linux" },
+    candidates: [historicalRun],
+    tier62Ids: report.tier62Ids,
+    tier52Ids: report.tier52Ids,
+  }),
+  historicalCohort,
+)
+const historicalReport = vi.spyOn(reader, "buildReport").mockReturnValue({
+  ...report,
+  candidate2: { ...historicalCohort, barRows: [historicalRow] },
+})
+let historicalData: ReturnType<typeof loadCandidate2Data>
+try {
+  historicalData = loadCandidate2Data()
+} finally {
+  historicalReport.mockRestore()
+}
 
 /** The catalog of record: a page that labelled a row with its own id would disagree with this. */
 function catalogNames(): Record<string, string> {
@@ -51,11 +80,16 @@ describe("candidate-2 page: publication rule (AC4)", () => {
   it("publishes a row exactly when its selected run sits on the frozen suite", () => {
     const published = data.contexts.filter((row) => row.published)
     const omitted = data.contexts.filter((row) => !row.published)
-    // Both sides must be non-empty on the real tree, or the rule is never exercised either way.
-    expect(published.length).toBeGreaterThan(0)
+    // Freezing precedes collection: a new suite must publish no historical measurements.
+    expect(published).toEqual([])
     expect(omitted.length).toBeGreaterThan(0)
-    for (const row of published) {
-      expect(row.suiteId, `${row.context} is published but names another suite`).toBe(data.frozenSuiteId)
+    expect(data.measuredAt).toBe("")
+    const historicalPublished = historicalData.contexts.filter((row) => row.published)
+    expect(historicalPublished).toHaveLength(1)
+    for (const row of [...published, ...historicalPublished]) {
+      expect(row.suiteId, `${row.context} is published but names another suite`).toBe(
+        historicalPublished.includes(row) ? historicalData.frozenSuiteId : data.frozenSuiteId,
+      )
       expect(row.reason, `${row.context} is published and must carry no refusal reason`).toBeNull()
       expect(row.denominator).toBe(data.scoredCount)
     }
@@ -108,7 +142,7 @@ describe("candidate-2 page: the two bases", () => {
 
   it("keeps every published row's group denominators equal to the page's own, and its buckets whole", () => {
     const expected = data.groups.map((group) => `${group.key}:${group.denominator}`)
-    for (const row of data.contexts.filter((entry) => entry.published)) {
+    for (const row of [...data.contexts, ...historicalData.contexts].filter((entry) => entry.published)) {
       expect(
         row.groups.map((group) => `${group.key}:${group.denominator}`),
         row.context,
@@ -133,7 +167,7 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
   })
 
   it("carries every inconclusive row's own words, and refuses a row with no cell", () => {
-    for (const row of data.contexts.filter((entry) => entry.published)) {
+    for (const row of [...data.contexts, ...historicalData.contexts].filter((entry) => entry.published)) {
       for (const entry of row.inconclusive) expect(entry.featureId).toBeTruthy()
     }
     expect(() => inconclusiveRows({}, { inconclusiveIds: ["sgr.bold"] } as never)).toThrow(/no cell/)
