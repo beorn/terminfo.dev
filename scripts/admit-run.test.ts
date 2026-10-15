@@ -21,7 +21,7 @@ import {
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
-import * as suiteManifest from "./suite-manifest.ts"
+import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import * as versions from "../packages/admin/versions.ts"
 import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
