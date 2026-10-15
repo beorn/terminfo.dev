@@ -705,12 +705,16 @@ describe("per-category decisive share (28018 AC2)", () => {
 
     const categories = cohortCategories(report.candidate2.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    // This historical formatting witness keeps its real selected kitty/linux run bound to c3.
-    // Moving the current freeze does not create a measured run on the new suite.
-    const selected = report.barRows.find(
-      (entry) => entry.measured && entry.context.terminalId === "kitty" && entry.context.os === "linux",
-    )
-    if (!selected) throw new Error("kitty/linux selected bar row absent")
+    // Keep the real kitty/linux run selected before the freeze as an explicit historical witness.
+    // The new suite has no selected run yet; history never substitutes for its current rows.
+    const historical = report.admittedRuns.find((run) => run.runId === "dfd4cd08416fb5f3be3eaeed5acce782")
+    if (!historical) throw new Error("historical kitty/linux admitted run absent")
+    const selected = barRowForContext({
+      context: { terminalId: "kitty", os: "linux" },
+      candidates: [historical],
+      tier62Ids: report.tier62Ids,
+      tier52Ids: report.tier52Ids,
+    })
     const row = cohortRowForSelected(selected, { ...report.candidate2, frozenSuiteId: "c3d1fbb77561" })
     if (!row.measured || !("run" in row)) throw new Error("historical kitty/linux measured bar row absent")
     expect(row.run.suiteId).toBe("c3d1fbb77561")
