@@ -21,12 +21,21 @@ import { homedir } from "node:os"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
-import type { ProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import {
+  DEFAULT_TIMEOUT_MS,
+  queryPixelGeometry,
+  type PixelGeometry,
+  type ProbeRun,
+  type ProbeSuiteManifest,
+  type TermContext,
+} from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
+import { createDarwinCapture } from "./darwin-capture.ts"
+import { calibrateCaptureOrigin } from "./capture-calibration.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
@@ -161,8 +170,19 @@ export async function collectProbeRun(
   const probeHash = manifest.probeHash
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
+  const hostedDarwinReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
+  const kind = ownedTerminalKind({
+    clipboardReceipt,
+    hostedDarwinReceipt,
+    terminalAppOwner: options.terminalAppOwner,
+    platform: process.platform,
+  })
+  if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
+    throw new Error("Darwin capture directory requires a verified hosted-runner terminal receipt")
+  }
+  const hostedDarwinCapture = process.platform === "darwin" && kind === "darwinHosted" && Boolean(captureDirectory)
   const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
-  if ((captureDirectory || clipboardReceipt) && !provenancePath) {
+  if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedDarwinCapture) {
     throw new Error("Controlled Linux collection requires runtime provenance")
   }
   if (provenancePath && !captureDirectory && !clipboardReceipt) {
@@ -170,12 +190,19 @@ export async function collectProbeRun(
   }
   const provenanceSource: unknown = provenancePath ? JSON.parse(readFileSync(provenancePath, "utf8")) : undefined
   const executable = provenanceSource ? measuredExecutable(provenanceSource) : undefined
-  if ((captureDirectory || clipboardReceipt) && !executable) {
+  if ((captureDirectory || clipboardReceipt) && !executable && !hostedDarwinCapture) {
     throw new Error("Controlled Linux collection lacks measured executable")
   }
   let capture: ProbeCapture | undefined
+  let prepareCapture:
+    | ((input: {
+        context: TermContext
+        featureId: string
+        recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
+      }) => Promise<void>)
+    | undefined
   let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
-  if (captureDirectory) {
+  if (captureDirectory && process.platform === "linux") {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
     capture = await createLinuxCapture(captureDirectory, executable)
     input = await createLinuxInput(executable)
@@ -188,13 +215,6 @@ export async function collectProbeRun(
     capture = frameUnavailableCapture()
   }
   let ownedTerminal: OwnedTerminal | undefined
-  const hostedDarwinReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
-  const kind = ownedTerminalKind({
-    clipboardReceipt,
-    hostedDarwinReceipt,
-    terminalAppOwner: options.terminalAppOwner,
-    platform: process.platform,
-  })
   if (kind === "linux") {
     if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
     ownedTerminal = await createOwnedTerminal({
@@ -219,6 +239,57 @@ export async function collectProbeRun(
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       darwinHosted: { receiptPath: hostedDarwinReceipt },
     })
+    if (captureDirectory) {
+      const appPid = ownedTerminal.hostedAppPid
+      if (!appPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
+      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
+      let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
+      let calibratedGeometry: PixelGeometry | undefined
+      let calibrationError: Error | undefined
+      const noGeometry = (message: string) => {
+        const error = new Error(`Darwin capture calibration refused: ${message}`)
+        error.name = "UndeclaredTerminalGeometry"
+        return error
+      }
+      capture = async (checkpoint) => {
+        if (calibrationError) throw calibrationError
+        if (!checkpoint.cells && !checkpoint.pixelGeometry) {
+          const result = await darwinCapture.captureRaw(checkpoint)
+          return result.result
+        }
+        if (!textOrigin || !calibratedGeometry) throw noGeometry("no witnessed text-area origin is available")
+        if (
+          checkpoint.pixelGeometry &&
+          (checkpoint.pixelGeometry.cellWidth !== calibratedGeometry.cellWidth ||
+            checkpoint.pixelGeometry.cellHeight !== calibratedGeometry.cellHeight ||
+            checkpoint.pixelGeometry.textWidth !== calibratedGeometry.textWidth ||
+            checkpoint.pixelGeometry.textHeight !== calibratedGeometry.textHeight)
+        ) {
+          throw noGeometry("terminal pixel geometry changed after origin calibration")
+        }
+        return darwinCapture.capture(checkpoint, textOrigin)
+      }
+      prepareCapture = async ({ context, featureId, recordCapture }) => {
+        try {
+          const pixelReport = await queryPixelGeometry(context)
+          if ("missing" in pixelReport) throw noGeometry(pixelReport.missing)
+          calibratedGeometry = pixelReport.geometry
+          textOrigin = await calibrateCaptureOrigin({
+            ctx: context,
+            pixelGeometry: pixelReport.geometry,
+            timeoutMs: DEFAULT_TIMEOUT_MS,
+            captureRaw: async (label, deadline) => {
+              const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
+              recordCapture(result.result)
+              return result.decoded
+            },
+          })
+        } catch (cause) {
+          const error = cause instanceof Error ? cause : new Error(String(cause))
+          calibrationError = error
+        }
+      }
+    }
   }
   const clipboard = ownedTerminal?.clipboard
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
@@ -276,6 +347,7 @@ export async function collectProbeRun(
         ...(input && { input }),
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
+        ...(prepareCapture && { prepareCapture }),
       })
       if (identityQuery) {
         result.rawReplies["collector.xtversion"] = identityQuery.raw

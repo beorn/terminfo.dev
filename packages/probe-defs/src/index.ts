@@ -7,6 +7,8 @@ export type {
   TerminalQueryOutcome,
   ClipboardFixture,
   InputFixture,
+  Utf8Decoding,
+  Utf8DecodingReading,
   CaptureCells,
   CapturePixelGeometry,
   CaptureRequest,
@@ -38,12 +40,21 @@ export type {
   RunProvenance,
   Interpretation,
 } from "./types.ts"
-export { sgrProbe, cursorProbe, decrpmModeProbe, isBlank, readHyperlinkMetadata, probe } from "./helpers.ts"
+export {
+  sgrProbe,
+  cursorProbe,
+  decrpmModeProbe,
+  isBlank,
+  readHyperlinkMetadata,
+  probe,
+  utf8DecodingRefusal,
+} from "./helpers.ts"
 export {
   captureRegionReadbackDecision,
   captureRegionVerdict,
   collectorRegionRead,
   queryPixelGeometry,
+  DEFAULT_TIMEOUT_MS,
   type CellRegion,
   type PixelGeometry,
   type RegionCapture,

@@ -470,3 +470,35 @@ test("charsets.utf8 asks the terminal's pixel report before painting its two-cel
   expect(frames).toEqual([])
   expect(events).toEqual([])
 })
+
+// 28752: every charset row whose expected frame is written PLAINLY declares the context it assumes,
+// so an 8-bit run is inconclusive BY NAME rather than compared against glyphs the terminal cannot
+// paint. This is the wiring proof: each of the four rows reaches the measured fact and reads no
+// pixels at all.
+test("every plain-written charset row names an 8-bit decoding context before it captures", async () => {
+  for (const id of ["charsets.dec-special", "charsets.utf8", "charsets.g0-g1-switching", "charsets.dec-line-drawing"]) {
+    const definition = charsetsProbes.find((probe) => probe.id === id)
+    if (!definition?.term) throw new Error(`missing app callback for ${id}`)
+    const events: string[] = []
+    const context = app(4, 8, events)
+    context.utf8Decoding = async () => "8-bit"
+    context.queryWithSentinelOutcome = async (sequence) =>
+      sequence === "\x1b[16t"
+        ? { match: ["\x1b[6;16;8t", "16", "8"], reason: "reply" as const, raw: "\x1b[6;16;8t", rawBase64: "" }
+        : { match: ["\x1b[4;320;128t", "320", "128"], reason: "reply" as const, raw: "\x1b[4;320;128t", rawBase64: "" }
+    let captured = false
+    context.capture = async () => {
+      captured = true
+      throw new Error("an 8-bit decoding context must not capture pixels")
+    }
+    const result = await definition.term(context)
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(String(result.observation?.note), id).toContain("decodes plain-written UTF-8 as ISO-8859-1")
+    expect(captured, id).toBe(false)
+    expect(events, id).toEqual([])
+  }
+})

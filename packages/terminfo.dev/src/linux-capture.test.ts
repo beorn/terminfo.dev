@@ -19,20 +19,56 @@ import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import {
-  capturePixels,
-  cellRectangle,
-  createLinuxCapture,
-  drawnSurface,
-  screenPixels,
-  textAreaOrigin,
-  windowPixels,
-  type CapturedFrame,
-} from "./linux-capture.ts"
+import { createLinuxCapture, drawnSurface, screenPixels, textAreaOrigin, windowPixels } from "./linux-capture.ts"
+
+import { capturePixels, cellRectangle, command, finishCapture, type CapturedFrame } from "./capture-core.ts"
 
 const temporary: string[] = []
 const originalPath = process.env.PATH
 const originalDisplay = process.env.DISPLAY
+
+// A successful screenshot command can still explain a missing PNG only on stderr.
+test("capture command preserves zero-exit stderr before resolving unchanged stdout bytes", async () => {
+  const observed: Buffer[] = []
+  const stdout = await command(
+    process.execPath,
+    ["-e", "process.stdout.write(Buffer.from([17, 0, 23])); process.stderr.write(Buffer.from([0, 255, 10]))"],
+    undefined,
+    undefined,
+    (stderr) => observed.push(stderr),
+  )
+  expect(stdout).toEqual(Buffer.from([17, 0, 23]))
+  expect(observed).toEqual([Buffer.from([0, 255, 10])])
+})
+
+// Calibration's oracle deadline bounds the running child, not just the next polling iteration.
+test("capture command terminates a real child at its supplied deadline and never starts after expiry", async () => {
+  const { directory } = fixture()
+  const completed = join(directory, "deadline-completed")
+  await expect(
+    command(
+      process.execPath,
+      [
+        "-e",
+        "process.on('SIGTERM', () => {}); setTimeout(() => require('node:fs').writeFileSync(process.argv[1], 'completed'), 2000)",
+        completed,
+      ],
+      undefined,
+      Date.now() + 500,
+    ),
+  ).rejects.toMatchObject({ killed: true, signal: "SIGKILL" })
+  expect(existsSync(completed)).toBe(false)
+  const invoked = join(directory, "expired-invoked")
+  await expect(
+    command(
+      process.execPath,
+      ["-e", "require('node:fs').writeFileSync(process.argv[1], 'invoked')", invoked],
+      undefined,
+      Date.now() - 1,
+    ),
+  ).rejects.toThrow(/capture command.*deadline expired/i)
+  expect(existsSync(invoked)).toBe(false)
+})
 
 function executable(path: string, source: string): void {
   writeFileSync(path, `#!/bin/sh\nset -eu\n${source}\n`)
@@ -148,7 +184,7 @@ cat "$TEST_CAPTURE_PNG"`,
   process.env.TEST_CAPTURE_PNG = png
   process.env.TEST_CAPTURE_FAIL = ""
   process.env.TEST_CAPTURE_XWD_SIZE = join(directory, "xwd-size")
-  return { directory, started, finished, release, stdin }
+  return { directory, started, finished, release, stdin, png }
 }
 
 function liveExecutable(sha256?: string) {
@@ -531,4 +567,107 @@ test.runIf(process.platform === "linux")("capture 1306x816 vs window 1304x814 na
       pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 800, textHeight: 480 },
     }),
   ).rejects.toThrow("capture 1306x816 differs from window 1304x814 (border included?)")
+})
+
+// C's PNG adapter must use its calibrated named origin, never Linux colour centring.
+test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at the named origin", async (format) => {
+  const { directory, png } = fixture()
+  const source = {
+    bytes: format === "png" ? readFileSync(png) : Buffer.from("fixture-xwd"),
+    format,
+    width: 640,
+    height: 480,
+    capturedAt: 123,
+  }
+  const checkpoint = {
+    featureId: "fixture.shared",
+    role: "target" as const,
+    label: "shared",
+    cells: { top: 2, left: 3, bottom: 2, right: 4 },
+    pixelGeometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 480 },
+  }
+  const result = await finishCapture({
+    directory,
+    checkpoint,
+    source,
+    png: readFileSync(png),
+    origin: { origin: { x: 2, y: 34 }, basis: "solid-cell calibration" },
+    trace: { converter: "fixture" },
+  })
+  expect(result.frame.pixelsDigest).toBe(
+    `sha256:${createHash("sha256")
+      .update(Buffer.alloc(640 * 480 * 4))
+      .digest("hex")}`,
+  )
+  expect(result.frame.regionDigest).toBe(
+    `sha256:${createHash("sha256")
+      .update(Buffer.alloc(16 * 16 * 4))
+      .digest("hex")}`,
+  )
+  expect(result.trace.textArea).toEqual({ origin: { x: 2, y: 34 }, basis: "solid-cell calibration" })
+  expect(result.trace.rectangle).toEqual({ x: 18, y: 50, width: 16, height: 16 })
+  const retained = result.trace.retained as Record<string, string>
+  expect(readFileSync(join(directory, retained[format]!))).toEqual(source.bytes)
+  await expect(
+    finishCapture({
+      directory,
+      checkpoint,
+      source,
+      png: readFileSync(png),
+      origin: { origin: { x: 2, y: 34 }, basis: "" },
+      trace: {},
+    }),
+  ).rejects.toThrow(/named text-area origin/)
+  await expect(
+    finishCapture({
+      directory,
+      checkpoint,
+      source,
+      png: readFileSync(png),
+      origin: { origin: { x: 2.5, y: 34 }, basis: "calibration" },
+      trace: {},
+    }),
+  ).rejects.toThrow(/integers/)
+  const unpaired = { ...checkpoint, pixelGeometry: undefined }
+  await expect(
+    finishCapture({
+      directory,
+      checkpoint: unpaired,
+      source,
+      png: readFileSync(png),
+      origin: { origin: { x: 2, y: 34 }, basis: "calibration" },
+      trace: {},
+    }),
+  ).rejects.toThrow(/without both cells/)
+  process.env.TEST_CAPTURE_FORCE_CAPTURE = "639x480"
+  await expect(
+    finishCapture({
+      directory,
+      checkpoint,
+      source,
+      png: readFileSync(png),
+      origin: { origin: { x: 2, y: 34 }, basis: "calibration" },
+      trace: {},
+    }),
+  ).rejects.toThrow("capture 639x480 differs from window 640x480")
+  // A plain frame still bypasses raw decoding and origin resolution, as Linux always did.
+  process.env.TEST_CAPTURE_FAIL = "conversion"
+  const plain = await finishCapture({
+    directory,
+    checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
+    source,
+    png: readFileSync(png),
+    origin: () => {
+      throw new Error("origin resolver must not run")
+    },
+    trace: { fixture: "plain" },
+  })
+  expect(plain.frame).toEqual({
+    role: "control",
+    label: "plain",
+    capturedAt: 123,
+    ref: result.frame.ref,
+    sourceRef: result.frame.sourceRef,
+  })
+  expect(plain.trace).toEqual({ fixture: "plain" })
 })

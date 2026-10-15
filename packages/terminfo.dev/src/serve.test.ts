@@ -141,6 +141,93 @@ describe("daemon HTTP boundary", () => {
 })
 
 describe("private finite daemon startup", () => {
+  it("reports the same named capture refusal for the first and later probes when Darwin calibration fails", () => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+        import { mock } from "bun:test"
+        import assert from "node:assert/strict"
+        Object.defineProperty(process, "platform", { value: "darwin" })
+        const tty = await import("./packages/terminfo.dev/src/tty.ts")
+        const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+        const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+        let calibrationCalls = 0, unexpectedCaptures = 0
+        const geometry = { status: "measured", rows: 24, cols: 80 }
+        mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+          detectTerminal: () => ({ name: "ghostty", version: "1.3.1", os: "macos", osVersion: "fixture" })
+        }))
+        // Hardware admission is covered by owned-terminal tests; keep the real collector/batch.
+        mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+          ownedTerminalVerifiedFor: () => true,
+          createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture",
+            hostedAppPid: 42, summary: "owned fixture", readGeometry: async () => geometry, dispose: async () => {} })
+        }))
+        mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
+          readDisposableReceipt: () => undefined
+        }))
+        mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+          withRawMode: async callback => callback(), drainStdin: async () => {},
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            const raw = sequence.includes("[18t") ? "\\x1b[8;24;80t"
+              : sequence.includes("[16t") ? "\\x1b[6;17;8t"
+              : sequence.includes("[14t") ? "\\x1b[4;408;640t"
+              : "\\x1bP>|ghostty 1.3.1\\x1b\\\\"
+            return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+          }
+        }))
+        mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+          createDarwinCapture: async () => ({
+            capture: async () => { unexpectedCaptures++; throw new Error("capture must retain the calibration refusal") },
+            captureRaw: async () => { unexpectedCaptures++; throw new Error("capture must retain the calibration refusal") }
+          })
+        }))
+        mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+          calibrateCaptureOrigin: async () => {
+            calibrationCalls++
+            const error = new Error("Capture calibration fixture: non-solid difference cannot supply an origin")
+            error.name = "CaptureCalibrationError"
+            throw error
+          }
+        }))
+        const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+        globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+          manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+          collectorRevision: "b".repeat(40)
+        }
+        const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+        const ids = ["extensions.truecolor", "erase.line.all"]
+        const run = await collectProbeRun({ ids })
+        assert.deepEqual(run.observations.map(o => ({ featureId: o.featureId, outcome: o.outcome,
+          reason: o.reason, evidence: o.evidence, note: o.note })), ids.map(featureId => ({
+          featureId, outcome: "error", reason: "collector-error", evidence: "pixels",
+          note: "Capture calibration fixture: non-solid difference cannot supply an origin"
+        })))
+        assert.deepEqual(run.ungradedDiagnostics, {})
+        assert.equal(calibrationCalls, 1)
+        assert.equal(unexpectedCaptures, 0)
+      `,
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+          TERMINFO_DISPOSABLE_RECEIPT: "hardware-receipt-fixture",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        },
+        encoding: "utf8",
+        timeout: 5000,
+      },
+    )
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+  })
+
   it("measures owned subset identity independently, retains feature replies and disposes on refusal", () => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-identity-"))
     const result = spawnSync(

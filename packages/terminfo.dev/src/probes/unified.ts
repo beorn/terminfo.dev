@@ -19,6 +19,7 @@ import {
   type ProbeResult,
   type TermContext,
   type UngradedDiagnostic,
+  type Utf8DecodingReading,
 } from "@terminfo/probe-defs"
 import {
   query,
@@ -27,6 +28,7 @@ import {
   queryWithSentinelOutcome,
   queryCursorPosition,
   measureRenderedWidth,
+  measureUtf8Decoding,
   queryMode,
   readResponse,
   withTTYOperation,
@@ -66,12 +68,14 @@ function createTermContext({
   events,
   probe,
   geometry,
+  utf8Decoding,
 }: {
   out: NodeJS.WriteStream
   writes?: string[]
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
   geometry?: Extract<GeometryMeasurement, { status: "measured" }>
+  utf8Decoding: () => Promise<Utf8DecodingReading>
 }): TermContext {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
@@ -115,6 +119,7 @@ function createTermContext({
     get rows() {
       return size().rows
     },
+    utf8Decoding,
   }
 }
 
@@ -146,6 +151,8 @@ export type ProbeCapture = (checkpoint: {
   /** The terminal's own pixel report, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
 }) => Promise<{ frame: ObservationFrame; trace: Record<string, unknown> }>
+
+type CapturedProbeFrame = Awaited<ReturnType<ProbeCapture>>
 
 export interface GeometryCorroboration {
   status: "agree" | "conflict" | "uncorroborated" | "silent" | "malformed"
@@ -223,6 +230,12 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
+    /** Prepare an owned capture calibration before the first geometry-requiring mutating callback. */
+    prepareCapture?: (input: {
+      context: TermContext
+      featureId: string
+      recordCapture: (result: CapturedProbeFrame) => void
+    }) => Promise<void>
     input?: InputFixture
     ownedTerminal?: OwnedTerminal
     captureRunId?: string
@@ -288,6 +301,23 @@ export async function runProbeBatch(
         }
       : { kind: "shared" },
   )
+  // ONE measured context fact for the whole run (28752): how this terminal decodes a plainly
+  // written two-byte UTF-8 character. A row whose oracle compares plainly written glyphs asks for
+  // it before grading; the first ask measures, every later ask reads the same answer, and the raw
+  // reply is recorded beside the other collector facts so a reader can see what was measured.
+  // The ATTEMPT is the memo, not its fulfilled value (@dev/review2): two rows that ask before the
+  // first round trip returns share ONE measurement instead of racing a second, and an attempt that
+  // fails stays failed for the batch rather than being retried by every later row — so the run's
+  // recorded fact and the answer each row grades against are always the same single attempt.
+  let decodingAttempt: Promise<Utf8DecodingReading> | undefined
+  const readUtf8Decoding = (): Promise<Utf8DecodingReading> => {
+    decodingAttempt ??= measureUtf8Decoding().then((reading) => {
+      batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({ decoding: reading })
+      return reading
+    })
+    return decodingAttempt
+  }
+  let capturePrepared = false
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -295,6 +325,17 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
+    const recordCapture = (result: CapturedProbeFrame, expectedRole?: ObservationFrame["role"]) => {
+      captureAttempted = true
+      if (
+        (expectedRole !== undefined && result.frame.role !== expectedRole) ||
+        !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)
+      ) {
+        throw new Error(`Capture adapter returned an invalid frame for ${probe.id}`)
+      }
+      captures.push(result)
+      if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+    }
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
     const refusedBecause = !needsOwnership
       ? undefined
@@ -358,6 +399,7 @@ export async function runProbeBatch(
       events,
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
+      utf8Decoding: readUtf8Decoding,
     })
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard
@@ -370,11 +412,7 @@ export async function runProbeBatch(
       context.capture = async (checkpoint) => {
         captureAttempted = true
         const result = await capture({ featureId: probe.id, ...checkpoint })
-        if (result.frame.role !== checkpoint.role || !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)) {
-          throw new Error(`Capture adapter returned an invalid frame for ${probe.id} ${checkpoint.role}`)
-        }
-        captures.push(result)
-        if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+        recordCapture(result, checkpoint.role)
         return result.frame
       }
     }
@@ -383,7 +421,26 @@ export async function runProbeBatch(
       const callback = probe.term
       let result
       try {
-        result = await withTTYOperation(() => withTTYQueryTrace(queries, events, () => callback(context)), out)
+        result = await withTTYOperation(
+          () =>
+            withTTYQueryTrace(queries, events, async () => {
+              if (
+                options.prepareCapture &&
+                !capturePrepared &&
+                probe.termNeedsGeometry === true &&
+                probe.termWrites !== "query"
+              ) {
+                capturePrepared = true
+                await options.prepareCapture({
+                  context,
+                  featureId: probe.id,
+                  recordCapture: (captured) => recordCapture(captured),
+                })
+              }
+              return callback(context)
+            }),
+          out,
+        )
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }

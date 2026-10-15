@@ -26,6 +26,7 @@
  * miss the edited cells and leave seed and expected equal — inconclusive BY NAME, never a verdict.
  */
 import type { CaptureCells, CapturePixelGeometry, ObservationFrame, ProbeResult, TermContext } from "./types.ts"
+import { utf8DecodingRefusal } from "./helpers.ts"
 
 export type CellRegion = CaptureCells
 export type PixelGeometry = CapturePixelGeometry
@@ -85,6 +86,13 @@ export interface RegionReadback {
    * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
    */
   ignored?: string
+  /**
+   * This row's expected frame is written PLAINLY, so deciding it assumes the run decodes plain
+   * UTF-8. The measured context fact is read before the first capture: a run measured 8-bit is
+   * inconclusive BY NAME instead of being compared against glyphs its terminal cannot paint
+   * (#28752).
+   */
+  requiresUtf8?: true
   /** The terminal's own pixel report, carried into every capture request. */
   pixelGeometry: PixelGeometry
   /** Bound on one paint witness, in ms. A timeout is inconclusive by name, never unsupported. */
@@ -100,7 +108,7 @@ export interface RegionReadback {
  * pixel report is validated separately, and this value never reaches a capture request.
  */
 const PENDING_GEOMETRY: PixelGeometry = { cellWidth: 1, cellHeight: 1, textWidth: 1, textHeight: 1 }
-const DEFAULT_TIMEOUT_MS = 5000
+export const DEFAULT_TIMEOUT_MS = 5000
 const DEFAULT_POLL_MS = 250
 
 /**
@@ -337,6 +345,10 @@ export async function captureRegionReadbackDecision(
   if (!read) return null
   const refusal = regionRefusal(id, spec, ctx.rows, ctx.cols)
   if (refusal) return refusal
+  if (spec.requiresUtf8 === true) {
+    const decodingRefusal = await utf8DecodingRefusal(ctx, id)
+    if (decodingRefusal) return decodingRefusal
+  }
   const witnessCell: CellRegion = {
     top: spec.sentinel.row,
     left: spec.sentinel.col,
@@ -463,6 +475,15 @@ export async function captureRegionReadbackDecision(
     // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
     const unsupported = after === seed || (ignored !== undefined && after === ignored)
     if (!supported && !unsupported) {
+      // The three compared planes are pairwise distinct: the seed and the expected frame already
+      // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
+      // equals neither. State that OBSERVATION and nothing more: "matched none" told the reader
+      // nothing, but naming a cause would be wrong, because a third distinct frame is also exactly
+      // what a WRONG effect looks like (a DECDC that deleted the wrong column also yields
+      // after != seed and after != expected). This oracle cannot tell an incorrect effect from a
+      // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
+      // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
+      // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
       return {
         pass: false,
         response: observed,
@@ -472,7 +493,7 @@ export async function captureRegionReadbackDecision(
           evidence: "pixels",
           screenshotRef: frames[3]?.ref,
           frames,
-          note: `${id}: the post-sequence region matched none of the compared frames (${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
+          note: `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
         },
       }
     }

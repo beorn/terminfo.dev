@@ -58,7 +58,9 @@ test("requireHostedDarwinAppAncestor accepts the named app and refuses a wrong a
     { pid: 100, ppid: 90, comm: "zsh" },
     { pid: 110, ppid: 100, comm: "bun" },
   ]
-  expect(requireHostedDarwinAppAncestor("iTerm2", named)).toEqual({ pid: 90, ppid: 80, comm: "iTerm2" })
+  const measuredOwner = requireHostedDarwinAppAncestor("iTerm2", named)
+  expect(measuredOwner).toEqual({ pid: 90, ppid: 80, comm: "iTerm2" })
+  expect(measuredOwner.pid).toBe(90)
 
   const wrong = [
     { pid: 80, ppid: 1, comm: "launchd" },
