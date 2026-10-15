@@ -446,9 +446,9 @@ describe("sentinel grace override", () => {
  * The first row is the one @dev/review2 asked for: it is the CJK counterexample itself. The sample
  * must be immune to a width policy, because the previous sample é is East Asian Ambiguous and
  * xterm's cjkWidth legitimately advances it two cells in genuine UTF-8 — which the row would have
- * read as an 8-bit decoding. The two cells a widened AMBIGUOUS character can produce are therefore
- * covered from both sides: the sample cannot produce them, and a widening of an 8-bit byte still
- * reads 8-bit instead of degrading to unreadable.
+ * read as an 8-bit decoding. The sample's own bytes are Neutral, so neither hypothesis can be forged:
+ * one cell reads utf8, two cells reads 8-bit, and any advance beyond two cells is evidence outside
+ * both hypotheses and reads unusable, never a diagnosis (@dev/review2 2026-10-14).
  */
 describe("UTF-8 decode context measurement", () => {
   function harness(replies: Array<string | null>) {
@@ -491,9 +491,14 @@ describe("UTF-8 decode context measurement", () => {
     expect(writes.at(-1)).toBe("\x1b8")
   })
 
-  it("reads a wider advance as 8-bit too, so an Ambiguous byte a width policy widens cannot blur the split decode into no answer", async () => {
+  it("names an advance beyond both hypotheses unusable, so a cursor the decode cannot explain is never a diagnosis", async () => {
     const { out } = harness(["\x1b[2;1R", "\x1b[2;4R"])
-    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("8-bit")
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("unusable")
+  })
+
+  it("names a wildly unrelated advance (998 cells) unusable too", async () => {
+    const { out } = harness(["\x1b[2;1R", "\x1b[2;999R"])
+    expect(await withTTYOperation(() => measureUtf8Decoding(), out)).toBe("unusable")
   })
 
   it("names an answered coordinate it cannot read unusable, before painting anything at a foreign origin", async () => {
