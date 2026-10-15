@@ -6,6 +6,7 @@ import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
+import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 
 function stripHtml(html: string): string {
   return html
@@ -16,6 +17,7 @@ function stripHtml(html: string): string {
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const docsDir = join(__dirname, "..")
+const contentDir = join(docsDir, "..", "content")
 const buildMetadata = createBuildMetadata(join(docsDir, ".."))
 
 // --- Load data for sidebar generation ---
@@ -31,76 +33,14 @@ function loadPlatformItems(): Array<{ text: string; link: string }> {
 }
 
 function buildSidebar() {
-  const terminalsPath = join(docsDir, "..", "content", "terminals.json")
-  let rawTerminals: unknown
-  try {
-    rawTerminals = JSON.parse(readFileSync(terminalsPath, "utf-8"))
-  } catch (error) {
-    throw new Error(`Cannot load ${terminalsPath}`, { cause: error })
-  }
-  if (!rawTerminals || typeof rawTerminals !== "object" || Array.isArray(rawTerminals)) {
-    throw new Error(`${terminalsPath}: expected an object catalog`)
-  }
-  for (const [key, entry] of Object.entries(rawTerminals)) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error(`${terminalsPath}: terminal "${key}" must be an object`)
-    }
-    const terminal = entry as Record<string, unknown>
-    for (const field of ["label", "slug"] as const) {
-      if (typeof terminal[field] !== "string" || !(terminal[field] as string).trim()) {
-        throw new Error(`${terminalsPath}: terminal "${key}" requires a nonempty ${field}`)
-      }
-    }
-  }
-  const terminalsData = rawTerminals as Record<
-    string,
-    {
-      label: string
-      slug: string
-      historical?: boolean
-      year?: number
-      intermediary?: boolean
-      headlessBackends?: string[]
-    }
-  >
-
-  // Features are required by both tag and category navigation.
-  const featuresPath = join(docsDir, "..", "content", "features.json")
-  let rawFeatures: unknown
-  try {
-    rawFeatures = JSON.parse(readFileSync(featuresPath, "utf-8"))
-  } catch (error) {
-    throw new Error(`Cannot load ${featuresPath}`, { cause: error })
-  }
-  if (!rawFeatures || typeof rawFeatures !== "object" || Array.isArray(rawFeatures)) {
-    throw new Error(`${featuresPath}: expected an object catalog`)
-  }
-  for (const [id, entry] of Object.entries(rawFeatures)) {
-    if (id === "$comment") continue
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      throw new Error(`${featuresPath}: feature "${id}" must be an object`)
-    }
-    const feature = entry as Record<string, unknown>
-    if (typeof feature.name !== "string" || !(feature.name as string).trim()) {
-      throw new Error(`${featuresPath}: feature "${id}" requires a nonempty name`)
-    }
-    if (feature.slug !== undefined && (typeof feature.slug !== "string" || !(feature.slug as string).trim())) {
-      throw new Error(`${featuresPath}: feature "${id}" has an invalid slug`)
-    }
-    if (
-      feature.tags !== undefined &&
-      (!Array.isArray(feature.tags) || feature.tags.some((tag) => typeof tag !== "string" || !tag.trim()))
-    ) {
-      throw new Error(`${featuresPath}: feature "${id}" has invalid tags`)
-    }
-  }
-  const featuresData = rawFeatures as Record<string, { name: string; slug?: string; tags?: string[] }>
+  // Both catalogs come through their one loader (@terminfo/catalog); the per-field validation this
+  // function used to repeat now lives there. `terminalsData` keeps its historical/intermediary
+  // fields, and `featuresData` its tags, through the same records the rest of the site reads.
+  const terminalsData: Record<string, TerminalRecord> = loadTerminals(contentDir)
+  const featuresData: Record<string, FeatureRecord> = loadFeatures(contentDir)
   const tags = new Set<string>()
-  for (const [id, entry] of Object.entries(featuresData)) {
-    if (id === "$comment") continue
-    for (const tag of entry.tags ?? []) {
-      tags.add(tag)
-    }
+  for (const entry of Object.values(featuresData)) {
+    for (const tag of entry.tags ?? []) tags.add(tag)
   }
 
   // Load tag labels from content/standards.json

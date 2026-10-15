@@ -129,12 +129,23 @@ describe("website build identity", () => {
     )
     expect(result).toEqual({
       sourceCommit: sha,
+      codeGitlink: null,
       dirty: false,
       context: "github",
       builtAt: "2026-09-28T20:00:00.000Z",
       githubRun: { id: "36453006753", attempt: 1 },
     })
     expect(buildStamp(result)).toContain("GitHub run 36453006753/1")
+  })
+
+  it("records the CODE gitlink the caller built for, and refuses a malformed one", () => {
+    const pin = "a".repeat(40)
+    expect(createBuildMetadata(repo, { TERMINFO_SITE_CODE_GITLINK: pin }).codeGitlink).toBe(pin)
+    // Absent means "not a landing build" — CI and a bare developer checkout — and is recorded as null, not guessed.
+    expect(createBuildMetadata(repo, {}).codeGitlink).toBeNull()
+    expect(() => createBuildMetadata(repo, { TERMINFO_SITE_CODE_GITLINK: "not-a-sha" })).toThrow(
+      /Invalid TERMINFO_SITE_CODE_GITLINK/,
+    )
   })
 
   it("refuses a mismatched CI commit and marks dirty local builds", () => {
@@ -159,6 +170,7 @@ describe("website build identity", () => {
     writeFileSync(join(repo, "index.md"), "# changed\n")
     const local = createBuildMetadata(repo, {})
     expect(local.context).toBe("local")
+    expect(local.codeGitlink).toBeNull()
     expect(local.dirty).toBe(true)
     expect(buildStamp(local)).toContain("local changes")
   })
@@ -169,7 +181,7 @@ describe("website sidebar metadata", () => {
 
   it.each([
     ["features", "features.json"],
-    ["terminals", 'terminal "ghostty" requires a nonempty label'],
+    ["terminals", 'entry "ghostty" is missing a non-empty "label"'],
   ])("rejects malformed %s metadata during config evaluation", (kind, expected) => {
     const script = `
       import * as fs from "node:fs";

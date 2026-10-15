@@ -106,6 +106,46 @@ test("text width claims require an ASCII control and the named sample", async ()
   }
 })
 
+// 28752: a wide-sample row compares plainly written glyphs, so it assumes the run decodes plain
+// UTF-8. A run measured 8-bit paints a different string from the one the row claims: the row is
+// inconclusive and NAMES the cause instead of reading a context defect as a width negative.
+test("a measured 8-bit decoding context names the cause instead of grading a plain-written glyph", async () => {
+  for (const id of [
+    "text.wide.emoji",
+    "text.wide.cjk",
+    "text.wide.emoji-flags",
+    "text.wide.emoji-vs16",
+    "text.wide.emoji-zwj",
+  ]) {
+    const probe = byId(id)
+    let widthCalls = 0
+    const result = await probe.term(
+      app({
+        utf8Decoding: async () => "8-bit",
+        measureRenderedWidth: async () => {
+          widthCalls += 1
+          return 2
+        },
+      }),
+    )
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "query",
+    })
+    expect(String(result.observation?.note), id).toContain("decodes plain-written UTF-8 as ISO-8859-1")
+    expect(widthCalls, id).toBe(0)
+    expect(result.assertions, id).toBeUndefined()
+    expect(result.pass, id).toBe(false)
+  }
+})
+
+test("a measured utf8 decoding context leaves the wide rows to their own width oracle", async () => {
+  const probe = byId("text.wide.emoji")
+  const result = await probe.term(app({ utf8Decoding: async () => "utf8", measureRenderedWidth: async () => 2 }))
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+})
+
 test("headless wide sample needs ASCII cell control before a support assertion", () => {
   const probe = byId("text.wide.emoji")
   const blank = headless().getCell(0, 0)

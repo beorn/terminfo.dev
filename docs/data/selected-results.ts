@@ -2,7 +2,8 @@
 import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
-import { treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
+import { classifyCells, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
+import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
   type Observation,
@@ -108,9 +109,24 @@ export interface SelectedVersion {
   }
 }
 
+/**
+ * The reader's one product: the classified state of every cell of every run the projection read, keyed
+ * by run id. Every bar, page and CLI view folds THIS table (`aggregateCells` in `release-scope.ts`)
+ * rather than walking raw cells, so `classifyCell` runs once per cell, here, and no consumer can drift
+ * into a second copy of the classification (28792 item 1).
+ *
+ * The key is the run id, not the context key: a consumer of the SELECTED run reads
+ * `table[current[context].runId]`, while `decisive-share` also cuts bars over the runs in `history`
+ * (its ADMITTED RUNS section), and one run belongs to exactly one context, so this key covers both
+ * without re-classifying anything.
+ */
+export type CellTable = Readonly<Record<string, Readonly<Record<string, CellState>>>>
+
 export interface SelectedProjection {
   current: Record<string, SelectedVersion>
   versions: Record<string, SelectedVersion[]>
+  /** The classified state of every run's cells, keyed by run id and then by feature id. */
+  table: CellTable
   /** Includes every valid raw run, even ones excluded from selection. */
   history: Record<string, SelectedVersion[]>
   exclusions: Array<{ runId: string; path: string; reason: string }>
@@ -828,8 +844,16 @@ export function projectResults(
     if (!selected) throw new Error(`missing selected version for ${key}`)
     current[key] = selected
   }
+  // One classification per cell, for every run the projection read: `current` and `versions` are drawn
+  // from `history`, so classifying the history covers every consumer, and a run's cells are classified
+  // once rather than once per reader.
+  const table: Record<string, Record<string, CellState>> = {}
+  for (const list of Object.values(history)) {
+    for (const version of list) table[version.runId] = classifyCells(version.cells)
+  }
   return {
     current,
+    table,
     versions,
     history,
     exclusions,
@@ -837,6 +861,16 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
+}
+
+/**
+ * The classified states for one run, BY NAME: a run the projection never read is a loud error, never a
+ * silent empty map that would read as a zero-row basis (28792 item 1).
+ */
+export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, CellState>> {
+  const states = projection.table[runId]
+  if (!states) throw new Error(`The projection classified no row for run ${runId}`)
+  return states
 }
 
 /** Read only the exact PNG bytes named by a digest-backed screenshot reference. */
@@ -863,9 +897,7 @@ export function loadSelectedResults(
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
-  const features = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8"))
-  if (!object(features)) fail(featuresPath, "invalid catalog")
-  const catalog = Object.keys(features).filter((id) => !id.startsWith("$"))
+  const catalog = Object.keys(loadFeatures(contentDir))
   const suites = new Map<string, ProbeSuiteManifest>()
   const suitesDir = join(contentDir, "suites")
   if (existsSync(suitesDir)) {

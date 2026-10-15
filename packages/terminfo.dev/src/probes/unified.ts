@@ -19,6 +19,7 @@ import {
   type ProbeResult,
   type TermContext,
   type UngradedDiagnostic,
+  type Utf8DecodingReading,
 } from "@terminfo/probe-defs"
 import {
   query,
@@ -27,6 +28,7 @@ import {
   queryWithSentinelOutcome,
   queryCursorPosition,
   measureRenderedWidth,
+  measureUtf8Decoding,
   queryMode,
   readResponse,
   withTTYOperation,
@@ -66,12 +68,14 @@ function createTermContext({
   events,
   probe,
   geometry,
+  utf8Decoding,
 }: {
   out: NodeJS.WriteStream
   writes?: string[]
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
   geometry?: Extract<GeometryMeasurement, { status: "measured" }>
+  utf8Decoding: () => Promise<Utf8DecodingReading>
 }): TermContext {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
@@ -115,6 +119,7 @@ function createTermContext({
     get rows() {
       return size().rows
     },
+    utf8Decoding,
   }
 }
 
@@ -296,6 +301,22 @@ export async function runProbeBatch(
         }
       : { kind: "shared" },
   )
+  // ONE measured context fact for the whole run (28752): how this terminal decodes a plainly
+  // written two-byte UTF-8 character. A row whose oracle compares plainly written glyphs asks for
+  // it before grading; the first ask measures, every later ask reads the same answer, and the raw
+  // reply is recorded beside the other collector facts so a reader can see what was measured.
+  // The ATTEMPT is the memo, not its fulfilled value (@dev/review2): two rows that ask before the
+  // first round trip returns share ONE measurement instead of racing a second, and an attempt that
+  // fails stays failed for the batch rather than being retried by every later row — so the run's
+  // recorded fact and the answer each row grades against are always the same single attempt.
+  let decodingAttempt: Promise<Utf8DecodingReading> | undefined
+  const readUtf8Decoding = (): Promise<Utf8DecodingReading> => {
+    decodingAttempt ??= measureUtf8Decoding().then((reading) => {
+      batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({ decoding: reading })
+      return reading
+    })
+    return decodingAttempt
+  }
   let capturePrepared = false
   for (const probe of selected) {
     const writes: string[] = []
@@ -378,6 +399,7 @@ export async function runProbeBatch(
       events,
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
+      utf8Decoding: readUtf8Decoding,
     })
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard

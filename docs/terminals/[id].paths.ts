@@ -1,25 +1,11 @@
-import { readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import { loadTerminals as loadTerminalCatalog, type TerminalRecord } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug, loadAnalysis } from "../data/load-probes"
 import { linkifyContentExcluding } from "../data/linkify-content"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-
-interface HistoricalTerminal {
-  label: string
-  slug: string
-  url?: string
-  description?: string
-  body?: string
-  platforms?: string[]
-  historical?: boolean
-  year?: number
-  manufacturer?: string
-  cpu?: string
-  significance?: string
-  repo?: string
-}
+const contentDir = join(__dirname, "..", "..", "content")
 
 interface VersionInfo {
   version: string
@@ -171,17 +157,8 @@ export default {
       }
     })
 
-    // Load terminals.json for historical terminals and terminal type classification
-    const terminalsPath = join(__dirname, "..", "..", "content", "terminals.json")
-    const terminalsData = JSON.parse(readFileSync(terminalsPath, "utf-8")) as Record<
-      string,
-      HistoricalTerminal & {
-        kind?: "app" | "headless" | "mux"
-        intermediary?: boolean
-        headlessBackends?: string[]
-        manifestBackend?: string
-      }
-    >
+    // The terminal catalog for historical terminals and terminal type classification.
+    const terminalsData: Record<string, TerminalRecord> = loadTerminalCatalog(contentDir)
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {

@@ -4,77 +4,137 @@
  * @consumer terminfo.dev front page and every terminal page
  * @source-grep the VitePress pages and the probes.data.ts loader are wired by text, and the browser-bundled release-scope
  *   helper must import no node:fs; only a full site build exercises either at runtime
+ * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
  * @testonly none
  */
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
+import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
-import { loadReleaseScope, loadFeatureCohort } from "../docs/data/load-release-scope.ts"
+import { loadFeatures } from "@terminfo/catalog"
+import { loadCategories } from "../docs/data/categories.ts"
 import {
-  barOverMeasured,
+  classicCohortIds,
+  frozenSuiteIdFor,
+  loadFeatureCohort,
+  loadReleaseScope,
+} from "../docs/data/load-release-scope.ts"
+import {
+  aggregateCells,
+  classifyCells,
   coverageSentence,
   supportedShare,
   isStaleRelation,
   treeMovedPastRelease,
   staleCaption,
+  tier1Included,
   tierLine,
 } from "../docs/data/release-scope.ts"
 
+/**
+ * Every non-test TypeScript or Markdown source under one directory, so a VitePress page's `<script
+ * setup>` is read exactly like a module. Build caches and node_modules are skipped.
+ */
+function readSourceFiles(dir: string): Array<{ path: string; text: string }> {
+  const out: Array<{ path: string; text: string }> = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === "cache" || entry.name === "dist") continue
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) {
+      out.push(...readSourceFiles(path))
+      continue
+    }
+    if (!/\.(ts|tsx|md)$/.test(entry.name) || entry.name.includes(".test.")) continue
+    out.push({ path: relative(root, path), text: readFileSync(path, "utf8") })
+  }
+  return out
+}
+
+/** The one line a match sits on, for reading a function's own definition out of a call list. */
+function lineAt(text: string, index: number): string {
+  const end = text.indexOf("\n", index)
+  return text.slice(text.lastIndexOf("\n", index) + 1, end === -1 ? undefined : end)
+}
+
+/** The named function a match sits inside: the nearest preceding `function` declaration. */
+function enclosingFunction(text: string, index: number): string {
+  const declared = [...text.slice(0, index).matchAll(/^(?:export )?(?:async )?function (\w+)/gm)]
+  const last = declared.at(-1)
+  return last?.[1] ?? "(module scope)"
+}
+
 const root = join(import.meta.dirname, "..")
 
-describe("named feature cohort declaration", () => {
-  // Existing site-scope tests never read this second declaration shape or exercise corrupt inputs.
-  it.each([
-    [{ name: "candidate1", frozenSuiteId: "hash", featureIds: ["known"] }, /candidate2/],
-    [{ name: "candidate2", frozenSuiteId: " ", featureIds: ["known"] }, /frozenSuiteId/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: [] }, /nonempty array/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: [""] }, /nonempty strings/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: ["known", "known"] }, /unique/],
-    [{ name: "candidate2", frozenSuiteId: "hash", featureIds: ["unknown"] }, /unknown features unknown/],
-  ])("rejects invalid curated cohort %j with its queried path", (declaration, reason) => {
-    const dir = mkdtempSync(join(tmpdir(), "cohort-declaration-"))
-    const declarationPath = join(dir, "cohort.json")
-    try {
-      writeFileSync(declarationPath, JSON.stringify(declaration))
-      const load = () => loadFeatureCohort({ declarationPath, catalog: { known: { name: "Known" } } })
-      expect(load).toThrow(reason)
-      expect(load).toThrow(declarationPath)
-    } finally {
-      rmSync(dir, { recursive: true })
-    }
+const contentDir = join(root, "content")
+const catalog = loadFeatures(contentDir)
+const categories = loadCategories(contentDir)
+
+/** Write one suite manifest from a freeze pointer, for the registry tests below. */
+function writeSuite(dir: string, probeHash: string, freeze?: { release: string; at: string }): void {
+  writeFileSync(
+    join(dir, `${probeHash}.json`),
+    JSON.stringify({
+      probeHash,
+      adapterVersion: "4.0.0",
+      ...(freeze === undefined ? {} : { freeze }),
+      probes: { app: [], headless: [], mux: [] },
+    }),
+  )
+}
+
+describe("the derived scope, the classic cohort and the suite pointer", () => {
+  it("derives the declared 62 tier-1 rows from the catalog's tier1 labels, never a scope file", () => {
+    const scope = loadReleaseScope({ catalog, categories })
+    expect(scope.measuredCount).toBe(62)
+    expect(scope.measuredIds).toEqual([...scope.measuredIds].sort())
+    expect(tier1Included(catalog, scope.measuredIds)).toHaveLength(52)
+    expect(scope.measuredIds).toContain("device.primary-da")
+    expect(tier1Included(catalog, scope.measuredIds)).not.toContain("extensions.osc777-notify")
   })
 
-  it("names missing and malformed declaration paths", () => {
-    const dir = mkdtempSync(join(tmpdir(), "cohort-declaration-"))
-    const declarationPath = join(dir, "cohort.json")
+  it("derives the 125 classic cohort in the category catalog's order and refuses an empty classics slice", () => {
+    const ids = classicCohortIds(catalog, categories)
+    expect(ids).toHaveLength(125)
+    // The two classic rows that also carry a tier1 field stay in the cohort: the filter is the
+    // CATEGORY slice, matching 28018's accepted 125.
+    expect(ids).toContain("cursor.position-report")
+    expect(ids).toContain("editing.decrqcra")
+    // ONE category order: the cohort follows each category's own `order`, the same field the site's
+    // category blocks print in, so Erase (order 4) precedes Editing (order 5) and Scrollback (7)
+    // precedes Reset (8). The 125-member SET is pinned by SHA in decisive-share.test.ts.
+    expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
+    expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
+    const cohort = loadFeatureCohort({ catalog, categories, frozenSuiteId: "abc123abc123" })
+    expect(cohort.name).toBe("candidate2")
+    expect(cohort.frozenSuiteId).toBe("abc123abc123")
+    expect(cohort.measuredIds).toEqual(ids)
+    expect(() => classicCohortIds(catalog, { sgr: { slice: "extensions", order: 1 } })).toThrow(
+      /classics cohort is empty/,
+    )
+  })
+
+  it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
+    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("c3d1fbb77561")
+    const dir = mkdtempSync(join(tmpdir(), "suite-registry-"))
     try {
-      const load = () => loadFeatureCohort({ declarationPath, catalog: {} })
-      expect(load).toThrow(declarationPath)
-      writeFileSync(declarationPath, "{")
-      expect(load).toThrow(declarationPath)
+      mkdirSync(join(dir, "suites"))
+      const at = "2026-10-12T03:33:42.000Z"
+      writeSuite(join(dir, "suites"), "aaaa00000000", { release: "candidate2", at })
+      expect(frozenSuiteIdFor(dir, "candidate2")).toBe("aaaa00000000")
+      expect(() => frozenSuiteIdFor(dir, "candidate9")).toThrow(
+        /no suite manifest declares freeze.release "candidate9"/,
+      )
+      writeSuite(join(dir, "suites"), "bbbb11111111", { release: "candidate2", at })
+      expect(() => frozenSuiteIdFor(dir, "candidate2")).toThrow(/2 suite manifests claim release "candidate2"/)
+      expect(() => frozenSuiteIdFor(join(dir, "absent"), "candidate2")).toThrow(/the suite registry is required/)
     } finally {
       rmSync(dir, { recursive: true })
     }
   })
 })
 
-function catalogNames(): Record<string, { name: string }> {
-  const raw = JSON.parse(readFileSync(join(root, "content", "features.json"), "utf8")) as Record<string, unknown>
-  const names: Record<string, { name: string }> = {}
-  for (const [id, value] of Object.entries(raw)) {
-    if (id.startsWith("$")) continue
-    names[id] = { name: typeof value === "string" ? value : String((value as { name: string }).name) }
-  }
-  return names
-}
-
 describe("release 1 measurement scope", () => {
-  const catalog = catalogNames()
-  const scope = loadReleaseScope({
-    catalog,
-    declarationPath: join(root, "content", "release-scope.json"),
-  })
+  const scope = loadReleaseScope({ catalog, categories })
 
   it("declares 62 of 273 features as tier 1 query/reply", () => {
     expect(scope.catalogCount).toBe(273)
@@ -114,31 +174,32 @@ describe("release 1 measurement scope", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
     cells[firstMeasured] = { outcome: "unsupported", conclusive: true }
-    const bar = barOverMeasured(cells, scope.measuredIds)
+    const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
     expect(bar.denominator).toBe(62)
-    expect(bar.supported).toBe(0)
-    expect(bar.unsupported).toBe(1)
-    expect(bar.fillPct).toBe(0)
-    expect(bar.untested).toBe(61)
+    expect(bar.counts.supported).toBe(0)
+    expect(bar.counts.unsupported).toBe(1)
+    expect(supportedShare(bar)).toBe("0% supported of 62")
+    expect(bar.counts.untested).toBe(61)
   })
 
   it("scores fill percent over the 62 even when every measured cell is untested", () => {
-    const bar = barOverMeasured({}, scope.measuredIds)
+    const bar = aggregateCells({}, scope.measuredIds)
     expect(bar.denominator).toBe(62)
-    expect(bar.conclusive).toBe(0)
-    expect(bar.fillPct).toBe(0)
-    expect(bar.untested).toBe(62)
+    expect(bar.counts.supported + bar.counts.unsupported).toBe(0)
+    expect(supportedShare(bar)).toBe("0% supported of 62")
+    expect(bar.counts.untested).toBe(62)
   })
 
   it("names each row's SUPPORTED share over the 62, never as the decisive share", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
-    const oneSupported = barOverMeasured(
-      { [firstMeasured]: { outcome: "supported", conclusive: true } },
+    const oneSupported = aggregateCells(
+      classifyCells({ [firstMeasured]: { outcome: "supported", conclusive: true } }),
       scope.measuredIds,
     )
-    expect(supportedShare(oneSupported)).toBe(`${oneSupported.fillPct}% supported of 62`)
-    expect(supportedShare(barOverMeasured({}, scope.measuredIds))).toBe("0% supported of 62")
+    // 1/62 rounds to 2%: the label reads the SUPPORTED share of the 62, never the decisive share.
+    expect(supportedShare(oneSupported)).toBe("2% supported of 62")
+    expect(supportedShare(aggregateCells({}, scope.measuredIds))).toBe("0% supported of 62")
     expect(supportedShare({ ...oneSupported, denominator: 0 })).toBe("No selected run")
   })
 
@@ -148,9 +209,9 @@ describe("release 1 measurement scope", () => {
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
     cells[firstMeasured] = { outcome: "supported", conclusive: true }
-    const bar = barOverMeasured(cells, scope.measuredIds)
+    const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
     expect(coverageSentence(bar)).toBe("1 supported · 0 unsupported · 0 inconclusive · 0 errors · 61 untested")
-    expect(coverageSentence(barOverMeasured({}, scope.measuredIds))).toBe(
+    expect(coverageSentence(aggregateCells({}, scope.measuredIds))).toBe(
       "0 supported · 0 unsupported · 0 inconclusive · 0 errors · 62 untested",
     )
   })
@@ -161,10 +222,10 @@ describe("release 1 measurement scope", () => {
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
     expect(home).toContain("data.releaseVerdicts[backendName]")
     expect(home).toContain("verdict.text")
-    expect(terminal).toContain("barVerdict(barOverMeasured(")
-    expect(terminal).toContain("includedTierOneIds(data.releaseScope.scoredIds)")
+    expect(terminal).toContain("barVerdict(aggregateCells(")
+    expect(terminal).toContain("tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)")
     expect(terminal).toContain("measuredVerdict.text")
-    expect(loader).toContain("includedTierOneIds(release.scoredIds)")
+    expect(loader).toContain("tier1Included(featureDescriptions, release.scoredIds)")
     expect(loader).toContain("releaseVerdicts[key] = d3Verdict(")
   })
 
@@ -176,19 +237,19 @@ describe("release 1 measurement scope", () => {
       expect(source).toContain("not measured in this release")
     }
     expect(terminal).toContain("staleCaption")
-    expect(terminal).toContain("barOverMeasured")
+    expect(terminal).toContain("aggregateCells")
     expect(home).toContain("coverageSentence")
     // The label is one owner: the loader computes it with supportedShare, the page only prints it.
     expect(home).toContain("data.releaseShares[backendName]")
     expect(home).not.toMatch(/function coverageLabel[\s\S]*selected\.counts/)
-    expect(terminal).toContain("measuredBar.fillPct")
-    expect(terminal).toContain("% supported of")
+    expect(terminal).toContain("measuredShare")
+    expect(terminal).toContain("supportedShare(")
     // One word, one number: the D3 verdict owns "decisive"; the bar's fill is "supported".
     expect(terminal).not.toContain("% decisive of")
     expect(home).not.toContain("decisive of ${bar.denominator}")
-    expect(terminal).toContain("measuredBar.supported")
-    expect(terminal).toContain("measuredBar.inconclusive")
-    expect(terminal).toContain("measuredBar.untested")
+    expect(terminal).toContain("measuredBar.counts.supported")
+    expect(terminal).toContain("measuredBar.counts.inconclusive")
+    expect(terminal).toContain("measuredBar.counts.untested")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
     expect(loader).toContain("isStaleRelation")
     expect(loader).toContain("staleCaption")
@@ -196,6 +257,27 @@ describe("release 1 measurement scope", () => {
     expect(loader).toContain("releaseShares[key] = supportedShare(")
     const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
     expect(helper).not.toMatch(/from ["']node:fs["']/)
+  })
+
+  it("runs the ONE classifier with one caller each: classifyCell only inside classifyCells, classifyCells only inside projectResults", () => {
+    // Every source the site builds or the CLI runs, tests excluded. A page or a script that classified
+    // raw cells itself would be a second copy of the five-way chain, which is what item 1 removes
+    // (28792 item 1, @cto 2026-10-12 must-fix).
+    const sources = [...readSourceFiles(join(root, "docs")), ...readSourceFiles(join(root, "scripts"))]
+    const callSites = (name: string) =>
+      sources.flatMap((file) =>
+        [...file.text.matchAll(new RegExp(`\\b${name}\\(`, "g"))].flatMap((match) =>
+          lineAt(file.text, match.index).includes(`function ${name}(`)
+            ? []
+            : [{ file: file.path, caller: enclosingFunction(file.text, match.index) }],
+        ),
+      )
+    expect(callSites("classifyCell")).toEqual([
+      { file: join("docs", "data", "release-scope.ts"), caller: "classifyCells" },
+    ])
+    expect(callSites("classifyCells")).toEqual([
+      { file: join("docs", "data", "selected-results.ts"), caller: "projectResults" },
+    ])
   })
 
   it("names the 211 unmeasured features on every terminal page, including pages with no selected run", () => {

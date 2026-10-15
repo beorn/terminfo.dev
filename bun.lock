@@ -14,6 +14,7 @@
       },
       "devDependencies": {
         "@terminfo/admin": "workspace:*",
+        "@terminfo/catalog": "workspace:*",
         "@terminfo/probe-defs": "workspace:*",
         "@terminfo/probes": "workspace:*",
         "@terminfo/run-parser": "workspace:*",
@@ -32,12 +33,24 @@
       "version": "0.0.0",
       "dependencies": {
         "@silvery/commander": "0.26.0",
+        "@terminfo/catalog": "workspace:*",
         "@terminfo/probe-defs": "workspace:*",
         "@termless/core": "0.10.2",
         "loggily": "0.12.0",
-        "react": "19.3.0",
+        "react": "19.3.1",
         "silvery": "0.26.0",
         "terminfo.dev": "workspace:*",
+      },
+      "devDependencies": {
+        "tsdown": "0.23.0",
+        "typescript": "5.9.3",
+      },
+    },
+    "packages/catalog": {
+      "name": "@terminfo/catalog",
+      "version": "0.0.0",
+      "dependencies": {
+        "@terminfo/run-parser": "workspace:*",
       },
       "devDependencies": {
         "tsdown": "0.23.0",
@@ -97,7 +110,7 @@
         "@silvery/ansi": "0.26.0",
         "@silvery/commander": "0.26.0",
         "commander": "15.0.0",
-        "react": "19.3.0",
+        "react": "19.3.1",
         "silvery": "0.26.0",
       },
     },
@@ -420,6 +433,8 @@
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
     "@terminfo/admin": ["@terminfo/admin@workspace:packages/admin"],
+
+    "@terminfo/catalog": ["@terminfo/catalog@workspace:packages/catalog"],
 
     "@terminfo/probe-defs": ["@terminfo/probe-defs@workspace:packages/probe-defs"],
 
@@ -757,7 +772,7 @@
 
     "quansync": ["quansync@1.0.0", "", {}, "sha512-5xZacEEufv3HSTPQuchrvV6soaiACMFnq1H8wkVioctoH3TRha9Sz66lOxRwPK/qZj7HPiSveih9yAyh98gvqA=="],
 
-    "react": ["react@19.3.0", "", {}, "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog=="],
+    "react": ["react@19.3.1", "", {}, "sha512-QNhWdt7nrgVWWQG58QuGsAR3jv3Hbe4mb4vz7w2csnHavciZJgda1CPNaldF6eVxv90ud3jUXpKlHL69gO38yw=="],
 
     "react-reconciler": ["react-reconciler@0.33.0", "", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.0" } }, "sha512-KetWRytFv1epdpJc3J4G75I4WrplZE5jOL7Yq0p34+OVOKF4Se7WrdIdVC45XsSSmUTlht2FM/fM1FZb1mfQeA=="],
 

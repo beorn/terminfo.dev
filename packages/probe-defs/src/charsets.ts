@@ -14,6 +14,7 @@ const DEC_SPECIAL_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   pollMs: 250,
   minRows: 4,
   minCols: 6,
+  requiresUtf8: true,
 }
 
 /**
@@ -32,6 +33,7 @@ const UTF8_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   pollMs: 250,
   minRows: 3,
   minCols: 6,
+  requiresUtf8: true,
 }
 
 const G0_G1_SWITCHING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
@@ -45,6 +47,7 @@ const G0_G1_SWITCHING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   pollMs: 250,
   minRows: 3,
   minCols: 6,
+  requiresUtf8: true,
 }
 
 const DEC_LINE_DRAWING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
@@ -58,6 +61,7 @@ const DEC_LINE_DRAWING_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
   pollMs: 250,
   minRows: 3,
   minCols: 8,
+  requiresUtf8: true,
 }
 
 const CHARSET_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {

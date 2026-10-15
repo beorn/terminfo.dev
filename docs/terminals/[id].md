@@ -8,7 +8,7 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { barOverMeasured, barVerdict, includedTierOneIds, isStaleRelation, staleCaption } from '../data/release-scope.ts'
+import { aggregateCells, barVerdict, isStaleRelation, staleCaption, supportedShare, tier1Included } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -21,9 +21,10 @@ const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value)
 const counts = computed(() => selectedRun.value?.counts)
 const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
 const libraryOnlyIds = computed(() => data.releaseScope.libraryOnlyIds)
-const measuredBar = computed(() => barOverMeasured(selectedRun.value?.cells ?? {}, data.releaseScope.scoredIds))
-const includedIds = includedTierOneIds(data.releaseScope.scoredIds)
-const measuredVerdict = computed(() => barVerdict(barOverMeasured(selectedRun.value?.cells ?? {}, includedIds)))
+const measuredBar = computed(() => aggregateCells(data.releaseTable[selectedRun.value?.runId] ?? {}, data.releaseScope.scoredIds))
+const measuredShare = computed(() => supportedShare(measuredBar.value))
+const includedIds = tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)
+const measuredVerdict = computed(() => barVerdict(aggregateCells(data.releaseTable[selectedRun.value?.runId] ?? {}, includedIds)))
 const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
 function runLabel(run) {
@@ -170,21 +171,21 @@ const breadcrumbParent = (() => {
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
   <p v-if="measuredVerdict" class="result-verdict">{{ measuredVerdict.text }} · <span class="result-verdict-detail">{{ measuredVerdict.pct }}% of the {{ measuredVerdict.denominator }} included capabilities read decisive</span></p>
-  <p class="result-share-label">{{ measuredBar.fillPct }}% supported of {{ measuredBar.denominator }} · measured per terminal</p>
+  <p class="result-share-label">{{ measuredShare }} · measured per terminal</p>
   <p v-if="libraryOnlyIds.length" class="score-detail">{{ libraryOnlyIds.length }} {{ libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ libraryOnlyIds.join(', ') }}.</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
-    <span v-if="measuredBar.supported" class="result-share-supported" :style="{ width: `${measuredBar.supported / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.unsupported / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.inconclusive" class="result-share-inconclusive" :style="{ width: `${measuredBar.inconclusive / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.untested" class="result-share-not-tested" :style="{ width: `${measuredBar.untested / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.errors" class="result-share-error" :style="{ width: `${measuredBar.errors / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.inconclusive" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.inconclusive / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.untested" class="result-share-not-tested" :style="{ width: `${measuredBar.counts.untested / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.error" class="result-share-error" :style="{ width: `${measuredBar.counts.error / measuredBar.denominator * 100}%` }"></span>
   </div>
   <ul class="result-counts">
-    <li><strong>{{ measuredBar.supported }}</strong> supported <small>Positive evidence</small></li>
-    <li><strong>{{ measuredBar.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
-    <li><strong>{{ measuredBar.inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
-    <li><strong>{{ measuredBar.untested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
-    <li><strong>{{ measuredBar.errors }}</strong> errors <small>Probe error</small></li>
+    <li><strong>{{ measuredBar.counts.supported }}</strong> supported <small>Positive evidence</small></li>
+    <li><strong>{{ measuredBar.counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
+    <li><strong>{{ measuredBar.counts.inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
+    <li><strong>{{ measuredBar.counts.untested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
+    <li><strong>{{ measuredBar.counts.error }}</strong> errors <small>Probe error</small></li>
   </ul>
   <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
   <details class="result-counting">

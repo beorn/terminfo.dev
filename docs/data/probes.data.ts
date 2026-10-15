@@ -11,21 +11,24 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadFeatures, loadTerminals, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
+import { type CellTable } from "./selected-results.ts"
 import {
-  barOverMeasured,
+  aggregateCells,
   coverageSentence,
   d3Verdict,
-  includedTierOneIds,
   isStaleRelation,
   staleCaption,
   supportedShare,
+  tier1Included,
   tierLine,
   type D3Verdict,
-  type MeasuredBar,
+  type CellAggregate,
+  type CellState,
   type ReleaseScope,
 } from "./release-scope.ts"
 
@@ -85,7 +88,7 @@ export interface ProbeData {
   /** "backend:feature" -> { note, url? } from annotations.json */
   annotations: Record<string, { note: string; url?: string; result?: string }>
   /** feature id -> { name, url? } from features.json */
-  featureDescriptions: Record<string, FeatureMeta>
+  featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
   /** Backend name -> baseline conclusive score and full catalog coverage. */
@@ -98,26 +101,21 @@ export interface ProbeData {
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
   releaseScope: ReleaseScope & { line: string }
-  releaseBars: Record<string, MeasuredBar>
+  releaseBars: Record<string, CellAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
   releaseShares: Record<string, string>
   /** Backend name -> the D3 release verdict over the INCLUDED 52 (@chief 2026-10-07). */
   releaseVerdicts: Record<string, D3Verdict>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
   releaseStale: Record<string, string | null>
+  /**
+   * The reader's classified table for every run a terminal page can pick, keyed by run id: one
+   * classification per cell, made once in the projection. A page folds it (`aggregateCells`) for the
+   * basis it shows rather than walking the run's raw cells, so no page holds a second classifier.
+   */
+  releaseTable: Record<string, Readonly<Record<string, CellState>>>
   /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
   suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
-}
-
-interface FeatureMeta {
-  name: string
-  slug?: string
-  url?: string
-  tags?: string[]
-  group?: string
-  body?: string
-  probe?: string
-  baseline?: string
 }
 
 interface BaselineStats {
@@ -132,48 +130,11 @@ interface BaselineStats {
   untested: number
 }
 
-function loadFeatureDescriptions(): Record<string, FeatureMeta> {
-  const path = join(__dirname, "..", "..", "content", "features.json")
-  if (!existsSync(path)) {
-    throw new Error(`features.json not found at ${path}`)
-  }
-  {
-    const raw: unknown = JSON.parse(readFileSync(path, "utf-8"))
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Invalid feature catalog ${path}`)
-    // Normalize: strings become { name: string }, objects stay as-is
-    const result: Record<string, FeatureMeta> = {}
-    for (const [id, val] of Object.entries(raw as Record<string, unknown>)) {
-      if (id.startsWith("$")) continue
-      if (typeof val === "string") result[id] = { name: val }
-      else {
-        if (!val || typeof val !== "object" || Array.isArray(val)) {
-          throw new Error(`${path}: ${id} requires a feature name`)
-        }
-        const v = val as Record<string, unknown>
-        if (typeof v.name !== "string") throw new Error(`${path}: ${id} requires a feature name`)
-        const optionalString = (field: string): string | undefined => {
-          const value = v[field]
-          if (value === undefined) return undefined
-          if (typeof value !== "string") throw new Error(`${path}: invalid ${id}.${field}`)
-          return value
-        }
-        if (v.tags !== undefined && (!Array.isArray(v.tags) || !v.tags.every((tag) => typeof tag === "string"))) {
-          throw new Error(`${path}: invalid ${id}.tags`)
-        }
-        result[id] = {
-          name: v.name,
-          slug: optionalString("slug"),
-          url: optionalString("url"),
-          tags: v.tags as string[] | undefined,
-          group: optionalString("group"),
-          body: optionalString("body"),
-          probe: optionalString("probe"),
-          baseline: optionalString("baseline"),
-        }
-      }
-    }
-    return result
-  }
+function loadFeatureDescriptions(): FeatureCatalog {
+  // The feature catalog, through its one loader (@terminfo/catalog). The loader already refuses a
+  // nameless entry and drops $-prefixed comment keys, so the old string-vs-object normalization and
+  // its per-field checks live in one place now.
+  return loadFeatures(contentDir)
 }
 
 function loadAnnotations(): Record<string, { note: string; url?: string; result?: string }> {
@@ -242,17 +203,9 @@ export function loadFullProbes(): ProbeData {
   const categories: Record<string, FeatureResult[]> = {}
   for (const feature of features) (categories[feature.category] ??= []).push(feature)
 
-  const terminalPath = join(contentDir, "terminals.json")
-  const terminalContent = parseJsonStrict(terminalPath, readFileSync(terminalPath, "utf8"))
-  if (!terminalContent || typeof terminalContent !== "object" || Array.isArray(terminalContent)) {
-    throw new Error(`${terminalPath}: expected terminal catalog object`)
-  }
   const meta = loadBackendMeta()
-  for (const [id, terminal] of Object.entries(terminalContent)) {
-    if (!terminal || typeof terminal !== "object" || Array.isArray(terminal)) {
-      throw new Error(`${terminalPath}: ${id} requires a terminal metadata object`)
-    }
-    meta[id] = { ...meta[id], ...(terminal as BackendMeta) }
+  for (const [id, terminal] of Object.entries(loadTerminals(contentDir))) {
+    meta[id] = { ...meta[id], ...terminal }
   }
   for (const [key, { selected }] of byTarget) {
     const id = selected.target.id
@@ -303,32 +256,43 @@ export function loadFullProbes(): ProbeData {
       .map((v) => v.measuredAt)
       .sort()
       .at(-1) ?? ""
-  const release = loadReleaseScope({
-    catalog: featureDescriptions,
-    declarationPath: join(contentDir, "release-scope.json"),
-  })
+  const release = loadReleaseScope({ catalog: featureDescriptions, categories: loadCategories(contentDir) })
   const releaseScope = {
     ...release,
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
   }
-  const releaseBars: Record<string, MeasuredBar> = {}
+  const releaseBars: Record<string, CellAggregate> = {}
   const releaseShares: Record<string, string> = {}
   const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
-  // The bar and the verdict are over the app denominator, never the declared 62: the ten F2 movers
-  // are excluded by contract and the app-unobservable rows by construction, since no app run can
-  // decide them (docs/data/release-scope.ts and @terminfo/probe-defs own both lists and the D3 rule).
-  const includedIds = includedTierOneIds(release.scoredIds)
+  // The bar and the verdict are over the app denominator, never the declared 62: the ten rows the
+  // 27832 audit excludes by contract carry tier1 "excluded", and the app-unobservable rows are out by
+  // construction, since no app run can decide them (@terminfo/catalog and @terminfo/probe-defs own
+  // the labels and the D3 rule).
+  const includedIds = tier1Included(featureDescriptions, release.scoredIds)
   for (const [key, { selected }] of byTarget) {
-    const bar = barOverMeasured(selected.cells, release.scoredIds)
+    // One fold over the reader's classified table, never a second walk over the run's raw cells.
+    const table = projection.table[selected.runId]
+    if (!table) throw new Error(`release bar ${key}: the projection classified no row for run ${selected.runId}`)
+    const bar = aggregateCells(table, release.scoredIds)
     if (bar.denominator && coverageSentence(bar) === "No selected run") {
       throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
     }
     releaseBars[key] = bar
     releaseShares[key] = supportedShare(bar)
-    const includedBar = barOverMeasured(selected.cells, includedIds)
-    if (includedBar.denominator > 0) releaseVerdicts[key] = d3Verdict(includedBar.conclusive, includedBar.denominator)
+    const includedBar = aggregateCells(table, includedIds)
+    if (includedBar.denominator > 0) {
+      const decisive = includedBar.counts.supported + includedBar.counts.unsupported
+      releaseVerdicts[key] = d3Verdict(decisive, includedBar.denominator)
+    }
     releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
+  }
+  // The table slice a terminal page folds: every run its run picker can select, classified once here.
+  const releaseTable: Record<string, Readonly<Record<string, CellState>>> = {}
+  for (const run of Object.values(published.projection.versions).flat()) {
+    const rows = projection.table[run.runId]
+    if (!rows) throw new Error(`The projection classified no row for version run ${run.runId}`)
+    releaseTable[run.runId] = rows
   }
   const result: ProbeData = {
     backends,
@@ -352,13 +316,14 @@ export function loadFullProbes(): ProbeData {
     releaseShares,
     releaseVerdicts,
     releaseStale,
+    releaseTable,
     suiteMove: {
       treeSuiteId: projection.treeSuiteId,
       releaseSuiteId: projection.releaseSuiteId,
       treeMovedPastRelease: projection.treeMovedPastRelease,
     },
   }
-  computeBaselines(result)
+  computeBaselines(result, projection.table)
   return result
 }
 
@@ -369,7 +334,7 @@ export default {
   },
 }
 
-function computeBaselines(data: ProbeData): void {
+function computeBaselines(data: ProbeData, table: CellTable): void {
   const baselineOrder = ["core", "modern", "rich", "unicode", "legacy"]
   const baselines: Record<string, string[]> = {}
   for (const bl of baselineOrder) baselines[bl] = []
@@ -384,23 +349,13 @@ function computeBaselines(data: ProbeData): void {
   for (const backend of data.backends) {
     const backendStats: Record<string, BaselineStats> = {}
     baselineStats[backend.name] = backendStats
-    const cells = data.selectedByBackend[backend.name]?.selected.cells
-    if (!cells) throw new Error(`Missing selected public cells for ${backend.name}`)
+    const selected = data.selectedByBackend[backend.name]?.selected
+    if (!selected) throw new Error(`Missing selected public run for ${backend.name}`)
+    const rows = table[selected.runId]
+    if (!rows) throw new Error(`The projection classified no row for run ${selected.runId}`)
     for (const bl of baselineOrder) {
       const ids = baselines[bl] ?? []
-      let supported = 0
-      let unsupported = 0
-      let inconclusive = 0
-      let errors = 0
-      let untested = 0
-      for (const id of ids) {
-        const cell = cells[id]
-        if (!cell) untested++
-        else if (cell.outcome === "error") errors++
-        else if (cell.conclusive && cell.outcome === "supported") supported++
-        else if (cell.conclusive && cell.outcome === "unsupported") unsupported++
-        else inconclusive++
-      }
+      const { supported, unsupported, inconclusive, error: errors, untested } = aggregateCells(rows, ids).counts
       const total = supported + unsupported
       backendStats[bl] = {
         total,

@@ -1,7 +1,7 @@
 /**
  * @failure The Release 1 bar's instrument would read a missing row as a decisive 0, fold a
  *   present-but-error row into inconclusive, guess which of several site-selected profiles is the
- *   (terminal, os) row, or drift the included 52 away from the audited mover list — so the D3 verdict
+ *   (terminal, os) row, or drift the included 52 away from the catalog's own tier1 labels — so the D3 verdict
  *   ("pass" at 90% decisive of the included 52, "with gaps" from 70%, "fail" below, the fraction
  *   beside the label) would report the wrong verdict or the wrong denominator.
  * @level l2
@@ -19,7 +19,6 @@ import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import {
-  type ContextCandidate,
   type CohortBarRow,
   categoryBlockHeader,
   barRowForContext,
@@ -31,17 +30,16 @@ import {
   formatCohortRow,
   parseReaderArgs,
   decisiveShare,
-  F2_MOVERS,
   formatBarRow,
   namedExceptionsLine,
-  pickContextRun,
-  INCLUDED_TIER1_COUNT,
-  includedTierOneIds,
   formatRefusedRun,
   refusedRunsSection,
+  tierOneIds,
 } from "./decisive-share.ts"
-import { d3Verdict } from "../docs/data/release-scope.ts"
+import { pickContextRun, type ContextCandidate } from "../docs/data/run-selection.ts"
+import { classifyCells, d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
+import { loadFeatures } from "@terminfo/catalog"
 
 const IDS = ["a.supported", "b.supported", "c.unsupported", "d.inconclusive", "e.error", "f.missing"]
 
@@ -54,6 +52,9 @@ const cells = {
 }
 
 function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate {
+  // The run's states are the ONE classification of its cells: a fixture that overrides `cells` gets the
+  // matching `states` for free, so a reader cutting a bar over `states` sees the run the fixture names.
+  const runCells = overrides.cells ?? cells
   return {
     key: "app:alacritty@[linux]",
     kind: "app",
@@ -68,39 +69,42 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
     // so through overrides — never by re-parsing the label the change removed.
     suiteFreshness: "tree suite 21739d9e768f",
     suiteRelation: "tree",
-    cells,
+    cells: runCells,
+    states: classifyCells(runCells),
     ...overrides,
   }
 }
 
 describe("release 1 decisive-count reader", () => {
-  it("names required catalog, cohort and frozen manifest failures instead of returning an empty report", () => {
+  it("names required category, feature and frozen-suite failures instead of returning an empty report", () => {
     const contentDir = mkdtempSync(join(tmpdir(), "reader-required-content-"))
     const real = join(import.meta.dirname, "..", "content")
     const load = () => buildReport({ contentDir, cohort: "candidate2" })
     try {
+      const categories = join(contentDir, "categories.json")
+      expect(load).toThrow(categories)
+      writeFileSync(categories, "{")
+      expect(load).toThrow(categories)
+      writeFileSync(categories, readFileSync(join(real, "categories.json")))
       const features = join(contentDir, "features.json")
       expect(load).toThrow(features)
       writeFileSync(features, "{")
       expect(load).toThrow(features)
       writeFileSync(features, readFileSync(join(real, "features.json")))
-      const declaration = join(contentDir, "release-scope-candidate2.json")
-      expect(load).toThrow(declaration)
-      const realDeclaration = readFileSync(join(real, "release-scope-candidate2.json"), "utf8")
-      const requiredSuite = (JSON.parse(realDeclaration) as { frozenSuiteId: string }).frozenSuiteId
-      writeFileSync(declaration, realDeclaration)
-      // The required manifest is the declaration's own frozenSuiteId, so this test tracks the
-      // declaration instead of hardcoding a suite id that a later move would silently stale (28467).
-      const manifest = join(contentDir, "suites", `${requiredSuite}.json`)
-      expect(load).toThrow(manifest)
-      mkdirSync(join(contentDir, "suites"))
-      writeFileSync(manifest, "{}")
-      expect(load).toThrow(manifest)
-      const realManifest = join(real, "suites", `${requiredSuite}.json`)
+      // The release's frozen suite is the suite registry's own pointer (item 3), so no declaration
+      // file names it and no test needs to track one (28467).
+      expect(load).toThrow(/the suite registry is required to name the current suite/)
+      const suites = join(contentDir, "suites")
+      mkdirSync(suites)
+      expect(load).toThrow(/no suite manifest declares freeze.release "candidate2"/)
+      const realManifest = join(real, "suites", "c3d1fbb77561.json")
       const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
-      writeFileSync(manifest, JSON.stringify({ ...raw, probeHash: "wrong-suite" }))
-      expect(load).toThrow(new RegExp(`probeHash wrong-suite does not match required ${requiredSuite}`))
+      const manifest = join(suites, "c3d1fbb77561.json")
+      writeFileSync(manifest, JSON.stringify({ ...raw, freeze: { release: "candidate2", at: "not-a-date" } }))
       expect(load).toThrow(manifest)
+      writeFileSync(manifest, JSON.stringify(raw))
+      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
+      expect(buildReport({ contentDir, cohort: "candidate2" }).candidate2?.frozenSuiteId).toBe("c3d1fbb77561")
     } finally {
       rmSync(contentDir, { recursive: true })
     }
@@ -269,7 +273,7 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("splits a fixture run into decisive, inconclusive and named remainder buckets", () => {
-    const share = decisiveShare(cells, IDS)
+    const share = decisiveShare(classifyCells(cells), IDS)
     expect(share.denominator).toBe(6)
     expect(share.decisive).toBe(3)
     expect(share.decisivePct).toBe(50)
@@ -285,7 +289,7 @@ describe("release 1 decisive-count reader", () => {
 
   it("names every row of a 62-row remainder as untested when only a few cells exist", () => {
     const measured = Array.from({ length: 62 }, (_, index) => `f.${index}`)
-    const share = decisiveShare({ "f.0": { outcome: "supported", conclusive: true } }, measured)
+    const share = decisiveShare(classifyCells({ "f.0": { outcome: "supported", conclusive: true } }), measured)
     expect(share.decisive).toBe(1)
     expect(share.decisivePct).toBe(2)
     expect(share.inconclusive).toBe(0)
@@ -294,7 +298,9 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("counts a supported outcome on non-measuring evidence as inconclusive, not decisive", () => {
-    const share = decisiveShare({ "a.supported": { outcome: "supported", conclusive: false } }, ["a.supported"])
+    const share = decisiveShare(classifyCells({ "a.supported": { outcome: "supported", conclusive: false } }), [
+      "a.supported",
+    ])
     expect(share.decisive).toBe(0)
     expect(share.inconclusive).toBe(1)
     expect(share.remainder).toEqual([])
@@ -312,7 +318,7 @@ describe("release 1 decisive-count reader", () => {
     expect(d3Verdict(0, 52).label).toBe("fail")
 
     const allDecisive = Object.fromEntries(IDS.map((id) => [id, { outcome: "supported", conclusive: true }]))
-    const pass = decisiveShare(allDecisive, IDS)
+    const pass = decisiveShare(classifyCells(allDecisive), IDS)
     expect(pass.decisivePct).toBe(100)
     expect(pass.verdict.text).toBe("pass · 6/6")
     // A verdict over zero included capabilities is not "fail" — it is not measured, and it refuses.
@@ -320,13 +326,16 @@ describe("release 1 decisive-count reader", () => {
     expect(() => d3Verdict(3, 2)).toThrow(/0 <= decisive <= denominator/)
   })
 
-  it("takes the audited F2 movers out of the declared 62 and refuses a mismatched list", () => {
-    const declared = ["device.primary-da", ...F2_MOVERS, ...Array.from({ length: 51 }, (_, i) => `f.${i}`)]
-    const included = includedTierOneIds(declared)
-    expect(included).toHaveLength(INCLUDED_TIER1_COUNT)
-    expect(included).not.toContain(F2_MOVERS[0])
-    expect(() => includedTierOneIds(declared.slice(1))).toThrow(/included tier-1 set is 51/)
-    expect(() => includedTierOneIds(declared.filter((id) => id !== F2_MOVERS[0]))).toThrow(/27832|F2 movers/)
+  it("takes the ten excluded tier-1 rows out of the declared 62 by their catalog label, never a list", () => {
+    const contentDir = join(import.meta.dirname, "..", "content")
+    const catalog = loadFeatures(contentDir)
+    const declared = tierOneIds(contentDir)
+    expect(declared).toHaveLength(62)
+    const included = tier1Included(catalog, declared)
+    expect(included).toHaveLength(52)
+    expect(included).not.toContain("extensions.osc777-notify")
+    expect(catalog["extensions.osc777-notify"]?.tier1).toBe("excluded")
+    expect(catalog["device.primary-da"]?.tier1).toBe("included")
   })
 
   it("resolves a context with no selected run as not measured, never as a zero reading", () => {
@@ -589,7 +598,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       "erase.a": { outcome: "error" },
     }
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    const shares = categoryShares(cells, categories)
+    const shares = categoryShares(classifyCells(cells), categories)
     const sgr = shares.find((entry) => entry.category.key === "sgr")
     if (!sgr) throw new Error("sgr share absent")
     expect(sgr.share).toMatchObject({ denominator: 2, decisive: 1, verdict: { label: "fail" } })
@@ -608,7 +617,7 @@ describe("per-category decisive share (28018 AC2)", () => {
   it("keeps each category's remainder disjoint — an error in one category never bleeds into another", () => {
     const categories = cohortCategories(["sgr.a", "cursor.a", "cursor.b"], catalog)
     const cells = { "sgr.a": { outcome: "error" }, "cursor.a": { outcome: "supported", conclusive: true } }
-    const shares = categoryShares(cells, categories)
+    const shares = categoryShares(classifyCells(cells), categories)
     const sgr = shares.find((entry) => entry.category.key === "sgr")
     const cursor = shares.find((entry) => entry.category.key === "cursor")
     if (!sgr || !cursor) throw new Error("category share absent")
@@ -624,8 +633,12 @@ describe("per-category decisive share (28018 AC2)", () => {
       ...Array.from({ length: 9 }, (_, index) => [`sgr.${index}`, { outcome: "supported", conclusive: true }]),
       ["cursor.0", { outcome: "error" }],
     ])
-    expect(decisiveShare(cells, ids)).toMatchObject({ denominator: 10, decisive: 9, verdict: { label: "pass" } })
-    const shares = categoryShares(cells, categories)
+    expect(decisiveShare(classifyCells(cells), ids)).toMatchObject({
+      denominator: 10,
+      decisive: 9,
+      verdict: { label: "pass" },
+    })
+    const shares = categoryShares(classifyCells(cells), categories)
     expect(shares.find((entry) => entry.category.key === "sgr")?.share.verdict.label).toBe("pass")
     expect(shares.find((entry) => entry.category.key === "cursor")?.share.verdict.label).toBe("fail")
   })
@@ -639,7 +652,7 @@ describe("per-category decisive share (28018 AC2)", () => {
       selection: "only current",
       measured: true,
       run: candidate({ cells }),
-      share: decisiveShare(cells, ["sgr.a"]),
+      share: decisiveShare(classifyCells(cells), ["sgr.a"]),
     }
     const measuredLines = formatCohortRow(measured, categories, labelWidth)
     expect(
@@ -666,7 +679,7 @@ describe("per-category decisive share (28018 AC2)", () => {
     expect(header.toLowerCase()).not.toContain("group")
     const categories = cohortCategories(["sgr.a"], catalog)
     const cells = { "sgr.a": { outcome: "supported", conclusive: true } }
-    const printed = formatCategoryRow(categories[0]!, decisiveShare(cells, ["sgr.a"]), 19)
+    const printed = formatCategoryRow(categories[0]!, decisiveShare(classifyCells(cells), ["sgr.a"]), 19)
     expect(printed[0]).toContain("SGR (Text Styling)")
     expect(printed[0]!.toLowerCase()).not.toContain("group")
   })
@@ -679,10 +692,11 @@ describe("per-category decisive share (28018 AC2)", () => {
     expect(report.candidate2.measuredIds).toHaveLength(125)
     expect(report.candidate2.decidableIds).toHaveLength(121)
     expect(report.candidate2.unavailableIds).toEqual(["scrollback.viewport-hold-output"])
+    // In the cohort's own order — each category's `order`, the one category order the site prints.
     expect(report.candidate2.libraryOnlyIds).toEqual([
-      "reset.method",
       "scrollback.accumulate",
       "scrollback.total-lines",
+      "reset.method",
     ])
     expect(report.candidate2.decidableIds).not.toContain("scrollback.viewport-hold-output")
 
@@ -715,7 +729,7 @@ describe("per-category decisive share (28018 AC2)", () => {
           line.includes(`decisive/${releaseDenominator} `) &&
           line.includes(`/${releaseDenominator} = `) &&
           line.includes(
-            "(unavailable: scrollback.viewport-hold-output; library-only: reset.method, scrollback.accumulate, scrollback.total-lines)",
+            "(unavailable: scrollback.viewport-hold-output; library-only: scrollback.accumulate, scrollback.total-lines, reset.method)",
           ),
       ),
     ).toBe(true)
@@ -770,9 +784,9 @@ describe("per-category decisive share (28018 AC2)", () => {
     for (const row of report.candidate2.barRows) {
       if (!("run" in row) || !row.measured) continue
       for (const category of categories) {
-        const before = decisiveShare(row.run.cells, category.ids)
+        const before = decisiveShare(row.run.states, category.ids)
         const after = decisiveShare(
-          row.run.cells,
+          row.run.states,
           category.ids.filter((id) => !unavailable.has(id)),
         )
         if (before.verdict.label !== after.verdict.label) flips++
@@ -838,22 +852,13 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     const contentDir = mkdtempSync(join(tmpdir(), "reader-empty-refusals-"))
     const real = join(import.meta.dirname, "..", "content")
     try {
-      for (const name of [
-        "features.json",
-        "terminals.json",
-        "release-scope.json",
-        "release-scope-candidate2.json",
-        "default-contexts.json",
-      ]) {
+      for (const name of ["features.json", "terminals.json", "categories.json", "default-contexts.json"]) {
         writeFileSync(join(contentDir, name), readFileSync(join(real, name)))
       }
-      const requiredSuite = (
-        JSON.parse(readFileSync(join(real, "release-scope-candidate2.json"), "utf8")) as { frozenSuiteId: string }
-      ).frozenSuiteId
       mkdirSync(join(contentDir, "suites"))
       writeFileSync(
-        join(contentDir, "suites", `${requiredSuite}.json`),
-        readFileSync(join(real, "suites", `${requiredSuite}.json`)),
+        join(contentDir, "suites", "c3d1fbb77561.json"),
+        readFileSync(join(real, "suites", "c3d1fbb77561.json")),
       )
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
       // One real lib run the projection refuses: a NON-app document, so this reader must not name it

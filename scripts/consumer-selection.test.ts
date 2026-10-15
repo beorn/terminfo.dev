@@ -30,6 +30,25 @@ import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-r
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion } from "../docs/data/public-results.ts"
 import type { SelectedProjection } from "../docs/data/selected-results.ts"
+import type { CellState } from "../docs/data/release-scope.ts"
+
+/** One synthetic current run: only the target fields the selection rule reads. */
+type StubRun = { target: { kind: string; id: string; os?: string; permissions?: string | null } }
+
+/**
+ * A stub projection for the selection tests. The projection carries the ONE classified table
+ * (28792 item 1), so each stub run gets a run id and an EMPTY classified row — the selection rule reads
+ * no cells, and `compatibilityTargets` only needs a row to exist for every current run.
+ */
+function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
+  const table: Record<string, Record<string, CellState>> = {}
+  for (const [key, run] of Object.entries(current)) {
+    const runId = `run:${key}`
+    ;(run as StubRun & { runId?: string }).runId = runId
+    table[runId] = {}
+  }
+  return { current, history, table } as unknown as SelectedProjection
+}
 
 interface RunReference extends Pick<
   PublicVersion,
@@ -52,6 +71,38 @@ function writeCatalog(content: string): void {
   writeFileSync(
     join(content, "terminals.json"),
     readFileSync(join(import.meta.dirname, "..", "content", "terminals.json")),
+  )
+}
+
+/**
+ * A features.json fixture that satisfies @terminfo/catalog's one shape. The selection consumers
+ * these tests police read only the catalog ids, so the record fields are inert placeholders.
+ */
+function featureCatalog(...ids: string[]): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      ids.map((id) => [
+        id,
+        { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+      ]),
+    ),
+  )
+}
+
+/**
+ * A suite manifest that freezes a release: `frozenSuiteIdFor` resolves a release's current suite from
+ * the one manifest whose `freeze.release` names it, so every fixture content dir needs one.
+ */
+function writeFrozenSuite(content: string, probeHash: string): void {
+  mkdirSync(join(content, "suites"), { recursive: true })
+  writeFileSync(
+    join(content, "suites", `${probeHash}.json`),
+    JSON.stringify({
+      probeHash,
+      adapterVersion: "4.0.0",
+      freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
+      probes: { app: [], headless: [], mux: [] },
+    }),
   )
 }
 
@@ -125,11 +176,8 @@ describe("consumer selection", () => {
       symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(root, "content", dir))
       writeCatalog(join(root, "content"))
-      writeFileSync(join(root, "content", "features.json"), '{"sgr.bold":{"name":"Bold"}}')
-      writeFileSync(
-        join(root, "content", "release-scope-candidate2.json"),
-        '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
-      )
+      writeFileSync(join(root, "content", "features.json"), featureCatalog("sgr.bold"))
+      writeFrozenSuite(join(root, "content"), "deadbeefcafe")
       writeFileSync(
         join(root, "content", "probes-apps", "kitty-0.46.2-linux.json"),
         JSON.stringify({
@@ -332,11 +380,8 @@ describe("consumer selection", () => {
   it("refuses a malformed required result with its path", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-malformed-selection-"))
     try {
-      writeFileSync(join(content, "features.json"), '{"sgr.bold":{"name":"Bold"}}')
-      writeFileSync(
-        join(content, "release-scope-candidate2.json"),
-        '{"name":"candidate2","frozenSuiteId":"deadbeefcafe","featureIds":["sgr.bold"]}',
-      )
+      writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
+      writeFrozenSuite(content, "deadbeefcafe")
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
       writeFileSync(join(content, "probes-apps", "bad.json"), "{")
       expect(() => loadCurrentResults(content)).toThrow(/bad\.json: invalid JSON/)
@@ -345,12 +390,14 @@ describe("consumer selection", () => {
     }
   })
 
-  it("fails loudly when the required release declaration is missing", () => {
+  it("fails loudly when the suite registry freezes no suite for the release", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-missing-declaration-"))
     try {
-      writeFileSync(join(content, "features.json"), '{"sgr.bold":{"name":"Bold"}}')
+      writeFileSync(join(content, "features.json"), featureCatalog("sgr.bold"))
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(content, dir))
-      expect(() => loadCurrentResults(content)).toThrow(/release-scope-candidate2\.json/)
+      expect(() => loadCurrentResults(content)).toThrow(/the suite registry is required to name the current suite/)
+      mkdirSync(join(content, "suites"))
+      expect(() => loadCurrentResults(content)).toThrow(/no suite manifest declares freeze.release "candidate2"/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -359,7 +406,7 @@ describe("consumer selection", () => {
   it("requires a reviewed default row for two exact contexts of one terminal", () => {
     const mac = { target: { kind: "app", id: "kitty", os: "macos" } }
     const linux = { target: { kind: "app", id: "kitty", os: "linux" } }
-    const projection = { current: { "app:kitty@mac": mac, "app:kitty@linux": linux } } as unknown as SelectedProjection
+    const projection = stubProjection({ "app:kitty@mac": mac, "app:kitty@linux": linux })
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
@@ -387,10 +434,10 @@ describe("consumer selection", () => {
     const app = { target: { kind: "app", id: "kitty" } }
     const headless = { target: { kind: "headless", id: "kitty" } }
     const library = { target: { kind: "headless", id: "xtermjs" } }
-    const projection = {
-      current: { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
-      history: { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
-    } as unknown as SelectedProjection
+    const projection = stubProjection(
+      { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
+      { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
+    )
     const content = mkdtempSync(join(tmpdir(), "terminfo-kind-selection-"))
     try {
       writeCatalog(content)
@@ -410,14 +457,12 @@ describe("consumer selection", () => {
     const appWezterm = { target: { kind: "app", id: "wezterm" } }
     const headlessAlacritty = { target: { kind: "headless", id: "alacritty" } }
     const appAlacritty = { target: { kind: "app", id: "alacritty" } }
-    const projection = {
-      current: {
-        "headless:wezterm": headlessWezterm,
-        "app:wezterm": appWezterm,
-        "headless:alacritty": headlessAlacritty,
-        "app:alacritty": appAlacritty,
-      },
-    } as unknown as SelectedProjection
+    const projection = stubProjection({
+      "headless:wezterm": headlessWezterm,
+      "app:wezterm": appWezterm,
+      "headless:alacritty": headlessAlacritty,
+      "app:alacritty": appAlacritty,
+    })
     const content = mkdtempSync(join(tmpdir(), "terminfo-released-keys-"))
     try {
       writeCatalog(content)
@@ -445,7 +490,7 @@ describe("consumer selection", () => {
       if (!wezterm) throw new Error("Fixture lacks WezTerm")
       wezterm.headlessBackends = []
       writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
-      const projection = { current: {} } as SelectedProjection
+      const projection = stubProjection({})
       expect(() => compatibilityTargets(projection, content)).toThrow(
         /released key wezterm changed meaning from headless/,
       )
@@ -456,7 +501,7 @@ describe("consumer selection", () => {
 
   it("names the declared xterm app run as a compatibility target", () => {
     const appXterm = { target: { kind: "app", id: "xterm" } }
-    const projection = { current: { "app:xterm": appXterm } } as unknown as SelectedProjection
+    const projection = stubProjection({ "app:xterm": appXterm })
     const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
     try {
       writeCatalog(content)

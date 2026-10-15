@@ -7,9 +7,12 @@ import {
   maskRunnerStorePath,
   type SelectedProjection,
   type SelectedVersion,
+  statesFor,
 } from "./selected-results.ts"
-import { loadFeatureCohort } from "./load-release-scope.ts"
+import { frozenSuiteIdFor } from "./load-release-scope.ts"
+import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import { loadTerminals } from "@terminfo/catalog"
 
 export interface DefaultContextReview {
   contextKey: string
@@ -56,8 +59,7 @@ function isIdList(value: unknown): value is string[] {
 /** Stable compatibility names come from declarations, never the runs that happen to exist today. */
 function loadCatalogKeys(contentDir: string): CatalogKeys {
   const catalogPath = join(contentDir, "terminals.json")
-  const rawCatalog = parseJsonStrict(catalogPath, readFileSync(catalogPath, "utf8"))
-  if (!isRecord(rawCatalog)) throw new Error(`${catalogPath}: expected terminal catalog object`)
+  const rawCatalog = loadTerminals(contentDir)
   const catalog = new Map<string, CatalogTarget>()
   const kinds = new Map<string, Set<TargetKind>>()
   const declare = (id: string, kind: TargetKind): void => {
@@ -66,7 +68,6 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
     kinds.set(id, declared)
   }
   for (const [id, value] of Object.entries(rawCatalog)) {
-    if (!isRecord(value)) throw new Error(`${catalogPath}: invalid ${id} entry`)
     if (value.historical === true) continue
     if (!isTargetKind(value.kind) || typeof value.slug !== "string" || !value.slug) {
       throw new Error(`${catalogPath}: ${id} requires a declared kind and slug`)
@@ -115,31 +116,51 @@ function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): s
   return kind === owner ? bare : `${kind}-${bare}`
 }
 
+/**
+ * The projection is the ONE read of the committed corpus, and it is expensive: it parses every run,
+ * verifies every screenshot digest and classifies every cell. Each published consumer used to call the
+ * reader for itself, so one `bun run build` read the same corpus once per consumer (measured 2026-10-12:
+ * sixteen times) when it needed one read (28792 item 1 — project once per build).
+ *
+ * The memo cannot live at module scope: VitePress bundles each data loader's module graph separately
+ * (seven `*.paths.ts` files, `probes.data.ts`, `candidate-2.data.ts` and `config.ts` each carry their
+ * own copy of this module), so a module-level Map would still read the corpus once per BUNDLE. The
+ * cache therefore hangs off `globalThis` under a registered symbol, which every copy in one process
+ * shares — the corpus is read once per process.
+ *
+ * The cache never outlives its process: content/ is read with `node:fs`, not imported, so a consumer
+ * asks a new process for new data (a site build, a CLI run) — the same freshness the reader had before
+ * this cache, since VitePress never watched content/. Nothing goes stale silently.
+ */
+const RESULTS_CACHE = Symbol.for("terminfo.dev/currentResultsCache")
+const cacheHost = globalThis as unknown as { [k: symbol]: Map<string, CurrentResults> | undefined }
+
+function currentResultsCache(): Map<string, CurrentResults> {
+  return (cacheHost[RESULTS_CACHE] ??= new Map())
+}
+
 export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
-  const projection = loadSelectedResults(contentDir, probeHash(), {
-    ...options,
-    releaseSuiteId: releaseSuiteIdFor(contentDir),
-  })
-  return { projection }
+  // `releaseSuiteIdFor` is read first and throws loudly when the registry names no suite, exactly as the
+  // argument it used to be evaluated as did.
+  const releaseSuiteId = releaseSuiteIdFor(contentDir)
+  const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}`
+  const cache = currentResultsCache()
+  const memoized = cache.get(key)
+  if (memoized) return memoized
+  const projection = loadSelectedResults(contentDir, probeHash(), { ...options, releaseSuiteId })
+  const results: CurrentResults = { projection }
+  cache.set(key, results)
+  return results
 }
 
 /**
- * The release suite this content pins, read through the ONE candidate-2 declaration loader (28450).
- * The declaration is REQUIRED: without it every run measured on the release suite would be relabelled
- * "older suite" and the tree-move banner would vanish, which is the silent fallback this reader exists
- * to prevent. An absent declaration is named here; a present-but-malformed one throws from the loader.
+ * The release suite this content pins: the one suite manifest whose `freeze.release` names the
+ * Release 1 candidate (`frozenSuiteIdFor`, item 3). The pointer is REQUIRED and read from the suite
+ * registry, so it can never name a missing manifest: without it every run measured on the release
+ * suite would be relabelled "older suite" and the tree-move banner would vanish.
  */
 function releaseSuiteIdFor(contentDir: string): string {
-  const declarationPath = join(contentDir, "release-scope-candidate2.json")
-  if (!existsSync(declarationPath)) {
-    throw new Error(
-      `${declarationPath}: the Release 1 measurement declaration is required to name the release suite; ` +
-        'without it every run on that suite is relabelled "older suite" and the tree-move banner is suppressed',
-    )
-  }
-  const featuresPath = join(contentDir, "features.json")
-  const catalog = parseJsonStrict(featuresPath, readFileSync(featuresPath, "utf8")) as Record<string, { name: string }>
-  return loadFeatureCohort({ catalog, declarationPath }).frozenSuiteId
+  return frozenSuiteIdFor(contentDir, "candidate2")
 }
 
 /**
@@ -191,17 +212,28 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
   const byTarget = new Map<string, CurrentResult>()
   for (const [targetKey, group] of groups) {
     const review = policy[targetKey]
-    if (group.length > 1 && !review) {
+    // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
+    const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
+    const picked = pickContextRun(
+      group.map((entry) =>
+        candidateFromSelected(entry.contextKey, entry.selected, statesFor(projection, entry.selected.runId)),
+      ),
+      review,
+    )
+    if (picked === undefined) throw new Error(`No current run for ${targetKey}`)
+    if ("ambiguous" in picked) {
       throw new Error(
-        `Ambiguous current ${targetKey}: ${group.map((entry) => entry.contextKey).join(", ")}; reviewed defaultContext row required`,
+        `Ambiguous current ${targetKey}: ${picked.ambiguous.join(", ")}; reviewed defaultContext row required`,
       )
     }
-    const chosen = review ? group.find((entry) => entry.contextKey === review.contextKey) : group[0]
-    if (!chosen) {
+    if (review && picked.selection !== "reviewed default-context row") {
       throw new Error(
-        `${join(contentDir, "default-contexts.json")}: ${targetKey} chooses a noncurrent context ${review?.contextKey}`,
+        `${join(contentDir, "default-contexts.json")}: ${targetKey} chooses a noncurrent context ${review.contextKey}`,
       )
     }
+    // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
+    const chosen = byKey.get(picked.run.key)
+    if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${targetKey} current contexts`)
     const key = compatibilityKey(chosen.selected.target.kind, chosen.selected.target.id, catalog)
     if (byTarget.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
     byTarget.set(key, { ...chosen, ...(review && { policy: review }) })
