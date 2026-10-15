@@ -27,7 +27,8 @@ import { tmpdir } from "node:os"
 import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
-import { RELEASE_1_CONTEXTS } from "./decisive-share.ts"
+import * as versions from "../packages/admin/versions.ts"
+import { buildReport, RELEASE_1_CONTEXTS } from "./decisive-share.ts"
 import {
   admitProducedRuns,
   clipboardProfileFor,
@@ -204,8 +205,17 @@ describe("release 1 Linux launcher flags", () => {
   it("reads the five Linux invocations back from the committed runs in the corpus", () => {
     // Retiring the old freeze preference leaves multiple current Kitty profiles. Refuse the
     // real ambiguity before exercising launcher readback on an explicit historical witness.
-    expect(() => linuxLedger(CONTENT)).toThrow(/kitty\/linux:.*more than one run.*refusing to guess/)
+    const ambiguous = buildReport({ contentDir: CONTENT }).barRows.find(
+      (row) => row.context.os === "linux" && !row.measured && row.reason.includes("ambiguous current selection"),
+    )
+    const liveLedger = ambiguous ? undefined : linuxLedger(CONTENT)
+    if (ambiguous) {
+      expect(() => linuxLedger(CONTENT)).toThrow(
+        new RegExp(`${ambiguous.context.terminalId}/linux:.*more than one run.*refusing to guess`),
+      )
+    }
     const fixture = mkdtempSync(join(tmpdir(), "release1-historical-launchers-"))
+    const historicalSuite = vi.spyOn(versions, "probeHash").mockReturnValue("c3d1fbb77561")
     try {
       for (const name of readdirSync(CONTENT)) {
         if (name !== "suites") symlinkSync(join(CONTENT, name), join(fixture, name))
@@ -228,7 +238,7 @@ describe("release 1 Linux launcher flags", () => {
       // Every assertion here is a property of the READ-BACK, not of today's corpus: which run the site
       // selects changes as clean runs land (alacritty and wezterm linux moved from excluded to selected
       // while this change was in flight), so a test that pinned that would fail for a non-regression.
-      for (const [id, row] of Object.entries(ledger)) {
+      for (const [id, row] of [...Object.entries(ledger), ...Object.entries(liveLedger ?? {})]) {
         expect(row.version).not.toBe("")
         expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
         expect(existsSync(join(CONTENT, row.file))).toBe(true)
@@ -240,6 +250,7 @@ describe("release 1 Linux launcher flags", () => {
         if (id === "kitty") expect(row.preset).not.toBe("default")
       }
     } finally {
+      historicalSuite.mockRestore()
       rmSync(fixture, { recursive: true, force: true })
     }
   }, 30_000)

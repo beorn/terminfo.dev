@@ -29,22 +29,30 @@ if (!currentCohort) throw new Error("candidate2 cohort absent")
 const historicalRun = report.admittedRuns.find((run) => run.runId === "dfd4cd08416fb5f3be3eaeed5acce782")
 if (!historicalRun) throw new Error("historical kitty/linux admitted run absent")
 const historicalCohort = { ...currentCohort, frozenSuiteId: "c3d1fbb77561" }
-const historicalRow = reader.cohortRowForSelected(
-  reader.barRowForContext({
-    context: { terminalId: "kitty", os: "linux" },
-    candidates: [historicalRun],
-    tier62Ids: report.tier62Ids,
-    tier52Ids: report.tier52Ids,
-  }),
-  historicalCohort,
-)
+const historicalSelected = reader.barRowForContext({
+  context: { terminalId: "kitty", os: "linux" },
+  candidates: [historicalRun],
+  tier62Ids: report.tier62Ids,
+  tier52Ids: report.tier52Ids,
+})
+const historicalRow = reader.cohortRowForSelected(historicalSelected, historicalCohort)
+const uncollectedCohort = { ...currentCohort, frozenSuiteId: "0fb194cf6cea" }
 const historicalReport = vi.spyOn(reader, "buildReport").mockReturnValue({
   ...report,
   candidate2: { ...historicalCohort, barRows: [historicalRow] },
 })
 let historicalData: ReturnType<typeof loadCandidate2Data>
+let uncollectedData: ReturnType<typeof loadCandidate2Data>
 try {
   historicalData = loadCandidate2Data()
+  historicalReport.mockReturnValue({
+    ...report,
+    candidate2: {
+      ...uncollectedCohort,
+      barRows: [reader.cohortRowForSelected(historicalSelected, uncollectedCohort)],
+    },
+  })
+  uncollectedData = loadCandidate2Data()
 } finally {
   historicalReport.mockRestore()
 }
@@ -80,10 +88,18 @@ describe("candidate-2 page: publication rule (AC4)", () => {
   it("publishes a row exactly when its selected run sits on the frozen suite", () => {
     const published = data.contexts.filter((row) => row.published)
     const omitted = data.contexts.filter((row) => !row.published)
-    // Freezing precedes collection: a new suite must publish no historical measurements.
-    expect(published).toEqual([])
-    expect(omitted.length).toBeGreaterThan(0)
-    expect(data.measuredAt).toBe("")
+    // Live collection may advance: publication must follow the canonical eligible selection.
+    expect(published.map((row) => row.runId)).toEqual(
+      currentCohort.barRows.filter((row) => row.measured).map((row) => row.run.runId),
+    )
+    expect(data.contexts.length).toBeGreaterThan(0)
+    // The same real historical run cannot become a measurement on the newer suite.
+    expect(uncollectedData.contexts).toHaveLength(1)
+    expect(uncollectedData.contexts.filter((row) => row.published)).toEqual([])
+    expect(uncollectedData.measuredAt).toBe("")
+    expect(uncollectedData.contexts[0]?.reason).toBe(
+      "ineligible: selected run on suite c3d1fbb77561, required 0fb194cf6cea",
+    )
     const historicalPublished = historicalData.contexts.filter((row) => row.published)
     expect(historicalPublished).toHaveLength(1)
     for (const row of [...published, ...historicalPublished]) {
