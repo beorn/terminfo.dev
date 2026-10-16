@@ -31,10 +31,7 @@ const MEASURED_CHAIN: WindowsProcessRow[] = [
 
 /** A PROCESSENTRY32W record at the LITERAL offsets from tlhelp32.h, written independently of
  * `processEntry32WLayout` so a wrong offset can never be masked by a matching encoder. */
-function recordAtDocumentedOffsets(
-  row: { pid: number; ppid: number; comm: string },
-  pointerBytes: 4 | 8,
-): Buffer {
+function recordAtDocumentedOffsets(row: { pid: number; ppid: number; comm: string }, pointerBytes: 4 | 8): Buffer {
   const size = pointerBytes === 8 ? 568 : 556
   const ppidOffset = pointerBytes === 8 ? 32 : 24
   const exeFileOffset = pointerBytes === 8 ? 44 : 36
@@ -160,8 +157,10 @@ describe("requireHostedWindowsAppAncestor", () => {
   it("matches the base name of a full executable path without case", () => {
     const chain = windowsProcessAncestry(MEASURED_CHAIN, 8848)
     expect(
-      requireHostedWindowsAppAncestor("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\windows-terminal\\WindowsTerminal.exe", chain)
-        .pid,
+      requireHostedWindowsAppAncestor(
+        "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\windows-terminal\\WindowsTerminal.exe",
+        chain,
+      ).pid,
     ).toBe(5796)
     expect(requireHostedWindowsAppAncestor("windowsterminal.EXE", chain).pid).toBe(5796)
   })

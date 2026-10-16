@@ -553,9 +553,7 @@ export async function createOwnedTerminal(options: {
     }
     // The receipt's own launch id must be THIS launch, the same claim the Terminal.app arm makes.
     if (receipt.runId !== expectedLaunchRunId) {
-      throw new Error(
-        `Hosted Windows receipt run id ${receipt.runId} differs from this launch ${expectedLaunchRunId}`,
-      )
+      throw new Error(`Hosted Windows receipt run id ${receipt.runId} differs from this launch ${expectedLaunchRunId}`)
     }
     // The walk runs and PRINTS before the CONOUT$ precondition is checked: a refusal at the binding
     // must not leave the toolhelp32 layout - the one read here never yet seen from real bytes - unread

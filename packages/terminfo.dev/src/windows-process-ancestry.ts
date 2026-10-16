@@ -88,7 +88,9 @@ function decodeUtf16Z(bytes: Uint8Array, offset: number, chars: number): string 
  */
 export function decodeProcessEntry32W(bytes: Uint8Array, layout: ProcessEntry32WLayout): WindowsProcessRow {
   if (bytes.byteLength < layout.size) {
-    throw new Error(`PROCESSENTRY32W record is ${String(bytes.byteLength)} bytes, short of the ${String(layout.size)} this layout needs`)
+    throw new Error(
+      `PROCESSENTRY32W record is ${String(bytes.byteLength)} bytes, short of the ${String(layout.size)} this layout needs`,
+    )
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const declared = view.getUint32(0, true)
