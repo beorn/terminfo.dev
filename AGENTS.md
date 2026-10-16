@@ -72,9 +72,12 @@ versions.json                   backend version catalog (which versions to probe
 package.json                    private workspace root; packages/* are Bun workspaces
 ```
 
-`packages/*/package.json` manifests are load-bearing. Cross-package imports use
-package names (`@terminfo/probe-defs`, `terminfo.dev/src/...`) rather than
-relative paths like `../../probe-defs/src`; km's root workspace also includes
+`packages/*/package.json` manifests are load-bearing. Sibling packages are
+imported by package name (`@terminfo/probe-defs`); imports into the CLI's own
+source are repo-relative filesystem paths like
+`../../terminfo.dev/src/identity-guard.ts`. The bare subpath
+`terminfo.dev/src/...` no longer resolves: `terminfo.dev` publishes only its
+`./package.json` entry in `exports`. km's root workspace also includes
 `vendor/terminfo.dev/packages/*` so local repo commands resolve the same graph.
 
 ## Data Architecture
