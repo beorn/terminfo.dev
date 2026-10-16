@@ -13,6 +13,7 @@
  * The byte offsets are the CONSOLE_SCREEN_BUFFER_INFO layout: dwSize at 0, dwCursorPosition at 4,
  * wAttributes at 8, then the SMALL_RECT srWindow at 10 (left, top, right, bottom; four int16s).
  */
+import { loadKernel32 } from "./windows-kernel32.ts"
 import type { ConsoleGeometry } from "./windows-console-geometry.ts"
 
 /** The console screen buffer info, as the two windows the collector needs. */
@@ -47,59 +48,17 @@ export function decodeConsoleScreenBufferInfo(bytes: Uint8Array): ConsoleGeometr
   return { cols, rows }
 }
 
-interface FfiModule {
-  dlopen(
-    path: string,
-    symbols: Record<string, { args: readonly unknown[]; returns: unknown }>,
-  ): { symbols: Record<string, (...args: never[]) => number> }
-  FFIType: Record<string, unknown>
-  ptr(data: Uint8Array): unknown
-}
-
-async function kernel32(): Promise<{
-  symbols: Record<string, (...args: never[]) => number>
-  ptr: (d: Uint8Array) => unknown
-}> {
-  let ffi: FfiModule
-  try {
-    ffi = (await import("bun:ffi")) as unknown as FfiModule
-  } catch (error) {
-    throw new Error(
-      `bun:ffi is not available in this runtime: ${error instanceof Error ? error.message : String(error)}`,
-    )
-  }
-  const binding = ffi.dlopen("kernel32.dll", {
-    CreateFileW: {
-      args: [
-        ffi.FFIType.ptr,
-        ffi.FFIType.u32,
-        ffi.FFIType.u32,
-        ffi.FFIType.ptr,
-        ffi.FFIType.u32,
-        ffi.FFIType.u32,
-        ffi.FFIType.ptr,
-      ],
-      returns: ffi.FFIType.ptr,
-    },
-    GetConsoleScreenBufferInfo: { args: [ffi.FFIType.ptr, ffi.FFIType.ptr], returns: ffi.FFIType.i32 },
-    GetConsoleWindow: { args: [], returns: ffi.FFIType.ptr },
-    GetLastError: { args: [], returns: ffi.FFIType.u32 },
-    CloseHandle: { args: [ffi.FFIType.ptr], returns: ffi.FFIType.i32 },
-  })
-  return { symbols: binding.symbols, ptr: (data) => ffi.ptr(data) }
-}
-
 /** This process's own console window handle — the identity a re-read is checked against. It is
  * stable inside one console and different for a different console (measured: 327766 twice, then
  * 328074 in the previous run), which is what makes a per-read change check meaningful. */
 export async function readWindowsConsoleIdentity(): Promise<string> {
-  const { symbols } = await kernel32()
+  const { symbols } = await loadKernel32()
   return String(symbols.GetConsoleWindow())
 }
 
 /** Open this process's CONOUT$ and read the visible window off it. */
 export async function readWindowsConsoleGeometry(): Promise<ConsoleGeometry> {
-  const { symbols, ptr } = await kernel32()
+  const { symbols, ptr } = await loadKernel32()
   const handle = symbols.CreateFileW(
     ptr(Buffer.from("CONOUT$\u0000", "utf16le")) as never,
     GENERIC_READ_WRITE as never,

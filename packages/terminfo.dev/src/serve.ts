@@ -134,7 +134,7 @@ export function frameUnavailableCapture(): ProbeCapture {
   }
 }
 
-type OwnedTerminalKind = "linux" | "terminalApp" | "darwinHosted"
+type OwnedTerminalKind = "linux" | "terminalApp" | "darwinHosted" | "windowsHosted"
 
 /** One geometry query the capture pre-flight asked, kept with its raw reply. The refusal of a
  * terminal that cannot be calibrated is re-derivable from these bytes, never from a summary. */
@@ -167,20 +167,23 @@ interface CaptureCalibrationFact {
 /** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
 function ownedTerminalKind(input: {
   clipboardReceipt: string | undefined
-  hostedDarwinReceipt: string | undefined
+  /** TERMINFO_DISPOSABLE_RECEIPT: the hosted-runner receipt, which now names TWO arms — Darwin's
+   * four Mac apps and the one Windows app — so the platform, not the variable, picks the arm. */
+  hostedReceipt: string | undefined
   terminalAppOwner: unknown
   platform: NodeJS.Platform
 }): OwnedTerminalKind | undefined {
-  const { clipboardReceipt, hostedDarwinReceipt, terminalAppOwner, platform } = input
+  const { clipboardReceipt, hostedReceipt, terminalAppOwner, platform } = input
   if (clipboardReceipt && terminalAppOwner) {
     throw new Error("Collection cannot have both Linux and Terminal.app owners")
   }
-  if (terminalAppOwner && hostedDarwinReceipt && platform === "darwin") {
-    throw new Error("Collection cannot have both Terminal.app and hosted Darwin owners")
+  if (terminalAppOwner && hostedReceipt && (platform === "darwin" || platform === "win32")) {
+    throw new Error("Collection cannot have both Terminal.app and a hosted-runner owner")
   }
   if (clipboardReceipt) return "linux"
   if (terminalAppOwner) return "terminalApp"
-  if (platform === "darwin" && hostedDarwinReceipt) return "darwinHosted"
+  if (platform === "darwin" && hostedReceipt) return "darwinHosted"
+  if (platform === "win32" && hostedReceipt) return "windowsHosted"
   return undefined
 }
 
@@ -200,10 +203,10 @@ export async function collectProbeRun(
   const probeHash = manifest.probeHash
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
-  const hostedDarwinReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
+  const hostedReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
   const kind = ownedTerminalKind({
     clipboardReceipt,
-    hostedDarwinReceipt,
+    hostedReceipt,
     terminalAppOwner: options.terminalAppOwner,
     platform: process.platform,
   })
@@ -278,12 +281,12 @@ export async function collectProbeRun(
       terminalApp: options.terminalAppOwner,
     })
   } else if (kind === "darwinHosted") {
-    if (!hostedDarwinReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
+    if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
     ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      darwinHosted: { receiptPath: hostedDarwinReceipt },
+      darwinHosted: { receiptPath: hostedReceipt },
     })
     if (captureDirectory) {
       const appPid = ownedTerminal.hostedAppPid
@@ -375,6 +378,17 @@ export async function collectProbeRun(
         installCapture(report.geometry)
       }
     }
+  } else if (kind === "windowsHosted") {
+    if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
+    // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
+    // the receipt names the launched WindowsTerminal.exe, the collector proves it is an ancestor,
+    // and every geometry probe then reads the console it is actually writing to.
+    ownedTerminal = await createOwnedTerminal({
+      captureRunId,
+      out,
+      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+      windowsHosted: { receiptPath: hostedReceipt },
+    })
   }
   const clipboard = ownedTerminal?.clipboard
   let batch: Awaited<ReturnType<typeof runProbeBatch>>

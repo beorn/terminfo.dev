@@ -5,11 +5,28 @@ import { readDisposableReceipt } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
+import { readWindowsConsoleIdentity } from "./windows-console-ffi.ts"
+import { readConsoleGeometry } from "./windows-console-geometry.ts"
+import {
+  readWindowsProcessAncestry,
+  requireHostedWindowsAppAncestor,
+  windowsCommBase,
+} from "./windows-process-ancestry.ts"
 
 export type GeometrySource =
   | "stty size on a /proc/self/fd reopen of the verified output device"
   | "stty size on a /dev/fd reopen of the verified output device"
+  | "GetConsoleScreenBufferInfo on the collector's own CONOUT$"
+  | "`mode con` on the collector's own console"
   | "unavailable: no verified output device"
+
+/** The two named Windows reads, in the design's order. Recorded per measurement, so a run says
+ * WHICH read answered instead of naming the primary when the fallback did. */
+const WINDOWS_FFI_SOURCE = "GetConsoleScreenBufferInfo on the collector's own CONOUT$" as const
+const WINDOWS_MODE_CON_SOURCE = "`mode con` on the collector's own console" as const
+
+/** The one Windows terminal app the hosted route launches, named in windows-measurement.yml. */
+const HOSTED_WINDOWS_TERMINAL_COMM = "WindowsTerminal.exe"
 
 export type GeometryMeasurement =
   | {
@@ -103,6 +120,13 @@ type DarwinBinding = {
   inputDevice: Device
   outputDevice: Device
 }
+/** Hosted Windows has no fd device to compare; the console's OWN identity is the binding. */
+type WindowsBinding = {
+  platform: "windows"
+  /** GetConsoleWindow's handle: stable inside one console, different for another (measured
+   * 327766 twice in one console, 328074 in the previous), which is what makes a re-read meaningful. */
+  consoleIdentity: string
+}
 
 export type HostedDarwinAppId = "terminal-app" | "iterm2" | "ghostty" | "alacritty"
 export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
@@ -183,7 +207,7 @@ function readProcessAncestry(startPid: number): AncestryRow[] {
   }
   return rows
 }
-type OutputBinding = LinuxBinding | DarwinBinding
+type OutputBinding = LinuxBinding | DarwinBinding | WindowsBinding
 
 function selectedFd(out: NodeJS.WriteStream): number {
   const fd = (out as { fd?: unknown }).fd
@@ -299,13 +323,29 @@ function darwinHostedOutput(out: NodeJS.WriteStream): DarwinBinding {
   }
 }
 
+/** Hosted Windows console bind. There is no fd device to compare on Windows - the collector's own
+ * CONOUT$ stream IS the console - so the bind is (a) this is the collector's own controlling output
+ * stream and (b) the console window handle the geometry read is checked against. */
+function windowsHostedOutput(out: NodeJS.WriteStream, consoleIdentity: string): WindowsBinding {
+  if (process.platform !== "win32") throw new Error("Owned Windows hosted terminal requires Windows")
+  if (!wasCollectorOpenedControllingTTY(out)) {
+    throw new Error("Owned Windows hosted terminal requires the collector's own CONOUT$ output stream")
+  }
+  return { platform: "windows", consoleIdentity }
+}
+
 const geometrySource = (binding: OutputBinding): OwnedTerminal["geometrySource"] =>
   binding.platform === "linux"
     ? "stty size on a /proc/self/fd reopen of the verified output device"
-    : "stty size on a /dev/fd reopen of the verified output device"
+    : binding.platform === "darwin"
+      ? "stty size on a /dev/fd reopen of the verified output device"
+      : WINDOWS_FFI_SOURCE
 
 /** Always reopen the selected output, verify that clone, then ask stty for a fresh size. */
 async function readBoundGeometry(binding: OutputBinding): Promise<GeometryMeasurement> {
+  // The Windows arm is the one read with no fd to reopen: the console read IS the verified read, on
+  // the console windowsHostedOutput bound this process to.
+  if (binding.platform === "windows") return readWindowsBoundGeometry()
   const at = new Date().toISOString()
   const source = geometrySource(binding)
   const unavailable = (diagnostic: string, stdout = "", stderr = ""): GeometryMeasurement => ({
@@ -393,6 +433,36 @@ async function readBoundGeometry(binding: OutputBinding): Promise<GeometryMeasur
   })
 }
 
+/**
+ * The Windows geometry read. The source names WHICH read answered (the ffi console read, or the
+ * `mode con` fallback) rather than claiming the primary; with neither answering, the result is
+ * `unavailable` carrying both attempts' diagnostics, so the caller keeps today's loud note instead
+ * of grading on a guessed size.
+ */
+async function readWindowsBoundGeometry(): Promise<GeometryMeasurement> {
+  const at = new Date().toISOString()
+  const read = await readConsoleGeometry()
+  if (read.status === "measured") {
+    return {
+      status: "measured",
+      at,
+      source: read.via === "ffi" ? WINDOWS_FFI_SOURCE : WINDOWS_MODE_CON_SOURCE,
+      rows: read.rows,
+      cols: read.cols,
+      stdout: "",
+      stderr: "",
+    }
+  }
+  return {
+    status: "unavailable",
+    at,
+    source: WINDOWS_FFI_SOURCE,
+    diagnostic: read.diagnostic,
+    stdout: "",
+    stderr: "",
+  }
+}
+
 const verifiedTerminalOwners = new WeakMap<OwnedTerminal, { captureRunId: string; out: NodeJS.WriteStream }>()
 
 export function ownedTerminalVerifiedFor(
@@ -412,17 +482,19 @@ export async function createOwnedTerminal(options: {
   linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
   darwinHosted?: { receiptPath: string }
+  windowsHosted?: { receiptPath: string }
 }): Promise<OwnedTerminal> {
-  const { captureRunId, out, expectedLaunchRunId, linux, terminalApp, darwinHosted } = options
+  const { captureRunId, out, expectedLaunchRunId, linux, terminalApp, darwinHosted, windowsHosted } = options
   if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (!/^[0-9a-f]{32}$/.test(expectedLaunchRunId)) throw new Error("Invalid launch run ID for owned terminal")
-  const armCount = [linux, terminalApp, darwinHosted].filter(Boolean).length
+  const armCount = [linux, terminalApp, darwinHosted, windowsHosted].filter(Boolean).length
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
   let hostedAncestor: AncestryRow | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
+  let hostedWindows = false
   if (linux) {
     if (process.platform !== "linux") throw new Error("Owned Linux fixture requires Linux")
     binding = linuxOutput(out)
@@ -437,8 +509,7 @@ export async function createOwnedTerminal(options: {
       throw new Error("Terminal.app owner assertion differs from this worker launch run or PID")
     }
     binding = darwinOutput(out, assertion)
-  } else {
-    if (!darwinHosted) throw new Error("Owned terminal requires exactly one platform receipt")
+  } else if (darwinHosted) {
     if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")
     const receipt = readDisposableReceipt(darwinHosted.receiptPath)
     if (receipt.kind !== "github-hosted-runner") {
@@ -460,6 +531,39 @@ export async function createOwnedTerminal(options: {
       maxBuffer: 256,
     }).trim()
     process.stderr.write(`Hosted Darwin measured ps -p 1 -o comm=: ${JSON.stringify(hostedPid1Comm)}\n`)
+  } else {
+    if (!windowsHosted) throw new Error("Owned terminal requires exactly one platform receipt")
+    if (process.platform !== "win32") throw new Error("Owned Windows hosted terminal requires Windows")
+    const receipt = readDisposableReceipt(windowsHosted.receiptPath)
+    if (receipt.kind !== "github-hosted-runner") {
+      throw new Error(
+        `Owned Windows hosted terminal requires a github-hosted-runner receipt, not ${JSON.stringify(receipt.kind)}`,
+      )
+    }
+    const appLaunch = receipt.appLaunch
+    // The win32 member of the appLaunch union is the discriminator, so a receipt from another
+    // platform cannot pass as this one's.
+    if (appLaunch?.platform !== "win32") {
+      throw new Error("Hosted Windows github-hosted-runner receipt names no win32 appLaunch")
+    }
+    if (windowsCommBase(appLaunch.executablePath) !== windowsCommBase(HOSTED_WINDOWS_TERMINAL_COMM)) {
+      throw new Error(
+        `Hosted Windows receipt executable is not ${HOSTED_WINDOWS_TERMINAL_COMM}: ${JSON.stringify(appLaunch.executablePath)}`,
+      )
+    }
+    // The receipt's own launch id must be THIS launch, the same claim the Terminal.app arm makes.
+    if (receipt.runId !== expectedLaunchRunId) {
+      throw new Error(
+        `Hosted Windows receipt run id ${receipt.runId} differs from this launch ${expectedLaunchRunId}`,
+      )
+    }
+    binding = windowsHostedOutput(out, await readWindowsConsoleIdentity())
+    hostedAncestor = requireHostedWindowsAppAncestor(
+      HOSTED_WINDOWS_TERMINAL_COMM,
+      await readWindowsProcessAncestry(process.pid),
+    )
+    hostedReceiptSha256 = receipt.sha256
+    hostedWindows = true
   }
   let clipboard: LinuxClipboardAdapter | undefined
   try {
@@ -473,6 +577,14 @@ export async function createOwnedTerminal(options: {
       ...(terminalApp && {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",
+      }),
+      ...(hostedWindows && {
+        windowsHosted: {
+          appId: "windows-terminal",
+          ancestor: hostedAncestor,
+          receiptKind: "github-hosted-runner",
+          receiptSha256: hostedReceiptSha256,
+        },
       }),
       ...(hostedApp && {
         darwinHosted: {
@@ -492,6 +604,17 @@ export async function createOwnedTerminal(options: {
       ...(clipboard && { clipboard }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")
+        // A Windows console has no device to re-open, so the re-read is the console's own identity:
+        // a changed window handle means these probes no longer write where the geometry came from.
+        if (binding.platform === "windows") {
+          const identity = await readWindowsConsoleIdentity()
+          if (identity !== binding.consoleIdentity) {
+            throw new Error(
+              `Owned geometry console changed: window handle ${identity}, bound to ${binding.consoleIdentity}`,
+            )
+          }
+          return readBoundGeometry(binding)
+        }
         const current = linux
           ? linuxOutput(out)
           : terminalApp
