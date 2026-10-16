@@ -235,21 +235,12 @@ export async function collectProbeRun(
       }) => Promise<void>)
     | undefined
   /**
-   * The owned Darwin capture's geometry pre-flight, run ONCE inside raw mode before the batch, and
-   * the fact it leaves in the run. A terminal whose OWN cell size cannot be mapped is refused here,
-   * by name, while nothing has been captured yet, and nothing is installed: every probe then takes
-   * its own no-capture branch and the suite still completes, where the lazy version handed a capture
-   * adapter to rows whose frames could only throw and left the run ungraded (28785). A transient
-   * cause — a timeout — aborts the whole batch from here instead, before any probe runs.
+   * Read protocol geometry once before the batch, then witness the complete raster and restoration
+   * before its first callback. An intrinsic missing report does not prevent measurement; a transient
+   * query failure aborts. The recorded fact names the measured authority or the actual refusal.
    */
   let preflightDarwinCapture: (() => Promise<void>) | undefined
   let captureCalibration: CaptureCalibrationFact | undefined
-  /**
-   * The refused geometry's named cause, handed to the batch so a refused row can say why (round 1
-   * must 1). Named for the concept, not `captureRefusal`: probe-defs already uses that name for a
-   * row's own refusal to capture an undersized terminal (round 2 must 4).
-   */
-  let captureGeometryRefusal: string | undefined
   let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
   if (captureDirectory && process.platform === "linux") {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
@@ -466,7 +457,6 @@ export async function collectProbeRun(
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
         ...(prepareCapture && { prepareCapture }),
-        ...(captureGeometryRefusal && { captureGeometryRefusal }),
       })
       if (identityQuery) {
         result.rawReplies["collector.xtversion"] = identityQuery.raw

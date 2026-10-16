@@ -111,9 +111,8 @@ export interface CaptureCells {
 }
 
 /**
- * The terminal's own pixel report, as numbers: CSI 16 t (cell size) and CSI 14 t (text area in
- * pixels). Cells are mapped to an absolute rectangle from these, never from a window width divided
- * by a column count.
+ * Positive integer cell geometry from usable own replies or a complete witnessed raster in this
+ * run. Window dimensions divided by cell counts never establish a raster geometry.
  */
 export interface CapturePixelGeometry {
   cellWidth: number
@@ -132,7 +131,7 @@ export interface CaptureRequest {
   label: string
   /** The region to digest, in cells. `pixelGeometry` is required with it. */
   cells?: CaptureCells
-  /** The terminal's own pixel report, required alongside `cells`. */
+  /** The run's measured pixel geometry, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
 }
 

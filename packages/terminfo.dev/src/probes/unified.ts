@@ -442,6 +442,29 @@ export async function runProbeBatch(
     const prepareCapture = options.prepareCapture
     if (prepareCapture && !capturePrepared) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
+      const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
+      const reported = options.geometryCorroboration
+      if (reported?.status === "conflict" || reported?.status === "malformed") {
+        throw new Error(`Capture calibration verified grid disagrees with terminal reply: ${reported.status}`)
+      }
+      if (declared?.status !== "measured") {
+        if (
+          !reported ||
+          !["agree", "uncorroborated"].includes(reported.status) ||
+          typeof reported.rows !== "number" ||
+          typeof reported.cols !== "number" ||
+          !Number.isSafeInteger(reported.rows) ||
+          !Number.isSafeInteger(reported.cols) ||
+          reported.rows < 2 ||
+          reported.cols < 2
+        ) {
+          throw new Error(
+            "Capture calibration verified grid is unavailable: no terminal grid reply or verified declared size",
+          )
+        }
+        context.rows = reported.rows
+        context.cols = reported.cols
+      }
       // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
       await withTTYOperation(
         () =>
@@ -473,6 +496,14 @@ export async function runProbeBatch(
         )
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
+      }
+      if (
+        captureGeometryRefusal &&
+        result.observation?.outcome === "inconclusive" &&
+        result.observation.evidence === "consumed"
+      ) {
+        const prior = result.observation.note
+        result.observation.note = `${prior ? `${prior}; ` : ""}Pixel capture unavailable: ${captureGeometryRefusal}`
       }
       if (result.notTested) {
         const reason = result.notTested.reason

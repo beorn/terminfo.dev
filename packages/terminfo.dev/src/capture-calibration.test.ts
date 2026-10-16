@@ -81,8 +81,9 @@ test("complete witnessed raster establishes every edge without dividing padded w
   })
   await expect(run.promise).resolves.toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
   expect(run.reads.get("solid grid paint")).toBe(4)
-  for (const stage of ["column edge paint", "row edge paint", "restore grid paint"] as Stage[])
-    {expect(run.reads.get(stage)).toBe(2)}
+  for (const stage of ["column edge paint", "row edge paint", "restore grid paint"] as Stage[]) {
+    expect(run.reads.get(stage)).toBe(2)
+  }
   expect(run.writes.join("")).toContain("\x1b[4;1H")
   expect(run.writes.at(-1)).toContain("?25l")
   for (const stage of ["solid grid paint", "column edge paint", "row edge paint", "restore grid paint"] as Stage[]) {
@@ -131,8 +132,9 @@ test.each(["stale column frame", "unconfirmed column frame", "one-channel paint 
   async (fault) => {
     const wrong = rasterFrame("columns")
     if (fault === "one-channel paint mismatch") {
-      for (let offset = 0; offset < wrong.rgba.length; offset += 4)
-        {if (wrong.rgba[offset] === 255) wrong.rgba[offset] = 254}
+      for (let offset = 0; offset < wrong.rgba.length; offset += 4) {
+        if (wrong.rgba[offset] === 255) wrong.rgba[offset] = 254
+      }
     }
     const frames =
       fault === "stale column frame"

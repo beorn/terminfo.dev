@@ -1671,3 +1671,74 @@ it("keeps a failed attempt failed for the batch, so no later row re-measures the
     else measured.mockReset()
   }
 })
+
+it("a calibration restore failure aborts the batch before any callback", async () => {
+  verifiedBatchFixture()
+  const id = "modes.bracketed-paste"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)
+  if (!definition) throw new Error("Missing existing bracketed-paste probe")
+  const original = definition.term
+  let callbacks = 0
+  definition.term = async () => {
+    callbacks++
+    return { pass: false, observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" } }
+  }
+  const failure = Object.assign(new Error("Witnessed restore did not match the pre-paint frame"), {
+    name: "CaptureRestoreFailed",
+  })
+  try {
+    await expect(
+      runProbeBatch({
+        ids: [id],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async () => {
+          throw failure
+        },
+      }),
+    ).rejects.toBe(failure)
+    expect(callbacks).toBe(0)
+  } finally {
+    definition.term = original
+  }
+})
+
+it("capture preparation refuses unavailable counts instead of using output defaults", async () => {
+  verifiedBatchFixture()
+  let painted = false
+  await expect(
+    runProbeBatch({
+      ids: ["modes.bracketed-paste"],
+      ownedTerminal: geometryOwner(noGeometry),
+      prepareCapture: async () => {
+        painted = true
+      },
+    }),
+  ).rejects.toThrow(/verified.*grid|grid.*unavailable/)
+  expect(painted).toBe(false)
+})
+
+it("a retained terminal grid reply supplies preparation counts when declared size is unavailable", async () => {
+  verifiedBatchFixture()
+  let seen: number[] | undefined
+  const raw = "\x1b[8;30;120t"
+  await runProbeBatch({
+    ids: ["modes.bracketed-paste"],
+    ownedTerminal: geometryOwner(noGeometry),
+    geometryCorroboration: {
+      status: "uncorroborated",
+      rows: 30,
+      cols: 120,
+      query: {
+        sequence: "\x1b[18t",
+        outbound: "\x1b[18t\x1b[c",
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      },
+    },
+    prepareCapture: async ({ context }) => {
+      seen = [context.rows, context.cols]
+    },
+  })
+  expect(seen).toEqual([30, 120])
+})
