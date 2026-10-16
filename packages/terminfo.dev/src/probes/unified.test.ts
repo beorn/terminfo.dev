@@ -1719,6 +1719,7 @@ it("capture preparation refuses unavailable counts instead of using output defau
 
 it("a retained terminal grid reply supplies preparation counts when declared size is unavailable", async () => {
   verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
   let seen: number[] | undefined
   const raw = "\x1b[8;30;120t"
   await runProbeBatch({

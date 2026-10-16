@@ -233,7 +233,7 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
-    /** Prepare an owned capture calibration before the first geometry-requiring mutating callback. */
+    /** Prepare owned capture calibration and verify restoration before the first callback. */
     prepareCapture?: (input: {
       context: TermContext
       featureId: string
