@@ -42,6 +42,7 @@ const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
 const evidenceDocument = ref<EvidenceDocument | null>(null)
+const recordedQueries = ref<Array<{ sequence: string; raw?: string }>>([])
 const evidenceLoading = ref(false)
 const evidenceError = ref<string | null>(null)
 let evidenceRequest = 0
@@ -186,6 +187,7 @@ function invalidateEvidence(): void {
   evidenceController?.abort()
   evidenceController = null
   evidenceDocument.value = null
+  recordedQueries.value = []
   evidenceLoading.value = false
   evidenceError.value = null
 }
@@ -241,6 +243,26 @@ async function loadEvidence(): Promise<void> {
       identity !== evidenceIdentity.value
     )
       return
+    // The app collector stores the actual exchange in its approved raw trace.
+    // Catalog guidance never substitutes for the question sent in a recorded run.
+    const raw = parsed.record.rawReply
+    let queries: Array<{ sequence: string; raw?: string }> = []
+    if (cell.evidence === "query" && typeof raw === "string" && /^\s*\{\s*"writes"\s*:/.test(raw)) {
+      const trace: unknown = JSON.parse(raw)
+      if (
+        !isRecord(trace) ||
+        !Array.isArray(trace.queries) ||
+        !trace.queries.every(
+          (query) =>
+            isRecord(query) &&
+            typeof query.sequence === "string" &&
+            (query.raw === undefined || typeof query.raw === "string"),
+        )
+      )
+        throw new Error("Recorded terminal trace has invalid query or reply fields")
+      queries = trace.queries as Array<{ sequence: string; raw?: string }>
+    }
+    recordedQueries.value = queries
     evidenceDocument.value = parsed as unknown as EvidenceDocument
   } catch (error) {
     if (
@@ -370,7 +392,7 @@ onBeforeUnmount(() => {
         <span
           >{{ targetName }}<template v-if="version"> · {{ version.target.version }}</template></span
         >
-        <template v-if="probeGuidanceText">
+        <template v-if="probeGuidanceText && !recordedQueries.length && !previewImageUrl">
           <strong>Current probe guidance</strong>
           <span>{{ probeGuidanceText }}</span>
         </template>
@@ -388,7 +410,20 @@ onBeforeUnmount(() => {
         <span v-if="presentation?.state === 'withdrawn'">Presentation withdrawn: {{ presentation.review.reason }}</span>
         <span v-if="evidenceLoading">Loading recorded evidence…</span>
         <span v-else-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
-        <template v-else-if="rawReply !== undefined">
+        <template v-else-if="recordedQueries.length && !previewImageUrl">
+          <template v-for="(query, index) in recordedQueries" :key="index">
+            <strong>What we asked</strong>
+            <pre class="result-evidence__raw">{{ JSON.stringify(query.sequence) }}</pre>
+            <strong>Terminal reply</strong>
+            <pre v-if="query.raw !== undefined" class="result-evidence__raw">{{ JSON.stringify(query.raw) }}</pre>
+            <span v-else>No reply bytes were recorded for this query.</span>
+          </template>
+          <template v-for="(assertion, index) in assertions" :key="index">
+            <span>Expected: {{ assertion.expected }}</span>
+            <span>Observed: {{ assertion.observed }}</span>
+          </template>
+        </template>
+        <template v-else-if="rawReply !== undefined && !previewImageUrl">
           <strong>{{ cell?.evidence === "query" ? "Terminal reply" : "Recorded test trace" }}</strong>
           <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
         </template>
