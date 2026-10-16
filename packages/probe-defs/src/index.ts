@@ -74,6 +74,7 @@ export { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
 export { charsetReadbackRows } from "./charsets.ts"
 export { editingReadbackRows } from "./editing.ts"
 export { eraseReadbackRows } from "./erase.ts"
+export { modesReadbackRows } from "./modes.ts"
 export { textReadbackRows } from "./text.ts"
 export { scrollbackReadbackRows } from "./scrollback.ts"
 
