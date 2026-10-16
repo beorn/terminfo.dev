@@ -1,6 +1,59 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
+import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+
+/** One addressing fixture supplies both parser-state and capture-region observers. */
+export const modesReadbackRows: readonly RegionReadbackRow[] = [
+  {
+    id: "modes.origin",
+    expected: "DECOM makes CUP 1;1 address the top of the measured vertical margins",
+    // LF proves rows 3–6 form a scroll region before testing origin-relative addressing.
+    seed:
+      "\x1b[?6l\x1b[?69l\x1b[r\x1b[0m\x1b[2J\x1b[H" +
+      "A\x1b[2;1HU\x1b[3;1HB\x1b[4;1HC\x1b[5;1HD\x1b[6;1HE\x1b[7;1HZ" +
+      "\x1b[3;6r\x1b[6;1H\n",
+    before: [
+      ["A", "", ""],
+      ["U", "", ""],
+      ["C", "", ""],
+      ["D", "", ""],
+      ["E", "", ""],
+      ["", "", ""],
+      ["Z", "", ""],
+    ],
+    // Normalize before the app oracle appends screen-relative parking/witness writes.
+    steps: [{ write: "\x1b[?6h\x1b[1;1HX\x1b[?6l\x1b[r" }],
+    after: [
+      ["A", "", ""],
+      ["U", "", ""],
+      ["X", "", ""],
+      ["D", "", ""],
+      ["E", "", ""],
+      ["", "", ""],
+      ["Z", "", ""],
+    ],
+    ignored: [
+      ["X", "", ""],
+      ["U", "", ""],
+      ["C", "", ""],
+      ["D", "", ""],
+      ["E", "", ""],
+      ["", "", ""],
+      ["Z", "", ""],
+    ],
+    controls: [
+      { row: 1, col: 0, char: "U" },
+      { row: 3, col: 0, char: "D" },
+      { row: 4, col: 0, char: "E" },
+      { row: 6, col: 0, char: "Z" },
+    ],
+    seedNote: "The vertical scroll-margin prerequisite was not measured",
+    controlNote: "Origin addressing moved cells outside its discriminator",
+    reset: "\x1b[?6l\x1b[?69l\x1b[r\x1b[0m\x1b[2J\x1b[H",
+    cleanup: "\x1b[?6l\x1b[?69l\x1b[r\x1b[0m\x1b[2J\x1b[H",
+  },
+]
 
 /** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
 function captureRefusal(ctx: TermContext, minRows: number, minCols: number, feature: string): ProbeResult | undefined {
@@ -458,17 +511,7 @@ export const modesProbes: ProbeDefinition[] = [
   }),
 
   // Origin mode
-  decrpmModeProbe("modes.origin", 6, (ctx) => {
-    ctx.feed("\x1b[?6h")
-    const result = ctx.getMode("originMode") === true
-    ctx.feed("\x1b[?6l")
-    return parserStateResult(
-      null,
-      "Origin mode changes cursor addressing within margins",
-      { mode: result },
-      "Mode metadata does not measure addressing",
-    )
-  }),
+  ...regionReadbackProbes(modesReadbackRows),
 
   // Insert/replace mode (IRM)
   {

@@ -35,7 +35,11 @@ const MODES_CONTRACT: GroupContract = [
   { id: "modes.focus-tracking", expected: "decided", claim: "DECRPM 1004 recognizes focus tracking" },
   { id: "modes.reverse-video", expected: "decided", claim: "DECRPM 5 recognizes reverse video" },
   { id: "modes.synchronized-output", expected: "decided", claim: "DECRPM 2026 recognizes synchronized output" },
-  { id: "modes.origin", expected: "decided", claim: "DECRPM 6 recognizes origin mode" },
+  {
+    id: "modes.origin",
+    expected: "inconclusive",
+    claim: "Margin-relative addressing needs the controlled grid fixture and an owned capture adapter",
+  },
   {
     id: "modes.insert-replace",
     expected: "inconclusive",

@@ -41,6 +41,66 @@ const KIND_ROWS: readonly RegionReadbackRow[] = KIND_TABLES.flatMap(([, table]) 
  */
 const XTERM_ABSENT = ["editing.decfra", "editing.decera", "editing.decsera", "editing.deccra"]
 
+async function collectOrigin(origin: probeDefs.ProbeDefinition) {
+  const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  try {
+    const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [origin])
+    expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(["headless xtermjs probe modes.origin\n"])
+    return batch
+  } finally {
+    progress.mockRestore()
+  }
+}
+
+// Origin support requires the addressing effect, not just DECRPM recognition. The existing
+// kind population previously omitted this definition, so exercise its real registry boundary.
+test("origin addressing measures its margin prerequisite and binds the real parser grid", async () => {
+  const origin = probeDefs.ALL_PROBES.find((probe) => probe.id === "modes.origin")
+  if (!origin) throw new Error("Missing modes.origin registry definition")
+  const batch = await collectOrigin(origin)
+  expect(batch.observations).toMatchObject([
+    { featureId: origin.id, outcome: "supported", evidence: "parser-state", rawReplyRef: origin.id },
+  ])
+  expect(batch.assertions).toMatchObject([{ featureId: origin.id, kind: "positive", rawReplyRef: origin.id }])
+  const raw = batch.rawReplies[origin.id]
+  if (!raw) throw new Error("Missing modes.origin raw grid measurement")
+  const measured = JSON.parse(raw) as { before: string[][]; after: string[][] }
+  expect(measured.before.map((row: string[]) => row[0])).toEqual(["A", "U", "C", "D", "E", "", "Z"])
+  expect(measured.after.map((row: string[]) => row[0])).toEqual(["A", "U", "X", "D", "E", "", "Z"])
+})
+
+// These remove one operation from the real fixture, rather than teaching a fake parser the answer.
+// They independently guard against a false positive and against grading an unproved prerequisite.
+test.each([
+  { missing: "DECOM", outcome: "unsupported", before: ["A", "U", "C", "D", "E", "", "Z"] },
+  { missing: "DECSTBM", outcome: "inconclusive", before: ["A", "U", "B", "C", "D", "E", "Z"] },
+])("origin addressing with missing $missing is $outcome", async ({ missing, outcome, before }) => {
+  const row = probeDefs.modesReadbackRows.find((item) => item.id === "modes.origin")
+  if (!row) throw new Error("Missing modes.origin kind row")
+  const changed = {
+    ...row,
+    seed: missing === "DECSTBM" ? row.seed.replace("\x1b[3;6r", "") : row.seed,
+    steps: row.steps.map((step) => ({
+      ...step,
+      write: missing === "DECOM" ? step.write.replace("\x1b[?6h", "") : step.write,
+    })),
+  }
+  const [probe] = probeDefs.regionReadbackProbes([changed])
+  if (!probe) throw new Error("Missing derived origin negative-control probe")
+  const batch = await collectOrigin(probe)
+  expect(batch.observations).toMatchObject([{ featureId: row.id, outcome, rawReplyRef: row.id }])
+  const raw = batch.rawReplies[row.id]
+  if (!raw) throw new Error("Missing origin negative-control raw grid")
+  const measured = JSON.parse(raw) as { before: string[][]; after?: string[][] }
+  expect(measured.before.map((cells: string[]) => cells[0])).toEqual(before)
+  if (missing === "DECOM") {
+    expect(measured.after?.map((cells: string[]) => cells[0])).toEqual(["X", "U", "C", "D", "E", "", "Z"])
+    expect(batch.assertions).toMatchObject([{ kind: "negative", rawReplyRef: row.id }])
+  } else {
+    expect(batch.assertions).toEqual([])
+  }
+})
+
 test("every region-readback kind row grades its real xterm.js outcome", async () => {
   // The collector reports progress on stderr. Consume only that expected diagnostic;
   // any other output remains a failure rather than disappearing into a blanket mock.
