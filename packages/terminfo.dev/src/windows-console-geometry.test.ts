@@ -112,6 +112,26 @@ describe("readConsoleGeometry — the console the probes write to (#29558)", () 
     expect(read).not.toHaveProperty("rows")
   })
 
+  it("refuses `mode con` output that parses but came from a failed command — never a default size", async () => {
+    // @dev/7 r1 finding 3: the existing failure case used UNPARSEABLE stdout, so a nonzero exit with
+    // two plausible numbers was still accepted as measured geometry.
+    for (const status of [1, null] as const) {
+      const read = await readConsoleGeometry({
+        ffi: vi.fn(async () => {
+          throw new Error("CreateFileW CONOUT$ failed")
+        }),
+        modeCon: vi.fn(() => ({ stdout: MODE_CON_40x100, stderr: "the handle is invalid", status })),
+      })
+
+      expect(read.status).toBe("unavailable")
+      if (read.status !== "unavailable") throw new Error("unreachable")
+      expect(read).not.toHaveProperty("cols")
+      expect(read).not.toHaveProperty("rows")
+      expect(read.diagnostic).toMatch(/`mode con` (exited nonzero|returned no exit status)/)
+      expect(read.diagnostic).toMatch(/the handle is invalid/)
+    }
+  })
+
   it("refuses to reach for either default read off Windows", async () => {
     const read = await readConsoleGeometry({ platform: "linux" })
 

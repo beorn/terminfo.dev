@@ -83,6 +83,16 @@ export async function readConsoleGeometry(
     let reply: ModeConReply | undefined
     try {
       reply = modeCon()
+      // The child's status decides whether its output is a geometry read AT ALL: `mode con` can exit
+      // nonzero or without a status and still print two plausible numbers, and parsing that would
+      // grade on a failed command (@dev/7 r1 finding 3). The catch below names both attempts.
+      if (reply.status !== 0) {
+        throw new Error(
+          reply.status === null
+            ? "`mode con` returned no exit status, so its output is not a console read"
+            : "`mode con` exited nonzero, so its output is not a console read",
+        )
+      }
       const geometry = parseModeConGeometry(reply.stdout)
       return { status: "measured", via: "mode-con", cols: geometry.cols, rows: geometry.rows }
     } catch (error) {
