@@ -38,6 +38,7 @@ function calibration(
   options: {
     geometry?: typeof geometry
     frames?: Partial<Record<Stage, CapturedFrame[]>>
+    beforeCapture?: (label: string, writes: readonly string[]) => void
   } = {},
 ) {
   const defaults: Record<Stage, CapturedFrame> = {
@@ -62,6 +63,7 @@ function calibration(
     pixelGeometry: options.geometry,
     timeoutMs: 100,
     captureRaw: async (label, deadline) => {
+      options.beforeCapture?.(label, writes)
       budgets.push({ label, deadline })
       const stage = (Object.keys(defaults) as Stage[]).find((key) => label.includes(key))
       if (!stage) throw new Error(`Unexpected calibration checkpoint ${label}`)
@@ -160,4 +162,59 @@ test("a pre-existing witness cannot be used as the requested paint", async () =>
   await expect(calibration({ frames: { "before grid paint": [rasterFrame("solid")] } }).promise).rejects.toThrow(
     /already visible/,
   )
+})
+
+test("the original surface is captured before any calibration paint or clear", async () => {
+  const original = frame()
+  original.rgba.set([255, 255, 0, 255], (4 * original.width + 4) * 4)
+  const run = calibration({
+    frames: { "before grid paint": [original], "restore grid paint": [original, original] },
+    beforeCapture: (label, writes) => {
+      if (label.includes("before grid paint")) expect(writes).toEqual([])
+    },
+  })
+  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+  expect(run.reads.get("restore grid paint")).toBe(2)
+})
+
+test("failure to capture the original surface leaves it untouched", async () => {
+  const writes: string[] = []
+  const failure = new Error("Original owned window capture failed")
+  await expect(
+    calibrateCaptureOrigin({
+      ctx: {
+        rows: 4,
+        cols: 4,
+        write: (text: string) => writes.push(text),
+        queryMode: async () => "reset",
+      } as unknown as TermContext,
+      timeoutMs: 100,
+      captureRaw: async () => {
+        throw failure
+      },
+    }),
+  ).rejects.toBe(failure)
+  expect(writes).toEqual([])
+})
+
+test("an initial partial write with unprovable restoration is a fatal run failure", async () => {
+  const writes: string[] = []
+  await expect(
+    calibrateCaptureOrigin({
+      ctx: {
+        rows: 4,
+        cols: 4,
+        write: (text: string) => {
+          writes.push(text)
+          if (writes.length === 1) throw new Error("Initial calibration output partially written")
+        },
+        queryMode: async () => "reset",
+      } as unknown as TermContext,
+      timeoutMs: 100,
+      captureRaw: async () => {
+        if (writes.length > 0) throw new Error("Restored surface capture unavailable")
+        return blank
+      },
+    }),
+  ).rejects.toMatchObject({ name: "CaptureRestoreFailed" })
 })
