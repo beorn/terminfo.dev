@@ -4,7 +4,7 @@
  * @consumer Collector once-per-run calibration before the first mutation fixture
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
 import type { CapturedFrame } from "./capture-core.ts"
 import type { TermContext } from "@terminfo/probe-defs"
@@ -32,6 +32,10 @@ const witnessPaint = { x: 4, y: 4, rgb: [255, 0, 255] }
 const witness = frame(witnessPaint)
 const painted = frame(witnessPaint, { x: 6, y: 4, rgb: [255, 0, 0] })
 function calibration(frames: CapturedFrame[], timeoutMs = 100) {
+  // Scripted frames own time too: a 1 ms wall clock can expire in an earlier paint stage.
+  // Once the script is exhausted, advance to the deadline instead of spinning on real time.
+  let now = 0
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now)
   const writes: string[] = []
   const budgets: Array<{ label: string; deadline: number }> = []
   let reads = 0
@@ -47,11 +51,12 @@ function calibration(frames: CapturedFrame[], timeoutMs = 100) {
     timeoutMs,
     captureRaw: async (label, deadline) => {
       budgets.push({ label, deadline })
+      now += reads >= frames.length ? timeoutMs : 1
       const result = frames[Math.min(reads++, frames.length - 1)]
       if (!result) throw new Error("Missing scripted calibration frame")
       return result
     },
-  })
+  }).finally(() => clock.mockRestore())
   return { promise, writes, budgets, reads: () => reads }
 }
 
@@ -105,7 +110,7 @@ test.each([
     /baseline paint witness.*timeout/,
   ],
 ] as const)("calibration refuses %s without deriving an origin", async (_name, frames, message) => {
-  await expect(calibration([...frames], 1).promise).rejects.toThrow(message)
+  await expect(calibration([...frames]).promise).rejects.toThrow(message)
 })
 
 test.each(["hole", "separate rectangle", "wrong cell size"])(
