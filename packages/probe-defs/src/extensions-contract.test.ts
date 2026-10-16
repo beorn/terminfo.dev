@@ -250,7 +250,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
   {
     id: "extensions.font-ligatures",
     expected: "not-tested",
-    claim: "Font ligatures: catalog-only capability with no probe definition in suite",
+    claim: "Font ligatures: controlled-font visual verification is outside this executable suite",
   },
 ]
 
@@ -271,7 +271,7 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     {
       id: "extensions.font-ligatures",
       reason: "no-semantic-observable",
-      noObservable: "catalog capability has no probe definition in frozen suite",
+      noObservable: "No executable semantic observer in this suite; controlled-font visual verification is outside it",
     },
   ],
 }

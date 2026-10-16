@@ -91,7 +91,7 @@ const INPUT_CONTRACT: GroupContract = [
   {
     id: "input.kitty-click-events",
     expected: "not-tested",
-    claim: "kitty-click-events: catalog-only capability with no probe definition in suite",
+    claim: "kitty-click-events: prompt click_events and the resulting SGR mouse report have no probe in this suite",
   },
 ]
 
@@ -109,7 +109,8 @@ const INPUT_CONTRACT_SPEC: GroupContractSpec = {
     {
       id: "input.kitty-click-events",
       reason: "no-semantic-observable",
-      noObservable: "catalog capability has no probe definition in frozen suite",
+      noObservable:
+        "This suite does not request prompt click_events or observe its click report; generic mouse tests do not establish it",
     },
   ],
 }

@@ -2771,7 +2771,7 @@
     "url": "https://practicaltypography.com/ligatures-in-programming-fonts-hell-no.html",
     "tags": ["xterm-extensions"],
     "body": "Font ligatures are font-level glyph substitutions that render specific character sequences as a single combined glyph — for example <code>!=</code> rendered as ≠, <code>=></code> as ⇒, <code>-></code> as →, or <code>&lt;=</code> as ≤. Programming-oriented fonts like Fira Code, JetBrains Mono, Iosevka, Cascadia Code, and Monaspace ship with large ligature tables targeting common operators and symbols in popular languages.\n\nLigature support is a <em>terminal renderer</em> feature, not an escape sequence protocol: the terminal decides whether to honor the <code>calt</code> / <code>liga</code> / <code>dlig</code> OpenType tables when shaping runs of monospaced cells. Terminals that opt in must also handle cursor positioning carefully — the cursor should still land on logical character boundaries even though multiple cells display as one glyph, and selections must split ligatures when partially covered.\n\n<a href=\"https://sw.kovidgoyal.net/kitty/conf/#opt-kitty.disable_ligatures\">Kitty</a>, <a href=\"https://wezterm.org/config/font-shaping.html\">WezTerm</a>, <a href=\"https://ghostty.org/docs/config/reference#font-feature\">Ghostty</a>, and <a href=\"https://iterm2.com/documentation-fonts.html\">iTerm2</a> document font-ligature controls. iTerm2 documents opt-in and renderer restrictions. Actual appearance depends on the selected font, configuration, and renderer. Because this is a rendering decision rather than an escape-sequence feature, a protocol query cannot establish it; visually inspect a controlled sample with a ligature-enabled font.",
-    "probe": "Manual verification required — no automated probe available.",
+    "probe": "Not measured in this suite: visually compare a controlled sample with a ligature-enabled font and known shaping settings.",
     "baseline": "rich"
   },
   "input.kitty-click-events": {
@@ -2788,11 +2788,9 @@
     "slug": "decsscls-scroll-speed",
     "url": "https://vt100.net/docs/vt510-rm/DECSSCLS.html",
     "tags": ["vt510"],
-    "body": "DECSSCLS (Set Scroll Speed) controls how fast the terminal scrolls when new lines are added at the bottom. The sequence is <code>CSI Ps p</code> where Ps specifies the scroll speed: 0 or 1 for normal speed, 2-8 for progressively faster speeds. Defined in the VT510 reference manual.\n\nThis is a VT510-era feature that controlled the physical scrolling speed of CRT terminals. On modern terminal emulators it has little practical effect since rendering is immediate, but Contour implements it for VT510 compatibility.",
-    "probe": "Send DECSSCLS sequence and verify it's accepted without error.",
-    "baseline": "legacy",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "body": "DECSSCLS (Set Scroll Speed) controls scrolling presentation. The sequence is <code>CSI Ps SP p</code>, with a space intermediate before the final <code>p</code>. The VT510 reference manual defines default or 0–3 as 9 lines per second, 4–8 as 18 lines per second, and 9 as jump scrolling as fast as lines are received. User Features Locked can inhibit changes.\n\nThese values describe presentation timing, so accepting the bytes without an error does not establish support. A measurement needs a controlled line burst, timed observations of the target terminal's scrolling, and controls for the default rate and jump scrolling.",
+    "probe": "Not measured: compare timed scroll presentation for a fixed line burst at the documented rates, with default-rate and jump-scroll controls; restore the prior setting.",
+    "baseline": "legacy"
   },
   "modes.decsclm": {
     "name": "DECSCLM — smooth scroll mode",
