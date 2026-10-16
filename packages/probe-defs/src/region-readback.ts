@@ -319,8 +319,16 @@ const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
  */
 export type GeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DERIVED
 
+/**
+ * Everything the pixel-geometry queries below touch of a terminal context: ONE method, and nothing
+ * else. Naming it lets a collector that owns the terminal ask the SAME implementation before it
+ * starts a batch (there is no second geometry implementation to drift from), without inventing a
+ * whole fake TermContext for a question that only ever sends two queries and reads their replies.
+ */
+export type PixelGeometryContext = Pick<TermContext, "queryWithSentinelOutcome">
+
 export async function queryPixelGeometry(
-  ctx: TermContext,
+  ctx: PixelGeometryContext,
 ): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
   if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
@@ -355,7 +363,7 @@ export async function queryPixelGeometry(
  * reply was asked for and what came back.
  */
 async function deriveCellSizeFromTextArea(
-  ctx: TermContext,
+  ctx: PixelGeometryContext,
   cellReason: TerminalQueryOutcome["reason"],
 ): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)

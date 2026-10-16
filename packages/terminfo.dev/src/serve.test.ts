@@ -140,6 +140,28 @@ describe("daemon HTTP boundary", () => {
   }, 5000)
 })
 
+/**
+ * Run one inline collector script against the hosted-Darwin capture environment. The capture
+ * directory is what makes a run `darwinHosted`, so a script can drop it to collect the same
+ * terminal with NO capture adapter at all and compare the two runs row for row.
+ */
+function runHostedDarwinFixture(script: string) {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
+  return spawnSync(process.execPath, ["-e", script], {
+    cwd: packageRoot,
+    env: {
+      ...process.env,
+      HOME: home,
+      TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+      TERMINFO_DISPOSABLE_RECEIPT: "hardware-receipt-fixture",
+      TERMINFO_RUNTIME_PROVENANCE: "",
+      TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+    },
+    encoding: "utf8",
+    timeout: 10_000,
+  })
+}
+
 describe("private finite daemon startup", () => {
   it("reports the same named capture refusal for the first and later probes when Darwin calibration fails", () => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
@@ -224,6 +246,180 @@ describe("private finite daemon startup", () => {
         timeout: 5000,
       },
     )
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+  })
+
+  // Terminal.app answered no CSI 16 t on a github-hosted runner and its own text area did not
+  // divide into whole pixels (860x120, 467x30), so 51 rows were left ungraded with one refusal
+  // message and the whole run was inadmissible as suite-incomplete (28785). A terminal whose cells
+  // cannot be mapped is a run WITHOUT a capture adapter: every probe then takes its own no-capture
+  // branch, the suite is complete, and the run records why it could not calibrate.
+  it("refuses an unmappable hosted Darwin cell size into a no-capture run, never an ungraded one", () => {
+    const result = runHostedDarwinFixture(`
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      Object.defineProperty(process, "platform", { value: "darwin" })
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const geometry = { status: "measured", rows: 30, cols: 120, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "30 120\\n", stderr: "" }
+      const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      let frames = 0, calibrations = 0
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "terminal-app", version: "2.15", os: "macos", osVersion: "26.6.2" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705,
+          summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
+      }))
+      mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async (cb) => cb(), drainStdin: async () => {},
+        query: async () => null, queryWithSentinel: async () => null, queryOutcome: async () => silent,
+        queryCursorPosition: async () => null, measureRenderedWidth: async () => null,
+        measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          const reply = sequence === "\\x1b[14t" ? "\\x1b[4;467;860t"
+            : sequence === "\\x1b[18t" ? "\\x1b[8;30;120t"
+            : "\\x1b[?1;2c"
+          return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: pattern.test(reply) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({
+        capture: async () => { frames++; throw new Error("no frame may be requested for a refused calibration") },
+        captureRaw: async () => { frames++; throw new Error("no frame may be requested for a refused calibration") }
+      }) }))
+      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
+        calibrations++
+        throw new Error("no origin may be calibrated for a refused geometry")
+      } }))
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
+        probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      const refused = await collectProbeRun({})
+      delete process.env.TERMINFO_CAPTURE_DIRECTORY
+      const bare = await collectProbeRun({})
+      // Row for row, a refused calibration IS a run with no capture adapter: every row that would
+      // have asked for a frame takes the branch it would have taken with no capture at all.
+      assert.deepEqual(refused.observations, bare.observations)
+      assert.equal(refused.suiteComplete, true)
+      assert.equal(bare.suiteComplete, true)
+      assert.deepEqual(refused.ungradedDiagnostics, {})
+      assert.deepEqual(bare.ungradedDiagnostics, {})
+      // No probe ever saw a capture adapter, and no origin was calibrated for one.
+      assert.equal(frames, 0)
+      assert.equal(calibrations, 0)
+      // A run with NO capture adapter records no calibration at all, so a reader can tell that apart
+      // from a terminal that refused to be calibrated.
+      assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
+      const fact = JSON.parse(refused.rawReplies["collector.captureCalibration"])
+      assert.equal(fact.outcome, "refused")
+      assert.equal(fact.basis, undefined)
+      assert.equal(fact.geometry, undefined)
+      assert.deepEqual(fact.queries.map((q) => [q.sequence, q.reason, q.raw]), [
+        ["\\x1b[16t", "sentinel", "\\x1b[?1;2c"],
+        ["\\x1b[14t", "reply", "\\x1b[4;467;860t"],
+        ["\\x1b[18t", "reply", "\\x1b[8;30;120t"]
+      ])
+      assert.match(fact.refusal, /860x467 pixel text area over 120x30 characters/)
+      assert.match(fact.refusal, /does not divide into a whole-pixel cell size/)
+    `)
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+  })
+
+  // alacritty answers no CSI 16 t and reports the same text area twice (798x598 over 133x46), which
+  // divides into a 6x13 cell — the derived basis the pre-flight must accept. Its rows must decide
+  // exactly as they do when the terminal reports the same cell size itself, and the run records
+  // WHICH basis the geometry rests on.
+  it("installs the capture on a derived alacritty cell size, deciding the same rows as a 16 t report", () => {
+    const result = runHostedDarwinFixture(`
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      Object.defineProperty(process, "platform", { value: "darwin" })
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
+      const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
+      let reportedCellSize = null, frames = 0, calibrations = 0
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 42,
+          summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
+      }))
+      mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async (cb) => cb(), drainStdin: async () => {},
+        query: async () => null, queryWithSentinel: async () => null, queryOutcome: async () => silent,
+        queryCursorPosition: async () => null, measureRenderedWidth: async () => null,
+        measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          const reply = sequence === "\\x1b[16t" ? (reportedCellSize ?? "\\x1b[?6c")
+            : sequence === "\\x1b[14t" ? "\\x1b[4;598;798t"
+            : sequence === "\\x1b[18t" ? "\\x1b[8;46;133t"
+            : "\\x1bP>|alacritty 0.17.0\\x1b\\\\"
+          return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: pattern.test(reply) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({
+        capture: async (checkpoint) => {
+          frames++
+          // A fixture frame: byte-stable across two reads of one static frame, and painted exactly
+          // when the sentinel glyph is asked for, so the oracle's paint witness proves out.
+          const painted = checkpoint.label.includes("paint witness")
+          return { frame: { role: checkpoint.role, ref: "sha256:" + (painted ? "d" : "a").repeat(64), capturedAt: 1,
+            label: checkpoint.label, regionDigest: "sha256:" + (painted ? "e" : "b").repeat(64),
+            pixelsDigest: "sha256:" + "c".repeat(64) }, trace: { captureCommand: "fixture" } }
+        },
+        captureRaw: async (checkpoint) => {
+          frames++
+          return { result: { frame: { role: checkpoint.role, ref: "sha256:" + "f".repeat(64), capturedAt: 1,
+            label: checkpoint.label, regionDigest: "sha256:" + "b".repeat(64), pixelsDigest: "sha256:" + "c".repeat(64) },
+            trace: { captureCommand: "fixture" } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
+        }
+      }) }))
+      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry }) => {
+        calibrations++
+        return { origin: { x: 0, y: 0 }, basis: "fixture origin for a " + pixelGeometry.cellWidth + "x" + pixelGeometry.cellHeight + " cell" }
+      } }))
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
+        probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      const derived = await collectProbeRun({})
+      reportedCellSize = "\\x1b[6;13;6t"
+      const reported = await collectProbeRun({})
+      delete process.env.TERMINFO_CAPTURE_DIRECTORY
+      reportedCellSize = null
+      const bare = await collectProbeRun({})
+      const cell = { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }
+      const derivedFact = JSON.parse(derived.rawReplies["collector.captureCalibration"])
+      assert.equal(derivedFact.outcome, "installed")
+      assert.equal(derivedFact.basis, "derived from CSI 14 t / CSI 18 t")
+      assert.deepEqual(derivedFact.geometry, cell)
+      const reportedFact = JSON.parse(reported.rawReplies["collector.captureCalibration"])
+      assert.equal(reportedFact.basis, "reported by CSI 16 t")
+      assert.deepEqual(reportedFact.geometry, cell)
+      assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
+      // The derived basis still calibrates, once per run, and its probes reach pixels.
+      assert.equal(calibrations, 2)
+      assert.ok(frames > 0)
+      const pixels = (run) => run.observations.filter((o) => o.evidence === "pixels")
+      assert.ok(pixels(derived).length > 0)
+      assert.deepEqual(pixels(derived), pixels(reported))
+      assert.deepEqual(pixels(bare), [])
+      assert.equal(derived.suiteComplete, true)
+      assert.equal(reported.suiteComplete, true)
+      assert.deepEqual(derived.ungradedDiagnostics, {})
+      assert.deepEqual(reported.ungradedDiagnostics, {})
+    `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
   })
