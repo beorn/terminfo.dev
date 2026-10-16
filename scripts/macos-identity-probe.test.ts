@@ -176,7 +176,7 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
   }
 })
 
-test("iTerm startup suppresses its automatic window, passes one quoted command and refuses unqualified launch results", async () => {
+test("iTerm startup writes its window policy before launch, passes one quoted command and refuses unqualified results", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
     .run as string
@@ -190,6 +190,7 @@ test("iTerm startup suppresses its automatic window, passes one quoted command a
       { status: 0, stdout: "com.googlecode.iterm2\n" },
       { status: 0, stdout: "3.6.11\n" },
       { status: 1, stdout: "" },
+      { status: 0, stdout: "" },
       { status: 0, stdout: "" },
     ]
     const spawnSync = vi.fn((_file, _args, _options) => ({
@@ -211,10 +212,11 @@ test("iTerm startup suppresses its automatic window, passes one quoted command a
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", `${bundle}/Contents/Info.plist`]],
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", `${bundle}/Contents/Info.plist`]],
     ["/usr/bin/pgrep", ["-x", "iTerm2"]],
-    ["/usr/bin/open", ["-a", bundle, "--args", command, "-OpenNoWindowsAtStartup", "YES"]],
+    ["/usr/bin/defaults", ["write", "com.googlecode.iterm2", "OpenNoWindowsAtStartup", "-bool", "true"]],
+    ["/usr/bin/open", ["-a", bundle, "--args", command]],
   ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
-    ...Array.from({ length: 3 }, () =>
+    ...Array.from({ length: 4 }, () =>
       expect.objectContaining({ timeout: 5000, killSignal: "SIGKILL", maxBuffer: 262144 }),
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
@@ -225,7 +227,10 @@ test("iTerm startup suppresses its automatic window, passes one quoted command a
     [2, { status: 0, stdout: "123" }, "already running"],
     [2, { status: 2 }, "pgrep"],
     [2, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "pgrep"],
-    [3, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
+    [3, { status: 1 }, "startup policy"],
+    [3, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "startup policy"],
+    [4, { status: 1 }, "open"],
+    [4, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "open"],
   ] as const) {
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)
