@@ -13,7 +13,7 @@
  * The byte offsets are the CONSOLE_SCREEN_BUFFER_INFO layout: dwSize at 0, dwCursorPosition at 4,
  * wAttributes at 8, then the SMALL_RECT srWindow at 10 (left, top, right, bottom; four int16s).
  */
-import { loadKernel32 } from "./windows-kernel32.ts"
+import { INVALID_HANDLE_VALUE, loadKernel32 } from "./windows-kernel32.ts"
 import type { ConsoleGeometry } from "./windows-console-geometry.ts"
 
 /** The console screen buffer info, as the two windows the collector needs. */
@@ -53,6 +53,8 @@ export function decodeConsoleScreenBufferInfo(bytes: Uint8Array): ConsoleGeometr
  * 328074 in the previous run), which is what makes a per-read change check meaningful. */
 export async function readWindowsConsoleIdentity(): Promise<string> {
   const { symbols } = await loadKernel32()
+  // GetConsoleWindow returns HWND, a handle, so it arrives as a BigInt (u64) and String() renders
+  // all 64 bits as plain decimal - the same shape the measured identities were recorded in.
   return String(symbols.GetConsoleWindow())
 }
 
@@ -66,13 +68,21 @@ export async function readWindowsConsoleGeometry(): Promise<ConsoleGeometry> {
     null as never,
     OPEN_EXISTING as never,
     0 as never,
-    null as never,
+    // hTemplateFile is a HANDLE position, so it is declared u64 and passed as one: NULL for the
+    // u64, never a pointer-shaped null.
+    0n as never,
   )
-  if (!handle) throw new Error(`CreateFileW CONOUT$ failed with error ${String(symbols.GetLastError())}`)
+  // A failed handle-returning call yields INVALID_HANDLE_VALUE, which is neither NULL nor zero, and
+  // its Win32 code is read FIRST: any other native call in between clobbers the last-error slot.
+  if (handle === INVALID_HANDLE_VALUE) {
+    const code = symbols.GetLastError()
+    throw new Error(`CreateFileW CONOUT$ failed with error ${String(code)}`)
+  }
   try {
     const info = Buffer.alloc(CSBI_BYTES)
-    if (!symbols.GetConsoleScreenBufferInfo(handle as never, ptr(info) as never)) {
-      throw new Error(`GetConsoleScreenBufferInfo failed with error ${String(symbols.GetLastError())}`)
+    if (symbols.GetConsoleScreenBufferInfo(handle as never, ptr(info) as never) === 0) {
+      const code = symbols.GetLastError()
+      throw new Error(`GetConsoleScreenBufferInfo failed with error ${String(code)}`)
     }
     return decodeConsoleScreenBufferInfo(info)
   } finally {

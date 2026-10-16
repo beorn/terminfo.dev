@@ -12,14 +12,16 @@
  * The read is a toolhelp32 snapshot through the same ./windows-kernel32.ts binding the geometry read
  * uses: `CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS)` then `Process32FirstW`/`Process32NextW` over
  * PROCESSENTRY32W records. Windows-only and lazily imported (nothing imports ./windows-kernel32.ts
- * statically), so the launcher's node fallback keeps running.
+ * statically), so the launcher still starts under node - but this read is ffi-only, so the hosted
+ * Windows ownership path does NOT work end-to-end under node: it refuses at loadKernel32 by name
+ * rather than walking a table it cannot read (@dev/7 r2).
  *
  * NO SILENT DEFAULT: a snapshot that cannot be taken, or a record that does not declare itself a
  * PROCESSENTRY32W, throws by name; the walk is PURE over decoded rows, so the chain logic is
  * testable where Windows is not, and the matching check refuses with the chain it actually found.
  */
 
-import { loadKernel32 } from "./windows-kernel32.ts"
+import { INVALID_HANDLE_VALUE, loadKernel32 } from "./windows-kernel32.ts"
 
 /** The rows of the walk, structurally the `AncestryRow` the Darwin arm already speaks. */
 export interface WindowsProcessRow {
@@ -119,6 +121,12 @@ export async function readWindowsProcessTable(runtime: { arch?: string } = proce
   const layout = processEntry32WLayout(pointerBytesForArch(runtime.arch ?? process.arch))
   const { symbols, ptr } = await loadKernel32()
   const snapshot = symbols.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS as never, 0 as never)
+  // A refused snapshot is INVALID_HANDLE_VALUE, never NULL and never zero, and it must be refused
+  // HERE: its own Win32 code is read first, and there is nothing to close on a failed handle.
+  if (snapshot === INVALID_HANDLE_VALUE) {
+    const code = symbols.GetLastError()
+    throw new Error(`CreateToolhelp32Snapshot read no process table: error ${String(code)}`)
+  }
   try {
     return collectProcessTable({
       layout,
