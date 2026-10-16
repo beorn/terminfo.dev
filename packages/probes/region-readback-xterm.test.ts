@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url"
 import { createXtermBackend } from "@termless/xtermjs"
 import * as probeDefs from "@terminfo/probe-defs"
 import type { RegionReadbackRow } from "@terminfo/probe-defs"
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
 
 /**
@@ -42,15 +42,27 @@ const KIND_ROWS: readonly RegionReadbackRow[] = KIND_TABLES.flatMap(([, table]) 
 const XTERM_ABSENT = ["editing.decfra", "editing.decera", "editing.decsera", "editing.deccra"]
 
 test("every region-readback kind row grades its real xterm.js outcome", async () => {
-  const batch = await collectBatch(
-    async () => createXtermBackend(),
-    "xtermjs",
-    probeDefs.regionReadbackProbes(KIND_ROWS),
-  )
-  const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`
-  // No row may be absent from the batch: a row with no observation is a fixture that never ran.
-  expect(batch.observations.map((item) => item.featureId).toSorted()).toEqual(KIND_ROWS.map((row) => row.id).toSorted())
-  expect(KIND_ROWS.map((row) => row.id).filter((id) => outcome(id) !== "supported")).toEqual(XTERM_ABSENT)
+  // The collector reports progress on stderr. Consume only that expected diagnostic;
+  // any other output remains a failure rather than disappearing into a blanket mock.
+  const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  try {
+    const batch = await collectBatch(
+      async () => createXtermBackend(),
+      "xtermjs",
+      probeDefs.regionReadbackProbes(KIND_ROWS),
+    )
+    expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(
+      KIND_ROWS.map((row) => `headless xtermjs probe ${row.id}\n`),
+    )
+    const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`
+    // No row may be absent from the batch: a row with no observation is a fixture that never ran.
+    expect(batch.observations.map((item) => item.featureId).toSorted()).toEqual(
+      KIND_ROWS.map((row) => row.id).toSorted(),
+    )
+    expect(KIND_ROWS.map((row) => row.id).filter((id) => outcome(id) !== "supported")).toEqual(XTERM_ABSENT)
+  } finally {
+    progress.mockRestore()
+  }
 })
 
 test("every kind table the probe-defs source declares is reachable here, so no family is left out", () => {
