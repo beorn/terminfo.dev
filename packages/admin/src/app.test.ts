@@ -248,16 +248,43 @@ describe("App version diagnostics", () => {
 // The real app caller must keep local iTerm windows and preferences separate from hosted startup.
 describe("iTerm app launch ownership", () => {
   test("closes only the returned local window and writes no startup preference", async () => {
+    vi.mocked(createProbeRun).mockReturnValue({
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/space path/serve.sh",
+    })
     vi.mocked(execFileSync).mockReturnValueOnce("3.6.11\n").mockReturnValueOnce("27\n")
     await handleApp("iterm2", {})
     const calls = vi.mocked(execFileSync).mock.calls
     expect(calls.map(([file]) => file)).toEqual(["/usr/libexec/PlistBuddy", "osascript", "osascript"])
     expect(calls[1]?.[1]).toEqual([
       "-e",
-      expect.stringContaining('create window with default profile command "/private/run/serve.sh"'),
+      expect.stringContaining('create window with default profile command "/private/run/space path/serve.sh"'),
     ])
     expect(calls[2]?.[1]).toEqual(["-e", 'tell application "iTerm" to close (first window whose id is 27)'])
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+  })
+
+  test.each(["launch", "cleanup"])("propagates a native %s failure without closing other windows", async (stage) => {
+    const cause = new Error(stage + " failed")
+    vi.mocked(execFileSync).mockReturnValueOnce("3.6.11\n")
+    if (stage === "cleanup") vi.mocked(execFileSync).mockReturnValueOnce("27\n")
+    vi.mocked(execFileSync).mockImplementationOnce(() => {
+      throw cause
+    })
+    await expect(handleApp("iterm2", {})).rejects.toThrow(cause.message)
+    expect(vi.mocked(execFileSync).mock.calls.map(([file]) => file)).toEqual(
+      stage === "launch"
+        ? ["/usr/libexec/PlistBuddy", "osascript"]
+        : ["/usr/libexec/PlistBuddy", "osascript", "osascript"],
+    )
+    if (stage === "cleanup") {
+      expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+      expect(vi.mocked(execFileSync).mock.calls[2]?.[1]).toEqual([
+        "-e",
+        'tell application "iTerm" to close (first window whose id is 27)',
+      ])
+    } else expect(findOwnedDaemon).not.toHaveBeenCalled()
   })
 
   test("an invalid launch id aborts without closing another window", async () => {

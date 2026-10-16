@@ -236,7 +236,11 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
   vi.restoreAllMocks()
   for (const [index, result, diagnostic] of [
     [0, { stdout: "wrong.id" }, "bundle identifier"],
+    [0, { status: 1 }, "bundle identifier"],
+    [0, { status: null, error: new Error("timed out") }, "bundle identifier"],
     [1, { stdout: "3.7.4" }, "version"],
+    [1, { status: 1 }, "version"],
+    [1, { status: null, signal: "SIGKILL" }, "version"],
     [2, { status: 0, stdout: "123" }, "already running"],
     [2, { status: 2 }, "pgrep"],
     [2, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "pgrep"],
