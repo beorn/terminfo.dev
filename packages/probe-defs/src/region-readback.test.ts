@@ -662,3 +662,19 @@ test("region rows consume the same calibrated run geometry without re-dividing w
   expect(fake.requests.length).toBeGreaterThan(0)
   expect(fake.requests.every((request) => request.pixelGeometry === reading.geometry)).toBe(true)
 })
+
+test("region rows refuse a calibrated footprint that no longer covers the current grid before paint", async () => {
+  const fake = ownedWindow({ rows: 30, cols: 120, repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }
+  fake.ctx.capture = async () => {
+    throw new Error("A stale calibrated footprint must be refused before capture")
+  }
+  const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
+  expect(result?.observation).toMatchObject({
+    outcome: "inconclusive",
+    evidence: "none",
+    note: expect.stringMatching(/calibrated.*grid|grid.*calibrated/),
+  })
+  expect(fake.writes).toEqual([])
+  expect(fake.requests).toEqual([])
+})

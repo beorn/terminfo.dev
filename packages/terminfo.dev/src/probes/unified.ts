@@ -465,7 +465,29 @@ export async function runProbeBatch(
         }
         preparationGrid = { rows: reported.rows, cols: reported.cols }
       } else {
-        preparationGrid = { rows: declared.rows, cols: declared.cols }
+        preGeometry ??= await readGeometry()
+        if (!geometryCheck) {
+          geometryCheck = { featureId: probe.id, pre: preGeometry }
+          geometryChecks.push(geometryCheck)
+        }
+        if (preGeometry.status !== "measured") {
+          throw new Error(`Capture calibration current owned grid is unavailable: ${preGeometry.diagnostic}`)
+        }
+        if (preGeometry.rows !== declared.rows || preGeometry.cols !== declared.cols) {
+          throw new Error(
+            `Capture calibration owned grid changed from grant ${declared.rows}x${declared.cols} to ${preGeometry.rows}x${preGeometry.cols}`,
+          )
+        }
+        if (
+          reported &&
+          ["agree", "uncorroborated"].includes(reported.status) &&
+          (reported.rows !== preGeometry.rows || reported.cols !== preGeometry.cols)
+        ) {
+          throw new Error(
+            `Capture calibration current owned grid ${preGeometry.rows}x${preGeometry.cols} disagrees with terminal grid ${reported.rows}x${reported.cols}`,
+          )
+        }
+        preparationGrid = { rows: preGeometry.rows, cols: preGeometry.cols }
       }
       const preparationContext = createTermContext({
         out,

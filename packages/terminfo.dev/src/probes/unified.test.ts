@@ -1717,6 +1717,22 @@ it("capture preparation refuses unavailable counts instead of using output defau
   expect(painted).toBe(false)
 })
 
+it("capture preparation refuses a changed owned grid before a query callback can paint a stale subset", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  let painted = false
+  await expect(
+    runProbeBatch({
+      ids: ["modes.bracketed-paste"],
+      ownedTerminal: geometryOwner(measured(24, 80), async () => measured(30, 120)),
+      prepareCapture: async () => {
+        painted = true
+      },
+    }),
+  ).rejects.toThrow(/grid.*changed|grid.*disagree/)
+  expect(painted).toBe(false)
+})
+
 it("a retained terminal grid reply supplies preparation counts when declared size is unavailable", async () => {
   verifiedBatchFixture()
   vi.spyOn(process.stdout, "write").mockReturnValue(true)

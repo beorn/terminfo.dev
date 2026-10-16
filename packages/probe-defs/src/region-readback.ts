@@ -451,6 +451,19 @@ export async function captureRegionVerdict(
   // Geometry first: an undersized terminal is refused before a single query byte.
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
   if (bounds) return bounds
+  const calibrated = ctx.captureGeometry?.geometry
+  if (
+    calibrated &&
+    (calibrated.textWidth !== calibrated.cellWidth * ctx.cols ||
+      calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
+  ) {
+    return inconclusive(
+      id,
+      `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
+      "insufficient-evidence",
+      "none",
+    )
+  }
   const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
   if ("missing" in reported) {
     return inconclusive(
