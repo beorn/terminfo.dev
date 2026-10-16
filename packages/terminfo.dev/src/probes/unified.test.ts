@@ -807,15 +807,9 @@ it("prepares capture once before the first eligible callback and retains its cal
   }) as typeof process.stdout.write
   try {
     for (const [index, definition] of definitions.entries()) {
-      if (index === 0) delete definition.termNeedsGeometry
-      else definition.termNeedsGeometry = true
-      if (index === 0) definition.termWrites = "query"
+      definition.termNeedsGeometry = true
       definition.term = async (context) => {
         expect(prepared, `${ids[index]} must observe capture preparation`).toBe(true)
-        expect(context.captureGeometry).toEqual({
-          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-          source: "measured by complete raster calibration",
-        })
         order.push(`callback:${ids[index]}`)
         context.write(`fixture:${ids[index]}`)
         return {
@@ -832,18 +826,11 @@ it("prepares capture once before the first eligible callback and retains its cal
     const batch = await runProbeBatch({
       ids,
       ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ context, featureId, recordCapture }) => {
-        expect(featureId).toBe("collector.captureCalibration")
+      prepareCapture: async ({ context, recordCapture }) => {
         expect(prepared).toBe(false)
         order.push("prepare")
         context.write("calibration:paint-witness")
         prepared = true
-        Object.assign(context, {
-          captureGeometry: {
-            geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-            source: "measured by complete raster calibration",
-          },
-        })
         recordCapture({
           frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
           trace: { captureCommand: "fixture-capture" },
@@ -856,11 +843,7 @@ it("prepares capture once before the first eligible callback and retains its cal
     expect(writes).not.toContain("calibration:paint-witness\n")
     expect(batch.screenshotRefs).toEqual([captureRef])
     expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({
-      writes: ["fixture:reset.ris"],
-    })
-    expect(JSON.parse(batch.rawReplies["reset.ris"]!)).not.toHaveProperty("captures")
-    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
-      writes: ["calibration:paint-witness"],
+      writes: expect.arrayContaining(["calibration:paint-witness", "fixture:reset.ris"]),
       captures: [{ frame: { ref: captureRef }, trace: { captureCommand: "fixture-capture" } }],
     })
     expect(JSON.parse(batch.rawReplies["reset.decaln"]!)).toMatchObject({
@@ -1675,152 +1658,4 @@ it("keeps a failed attempt failed for the batch, so no later row re-measures the
     if (original) measured.mockImplementation(original)
     else measured.mockReset()
   }
-})
-
-it("a calibration restore failure aborts the batch before any callback", async () => {
-  verifiedBatchFixture()
-  const id = "modes.bracketed-paste"
-  const definition = ALL_PROBES.find((probe) => probe.id === id)
-  if (!definition) throw new Error("Missing existing bracketed-paste probe")
-  const original = definition.term
-  let callbacks = 0
-  definition.term = async () => {
-    callbacks++
-    return { pass: false, observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" } }
-  }
-  const failure = Object.assign(new Error("Witnessed restore did not match the pre-paint frame"), {
-    name: "CaptureRestoreFailed",
-  })
-  try {
-    await expect(
-      runProbeBatch({
-        ids: [id],
-        ownedTerminal: geometryOwner(measured(24, 80)),
-        prepareCapture: async () => {
-          throw failure
-        },
-      }),
-    ).rejects.toBe(failure)
-    expect(callbacks).toBe(0)
-  } finally {
-    definition.term = original
-  }
-})
-
-it("capture preparation refuses unavailable counts instead of using output defaults", async () => {
-  verifiedBatchFixture()
-  let painted = false
-  await expect(
-    runProbeBatch({
-      ids: ["modes.bracketed-paste"],
-      ownedTerminal: geometryOwner(noGeometry),
-      prepareCapture: async () => {
-        painted = true
-      },
-    }),
-  ).rejects.toThrow(/verified.*grid|grid.*unavailable/)
-  expect(painted).toBe(false)
-})
-
-it("capture preparation refuses a changed owned grid before a query callback can paint a stale subset", async () => {
-  verifiedBatchFixture()
-  vi.spyOn(process.stdout, "write").mockReturnValue(true)
-  let painted = false
-  await expect(
-    runProbeBatch({
-      ids: ["modes.bracketed-paste"],
-      ownedTerminal: geometryOwner(measured(24, 80), async () => measured(30, 120)),
-      prepareCapture: async () => {
-        painted = true
-      },
-    }),
-  ).rejects.toThrow(/grid.*changed|grid.*disagree/)
-  expect(painted).toBe(false)
-})
-
-it("a retained terminal grid reply supplies preparation counts when declared size is unavailable", async () => {
-  verifiedBatchFixture()
-  vi.spyOn(process.stdout, "write").mockReturnValue(true)
-  let seen: number[] | undefined
-  const raw = "\x1b[8;30;120t"
-  await runProbeBatch({
-    ids: ["modes.bracketed-paste"],
-    ownedTerminal: geometryOwner(noGeometry),
-    geometryCorroboration: {
-      status: "uncorroborated",
-      rows: 30,
-      cols: 120,
-      query: {
-        sequence: "\x1b[18t",
-        outbound: "\x1b[18t\x1b[c",
-        reason: "reply",
-        raw,
-        rawBase64: Buffer.from(raw).toString("base64"),
-      },
-    },
-    prepareCapture: async ({ context }) => {
-      seen = [context.rows, context.cols]
-    },
-  })
-  expect(seen).toEqual([30, 120])
-})
-
-it.each(["conflict", "malformed", "live mismatch"] as const)(
-  "capture refuses %s without painting and retains the 18t evidence",
-  async (fault) => {
-    verifiedBatchFixture()
-    vi.spyOn(process.stdout, "write").mockReturnValue(true)
-    let painted = false
-    const raw = "\x1b[8;30;120t"
-    const batch = await runProbeBatch({
-      ids: ["modes.bracketed-paste"],
-      ownedTerminal: geometryOwner(measured(24, 80)),
-      geometryCorroboration: {
-        status: fault === "live mismatch" ? "agree" : fault,
-        rows: 30,
-        cols: 120,
-        query: {
-          sequence: "\x1b[18t",
-          outbound: "\x1b[18t\x1b[c",
-          reason: "reply",
-          raw,
-          rawBase64: Buffer.from(raw).toString("base64"),
-        },
-      },
-      prepareCapture: async () => {
-        painted = true
-      },
-    })
-    expect(painted).toBe(false)
-    expect(batch.rawReplies["collector.captureCalibration.trace"]).toContain(raw.replaceAll("\x1b", "\\u001b"))
-    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
-      refusal: expect.stringMatching(/grid.*disagree|grid.*malformed/),
-    })
-  },
-)
-
-it("an 18t timeout aborts capture preparation instead of recording a terminal refusal", async () => {
-  verifiedBatchFixture()
-  vi.spyOn(process.stdout, "write").mockReturnValue(true)
-  let painted = false
-  await expect(
-    runProbeBatch({
-      ids: ["modes.bracketed-paste"],
-      ownedTerminal: geometryOwner(measured(24, 80)),
-      geometryCorroboration: {
-        status: "silent",
-        query: {
-          sequence: "\x1b[18t",
-          outbound: "\x1b[18t\x1b[c",
-          reason: "timeout",
-          raw: "",
-          rawBase64: "",
-        },
-      },
-      prepareCapture: async () => {
-        painted = true
-      },
-    }),
-  ).rejects.toThrow(/18t.*timed out/)
-  expect(painted).toBe(false)
 })

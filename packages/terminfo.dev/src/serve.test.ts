@@ -210,7 +210,7 @@ describe("private finite daemon startup", () => {
           calibrateCaptureOrigin: async () => {
             calibrationCalls++
             const error = new Error("Capture calibration fixture: non-solid difference cannot supply an origin")
-            error.name = "CaptureCalibrationRefused"
+            error.name = "CaptureCalibrationError"
             throw error
           }
         }))
@@ -222,9 +222,11 @@ describe("private finite daemon startup", () => {
         const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
         const ids = ["extensions.truecolor", "erase.line.all"]
         const run = await collectProbeRun({ ids })
-        assert.deepEqual(run.observations.map(o => o.featureId), ids)
-        assert.ok(run.observations.every(o => o.outcome === "inconclusive"))
-        assert.ok(run.observations.every(o => /Capture calibration fixture: non-solid difference/.test(o.note ?? "")))
+        assert.deepEqual(run.observations.map(o => ({ featureId: o.featureId, outcome: o.outcome,
+          reason: o.reason, evidence: o.evidence, note: o.note })), ids.map(featureId => ({
+          featureId, outcome: "error", reason: "collector-error", evidence: "pixels",
+          note: "Capture calibration fixture: non-solid difference cannot supply an origin"
+        })))
         assert.deepEqual(run.ungradedDiagnostics, {})
         assert.equal(calibrationCalls, 1)
         assert.equal(unexpectedCaptures, 0)
@@ -253,7 +255,7 @@ describe("private finite daemon startup", () => {
   // message and the whole run was inadmissible as suite-incomplete (28785). A terminal whose cells
   // cannot be mapped is a run WITHOUT a capture adapter: every probe then takes its own no-capture
   // branch, the suite is complete, and the run records why it could not calibrate.
-  it("attempts raster calibration when hosted Darwin window replies do not supply cells", () => {
+  it("refuses an unmappable hosted Darwin cell size into a no-capture run, never an ungraded one", () => {
     const result = runHostedDarwinFixture(`
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
@@ -292,7 +294,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
-        throw Object.assign(new Error("Capture calibration nonuniform columns: native fixture has unequal cell edges"), { name: "CaptureCalibrationRefused" })
+        throw new Error("no origin may be calibrated for a refused geometry")
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
@@ -309,14 +311,15 @@ describe("private finite daemon startup", () => {
       const named = refused.observations.filter((o) => /cell-to-pixel geometry was refused/.test(o.note ?? ""))
       assert.equal(named.length, noAdapter(bare).length)
       assert.equal(noAdapter(refused).length, 0)
-      assert.ok(named.every((o) => /nonuniform columns/.test(o.note)))
+      assert.ok(named.every((o) => /860x467 pixel text area over 120x30 characters/.test(o.note)))
+      assert.ok(named.every((o) => /does not divide into a whole-pixel cell size/.test(o.note)))
       assert.equal(refused.suiteComplete, true)
       assert.equal(bare.suiteComplete, true)
       assert.deepEqual(refused.ungradedDiagnostics, {})
       assert.deepEqual(bare.ungradedDiagnostics, {})
       // No probe ever saw a capture adapter, and no origin was calibrated for one.
       assert.equal(frames, 0)
-      assert.equal(calibrations, 1)
+      assert.equal(calibrations, 0)
       // A run with NO capture adapter records no calibration at all, so a reader can tell that apart
       // from a terminal that refused to be calibrated.
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
@@ -329,7 +332,8 @@ describe("private finite daemon startup", () => {
         ["\\x1b[14t", "reply", "\\x1b[4;467;860t"],
         ["\\x1b[18t", "reply", "\\x1b[8;30;120t"]
       ])
-      assert.match(fact.refusal, /Capture calibration nonuniform columns/)
+      assert.match(fact.refusal, /860x467 pixel text area over 120x30 characters/)
+      assert.match(fact.refusal, /does not divide into a whole-pixel cell size/)
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
@@ -350,7 +354,7 @@ describe("private finite daemon startup", () => {
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
-      let reportedCellSize = null, frames = 0, calibrations = 0, calibrationFailure
+      let reportedCellSize = null, frames = 0, calibrations = 0
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -392,9 +396,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry }) => {
         calibrations++
-        if (calibrationFailure) throw calibrationFailure
-        assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
-        return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
+        return { origin: { x: 0, y: 0 }, basis: "fixture origin for a " + pixelGeometry.cellWidth + "x" + pixelGeometry.cellHeight + " cell" }
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
@@ -402,37 +404,20 @@ describe("private finite daemon startup", () => {
       const derived = await collectProbeRun({})
       reportedCellSize = "\\x1b[6;13;6t"
       const reported = await collectProbeRun({})
-      const originalTimeout = new Error("solid grid paint witness timeout")
-      calibrationFailure = Object.assign(new Error("Capture calibration restore failed", { cause: originalTimeout }), { name: "CaptureRestoreFailed" })
-      await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
-      calibrationFailure = new Error("Original capture adapter I/O failure", { cause: originalTimeout })
-      await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
-      calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
-      const unseen = await collectProbeRun({})
-      assert.equal(unseen.suiteComplete, true)
-      assert.deepEqual(unseen.ungradedDiagnostics, {})
-      assert.equal(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).outcome, "refused")
-      assert.match(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).refusal, /paint not observed/)
-      assert.deepEqual(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).causes, [
-        { name: "CaptureCalibrationRefused", message: calibrationFailure.message },
-        { name: "Error", message: originalTimeout.message },
-      ])
-      assert.ok(!unseen.observations.some(o => o.evidence === "pixels"))
-      calibrationFailure = undefined
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
       reportedCellSize = null
       const bare = await collectProbeRun({})
       const cell = { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }
       const derivedFact = JSON.parse(derived.rawReplies["collector.captureCalibration"])
       assert.equal(derivedFact.outcome, "installed")
-      assert.equal(derivedFact.basis, "measured by complete raster calibration")
+      assert.equal(derivedFact.basis, "derived from CSI 14 t / CSI 18 t")
       assert.deepEqual(derivedFact.geometry, cell)
       const reportedFact = JSON.parse(reported.rawReplies["collector.captureCalibration"])
-      assert.equal(reportedFact.basis, "measured by complete raster calibration")
+      assert.equal(reportedFact.basis, "reported by CSI 16 t")
       assert.deepEqual(reportedFact.geometry, cell)
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still calibrates, once per run, and its probes reach pixels.
-      assert.equal(calibrations, 5)
+      assert.equal(calibrations, 2)
       assert.ok(frames > 0)
       const pixels = (run) => run.observations.filter((o) => o.evidence === "pixels")
       assert.ok(pixels(derived).length > 0)
@@ -525,7 +510,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
-        throw Object.assign(new Error("Capture calibration nonuniform columns: measured unequal cell edges"), { name: "CaptureCalibrationRefused" })
+        throw new Error("no origin may be calibrated for a refused geometry")
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
@@ -559,11 +544,11 @@ describe("private finite daemon startup", () => {
         if (shape.expect === "refused") {
           assert.equal(row.kind, "refused", shape.name)
           assert.equal(row.outcome, "refused", shape.name)
-          assert.match(row.refusal, /Capture calibration nonuniform columns/, shape.name)
+          assert.match(row.refusal, shape.cause, shape.name)
           assert.equal(row.complete, true, shape.name)
           assert.equal(row.ungraded, 0, shape.name)
           assert.ok(row.named > 0, shape.name + " must name the refusal in a row note")
-          assert.match(row.firstNamed, /Capture calibration nonuniform columns/, shape.name)
+          assert.match(row.firstNamed, shape.cause, shape.name)
         } else {
           assert.equal(row.kind, "threw", shape.name + " must abort the run")
           assert.equal(row.error, "TerminalGeometryUnmeasurable", shape.name)
@@ -574,7 +559,7 @@ describe("private finite daemon startup", () => {
       }
       // No geometry was ever installed, in any shape: nothing captured and nothing calibrated.
       assert.equal(frames, 0)
-      assert.equal(calibrations, shapes.filter(s => s.expect === "refused").length)
+      assert.equal(calibrations, 0)
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)

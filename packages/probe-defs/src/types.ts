@@ -111,8 +111,9 @@ export interface CaptureCells {
 }
 
 /**
- * Positive integer cell geometry from usable own replies or a complete witnessed raster in this
- * run. Window dimensions divided by cell counts never establish a raster geometry.
+ * The terminal's own pixel report, as numbers: CSI 16 t (cell size) and CSI 14 t (text area in
+ * pixels). Cells are mapped to an absolute rectangle from these, never from a window width divided
+ * by a column count.
  */
 export interface CapturePixelGeometry {
   cellWidth: number
@@ -131,7 +132,7 @@ export interface CaptureRequest {
   label: string
   /** The region to digest, in cells. `pixelGeometry` is required with it. */
   cells?: CaptureCells
-  /** The run's measured pixel geometry, required alongside `cells`. */
+  /** The terminal's own pixel report, required alongside `cells`. */
   pixelGeometry?: CapturePixelGeometry
 }
 
@@ -458,11 +459,6 @@ export interface InputFixture {
 }
 
 export interface TermContext {
-  /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
-  captureGeometry?: {
-    geometry: CapturePixelGeometry
-    source: "measured by complete raster calibration"
-  }
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
   measureRenderedWidth(text: string): Promise<number | null>

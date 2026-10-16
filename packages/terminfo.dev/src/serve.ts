@@ -162,7 +162,6 @@ interface CaptureCalibrationFact {
   queries: CaptureCalibrationQuery[]
   /** The named cause, present exactly when the geometry was refused. */
   refusal?: string
-  causes?: Array<{ name: string; message: string }>
 }
 
 /** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
@@ -236,12 +235,21 @@ export async function collectProbeRun(
       }) => Promise<void>)
     | undefined
   /**
-   * Read protocol geometry once before the batch, then witness the complete raster and restoration
-   * before its first callback. An intrinsic missing report does not prevent measurement; a transient
-   * query failure aborts. The recorded fact names the measured authority or the actual refusal.
+   * The owned Darwin capture's geometry pre-flight, run ONCE inside raw mode before the batch, and
+   * the fact it leaves in the run. A terminal whose OWN cell size cannot be mapped is refused here,
+   * by name, while nothing has been captured yet, and nothing is installed: every probe then takes
+   * its own no-capture branch and the suite still completes, where the lazy version handed a capture
+   * adapter to rows whose frames could only throw and left the run ungraded (28785). A transient
+   * cause — a timeout — aborts the whole batch from here instead, before any probe runs.
    */
   let preflightDarwinCapture: (() => Promise<void>) | undefined
   let captureCalibration: CaptureCalibrationFact | undefined
+  /**
+   * The refused geometry's named cause, handed to the batch so a refused row can say why (round 1
+   * must 1). Named for the concept, not `captureRefusal`: probe-defs already uses that name for a
+   * row's own refusal to capture an undersized terminal (round 2 must 4).
+   */
+  let captureGeometryRefusal: string | undefined
   let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
   if (captureDirectory && process.platform === "linux") {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
@@ -294,7 +302,7 @@ export async function collectProbeRun(
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
       // already measured: the adapter never queries the terminal itself, so the geometry it checks a
       // frame request against and the geometry the origin was calibrated on can never diverge.
-      const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
+      const installCapture = (geometry: PixelGeometry) => {
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
           if (!checkpoint.cells && !checkpoint.pixelGeometry) {
@@ -302,7 +310,6 @@ export async function collectProbeRun(
             return result.result
           }
           if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
-          const geometry = textOrigin.pixelGeometry
           if (
             checkpoint.pixelGeometry &&
             (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
@@ -318,7 +325,7 @@ export async function collectProbeRun(
           try {
             textOrigin = await calibrateCaptureOrigin({
               ctx: context,
-              pixelGeometry: reportedGeometry,
+              pixelGeometry: geometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
               captureRaw: async (label, deadline) => {
                 const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
@@ -326,32 +333,9 @@ export async function collectProbeRun(
                 return result.decoded
               },
             })
-            context.captureGeometry = {
-              geometry: textOrigin.pixelGeometry,
-              source: "measured by complete raster calibration",
-            }
-            captureCalibration = {
-              outcome: "installed",
-              basis: context.captureGeometry.source,
-              geometry: textOrigin.pixelGeometry,
-              queries,
-            }
           } catch (cause) {
             const error = cause instanceof Error ? cause : new Error(String(cause))
-            if (error.name !== "CaptureCalibrationRefused") throw error
             calibrationError = error
-            context.captureGeometryRefusal = error.message
-            const causes: Array<{ name: string; message: string }> = []
-            const seen = new Set<Error>()
-            for (
-              let current: unknown = error;
-              current instanceof Error && !seen.has(current);
-              current = current.cause
-            ) {
-              seen.add(current)
-              causes.push({ name: current.name, message: current.message })
-            }
-            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
           }
         }
       }
@@ -386,12 +370,12 @@ export async function collectProbeRun(
             error.name = "TerminalGeometryUnmeasurable"
             throw error
           }
-          // An intrinsic missing report is not a missing measurement: the existing calibration
-          // now measures the complete raster. A transient query failure still aborts above.
-          installCapture(undefined, queries)
+          captureCalibration = { outcome: "refused", queries, refusal: report.missing }
+          captureGeometryRefusal = report.missing
           return
         }
-        installCapture(report.geometry, queries)
+        captureCalibration = { outcome: "installed", basis: report.source, geometry: report.geometry, queries }
+        installCapture(report.geometry)
       }
     }
   } else if (kind === "windowsHosted") {
@@ -468,6 +452,7 @@ export async function collectProbeRun(
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
         ...(prepareCapture && { prepareCapture }),
+        ...(captureGeometryRefusal && { captureGeometryRefusal }),
       })
       if (identityQuery) {
         result.rawReplies["collector.xtversion"] = identityQuery.raw
