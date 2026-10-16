@@ -1,0 +1,122 @@
+/**
+ * The ffi half of the hosted Windows console read (29558, option A). Windows-only, and reachable
+ * ONLY through a dynamic import: `node:tty` cannot build a stream on this console (Node 24
+ * ERR_TTY_INIT_FAILED, uv_tty_init EBADF) and Bun's `process.stdout` reports no window size at all
+ * (isTTY false, columns/rows null, on fd 1 and on an explicitly opened CONOUT$ alike) — measured
+ * 2026-10-15 on the hosted runner, runs 38814184347 and 38814967131. So the arm reads the console
+ * itself, from the collector's own CONOUT$ handle.
+ *
+ * The mapping is the one measured there: on this ConPTY buffer == window, and the classics compare
+ * visible-cell positions, so the WINDOW rect is the quantity — rows = bottom - top + 1,
+ * cols = right - left + 1 — never the buffer height, which is scrollback-inclusive.
+ *
+ * The byte offsets are the CONSOLE_SCREEN_BUFFER_INFO layout: dwSize at 0, dwCursorPosition at 4,
+ * wAttributes at 8, then the SMALL_RECT srWindow at 10 (left, top, right, bottom; four int16s).
+ */
+import type { ConsoleGeometry } from "./windows-console-geometry.ts"
+
+/** The console screen buffer info, as the two windows the collector needs. */
+export const CSBI_BYTES = 32
+const SR_WINDOW_LEFT = 10
+const SR_WINDOW_TOP = 12
+const SR_WINDOW_RIGHT = 14
+const SR_WINDOW_BOTTOM = 16
+
+const GENERIC_READ_WRITE = 0xc0000000
+const FILE_SHARE_READ_WRITE = 3
+const OPEN_EXISTING = 3
+
+/** Decode a CSBI read into the console's visible window. Pure, so the mapping is testable where
+ * the console is not: the two geometries measured on the hosted runner are its fixtures. */
+export function decodeConsoleScreenBufferInfo(bytes: Uint8Array): ConsoleGeometry {
+  if (bytes.byteLength < SR_WINDOW_BOTTOM + 2) {
+    throw new Error(`CONSOLE_SCREEN_BUFFER_INFO read is ${String(bytes.byteLength)} bytes, short of the 22 it needs`)
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const left = view.getInt16(SR_WINDOW_LEFT, true)
+  const top = view.getInt16(SR_WINDOW_TOP, true)
+  const right = view.getInt16(SR_WINDOW_RIGHT, true)
+  const bottom = view.getInt16(SR_WINDOW_BOTTOM, true)
+  const cols = right - left + 1
+  const rows = bottom - top + 1
+  if (cols < 1 || rows < 1) {
+    throw new Error(
+      `console window rect is not a size: left ${String(left)}, top ${String(top)}, right ${String(right)}, bottom ${String(bottom)}`,
+    )
+  }
+  return { cols, rows }
+}
+
+interface FfiModule {
+  dlopen(
+    path: string,
+    symbols: Record<string, { args: readonly unknown[]; returns: unknown }>,
+  ): { symbols: Record<string, (...args: never[]) => number> }
+  FFIType: Record<string, unknown>
+  ptr(data: Uint8Array): unknown
+}
+
+async function kernel32(): Promise<{
+  symbols: Record<string, (...args: never[]) => number>
+  ptr: (d: Uint8Array) => unknown
+}> {
+  let ffi: FfiModule
+  try {
+    ffi = (await import("bun:ffi")) as unknown as FfiModule
+  } catch (error) {
+    throw new Error(
+      `bun:ffi is not available in this runtime: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+  const binding = ffi.dlopen("kernel32.dll", {
+    CreateFileW: {
+      args: [
+        ffi.FFIType.ptr,
+        ffi.FFIType.u32,
+        ffi.FFIType.u32,
+        ffi.FFIType.ptr,
+        ffi.FFIType.u32,
+        ffi.FFIType.u32,
+        ffi.FFIType.ptr,
+      ],
+      returns: ffi.FFIType.ptr,
+    },
+    GetConsoleScreenBufferInfo: { args: [ffi.FFIType.ptr, ffi.FFIType.ptr], returns: ffi.FFIType.i32 },
+    GetConsoleWindow: { args: [], returns: ffi.FFIType.ptr },
+    GetLastError: { args: [], returns: ffi.FFIType.u32 },
+    CloseHandle: { args: [ffi.FFIType.ptr], returns: ffi.FFIType.i32 },
+  })
+  return { symbols: binding.symbols, ptr: (data) => ffi.ptr(data) }
+}
+
+/** This process's own console window handle — the identity a re-read is checked against. It is
+ * stable inside one console and different for a different console (measured: 327766 twice, then
+ * 328074 in the previous run), which is what makes a per-read change check meaningful. */
+export async function readWindowsConsoleIdentity(): Promise<string> {
+  const { symbols } = await kernel32()
+  return String(symbols.GetConsoleWindow())
+}
+
+/** Open this process's CONOUT$ and read the visible window off it. */
+export async function readWindowsConsoleGeometry(): Promise<ConsoleGeometry> {
+  const { symbols, ptr } = await kernel32()
+  const handle = symbols.CreateFileW(
+    ptr(Buffer.from("CONOUT$\u0000", "utf16le")) as never,
+    GENERIC_READ_WRITE as never,
+    FILE_SHARE_READ_WRITE as never,
+    null as never,
+    OPEN_EXISTING as never,
+    0 as never,
+    null as never,
+  )
+  if (!handle) throw new Error(`CreateFileW CONOUT$ failed with error ${String(symbols.GetLastError())}`)
+  try {
+    const info = Buffer.alloc(CSBI_BYTES)
+    if (!symbols.GetConsoleScreenBufferInfo(handle as never, ptr(info) as never)) {
+      throw new Error(`GetConsoleScreenBufferInfo failed with error ${String(symbols.GetLastError())}`)
+    }
+    return decodeConsoleScreenBufferInfo(info)
+  } finally {
+    symbols.CloseHandle(handle as never)
+  }
+}
