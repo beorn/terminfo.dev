@@ -67,7 +67,6 @@ const muxBackends = computed(() => sortedBackends.value.filter(b => b.type === '
 
 // The page names the ONE basis it counts, in a visitor's words: which rows this bar, these tooltips and
 // the order below are about (28792 item 1, increment 5).
-const basisNote = `Bars, tooltips and the order all count the same ${data.releaseScope.scoredIds.length} rows this release scores in apps.`
 
 // Filter app backends by platform
 const appBackends = computed(() => {
@@ -84,9 +83,13 @@ function platformIcon(os) {
 }
 
 function platformIcons(backendName) {
-  const info = data.backends.find(b => b.name === backendName)
-  if (!info?.platforms?.length) return ''
-  return info.platforms.map(p => platformIcon(p)).filter(Boolean).join(' ')
+  const os = data.selectedByBackend[backendName]?.selected.target.os
+  return os ? platformIcon(os) : ''
+}
+
+function supportFraction(backendName) {
+  const bar = data.releaseBars[backendName]
+  return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : 'Not measured'
 }
 
 const sortedCategories = computed(() => {
@@ -245,7 +248,7 @@ function featureTooltip(f) {
 function backendTooltip(name, version) {
   const meta = data.meta[name]
   if (!meta) return name
-  const parts = [meta.description]
+  const parts = [backendContextLabel(name), meta.description, scoreLabel(name), coverageLabel(name)]
   if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
   if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Version: ${version}`)
@@ -258,16 +261,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p>Does your terminal support truecolor, modern keyboard protocols, or image rendering? Real data from automated tests (<a href="https://termless.dev">Termless</a>) and <a href="/contribute">user contributions</a>.</p>
-  <p class="tier-line">{{ data.releaseScope.line }}</p>
-  <p v-if="data.releaseScope.libraryOnlyIds.length" class="tier-line">{{ data.releaseScope.libraryOnlyIds.length }} {{ data.releaseScope.libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ data.releaseScope.libraryOnlyIds.join(', ') }}.</p>
-  <p class="tier-line">{{ basisNote }}</p>
-  <details class="unmeasured">
-    <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
-    <ul>
-      <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
-    </ul>
-  </details>
+  <p :title="data.releaseScope.line"><a href="/how-it-works/">{{ data.releaseScope.measuredCount }} of {{ data.releaseScope.catalogCount }} features measured</a></p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
@@ -278,7 +272,9 @@ function backendTooltip(name, version) {
 
 ## Terminal Applications {#terminal-applications}
 
-<p class="section-subtitle">Measurements from real terminal applications. See <a href="/contribute">how to record available observations from yours</a>.</p>
+<p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
+
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Inconclusive</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">Error / untested</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -292,20 +288,24 @@ function backendTooltip(name, version) {
 
 <div v-if="appBackends.length > 0" class="summary">
   <div v-for="b in appBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
-    <span class="summary-platforms" v-html="platformIcons(b.name)"></span>
-    <span class="summary-version">{{ b.version }}</span>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <span class="summary-platforms" :title="backendContextLabel(b.name)" v-html="platformIcons(b.name)"></span>
+    <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
       <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
-    <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
-    <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
+    <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
+
+<details class="unmeasured release-details">
+  <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
+  <ul><li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li></ul>
+</details>
 
 ## Terminal Baseline 2026 {#baselines}
 
@@ -401,16 +401,15 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in headlessBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
-    <span class="summary-version">{{ b.version }}</span>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
       <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
-    <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
-    <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
+    <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
 
@@ -474,16 +473,15 @@ function backendTooltip(name, version) {
 
 <div class="summary summary-muted">
   <div v-for="b in muxBackends" :key="b.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendContextLabel(b.name) }}</a>
-    <span class="summary-version">{{ b.version }}</span>
+    <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+    <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
       <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
       <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
       <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
       <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
     </div>
-    <span class="summary-pct">{{ scoreLabel(b.name) }}</span>
-    <span class="summary-counts">{{ coverageLabel(b.name) }}</span>
+    <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
 
@@ -1144,5 +1142,33 @@ strips, or mishandles.
   padding-left: 1.2em;
   max-height: 16em;
   overflow: auto;
+}
+
+/* Compact homepage comparison; terminal detail tables keep their own layout. */
+.VPHome .summary-row { display:grid; grid-template-columns:148px 18px 82px minmax(0,1fr) 74px; gap:14px; padding:12px 0; border-bottom:1px solid var(--vp-c-divider); }
+.VPHome .summary-name { width:auto; min-width:0; white-space:nowrap; font-size:14px; }
+.VPHome .summary-platforms { width:18px; }
+.VPHome .summary-version { width:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.VPHome .summary-bar { height:24px; min-width:0; border-radius:4px; }
+.VPHome .summary-pct { width:auto; min-width:0; font-variant-numeric:tabular-nums; font-size:14px; }
+.VPHome .bar-fail { background:var(--vp-c-divider); }
+.VPHome .bar-remainder { background:repeating-linear-gradient(135deg,transparent 0 4px,var(--vp-c-divider) 4px 5px); }
+.VPHome .summary-muted .summary-row { grid-template-columns:148px 82px minmax(0,1fr) 74px; }
+.VPHome .problem-summary { max-width:none; margin:0 0 32px; padding:0; background:none; border-radius:0; font-size:16px; }
+.VPHome .VPHero .main { max-width:none; }
+.VPHome .VPHero .text { max-width:900px; }
+.support-legend { display:flex; flex-wrap:wrap; gap:8px 20px; margin:20px 0 12px; font-size:12px; color:var(--vp-c-text-2); }
+.support-legend span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:6px; border-radius:2px; background:var(--vp-c-divider); }
+.support-legend .legend-supported::before { background:#10b981; }
+.support-legend .legend-inconclusive::before { background:#f59e0b; }
+.support-legend .legend-unmeasured::before { background:repeating-linear-gradient(135deg,transparent 0 2px,var(--vp-c-text-3) 2px 3px); }
+.release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
+.release-details ul { max-height:16em; overflow:auto; }
+@media (max-width:600px) {
+ .VPHome .summary-row,.VPHome .summary-muted .summary-row { grid-template-columns:minmax(0,1fr) 18px 84px; gap:8px 10px; padding:14px 0; }
+ .VPHome .summary-muted .summary-version { grid-column:3; }
+ .VPHome .summary-bar { grid-column:1 / 3; grid-row:2; order:initial; }
+ .VPHome .summary-pct { grid-column:3; grid-row:2; order:initial; text-align:right; }
+ .VPHome .problem-summary { padding:0; font-size:15px; }
 }
 </style>
