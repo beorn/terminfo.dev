@@ -74,12 +74,37 @@ jobs:
           APP_BUNDLE: ${{ matrix.bundle }}
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
+          ITERM_DOWNLOAD_URL: https://iterm2.com/downloads/stable/iTerm2-3_6_11.zip
+          ITERM_DOWNLOAD_SHA256: 36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7
         run: |
           set -euo pipefail
           brew install imagemagick
           case "$APP_ID" in
             terminal-app) ;;
-            iterm2) brew install --cask iterm2 ;;
+            iterm2)
+              installer="$RUNNER_TEMP/iTerm2-3_6_11.zip"
+              if ! curl --location --fail --silent --show-error \
+                --retry 2 --retry-max-time 120 --connect-timeout 15 --max-time 120 \
+                "$ITERM_DOWNLOAD_URL" --output "$installer"; then
+                echo "Install this job's terminal: iTerm download failed; retained digest follows if bytes exist" >&2
+                if [ -f "$installer" ]; then shasum -a 256 "$installer" >&2; else echo "No downloaded archive bytes to hash" >&2; fi
+                exit 1
+              fi
+              if ! checksum="$(shasum -a 256 "$installer")"; then
+                echo "Install this job's terminal: cannot hash the downloaded iTerm archive" >&2
+                exit 1
+              fi
+              actual_sha256="${checksum%% *}"
+              printf "Install this job's terminal: downloaded iTerm SHA-256 %s\n" "$actual_sha256"
+              test "$actual_sha256" = "$ITERM_DOWNLOAD_SHA256" || {
+                echo "Install this job's terminal: iTerm checksum mismatch (actual $actual_sha256, expected $ITERM_DOWNLOAD_SHA256)" >&2
+                exit 1
+              }
+              if ! ditto -x -k "$installer" /Applications; then
+                echo "Install this job's terminal: iTerm extraction failed (archive SHA-256 $actual_sha256)" >&2
+                exit 1
+              fi
+              ;;
             ghostty) brew install --cask ghostty ;;
             alacritty)
               curl --location --fail --silent --show-error \

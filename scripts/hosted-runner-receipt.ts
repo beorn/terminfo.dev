@@ -100,7 +100,7 @@ function plistValue(plistPath: string, key: string): string {
 
 /** The apps this apparatus installs from a Homebrew cask, and the ones it installs another way.
  * A bundle this producer has no measured installer for is refused by name rather than described. */
-const CASK_APP_IDS = new Set(["iterm2", "ghostty"])
+const CASK_APP_IDS = new Set(["ghostty"])
 
 /** Terminal.app is an OS component, not something this job installed: its source artifact is the
  * sealed system volume's snapshot and code signature, measured exactly as the owned Terminal.app
@@ -173,6 +173,9 @@ function measureAppLaunch(): Record<string, unknown> {
   let sourceArtifact: Record<string, unknown>
   if (appId === "terminal-app") {
     sourceArtifact = measureSealedSystemVolume(bundlePath, executablePath)
+  } else if (appId === "iterm2") {
+    const installer = join(required("RUNNER_TEMP"), "iTerm2-3_6_11.zip")
+    sourceArtifact = { path: installer, sha256: hashBytes("the installed iTerm2-3_6_11.zip", installer) }
   } else if (appId === "alacritty") {
     const installer = join(required("RUNNER_TEMP"), "Alacritty.dmg")
     sourceArtifact = { path: installer, sha256: hashBytes("the installed Alacritty.dmg", installer) }

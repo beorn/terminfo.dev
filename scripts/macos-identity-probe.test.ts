@@ -6,6 +6,7 @@
  * @reach fs-walk <fixture-only: temporary bootstrap, fake commands and downloaded source files>
  */
 import { execFile } from "node:child_process"
+import { createHash } from "node:crypto"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
@@ -32,6 +33,10 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
   expect(job.steps[collectIndex + 1].if).toBe("failure() && steps.collect.outputs.iterm_failure == 'true'")
   expect(job.steps.at(-1).uses).toBe("actions/upload-artifact@v4")
   const collect = job.steps[collectIndex].run as string
+  const install = job.steps.find((step: { name?: string }) => step.name === "Install this job's terminal")
+  expect(install.env.ITERM_DOWNLOAD_URL).toBe("https://iterm2.com/downloads/stable/iTerm2-3_6_11.zip")
+  expect(install.env.ITERM_DOWNLOAD_SHA256).toBe("36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7")
+  expect(collect).toContain("version.stdout.trim() !== '3.6.11'")
   expect(collect).toContain("export TERMINFO_DISPOSABLE_RECEIPT=")
   expect(collect.indexOf(' emit "$OUT/job-start.json"')).toBeLessThan(collect.indexOf('touch "$OUT/collector-ready"'))
   expect(collect).toContain('while [ ! -f "$OUT/collector-ready" ]')
@@ -94,6 +99,63 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
     }
     expect(sampled.job.jobId).toBe("1234")
     expect(sampled.phase).toBe("job-start")
+    // Execute the real install step: a bad download/hash must never reach extraction.
+    const installerBytes = "qualified installer fixture\n"
+    const callsPath = join(dir, "install-calls.jsonl")
+    for (const [name, body] of Object.entries({
+      brew: "if (args.includes('iterm2')) process.exit(8);",
+      curl: `fs.writeFileSync(args[args.indexOf('--output') + 1], ${JSON.stringify(installerBytes)}); if (process.env.CURL_FAIL === '1') process.exit(22);`,
+      shasum:
+        "console.log(require('node:crypto').createHash('sha256').update(fs.readFileSync(args.at(-1))).digest('hex') + '  ' + args.at(-1));",
+      ditto:
+        "if (process.env.EXTRACT_FAIL === '1') process.exit(6); fs.mkdirSync(process.env.APP_BUNDLE, { recursive: true });",
+      sudo: "",
+    })) {
+      await writeFile(
+        join(dir, name),
+        `#!${process.execPath}\nconst fs = require('node:fs'); const args = process.argv.slice(2); fs.appendFileSync(process.env.INSTALL_CALLS, JSON.stringify({ command: ${JSON.stringify(name)}, args }) + '\\n'); ${body}\n`,
+        { mode: 0o755 },
+      )
+    }
+    const runInstall = async (overrides: Record<string, string> = {}) => {
+      await writeFile(callsPath, "")
+      return promisify(execFile)("bash", ["-e", "-o", "pipefail", "-c", install.run], {
+        cwd: dir,
+        env: {
+          ...process.env,
+          ...install.env,
+          PATH: `${dir}:${process.env.PATH}`,
+          APP_ID: "iterm2",
+          APP_BUNDLE: join(dir, "Installed.app"),
+          RUNNER_TEMP: dir,
+          INSTALL_CALLS: callsPath,
+          ITERM_DOWNLOAD_SHA256: createHash("sha256").update(installerBytes).digest("hex"),
+          ...overrides,
+        },
+      })
+    }
+    const calls = async (): Promise<Array<{ command: string; args: string[] }>> =>
+      (await readFile(callsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+    await runInstall()
+    const installed = await calls()
+    const download = installed.find((call) => call.command === "curl")
+    expect(download?.args).toEqual(
+      expect.arrayContaining(["--fail", "--retry", "2", "--retry-max-time", "120", install.env.ITERM_DOWNLOAD_URL]),
+    )
+    expect(installed.map((call) => call.command)).toEqual(["brew", "curl", "shasum", "ditto", "sudo"])
+    for (const [overrides, message, extracted] of [
+      [{ CURL_FAIL: "1" }, /iTerm download failed/, false],
+      [{ ITERM_DOWNLOAD_SHA256: "0".repeat(64) }, /iTerm checksum mismatch \(actual [a-f0-9]{64}/, false],
+      [{ EXTRACT_FAIL: "1" }, /iTerm extraction failed \(archive SHA-256 [a-f0-9]{64}/, true],
+    ] as const) {
+      await expect(runInstall(overrides)).rejects.toThrow(message)
+      const failed = await calls()
+      expect(failed.some((call) => call.command === "ditto")).toBe(extracted)
+      expect(failed.some((call) => call.command === "sudo")).toBe(false)
+    }
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })
@@ -145,7 +207,7 @@ test("iTerm startup passes one quoted command and refuses unqualified launch res
   ])
   for (const [index, result, diagnostic] of [
     [0, { stdout: "wrong.id" }, "bundle identifier"],
-    [1, { stdout: "3.6.12" }, "version"],
+    [1, { stdout: "3.7.4" }, "version"],
     [2, { status: 0, stdout: "123" }, "already running"],
     [2, { status: 2 }, "pgrep"],
     [2, { status: null, signal: "SIGKILL", error: new Error("timed out") }, "pgrep"],

@@ -59,7 +59,9 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
     await writeFile(
       join(dir, "plutil"),
       `#!${process.execPath}
-const values = { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
+const values = process.env.APP_ID === "iterm2"
+  ? { CFBundleShortVersionString: "3.6.11", CFBundleVersion: "3.6.11", CFBundleExecutable: "iTerm2" }
+  : { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
 const value = values[process.argv[3]];
 if (!value) { console.error("no fixture value for " + process.argv[3]); process.exit(1); }
 console.log(value);
@@ -76,6 +78,7 @@ console.log(value);
       PATH: `${dir}:${process.env.PATH}`,
       APP_ID: "ghostty",
       APP_BUNDLE: bundle,
+      RUNNER_TEMP: dir,
       RUNNER_ENVIRONMENT: "github-hosted",
       RUNNER_NAME: "fixture-runner",
       RUNNER_OS: "macOS",
@@ -122,6 +125,33 @@ console.log(value);
     }
     expect(decoded.appLaunch).toEqual(launch)
     expect(parseDisposableReceipt(bytes).appLaunch).toEqual(launch)
+    // The qualified iTerm archive can differ from the current Homebrew cask. Measure what launched.
+    const itermBundle = join(dir, "iTerm.app")
+    await mkdir(join(itermBundle, "Contents", "MacOS"), { recursive: true })
+    await writeFile(join(itermBundle, "Contents", "Info.plist"), "fixture iTerm plist\n")
+    const itermExecutable = join(itermBundle, "Contents", "MacOS", "iTerm2")
+    const itermExecutableBytes = "fixture-qualified-iterm-executable\n"
+    await writeFile(itermExecutable, itermExecutableBytes)
+    const itermInstaller = join(dir, "iTerm2-3_6_11.zip")
+    const itermInstallerBytes = "fixture-qualified-iterm-installer\n"
+    await writeFile(itermInstaller, itermInstallerBytes)
+    env.APP_ID = "iterm2"
+    env.APP_BUNDLE = itermBundle
+    const itermReceipt = join(dir, "iterm-host-measured.json")
+    await run("emit", start, itermReceipt)
+    expect(parseDisposableReceipt(await readFile(itermReceipt, "utf8")).appLaunch).toEqual({
+      bundlePath: realpathSync(itermBundle),
+      cfBundleShortVersionString: "3.6.11",
+      cfBundleVersion: "3.6.11",
+      executablePath: realpathSync(itermExecutable),
+      executableSha256: createHash("sha256").update(itermExecutableBytes).digest("hex"),
+      sourceArtifact: {
+        path: itermInstaller,
+        sha256: createHash("sha256").update(itermInstallerBytes).digest("hex"),
+      },
+    })
+    env.APP_ID = "ghostty"
+    env.APP_BUNDLE = bundle
     expect(decoded.job.jobId).toBe("1234")
     expect(decoded.runId).toBe(
       createHash("sha256")
@@ -240,6 +270,9 @@ console.log(values[process.argv[3]] ?? "");
     // The installer bytes are the source artifact; a missing installer refuses by name.
     await expect(run({ APP_ID: "alacritty" }, "emit", start, join(dir, "no-installer.json"))).rejects.toThrow(
       /cannot read the installed Alacritty\.dmg/,
+    )
+    await expect(run({ APP_ID: "iterm2" }, "emit", start, join(dir, "no-iterm-installer.json"))).rejects.toThrow(
+      /cannot read the installed iTerm2-3_6_11\.zip/,
     )
     // An app with no measured installer route is refused, never described.
     await expect(run({ APP_ID: "warp" }, "emit", start, join(dir, "no-route.json"))).rejects.toThrow(
