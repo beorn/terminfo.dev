@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import type { ObservationReason } from "@terminfo/probe-defs"
+import type { ObservationEvidence, ObservationReason } from "@terminfo/probe-defs"
 import type { EvidenceDocument, PublicCell, PublicVersion } from "../../data/public-results"
 
 const props = withDefaults(
@@ -36,6 +36,8 @@ const isDecSampleResult = computed(
 
 const trigger = ref<HTMLButtonElement | null>(null)
 const dialog = ref<HTMLDialogElement | null>(null)
+const preview = ref<HTMLElement | null>(null)
+let previewHideTimer: ReturnType<typeof setTimeout> | undefined
 const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
@@ -92,6 +94,18 @@ const methodLabel = computed(() =>
       ? "Not measured"
       : (props.cell?.evidence ?? ""),
 )
+// Wording contract: how-it-works/how-to-read-a-result.md:16,22–26.
+const previewMethods: Partial<Record<ObservationEvidence, string>> = {
+  query: "terminal response",
+  pixels: "screenshot",
+  behavior: "measured behavior",
+  "parser-state": "engine state",
+  interaction: "input test",
+}
+const previewStatus = computed(() => {
+  const method = props.cell ? previewMethods[props.cell.evidence] : undefined
+  return props.cell?.conclusive && method ? status.value.text + ": verified in " + method : status.value.text
+})
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
   if (!props.cell) {
@@ -181,6 +195,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function loadEvidence(): Promise<void> {
+  if (evidenceLoading.value || evidenceDocument.value) return
   const approval = presentation.value
   const version = props.version
   const cell = props.cell
@@ -220,10 +235,20 @@ async function loadEvidence(): Promise<void> {
     ) {
       throw new Error("Evidence document identity or structure does not match this result")
     }
-    if (request !== evidenceRequest || !dialogVisible.value || identity !== evidenceIdentity.value) return
+    if (
+      request !== evidenceRequest ||
+      (!dialogVisible.value && !previewVisible.value) ||
+      identity !== evidenceIdentity.value
+    )
+      return
     evidenceDocument.value = parsed as unknown as EvidenceDocument
   } catch (error) {
-    if (request !== evidenceRequest || !dialogVisible.value || identity !== evidenceIdentity.value) return
+    if (
+      request !== evidenceRequest ||
+      (!dialogVisible.value && !previewVisible.value) ||
+      identity !== evidenceIdentity.value
+    )
+      return
     evidenceError.value = error instanceof Error ? error.message : String(error)
   } finally {
     if (request === evidenceRequest) {
@@ -238,7 +263,19 @@ function frameTime(capturedAt: number): string {
   return Number.isNaN(date.getTime()) ? `${capturedAt} ms since Unix epoch` : date.toISOString()
 }
 
+function keepPreview(): void {
+  clearTimeout(previewHideTimer)
+}
+
+function scheduleHidePreview(event?: FocusEvent): void {
+  const next = event?.relatedTarget
+  if (next instanceof Node && (preview.value?.contains(next) || trigger.value?.contains(next))) return
+  keepPreview()
+  previewHideTimer = setTimeout(hidePreview, 200)
+}
+
 function showPreview(): void {
+  keepPreview()
   if (dialogVisible.value || !trigger.value || typeof window === "undefined") return
   const box = trigger.value.getBoundingClientRect()
   const width = Math.min(320, window.innerWidth - 16)
@@ -251,9 +288,11 @@ function showPreview(): void {
     ...(above ? { transform: "translateY(-100%)" } : {}),
   }
   previewVisible.value = true
+  void loadEvidence()
 }
 
 function hidePreview(): void {
+  keepPreview()
   previewVisible.value = false
 }
 
@@ -284,6 +323,7 @@ watch(evidenceIdentity, () => {
 })
 
 onBeforeUnmount(() => {
+  keepPreview()
   invalidateEvidence()
   if (dialog.value?.open) dialog.value.close()
 })
@@ -299,9 +339,9 @@ onBeforeUnmount(() => {
       :aria-label="accessibleName"
       :aria-describedby="previewVisible ? tooltipId : undefined"
       @pointerenter="showPreview"
-      @pointerleave="hidePreview"
+      @pointerleave="scheduleHidePreview()"
       @focus="showPreview"
-      @blur="hidePreview"
+      @blur="scheduleHidePreview"
       @keydown.esc.stop="hidePreview"
       @click="openDialog"
     >
@@ -314,18 +354,27 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div
         v-if="previewVisible && !dialogVisible"
+        ref="preview"
         :id="tooltipId"
         class="result-evidence__preview"
-        role="tooltip"
+        role="region"
+        aria-label="Result preview"
         :style="previewPosition"
+        @pointerenter="keepPreview"
+        @pointerleave="scheduleHidePreview()"
+        @focusin="keepPreview"
+        @focusout="scheduleHidePreview"
+        @keydown.esc.stop="hidePreview"
       >
-        <strong>{{ status.text }}</strong>
+        <strong>{{ previewStatus }}</strong>
         <span
           >{{ targetName }}<template v-if="version"> · {{ version.target.version }}</template></span
         >
-        <span v-if="cell"
-          >Method: {{ methodLabel }}<template v-if="cell.reason"> · Reason: {{ cell.reason }}</template></span
-        >
+        <template v-if="probeGuidanceText">
+          <strong>Current probe guidance</strong>
+          <span>{{ probeGuidanceText }}</span>
+        </template>
+        <a :href="withBase('/how-it-works/')">How we test</a>
         <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
         <span v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</span>
         <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
@@ -337,7 +386,22 @@ onBeforeUnmount(() => {
         />
         <span v-if="previewFrames.length">{{ previewFrames.length }} screenshots · before and after</span>
         <span v-if="presentation?.state === 'withdrawn'">Presentation withdrawn: {{ presentation.review.reason }}</span>
-        <span>{{ actionLabel }}<template v-if="previewImageUrl"> · open for original image</template></span>
+        <span v-if="evidenceLoading">Loading recorded evidence…</span>
+        <span v-else-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
+        <template v-else-if="rawReply !== undefined">
+          <strong>{{ cell?.evidence === "query" ? "Terminal reply" : "Recorded test trace" }}</strong>
+          <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
+        </template>
+        <span v-else-if="evidenceDocument && !previewImageUrl">No reply or screenshot was recorded.</span>
+        <button v-if="presentation?.state === 'presented'" type="button" @click="openDialog">
+          {{
+            previewImageUrl
+              ? "See screenshots and test details"
+              : cell?.evidence === "query"
+                ? "See the terminal's reply and test details"
+                : "See recorded evidence and test details"
+          }}
+        </button>
       </div>
 
       <dialog

@@ -144,7 +144,7 @@ function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
 }
 
-function barSegmentTooltip(backendName, segment) {
+function barSegmentItems(backendName, segment) {
   // The tooltip names the rows of the SEGMENT the reader is hovering, read over the bar's own basis:
   // the scored rows, in their classified state. Every row of the basis is named exactly once, by its
   // own state, so no row of the denominator is left unnamed — a red segment lists unsupported rows
@@ -152,28 +152,39 @@ function barSegmentTooltip(backendName, segment) {
   // rows the blank remainder holds are named by their own segment (@cto 2026-10-12).
   const selected = data.selectedByBackend[backendName]?.selected
   const states = selected ? data.releaseTable[selected.runId] : undefined
-  if (!states) return ''
+  if (!states) return []
   const n = data.notes[backendName] ?? {}
   const items = []
   for (const id of data.releaseScope.scoredIds) {
     const state = states[id] ?? 'untested'
     const name = data.featureDescriptions[id]?.name ?? id
+    const feature = data.features.find(feature => feature.id === id)
+    const href = feature ? '/' + feature.category + '/' + featureSlug(id) : undefined
+    const item = (symbol, note) => ({ id, name, href, symbol, note })
     if (segment === 'yes' && state === 'supported') {
-      items.push(`  ✓ ${name}`)
+      items.push(item('✓'))
     } else if (segment === 'partial' && state === 'inconclusive') {
       const note = n[id]
-      items.push(note ? `  ~ ${name}: ${note}` : `  ~ ${name}`)
+      items.push(item('~', note))
     } else if (segment === 'fail' && state === 'unsupported') {
       const note = n[id]
-      items.push(note ? `  ✗ ${name}: ${note}` : `  ✗ ${name}`)
+      items.push(item('✗', note))
     } else if (segment === 'remainder' && (state === 'error' || state === 'untested')) {
-      items.push(state === 'error' ? `  ! ${name}: error` : `  · ${name}: untested`)
+      items.push(item(state === 'error' ? '!' : '·', state === 'error' ? 'error' : 'untested'))
     }
   }
-  if (items.length === 0) return ''
-  const label =
-    segment === 'yes' ? 'Supported' : segment === 'partial' ? 'Partial' : segment === 'fail' ? 'Not supported' : 'Unmeasured'
-  return `${label} (${items.length}):\n${items.join('\n')}`
+  return items
+}
+
+const barSegments = [
+  { id: 'yes', label: 'Supported' },
+  { id: 'partial', label: 'Inconclusive' },
+  { id: 'fail', label: 'Unsupported' },
+  { id: 'remainder', label: 'Error / untested' },
+]
+
+function segmentWidth(name, segment) {
+  return segment === 'fail' ? failBarWidth(name) : segment === 'remainder' ? remainderBarWidth(name) : barWidth(name, segment)
 }
 
 function failBarWidth(backendName) {
@@ -292,10 +303,15 @@ function backendTooltip(name, version) {
     <span class="summary-platforms" :title="backendContextLabel(b.name)" v-html="platformIcons(b.name)"></span>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
-      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.id" :style="{ width: segmentWidth(b.name, segment.id) }">
+        <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
+        <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
+          <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
+          <ul><li v-for="item in barSegmentItems(b.name, segment.id)" :key="item.id">
+            {{ item.symbol }} <a v-if="item.href" :href="item.href">{{ item.name }}</a><span v-else>{{ item.name }}</span><template v-if="item.note">: {{ item.note }}</template>
+          </li></ul>
+        </div>
+      </div>
     </div>
     <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
@@ -404,10 +420,15 @@ function backendTooltip(name, version) {
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
-      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.id" :style="{ width: segmentWidth(b.name, segment.id) }">
+        <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
+        <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
+          <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
+          <ul><li v-for="item in barSegmentItems(b.name, segment.id)" :key="item.id">
+            {{ item.symbol }} <a v-if="item.href" :href="item.href">{{ item.name }}</a><span v-else>{{ item.name }}</span><template v-if="item.note">: {{ item.note }}</template>
+          </li></ul>
+        </div>
+      </div>
     </div>
     <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
@@ -476,10 +497,15 @@ function backendTooltip(name, version) {
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div class="bar-yes" :style="{ width: barWidth(b.name, 'yes') }" :data-tooltip="barSegmentTooltip(b.name, 'yes')"></div>
-      <div class="bar-partial" :style="{ width: barWidth(b.name, 'partial') }" :data-tooltip="barSegmentTooltip(b.name, 'partial')"></div>
-      <div class="bar-fail" :style="{ width: failBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'fail')"></div>
-      <div class="bar-remainder" :style="{ width: remainderBarWidth(b.name) }" :data-tooltip="barSegmentTooltip(b.name, 'remainder')"></div>
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.id" :style="{ width: segmentWidth(b.name, segment.id) }">
+        <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
+        <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
+          <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
+          <ul><li v-for="item in barSegmentItems(b.name, segment.id)" :key="item.id">
+            {{ item.symbol }} <a v-if="item.href" :href="item.href">{{ item.name }}</a><span v-else>{{ item.name }}</span><template v-if="item.note">: {{ item.note }}</template>
+          </li></ul>
+        </div>
+      </div>
     </div>
     <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
