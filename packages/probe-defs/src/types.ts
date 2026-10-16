@@ -100,6 +100,27 @@ export interface ObservationFrame {
    * It separates "the frame moved while the witness cell stood still" from "nothing moved at all".
    */
   pixelsDigest?: string
+  /**
+   * The screen rectangle the cell-aligned region was cropped from, in the captured window's own
+   * pixels. Carried beside `regionDigest`, which was computed over exactly this crop, so a reader
+   * can tell whether two frames' region digests were taken from the same screen position at all:
+   * the capture arm places the text area per frame, and two frames cropped 26 px apart are not the
+   * same cells (29580). Present exactly when `regionDigest` is; a request that named no cells
+   * carries neither.
+   */
+  regionRectangle?: CaptureRectangle
+}
+
+/** A rectangle in the captured window's own pixels: zero-based edges, positive sizes, integers. */
+export interface CaptureRectangle {
+  /** Left edge, in pixels from the window's left. */
+  x: number
+  /** Top edge, in pixels from the window's top. */
+  y: number
+  /** Width, in pixels. */
+  width: number
+  /** Height, in pixels. */
+  height: number
 }
 
 /** A cell-aligned region in the run's measured grid: 1-based and inclusive on all four edges. */

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import type { CaptureRectangle } from "@terminfo/probe-defs"
 import type { ProbeCapture } from "./probes/unified.ts"
 
 export function command(
@@ -72,14 +73,6 @@ function retain(directory: string, bytes: Buffer, extension: string): string {
     if (!readFileSync(path).equals(bytes)) throw new Error(`Capture artifact digest collision at ${path}`)
   }
   return `sha256:${hash}`
-}
-
-/** One cell-aligned rectangle in the captured window's own pixels. */
-export interface CaptureRectangle {
-  x: number
-  y: number
-  width: number
-  height: number
 }
 
 /** One captured frame's raw pixels, exactly the bytes the collector digests. */
@@ -292,6 +285,7 @@ export async function finishCapture(input: {
   const pngStem = ref.replace(/^sha256:/, "")
   let pixelsDigest: string | undefined
   let regionDigest: string | undefined
+  let regionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
   if (cells !== undefined || pixelGeometry !== undefined) {
     if (cells === undefined || pixelGeometry === undefined) {
@@ -330,6 +324,7 @@ export async function finishCapture(input: {
       )
     }
     regionDigest = `sha256:${digest(cropped)}`
+    regionRectangle = rectangle
     regionTrace = {
       cells,
       pixelGeometry,
@@ -354,6 +349,7 @@ export async function finishCapture(input: {
       ref,
       sourceRef,
       ...(regionDigest !== undefined && pixelsDigest !== undefined ? { regionDigest, pixelsDigest } : {}),
+      ...(regionRectangle !== undefined ? { regionRectangle } : {}),
     },
     trace: { ...trace, ...regionTrace },
   }

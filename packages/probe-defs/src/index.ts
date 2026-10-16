@@ -11,6 +11,7 @@ export type {
   Utf8DecodingReading,
   CaptureCells,
   CapturePixelGeometry,
+  CaptureRectangle,
   CaptureRequest,
 } from "./types.ts"
 export {

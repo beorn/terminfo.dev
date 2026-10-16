@@ -53,6 +53,39 @@ const date = (value: unknown): value is string => nonempty(value) && !Number.isN
 function fail(path: string, message: string): never {
   throw new Error(`${path}: ${message}`)
 }
+
+/**
+ * The screen rectangle a frame's `regionDigest` was taken over. It travels with the digest for the
+ * same reason the digest survives the parse: a verdict recomputed from the parsed frame must still
+ * be able to tell whether two frames were cropped from the same cells (29580). A rectangle that is
+ * not four non-negative integers with positive sizes fails the parse; it is never dropped.
+ */
+function frameRegionRectangle(
+  value: unknown,
+  path: string,
+  index: number,
+  featureId: string,
+): ObservationFrame["regionRectangle"] {
+  if (value === undefined) return undefined
+  if (!object(value)) fail(path, `invalid frame regionRectangle ${index} for ${featureId}`)
+  const integerEdge = (edge: "x" | "y" | "width" | "height"): number => {
+    const edgeValue = value[edge]
+    if (typeof edgeValue !== "number" || !Number.isSafeInteger(edgeValue)) {
+      fail(path, `invalid frame regionRectangle ${edge} ${index} for ${featureId}`)
+    }
+    return edgeValue
+  }
+  const rectangle = {
+    x: integerEdge("x"),
+    y: integerEdge("y"),
+    width: integerEdge("width"),
+    height: integerEdge("height"),
+  }
+  if (rectangle.x < 0 || rectangle.y < 0 || rectangle.width < 1 || rectangle.height < 1) {
+    fail(path, `invalid frame regionRectangle ${index} for ${featureId}: edges are non-negative and sizes positive`)
+  }
+  return rectangle
+}
 const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
 const nullableString = (value: unknown, path: string, name: string): string | null =>
@@ -273,6 +306,7 @@ export function parseObservationFrames(
     if (pixelsDigest !== undefined && !screenshotDigest(pixelsDigest)) {
       fail(path, `invalid frame pixelsDigest ${index} for ${featureId}`)
     }
+    const regionRectangle = frameRegionRectangle(entry.regionRectangle, path, index, featureId)
     return {
       role: entry.role as ObservationFrame["role"],
       ref,
@@ -281,6 +315,7 @@ export function parseObservationFrames(
       ...(sourceRef && { sourceRef }),
       ...(regionDigest && { regionDigest }),
       ...(pixelsDigest && { pixelsDigest }),
+      ...(regionRectangle && { regionRectangle }),
     }
   })
   const targets = frames.filter((frame) => frame.role === "target")

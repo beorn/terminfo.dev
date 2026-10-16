@@ -1,5 +1,5 @@
-import type { CapturePixelGeometry, TermContext } from "@terminfo/probe-defs"
-import type { CapturedFrame, CaptureRectangle, NamedTextOrigin } from "./capture-core.ts"
+import type { CapturePixelGeometry, CaptureRectangle, TermContext } from "@terminfo/probe-defs"
+import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
 
 const BLANK = [0, 0, 0] as const
 const WITNESS = [255, 0, 255] as const
