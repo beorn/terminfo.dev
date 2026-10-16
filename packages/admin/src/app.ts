@@ -9,7 +9,7 @@
  */
 
 import { existsSync, writeFileSync } from "node:fs"
-import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process"
+import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
@@ -99,15 +99,18 @@ const APPS: AppDef[] = [
 // ── Version detection ──
 
 function getAppVersion(app: AppDef): string {
+  const plistPath = join(app.appPath, "Contents", "Info.plist")
   try {
-    const plistPath = join(app.appPath, "Contents", "Info.plist")
-    return (
-      execSync(`/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${plistPath}" 2>/dev/null`, {
-        encoding: "utf8",
-      }).trim() || "unknown"
-    )
-  } catch {
-    return "unknown"
+    const version = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", plistPath], {
+      encoding: "utf8",
+      timeout: 5000,
+      maxBuffer: 262144,
+    }).trim()
+    if (!version) throw new Error("CFBundleShortVersionString is empty")
+    return version
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    throw new Error(`Cannot read ${app.name} version from ${plistPath}: ${detail}`, { cause })
   }
 }
 
