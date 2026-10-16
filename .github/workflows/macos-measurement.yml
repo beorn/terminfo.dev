@@ -207,7 +207,9 @@ jobs:
           const existing = run('pgrep', '/usr/bin/pgrep', ['-x', 'iTerm2']);
           if (existing.status === 0) throw new Error('iTerm2 already running; refusing to attach');
           if (existing.status !== 1) throw new Error(`iTerm2 pgrep failed (${existing.status})`);
-          const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
+          // --command creates our collector window; suppress Cocoa's separate initial untitled window.
+          // This process-local NSUserDefaults override leaves the strict capture selector unchanged.
+          const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command, '-OpenNoWindowsAtStartup', 'YES'], 10000);
           if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
           ITERM_STARTUP
               then

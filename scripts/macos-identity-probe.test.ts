@@ -176,7 +176,7 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
   }
 })
 
-test("iTerm startup passes one quoted command and refuses unqualified launch results", async () => {
+test("iTerm startup suppresses its automatic window, passes one quoted command and refuses unqualified launch results", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
     .run as string
@@ -211,7 +211,7 @@ test("iTerm startup passes one quoted command and refuses unqualified launch res
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", `${bundle}/Contents/Info.plist`]],
     ["/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", `${bundle}/Contents/Info.plist`]],
     ["/usr/bin/pgrep", ["-x", "iTerm2"]],
-    ["/usr/bin/open", ["-a", bundle, "--args", command]],
+    ["/usr/bin/open", ["-a", bundle, "--args", command, "-OpenNoWindowsAtStartup", "YES"]],
   ])
   expect(success.spawnSync.mock.calls.map(([, , options]) => options)).toEqual([
     ...Array.from({ length: 3 }, () =>
