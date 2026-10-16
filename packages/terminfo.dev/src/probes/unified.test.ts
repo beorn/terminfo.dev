@@ -832,7 +832,8 @@ it("prepares capture once before the first eligible callback and retains its cal
     const batch = await runProbeBatch({
       ids,
       ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ context, recordCapture }) => {
+      prepareCapture: async ({ context, featureId, recordCapture }) => {
+        expect(featureId).toBe("collector.captureCalibration")
         expect(prepared).toBe(false)
         order.push("prepare")
         context.write("calibration:paint-witness")
@@ -855,7 +856,11 @@ it("prepares capture once before the first eligible callback and retains its cal
     expect(writes).not.toContain("calibration:paint-witness\n")
     expect(batch.screenshotRefs).toEqual([captureRef])
     expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toMatchObject({
-      writes: expect.arrayContaining(["calibration:paint-witness", "fixture:reset.ris"]),
+      writes: ["fixture:reset.ris"],
+    })
+    expect(JSON.parse(batch.rawReplies["reset.ris"]!)).not.toHaveProperty("captures")
+    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+      writes: ["calibration:paint-witness"],
       captures: [{ frame: { ref: captureRef }, trace: { captureCommand: "fixture-capture" } }],
     })
     expect(JSON.parse(batch.rawReplies["reset.decaln"]!)).toMatchObject({

@@ -334,6 +334,21 @@ export async function runProbeBatch(
   let capturePrepared = false
   let captureGeometry: TermContext["captureGeometry"]
   let captureGeometryRefusal = options.captureGeometryRefusal
+  const recordCapture = (
+    featureId: string,
+    captures: CapturedProbeFrame[],
+    result: CapturedProbeFrame,
+    expectedRole?: ObservationFrame["role"],
+  ) => {
+    if (
+      (expectedRole !== undefined && result.frame.role !== expectedRole) ||
+      !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)
+    ) {
+      throw new Error(`Capture adapter returned an invalid frame for ${featureId}`)
+    }
+    captures.push(result)
+    if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+  }
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -341,17 +356,6 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
-    const recordCapture = (result: CapturedProbeFrame, expectedRole?: ObservationFrame["role"]) => {
-      captureAttempted = true
-      if (
-        (expectedRole !== undefined && result.frame.role !== expectedRole) ||
-        !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)
-      ) {
-        throw new Error(`Capture adapter returned an invalid frame for ${probe.id}`)
-      }
-      captures.push(result)
-      if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
-    }
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
     const refusedBecause = !needsOwnership
       ? undefined
@@ -435,13 +439,14 @@ export async function runProbeBatch(
       context.capture = async (checkpoint) => {
         captureAttempted = true
         const result = await capture({ featureId: probe.id, ...checkpoint })
-        recordCapture(result, checkpoint.role)
+        recordCapture(probe.id, captures, result, checkpoint.role)
         return result.frame
       }
     }
     const prepareCapture = options.prepareCapture
     if (prepareCapture && !capturePrepared) {
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
+      const calibrationId = "collector.captureCalibration"
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
       let preparationGrid: { rows: number; cols: number }
@@ -465,52 +470,62 @@ export async function runProbeBatch(
         }
         preparationGrid = { rows: reported.rows, cols: reported.cols }
       } else {
-        preGeometry ??= await readGeometry()
-        if (!geometryCheck) {
-          geometryCheck = { featureId: probe.id, pre: preGeometry }
-          geometryChecks.push(geometryCheck)
+        const current = preGeometry ?? (await readGeometry())
+        geometryChecks.push({ featureId: calibrationId, pre: current })
+        if (current.status !== "measured") {
+          throw new Error(`Capture calibration current owned grid is unavailable: ${current.diagnostic}`)
         }
-        if (preGeometry.status !== "measured") {
-          throw new Error(`Capture calibration current owned grid is unavailable: ${preGeometry.diagnostic}`)
-        }
-        if (preGeometry.rows !== declared.rows || preGeometry.cols !== declared.cols) {
+        if (current.rows !== declared.rows || current.cols !== declared.cols) {
           throw new Error(
-            `Capture calibration owned grid changed from grant ${declared.rows}x${declared.cols} to ${preGeometry.rows}x${preGeometry.cols}`,
+            `Capture calibration owned grid changed from grant ${declared.rows}x${declared.cols} to ${current.rows}x${current.cols}`,
           )
         }
         if (
           reported &&
           ["agree", "uncorroborated"].includes(reported.status) &&
-          (reported.rows !== preGeometry.rows || reported.cols !== preGeometry.cols)
+          (reported.rows !== current.rows || reported.cols !== current.cols)
         ) {
           throw new Error(
-            `Capture calibration current owned grid ${preGeometry.rows}x${preGeometry.cols} disagrees with terminal grid ${reported.rows}x${reported.cols}`,
+            `Capture calibration current owned grid ${current.rows}x${current.cols} disagrees with terminal grid ${reported.rows}x${reported.cols}`,
           )
         }
-        preparationGrid = { rows: preGeometry.rows, cols: preGeometry.cols }
+        preparationGrid = { rows: current.rows, cols: current.cols }
       }
+      const calibrationWrites: string[] = []
+      const calibrationQueries: TTYQueryTrace[] = []
+      const calibrationEvents: TTYTraceEvent[] = []
+      const calibrationCaptures: CapturedProbeFrame[] = []
       const preparationContext = createTermContext({
         out,
-        writes,
-        events,
+        writes: calibrationWrites,
+        events: calibrationEvents,
         probe: { ...probe, termNeedsGeometry: true },
         geometry: preparationGrid,
         utf8Decoding: readUtf8Decoding,
         captureGeometryRefusal,
       })
-      if (context.capture) preparationContext.capture = context.capture
       // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
-      await withTTYOperation(
-        () =>
-          withTTYQueryTrace(queries, events, () =>
-            prepareCapture({
-              context: preparationContext,
-              featureId: probe.id,
-              recordCapture: (captured) => recordCapture(captured),
-            }),
-          ),
-        out,
-      )
+      try {
+        await withTTYOperation(
+          () =>
+            withTTYQueryTrace(calibrationQueries, calibrationEvents, () =>
+              prepareCapture({
+                context: preparationContext,
+                featureId: calibrationId,
+                recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
+              }),
+            ),
+          out,
+        )
+      } finally {
+        batch.rawReplies[`${calibrationId}.trace`] = JSON.stringify({
+          grid: preparationGrid,
+          writes: calibrationWrites,
+          queries: calibrationQueries,
+          events: calibrationEvents,
+          captures: calibrationCaptures,
+        })
+      }
       capturePrepared = true
       captureGeometry = preparationContext.captureGeometry
       captureGeometryRefusal = preparationContext.captureGeometryRefusal

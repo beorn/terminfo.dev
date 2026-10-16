@@ -350,7 +350,7 @@ describe("private finite daemon startup", () => {
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
-      let reportedCellSize = null, frames = 0, calibrations = 0
+      let reportedCellSize = null, frames = 0, calibrations = 0, calibrationFailure
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
@@ -392,6 +392,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry }) => {
         calibrations++
+        if (calibrationFailure) throw calibrationFailure
         assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
         return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
       } }))
@@ -401,6 +402,17 @@ describe("private finite daemon startup", () => {
       const derived = await collectProbeRun({})
       reportedCellSize = "\\x1b[6;13;6t"
       const reported = await collectProbeRun({})
+      const originalTimeout = new Error("solid grid paint witness timeout")
+      calibrationFailure = Object.assign(new Error("Capture calibration restore failed", { cause: originalTimeout }), { name: "CaptureRestoreFailed" })
+      await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
+      calibrationFailure = new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout })
+      const unseen = await collectProbeRun({})
+      assert.equal(unseen.suiteComplete, true)
+      assert.deepEqual(unseen.ungradedDiagnostics, {})
+      assert.equal(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).outcome, "refused")
+      assert.match(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).refusal, /paint not observed/)
+      assert.ok(!unseen.observations.some(o => o.evidence === "pixels"))
+      calibrationFailure = undefined
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
       reportedCellSize = null
       const bare = await collectProbeRun({})
@@ -414,7 +426,7 @@ describe("private finite daemon startup", () => {
       assert.deepEqual(reportedFact.geometry, cell)
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still calibrates, once per run, and its probes reach pixels.
-      assert.equal(calibrations, 2)
+      assert.equal(calibrations, 4)
       assert.ok(frames > 0)
       const pixels = (run) => run.observations.filter((o) => o.evidence === "pixels")
       assert.ok(pixels(derived).length > 0)
