@@ -23,7 +23,8 @@ import { parse } from "yaml"
 
 test("four fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
-  expect(Object.keys(workflow.jobs)).toEqual(["measure-macos"])
+  expect(Object.keys(workflow.jobs)).toEqual(["measure-macos", "iterm-startup-only"])
+  expect(workflow.jobs["measure-macos"].if).toBe("${{ false }}")
   const job = workflow.jobs["measure-macos"]
   expect(job.strategy.matrix.include.map((row: { id: string }) => row.id)).toEqual([
     "terminal-app",

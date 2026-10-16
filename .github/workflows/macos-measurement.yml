@@ -9,10 +9,12 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   measure-macos:
+    # Private one-run research branch: feature collection is disabled.
+    if: ${{ false }}
     name: macOS ${{ matrix.id }}
     runs-on: macos-latest
     timeout-minutes: 25
@@ -309,5 +311,123 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/measurement-artifacts
+          if-no-files-found: error
+
+  iterm-startup-only:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install only the qualified iTerm bundle, once
+        env:
+          ITERM_DOWNLOAD_URL: https://iterm2.com/downloads/stable/iTerm2-3_6_11.zip
+          ITERM_DOWNLOAD_SHA256: 36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/measurement-artifacts"
+          cp .github/workflows/macos-measurement.yml packages/admin/src/iterm-launch.ts "$RUNNER_TEMP/measurement-artifacts/"
+          sw_vers > "$RUNNER_TEMP/measurement-artifacts/sw-vers.txt"
+          curl --location --fail --silent --show-error --connect-timeout 15 --max-time 120 "$ITERM_DOWNLOAD_URL" --output "$RUNNER_TEMP/iTerm2.zip"
+          shasum -a 256 "$RUNNER_TEMP/iTerm2.zip" | tee "$RUNNER_TEMP/measurement-artifacts/archive-sha256.txt"
+          test "$(shasum -a 256 "$RUNNER_TEMP/iTerm2.zip" | cut -d ' ' -f 1)" = "$ITERM_DOWNLOAD_SHA256"
+          ditto -x -k "$RUNNER_TEMP/iTerm2.zip" /Applications
+          sudo xattr -cr /Applications/iTerm.app
+      - name: One startup and exact-id close; no feature collection
+        run: |
+          bun --eval '
+          const { spawnSync } = await import("node:child_process");
+          const { join } = await import("node:path");
+          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
+          const start = new Date();
+          const rows = [];
+          const result = { launch: "NOT MEASURED", exactlyOneWindow: "NOT MEASURED", returnedIdClosesWindow: "NOT MEASURED", processAfterClose: "NOT MEASURED", failures: [] };
+          async function run(label, argv, timeout = 10000) {
+            const began = new Date().toISOString();
+            const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", timeout, killSignal: "SIGKILL", maxBuffer: 262144 });
+            const row = { label, argv, began, ended: new Date().toISOString(), status: r.status, signal: r.signal, error: r.error?.message, stdout: r.stdout, stderr: r.stderr };
+            rows.push(row);
+            await Bun.write(join(out, label + ".json"), JSON.stringify(row, null, 2));
+            return row;
+          }
+          function ok(row) {
+            if (row.status !== 0 || row.signal || row.error) throw new Error(row.label + " failed: " + JSON.stringify(row));
+            return row.stdout.trim();
+          }
+          async function census(label) {
+            return JSON.parse(ok(await run(label, ["/usr/bin/osascript", "-l", "JavaScript", "-e", `
+              ObjC.import("CoreGraphics"); ObjC.import("Foundation");
+              var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
+              if (!raw) throw new Error("CGWindowListCopyWindowInfo returned null");
+              function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
+              var rows = [], count = $.CFArrayGetCount(raw);
+              for (var i = 0; i < count; i++) {
+                var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
+                rows.push({ owner: value(w, "kCGWindowOwnerName"), pid: value(w, "kCGWindowOwnerPID"), layer: value(w, "kCGWindowLayer"), cgWindowNumber: value(w, "kCGWindowNumber"), title: value(w, "kCGWindowName"), bounds: value(w, "kCGWindowBounds") });
+              }
+              JSON.stringify(rows);
+            `])));
+          }
+          try {
+            const plist = "/Applications/iTerm.app/Contents/Info.plist";
+            if (ok(await run("bundle-id", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", plist])) !== "com.googlecode.iterm2") throw new Error("Bundle identifier mismatch");
+            if (ok(await run("bundle-version", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", plist])) !== "3.6.11") throw new Error("Bundle version mismatch");
+            const fresh = await run("process-before", ["/usr/bin/pgrep", "-x", "iTerm2"]);
+            if (fresh.status !== 1 || fresh.signal || fresh.error) throw new Error("Fresh process precondition failed");
+            const previousDefault = await run("defaults-before", ["/usr/bin/defaults", "read", "com.googlecode.iterm2", "OpenNoWindowsAtStartup"]);
+            if (previousDefault.error || previousDefault.signal || ![0, 1].includes(previousDefault.status)) throw new Error("Defaults preflight failed");
+            if (previousDefault.status === 1 && !previousDefault.stderr.includes("does not exist")) throw new Error("Defaults read failed for a reason other than an absent preference");
+            ok(await run("defaults-write", ["/usr/bin/defaults", "write", "com.googlecode.iterm2", "OpenNoWindowsAtStartup", "-bool", "true"]));
+            if (ok(await run("defaults-after", ["/usr/bin/defaults", "read", "com.googlecode.iterm2", "OpenNoWindowsAtStartup"])) !== "1") throw new Error("Startup preference readback failed");
+            await census("windows-before");
+            ok(await run("screen-before", ["/usr/sbin/screencapture", "-x", join(out, "before.png")]));
+            // Exactly one call to the existing local launcher. No open fallback, retry, or collector.
+            const launched = await run("launch", [process.execPath, "-e", `import { launchIterm } from "./packages/admin/src/iterm-launch.ts"; console.log(launchIterm("/bin/sleep 180", { surface: "local" }));`], 20000);
+            const idText = ok(launched);
+            if (!/^\d+$/.test(idText) || !Number.isSafeInteger(Number(idText))) throw new Error("Non-numeric returned AppleScript id");
+            result.launch = { status: "succeeded", appleScriptWindowId: Number(idText), dialogEvidence: "screenshots, window census, and TCC log retained for review" };
+            await Bun.sleep(2000);
+            const pidText = ok(await run("process-launched", ["/usr/bin/pgrep", "-x", "iTerm2"]));
+            if (!/^\d+$/.test(pidText)) throw new Error("Expected exactly one iTerm process");
+            const pid = Number(pidText);
+            const visible = (await census("windows-launched")).filter(w => w.pid === pid && w.layer === 0);
+            result.exactlyOneWindow = { pid, count: visible.length, windows: visible };
+            ok(await run("screen-launched", ["/usr/sbin/screencapture", "-x", join(out, "launched.png")]));
+            if (visible.length !== 1) throw new Error("Expected exactly one PID-owned visible window");
+            const appleIds = ok(await run("apple-window-ids", ["/usr/bin/osascript", "-e", "tell application \"iTerm\" to get id of every window"]));
+            if (appleIds !== idText) throw new Error("Returned id does not name the sole AppleScript window");
+            ok(await run("close-exact-id", [process.execPath, "-e", `import { closeIterm } from "./packages/admin/src/iterm-launch.ts"; closeIterm(${Number(idText)});`], 10000));
+            await Bun.sleep(2000);
+            const after = (await census("windows-after-close")).filter(w => w.pid === pid && w.layer === 0);
+            result.returnedIdClosesWindow = { appleScriptWindowId: Number(idText), remainingOwnedVisibleWindows: after.length, disappeared: after.length === 0 };
+            const processAfter = await run("process-after-close", ["/usr/bin/pgrep", "-x", "iTerm2"]);
+            if (processAfter.signal || processAfter.error || ![0, 1].includes(processAfter.status)) throw new Error("Post-close process query failed");
+            result.processAfterClose = { running: processAfter.status === 0, pids: processAfter.stdout.trim() };
+            if (after.length !== 0) throw new Error("Exact-id close left a PID-owned visible window");
+          } catch (error) {
+            result.failures.push(String(error));
+            console.error(error);
+            process.exitCode = 1;
+          } finally {
+            for (const [label, argv, timeout] of [
+              ["screen-final", ["/usr/sbin/screencapture", "-x", join(out, "final.png")], 10000],
+              ["process-final", ["/usr/bin/pgrep", "-x", "iTerm2"], 10000],
+              ["tcc-log", ["/usr/bin/log", "show", "--style", "json", "--start", start.toISOString().slice(0, 19).replace("T", " ") + "+0000", "--predicate", "subsystem == \"com.apple.TCC\" OR subsystem CONTAINS[c] \"appleevent\" OR process == \"appleeventsd\""], 20000],
+            ]) {
+              const row = await run(label, argv, timeout);
+              if (row.error || row.signal || (row.status !== 0 && !(label === "process-final" && row.status === 1))) { result.failures.push(label + " evidence capture failed"); process.exitCode = 1; }
+            }
+            try { await census("windows-final"); } catch (error) { result.failures.push(String(error)); process.exitCode = 1; }
+            await Bun.write(join(out, "startup-result.json"), JSON.stringify({ ...result, source: process.env.GITHUB_SHA, runId: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT, began: start.toISOString(), ended: new Date().toISOString(), rows }, null, 2));
+          }
+          '
+      - name: Retain private startup evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iterm-startup-only-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/measurement-artifacts
           if-no-files-found: error
