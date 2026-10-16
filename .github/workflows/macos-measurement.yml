@@ -127,7 +127,7 @@ jobs:
         run: |
           set -euo pipefail
           OUT="$RUNNER_TEMP/measurement-artifacts"
-          mkdir -p "$OUT/captures"
+          mkdir -p "$OUT/artifacts"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.command"
           NODE_DIR="$(dirname "$(command -v node)")"
@@ -153,7 +153,7 @@ jobs:
           $TARGET_VERSION_EXPORT
           export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
-          export TERMINFO_CAPTURE_DIRECTORY="$OUT/captures"
+          export TERMINFO_CAPTURE_DIRECTORY="$OUT/artifacts"
           attempts=0
           while [ ! -f "$OUT/collector-ready" ]; do
             attempts=\$((attempts + 1))
@@ -237,7 +237,17 @@ jobs:
           for attempt in {1..300}; do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit")"
-              test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
+              test "$status" = 0 || {
+                echo "$APP_ID collector failed ($status); see collector.log artifact" >&2
+                if [ "$APP_ID" = iterm2 ]; then
+                  echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
+                  if grep -q 'exactly one owned visible window.*found 2' "$OUT/collector.log"; then
+                    echo 'PID-owned window count 2, no second-window identity' >&2
+                  fi
+                  tail -n 30 "$OUT/collector.log" >&2
+                fi
+                exit 1
+              }
               test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
               exit 0
             fi
