@@ -138,7 +138,21 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
       (await readFile(callsPath, "utf8"))
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line))
+        .map((line) => {
+          const value = JSON.parse(line)
+          if (
+            !value ||
+            typeof value !== "object" ||
+            !("command" in value) ||
+            typeof value.command !== "string" ||
+            !("args" in value) ||
+            !Array.isArray(value.args) ||
+            !value.args.every((arg: unknown) => typeof arg === "string")
+          ) {
+            throw new Error("Installer fixture recorded an invalid command")
+          }
+          return { command: value.command, args: value.args }
+        })
     await runInstall()
     const installed = await calls()
     const download = installed.find((call) => call.command === "curl")
