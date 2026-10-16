@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
   "dependencies": {
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/run-parser": "workspace:*",
