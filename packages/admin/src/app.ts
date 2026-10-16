@@ -23,9 +23,9 @@ import {
   type DaemonRegistration,
   type OwnedDaemon,
   type ProbeRun,
-} from "terminfo.dev/src/daemon-client.ts"
+} from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
-import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
+import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun } from "./admit-collected-run.ts"
@@ -33,7 +33,7 @@ import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
   type OwnedTerminalWindow,
-} from "terminfo.dev/src/terminal-app-window.ts"
+} from "../../terminfo.dev/src/terminal-app-window.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")

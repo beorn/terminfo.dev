@@ -16,10 +16,10 @@ import {
   requestDaemonProbe,
   saveDaemonProbeRun,
   stopOwnedDaemon,
-} from "terminfo.dev/src/daemon-client.ts"
+} from "../../terminfo.dev/src/daemon-client.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { assertOwnedTerminalWindow, closeOwnedTerminalWindow } from "terminfo.dev/src/terminal-app-window.ts"
-import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
+import { assertOwnedTerminalWindow, closeOwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
 vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
@@ -33,10 +33,10 @@ vi.mock("node:child_process", () => ({
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: vi.fn(() => ({ TERMINFO_PROBE_HASH: "suite", TERMINFO_SOURCE_REVISION: "source" })),
 }))
-vi.mock("terminfo.dev/src/identity-guard.ts", () => ({
+vi.mock("../../terminfo.dev/src/identity-guard.ts", () => ({
   verifyTerminalIdentity: vi.fn(() => ({ checked: true, ok: true })),
 }))
-vi.mock("terminfo.dev/src/daemon-client.ts", () => ({
+vi.mock("../../terminfo.dev/src/daemon-client.ts", () => ({
   createProbeRun: vi.fn(),
   findOwnedDaemon: vi.fn(),
   readRetainedDaemonProbeResponse: vi.fn(),
@@ -50,7 +50,7 @@ vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
   launchTerminalWindow: vi.fn(),
 }))
-vi.mock("terminfo.dev/src/terminal-app-window.ts", () => ({
+vi.mock("../../terminfo.dev/src/terminal-app-window.ts", () => ({
   assertOwnedTerminalWindow: vi.fn(),
   closeOwnedTerminalWindow: vi.fn(),
 }))

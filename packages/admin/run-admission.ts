@@ -19,7 +19,7 @@ import {
   verifyTerminalIdentity,
   TERMINAL_IDENTITY_RULES,
   type TerminalIdentityRule,
-} from "terminfo.dev/src/identity-guard.ts"
+} from "../terminfo.dev/src/identity-guard.ts"
 import { activeInterpretations, applies, nonempty, parseInterpretations } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
 

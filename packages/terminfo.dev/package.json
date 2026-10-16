@@ -29,6 +29,9 @@
     "dist"
   ],
   "type": "module",
+  "exports": {
+    "./package.json": "./package.json"
+  },
   "publishConfig": {
     "access": "public",
     "tag": "latest"

@@ -4,7 +4,7 @@ import { ensureSourceSuiteEnvironment } from "../versions.ts"
 
 export async function handleHere(opts: { json?: boolean }): Promise<void> {
   ensureSourceSuiteEnvironment()
-  const { collectProbeRun } = await import("terminfo.dev/src/serve.ts")
+  const { collectProbeRun } = await import("../../terminfo.dev/src/serve.ts")
   const run = await collectProbeRun()
   if (opts.json) {
     console.log(JSON.stringify(run, null, 2))
