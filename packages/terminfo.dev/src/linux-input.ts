@@ -29,7 +29,7 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
   }
   const ownedWindowId: string = windowId
 
-  async function prepare(): Promise<void> {
+  async function focusOwnedWindow(): Promise<void> {
     // Xvfb has no EWMH WM: windowactivate/getactivewindow abort on _NET_ACTIVE_WINDOW.
     // windowfocus uses XSetInputFocus, which CURRENTWINDOW (--window 0) then follows.
     // xterm on the collection image never completes xdotool --sync (28550/28556).
@@ -41,21 +41,25 @@ export async function createLinuxInput(executable: LiveExecutable): Promise<Linu
         `XTEST inject requires the owned window ${ownedWindowId} to be focused; getwindowfocus is ${focused}`,
       )
     }
+  }
+
+  async function preparePointer(): Promise<void> {
+    await focusOwnedWindow()
     await command("xdotool", ["mousemove", "--window", ownedWindowId, "400", "300"])
   }
 
   return {
     async injectKey(keys: string) {
       if (keys.length === 0) throw new Error("XTEST key injection requires a nonempty keysym")
-      await prepare()
+      await focusOwnedWindow()
       await command("xdotool", ["key", "--window", "0", "--clearmodifiers", keys])
     },
     async injectClick(button: 1 | 4 | 5) {
-      await prepare()
+      await preparePointer()
       await command("xdotool", ["click", "--window", "0", "--clearmodifiers", String(button)])
     },
     async injectDrag(button: 1) {
-      await prepare()
+      await preparePointer()
       await command("xdotool", ["mousedown", "--window", "0", "--clearmodifiers", String(button)])
       await command("xdotool", ["mousemove", "--window", ownedWindowId, "450", "300"])
       await command("xdotool", ["mouseup", "--window", "0", "--clearmodifiers", String(button)])
