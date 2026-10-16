@@ -325,12 +325,17 @@ export type PixelGeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DER
 
 /**
  * Why a cell-to-pixel geometry could not be measured, and whether the cause is the terminal or this
- * run (@cto, 28785 REVISE must 2). A reply the geometry NEEDED that never arrived — `timeout`, or
- * DA1's sentinel where an answer was asked for — is TRANSIENT: the same terminal may answer on the
- * next run, so a collector that owns the terminal must fail that run loudly and have it repeated,
- * never publish the terminal as one that cannot be mapped. A terminal that answered every reply it
- * was asked for and whose own numbers do not fit a cell is INTRINSIC: that is a fact about this
- * terminal, and it is the only refusal a run may complete under.
+ * run (@cto, 28785 REVISE rounds 1 and 2). A `timeout` — nothing answered at all, DA1 included — is
+ * TRANSIENT: the same terminal may answer on the next run, so a collector that owns the terminal
+ * must fail that run loudly and have it repeated, never publish the terminal as one that cannot be
+ * mapped. Everything else is INTRINSIC and is the only refusal a run may complete under — the
+ * terminal answered its own numbers and they do not fit a cell, AND equally a `sentinel`, which
+ * tty.ts measures as DA1 answered and then silence through the grace window: the terminal answered
+ * and does not support the query, so that negative is a fact about the terminal, not about this run.
+ *
+ * `transient` is read by the pre-flight, which is the only caller that acts on it; the per-row
+ * `captureRegionVerdict` grades a missing report the same way whichever it is, because a row that
+ * asks its own question is not aborting a batch.
  */
 export interface PixelGeometryRefusal {
   missing: string
@@ -341,8 +346,9 @@ export interface PixelGeometryRefusal {
  * Everything the pixel-geometry queries below touch of a terminal context: ONE method, and nothing
  * else. Naming it lets a collector that owns the terminal ask the SAME implementation before it
  * starts a batch (there is no second geometry implementation to drift from), without inventing a
- * whole fake TermContext for a question that reads at most three replies: CSI 16 t alone on a
- * terminal that answers it, and CSI 14 t then CSI 18 t on one that answers no 16 t at all.
+ * whole fake TermContext for a question that sends at most three QUERIES — CSI 16 t, then CSI 14 t
+ * always, then CSI 18 t only when 16 t went unanswered — and reads at most TWO replies (a terminal
+ * that answers 16 t is still asked 14 t for the text area).
  */
 export type PixelGeometryContext = Pick<TermContext, "queryWithSentinelOutcome">
 
@@ -355,7 +361,7 @@ export async function queryPixelGeometry(
   if (text.reason !== "reply") {
     return {
       missing: `the terminal answered CSI 14 t (text area in pixels) with ${text.reason}`,
-      transient: true,
+      transient: text.reason === "timeout",
     }
   }
   const geometry: PixelGeometry = {
@@ -395,14 +401,14 @@ async function deriveCellSizeFromTextArea(
   if (text.reason !== "reply") {
     return {
       missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 14 t (text area in pixels) with ${text.reason}, so no cell size can be mapped`,
-      transient: true,
+      transient: text.reason === "timeout",
     }
   }
   const area = await ctx.queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
   if (area.reason !== "reply") {
     return {
       missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 18 t (text area in characters) with ${area.reason}, so no cell size can be mapped`,
-      transient: true,
+      transient: area.reason === "timeout",
     }
   }
   const textHeight = Number(text.match?.[1])

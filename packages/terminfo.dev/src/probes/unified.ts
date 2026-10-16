@@ -69,7 +69,7 @@ function createTermContext({
   probe,
   geometry,
   utf8Decoding,
-  captureRefusal,
+  captureGeometryRefusal,
 }: {
   out: NodeJS.WriteStream
   writes?: string[]
@@ -77,7 +77,7 @@ function createTermContext({
   probe: ProbeDefinition
   geometry?: Extract<GeometryMeasurement, { status: "measured" }>
   utf8Decoding: () => Promise<Utf8DecodingReading>
-  captureRefusal?: string
+  captureGeometryRefusal?: string
 }): TermContext {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
@@ -122,7 +122,7 @@ function createTermContext({
       return size().rows
     },
     utf8Decoding,
-    captureRefusal,
+    captureGeometryRefusal,
   }
 }
 
@@ -243,9 +243,11 @@ export async function runProbeBatch(
      * The named cause when this run's owned capture pre-flight refused to map the terminal's own
      * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
      * cause instead of reporting only that no capture adapter exists. Absent when an adapter was
-     * installed, and absent when this run has no capture path at all.
+     * installed, and absent when this run has no capture path at all. Named captureGeometryRefusal
+     * so it does not collide with probe-defs' own captureRefusal (a row refusing to capture an
+     * undersized terminal) — one name per concept (@cto, 28785 REVISE round 2, must 4).
      */
-    captureRefusal?: string
+    captureGeometryRefusal?: string
     input?: InputFixture
     ownedTerminal?: OwnedTerminal
     captureRunId?: string
@@ -413,7 +415,7 @@ export async function runProbeBatch(
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
-      captureRefusal: options.captureRefusal,
+      captureGeometryRefusal: options.captureGeometryRefusal,
     })
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard

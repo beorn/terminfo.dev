@@ -432,11 +432,13 @@ describe("private finite daemon startup", () => {
     expect(result.status).toBe(0)
   })
 
-  // A reply the geometry NEEDED that never arrived is a fact about THIS run, not about the
-  // terminal: the batch must abort loudly by name so a flaky terminal is re-run, instead of being
-  // published as one that cannot be mapped (@cto, 28785 REVISE must 2). The pre-flight throw is the
-  // only failure shape here: no probe runs, no origin is calibrated, no run record is written.
-  it("fails the run by name when a needed geometry reply never arrives", () => {
+  // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
+  // one table. A timeout - nothing answered at all, DA1 included - is the one transient cause, and
+  // the run aborts by name carrying the replies it read. A sentinel is DA1 answered and then
+  // silence through the grace window: the terminal's own measured negative, which completes as a
+  // refusal that names itself in the row note. Both DA1-only shapes complete; both timeout shapes
+  // abort. (Sites: region-readback.ts 358, 375, 398, 405, 415, 421.)
+  it("classifies every geometry refusal by cause, and aborts only on a timeout", () => {
     const result = runHostedDarwinFixture(`
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
@@ -446,8 +448,25 @@ describe("private finite daemon startup", () => {
       const receipt = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const geometry = { status: "measured", rows: 30, cols: 120, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "30 120\\n", stderr: "" }
-      const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
-      let mode = "16t-timeout", frames = 0, calibrations = 0
+      const shapes = [
+        { name: "358 14 t sentinel after a 16 t reply", six: "reply:\\x1b[6;13;6t", fourteen: "sentinel", eighteen: null,
+          expect: "refused", cause: /answered CSI 14 t \\(text area in pixels\\) with sentinel/ },
+        { name: "375 a pixel report that did not parse as positive numbers", six: "reply:\\x1b[6;0;6t", fourteen: "reply:\\x1b[4;598;798t", eighteen: null,
+          expect: "refused", cause: /did not parse as positive numbers/ },
+        { name: "398 DA1 only: 16 t and 14 t both sentinel", six: "sentinel", fourteen: "sentinel", eighteen: null,
+          expect: "refused", cause: /CSI 16 t \\(cell size in pixels\\) with sentinel and CSI 14 t \\(text area in pixels\\) with sentinel/ },
+        { name: "398 a timeout is the one transient cause", six: "timeout", fourteen: "timeout", eighteen: null,
+          expect: "aborts", cause: /with timeout and CSI 14 t \\(text area in pixels\\) with timeout/ },
+        { name: "405 DA1 only through the derived path: 18 t sentinel", six: "sentinel", fourteen: "reply:\\x1b[4;467;860t", eighteen: "sentinel",
+          expect: "refused", cause: /CSI 18 t \\(text area in characters\\) with sentinel/ },
+        { name: "405 the derived path 18 t timeout aborts too", six: "sentinel", fourteen: "reply:\\x1b[4;467;860t", eighteen: "timeout",
+          expect: "aborts", cause: /CSI 18 t \\(text area in characters\\) with timeout/ },
+        { name: "415 a text area that did not parse as positive numbers", six: "sentinel", fourteen: "reply:\\x1b[4;0;0t", eighteen: "reply:\\x1b[8;30;120t",
+          expect: "refused", cause: /text area that did not parse as positive numbers/ },
+        { name: "421 the area does not divide into whole pixels (Terminal.app)", six: "sentinel", fourteen: "reply:\\x1b[4;467;860t", eighteen: "reply:\\x1b[8;30;120t",
+          expect: "refused", cause: /does not divide into a whole-pixel cell size/ }
+      ]
+      let mode = shapes[0], frames = 0, calibrations = 0
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "terminal-app", version: "2.15", os: "macos", osVersion: "26.6.2" })
       }))
@@ -459,55 +478,93 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async (cb) => cb(), drainStdin: async () => {},
-        query: async () => null, queryWithSentinel: async () => null, queryOutcome: async () => silent,
+        query: async () => null, queryWithSentinel: async () => null,
+        queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
         queryCursorPosition: async () => null, measureRenderedWidth: async () => null,
         measureUtf8Decoding: async () => "silent", queryMode: async () => null, readResponse: async () => null,
         queryWithSentinelOutcome: async (sequence, pattern) => {
-          // 16 t timeout, then a 14 t timeout: the derived path never got the two replies it needs.
-          // DA1 sentinel on 16 t and a 14 t that answers, then an 18 t timeout: the same shape at the
-          // second derivation step. Both are unanswered questions, not an unmappable terminal.
-          const sentinel = mode === "18t-sentinel" && sequence === "\\x1b[16t"
-          const reply = sentinel ? "\\x1b[?1;2c"
-            : mode === "18t-sentinel" && sequence === "\\x1b[14t" ? "\\x1b[4;467;860t"
-            : ""
-          return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"),
-            match: reply ? pattern.exec(reply) : null, reason: reply ? (sentinel ? "sentinel" : "reply") : "timeout" }
+          // The collector's OWN geometry corroboration asks CSI 18 t before the pre-flight, with a
+          // pattern that insists on a non-zero first digit: answer it as the measured grid, always,
+          // so it is never confused with the derived geometry path's own 18 t question below.
+          if (pattern.source.includes("[1-9][0-9]*")) {
+            const raw = "\\x1b[8;30;120t"
+            return { match: pattern.exec(raw), reason: "reply", raw, rawBase64: "Z" }
+          }
+          // XTVERSION (and anything else this fixture does not model) is a separate query: it is
+          // answered with DA1's own reply here, which the identity guard reads as "sentinel", never
+          // as one of the three geometry replies below.
+          if (sequence !== "\\x1b[16t" && sequence !== "\\x1b[14t" && sequence !== "\\x1b[18t") {
+            return { match: null, reason: "sentinel", raw: "\\x1b[?1;2c", rawBase64: "Z" }
+          }
+          const spec = sequence === "\\x1b[16t" ? mode.six : sequence === "\\x1b[14t" ? mode.fourteen : mode.eighteen
+          assert.notEqual(spec, null, mode.name + " must never ask " + sequence)
+          if (spec === "timeout") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+          if (spec === "sentinel") return { match: null, reason: "sentinel", raw: "\\x1b[?1;2c", rawBase64: "Z" }
+          const raw = spec.slice("reply:".length)
+          return { match: pattern.exec(raw), reason: "reply", raw, rawBase64: "Z" }
         }
       }))
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({
-        capture: async () => { frames++; throw new Error("no frame may be requested for an unmeasurable geometry") },
-        captureRaw: async () => { frames++; throw new Error("no frame may be requested for an unmeasurable geometry") }
+        capture: async () => { frames++; throw new Error("no frame may be requested for a refused geometry") },
+        captureRaw: async () => { frames++; throw new Error("no frame may be requested for a refused geometry") }
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
-        throw new Error("no origin may be calibrated for an unmeasurable geometry")
+        throw new Error("no origin may be calibrated for a refused geometry")
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
-      const failures = []
-      for (const shape of ["16t-timeout", "18t-sentinel"]) {
+      const measured = []
+      for (const shape of shapes) {
         mode = shape
         let thrown = null
+        let run = null
         try {
-          await collectProbeRun({})
+          run = await collectProbeRun({})
         } catch (error) {
           thrown = error
         }
-        failures.push({ shape, name: thrown?.name, message: String(thrown?.message) })
+        if (shape.expect === "refused") {
+          assert.equal(thrown, null, shape.name + " must complete, not throw: " + String(thrown === null ? "" : thrown.message))
+          const fact = JSON.parse(run.rawReplies["collector.captureCalibration"])
+          const named = run.observations.filter((o) => /cell-to-pixel geometry was refused/.test(o.note ?? ""))
+          measured.push({ name: shape.name, kind: "refused", outcome: fact.outcome, refusal: fact.refusal,
+            complete: run.suiteComplete, ungraded: Object.keys(run.ungradedDiagnostics ?? {}).length,
+            named: named.length, firstNamed: named.length > 0 ? named[0].note : "" })
+        } else {
+          measured.push({ name: shape.name, kind: thrown === null ? "completed" : "threw",
+            error: thrown === null ? null : thrown.name, message: String(thrown === null ? "" : thrown.message) })
+        }
       }
-      assert.deepEqual(failures.map((f) => f.shape), ["16t-timeout", "18t-sentinel"])
-      assert.equal(failures[0].name, "TerminalGeometryUnmeasurable")
-      assert.match(failures[0].message, /CSI 16 t \\(cell size in pixels\\) with timeout and CSI 14 t \\(text area in pixels\\) with timeout/)
-      assert.equal(failures[1].name, "TerminalGeometryUnmeasurable")
-      assert.match(failures[1].message, /CSI 18 t \\(text area in characters\\) with timeout/)
-      // Nothing was measured and nothing was calibrated: the run never reached a probe.
+      assert.deepEqual(measured.map((m) => m.name), shapes.map((s) => s.name))
+      for (const index of shapes.keys()) {
+        const shape = shapes[index]
+        const row = measured[index]
+        if (shape.expect === "refused") {
+          assert.equal(row.kind, "refused", shape.name)
+          assert.equal(row.outcome, "refused", shape.name)
+          assert.match(row.refusal, shape.cause, shape.name)
+          assert.equal(row.complete, true, shape.name)
+          assert.equal(row.ungraded, 0, shape.name)
+          assert.ok(row.named > 0, shape.name + " must name the refusal in a row note")
+          assert.match(row.firstNamed, shape.cause, shape.name)
+        } else {
+          assert.equal(row.kind, "threw", shape.name + " must abort the run")
+          assert.equal(row.error, "TerminalGeometryUnmeasurable", shape.name)
+          assert.match(row.message, shape.cause, shape.name)
+          assert.match(row.message, /REPEAT THE RUN/, shape.name)
+          assert.match(row.message, /Replies read: /, shape.name)
+        }
+      }
+      // No geometry was ever installed, in any shape: nothing captured and nothing calibrated.
       assert.equal(frames, 0)
       assert.equal(calibrations, 0)
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
   })
+
   it("measures owned subset identity independently, retains feature replies and disposes on refusal", () => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-identity-"))
     const result = spawnSync(

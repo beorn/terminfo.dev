@@ -233,15 +233,20 @@ export async function collectProbeRun(
     | undefined
   /**
    * The owned Darwin capture's geometry pre-flight, run ONCE inside raw mode before the batch, and
-   * the fact it leaves in the run. A terminal whose cell size cannot be mapped is refused here, by
-   * name, while nothing has been captured yet — so no probe is ever handed a capture adapter that
-   * can only throw, which is what turned one unmeasurable terminal into an ungraded, inadmissible
-   * run (28785) instead of a run that says which rows could not be decided.
+   * the fact it leaves in the run. A terminal whose OWN cell size cannot be mapped is refused here,
+   * by name, while nothing has been captured yet, and nothing is installed: every probe then takes
+   * its own no-capture branch and the suite still completes, where the lazy version handed a capture
+   * adapter to rows whose frames could only throw and left the run ungraded (28785). A transient
+   * cause — a timeout — aborts the whole batch from here instead, before any probe runs.
    */
   let preflightDarwinCapture: (() => Promise<void>) | undefined
   let captureCalibration: CaptureCalibrationFact | undefined
-  /** The refused geometry's named cause, handed to the batch so a refused row can say why (must 1). */
-  let captureRefusal: string | undefined
+  /**
+   * The refused geometry's named cause, handed to the batch so a refused row can say why (round 1
+   * must 1). Named for the concept, not `captureRefusal`: probe-defs already uses that name for a
+   * row's own refusal to capture an undersized terminal (round 2 must 4).
+   */
+  let captureGeometryRefusal: string | undefined
   let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
   if (captureDirectory && process.platform === "linux") {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
@@ -347,17 +352,23 @@ export async function collectProbeRun(
         })
         if ("missing" in report) {
           // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
-          // must 2). A reply the geometry needed that never arrived - a timeout, or DA1's sentinel
-          // in place of an answer - is a property of THIS run, not of the terminal: the batch
-          // aborts loudly, by name, so a flaky terminal is re-run instead of being published as one
-          // that cannot be mapped.
+          // rounds 1-2). A TIMEOUT - nothing answered at all, DA1 included - is a property of THIS
+          // run, never of the terminal, so the batch aborts loudly, by name, carrying the replies it
+          // read: the failure itself is evidence, and the run is repeated. A sentinel is NOT this
+          // case: tty.ts measures it as DA1 answered and then silence, the terminal's own negative,
+          // so it completes below as a named refusal.
           if (report.transient) {
-            const error = new Error(`Darwin capture calibration could not be measured: ${report.missing}`)
+            const read = queries
+              .map((query) => `${query.sequence} = ${query.reason} (${JSON.stringify(query.raw)})`)
+              .join("; ")
+            const error = new Error(
+              `Darwin capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
+            )
             error.name = "TerminalGeometryUnmeasurable"
             throw error
           }
           captureCalibration = { outcome: "refused", queries, refusal: report.missing }
-          captureRefusal = report.missing
+          captureGeometryRefusal = report.missing
           return
         }
         captureCalibration = { outcome: "installed", basis: report.source, geometry: report.geometry, queries }
@@ -412,9 +423,9 @@ export async function collectProbeRun(
         resolveMeasuredAppVersion(terminal.name, terminal.version, { "collector.xtversion": identity.raw })
       }
       // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
-      // a terminal whose cell size cannot be mapped is refused here, and only an installed adapter
-      // lets a probe reach pixels, so the refusal lands as 51 undecided rows on a complete suite
-      // instead of an ungraded run that cannot be admitted (28785).
+      // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
+      // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
+      // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
       if (preflightDarwinCapture) await preflightDarwinCapture()
       const result = await runProbeBatch({
         ids: options.ids,
@@ -427,7 +438,7 @@ export async function collectProbeRun(
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
         ...(prepareCapture && { prepareCapture }),
-        ...(captureRefusal && { captureRefusal }),
+        ...(captureGeometryRefusal && { captureGeometryRefusal }),
       })
       if (identityQuery) {
         result.rawReplies["collector.xtversion"] = identityQuery.raw

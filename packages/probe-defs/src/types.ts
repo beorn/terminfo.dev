@@ -480,10 +480,13 @@ export interface TermContext {
   /**
    * Present exactly when this run's owned capture pre-flight measured the cell-to-pixel geometry and
    * REFUSED it, by name (28785): a row that finds no capture adapter names this cause — the terminal
-   * whose own numbers do not fit a cell — instead of claiming the run never had a capture path.
-   * Absent when an adapter was installed, and absent when this context has no capture path at all.
+   * whose own numbers do not fit a cell, or one that answered DA1 and then stayed silent — instead of
+   * claiming the run never had a capture path. Absent when an adapter was installed, and absent when
+   * this context has no capture path at all. Named captureGeometryRefusal because probe-defs already
+   * uses `captureRefusal` for a row's own refusal to capture an undersized terminal (modes.ts:6,
+   * reset.ts:54); one name carries one concept (@cto, 28785 REVISE round 2, must 4).
    */
-  captureRefusal?: string
+  captureGeometryRefusal?: string
   /** An owned Linux collector installs this only after verifying the launch receipt. */
   withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
