@@ -255,7 +255,7 @@ describe("private finite daemon startup", () => {
   // message and the whole run was inadmissible as suite-incomplete (28785). A terminal whose cells
   // cannot be mapped is a run WITHOUT a capture adapter: every probe then takes its own no-capture
   // branch, the suite is complete, and the run records why it could not calibrate.
-  it("refuses an unmappable hosted Darwin cell size into a no-capture run, never an ungraded one", () => {
+  it("attempts raster calibration when hosted Darwin window replies do not supply cells", () => {
     const result = runHostedDarwinFixture(`
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
@@ -294,7 +294,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
-        throw new Error("no origin may be calibrated for a refused geometry")
+        throw new Error("Capture calibration nonuniform columns: native fixture has unequal cell edges")
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
@@ -311,15 +311,14 @@ describe("private finite daemon startup", () => {
       const named = refused.observations.filter((o) => /cell-to-pixel geometry was refused/.test(o.note ?? ""))
       assert.equal(named.length, noAdapter(bare).length)
       assert.equal(noAdapter(refused).length, 0)
-      assert.ok(named.every((o) => /860x467 pixel text area over 120x30 characters/.test(o.note)))
-      assert.ok(named.every((o) => /does not divide into a whole-pixel cell size/.test(o.note)))
+      assert.ok(named.every((o) => /nonuniform columns/.test(o.note)))
       assert.equal(refused.suiteComplete, true)
       assert.equal(bare.suiteComplete, true)
       assert.deepEqual(refused.ungradedDiagnostics, {})
       assert.deepEqual(bare.ungradedDiagnostics, {})
       // No probe ever saw a capture adapter, and no origin was calibrated for one.
       assert.equal(frames, 0)
-      assert.equal(calibrations, 0)
+      assert.equal(calibrations, 1)
       // A run with NO capture adapter records no calibration at all, so a reader can tell that apart
       // from a terminal that refused to be calibrated.
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)

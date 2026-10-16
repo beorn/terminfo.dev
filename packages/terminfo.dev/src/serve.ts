@@ -302,7 +302,7 @@ export async function collectProbeRun(
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
       // already measured: the adapter never queries the terminal itself, so the geometry it checks a
       // frame request against and the geometry the origin was calibrated on can never diverge.
-      const installCapture = (geometry: PixelGeometry) => {
+      const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
         capture = async (checkpoint) => {
           if (calibrationError) throw calibrationError
           if (!checkpoint.cells && !checkpoint.pixelGeometry) {
@@ -310,6 +310,7 @@ export async function collectProbeRun(
             return result.result
           }
           if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
+          const geometry = textOrigin.pixelGeometry
           if (
             checkpoint.pixelGeometry &&
             (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
@@ -325,7 +326,7 @@ export async function collectProbeRun(
           try {
             textOrigin = await calibrateCaptureOrigin({
               ctx: context,
-              pixelGeometry: geometry,
+              pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
               captureRaw: async (label, deadline) => {
                 const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
@@ -333,9 +334,22 @@ export async function collectProbeRun(
                 return result.decoded
               },
             })
+            context.captureGeometry = {
+              geometry: textOrigin.pixelGeometry,
+              source: "measured by complete raster calibration",
+            }
+            captureCalibration = {
+              outcome: "installed",
+              basis: context.captureGeometry.source,
+              geometry: textOrigin.pixelGeometry,
+              queries,
+            }
           } catch (cause) {
             const error = cause instanceof Error ? cause : new Error(String(cause))
+            if (error.name === "CaptureRestoreFailed") throw error
             calibrationError = error
+            context.captureGeometryRefusal = error.message
+            captureCalibration = { outcome: "refused", queries, refusal: error.message }
           }
         }
       }
@@ -370,12 +384,12 @@ export async function collectProbeRun(
             error.name = "TerminalGeometryUnmeasurable"
             throw error
           }
-          captureCalibration = { outcome: "refused", queries, refusal: report.missing }
-          captureGeometryRefusal = report.missing
+          // An intrinsic missing report is not a missing measurement: the existing calibration
+          // now measures the complete raster. A transient query failure still aborts above.
+          installCapture(undefined, queries)
           return
         }
-        captureCalibration = { outcome: "installed", basis: report.source, geometry: report.geometry, queries }
-        installCapture(report.geometry)
+        installCapture(report.geometry, queries)
       }
     }
   } else if (kind === "windowsHosted") {

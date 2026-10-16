@@ -807,9 +807,15 @@ it("prepares capture once before the first eligible callback and retains its cal
   }) as typeof process.stdout.write
   try {
     for (const [index, definition] of definitions.entries()) {
-      definition.termNeedsGeometry = true
+      if (index === 0) delete definition.termNeedsGeometry
+      else definition.termNeedsGeometry = true
+      if (index === 0) definition.termWrites = "query"
       definition.term = async (context) => {
         expect(prepared, `${ids[index]} must observe capture preparation`).toBe(true)
+        expect(context.captureGeometry).toEqual({
+          geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+          source: "measured by complete raster calibration",
+        })
         order.push(`callback:${ids[index]}`)
         context.write(`fixture:${ids[index]}`)
         return {
@@ -831,6 +837,12 @@ it("prepares capture once before the first eligible callback and retains its cal
         order.push("prepare")
         context.write("calibration:paint-witness")
         prepared = true
+        Object.assign(context, {
+          captureGeometry: {
+            geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+            source: "measured by complete raster calibration",
+          },
+        })
         recordCapture({
           frame: { role: "control", ref: captureRef, capturedAt: 1, label: "origin calibration" },
           trace: { captureCommand: "fixture-capture" },

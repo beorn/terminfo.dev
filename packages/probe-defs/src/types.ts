@@ -459,6 +459,11 @@ export interface InputFixture {
 }
 
 export interface TermContext {
+  /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
+  captureGeometry?: {
+    geometry: CapturePixelGeometry
+    source: "measured by complete raster calibration"
+  }
   write(text: string): void
   queryCursorPosition(): Promise<{ row: number; col: number } | null>
   measureRenderedWidth(text: string): Promise<number | null>

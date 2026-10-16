@@ -329,10 +329,11 @@ export async function runProbeBatch(
     })
     return decodingAttempt
   }
-  // 28785: the capture adapter's own calibration is prepared once for the run, on the first row that
-  // asks for a frame; the geometry itself is measured eagerly by the collector's pre-flight, so a
-  // hosted-Darwin capture run pays for that measurement whether or not any row ever captures.
+  // Calibrate and prove restoration once before the first callback. The same measured geometry
+  // reaches every later context; a query callback is not permission to paint an unowned terminal.
   let capturePrepared = false
+  let captureGeometry: TermContext["captureGeometry"]
+  let captureGeometryRefusal = options.captureGeometryRefusal
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -413,10 +414,16 @@ export async function runProbeBatch(
       writes,
       events,
       probe,
-      geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
+      geometry:
+        preGeometry?.status === "measured"
+          ? preGeometry
+          : ownsTerminal && options.ownedTerminal?.geometryAtGrant.status === "measured"
+            ? options.ownedTerminal.geometryAtGrant
+            : undefined,
       utf8Decoding: readUtf8Decoding,
-      captureGeometryRefusal: options.captureGeometryRefusal,
+      captureGeometryRefusal,
     })
+    if (captureGeometry) context.captureGeometry = captureGeometry
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard
       context.withClipboardFixture = (work) =>
@@ -424,13 +431,33 @@ export async function runProbeBatch(
     }
     if (options.input) context.input = options.input
     const capture = options.capture
-    if (capture) {
+    if (capture && !captureGeometryRefusal) {
       context.capture = async (checkpoint) => {
         captureAttempted = true
         const result = await capture({ featureId: probe.id, ...checkpoint })
         recordCapture(result, checkpoint.role)
         return result.frame
       }
+    }
+    const prepareCapture = options.prepareCapture
+    if (prepareCapture && !capturePrepared) {
+      if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
+      // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
+      await withTTYOperation(
+        () =>
+          withTTYQueryTrace(queries, events, () =>
+            prepareCapture({
+              context,
+              featureId: probe.id,
+              recordCapture: (captured) => recordCapture(captured),
+            }),
+          ),
+        out,
+      )
+      capturePrepared = true
+      captureGeometry = context.captureGeometry
+      captureGeometryRefusal = context.captureGeometryRefusal
+      if (captureGeometryRefusal) context.capture = undefined
     }
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
@@ -440,19 +467,6 @@ export async function runProbeBatch(
         result = await withTTYOperation(
           () =>
             withTTYQueryTrace(queries, events, async () => {
-              if (
-                options.prepareCapture &&
-                !capturePrepared &&
-                probe.termNeedsGeometry === true &&
-                probe.termWrites !== "query"
-              ) {
-                capturePrepared = true
-                await options.prepareCapture({
-                  context,
-                  featureId: probe.id,
-                  recordCapture: (captured) => recordCapture(captured),
-                })
-              }
               return callback(context)
             }),
           out,
