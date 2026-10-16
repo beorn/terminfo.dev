@@ -193,6 +193,7 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
   const bundle = "/Applications/iTerm.app"
   const command = "--command=/bin/bash /tmp/space\\ path/collect.command"
   const run = (overrides: Record<number, object> = {}) => {
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true)
     const results = [
       { status: 0, stdout: "com.googlecode.iterm2\n" },
       { status: 0, stdout: "3.6.11\n" },
@@ -217,7 +218,6 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
       })
     return { execute, spawnSync }
   }
-  vi.spyOn(process.stdout, "write").mockImplementation(() => true)
   const success = run()
   success.execute()
   expect(success.spawnSync.mock.calls.map(([file, args]) => [file, args])).toEqual([
