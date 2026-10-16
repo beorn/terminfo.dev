@@ -210,7 +210,7 @@ describe("private finite daemon startup", () => {
           calibrateCaptureOrigin: async () => {
             calibrationCalls++
             const error = new Error("Capture calibration fixture: non-solid difference cannot supply an origin")
-            error.name = "CaptureCalibrationError"
+            error.name = "CaptureCalibrationRefused"
             throw error
           }
         }))
@@ -292,7 +292,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
-        throw new Error("Capture calibration nonuniform columns: native fixture has unequal cell edges")
+        throw Object.assign(new Error("Capture calibration nonuniform columns: native fixture has unequal cell edges"), { name: "CaptureCalibrationRefused" })
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
@@ -405,12 +405,18 @@ describe("private finite daemon startup", () => {
       const originalTimeout = new Error("solid grid paint witness timeout")
       calibrationFailure = Object.assign(new Error("Capture calibration restore failed", { cause: originalTimeout }), { name: "CaptureRestoreFailed" })
       await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
-      calibrationFailure = new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout })
+      calibrationFailure = new Error("Original capture adapter I/O failure", { cause: originalTimeout })
+      await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
+      calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
       const unseen = await collectProbeRun({})
       assert.equal(unseen.suiteComplete, true)
       assert.deepEqual(unseen.ungradedDiagnostics, {})
       assert.equal(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).outcome, "refused")
       assert.match(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).refusal, /paint not observed/)
+      assert.deepEqual(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).causes, [
+        { name: "CaptureCalibrationRefused", message: calibrationFailure.message },
+        { name: "Error", message: originalTimeout.message },
+      ])
       assert.ok(!unseen.observations.some(o => o.evidence === "pixels"))
       calibrationFailure = undefined
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
@@ -426,7 +432,7 @@ describe("private finite daemon startup", () => {
       assert.deepEqual(reportedFact.geometry, cell)
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still calibrates, once per run, and its probes reach pixels.
-      assert.equal(calibrations, 4)
+      assert.equal(calibrations, 5)
       assert.ok(frames > 0)
       const pixels = (run) => run.observations.filter((o) => o.evidence === "pixels")
       assert.ok(pixels(derived).length > 0)
@@ -519,7 +525,7 @@ describe("private finite daemon startup", () => {
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
-        throw new Error("Capture calibration nonuniform columns: measured unequal cell edges")
+        throw Object.assign(new Error("Capture calibration nonuniform columns: measured unequal cell edges"), { name: "CaptureCalibrationRefused" })
       } }))
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }

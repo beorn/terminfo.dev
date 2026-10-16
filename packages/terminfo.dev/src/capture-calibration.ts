@@ -6,6 +6,18 @@ const WITNESS = [255, 0, 255] as const
 const CALIBRATION = [255, 0, 0] as const
 const background = (rgb: readonly number[]) => `\x1b[48;2;${rgb.join(";")}m`
 
+function refusal(message: string, cause?: unknown): Error {
+  const error = new Error(message, { cause })
+  error.name = "CaptureCalibrationRefused"
+  return error
+}
+
+function paintTimeout(message: string): Error {
+  const error = new Error(message)
+  error.name = "CapturePaintTimeout"
+  return error
+}
+
 function validateFrame(frame: CapturedFrame): void {
   if (
     !Number.isSafeInteger(frame.width) ||
@@ -44,11 +56,11 @@ function rectangle(frame: CapturedFrame, selected: (offset: number) => boolean):
       bottom = Math.max(bottom, y)
     }
   }
-  if (count === 0) throw new Error("Capture calibration solid grid: no changed pixels")
+  if (count === 0) throw refusal("Capture calibration solid grid: no changed pixels")
   const width = right - left + 1,
     height = bottom - top + 1
   if (count !== width * height) {
-    throw new Error(
+    throw refusal(
       `Capture calibration non-solid grid: ${count} pixels in ${width}x${height}; holes or separate patches cannot supply geometry`,
     )
   }
@@ -85,17 +97,17 @@ function stripeSize(
       const offset = (y * frame.width + x) * 4
       const red = rgbAt(frame, offset, CALIBRATION)
       if (!red && !rgbAt(frame, offset, BLANK)) {
-        throw new Error(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
+        throw refusal(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
       }
       if (position === 0 && !red) {
-        throw new Error(`Capture calibration ${axis}: first edge does not display the requested paint`)
+        throw refusal(`Capture calibration ${axis}: first edge does not display the requested paint`)
       }
       if (previous !== undefined && red !== previous) edges.push(position)
       previous = red
     }
     edges.push(length)
     if (edges.length !== count + 1) {
-      throw new Error(
+      throw refusal(
         `Capture calibration ${axis}: measured ${edges.length - 1} cells, expected ${count}; missing or extra grid edge`,
       )
     }
@@ -106,14 +118,14 @@ function stripeSize(
       const size = right - left
       measured ??= size
       if (size !== measured || size < 1) {
-        throw new Error(
+        throw refusal(
           `Capture calibration nonuniform ${axis}: edge ${index} on scanline ${line} has ${size} pixels, expected ${measured}`,
         )
       }
     }
   }
   if (measured === undefined || measured * count !== length) {
-    throw new Error(`Capture calibration ${axis}: grid boundary disagrees with the complete cell count`)
+    throw refusal(`Capture calibration ${axis}: grid boundary disagrees with the complete cell count`)
   }
   return measured
 }
@@ -144,9 +156,9 @@ export async function calibrateCaptureOrigin({
     throw new Error("Capture calibration cannot restore an unmeasured cursor visibility mode")
   }
   const capture = async (label: string, deadline: number) => {
-    if (Date.now() >= deadline) throw new Error(`Capture calibration ${label}: paint witness timeout before capture`)
+    if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout before capture`)
     const frame = await captureRaw(`collector raster calibration: ${label}`, deadline)
-    if (Date.now() >= deadline) throw new Error(`Capture calibration ${label}: paint witness timeout after capture`)
+    if (Date.now() >= deadline) throw paintTimeout(`Capture calibration ${label}: paint witness timeout after capture`)
     validateFrame(frame)
     return frame
   }
@@ -163,7 +175,7 @@ export async function calibrateCaptureOrigin({
         if (equal(current, confirmation)) return confirmation
       }
       if (Date.now() >= deadline) {
-        throw new Error(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`)
+        throw paintTimeout(`Capture calibration ${label}: paint witness timeout; no confirmed current frame`)
       }
     }
   }
@@ -183,7 +195,7 @@ export async function calibrateCaptureOrigin({
   let failure: unknown
   try {
     // Normalization and every later mutation are inside the same restoration transaction.
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25l")
     baseline = await confirmedFrame("before grid paint", () => true)
     const before = baseline
     for (let offset = 0; offset < baseline.rgba.length; offset += 4) {
@@ -191,7 +203,6 @@ export async function calibrateCaptureOrigin({
         throw new Error("Capture calibration grid witness colour was already visible before the requested paint")
       }
     }
-    ctx.write("\x1b[?25l")
     paintGrid("solid")
     let solid: CapturedFrame
     try {
@@ -209,10 +220,8 @@ export async function calibrateCaptureOrigin({
         baseline,
       )
     } catch (cause) {
-      throw new Error(
-        `Capture calibration paint ${observedPaint ? "not confirmed" : "not observed"}: ${cause instanceof Error ? cause.message : String(cause)}`,
-        { cause },
-      )
+      if (!(cause instanceof Error) || cause.name !== "CapturePaintTimeout" || observedPaint) throw cause
+      throw refusal(`Capture calibration paint not observed: ${cause.message}`, cause)
     }
     const grid = rectangle(solid, (offset) => rgbAt(solid, offset, WITNESS))
     const outsideUnchanged = (frame: CapturedFrame) => {
@@ -254,7 +263,7 @@ export async function calibrateCaptureOrigin({
       pixelGeometry &&
       (Object.keys(measured) as Array<keyof CapturePixelGeometry>).some((key) => pixelGeometry[key] !== measured[key])
     ) {
-      throw new Error(
+      throw refusal(
         `Capture calibration reported geometry ${JSON.stringify(pixelGeometry)} disagrees with witnessed grid ${JSON.stringify(measured)}`,
       )
     }
@@ -268,13 +277,29 @@ export async function calibrateCaptureOrigin({
     throw cause
   } finally {
     try {
-      ctx.write(`\x1b[0m\x1b[2J\x1b[H\x1b[?25${visibility === "set" ? "h" : "l"}`)
-      if (!baseline) throw new Error("Starting blank was never confirmed; restoration cannot be proven")
-      if ((await ctx.queryMode(25)) !== visibility) {
-        throw new Error("Restored cursor visibility differs from its prior mode")
+      let surfaceFailure: unknown
+      try {
+        ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        if (!baseline) throw new Error("Starting blank was never confirmed; restoration cannot be proven")
+        const before = baseline
+        await confirmedFrame("restore grid paint", (frame) => equal(frame, before), observedPaint)
+      } catch (cause) {
+        surfaceFailure = cause
       }
-      const before = baseline
-      await confirmedFrame("restore grid paint", (frame) => equal(frame, before), observedPaint)
+      try {
+        ctx.write(`\x1b[?25${visibility === "set" ? "h" : "l"}`)
+        if ((await ctx.queryMode(25)) !== visibility) {
+          throw new Error("Restored cursor visibility differs from its prior mode")
+        }
+      } catch (cause) {
+        if (surfaceFailure !== undefined) {
+          throw new AggregateError([surfaceFailure, cause], "Surface and cursor restoration failed", {
+            cause: surfaceFailure,
+          })
+        }
+        throw cause
+      }
+      if (surfaceFailure !== undefined) throw surfaceFailure
     } catch (cause) {
       const original = failure instanceof Error ? failure.message : String(failure)
       const error = new AggregateError(

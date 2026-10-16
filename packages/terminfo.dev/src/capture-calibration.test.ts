@@ -40,6 +40,7 @@ function calibration(
     frames?: Partial<Record<Stage, CapturedFrame[]>>
     beforeCapture?: (label: string, writes: readonly string[]) => void
     restoredVisibility?: "set" | "reset"
+    visibility?: "set" | "reset"
   } = {},
 ) {
   const defaults: Record<Stage, CapturedFrame> = {
@@ -60,7 +61,10 @@ function calibration(
       rows: 4,
       cols: 4,
       write: (text: string) => writes.push(text),
-      queryMode: async () => (++modeReads > 1 ? (options.restoredVisibility ?? "reset") : "reset"),
+      queryMode: async () =>
+        ++modeReads > 1
+          ? (options.restoredVisibility ?? options.visibility ?? "reset")
+          : (options.visibility ?? "reset"),
     } as unknown as TermContext,
     pixelGeometry: options.geometry,
     timeoutMs: 100,
@@ -90,7 +94,7 @@ test("complete witnessed raster establishes every edge without dividing padded w
   }
   expect(run.writes.join("")).toContain("\x1b[4;1H")
   expect(run.writes.at(-1)).toContain("?25l")
-  expect(run.writes.at(-1)).toContain("\x1b[0m\x1b[2J\x1b[H")
+  expect(run.writes.at(-2)).toContain("\x1b[0m\x1b[2J\x1b[H")
   expect(run.writes.at(-1)).not.toContain("48;2")
   expect(run.reads.get("before grid paint")).toBe(2)
   for (const stage of ["solid grid paint", "column edge paint", "row edge paint", "restore grid paint"] as Stage[]) {
@@ -187,7 +191,7 @@ test("a pre-existing witness cannot be used as the requested paint", async () =>
 test("the normalized blank is confirmed twice before the first calibration paint", async () => {
   const run = calibration({
     beforeCapture: (label, writes) => {
-      if (label.includes("before grid paint")) expect(writes).toEqual(["\x1b[0m\x1b[2J\x1b[H"])
+      if (label.includes("before grid paint")) expect(writes).toEqual(["\x1b[0m\x1b[2J\x1b[H\x1b[?25l"])
     },
   })
   await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
@@ -211,7 +215,7 @@ test("failure to confirm the starting blank is fatal when restoration cannot be 
       },
     }),
   ).rejects.toMatchObject({ name: "CaptureRestoreFailed", cause: failure })
-  expect(writes.at(-1)).toContain("\x1b[0m\x1b[2J\x1b[H")
+  expect(writes.at(-2)).toContain("\x1b[0m\x1b[2J\x1b[H")
 })
 
 test("an initial partial write with unprovable restoration is a fatal run failure", async () => {
@@ -239,7 +243,7 @@ test("an initial partial write with unprovable restoration is a fatal run failur
 test("an unseen solid paint is a named refusal after the blank restore is freshly confirmed", async () => {
   const run = calibration({ frames: { "solid grid paint": [blank] } })
   await expect(run.promise).rejects.toMatchObject({
-    name: "Error",
+    name: "CaptureCalibrationRefused",
     message: expect.stringMatching(/calibration paint not observed/),
     cause: expect.objectContaining({ message: expect.stringMatching(/solid grid paint.*timeout/) }),
   })
@@ -252,6 +256,33 @@ test("a cursor mode left changed makes restoration fail", async () => {
     message: expect.stringMatching(/cursor visibility/),
   })
 })
+
+test("a visible cursor is hidden through both blank witnesses and restored last", async () => {
+  const run = calibration({
+    visibility: "set",
+    beforeCapture: (_label, writes) => {
+      expect(writes.join("")).toContain("\x1b[?25l")
+      expect(writes.join("")).not.toContain("\x1b[?25h")
+    },
+  })
+  await expect(run.promise).resolves.toMatchObject({ pixelGeometry: geometry })
+  expect(run.writes.at(-1)).toBe("\x1b[?25h")
+})
+
+test.each(["adapter I/O", "dimensions changed", "invalid decoded frame"])(
+  "solid-paint %s stays a fatal apparatus error",
+  async (message) => {
+    const failure = new Error(message)
+    const run = calibration({
+      beforeCapture: (label) => {
+        if (label.includes("solid grid paint")) throw failure
+      },
+    })
+    await expect(run.promise).rejects.toBe(failure)
+    expect(failure.name).not.toBe("CaptureCalibrationRefused")
+    expect(run.reads.get("restore grid paint")).toBe(2)
+  },
+)
 
 test("a failed restore retains the original grid error and the restoration error", async () => {
   const run = calibration({

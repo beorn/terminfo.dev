@@ -1764,3 +1764,63 @@ it("a retained terminal grid reply supplies preparation counts when declared siz
   })
   expect(seen).toEqual([30, 120])
 })
+
+it.each(["conflict", "malformed", "live mismatch"] as const)(
+  "capture refuses %s without painting and retains the 18t evidence",
+  async (fault) => {
+    verifiedBatchFixture()
+    vi.spyOn(process.stdout, "write").mockReturnValue(true)
+    let painted = false
+    const raw = "\x1b[8;30;120t"
+    const batch = await runProbeBatch({
+      ids: ["modes.bracketed-paste"],
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      geometryCorroboration: {
+        status: fault === "live mismatch" ? "agree" : fault,
+        rows: 30,
+        cols: 120,
+        query: {
+          sequence: "\x1b[18t",
+          outbound: "\x1b[18t\x1b[c",
+          reason: "reply",
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        },
+      },
+      prepareCapture: async () => {
+        painted = true
+      },
+    })
+    expect(painted).toBe(false)
+    expect(batch.rawReplies["collector.captureCalibration.trace"]).toContain(raw.replaceAll("\x1b", "\\u001b"))
+    expect(JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)).toMatchObject({
+      refusal: expect.stringMatching(/grid.*disagree|grid.*malformed/),
+    })
+  },
+)
+
+it("an 18t timeout aborts capture preparation instead of recording a terminal refusal", async () => {
+  verifiedBatchFixture()
+  vi.spyOn(process.stdout, "write").mockReturnValue(true)
+  let painted = false
+  await expect(
+    runProbeBatch({
+      ids: ["modes.bracketed-paste"],
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      geometryCorroboration: {
+        status: "silent",
+        query: {
+          sequence: "\x1b[18t",
+          outbound: "\x1b[18t\x1b[c",
+          reason: "timeout",
+          raw: "",
+          rawBase64: "",
+        },
+      },
+      prepareCapture: async () => {
+        painted = true
+      },
+    }),
+  ).rejects.toThrow(/18t.*timed out/)
+  expect(painted).toBe(false)
+})

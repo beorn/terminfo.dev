@@ -418,12 +418,7 @@ export async function runProbeBatch(
       writes,
       events,
       probe,
-      geometry:
-        preGeometry?.status === "measured"
-          ? preGeometry
-          : ownsTerminal && options.ownedTerminal?.geometryAtGrant.status === "measured"
-            ? options.ownedTerminal.geometryAtGrant
-            : undefined,
+      geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
@@ -449,63 +444,74 @@ export async function runProbeBatch(
       const calibrationId = "collector.captureCalibration"
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
-      let preparationGrid: { rows: number; cols: number }
-      if (reported?.status === "conflict" || reported?.status === "malformed") {
-        throw new Error(`Capture calibration verified grid disagrees with terminal reply: ${reported.status}`)
-      }
-      if (declared?.status !== "measured") {
-        if (
-          !reported ||
-          !["agree", "uncorroborated"].includes(reported.status) ||
-          typeof reported.rows !== "number" ||
-          typeof reported.cols !== "number" ||
-          !Number.isSafeInteger(reported.rows) ||
-          !Number.isSafeInteger(reported.cols) ||
-          reported.rows < 2 ||
-          reported.cols < 2
-        ) {
-          throw new Error(
-            "Capture calibration verified grid is unavailable: no terminal grid reply or verified declared size",
-          )
-        }
-        preparationGrid = { rows: reported.rows, cols: reported.cols }
-      } else {
-        const current = preGeometry ?? (await readGeometry())
-        geometryChecks.push({ featureId: calibrationId, pre: current })
-        if (current.status !== "measured") {
-          throw new Error(`Capture calibration current owned grid is unavailable: ${current.diagnostic}`)
-        }
-        if (current.rows !== declared.rows || current.cols !== declared.cols) {
-          throw new Error(
-            `Capture calibration owned grid changed from grant ${declared.rows}x${declared.cols} to ${current.rows}x${current.cols}`,
-          )
-        }
-        if (
-          reported &&
-          ["agree", "uncorroborated"].includes(reported.status) &&
-          (reported.rows !== current.rows || reported.cols !== current.cols)
-        ) {
-          throw new Error(
-            `Capture calibration current owned grid ${current.rows}x${current.cols} disagrees with terminal grid ${reported.rows}x${reported.cols}`,
-          )
-        }
-        preparationGrid = { rows: current.rows, cols: current.cols }
-      }
+      let preparationGrid: { rows: number; cols: number } | undefined
       const calibrationWrites: string[] = []
       const calibrationQueries: TTYQueryTrace[] = []
       const calibrationEvents: TTYTraceEvent[] = []
       const calibrationCaptures: CapturedProbeFrame[] = []
-      const preparationContext = createTermContext({
-        out,
-        writes: calibrationWrites,
-        events: calibrationEvents,
-        probe: { ...probe, termNeedsGeometry: true },
-        geometry: preparationGrid,
-        utf8Decoding: readUtf8Decoding,
-        captureGeometryRefusal,
-      })
-      // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
       try {
+        if (reported?.query.reason === "timeout") {
+          throw new Error(
+            `Capture calibration CSI 18t timed out; repeat the run. Reply: ${JSON.stringify(reported.query)}`,
+          )
+        }
+        if (reported?.status === "conflict" || reported?.status === "malformed") {
+          throw Object.assign(
+            new Error(`Capture calibration verified grid disagrees with terminal reply: ${reported.status}`),
+            { name: "CaptureCalibrationRefused" },
+          )
+        }
+        if (declared?.status !== "measured") {
+          if (
+            !reported ||
+            !["agree", "uncorroborated"].includes(reported.status) ||
+            typeof reported.rows !== "number" ||
+            typeof reported.cols !== "number" ||
+            !Number.isSafeInteger(reported.rows) ||
+            !Number.isSafeInteger(reported.cols) ||
+            reported.rows < 2 ||
+            reported.cols < 2
+          ) {
+            throw new Error(
+              "Capture calibration verified grid is unavailable: no terminal grid reply or verified declared size",
+            )
+          }
+          preparationGrid = { rows: reported.rows, cols: reported.cols }
+        } else {
+          const current = preGeometry ?? (await readGeometry())
+          geometryChecks.push({ featureId: calibrationId, pre: current })
+          if (current.status !== "measured") {
+            throw new Error(`Capture calibration current owned grid is unavailable: ${current.diagnostic}`)
+          }
+          if (current.rows !== declared.rows || current.cols !== declared.cols) {
+            throw new Error(
+              `Capture calibration owned grid changed from grant ${declared.rows}x${declared.cols} to ${current.rows}x${current.cols}`,
+            )
+          }
+          if (
+            reported &&
+            ["agree", "uncorroborated"].includes(reported.status) &&
+            (reported.rows !== current.rows || reported.cols !== current.cols)
+          ) {
+            throw Object.assign(
+              new Error(
+                `Capture calibration current owned grid ${current.rows}x${current.cols} disagrees with terminal grid ${reported.rows}x${reported.cols}`,
+              ),
+              { name: "CaptureCalibrationRefused" },
+            )
+          }
+          preparationGrid = { rows: current.rows, cols: current.cols }
+        }
+        const preparationContext = createTermContext({
+          out,
+          writes: calibrationWrites,
+          events: calibrationEvents,
+          probe: { ...probe, termNeedsGeometry: true },
+          geometry: preparationGrid,
+          utf8Decoding: readUtf8Decoding,
+          captureGeometryRefusal,
+        })
+        // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
         await withTTYOperation(
           () =>
             withTTYQueryTrace(calibrationQueries, calibrationEvents, () =>
@@ -517,9 +523,16 @@ export async function runProbeBatch(
             ),
           out,
         )
+        captureGeometry = preparationContext.captureGeometry
+        captureGeometryRefusal = preparationContext.captureGeometryRefusal
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "CaptureCalibrationRefused") throw error
+        captureGeometryRefusal = error.message
       } finally {
         batch.rawReplies[`${calibrationId}.trace`] = JSON.stringify({
           grid: preparationGrid,
+          geometryCorroboration: reported,
+          refusal: captureGeometryRefusal,
           writes: calibrationWrites,
           queries: calibrationQueries,
           events: calibrationEvents,
@@ -527,8 +540,6 @@ export async function runProbeBatch(
         })
       }
       capturePrepared = true
-      captureGeometry = preparationContext.captureGeometry
-      captureGeometryRefusal = preparationContext.captureGeometryRefusal
       if (captureGeometry) context.captureGeometry = captureGeometry
       if (captureGeometryRefusal) context.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) context.capture = undefined

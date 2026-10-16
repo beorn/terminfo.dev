@@ -162,6 +162,7 @@ interface CaptureCalibrationFact {
   queries: CaptureCalibrationQuery[]
   /** The named cause, present exactly when the geometry was refused. */
   refusal?: string
+  causes?: Array<{ name: string; message: string }>
 }
 
 /** Linux collections export both the clipboard receipt and TERMINFO_DISPOSABLE_RECEIPT; clipboard wins. */
@@ -337,10 +338,20 @@ export async function collectProbeRun(
             }
           } catch (cause) {
             const error = cause instanceof Error ? cause : new Error(String(cause))
-            if (error.name === "CaptureRestoreFailed") throw error
+            if (error.name !== "CaptureCalibrationRefused") throw error
             calibrationError = error
             context.captureGeometryRefusal = error.message
-            captureCalibration = { outcome: "refused", queries, refusal: error.message }
+            const causes: Array<{ name: string; message: string }> = []
+            const seen = new Set<Error>()
+            for (
+              let current: unknown = error;
+              current instanceof Error && !seen.has(current);
+              current = current.cause
+            ) {
+              seen.add(current)
+              causes.push({ name: current.name, message: current.message })
+            }
+            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
           }
         }
       }
