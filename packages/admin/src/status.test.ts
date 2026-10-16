@@ -27,6 +27,7 @@ test("status separates reviewed current runs from newer legacy files and refuses
     symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
     symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
     symlinkSync(join(source, "packages", "admin", "node_modules"), join(admin, "node_modules"), "dir")
+    symlinkSync(join(source, "packages", "terminfo.dev"), join(root, "packages", "terminfo.dev"), "dir")
     symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
     symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
     writeFileSync(
