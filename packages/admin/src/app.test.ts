@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
+import { execFileSync, execSync } from "node:child_process"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp } from "./app.ts"
 import {
@@ -24,7 +25,11 @@ import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
 
 vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn() }))
-vi.mock("node:child_process", () => ({ execFileSync: vi.fn(), execSync: vi.fn(() => "2.15\n"), spawn: vi.fn() }))
+vi.mock("node:child_process", () => ({
+  execFileSync: vi.fn(() => "2.15\n"),
+  execSync: vi.fn(() => "2.15\n"),
+  spawn: vi.fn(),
+}))
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: vi.fn(() => ({ TERMINFO_PROBE_HASH: "suite", TERMINFO_SOURCE_REVISION: "source" })),
 }))
@@ -212,5 +217,30 @@ describe("Terminal.app app collection", () => {
     expect(admitRun).not.toHaveBeenCalled()
     expect(stopOwnedDaemon).toHaveBeenCalledOnce()
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
+  })
+})
+
+describe("App version diagnostics", () => {
+  test.each(["missing plist", "permission denied"])(
+    "listing refuses %s instead of printing unknown",
+    async (reason) => {
+      const cause = new Error(reason)
+      vi.mocked(execSync).mockImplementationOnce(() => {
+        throw cause
+      })
+      vi.mocked(execFileSync).mockImplementationOnce(() => {
+        throw cause
+      })
+      await expect(handleApp(undefined, {})).rejects.toMatchObject({
+        message: expect.stringMatching(new RegExp(`Ghostty.*Info\\.plist.*${reason}`)),
+        cause,
+      })
+    },
+  )
+
+  test("listing refuses an empty version instead of printing unknown", async () => {
+    vi.mocked(execSync).mockReturnValueOnce(" \n")
+    vi.mocked(execFileSync).mockReturnValueOnce(" \n")
+    await expect(handleApp(undefined, {})).rejects.toThrow(/Ghostty.*Info\.plist.*empty/)
   })
 })
