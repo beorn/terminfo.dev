@@ -261,7 +261,7 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
-  <p :title="data.releaseScope.line">{{ data.releaseScope.measuredCount }} of {{ data.releaseScope.catalogCount }} features measured so far, more each release.</p>
+  <p :title="data.releaseScope.line">{{ data.releaseScope.measuredCount }} of {{ data.releaseScope.catalogCount }} features measured. <a href="/about#how-we-measure">How we measure</a></p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
