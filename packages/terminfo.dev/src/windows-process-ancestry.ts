@@ -98,14 +98,18 @@ export function decodeProcessEntry32W(bytes: Uint8Array, layout: ProcessEntry32W
   const pid = view.getUint32(layout.pidOffset, true)
   const ppid = view.getUint32(layout.ppidOffset, true)
   const comm = decodeUtf16Z(bytes, layout.exeFileOffset, layout.exeFileChars)
-  // A zero pid is the API's "no more records" shape, not a process; reading one as a process would
-  // silently anchor a walk on nothing.
-  if (pid === 0) throw new Error(`PROCESSENTRY32W record has no process id: ${JSON.stringify(comm)}`)
+  // PID 0 is the System Idle Process - a LITERAL row a system-wide table always carries, and not the
+  // enumeration's end marker. The only terminator is a FALSE return from Process32NextW, checked at
+  // collection, so refusing pid 0 HERE aborted a perfectly good table before the ancestry filter ran
+  // (@dev/7 r1 finding 1). The walk's own `pid <= 0` stop is what keeps it from anchoring on Idle.
   return { pid, ppid, comm }
 }
 
 /** TH32CS_SNAPPROCESS: the snapshot's process table. */
 const TH32CS_SNAPPROCESS = 0x00000002
+
+/** ERROR_NO_MORE_FILES: the ONLY legitimate end of a Process32NextW enumeration. */
+const ERROR_NO_MORE_FILES = 18
 
 /**
  * The whole process table, one decoded record at a time. `runtime.arch` is injectable so the layout
@@ -115,23 +119,55 @@ export async function readWindowsProcessTable(runtime: { arch?: string } = proce
   const layout = processEntry32WLayout(pointerBytesForArch(runtime.arch ?? process.arch))
   const { symbols, ptr } = await loadKernel32()
   const snapshot = symbols.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS as never, 0 as never)
-  const record = Buffer.alloc(layout.size)
-  const rows: WindowsProcessRow[] = []
   try {
-    record.writeUInt32LE(layout.size, 0)
-    if (!symbols.Process32FirstW(snapshot as never, ptr(record) as never)) {
-      throw new Error(
-        `CreateToolhelp32Snapshot/Process32FirstW read no process from the table: error ${String(symbols.GetLastError())}`,
-      )
-    }
-    for (;;) {
-      rows.push(decodeProcessEntry32W(record, layout))
-      record.fill(0)
-      record.writeUInt32LE(layout.size, 0)
-      if (!symbols.Process32NextW(snapshot as never, ptr(record) as never)) break
-    }
+    return collectProcessTable({
+      layout,
+      first: (record) => symbols.Process32FirstW(snapshot as never, ptr(record) as never) !== 0,
+      next: (record) => symbols.Process32NextW(snapshot as never, ptr(record) as never) !== 0,
+      // Read straight after the failing call: any later FFI call may clobber the last-error slot.
+      lastError: () => symbols.GetLastError(),
+    })
   } finally {
     symbols.CloseHandle(snapshot as never)
+  }
+}
+
+/**
+ * The enumeration loop, split from the snapshot so the `ERROR_NO_MORE_FILES` rule is provable without
+ * Windows. Before @dev/7's r1 finding 2, ANY FALSE from Process32NextW ended the read silently, so a
+ * real failure part-way through became an apparently complete table - and ownership could be granted
+ * off the rows that had happened to arrive first. `next` FALSE now ends the read for
+ * ERROR_NO_MORE_FILES alone; every other code throws by name, because a partial table must never
+ * pass as a whole one.
+ */
+export function collectProcessTable(options: {
+  layout: ProcessEntry32WLayout
+  first: (record: Buffer) => boolean
+  next: (record: Buffer) => boolean
+  lastError: () => number
+}): WindowsProcessRow[] {
+  const { layout, first, next, lastError } = options
+  const record = Buffer.alloc(layout.size)
+  const rows: WindowsProcessRow[] = []
+  record.writeUInt32LE(layout.size, 0)
+  if (!first(record)) {
+    throw new Error(
+      `CreateToolhelp32Snapshot/Process32FirstW read no process from the table: error ${String(lastError())}`,
+    )
+  }
+  for (;;) {
+    rows.push(decodeProcessEntry32W(record, layout))
+    record.fill(0)
+    record.writeUInt32LE(layout.size, 0)
+    if (!next(record)) {
+      const code = lastError()
+      if (code !== ERROR_NO_MORE_FILES) {
+        throw new Error(
+          `Process32NextW ended the table read with error ${String(code)}, not ERROR_NO_MORE_FILES; the table is partial`,
+        )
+      }
+      break
+    }
   }
   return rows
 }

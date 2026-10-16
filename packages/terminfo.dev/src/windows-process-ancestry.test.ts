@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest"
 import {
+  collectProcessTable,
   decodeProcessEntry32W,
   pointerBytesForArch,
   processEntry32WLayout,
@@ -98,9 +99,15 @@ describe("decodeProcessEntry32W", () => {
     )
   })
 
-  it("refuses a record with no process id instead of anchoring a walk on it", () => {
+  it("decodes the System Idle row - pid 0 is a process every system-wide table carries", () => {
+    // @dev/7 r1 finding 1: the enumeration ends on a FALSE from Process32NextW, never on a pid, so
+    // refusing pid 0 HERE aborted a whole good table before the ancestry filter ever ran.
     const bytes = recordAtDocumentedOffsets({ pid: 0, ppid: 0, comm: "[System Process]" }, 8)
-    expect(() => decodeProcessEntry32W(bytes, processEntry32WLayout(8))).toThrow(/has no process id/)
+    expect(decodeProcessEntry32W(bytes, processEntry32WLayout(8))).toEqual({
+      pid: 0,
+      ppid: 0,
+      comm: "[System Process]",
+    })
   })
 })
 
@@ -118,6 +125,13 @@ describe("windowsProcessAncestry", () => {
       ppid: 5492,
       comm: "WindowsTerminal.exe",
     })
+  })
+
+  it("walks and still finds the receipt's app when the table carries the System Idle row", () => {
+    const rows: WindowsProcessRow[] = [{ pid: 0, ppid: 0, comm: "[System Process]" }, ...MEASURED_CHAIN]
+    const chain = windowsProcessAncestry(rows, 8848)
+    expect(chain.map((row) => row.pid)).toEqual([8848, 5796, 5492, 2196, 4328, 1508, 4872])
+    expect(requireHostedWindowsAppAncestor("WindowsTerminal.exe", chain).pid).toBe(5796)
   })
 
   it("refuses a snapshot that cannot see its own reader", () => {
@@ -158,6 +172,61 @@ describe("requireHostedWindowsAppAncestor", () => {
     expect(() => requireHostedWindowsAppAncestor("WindowsTerminal.exe", chain)).toThrow(
       /Hosted Windows ancestry never reached windowsterminal\.exe; found Runner\.Listener\.exe \(pid 4872\), Runner\.Worker\.exe \(pid 1508\), bash\.exe \(pid 4328\), bash\.exe \(pid 2196\), bash\.exe \(pid 5492\), explorer\.exe \(pid 5796\), powershell\.exe \(pid 8848\)/,
     )
+  })
+})
+
+describe("collectProcessTable", () => {
+  /** A scripted toolhelp enumeration: each successful call fills the record at the LITERAL documented
+   *  offsets, and the run ends on `endError` - the same shape the real symbols have. */
+  const scripted = (rows: readonly WindowsProcessRow[], endError: number) => {
+    let nextIndex = 0
+    const fill = (record: Buffer, row: WindowsProcessRow) => {
+      record.set(recordAtDocumentedOffsets(row, 8))
+      return true
+    }
+    return {
+      first: (record: Buffer) => {
+        if (rows.length === 0) return false
+        nextIndex = 1
+        return fill(record, rows[0]!)
+      },
+      next: (record: Buffer) => {
+        if (nextIndex >= rows.length) return false
+        const row = rows[nextIndex]!
+        nextIndex += 1
+        return fill(record, row)
+      },
+      lastError: () => endError,
+    }
+  }
+
+  it("collects every row, Idle included, and ends only on ERROR_NO_MORE_FILES", () => {
+    const rows = collectProcessTable({
+      layout: processEntry32WLayout(8),
+      ...scripted([{ pid: 0, ppid: 0, comm: "[System Process]" }, ...MEASURED_CHAIN], 18),
+    })
+
+    expect(rows.map((row) => row.pid)).toEqual([0, 8848, 5796, 5492, 2196, 4328, 1508, 4872])
+  })
+
+  it("throws by name when the enumeration ends on any other error, never passing a partial table", () => {
+    // ERROR_INVALID_HANDLE (6) part-way through: the rows read so far must NOT become a table, or the
+    // walk could grant ownership off whatever happened to arrive before the failure (@dev/7 r1 #2).
+    expect(() =>
+      collectProcessTable({
+        layout: processEntry32WLayout(8),
+        ...scripted(MEASURED_CHAIN.slice(0, 2), 6),
+      }),
+    ).toThrow(/ended the table read with error 6, not ERROR_NO_MORE_FILES; the table is partial/)
+  })
+
+  it("throws when the first read yields no process at all, naming the Win32 code", () => {
+    expect(() =>
+      collectProcessTable({
+        layout: processEntry32WLayout(8),
+        ...scripted([], 87),
+      }),
+    ).toThrow(/Process32FirstW read no process from the table: error 87/)
   })
 })
 
