@@ -94,7 +94,7 @@ function remainderLabel(row) {
 
 <h3>Rows this page does not publish {#not-published}</h3>
 
-<p>These contexts have no run on the frozen suite, so no row of theirs appears above. A row measured on an older probe suite is never published on this page.</p>
+<p>These contexts have no admitted run on the frozen suite, so no row of theirs appears above. A row measured on an older probe suite is never published on this page.</p>
 
 <p v-if="omitted.some(context => context.terminalId === 'iterm2' && context.os === 'macos')"><strong>iTerm2/macOS: no admitted row on this page</strong>. A later <a href="https://github.com/beorn/terminfo.dev/actions/runs/38862142133">iTerm qualification</a> produced a complete raw run, retained in its <a href="https://github.com/beorn/terminfo.dev/actions/runs/38862142133/artifacts/12030100467">measurement archive</a> (SHA-256 <code>467cf2f9a146af1eee35494133b3c96b84b3908d864ea38ab6531d68dcb5eb73</code>). Pixel-dependent results remain undecided because the reported dimensions could not establish calibrated whole-pixel cells; that qualification is not used in the fractions above. The <a href="https://github.com/beorn/terminfo.dev/actions/runs/38858050860">previous failed collection</a> stopped at an iTerm run-confirmation dialog. The <a href="https://github.com/beorn/terminfo.dev/actions/runs/38846758821">earlier two-window diagnostic</a> did not identify the second window. These are collection limits, not findings of unsupported capabilities. Kitty/macOS remains a separate exception, listed below.</p>
 
