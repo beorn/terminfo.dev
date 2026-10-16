@@ -6,6 +6,11 @@
  * @reach fs-walk <fixture-only: temporary bootstrap, fake commands and downloaded source files>
  */
 import { execFile } from "node:child_process"
+import * as childProcess from "node:child_process"
+vi.mock("node:child_process", async (load) => ({
+  ...(await load<typeof import("node:child_process")>()),
+  spawnSync: vi.fn(),
+}))
 import { createHash } from "node:crypto"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
@@ -36,7 +41,7 @@ test("four fresh Mac jobs bootstrap the shared producer before checkout and coll
   const install = job.steps.find((step: { name?: string }) => step.name === "Install this job's terminal")
   expect(install.env.ITERM_DOWNLOAD_URL).toBe("https://iterm2.com/downloads/stable/iTerm2-3_6_11.zip")
   expect(install.env.ITERM_DOWNLOAD_SHA256).toBe("36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7")
-  expect(collect).toContain("version.stdout.trim() !== '3.6.11'")
+
   expect(collect).toContain("export TERMINFO_DISPOSABLE_RECEIPT=")
   expect(collect.indexOf(' emit "$OUT/job-start.json"')).toBeLessThan(collect.indexOf('touch "$OUT/collector-ready"'))
   expect(collect).toContain('while [ ! -f "$OUT/collector-ready" ]')
@@ -180,9 +185,11 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
     .run as string
-  const source = collect.match(/<<'ITERM_STARTUP'\n([\s\S]*?)\nITERM_STARTUP/)
-  const startup = source?.[1]
-  if (!startup) throw new Error("iTerm startup script missing")
+  const startup = collect.match(/if bun -e '([^']+)'/)?.[1]
+  if (!startup) throw new Error("Workflow must invoke the shared iTerm owner")
+  const imported = startup.match(/^import \{ launchIterm \} from "([^"]+)";/)
+  if (!imported?.[1]) throw new Error("Workflow shared owner import missing")
+  const { launchIterm } = await import(new URL("../" + imported[1], import.meta.url).href)
   const bundle = "/Applications/iTerm.app"
   const command = "--command=/bin/bash /tmp/space\\ path/collect.command"
   const run = (overrides: Record<number, object> = {}) => {
@@ -193,19 +200,24 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
       { status: 0, stdout: "" },
       { status: 0, stdout: "" },
     ]
-    const spawnSync = vi.fn((_file, _args, _options) => ({
-      stderr: "",
-      ...results[spawnSync.mock.calls.length - 1],
-      ...overrides[spawnSync.mock.calls.length - 1],
-    }))
+    const spawnSync = vi
+      .mocked(childProcess.spawnSync)
+      .mockReset()
+      .mockImplementation(
+        () =>
+          ({
+            stderr: "",
+            ...results[spawnSync.mock.calls.length - 1],
+            ...overrides[spawnSync.mock.calls.length - 1],
+          }) as ReturnType<typeof childProcess.spawnSync>,
+      )
     const execute = () =>
-      new Function("require", "process", startup)(() => ({ spawnSync }), {
-        argv: ["node", "-", bundle, command],
-        stdout: { write: vi.fn() },
-        stderr: { write: vi.fn() },
+      new Function("launchIterm", "process", startup.slice(imported[0].length))(launchIterm, {
+        argv: ["bun", bundle, command],
       })
     return { execute, spawnSync }
   }
+  vi.spyOn(process.stdout, "write").mockImplementation(() => true)
   const success = run()
   success.execute()
   expect(success.spawnSync.mock.calls.map(([file, args]) => [file, args])).toEqual([
@@ -221,6 +233,7 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
     ),
     expect.objectContaining({ timeout: 10000, killSignal: "SIGKILL", maxBuffer: 262144 }),
   ])
+  vi.restoreAllMocks()
   for (const [index, result, diagnostic] of [
     [0, { stdout: "wrong.id" }, "bundle identifier"],
     [1, { stdout: "3.7.4" }, "version"],
@@ -235,5 +248,6 @@ test("iTerm startup writes its window policy before launch, passes one quoted co
     const failure = run({ [index]: result })
     expect(failure.execute).toThrow(diagnostic)
     expect(failure.spawnSync).toHaveBeenCalledTimes(index + 1)
+    vi.restoreAllMocks()
   }
 })

@@ -29,6 +29,7 @@ import { verifyTerminalIdentity } from "terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun } from "./admit-collected-run.ts"
+import { launchIterm, closeIterm } from "./iterm-launch.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -137,22 +138,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     return { proc: child }
   }
 
-  if (app.id === "iterm2") {
-    const output = execFileSync(
-      "osascript",
-      [
-        "-e",
-        `tell application "iTerm"
-  set w to create window with default profile command ${JSON.stringify(run.scriptPath)}
-  return id of w
-end tell`,
-      ],
-      { encoding: "utf8", timeout: 15_000 },
-    ).trim()
-    const windowId = Number(output)
-    if (!Number.isInteger(windowId)) throw new Error(`iTerm did not return the launched window ID: ${output}`)
-    return { proc: null, windowId }
-  }
+  if (app.id === "iterm2") return { proc: null, windowId: launchIterm(run.scriptPath, { surface: "local" }) }
 
   if (app.id === "terminal-app") {
     return { proc: null, terminalWindow: launchTerminalWindow(run.scriptPath) }
@@ -170,13 +156,7 @@ function stopLaunchedApp(app: AppDef, launch: AppLaunch): void {
     launch.proc.kill("SIGTERM")
     return
   }
-  if (launch.windowId === undefined) return
-  const application = app.id === "iterm2" ? "iTerm" : "Terminal"
-  execFileSync(
-    "osascript",
-    ["-e", `tell application "${application}" to close (first window whose id is ${launch.windowId})`],
-    { timeout: 5000 },
-  )
+  if (launch.windowId !== undefined) closeIterm(launch.windowId)
 }
 
 // ── Probe a daemon ──

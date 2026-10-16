@@ -244,3 +244,26 @@ describe("App version diagnostics", () => {
     await expect(handleApp(undefined, {})).rejects.toThrow(/Ghostty.*Info\.plist.*empty/)
   })
 })
+
+// The real app caller must keep local iTerm windows and preferences separate from hosted startup.
+describe("iTerm app launch ownership", () => {
+  test("closes only the returned local window and writes no startup preference", async () => {
+    vi.mocked(execFileSync).mockReturnValueOnce("3.6.11\n").mockReturnValueOnce("27\n")
+    await handleApp("iterm2", {})
+    const calls = vi.mocked(execFileSync).mock.calls
+    expect(calls.map(([file]) => file)).toEqual(["/usr/libexec/PlistBuddy", "osascript", "osascript"])
+    expect(calls[1]?.[1]).toEqual([
+      "-e",
+      expect.stringContaining('create window with default profile command "/private/run/serve.sh"'),
+    ])
+    expect(calls[2]?.[1]).toEqual(["-e", 'tell application "iTerm" to close (first window whose id is 27)'])
+    expect(stopOwnedDaemon).toHaveBeenCalledOnce()
+  })
+
+  test("an invalid launch id aborts without closing another window", async () => {
+    vi.mocked(execFileSync).mockReturnValueOnce("3.6.11\n").mockReturnValueOnce("not-a-window\n")
+    await expect(handleApp("iterm2", {})).rejects.toThrow("iTerm did not return the launched window ID")
+    expect(vi.mocked(execFileSync).mock.calls.map(([file]) => file)).toEqual(["/usr/libexec/PlistBuddy", "osascript"])
+    expect(findOwnedDaemon).not.toHaveBeenCalled()
+  })
+})

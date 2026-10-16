@@ -190,29 +190,7 @@ jobs:
                 exit 1
               }
               printf -v launch_command '/bin/bash %q' "$COMMAND_PATH"
-              if node - "$APP_BUNDLE" "--command=$launch_command" > "$OUT/launcher.log" 2>&1 <<'ITERM_STARTUP'
-          const { spawnSync } = require('node:child_process');
-          const [bundle, command] = process.argv.slice(2);
-          const run = (name, file, args, timeout = 5000) => {
-            const result = spawnSync(file, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 262144 });
-            process.stdout.write(JSON.stringify({ name, file, args, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr, stdoutBytes: Buffer.byteLength(result.stdout || ''), stderrBytes: Buffer.byteLength(result.stderr || '') }) + '\n');
-            if (result.error || result.signal) throw new Error(`iTerm2 ${name} failed: ${result.error?.message || result.signal}`);
-            return result;
-          };
-          const plist = `${bundle}/Contents/Info.plist`;
-          const id = run('bundle identifier', '/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', plist]);
-          if (id.status !== 0 || id.stdout.trim() !== 'com.googlecode.iterm2') throw new Error('iTerm2 bundle identifier mismatch');
-          const version = run('version', '/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist]);
-          if (version.status !== 0 || version.stdout.trim() !== '3.6.11') throw new Error('iTerm2 version must be 3.6.11; renewed qualification required');
-          const existing = run('pgrep', '/usr/bin/pgrep', ['-x', 'iTerm2']);
-          if (existing.status === 0) throw new Error('iTerm2 already running; refusing to attach');
-          if (existing.status !== 1) throw new Error(`iTerm2 pgrep failed (${existing.status})`);
-          // Set the fresh runner's preference before launch: iTerm treats trailing YES as a file to run.
-          const policy = run('startup policy', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'OpenNoWindowsAtStartup', '-bool', 'true']);
-          if (policy.status !== 0) throw new Error(`iTerm2 startup policy failed (${policy.status})`);
-          const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
-          if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
-          ITERM_STARTUP
+              if bun -e 'import { launchIterm } from "./packages/admin/src/iterm-launch.ts"; const [bundle, command] = process.argv.slice(1); launchIterm(command, { surface: "hosted", bundle });' "$APP_BUNDLE" "--command=$launch_command" > "$OUT/launcher.log" 2>&1
               then
                 printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
                 cat "$OUT/launcher.log"
