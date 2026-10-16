@@ -557,11 +557,17 @@ export async function createOwnedTerminal(options: {
         `Hosted Windows receipt run id ${receipt.runId} differs from this launch ${expectedLaunchRunId}`,
       )
     }
-    binding = windowsHostedOutput(out, await readWindowsConsoleIdentity())
-    hostedAncestor = requireHostedWindowsAppAncestor(
-      HOSTED_WINDOWS_TERMINAL_COMM,
-      await readWindowsProcessAncestry(process.pid),
+    // The walk runs and PRINTS before the CONOUT$ precondition is checked: a refusal at the binding
+    // must not leave the toolhelp32 layout - the one read here never yet seen from real bytes - unread
+    // in the artifact. The Darwin arm prints its ps evidence to stderr the same way.
+    const windowsAncestry = await readWindowsProcessAncestry(process.pid)
+    process.stderr.write(
+      `Hosted Windows measured process ancestry: ${windowsAncestry
+        .map((row) => `${String(row.pid)}:${row.comm}`)
+        .join(" <- ")}\n`,
     )
+    hostedAncestor = requireHostedWindowsAppAncestor(HOSTED_WINDOWS_TERMINAL_COMM, windowsAncestry)
+    binding = windowsHostedOutput(out, await readWindowsConsoleIdentity())
     hostedReceiptSha256 = receipt.sha256
     hostedWindows = true
   }
