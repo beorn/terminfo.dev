@@ -477,6 +477,13 @@ export interface TermContext {
    * capability negative (#28752).
    */
   utf8Decoding?: () => Promise<Utf8DecodingReading>
+  /**
+   * Present exactly when this run's owned capture pre-flight measured the cell-to-pixel geometry and
+   * REFUSED it, by name (28785): a row that finds no capture adapter names this cause — the terminal
+   * whose own numbers do not fit a cell — instead of claiming the run never had a capture path.
+   * Absent when an adapter was installed, and absent when this context has no capture path at all.
+   */
+  captureRefusal?: string
   /** An owned Linux collector installs this only after verifying the launch receipt. */
   withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */

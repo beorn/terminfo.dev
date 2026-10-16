@@ -69,6 +69,7 @@ function createTermContext({
   probe,
   geometry,
   utf8Decoding,
+  captureRefusal,
 }: {
   out: NodeJS.WriteStream
   writes?: string[]
@@ -76,6 +77,7 @@ function createTermContext({
   probe: ProbeDefinition
   geometry?: Extract<GeometryMeasurement, { status: "measured" }>
   utf8Decoding: () => Promise<Utf8DecodingReading>
+  captureRefusal?: string
 }): TermContext {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
@@ -120,6 +122,7 @@ function createTermContext({
       return size().rows
     },
     utf8Decoding,
+    captureRefusal,
   }
 }
 
@@ -236,6 +239,13 @@ export async function runProbeBatch(
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
+    /**
+     * The named cause when this run's owned capture pre-flight refused to map the terminal's own
+     * cell-to-pixel geometry (28785): it reaches each row's context so a refused row NAMES the
+     * cause instead of reporting only that no capture adapter exists. Absent when an adapter was
+     * installed, and absent when this run has no capture path at all.
+     */
+    captureRefusal?: string
     input?: InputFixture
     ownedTerminal?: OwnedTerminal
     captureRunId?: string
@@ -318,7 +328,8 @@ export async function runProbeBatch(
     return decodingAttempt
   }
   // 28785: the capture adapter's own calibration is prepared once for the run, on the first row that
-  // asks for a frame, so a batch whose rows never capture pays nothing for it.
+  // asks for a frame; the geometry itself is measured eagerly by the collector's pre-flight, so a
+  // hosted-Darwin capture run pays for that measurement whether or not any row ever captures.
   let capturePrepared = false
   for (const probe of selected) {
     const writes: string[] = []
@@ -402,6 +413,7 @@ export async function runProbeBatch(
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
+      captureRefusal: options.captureRefusal,
     })
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard

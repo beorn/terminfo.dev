@@ -377,13 +377,20 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
     async term(ctx) {
       const decided = await captureRegionVerdict(ctx, row.id, readback)
       if (decided) return decided
+      // No adapter and a REFUSED calibration both leave `ctx.capture` absent, so the row tells them
+      // apart by the one fact the collector recorded: the refusal is named here, in the note that
+      // already exists, so a refused run says why instead of only that no adapter is installed
+      // (28785, @cto REVISE must 1).
       return {
         pass: false,
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
           evidence: "none",
-          note: `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`,
+          note:
+            ctx.captureRefusal === undefined
+              ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`
+              : `${row.id}: this run installs no capture adapter because the terminal's own cell-to-pixel geometry was refused — ${ctx.captureRefusal}`,
         },
       }
     },

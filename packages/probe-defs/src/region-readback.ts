@@ -101,7 +101,7 @@ export interface RegionReadback {
    * that answers only 14 t and 18 t is `derived from CSI 14 t / CSI 18 t`. Every number then names its
    * basis instead of leaving a derived cell size looking like a reported one.
    */
-  geometrySource?: GeometrySource
+  geometrySource?: PixelGeometrySource
   /**
    * A write the run needs AFTER its frames — a mode or a scroll region the last frame leaves set,
    * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
@@ -261,7 +261,7 @@ async function awaitPaintWitness(options: {
   label: string
   witnessCell: CellRegion
   pixelGeometry: PixelGeometry
-  geometrySource?: GeometrySource
+  geometrySource?: PixelGeometrySource
   baseline: RegionCapture
   timeoutMs: number
   pollMs: number
@@ -316,25 +316,47 @@ const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
  * bare `string` this field carried let a THIRD spelling reach the payload without a type error, so a
  * reader could no longer tell a reported geometry from a derived one. Nothing else changes — the
  * constants are the only values ever assigned, so this is a type-only tightening.
+ *
+ * Named PixelGeometrySource and not GeometrySource (@cto, 28785 REVISE must 4): `GeometrySource` in
+ * owned-terminal.ts names where the workflow's own CELL geometry came from — a different concept
+ * answering a different question — and one name must not carry two.
  */
-export type GeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DERIVED
+export type PixelGeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DERIVED
+
+/**
+ * Why a cell-to-pixel geometry could not be measured, and whether the cause is the terminal or this
+ * run (@cto, 28785 REVISE must 2). A reply the geometry NEEDED that never arrived — `timeout`, or
+ * DA1's sentinel where an answer was asked for — is TRANSIENT: the same terminal may answer on the
+ * next run, so a collector that owns the terminal must fail that run loudly and have it repeated,
+ * never publish the terminal as one that cannot be mapped. A terminal that answered every reply it
+ * was asked for and whose own numbers do not fit a cell is INTRINSIC: that is a fact about this
+ * terminal, and it is the only refusal a run may complete under.
+ */
+export interface PixelGeometryRefusal {
+  missing: string
+  transient: boolean
+}
 
 /**
  * Everything the pixel-geometry queries below touch of a terminal context: ONE method, and nothing
  * else. Naming it lets a collector that owns the terminal ask the SAME implementation before it
  * starts a batch (there is no second geometry implementation to drift from), without inventing a
- * whole fake TermContext for a question that only ever sends two queries and reads their replies.
+ * whole fake TermContext for a question that reads at most three replies: CSI 16 t alone on a
+ * terminal that answers it, and CSI 14 t then CSI 18 t on one that answers no 16 t at all.
  */
 export type PixelGeometryContext = Pick<TermContext, "queryWithSentinelOutcome">
 
 export async function queryPixelGeometry(
   ctx: PixelGeometryContext,
-): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
+): Promise<{ geometry: PixelGeometry; source: PixelGeometrySource } | PixelGeometryRefusal> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
   if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   if (text.reason !== "reply") {
-    return { missing: `the terminal answered CSI 14 t (text area in pixels) with ${text.reason}` }
+    return {
+      missing: `the terminal answered CSI 14 t (text area in pixels) with ${text.reason}`,
+      transient: true,
+    }
   }
   const geometry: PixelGeometry = {
     cellHeight: Number(cell.match?.[1]),
@@ -348,7 +370,10 @@ export async function queryPixelGeometry(
     !positive(geometry.textWidth) ||
     !positive(geometry.textHeight)
   ) {
-    return { missing: `the terminal's pixel report did not parse as positive numbers: ${JSON.stringify(geometry)}` }
+    return {
+      missing: `the terminal's pixel report did not parse as positive numbers: ${JSON.stringify(geometry)}`,
+      transient: false,
+    }
   }
   return { geometry, source: GEOMETRY_REPORTED }
 }
@@ -365,17 +390,19 @@ export async function queryPixelGeometry(
 async function deriveCellSizeFromTextArea(
   ctx: PixelGeometryContext,
   cellReason: TerminalQueryOutcome["reason"],
-): Promise<{ geometry: PixelGeometry; source: GeometrySource } | { missing: string }> {
+): Promise<{ geometry: PixelGeometry; source: PixelGeometrySource } | PixelGeometryRefusal> {
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
   if (text.reason !== "reply") {
     return {
       missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 14 t (text area in pixels) with ${text.reason}, so no cell size can be mapped`,
+      transient: true,
     }
   }
   const area = await ctx.queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;(\d+);(\d+)t/)
   if (area.reason !== "reply") {
     return {
       missing: `the terminal answered CSI 16 t (cell size in pixels) with ${cellReason} and CSI 18 t (text area in characters) with ${area.reason}, so no cell size can be mapped`,
+      transient: true,
     }
   }
   const textHeight = Number(text.match?.[1])
@@ -385,11 +412,13 @@ async function deriveCellSizeFromTextArea(
   if (!positive(textHeight) || !positive(textWidth) || !positive(rows) || !positive(columns)) {
     return {
       missing: `the terminal reported a text area that did not parse as positive numbers: ${textWidth}x${textHeight} pixels over ${columns}x${rows} characters`,
+      transient: false,
     }
   }
   if (textHeight % rows !== 0 || textWidth % columns !== 0) {
     return {
       missing: `the terminal reported a ${textWidth}x${textHeight} pixel text area over ${columns}x${rows} characters, which does not divide into a whole-pixel cell size`,
+      transient: false,
     }
   }
   return {

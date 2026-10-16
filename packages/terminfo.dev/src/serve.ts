@@ -24,11 +24,12 @@ import { fileURLToPath } from "node:url"
 import {
   DEFAULT_TIMEOUT_MS,
   queryPixelGeometry,
-  type GeometrySource,
+  type PixelGeometrySource,
   type PixelGeometry,
   type ProbeRun,
   type ProbeSuiteManifest,
   type TermContext,
+  type TerminalQueryOutcome,
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
@@ -139,7 +140,8 @@ type OwnedTerminalKind = "linux" | "terminalApp" | "darwinHosted"
  * terminal that cannot be calibrated is re-derivable from these bytes, never from a summary. */
 interface CaptureCalibrationQuery {
   sequence: string
-  reason: string
+  /** The measured outcome of that reply, typed as the query layer reports it (`timeout` is a fact). */
+  reason: TerminalQueryOutcome["reason"]
   raw: string
   rawBase64: string
 }
@@ -153,7 +155,7 @@ interface CaptureCalibrationQuery {
 interface CaptureCalibrationFact {
   outcome: "installed" | "refused"
   /** The one basis the geometry rests on, present exactly when a capture adapter was installed. */
-  basis?: GeometrySource
+  basis?: PixelGeometrySource
   /** The measured geometry a frame request is checked against, present on the same terms as basis. */
   geometry?: PixelGeometry
   /** Every reply the pre-flight read, in the order it asked, so the refusal is re-derivable. */
@@ -238,6 +240,8 @@ export async function collectProbeRun(
    */
   let preflightDarwinCapture: (() => Promise<void>) | undefined
   let captureCalibration: CaptureCalibrationFact | undefined
+  /** The refused geometry's named cause, handed to the batch so a refused row can say why (must 1). */
+  let captureRefusal: string | undefined
   let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
   if (captureDirectory && process.platform === "linux") {
     if (!executable) throw new Error("Configured Linux capture lacks measured executable")
@@ -342,7 +346,18 @@ export async function collectProbeRun(
           },
         })
         if ("missing" in report) {
+          // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
+          // must 2). A reply the geometry needed that never arrived - a timeout, or DA1's sentinel
+          // in place of an answer - is a property of THIS run, not of the terminal: the batch
+          // aborts loudly, by name, so a flaky terminal is re-run instead of being published as one
+          // that cannot be mapped.
+          if (report.transient) {
+            const error = new Error(`Darwin capture calibration could not be measured: ${report.missing}`)
+            error.name = "TerminalGeometryUnmeasurable"
+            throw error
+          }
           captureCalibration = { outcome: "refused", queries, refusal: report.missing }
+          captureRefusal = report.missing
           return
         }
         captureCalibration = { outcome: "installed", basis: report.source, geometry: report.geometry, queries }
@@ -412,6 +427,7 @@ export async function collectProbeRun(
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
         ...(prepareCapture && { prepareCapture }),
+        ...(captureRefusal && { captureRefusal }),
       })
       if (identityQuery) {
         result.rawReplies["collector.xtversion"] = identityQuery.raw
