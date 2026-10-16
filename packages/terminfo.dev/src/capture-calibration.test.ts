@@ -127,3 +127,94 @@ test.each(["hole", "separate rectangle", "wrong cell size"])(
     )
   },
 )
+
+// A complete four-by-four raster, independent of protocol/window division. The late
+// 3px/1px column pair keeps the same outer width and evades a two-cell sample.
+function rasterFrame(stage: "solid" | "columns" | "rows", uneven = false): CapturedFrame {
+  const result = frame()
+  const edges = uneven ? [2, 4, 6, 9, 10] : [2, 4, 6, 8, 10]
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 4; col++) {
+      const rgb =
+        stage === "solid" ? [255, 0, 255] : (stage === "columns" ? col : row) % 2 === 0 ? [255, 0, 0] : [0, 0, 0]
+      for (let y = 2 + row * 2; y < 4 + row * 2; y++) {
+        for (let x = edges[col]!; x < edges[col + 1]!; x++) result.rgba.set([...rgb, 255], (y * 12 + x) * 4)
+      }
+    }
+  }
+  return result
+}
+
+function rasterCalibration(
+  options: {
+    geometry?: typeof geometry
+    columns?: CapturedFrame
+    solid?: CapturedFrame
+    restore?: CapturedFrame
+  } = {},
+) {
+  const frames = [
+    blank,
+    options.solid ?? rasterFrame("solid"),
+    options.solid ?? rasterFrame("solid"),
+    options.columns ?? rasterFrame("columns"),
+    options.columns ?? rasterFrame("columns"),
+    rasterFrame("rows"),
+    rasterFrame("rows"),
+    options.restore ?? blank,
+    options.restore ?? blank,
+  ]
+  let now = 0,
+    reads = 0
+  const clock = vi.spyOn(Date, "now").mockImplementation(() => now)
+  const writes: string[] = []
+  const promise = calibrateCaptureOrigin({
+    ctx: {
+      rows: 4,
+      cols: 4,
+      write: (text: string) => writes.push(text),
+      queryMode: async () => "reset",
+    } as unknown as TermContext,
+    pixelGeometry: options.geometry,
+    timeoutMs: 100,
+    captureRaw: async () => {
+      now += reads >= frames.length ? 100 : 1
+      return frames[Math.min(reads++, frames.length - 1)]!
+    },
+  }).finally(() => clock.mockRestore())
+  return { promise, writes }
+}
+
+test("complete witnessed raster establishes cells without dividing padded window replies", async () => {
+  const run = rasterCalibration()
+  await expect(run.promise).resolves.toMatchObject({
+    origin: { x: 2, y: 2 },
+    pixelGeometry: geometry,
+  })
+  // Every row is explicitly painted; a two-cell origin check cannot establish this contract.
+  expect(run.writes.join("")).toContain("\x1b[4;1H")
+})
+
+test.each(["late uneven column", "hole", "extra patch", "reply disagreement", "restore mismatch"] as const)(
+  "complete raster refuses %s before supplying geometry",
+  async (fault) => {
+    const solid = rasterFrame("solid")
+    if (fault === "hole") solid.rgba.set([0, 0, 0, 255], (5 * 12 + 5) * 4)
+    if (fault === "extra patch") solid.rgba.set([255, 0, 255, 255], 0)
+    const run = rasterCalibration({
+      solid,
+      ...(fault === "late uneven column" ? { columns: rasterFrame("columns", true) } : {}),
+      ...(fault === "reply disagreement" ? { geometry: { ...geometry, cellWidth: 3 } } : {}),
+      ...(fault === "restore mismatch" ? { restore: frame({ x: 8, y: 8, rgb: [255, 0, 0] }) } : {}),
+    })
+    await expect(run.promise).rejects.toThrow(
+      fault === "late uneven column"
+        ? /nonuniform/
+        : fault === "reply disagreement"
+          ? /disagree/
+          : fault === "restore mismatch"
+            ? /restore/
+            : /non-solid/,
+    )
+  },
+)
