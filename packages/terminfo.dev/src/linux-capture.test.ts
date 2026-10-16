@@ -537,6 +537,9 @@ test.runIf(process.platform === "linux")(
       surface: { x: 0, y: 56, width: 800, height: 544 },
     })
     expect(result.trace.rectangle).toEqual({ x: 10, y: 64, width: 39, height: 24 })
+    // The frame carries the same rectangle as the trace, beside the digest cut from it, so a
+    // row oracle can tell two frames' crops apart (29580).
+    expect(result.frame.regionRectangle).toEqual(result.trace.rectangle)
     expect(result.trace.cropCommand).toEqual([
       "magick",
       "xwd:-",

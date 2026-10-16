@@ -180,6 +180,23 @@ describe("in-run pixels verdicts", () => {
     expect(observation.frames?.[3]?.pixelsDigest).toBe(digest("after-px"))
   })
 
+  it("carries a frame's crop rectangle through the parse, and refuses one that is not a rectangle", () => {
+    const run = kittyRun()
+    const observations = run.observations as Array<Record<string, unknown>>
+    const frames = observations[0]!.frames as Array<Record<string, unknown>>
+    frames[3]!.regionRectangle = { x: 10, y: 36, width: 104, height: 24 }
+    const loaded = parse(run)
+    // The rectangle `regionDigest` was taken over survives with it, so a verdict recomputed from
+    // this parsed frame can still tell two screen positions apart (29580).
+    expect(loaded.observations[0]?.frames?.[3]?.regionRectangle).toEqual({ x: 10, y: 36, width: 104, height: 24 })
+
+    const broken = kittyRun()
+    const brokenObservations = broken.observations as Array<Record<string, unknown>>
+    const brokenFrames = brokenObservations[0]!.frames as Array<Record<string, unknown>>
+    brokenFrames[3]!.regionRectangle = { x: 10, y: 36, width: 0, height: 24 }
+    expect(() => parse(broken)).toThrow(/invalid frame regionRectangle/)
+  })
+
   it("admits a verdict whose assertion cites the frame refs it compared", () => {
     const loaded = parse(scrollbackRun())
     expect(loaded.observations[0]?.outcome).toBe("supported")

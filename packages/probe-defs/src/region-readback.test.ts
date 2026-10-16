@@ -23,6 +23,7 @@ import {
 import type {
   CaptureCells,
   CapturePixelGeometry,
+  CaptureRectangle,
   MeasuredProbeResult,
   ObservationFrame,
   TermContext,
@@ -92,6 +93,11 @@ function ownedWindow(options: {
   regionDigest: Painter
   sentinelAnswers?: boolean
   unstable?: boolean
+  /**
+   * The crop rectangle each read reports, keyed by that read's own label. Absent models a
+   * hand-built read; the collector-backed reader always carries one with the region digest.
+   */
+  cropFor?: (label: string) => CaptureRectangle | undefined
 }): Fake {
   const sentinelAnswers = options.sentinelAnswers ?? true
   let screen = options.regionDigest([])
@@ -143,9 +149,11 @@ function ownedWindow(options: {
     const cell = key(region)
     const content = cell === SENTINEL_CELL ? glyph : screen
     const suffix = options.unstable ? `-${reads}` : ""
+    const regionRectangle = options.cropFor?.(label)
     const capture: RegionCapture = {
       regionDigest: `${cell}|${content}${suffix}`,
       pixelsDigest: `frame|${screen}|${glyph}${suffix}`,
+      ...(regionRectangle ? { regionRectangle } : {}),
       frame,
     }
     return capture
@@ -638,7 +646,11 @@ test("a paint-witness timeout cites the capture it took, so the run stays writab
 })
 
 test("region rows consume the same calibrated run geometry without re-dividing window replies", async () => {
-  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: () => ({ x: 10, y: 64, width: 64, height: 16 }),
+  })
   const reading = { geometry: GEOMETRY, source: "measured by complete raster calibration" as const }
   Object.assign(fake.ctx, { captureGeometry: reading })
   let queries = 0
@@ -654,7 +666,14 @@ test("region rows consume the same calibrated run geometry without re-dividing w
       region: request.cells,
       pixelGeometry: request.pixelGeometry,
     })
-    return { ...captured.frame, regionDigest: captured.regionDigest, pixelsDigest: captured.pixelsDigest }
+    // The real adapter always carries the crop rectangle beside the digest; a stub that dropped it
+    // would model a capture the collector cannot produce.
+    return {
+      ...captured.frame,
+      regionDigest: captured.regionDigest,
+      pixelsDigest: captured.pixelsDigest,
+      ...(captured.regionRectangle ? { regionRectangle: captured.regionRectangle } : {}),
+    }
   }
   const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
   expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
@@ -677,4 +696,43 @@ test("region rows refuse a calibrated footprint that no longer covers the curren
   })
   expect(fake.writes).toEqual([])
   expect(fake.requests).toEqual([])
+})
+
+/**
+ * The ghostty 1.3.1/linux `erase.el-with-attrs` specimen (run 0c0527c520ab): the after frame's
+ * dominant colour covered 518 rows, fewer than the reported 780x528 text area, so that one frame
+ * was placed in the whole window and cropped at y=36 while the seed, expected and ignored frames
+ * were cropped at y=62 — 26 pixels, about one row, apart.
+ */
+function specimenCrop(label: string): CaptureRectangle {
+  return { x: 10, y: label.includes("post-sequence target") ? 36 : 62, width: 104, height: 24 }
+}
+
+test("compared frames cropped from different screen positions refuse BY NAME, naming every rectangle", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 2,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: specimenCrop,
+  })
+  const result = await decide(fake)
+  expect(result.pass).toBe(false)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.observation.note).toContain("the compared frames were cropped from different screen positions")
+  expect(result.observation.note).toContain("the seed frame cropped at 10,62 104x24")
+  expect(result.observation.note).toContain("the post-sequence frame cropped at 10,36 104x24")
+  expect(result.observation.note).toContain("the expected frame cropped at 10,62 104x24")
+})
+
+test("compared frames cropped at ONE position decide as before, so it is the rectangles and not the recording", async () => {
+  const fake = ownedWindow({
+    repaintAfterPolls: 2,
+    regionDigest: painter({ applied: "edited" }),
+    cropFor: () => ({ x: 10, y: 62, width: 104, height: 24 }),
+  })
+  const result = await decide(fake)
+  expect(result.observation.outcome).toBe("supported")
 })

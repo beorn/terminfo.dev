@@ -26,6 +26,7 @@
 import type {
   CaptureCells,
   CapturePixelGeometry,
+  CaptureRectangle,
   ObservationFrame,
   ProbeResult,
   TermContext,
@@ -42,6 +43,12 @@ export interface RegionCapture {
   regionDigest: string
   /** Raw-pixel digest of the whole captured window. */
   pixelsDigest: string
+  /**
+   * The screen rectangle the region digest was cropped from, when the capture adapter recorded one.
+   * Two frames' region digests are comparable only when these are equal: the capture arm places the
+   * text area per frame, so a frame cropped 26 px away is not the same cells (29580).
+   */
+  regionRectangle?: CaptureRectangle
   frame: ObservationFrame
 }
 
@@ -67,7 +74,12 @@ export function collectorRegionRead(ctx: TermContext): RegionRead | null {
         `${label}: the capture adapter returned no raw-pixel digest for the requested cells (regionDigest ${String(frame.regionDigest)}, pixelsDigest ${String(frame.pixelsDigest)})`,
       )
     }
-    return { regionDigest: frame.regionDigest, pixelsDigest: frame.pixelsDigest, frame }
+    return {
+      regionDigest: frame.regionDigest,
+      pixelsDigest: frame.pixelsDigest,
+      ...(frame.regionRectangle ? { regionRectangle: frame.regionRectangle } : {}),
+      frame,
+    }
   }
 }
 
@@ -296,6 +308,54 @@ function witnessed(result: { witness: RegionCapture } | ProbeResult): result is 
   return "witness" in result
 }
 
+/** Two crop rectangles cover the same cells only when all four integers match. */
+function sameRectangle(left: CaptureRectangle, right: CaptureRectangle): boolean {
+  return left.x === right.x && left.y === right.y && left.width === right.width && left.height === right.height
+}
+
+/** A rectangle as the refusal names it: `x,y wxh`, the same spelling the capture trace records. */
+function rectangleSpelling(rectangle: CaptureRectangle): string {
+  return `${rectangle.x},${rectangle.y} ${rectangle.width}x${rectangle.height}`
+}
+
+/**
+ * Refuse a comparison whose frames were cropped from different screen positions: their region
+ * digests were never taken over the same cells, so neither equality nor inequality between them
+ * means anything (the ghostty specimen was 26 px, about one row, out). The refusal names every
+ * compared frame's rectangle. Nothing is checked when a compared frame carries no rectangle: the
+ * one capture producer sets the digest and the rectangle in a single branch, so a frame without one
+ * is a hand-built read, never an owned capture. This adds a named refusal and moves no digest.
+ */
+function cropPositionRefusal(input: {
+  id: string
+  compared: Array<{ role: string; rectangle: CaptureRectangle | undefined }>
+  response: string
+  frames: ObservationFrame[]
+  screenshotRef?: string
+}): ProbeResult | null {
+  const { id, compared, response, frames, screenshotRef } = input
+  const cropped = compared.filter(
+    (entry): entry is { role: string; rectangle: CaptureRectangle } => entry.rectangle !== undefined,
+  )
+  if (cropped.length !== compared.length) return null
+  const [seed, ...rest] = cropped
+  if (seed === undefined) return null
+  if (rest.every(({ rectangle }) => sameRectangle(rectangle, seed.rectangle))) return null
+  const named = cropped.map(({ role, rectangle }) => `${role} cropped at ${rectangleSpelling(rectangle)}`).join(", ")
+  return {
+    pass: false,
+    response,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "pixels",
+      screenshotRef,
+      frames,
+      note: `${id}: the compared frames were cropped from different screen positions, so their region digests were not taken over the same cells: ${named}`,
+    },
+  }
+}
+
 /**
  * The terminal's own pixel report: CSI 16 t (cell size in pixels) and CSI 14 t (text area in
  * pixels). A context that answers neither cannot map cells onto the captured window at all, and
@@ -518,6 +578,9 @@ export async function captureRegionReadbackDecision(
   ]
   const frames: ObservationFrame[] = []
   const digests: string[] = []
+  // Each digest's own crop rectangle, pushed in lockstep with it: two digests mean the same cells
+  // only when their rectangles match (29580).
+  const cropRectangles: Array<CaptureRectangle | undefined> = []
   try {
     ctx.write("\x1b[0m")
     // DECTCEM off before the first read, so every capture shares one cursor state.
@@ -576,6 +639,7 @@ export async function captureRegionReadbackDecision(
         pixelGeometry: spec.pixelGeometry,
       })
       digests.push(measured.regionDigest)
+      cropRectangles.push(measured.regionRectangle)
       frames.push(measured.frame)
     }
     const seed = digests[0]
@@ -603,6 +667,19 @@ export async function captureRegionReadbackDecision(
       expected,
       ...(ignored !== undefined && { ignored }),
     })
+    const cropRefusal = cropPositionRefusal({
+      id,
+      compared: [
+        { role: "the seed frame", rectangle: cropRectangles[0] },
+        { role: "the post-sequence frame", rectangle: cropRectangles[1] },
+        { role: "the expected frame", rectangle: cropRectangles[2] },
+        ...(spec.ignored === undefined ? [] : [{ role: "the ignored-attribute frame", rectangle: cropRectangles[3] }]),
+      ],
+      response: observed,
+      frames,
+      screenshotRef: frames[3]?.ref,
+    })
+    if (cropRefusal) return cropRefusal
     if (seed === expected) {
       return inconclusive(
         id,
