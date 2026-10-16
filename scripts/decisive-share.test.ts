@@ -242,7 +242,7 @@ describe("release 1 decisive-count reader", () => {
     const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
     const report = buildReport(args)
     expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "0fb194cf6cea")
+    expect(report).toHaveProperty("candidate2.frozenSuiteId", "a155eed86ac9")
     expect(report).toHaveProperty(
       "candidate2.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -263,14 +263,14 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.candidate2.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "0fb194cf6cea")
+      expect(row.measured).toBe(row.run.suiteId === "a155eed86ac9")
       // The RELEASE share is the operator's D3 over the ratified cohort (125) MINUS the app-unobservable
       // rows the @chief option-B ruling moved out (three here, so 122); only the per-category block
       // divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(122)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 0fb194cf6cea`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required a155eed86ac9`)
       }
     }
   })

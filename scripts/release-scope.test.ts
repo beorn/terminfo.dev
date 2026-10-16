@@ -115,7 +115,7 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
-    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("0fb194cf6cea")
+    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("a155eed86ac9")
     const dir = mkdtempSync(join(tmpdir(), "suite-registry-"))
     try {
       mkdirSync(join(dir, "suites"))
