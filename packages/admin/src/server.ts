@@ -7,7 +7,7 @@
  * bare:    list running daemons
  */
 
-import { readRetainedDaemonProbeResponse, requestDaemonProbe } from "terminfo.dev/src/daemon-client.ts"
+import { readRetainedDaemonProbeResponse, requestDaemonProbe } from "../../terminfo.dev/src/daemon-client.ts"
 import { admitCollectedRun } from "./admit-collected-run.ts"
 
 export async function handleServer(
@@ -16,13 +16,13 @@ export async function handleServer(
 ): Promise<void> {
   if (opts.start) {
     // Start daemon in this terminal
-    const { startDaemon } = await import("terminfo.dev/src/serve.ts")
+    const { startDaemon } = await import("../../terminfo.dev/src/serve.ts")
     startDaemon(opts.port ?? 0)
     return
   }
 
   // Import daemon listing
-  const { listDaemons } = await import("terminfo.dev/src/serve.ts")
+  const { listDaemons } = await import("../../terminfo.dev/src/serve.ts")
   const daemons = listDaemons()
 
   if (!opts.all && !daemon) {
@@ -80,7 +80,7 @@ export async function handleServer(
       const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
       console.log(`  ${label.padEnd(25)} ${observed}/${total} explicit observations (unreviewed)`)
 
-      const { verifyTerminalIdentity } = await import("terminfo.dev/src/identity-guard.ts")
+      const { verifyTerminalIdentity } = await import("../../terminfo.dev/src/identity-guard.ts")
       const identityCheck = verifyTerminalIdentity(data.target.id, data.rawReplies)
       const run = {
         ...data,

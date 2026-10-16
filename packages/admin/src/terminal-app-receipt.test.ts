@@ -9,7 +9,7 @@ import { spawnSync } from "node:child_process"
 import { readFileSync, realpathSync } from "node:fs"
 import { createHash } from "node:crypto"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { closeOwnedTerminalWindow } from "terminfo.dev/src/terminal-app-window.ts"
+import { closeOwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }))
 vi.mock("node:fs", () => ({ readFileSync: vi.fn(), realpathSync: vi.fn() }))
@@ -74,7 +74,7 @@ beforeEach(() => {
 describe("owned Terminal.app receipt", () => {
   test("shared window module import does not run a process", async () => {
     vi.resetModules()
-    await import("terminfo.dev/src/terminal-app-window.ts")
+    await import("../../terminfo.dev/src/terminal-app-window.ts")
     expect(spawnSync).not.toHaveBeenCalled()
   })
 

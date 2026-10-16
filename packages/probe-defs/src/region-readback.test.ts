@@ -636,3 +636,45 @@ test("a paint-witness timeout cites the capture it took, so the run stays writab
   expect(result.observation.evidence).toBe("pixels")
   expect(result.observation.screenshotRef).toBeDefined()
 })
+
+test("region rows consume the same calibrated run geometry without re-dividing window replies", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  const reading = { geometry: GEOMETRY, source: "measured by complete raster calibration" as const }
+  Object.assign(fake.ctx, { captureGeometry: reading })
+  let queries = 0
+  fake.ctx.queryWithSentinelOutcome = async () => {
+    queries++
+    return { match: null, reason: "sentinel", raw: "\x1b[c", rawBase64: "" }
+  }
+  fake.ctx.capture = async (request) => {
+    if (!request.cells || !request.pixelGeometry) throw new Error("Region request lacks its calibrated geometry")
+    const captured = await fake.read({
+      role: request.role,
+      label: request.label,
+      region: request.cells,
+      pixelGeometry: request.pixelGeometry,
+    })
+    return { ...captured.frame, regionDigest: captured.regionDigest, pixelsDigest: captured.pixelsDigest }
+  }
+  const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
+  expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(queries).toBe(0)
+  expect(fake.requests.length).toBeGreaterThan(0)
+  expect(fake.requests.every((request) => request.pixelGeometry === reading.geometry)).toBe(true)
+})
+
+test("region rows refuse a calibrated footprint that no longer covers the current grid before paint", async () => {
+  const fake = ownedWindow({ rows: 30, cols: 120, repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
+  fake.ctx.captureGeometry = { geometry: GEOMETRY, source: "measured by complete raster calibration" }
+  fake.ctx.capture = async () => {
+    throw new Error("A stale calibrated footprint must be refused before capture")
+  }
+  const result = await captureRegionVerdict(fake.ctx, "editing.delete-chars", spec())
+  expect(result?.observation).toMatchObject({
+    outcome: "inconclusive",
+    evidence: "none",
+    note: expect.stringMatching(/calibrated.*grid|grid.*calibrated/),
+  })
+  expect(fake.writes).toEqual([])
+  expect(fake.requests).toEqual([])
+})

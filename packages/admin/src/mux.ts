@@ -23,7 +23,7 @@ import {
   type DaemonRegistration,
   type OwnedDaemon,
   type ProbeRun,
-} from "terminfo.dev/src/daemon-client.ts"
+} from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { admitCollectedRun } from "./admit-collected-run.ts"

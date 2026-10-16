@@ -24,7 +24,7 @@ import { afterEach, expect, test, vi } from "vitest"
 import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import * as versions from "../packages/admin/versions.ts"
 import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
-import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
+import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import {
   admitRun,
@@ -35,7 +35,7 @@ import {
   planAdmission,
 } from "./admit-run.ts"
 import { object } from "./interpretations.ts"
-import { parseDisposableReceipt } from "terminfo.dev/src/disposable-receipt.ts"
+import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { derivedSuiteManifest } from "./suite-manifest.ts"
 import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 

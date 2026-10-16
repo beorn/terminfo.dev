@@ -87,7 +87,7 @@ export async function handleStatus(): Promise<void> {
   }
 
   // List running daemons
-  const { listDaemons } = await import("terminfo.dev/src/serve.ts")
+  const { listDaemons } = await import("../../terminfo.dev/src/serve.ts")
   const daemons = listDaemons()
   if (daemons.length > 0) {
     console.log("\n  Running daemons:")

@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
+import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import { handleServer } from "./server.ts"
 
 const fixtures = vi.hoisted(() => ({
@@ -27,7 +27,7 @@ const fixtures = vi.hoisted(() => ({
     token?: string
   }>,
 }))
-vi.mock("terminfo.dev/src/serve.ts", () => ({
+vi.mock("../../terminfo.dev/src/serve.ts", () => ({
   listDaemons: () => fixtures.daemons,
   getTrustedSuiteReceipt: () => fixtures.receipt,
   startDaemon: vi.fn(),
@@ -36,8 +36,8 @@ vi.mock("node:os", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:os")>()
   return { ...original, homedir: () => fixtures.home ?? original.homedir() }
 })
-vi.mock("terminfo.dev/src/daemon-client.ts", async (importOriginal) => {
-  const original = await importOriginal<typeof import("terminfo.dev/src/daemon-client.ts")>()
+vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../terminfo.dev/src/daemon-client.ts")>()
   return {
     ...original,
     saveDaemonProbeRun: vi.fn((run, directory, intended) => {
@@ -124,7 +124,7 @@ it("retains a valid HTTP run privately and propagates real admission refusal bef
 })
 
 it("preserves server --start without running admission", async () => {
-  const { startDaemon } = await import("terminfo.dev/src/serve.ts")
+  const { startDaemon } = await import("../../terminfo.dev/src/serve.ts")
   await handleServer(undefined, { start: true, port: 4567 })
   expect(startDaemon).toHaveBeenCalledWith(4567)
   expect(saveDaemonProbeRun).not.toHaveBeenCalled()

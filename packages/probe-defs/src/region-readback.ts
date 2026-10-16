@@ -19,11 +19,9 @@
  * The verdict compares three or four captures of ONE run — seed, post-sequence, the expected frame,
  * and, when the row names one, the ignored-attribute frame, all painted plainly in the same run —
  * each behind its own witness, with the cursor hidden (DECTCEM)
- * across all of them. Cell coordinates arrive from the terminal's own pixel report and are turned
- * into an absolute rectangle by the collector, so digests are comparable only within one run, which
- * is the whole claim. That same symmetry is why the rectangle's alignment needs no separate proof: an
- * offset rectangle reads the same pixels in all three frames, so the worst a wrong one can do is
- * miss the edited cells and leave seed and expected equal — inconclusive BY NAME, never a verdict.
+ * across all of them. Geometry comes from the terminal's own report or a complete witnessed raster
+ * measurement in this run. The collector must prove registration: an offset crop can compare only
+ * part of a glyph and still pass a witness, so symmetry alone does not establish the right pixels.
  */
 import type {
   CaptureCells,
@@ -321,7 +319,10 @@ const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
  * owned-terminal.ts names where the workflow's own CELL geometry came from — a different concept
  * answering a different question — and one name must not carry two.
  */
-export type PixelGeometrySource = typeof GEOMETRY_REPORTED | typeof GEOMETRY_DERIVED
+export type PixelGeometrySource =
+  | typeof GEOMETRY_REPORTED
+  | typeof GEOMETRY_DERIVED
+  | "measured by complete raster calibration"
 
 /**
  * Why a cell-to-pixel geometry could not be measured, and whether the cause is the terminal or this
@@ -450,7 +451,20 @@ export async function captureRegionVerdict(
   // Geometry first: an undersized terminal is refused before a single query byte.
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
   if (bounds) return bounds
-  const reported = await queryPixelGeometry(ctx)
+  const calibrated = ctx.captureGeometry?.geometry
+  if (
+    calibrated &&
+    (calibrated.textWidth !== calibrated.cellWidth * ctx.cols ||
+      calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
+  ) {
+    return inconclusive(
+      id,
+      `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
+      "insufficient-evidence",
+      "none",
+    )
+  }
+  const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
   if ("missing" in reported) {
     return inconclusive(
       id,

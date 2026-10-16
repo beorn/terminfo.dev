@@ -139,7 +139,8 @@ test.runIf(process.platform === "linux")(
     const lines = argvLines(log)
     expect(lines).toContain("windowfocus 42")
     expect(lines).toContain("getwindowfocus")
-    expect(lines).toContain("mousemove --window 42 400 300")
+    // Key delivery must not prepend mouse-motion bytes to the same stdin read.
+    expect(lines.some((line) => line.startsWith("mousemove "))).toBe(false)
     expect(lines).toContain("key --window 0 --clearmodifiers ctrl+a")
     expect(lines.some((line) => line.startsWith("windowactivate"))).toBe(false)
     expect(lines.some((line) => line === "getactivewindow")).toBe(false)
@@ -155,6 +156,7 @@ test.runIf(process.platform === "linux")(
     await input.injectClick(1)
     await input.injectClick(4)
     const lines = argvLines(log)
+    expect(lines).toContain("mousemove --window 42 400 300")
     expect(lines).toContain("click --window 0 --clearmodifiers 1")
     expect(lines).toContain("click --window 0 --clearmodifiers 4")
     expect(lines.some((line) => /^click /.test(line) && /--window 42/.test(line))).toBe(false)

@@ -390,7 +390,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           note:
             ctx.captureGeometryRefusal === undefined
               ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`
-              : `${row.id}: this run installs no capture adapter because the terminal's own cell-to-pixel geometry was refused — ${ctx.captureGeometryRefusal}`,
+              : `${row.id}: this run installs no capture adapter because the run's cell-to-pixel geometry was refused — ${ctx.captureGeometryRefusal}`,
         },
       }
     },

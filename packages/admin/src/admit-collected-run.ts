@@ -1,6 +1,6 @@
 /** Private collection staging; the one admission owner decides and places canonical runs. */
 import { dirname } from "node:path"
-import { saveDaemonProbeRun } from "terminfo.dev/src/daemon-client.ts"
+import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
 export function admitCollectedRun(
