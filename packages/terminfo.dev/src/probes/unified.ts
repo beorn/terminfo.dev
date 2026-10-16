@@ -75,7 +75,7 @@ function createTermContext({
   writes?: string[]
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
-  geometry?: Extract<GeometryMeasurement, { status: "measured" }>
+  geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
   utf8Decoding: () => Promise<Utf8DecodingReading>
   captureGeometryRefusal?: string
 }): TermContext {
@@ -444,6 +444,7 @@ export async function runProbeBatch(
       if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
+      let preparationGrid: { rows: number; cols: number }
       if (reported?.status === "conflict" || reported?.status === "malformed") {
         throw new Error(`Capture calibration verified grid disagrees with terminal reply: ${reported.status}`)
       }
@@ -462,15 +463,26 @@ export async function runProbeBatch(
             "Capture calibration verified grid is unavailable: no terminal grid reply or verified declared size",
           )
         }
-        context.rows = reported.rows
-        context.cols = reported.cols
+        preparationGrid = { rows: reported.rows, cols: reported.cols }
+      } else {
+        preparationGrid = { rows: declared.rows, cols: declared.cols }
       }
+      const preparationContext = createTermContext({
+        out,
+        writes,
+        events,
+        probe: { ...probe, termNeedsGeometry: true },
+        geometry: preparationGrid,
+        utf8Decoding: readUtf8Decoding,
+        captureGeometryRefusal,
+      })
+      if (context.capture) preparationContext.capture = context.capture
       // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
       await withTTYOperation(
         () =>
           withTTYQueryTrace(queries, events, () =>
             prepareCapture({
-              context,
+              context: preparationContext,
               featureId: probe.id,
               recordCapture: (captured) => recordCapture(captured),
             }),
@@ -478,8 +490,10 @@ export async function runProbeBatch(
         out,
       )
       capturePrepared = true
-      captureGeometry = context.captureGeometry
-      captureGeometryRefusal = context.captureGeometryRefusal
+      captureGeometry = preparationContext.captureGeometry
+      captureGeometryRefusal = preparationContext.captureGeometryRefusal
+      if (captureGeometry) context.captureGeometry = captureGeometry
+      if (captureGeometryRefusal) context.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) context.capture = undefined
     }
     try {
