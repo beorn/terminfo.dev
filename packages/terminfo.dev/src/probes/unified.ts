@@ -75,7 +75,7 @@ function createTermContext({
   writes?: string[]
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
-  geometry?: Extract<GeometryMeasurement, { status: "measured" }>
+  geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
   utf8Decoding: () => Promise<Utf8DecodingReading>
   captureGeometryRefusal?: string
 }): TermContext {
@@ -233,7 +233,7 @@ export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
-    /** Prepare an owned capture calibration before the first geometry-requiring mutating callback. */
+    /** Prepare owned capture calibration and verify restoration before the first callback. */
     prepareCapture?: (input: {
       context: TermContext
       featureId: string
@@ -329,10 +329,26 @@ export async function runProbeBatch(
     })
     return decodingAttempt
   }
-  // 28785: the capture adapter's own calibration is prepared once for the run, on the first row that
-  // asks for a frame; the geometry itself is measured eagerly by the collector's pre-flight, so a
-  // hosted-Darwin capture run pays for that measurement whether or not any row ever captures.
+  // Calibrate and prove restoration once before the first callback. The same measured geometry
+  // reaches every later context; a query callback is not permission to paint an unowned terminal.
   let capturePrepared = false
+  let captureGeometry: TermContext["captureGeometry"]
+  let captureGeometryRefusal = options.captureGeometryRefusal
+  const recordCapture = (
+    featureId: string,
+    captures: CapturedProbeFrame[],
+    result: CapturedProbeFrame,
+    expectedRole?: ObservationFrame["role"],
+  ) => {
+    if (
+      (expectedRole !== undefined && result.frame.role !== expectedRole) ||
+      !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)
+    ) {
+      throw new Error(`Capture adapter returned an invalid frame for ${featureId}`)
+    }
+    captures.push(result)
+    if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+  }
   for (const probe of selected) {
     const writes: string[] = []
     const queries: TTYQueryTrace[] = []
@@ -340,17 +356,6 @@ export async function runProbeBatch(
     const clipboardEvents: ClipboardTraceEvent[] = []
     const captures: Array<{ frame: ObservationFrame; trace: Record<string, unknown> }> = []
     let captureAttempted = false
-    const recordCapture = (result: CapturedProbeFrame, expectedRole?: ObservationFrame["role"]) => {
-      captureAttempted = true
-      if (
-        (expectedRole !== undefined && result.frame.role !== expectedRole) ||
-        !/^sha256:[a-f0-9]{64}$/.test(result.frame.ref)
-      ) {
-        throw new Error(`Capture adapter returned an invalid frame for ${probe.id}`)
-      }
-      captures.push(result)
-      if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
-    }
     const needsOwnership = probe.termWrites !== "query" || probe.termNeedsDisposable === true
     const refusedBecause = !needsOwnership
       ? undefined
@@ -415,8 +420,9 @@ export async function runProbeBatch(
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
-      captureGeometryRefusal: options.captureGeometryRefusal,
+      captureGeometryRefusal,
     })
+    if (captureGeometry) context.captureGeometry = captureGeometry
     if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
       const clipboard = options.ownedTerminal.clipboard
       context.withClipboardFixture = (work) =>
@@ -424,13 +430,119 @@ export async function runProbeBatch(
     }
     if (options.input) context.input = options.input
     const capture = options.capture
-    if (capture) {
+    if (capture && !captureGeometryRefusal) {
       context.capture = async (checkpoint) => {
         captureAttempted = true
         const result = await capture({ featureId: probe.id, ...checkpoint })
-        recordCapture(result, checkpoint.role)
+        recordCapture(probe.id, captures, result, checkpoint.role)
         return result.frame
       }
+    }
+    const prepareCapture = options.prepareCapture
+    if (prepareCapture && !capturePrepared) {
+      if (!authorizedToWrite) throw new Error("Capture preparation requires verified terminal ownership before paint")
+      const calibrationId = "collector.captureCalibration"
+      const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
+      const reported = options.geometryCorroboration
+      let preparationGrid: { rows: number; cols: number } | undefined
+      const calibrationWrites: string[] = []
+      const calibrationQueries: TTYQueryTrace[] = []
+      const calibrationEvents: TTYTraceEvent[] = []
+      const calibrationCaptures: CapturedProbeFrame[] = []
+      try {
+        if (reported?.query.reason === "timeout") {
+          throw new Error(
+            `Capture calibration CSI 18t timed out; repeat the run. Reply: ${JSON.stringify(reported.query)}`,
+          )
+        }
+        if (reported?.status === "conflict" || reported?.status === "malformed") {
+          throw Object.assign(
+            new Error(`Capture calibration verified grid disagrees with terminal reply: ${reported.status}`),
+            { name: "CaptureCalibrationRefused" },
+          )
+        }
+        if (declared?.status !== "measured") {
+          if (
+            !reported ||
+            !["agree", "uncorroborated"].includes(reported.status) ||
+            typeof reported.rows !== "number" ||
+            typeof reported.cols !== "number" ||
+            !Number.isSafeInteger(reported.rows) ||
+            !Number.isSafeInteger(reported.cols) ||
+            reported.rows < 2 ||
+            reported.cols < 2
+          ) {
+            throw new Error(
+              "Capture calibration verified grid is unavailable: no terminal grid reply or verified declared size",
+            )
+          }
+          preparationGrid = { rows: reported.rows, cols: reported.cols }
+        } else {
+          const current = preGeometry ?? (await readGeometry())
+          geometryChecks.push({ featureId: calibrationId, pre: current })
+          if (current.status !== "measured") {
+            throw new Error(`Capture calibration current owned grid is unavailable: ${current.diagnostic}`)
+          }
+          if (current.rows !== declared.rows || current.cols !== declared.cols) {
+            throw new Error(
+              `Capture calibration owned grid changed from grant ${declared.rows}x${declared.cols} to ${current.rows}x${current.cols}`,
+            )
+          }
+          if (
+            reported &&
+            ["agree", "uncorroborated"].includes(reported.status) &&
+            (reported.rows !== current.rows || reported.cols !== current.cols)
+          ) {
+            throw Object.assign(
+              new Error(
+                `Capture calibration current owned grid ${current.rows}x${current.cols} disagrees with terminal grid ${reported.rows}x${reported.cols}`,
+              ),
+              { name: "CaptureCalibrationRefused" },
+            )
+          }
+          preparationGrid = { rows: current.rows, cols: current.cols }
+        }
+        const preparationContext = createTermContext({
+          out,
+          writes: calibrationWrites,
+          events: calibrationEvents,
+          probe: { ...probe, termNeedsGeometry: true },
+          geometry: preparationGrid,
+          utf8Decoding: readUtf8Decoding,
+          captureGeometryRefusal,
+        })
+        // Outside the per-probe catch: an unproved restore fails the RUN, not one feature.
+        await withTTYOperation(
+          () =>
+            withTTYQueryTrace(calibrationQueries, calibrationEvents, () =>
+              prepareCapture({
+                context: preparationContext,
+                featureId: calibrationId,
+                recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
+              }),
+            ),
+          out,
+        )
+        captureGeometry = preparationContext.captureGeometry
+        captureGeometryRefusal = preparationContext.captureGeometryRefusal
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== "CaptureCalibrationRefused") throw error
+        captureGeometryRefusal = error.message
+      } finally {
+        batch.rawReplies[`${calibrationId}.trace`] = JSON.stringify({
+          grid: preparationGrid,
+          geometryCorroboration: reported,
+          refusal: captureGeometryRefusal,
+          writes: calibrationWrites,
+          queries: calibrationQueries,
+          events: calibrationEvents,
+          captures: calibrationCaptures,
+        })
+      }
+      capturePrepared = true
+      if (captureGeometry) context.captureGeometry = captureGeometry
+      if (captureGeometryRefusal) context.captureGeometryRefusal = captureGeometryRefusal
+      if (captureGeometryRefusal) context.capture = undefined
     }
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
@@ -440,25 +552,20 @@ export async function runProbeBatch(
         result = await withTTYOperation(
           () =>
             withTTYQueryTrace(queries, events, async () => {
-              if (
-                options.prepareCapture &&
-                !capturePrepared &&
-                probe.termNeedsGeometry === true &&
-                probe.termWrites !== "query"
-              ) {
-                capturePrepared = true
-                await options.prepareCapture({
-                  context,
-                  featureId: probe.id,
-                  recordCapture: (captured) => recordCapture(captured),
-                })
-              }
               return callback(context)
             }),
           out,
         )
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
+      }
+      if (
+        captureGeometryRefusal &&
+        result.observation?.outcome === "inconclusive" &&
+        result.observation.evidence === "consumed"
+      ) {
+        const prior = result.observation.note
+        result.observation.note = `${prior ? `${prior}; ` : ""}Pixel capture unavailable: ${captureGeometryRefusal}`
       }
       if (result.notTested) {
         const reason = result.notTested.reason
