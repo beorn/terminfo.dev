@@ -589,6 +589,17 @@ export function formatCohortRow(
     const categoryUnavailable = unavailableIds.filter((id) => (id.split(".")[0] ?? "") === category.key)
     const categoryLibraryOnly = libraryOnlyIds.filter((id) => (id.split(".")[0] ?? "") === category.key)
     lines.push(...formatCategoryRow(category, share, labelWidth, categoryUnavailable, categoryLibraryOnly))
+    if (category.key === "scrollback" && categoryLibraryOnly.length > 0) {
+      // Group acceptance includes the defined library-only rows; the app projection above does not.
+      // Both bases read the same classified table through the existing aggregation.
+      const acceptance = decisiveShare(row.run.states, [...category.ids, ...categoryLibraryOnly])
+      const inconclusive = `${acceptance.inconclusive} inconclusive${
+        acceptance.inconclusiveIds.length ? `: ${acceptance.inconclusiveIds.join(", ")}` : ""
+      }`
+      lines.push(
+        `      Scrollback acceptance ${acceptance.decisive}/${acceptance.denominator} = ${acceptance.decisivePct}% · ${acceptance.verdict.label} (${inconclusive}; group stays open below ${D3_VERDICT_BAR.passPct}%)`,
+      )
+    }
   }
   return lines
 }

@@ -776,6 +776,11 @@ describe("per-category decisive share (28018 AC2)", () => {
           ),
       ),
     ).toBe(true)
+    // Chief's nine-ID acceptance remains visible beside the app-only 7/7 projection.
+    expect(text).toContain("Scrollback acceptance 7/9 = 78% · with gaps")
+    expect(text).toContain("2 inconclusive: scrollback.accumulate, scrollback.total-lines")
+    expect(text).toContain("group stays open below 90%")
+    expect(printed.some((line) => line.includes("Reset") && line.includes("4/4 = 100%"))).toBe(true)
     // The two RELEASE lines (decisive, inconclusive) are the only cohort-size fractions; every category
     // line divides over its own decidable ids.
     expect(text.match(new RegExp(`\\d+/${releaseDenominator} =`, "g"))?.length).toBe(2)
