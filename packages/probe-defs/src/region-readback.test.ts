@@ -910,3 +910,134 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     )
   }
 })
+
+// ── Behavioural proof against a circular expected frame (@dev/review2, 29816 REVISE) ────────────
+//
+// The label-driven fixtures above cannot see a terminal whose SGR 0 is PARTIAL: they hand back the
+// digest the label asks for. This terminal paints a real cell grid instead, so the expected frame's
+// own bytes decide what it shows. A terminal that clears bold and inverse but retains italic paints
+// the expected frame with italic still set, which is exactly the false pass review2 found.
+
+type SgrAttr = "bold" | "italic" | "inverse" | "underline"
+
+interface StatefulTerminal {
+  ctx: TermContext
+  cells: Map<string, string>
+}
+
+/** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
+function statefulTerminal(sgr0: readonly SgrAttr[]): StatefulTerminal {
+  const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false }
+  const cells = new Map<string, string>()
+  let row = 1
+  let col = 1
+  let reads = 0
+  const paint = () =>
+    cells.set(
+      `${row},${col}`,
+      `${state.bold ? "b" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}`,
+    )
+  const applySgr = (params: readonly number[]) => {
+    const codes = params.length === 0 ? [0] : params
+    for (const code of codes) {
+      if (code === 0) {
+        // A cleared attribute goes to false; one the terminal fails to clear KEEPS whatever it was.
+        for (const attribute of Object.keys(state) as SgrAttr[]) if (sgr0.includes(attribute)) state[attribute] = false
+      } else if (code === 1) state.bold = true
+      else if (code === 3) state.italic = true
+      else if (code === 4 || code === 21) state.underline = true
+      else if (code === 7) state.inverse = true
+      else if (code === 22) state.bold = false
+      else if (code === 23) state.italic = false
+      else if (code === 24) state.underline = false
+      else if (code === 27) state.inverse = false
+    }
+  }
+  const write = (sequence: string) => {
+    let index = 0
+    while (index < sequence.length) {
+      const char = sequence[index]!
+      if (char === "\x1b" && sequence[index + 1] === "c") {
+        for (const attribute of Object.keys(state) as SgrAttr[]) state[attribute] = false
+        cells.clear()
+        row = 1
+        col = 1
+        index += 2
+        continue
+      }
+      if (char === "\x1b" && sequence[index + 1] === "[") {
+        let end = index + 2
+        while (end < sequence.length && !/[@-~]/.test(sequence[end]!)) end += 1
+        const final = sequence[end] ?? ""
+        const raw = sequence.slice(index + 2, end)
+        const params = raw === "" ? [] : raw.split(";").map((entry) => (entry === "" ? 0 : Number(entry)))
+        if (final === "m") applySgr(params)
+        else if (final === "H") {
+          row = params[0] ?? 1
+          col = params[1] ?? 1
+        } else if (final === "J") cells.clear()
+        index = end + 1
+        continue
+      }
+      paint()
+      col += 1
+      index += 1
+    }
+  }
+  const ctx = {
+    rows: 24,
+    cols: 80,
+    captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
+    write,
+    capture: async (request: { role: ObservationFrame["role"]; label: string; cells?: CaptureCells }) => {
+      if (!request.cells) throw new Error("the stateful terminal is read by region")
+      reads += 1
+      const frame: ObservationFrame = {
+        role: request.role,
+        label: request.label,
+        capturedAt: reads,
+        ref: `sha256:${String(reads).repeat(64)}`,
+      }
+      const key = `${request.cells.top},${request.cells.left},${request.cells.bottom},${request.cells.right}`
+      const digest =
+        key === FAMILY_SENTINEL
+          ? `witness|${cells.get("1,1") ?? ""}`
+          : `${cells.get("3,5") ?? "empty"}/${cells.get("3,6") ?? "empty"}`
+      return {
+        ...frame,
+        regionDigest: digest,
+        pixelsDigest: `window|${digest}`,
+        regionRectangle: { x: 0, y: 0, width: 16, height: 16 },
+      }
+    },
+    queryCursorPosition: async () => ({ row: 4, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+  } as unknown as TermContext
+  return { ctx, cells }
+}
+
+test("a terminal whose SGR 0 retains italic cannot pass reset.sgr on a circular expected frame", async () => {
+  const partial = statefulTerminal(["bold", "inverse"])
+  const result = await captureRegionVerdict(partial.ctx, "reset.sgr", familyRow("reset.sgr"))
+  expect(result?.observation, "reset.sgr produced no observation").toBeDefined()
+  expect(result?.observation?.outcome, "a retained italic must never read as supported").not.toBe("supported")
+})
+
+test("a terminal whose SGR 0 retains underline cannot pass sgr.reset on a circular expected frame", async () => {
+  const partial = statefulTerminal(["bold", "italic"])
+  const result = await captureRegionVerdict(partial.ctx, "sgr.reset", familyRow("sgr.reset"))
+  expect(result?.observation?.outcome, "a retained underline must never read as supported").not.toBe("supported")
+})
+
+test("a correct SGR 0 still decides both full-reset rows supported, so the fixture is not vacuous", async () => {
+  for (const id of ["reset.sgr", "sgr.reset"] as const) {
+    const correct = statefulTerminal(["bold", "italic", "inverse", "underline"])
+    const result = await captureRegionVerdict(correct.ctx, id, familyRow(id))
+    expect(result?.observation?.outcome, id).toBe("supported")
+  }
+})
