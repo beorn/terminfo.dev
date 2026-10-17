@@ -34,6 +34,7 @@ import {
   formatCohortRow,
   loadContextBlockers,
   parseReaderArgs,
+  RELEASE_1_CONTEXTS,
   decisiveShare,
   formatBarRow,
   namedExceptionsLine,
@@ -1066,6 +1067,14 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     if (!cohort) throw new Error("cohort report absent")
     const blockers = loadContextBlockers(contentDir)
     expect(blockers.size).toBeGreaterThan(0)
+
+    // Every declared key must name a context this cohort declares. barRows is built from exactly that
+    // list, so without this a mistyped key would read as "no eligible run" and publish a blocker that
+    // can never explain a bar row — the failure the data file is there to prevent.
+    const declared = new Set(RELEASE_1_CONTEXTS.map((context) => `${context.terminalId}/${context.os}`))
+    for (const key of blockers.keys()) {
+      if (!declared.has(key)) throw new Error(`${key} is declared blocked but is not a context this cohort declares`)
+    }
 
     for (const [key, reason] of blockers) {
       const row = cohort.barRows.find((candidate) => `${candidate.context.terminalId}/${candidate.context.os}` === key)
