@@ -65,9 +65,9 @@ const DECIDED: ReadonlyArray<readonly [id: string, reply: string]> = [
   ["sgr.hidden", "0;8"],
   ["sgr.strikethrough", "0;9"],
   ["sgr.overline", "0;53"],
-  ["sgr.underline.color", "0;4;58"],
-  ["sgr.underline-color-rgb", "0;4;58"],
-  ["sgr.underline-color-indexed", "0;4;58"],
+  ["sgr.underline.color", "0;4;58;2;255;0;128"],
+  ["sgr.underline-color-rgb", "0;4;58;2;255;0;128"],
+  ["sgr.underline-color-indexed", "0;4;58;5;5"],
   ["sgr.underline-color-reset", "0;4"],
   ["sgr.fg.standard", "0;31"],
   ["sgr.bg.standard", "0;41"],
@@ -75,10 +75,10 @@ const DECIDED: ReadonlyArray<readonly [id: string, reply: string]> = [
   ["sgr.bg.bright", "0;101"],
   ["sgr.fg.default", "0;39"],
   ["sgr.bg.default", "0;49"],
-  ["sgr.fg.256", "0;38"],
-  ["sgr.bg.256", "0;48"],
-  ["sgr.fg.truecolor", "0;38"],
-  ["sgr.bg.truecolor", "0;48"],
+  ["sgr.fg.256", "0;38;5;67"],
+  ["sgr.bg.256", "0;48;5;67"],
+  ["sgr.fg.truecolor", "0;38;2;255;128;0"],
+  ["sgr.bg.truecolor", "0;48;2;0;255;128"],
   ["sgr.selective-reset.bold", "0;22;3"],
   ["sgr.selective-reset.underline", "0;1"],
   ["sgr.selective-reset.italic", "0;1"],
@@ -116,7 +116,7 @@ test.each([
   ["sgr.bg.default", "0;42"],
   ["sgr.selective-reset.bold", "0;1;2;3"],
   ["sgr.selective-reset.underline", "0;1;4"],
-  ["sgr.underline-color-reset", "0;4;58"],
+  ["sgr.underline-color-reset", "0;4;58;2;255;0;128"],
 ] as const)("%s is unsupported when DECRQSS still reports the setup it should have cleared (%s)", async (id, reply) => {
   const { ctx } = sgrReadbackContext(reply)
   const result = await sgrTerm(id)(ctx)
@@ -139,4 +139,33 @@ test.each(DECIDED.map(([id]) => id))("%s stays inconclusive, never negative, whe
   const result = await sgrTerm(id)(ctx)
   expect(result.pass).toBe(false)
   expect(result.observation?.outcome).not.toBe("unsupported")
+})
+
+// A reported selector alone cannot establish the requested color mode or value. Color operands
+// also belong to that parameter: an RGB component of 1 is not an independent bold attribute.
+test.each([
+  ["sgr.fg.256", "0;38;5;68", "unsupported"],
+  ["sgr.bg.256", "0;48;5;68", "unsupported"],
+  ["sgr.fg.truecolor", "0;38;2;255;128;1", "unsupported"],
+  ["sgr.bg.truecolor", "0;48;2;0;255;129", "unsupported"],
+  ["sgr.underline.color", "0;4;58;2;255;0;129", "unsupported"],
+  ["sgr.underline-color-rgb", "0;4;58;2;255;0;129", "unsupported"],
+  ["sgr.underline-color-indexed", "0;4;58;5;6", "unsupported"],
+  ["sgr.fg.truecolor", "0;38", "inconclusive"],
+  ["sgr.bg.truecolor", "0;48;2;0;255", "inconclusive"],
+  ["sgr.underline-color-rgb", "0;4;58:2::255:0", "inconclusive"],
+  ["sgr.fg.truecolor", "0;38;5;67", "inconclusive"],
+  ["sgr.fg.256", "0;38;2;95;135;175", "inconclusive"],
+  ["sgr.fg.truecolor", "0;38:2::255:128:0", "supported"],
+  ["sgr.bg.truecolor", "0;48:2:0:0:255:128", "supported"],
+  ["sgr.underline.color", "0;4;58:2:255:0:128", "supported"],
+  ["sgr.underline-color-indexed", "0;4;58:5:5", "supported"],
+  ["sgr.bold", "0;38;2;255;1;5", "unsupported"],
+  ["sgr.selective-reset.bold", "0;3;38;2;255;1;5", "supported"],
+] as const)("%s with DECRQSS %s is %s", async (id, reply, outcome) => {
+  const { ctx } = sgrReadbackContext(reply)
+  const result = await sgrTerm(id)(ctx)
+  expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+  expect(result.pass).toBe(outcome === "supported")
+  if (outcome === "inconclusive") expect(result.observation?.note).toBeTruthy()
 })
