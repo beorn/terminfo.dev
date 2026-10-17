@@ -780,6 +780,8 @@ describe("private finite daemon startup", () => {
           `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
+      import { readdirSync, readFileSync } from "node:fs"
+      import { join } from "node:path"
       const hosted = process.env.FIXTURE_EXPECT === "capture"
       Object.defineProperty(process, "platform", { value: "win32" })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
@@ -787,6 +789,7 @@ describe("private finite daemon startup", () => {
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let capture
       let captureKind = "absent"
+      let captured = false
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
@@ -799,7 +802,11 @@ describe("private finite daemon startup", () => {
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           summary: "owned fixture",
-          readCells: async () => ({ status: "measured", cells: [["x"]] }),
+          readCells: async () => ({
+            status: "read",
+            grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
+            bufferOwner: { image: "OpenConsole.exe", pid: 1, ppid: 2 }
+          }),
           dispose: async () => {}
         })
       }))
@@ -814,6 +821,10 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (options.capture) {
+            await options.capture({ role: "witness", label: "fixture" })
+            captured = true
+          }
           return {
             rawReplies: {},
             observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
@@ -831,6 +842,10 @@ describe("private finite daemon startup", () => {
         await collectProbeRun({ ids: ["device.xtversion"] })
         assert.equal(captureKind, "text-cells")
         assert.equal(typeof capture, "function")
+        assert.equal(captured, true)
+        const frames = readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt"))
+        assert.equal(frames.length, 1)
+        assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
       }
       `,
         ],

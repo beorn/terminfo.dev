@@ -345,9 +345,9 @@ export async function collectProbeRun(
    * can place it and re-hash it. A refused read throws: a row that asked for a frame must not be
    * graded as if the screen were empty.
    *
-   * Only the hosted Darwin arm installs it today. The app arm and the hosted Windows arm can read
-   * cells too, but neither run supplies a retention directory, so both name that skip and every row
-   * keeps its own no-capture branch rather than grading an unretainable read.
+   * Every arm that can read cells installs it — the hosted Darwin arm, the hosted Windows arm and
+   * the app arm — but only when the run supplies a retention directory. Without one the arm names
+   * that skip and every row keeps its own no-capture branch rather than grading an unretainable read.
    */
   const installTextCapture = (terminal: OwnedTerminal): boolean => {
     const readCells = terminal.readCells?.bind(terminal)
