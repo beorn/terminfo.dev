@@ -25,6 +25,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
+import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
   buildReport,
@@ -65,6 +66,16 @@ export interface Candidate2Group {
   includedOn: string[]
   /** The measured contexts that keep this group out of the included set, in page order. */
   heldBy: Candidate2HeldContext[]
+  /**
+   * Contexts published on the previous freeze that have no run on the required suite now, where the
+   * group sits below its bar on that run. A group must not read as included because these went dark.
+   */
+  darkHeldBy: Candidate2DarkHeldContext[]
+  /**
+   * The ruled per-context contexts that cleared the bar on the previous freeze and are not measured
+   * now: named as ruled but unmeasurable, never counted as included.
+   */
+  darkRuled: string[]
   /** Contexts with no published run: neither included nor held, named with the row's own reason. */
   unmeasured: Candidate2Unmeasured[]
   /** Every included capability of this group (the ratified base). */
@@ -90,6 +101,15 @@ export interface Candidate2HeldContext {
   denominator: number
   decisivePct: number
   verdictLabel: D3Label
+}
+
+/** One context that was published on the previous freeze and has gone dark, with its row's reason. */
+export interface Candidate2DarkHeldContext {
+  context: string
+  decisive: number
+  denominator: number
+  decisivePct: number
+  reason: string
 }
 
 /**
@@ -198,8 +218,14 @@ export function loadCandidate2Data(): Candidate2Data {
   const includedByKey = new Map(included.map((category) => [category.key, category]))
   const libraryOnly = new Set(cohort.libraryOnlyIds)
   const unavailable = new Set(cohort.unavailableIds)
+  // The freeze candidate 2 published on before this cohort moved: a run there is data that WENT DARK,
+  // not missing data. Runs on any older suite were never published and cannot hold a claim.
+  const previousFreeze = frozenSuiteIdFor(contentDir, "candidate2")
 
-  const groups: Omit<Candidate2Group, "included" | "includedOn" | "heldBy" | "unmeasured">[] = included.map(
+  const groups: Omit<
+    Candidate2Group,
+    "included" | "includedOn" | "heldBy" | "darkHeldBy" | "darkRuled" | "unmeasured"
+  >[] = included.map(
     (category) => {
       const scored = decidableByKey.get(category.key)
       if (!scored) {
@@ -319,9 +345,38 @@ export function loadCandidate2Data(): Candidate2Data {
   const groupsWithState: Candidate2Group[] = groups.map((group) => {
     const includedOn: string[] = []
     const heldBy: Candidate2HeldContext[] = []
+    const darkHeldBy: Candidate2DarkHeldContext[] = []
+    const darkRuled: string[] = []
     let measuredContexts = 0
-    for (const row of contexts) {
-      if (!row.published) continue
+    for (const [index, row] of contexts.entries()) {
+      if (!row.published) {
+        const bar = cohort.barRows[index]
+        const run = bar && "run" in bar ? bar.run : undefined
+        if (run?.suiteId !== previousFreeze) continue
+        if (!row.reason) {
+          throw new Error(`unpublished context ${row.context} carries no reason; cannot name it as unmeasured`)
+        }
+        const category = includedByKey.get(group.key)
+        if (!category) throw new Error(`group ${group.key} is not in the ratified base; cannot judge a dark context`)
+        const libraryOnlyIds = category.ids.filter((id) => libraryOnly.has(id))
+        const share = decisiveShare(run.states, category.ids)
+        const acceptance =
+          libraryOnlyIds.length > 0 ? decisiveShare(run.states, [...category.ids, ...libraryOnlyIds]) : null
+        const basis = acceptance ?? share
+        if (basis.decisivePct < D3_VERDICT_BAR.passPct) {
+          darkHeldBy.push({
+            context: row.context,
+            decisive: basis.decisive,
+            denominator: basis.denominator,
+            decisivePct: basis.decisivePct,
+            reason: row.reason,
+          })
+        } else if (PER_CONTEXT_INCLUDED.has(group.key)) {
+          // The ruling named this context; it cleared before and is unmeasurable now.
+          darkRuled.push(row.context)
+        }
+        continue
+      }
       const share = row.groups.find((entry) => entry.key === group.key)
       if (!share) {
         // Fail loud: every included group has a decidable category, so every published row must
@@ -360,9 +415,13 @@ export function loadCandidate2Data(): Candidate2Data {
       })
     return {
       ...group,
-      included: measuredContexts > 0 && heldBy.length === 0,
+      // A dark context that held the group blocks inclusion exactly as a measured one does: moving
+      // data out of the measurement may never improve a claim (@chief 2026-10-17).
+      included: measuredContexts > 0 && heldBy.length === 0 && darkHeldBy.length === 0,
       includedOn,
       heldBy,
+      darkHeldBy,
+      darkRuled,
       unmeasured,
     }
   })

@@ -279,7 +279,9 @@ describe("candidate-2 page: wiring", () => {
           basis(entry).decisivePct,
         ]),
       )
-      expect(group.included).toBe(shares.length > 0 && below.length === 0)
+      // Inclusion also requires that no context which held the group went dark: moving a holding
+      // context out of the measurement may never improve the claim.
+      expect(group.included).toBe(shares.length > 0 && below.length === 0 && group.darkHeldBy.length === 0)
       // The per-context include is the SAME basis decision, not a second rule: for a group the
       // ruling names, a context is in includedOn exactly when its share clears the bar, and the two
       // lists partition the measured contexts. Every other group keeps its global state and carries no
@@ -318,7 +320,9 @@ describe("candidate-2 page: wiring", () => {
     const dark = ["terminal-app/macos", "iterm2/macos", "ghostty/macos", "alacritty/macos", "kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
-    expect(page).toContain("Included on {{ group.includedOn.length }} of")
+    expect(page).toContain(
+      "ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}",
+    )
     expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
@@ -339,6 +343,43 @@ describe("candidate-2 page: wiring", () => {
       expect(group.unmeasured[4]?.reason, key).toContain("no hosted kitty route")
       expect(group.unmeasured[4]?.reason, key).toContain("27928")
     }
+  })
+
+  it("never lets a public claim improve because a context went dark", () => {
+    // @chief 2026-10-17: a public claim must never improve because data went dark. Text's only
+    // holding context is terminal-app on macOS (17 of 20); it has no run on the required suite now,
+    // so the group stays HELD and names that context instead of flipping to Included.
+    const text = data.groups.find((group) => group.key === "text")
+    if (!text) throw new Error("text group missing from the page")
+    expect(text.included).toBe(false)
+    expect(text.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos"])
+    expect(text.darkHeldBy[0]).toMatchObject({ decisive: 17, denominator: 20 })
+    expect(text.darkHeldBy[0]?.reason).toContain("29918")
+
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain(
+      "held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (29918)",
+    )
+    expect(page).toContain(
+      "ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}",
+    )
+    expect(page).toContain("{{ darkRuledSentence(group) }} not measured (29918)")
+
+    // The two ruled groups read "ruled for six, measurable on four", and the two dark ruled
+    // contexts are named rather than counted as included.
+    const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
+    for (const key of ["editing", "charsets"]) {
+      const group = data.groups.find((entry) => entry.key === key)
+      if (!group) throw new Error(`group ${key} missing from the page`)
+      expect(group.includedOn).toEqual(four)
+      expect(group.darkRuled).toEqual(["ghostty/macos", "alacritty/macos"])
+      expect(group.includedOn.length + group.darkRuled.length).toBe(6)
+    }
+    // The rule pins the direction of the change, not a blanket demotion: Unicode clears its share on
+    // every dark context, so it legitimately stays included.
+    const unicode = data.groups.find((group) => group.key === "unicode")
+    if (!unicode) throw new Error("unicode group missing")
+    expect(unicode.included).toBe(true)
   })
 
   it("preserves global inclusion outside the two-group context scope", () => {
