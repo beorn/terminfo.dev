@@ -40,6 +40,15 @@
       "reviewer": "@dev/10 (automated review)",
       "reason": "Reviewed the existing default Linux fixture with measured WezTerm 0-unstable-2026-09-29 on frozen suite 0fb194cf6cea: one complete 260-ID app run from source 7e7c2917, bound host/collector receipts and retained captures. Historical executable/configuration results remain admitted history.",
       "sources": ["probes-apps/wezterm-0-unstable-2026-09-29-linux-2afb11c9c5da2bb9e45ece168ea7bdd7.json"]
+    },
+    "app:windows-terminal": {
+      "contextKey": "app:windows-terminal",
+      "reviewer": "@dev/10 (automated evidence review)",
+      "reason": "Reviewed the hosted Windows Terminal 1.21.240823001 default context on frozen suite 5753741410a9, run 891ba8754678408a73a386098a867d73. The existing admission rule binds measured DA1 and product version to its hosted launch receipt. This selects the already admitted context; it does not promote inconclusive probe observations or authorize publication.",
+      "sources": [
+        "content/probes-apps/windows-terminal-1.21.240823001-windows-891ba8754678408a73a386098a867d73.json",
+        "content/receipts/891ba8754678408a73a386098a867d73.json"
+      ]
     }
   }
 }
