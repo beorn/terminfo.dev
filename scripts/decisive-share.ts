@@ -339,8 +339,8 @@ export function candidate2Cohort(contentDir: string): CohortSpec {
     name: "candidate2",
     slices: ["classics"],
     excludingTier1: false,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
