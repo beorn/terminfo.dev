@@ -139,9 +139,12 @@ async function consumedSgrReset(
 
 function rgbUnderlineProbe(id: string): ProbeDefinition {
   const sequence = "\x1b[4m\x1b[58;2;255;0;128m"
-  // DECRQSS proves the terminal reports SGR 4 and 58 active; the termless path still calibrates the
-  // exact color against default-color controls.
-  const original = sgrProbe(id, sequence, () => null, undefined, { require: [4, 58] })
+  // DECRQSS must report the requested RGB, not merely SGR 58; the termless path independently
+  // calibrates the exact color against default-color controls.
+  const original = sgrProbe(id, sequence, () => null, undefined, {
+    require: [4, 58],
+    requireTokens: ["58:2:255:0:128"],
+  })
   return {
     ...original,
     termless(ctx) {
@@ -388,7 +391,9 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           "RGB reference was not calibrated, or the backend may use a custom indexed palette",
         )
       },
-      sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr] }, (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};5;67m`)),
+      sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr], requireTokens: [`${sgr}:5:67`] }, (ctx) =>
+        consumedSgr(ctx, id, `\x1b[${sgr};5;67m`),
+      ),
       "consumed",
     ),
     termNeedsGeometry: true,
@@ -442,8 +447,11 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         if (a && b && !sameRgb(a, b)) return parserStateResult(false, expected, state)
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      sgrTermReadback(id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`, { require: [sgr] }, (ctx) =>
-        consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
+      sgrTermReadback(
+        id,
+        `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`,
+        { require: [sgr], requireTokens: [`${sgr}:2:${first.r}:${first.g}:${first.b}`] },
+        (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
       ),
       "consumed",
     ),
@@ -455,6 +463,13 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
 function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
   const setup = channel === "fg" ? 31 : 42
   const reset = channel === "fg" ? 39 : 49
+  // Default means no explicit color in this channel, not just absence of the setup sample.
+  const firstColor = channel === "fg" ? 30 : 40
+  const nondefaultColors = [
+    ...Array.from({ length: 8 }, (_, index) => firstColor + index),
+    ...Array.from({ length: 8 }, (_, index) => firstColor + 60 + index),
+    firstColor + 8,
+  ]
   return {
     ...probe(
       id,
@@ -476,7 +491,7 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [], forbid: [setup] }, (ctx) =>
+      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [], forbid: nondefaultColors }, (ctx) =>
         consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
       ),
       "consumed",
@@ -587,8 +602,11 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
       },
-      sgrTermReadback("sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m", { require: [4, 58] }, (ctx) =>
-        consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
+      sgrTermReadback(
+        "sgr.underline-color-indexed",
+        "\x1b[4m\x1b[58;5;5m",
+        { require: [4, 58], requireTokens: ["58:5:5"] },
+        (ctx) => consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
       ),
       "consumed",
     ),

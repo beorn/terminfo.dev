@@ -132,7 +132,7 @@ export async function querySgrState(ctx: TermContext): Promise<string[] | null> 
   const payload = outcome.match?.[1]
   if (payload === undefined) return null
   if (payload === "") return []
-  return payload.split(";").filter((part) => part !== "")
+  return payload.split(";")
 }
 
 /** The leading code of a DECRQSS parameter token (`4:3` -> 4). */
@@ -217,15 +217,62 @@ export function sgrReadbackResult(
   state: readonly string[],
   readback: SgrReadback,
 ): ProbeResult {
-  const codes = state.flatMap((token) => {
+  // Extended-color operands are one parameter, never independent attributes. Keep the raw state
+  // below, but compare equivalent legacy semicolon and colon reports as complete color tokens.
+  const parameters: string[] = []
+  let unmeasured: string | undefined
+  const remaining = [...state]
+  for (let token = remaining.shift(); token !== undefined; token = remaining.shift()) {
+    const selector = leadingSgrCode(token)
+    if (![38, 48, 58].includes(selector)) {
+      parameters.push(token)
+      continue
+    }
+    let parts = token.split(":")
+    if (parts.length === 1) {
+      const mode = remaining.shift()
+      const operands = mode === "2" ? 3 : mode === "5" ? 1 : 0
+      parts = [token, ...(mode === undefined ? [] : [mode]), ...remaining.splice(0, operands)]
+    }
+    // The optional ISO color-space slot is omitted or zero in the equivalent RGB form.
+    if (parts[1] === "2" && parts.length === 6 && (parts[2] === "" || parts[2] === "0")) parts.splice(2, 1)
+    const values = parts.slice(2)
+    const complete = (parts[1] === "2" && values.length === 3) || (parts[1] === "5" && values.length === 1)
+    if (!complete || values.some((value) => !/^\d+$/.test(value) || Number(value) > 255)) {
+      unmeasured = `DECRQSS color parameter ${parts.join(":")} is incomplete or has an unqualified encoding`
+      break
+    }
+    if (parameters.some((parameter) => leadingSgrCode(parameter) === selector)) {
+      unmeasured = `DECRQSS reports more than one color parameter for ${selector}`
+      break
+    }
+    parameters.push(parts.map(Number).join(":"))
+  }
+  for (const expected of readback.requireTokens ?? []) {
+    const selector = leadingSgrCode(expected)
+    if (![38, 48, 58].includes(selector)) continue
+    const actual = parameters.find((parameter) => leadingSgrCode(parameter) === selector)
+    if (actual && actual.split(":")[1] !== expected.split(":")[1]) {
+      unmeasured = `DECRQSS reports ${actual}, which cannot establish requested color representation ${expected}`
+    }
+  }
+  const observed = state.length === 0 ? "0" : state.join(";")
+  if (unmeasured) {
+    return {
+      pass: false,
+      response: JSON.stringify({ sgr: observed }),
+      note: unmeasured,
+      observation: { outcome: "inconclusive", evidence: "query", reason: "insufficient-evidence", note: unmeasured },
+    }
+  }
+  const codes = parameters.flatMap((token) => {
     const alias = SGR_CODE_ALIASES[token]
     return alias === undefined ? [leadingSgrCode(token)] : [leadingSgrCode(token), alias]
   })
   const required = readback.require.every((code) => codes.includes(code))
   const forbidden = readback.forbid?.some((code) => codes.includes(code)) ?? false
-  const tokensRequired = readback.requireTokens?.every((token) => state.includes(token)) ?? true
+  const tokensRequired = readback.requireTokens?.every((token) => parameters.includes(token)) ?? true
   const ok = required && !forbidden && tokensRequired
-  const observed = state.length === 0 ? "0" : state.join(";")
   const expected = [...readback.require.map(String), ...(readback.requireTokens ?? [])].join(";")
   return {
     pass: ok,
