@@ -44,12 +44,12 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  *
  * ED (`\x1b[2J`) clears cells only: it never changes SGR state and is not the sequence under test.
  *
- * RIS is the reference for the SEVEN single-attribute rows. The two FULL RESET rows (reset.sgr,
- * sgr.reset) cannot use it: their expected frame needs the terminal default, and only a full reset
- * reaches it, so a RIS that misses one attribute paints the surviving attribute into the expected
- * frame and the row would read supported while the attribute survived (@dev/review2, reproduced R8).
- * They carry `noIndependentReference`, and the pixel oracle declines them BY NAME before a byte
- * (@cto c17551dc).
+ * RIS is the reference for the SIX single-attribute rows. The three rows whose reset clears TWO OR
+ * MORE attributes (reset.sgr: three, sgr.reset: three, sgr.selective-reset.bold: bold+faint) cannot
+ * use it: a reset under test and a RIS that both miss the same part of the cleared set leave
+ * expected equal to after and different from ignored, so the row reads supported while the attribute
+ * survived (@dev/review2, reproduced R8; @cto c17551dc and its correction). They carry
+ * `noIndependentReference`, and the pixel oracle declines them BY NAME before a byte.
  */
 function expectedFrame(setup: string, residual: string): string {
   return (
@@ -98,7 +98,10 @@ export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeo
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
   "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
-  "sgr.selective-reset.bold": row("\x1b[1;2;3m", "\x1b[22m", "\x1b[3m"),
+  "sgr.selective-reset.bold": {
+    ...row("\x1b[1;2;3m", "\x1b[22m", "\x1b[3m"),
+    noIndependentReference: "no reference independent of a full reset",
+  },
   "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m"),
   "sgr.selective-reset.italic": row("\x1b[1;3m", "\x1b[23m", "\x1b[1m"),
   "sgr.selective-reset.inverse": row("\x1b[1;7m", "\x1b[27m", "\x1b[1m"),

@@ -104,12 +104,13 @@ export interface RegionReadback {
    */
   ignored?: string
   /**
-   * Set when the expected frame cannot be produced without the sequence under test: a FULL RESET row
-   * (reset.sgr, sgr.reset) reaches the terminal default only through a reset that is itself a full
-   * reset, so a reference that misses one attribute paints the surviving attribute into the expected
-   * frame and the row reads supported while the attribute survived (@dev/review2, reproduced R8 at
-   * 29816; @cto c17551dc). Such a row is INCONCLUSIVE BY NAME on the pixel path, before a byte,
-   * rather than graded against a reference that shares the tested sequence's failure.
+   * Set when the expected frame cannot be produced without the sequence under test: a row whose
+   * reset clears TWO OR MORE of its setup attributes (reset.sgr, sgr.reset, sgr.selective-reset.bold)
+   * can leave the reset under test and the reference both missing the same part of that cleared set,
+   * so the surviving attribute is painted into the expected frame and the row reads supported while
+   * it survived (@dev/review2, reproduced R8 at 29816; @cto c17551dc and its correction). Such a row
+   * is INCONCLUSIVE BY NAME on the pixel path, before a byte, rather than graded against a reference
+   * that shares the tested sequence's failure.
    */
   noIndependentReference?: string
   /** The terminal's own pixel report, carried into every capture request. */
@@ -517,9 +518,9 @@ export async function captureRegionVerdict(
 ): Promise<ProbeResult | null> {
   const read = collectorRegionRead(ctx)
   if (!read) return null
-  // A full-reset row has no reference independent of a full reset, so this oracle declines it BY
-  // NAME before a byte: a reference that misses one attribute would reproduce the fault and grade it
-  // supported (@cto c17551dc, 29816).
+  // A row whose reset clears two or more setup attributes has no reference independent of that
+  // reset, so this oracle declines it BY NAME before a byte: a reference that misses the same part of
+  // the cleared set would reproduce the fault and grade it supported (@cto c17551dc + correction).
   if (spec.noIndependentReference) return refused(id, `${id}: ${spec.noIndependentReference}`)
   // Geometry first: an undersized terminal is refused before a single query byte.
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)

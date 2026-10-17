@@ -787,12 +787,13 @@ const RESET_FAMILY_ROWS = [
 ] as const
 
 /**
- * The two FULL RESET rows. Their expected pixel can only come from a full reset, so the pixel
- * oracle declines them by name instead of grading them against a reference that shares the tested
- * sequence's failure (@cto c17551dc, 29816).
+ * The rows whose reset clears two or more setup attributes. Their expected pixel cannot be produced
+ * by a reference independent of that reset, so the pixel oracle declines them by name instead of
+ * grading them against a reference that can share the tested sequence's failure (@cto c17551dc and
+ * its correction, 29816).
  */
-const FULL_RESET_ROWS = ["reset.sgr", "sgr.reset"] as const
-const GRADED_ROWS = RESET_FAMILY_ROWS.filter((id) => !(FULL_RESET_ROWS as readonly string[]).includes(id))
+const NO_REFERENCE_ROWS = ["reset.sgr", "sgr.reset", "sgr.selective-reset.bold"] as const
+const GRADED_ROWS = RESET_FAMILY_ROWS.filter((id) => !(NO_REFERENCE_ROWS as readonly string[]).includes(id))
 
 /** The reset-family witness cell, and the shape of one read of its own compared region. */
 const FAMILY_SENTINEL = "1,1,1,1"
@@ -917,7 +918,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
       "visual interpretation requires review",
     )
   }
-  for (const id of FULL_RESET_ROWS) {
+  for (const id of NO_REFERENCE_ROWS) {
     const probe = probes.find((candidate) => candidate.id === id)
     expect(probe, `${id}: a probe definition`).toBeDefined()
     const result = await probe!.term!(familyTerminal("expected"))
@@ -934,13 +935,15 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
 // own bytes decide what it shows. A terminal that clears bold and inverse but retains italic paints
 // the expected frame with italic still set, which is exactly the false pass review2 found.
 
-type SgrAttr = "bold" | "italic" | "inverse" | "underline"
+type SgrAttr = "bold" | "italic" | "inverse" | "underline" | "faint"
 type SgrColor = "fg" | "bg" | "uc"
-const SGR_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline"]
+const SGR_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
 
 interface StatefulTerminal {
   ctx: TermContext
   cells: Map<string, string>
+  /** The attributes and colours currently set, read straight from the model. */
+  snapshot: () => Set<string>
 }
 
 interface StatefulOptions {
@@ -948,11 +951,13 @@ interface StatefulOptions {
   /** Attributes the reference does NOT clear: @dev/review2's partial-RIS terminal (29816). */
   risRetains?: readonly (SgrAttr | SgrColor)[]
   risClearsCells?: boolean
+  /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
+  resetMisses?: readonly (SgrAttr | SgrColor)[]
 }
 
 /** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
 function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {}): StatefulTerminal {
-  const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false }
+  const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false, faint: false }
   const color: Record<SgrColor, string | undefined> = { fg: undefined, bg: undefined, uc: undefined }
   const cells = new Map<string, string>()
   let row = 1
@@ -961,36 +966,54 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   const paint = () =>
     cells.set(
       `${row},${col}`,
-      `${state.bold ? "b" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${color.uc ?? ""}`,
+      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${color.uc ?? ""}`,
     )
+  const miss = new Set<SgrAttr | SgrColor>(options.resetMisses ?? [])
+  const clear = (attribute: SgrAttr) => {
+    if (!miss.has(attribute) && sgr0.includes(attribute)) state[attribute] = false
+  }
+  const clearColour = (attribute: SgrColor) => {
+    if (!miss.has(attribute)) color[attribute] = undefined
+  }
   const applySgr = (params: readonly number[]) => {
     const codes = params.length === 0 ? [0] : params
     for (let index = 0; index < codes.length; index += 1) {
       const code = codes[index]!
       if (code === 0) {
         // A cleared attribute goes to false; one the terminal fails to clear KEEPS whatever it was.
-        for (const attribute of SGR_ATTRS) if (sgr0.includes(attribute)) state[attribute] = false
-        color.fg = undefined
-        color.bg = undefined
-        color.uc = undefined
+        for (const attribute of SGR_ATTRS) clear(attribute)
+        clearColour("fg")
+        clearColour("bg")
+        clearColour("uc")
       } else if (code === 1) state.bold = true
+      else if (code === 2) state.faint = true
       else if (code === 3) state.italic = true
       else if (code === 4 || code === 21) state.underline = true
       else if (code === 7) state.inverse = true
-      else if (code === 22) state.bold = false
-      else if (code === 23) state.italic = false
-      else if (code === 24) state.underline = false
-      else if (code === 27) state.inverse = false
-      else if (code >= 30 && code <= 37) color.fg = String(code)
-      else if (code === 39) color.fg = undefined
+      else if (code === 22) {
+        if (!miss.has("bold")) state.bold = false
+        if (!miss.has("faint")) state.faint = false
+      } else if (code === 23) {
+        if (!miss.has("italic")) state.italic = false
+      } else if (code === 24) {
+        if (!miss.has("underline")) state.underline = false
+      } else if (code === 27) {
+        if (!miss.has("inverse")) state.inverse = false
+      } else if (code >= 30 && code <= 37) color.fg = String(code)
+      else if (code === 39) clearColour("fg")
       else if (code >= 40 && code <= 47) color.bg = String(code)
-      else if (code === 49) color.bg = undefined
+      else if (code === 49) clearColour("bg")
       else if (code === 58) {
         color.uc = codes.slice(index).join(";")
         index = codes.length
-      } else if (code === 59) color.uc = undefined
+      } else if (code === 59) clearColour("uc")
     }
   }
+  const snapshot = () =>
+    new Set<string>([
+      ...SGR_ATTRS.filter((attribute) => state[attribute]),
+      ...(["fg", "bg", "uc"] as SgrColor[]).filter((attribute) => color[attribute] !== undefined),
+    ])
   const write = (sequence: string) => {
     let index = 0
     while (index < sequence.length) {
@@ -1063,52 +1086,88 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryMode: async () => null,
   } as unknown as TermContext
-  return { ctx, cells }
+  return { ctx, cells, snapshot }
 }
 
-test("the two full-reset rows are inconclusive by name on the pixel path, whatever the terminal does", async () => {
-  // @cto c17551dc (29816): no reference independent of a full reset exists, so a terminal whose SGR 0
-  // and RIS BOTH keep italic must never read supported. The refusal comes before a byte, so a correct
-  // terminal cannot buy a pixel verdict on these two rows either.
-  const partial = statefulTerminal(["bold", "inverse"], { ris: true, risRetains: ["italic"] })
-  for (const id of FULL_RESET_ROWS) {
-    const result = await captureRegionVerdict(partial.ctx, id, familyRow(id))
-    expect(result?.observation?.outcome, id).toBe("inconclusive")
-    expect(result?.observation?.evidence, id).toBe("none")
-    expect(result?.observation?.note ?? "", id).toContain("no reference independent of a full reset")
-  }
-  const correct = statefulTerminal(["bold", "italic", "inverse", "underline"], { ris: true })
-  const graded = await captureRegionVerdict(correct.ctx, "reset.sgr", familyRow("reset.sgr"))
-  expect(graded?.observation?.outcome, "a correct terminal cannot buy a pixel verdict on a full reset").toBe(
-    "inconclusive",
-  )
-})
+const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
 
-test("every graded row reads a RIS that misses its tested attribute as inconclusive", async () => {
-  // @cto c17551dc: for a single-attribute row the expected frame repaints its residual, so a RIS that
-  // misses the tested attribute leaves expected equal to the setup (the ignored frame) — inconclusive,
-  // never a wrong reference that could pass.
-  const missing: Array<{ id: (typeof GRADED_ROWS)[number]; attr: SgrAttr | SgrColor }> = [
-    { id: "sgr.fg.default", attr: "fg" },
-    { id: "sgr.bg.default", attr: "bg" },
-    { id: "sgr.underline-color-reset", attr: "uc" },
-    { id: "sgr.selective-reset.bold", attr: "bold" },
-    { id: "sgr.selective-reset.underline", attr: "underline" },
-    { id: "sgr.selective-reset.italic", attr: "italic" },
-    { id: "sgr.selective-reset.inverse", attr: "inverse" },
+/** Every subset, including the empty one: the exhaustive table's domain. */
+function subsets<T>(items: readonly T[]): T[][] {
+  return items.reduce<T[][]>((sets, item) => [...sets, ...sets.map((set) => [...set, item])], [[]])
+}
+
+test("the three no-reference rows are inconclusive by name on the pixel path, whatever the terminal does", async () => {
+  // @cto c17551dc and its correction (29816): a row whose reset clears two or more attributes can be
+  // fooled by a reset and a RIS that miss the same part of the cleared set. Each case below WOULD read
+  // supported without the refusal; the refusal comes before a byte and says why.
+  const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
+    { id: "reset.sgr", miss: ["italic"], keep: ["italic"] },
+    { id: "sgr.reset", miss: ["underline"], keep: ["underline"] },
+    { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
   ]
-  for (const { id, attr } of missing) {
-    const terminal = statefulTerminal(["bold", "italic", "inverse", "underline"], { ris: true, risRetains: [attr] })
-    const result = await captureRegionVerdict(terminal.ctx, id, familyRow(id))
-    expect(result?.observation?.outcome, `${id}: RIS missing ${attr}`).toBe("inconclusive")
+  for (const entry of cases) {
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
+    const result = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    expect(result?.observation?.outcome, entry.id).toBe("inconclusive")
+    expect(result?.observation?.evidence, entry.id).toBe("none")
+    expect(result?.observation?.note ?? "", entry.id).toContain("no reference independent of a full reset")
+  }
+  const correct = statefulTerminal(ALL_ATTRS, { ris: true })
+  for (const id of NO_REFERENCE_ROWS) {
+    const result = await captureRegionVerdict(correct.ctx, id, familyRow(id))
+    expect(result?.observation?.outcome, `${id}: a correct terminal cannot buy a pixel verdict here`).toBe(
+      "inconclusive",
+    )
   }
 })
 
-test("the stateful terminal still supports every graded row when RIS clears its attribute, so the fixture is not vacuous", async () => {
-  for (const id of GRADED_ROWS) {
-    const terminal = statefulTerminal(["bold", "italic", "inverse", "underline"], { ris: true })
-    const result = await captureRegionVerdict(terminal.ctx, id, familyRow(id))
-    expect(result?.observation?.outcome, id).toBe("supported")
-    expect(result?.observation?.evidence, id).toBe("pixels")
+test("the bold row's faint case is the third no-reference row", async () => {
+  // @cto's correction: SGR 22 clears bold AND faint while the residual repaints only italic, so
+  // 22 and RIS both keeping faint left the row reading supported. This is the case the named grade
+  // removes; with the grade removed it reads supported (R10).
+  const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: ["faint"], risRetains: ["faint"] })
+  const result = await captureRegionVerdict(
+    terminal.ctx,
+    "sgr.selective-reset.bold",
+    familyRow("sgr.selective-reset.bold"),
+  )
+  expect(result?.observation?.outcome).toBe("inconclusive")
+  expect(result?.observation?.note ?? "").toContain("no reference independent of a full reset")
+})
+
+test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {
+  // @cto's exhaustive requirement: every row of RESET_FAMILY_CAPTURE, every subset of its CLEARED set
+  // (what the reset under test misses) x every subset of its SETUP (what RIS keeps), with the cleared
+  // set computed from this model rather than a hand-picked list.
+  for (const id of RESET_FAMILY_ROWS) {
+    const row = familyRow(id)
+    const probe = statefulTerminal(ALL_ATTRS, { ris: true })
+    probe.ctx.write(row.seed)
+    const setup = [...probe.snapshot()]
+    probe.ctx.write(row.edit)
+    const afterReset = probe.snapshot()
+    const cleared = setup.filter((attribute) => !afterReset.has(attribute))
+    for (const misses of subsets(cleared)) {
+      for (const keeps of subsets(setup)) {
+        const terminal = statefulTerminal(ALL_ATTRS, {
+          ris: true,
+          resetMisses: misses as Array<SgrAttr | SgrColor>,
+          risRetains: keeps as Array<SgrAttr | SgrColor>,
+        })
+        const result = await captureRegionVerdict(terminal.ctx, id, familyRow(id))
+        const outcome = result?.observation?.outcome
+        const label = `${id}: reset misses [${misses.join("+")}] and RIS keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
+        if (outcome === "supported") {
+          expect(misses, `${label}: supported although the reset missed part of its cleared set`).toEqual([])
+        }
+        const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
+        if (misses.length === 0 && keepsOnlyResidual && (GRADED_ROWS as readonly string[]).includes(id)) {
+          expect(
+            outcome,
+            `${label}: a correct reset retaining nothing from the cleared set must decide supported`,
+          ).toBe("supported")
+        }
+      }
+    }
   }
 })
