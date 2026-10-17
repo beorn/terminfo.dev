@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-17T20:37:54Z",
+  "runId": "c1122d2d96922fa617d52997bd858cea",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-29",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-u1cB9tKZ0nVmV8UHi6zq0esnSFX4flh3K0JjIQh5CE8=",
+    "revision": "cab25161054c50fd6c705db4ceefef0f1e5a9575"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev/luna3/notes/29816-landed/c1122d2d96922fa617d52997bd858cea/prep/runner-bundle.tar",
+    "sha256": "773c7c327e23766aa675cc431e6a305355be08a4f21cc1686f8b62af0c6398fa",
+    "narSha256": "sha256-9OzNabqK0LNT3tX5d8DKJwXpwRyJrH88+jrQU4EINqY=",
+    "frozenRunnerSha256": "8db3a578cd8a9ad94f9c4d249f3c28c4d3f67b2e4894d4be569bf45c766d0981",
+    "buildReceiptSha256": "a06f6d4e0523bff0d7fb60dd602e9302073be82713940abe5622aa8705b0ecd6",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "c24025ea22fc",
+      "collectorRevision": "319d9fdbed7dee7f8efe8036bb7b9738c20a2c29",
+      "bundleSha256": "1df869fa7b6ae11bcddfe0541845afec94ee0af3f17b3d1473614f88b3b248e4"
+    },
+    "rootBunLockSha256": "2e069b311431cb637a4410c259fe6943e0fdca51867154c9974177d0743b31e7"
+  },
+  "runtime": {
+    "imageId": "sha256:46cb2c3a7ba1363e48e89ceb2e6e8f67edcf72095fdec9752cf4668e957814f9",
+    "imageTarSha256": "749b51dd21732dc6737f390a607109f5f3033e3a00bea7f9cc4fcfc354c0a02f",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "319d9fdbed7dee7f8efe8036bb7b9738c20a2c29",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "51af76baccfa8de190a2da2aaa53567841d4302f",
+    "suiteHash": "c24025ea22fc"
+  },
+  "status": "raw-unreviewed-history"
+}
