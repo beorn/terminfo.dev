@@ -834,19 +834,21 @@ describe("per-category decisive share (28018 AC2)", () => {
   }, 20_000)
 })
 
-describe("a cohort with no freeze of its own reads the frozen suite its caller names", () => {
+describe("the candidate-4 cohort reads the frozen suite its caller names", () => {
   const contentDir = join(import.meta.dirname, "..", "content")
 
   it("names candidate 4's slices, its suite and whose freeze declared that suite", () => {
     const spec = candidate4Cohort(contentDir)
     expect(spec.name).toBe("candidate4")
     expect(spec.slices).toEqual(["extensions", "input"])
-    // No candidate-4 freeze exists, so the suite is candidate 2's own frozen id, named explicitly.
+    // The reader still names candidate 2's own frozen id explicitly: moving the cohort onto its own
+    // freeze is a separate reader change, so this naming is a decision, not a registry fallback.
     expect(spec.suiteId).toBe("5753741410a9")
     expect(spec.suiteFrozenFor).toBe("candidate2")
-    // The refusal is not a fallback: asking the registry for candidate 4 still throws.
-    expect(() => frozenSuiteIdFor(contentDir, "candidate4")).toThrow(
-      /no suite manifest declares freeze\.release "candidate4"/,
+    // The registry carries candidate 4's own freeze now, and a release nothing freezes still refuses.
+    expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe("c24025ea22fc")
+    expect(() => frozenSuiteIdFor(contentDir, "candidate9")).toThrow(
+      /no suite manifest declares freeze\.release "candidate9"/,
     )
   }, 15_000)
 

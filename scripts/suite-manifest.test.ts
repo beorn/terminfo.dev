@@ -232,7 +232,15 @@ test("the source-tree collector derives the same manifest that the admission wri
 
     process.env.TERMINFO_PROBE_HASH = snapshot.probeHash
     const receipt = getTrustedSuiteReceipt()
-    expect(receipt.manifest).toEqual(writerManifest)
+    // A freeze act adds metadata the writer cannot derive, so the receipt is the derived declaration
+    // plus that release's committed freeze record, carried verbatim rather than dropped.
+    const committedPath = join(REPO_ROOT, "content", "suites", `${snapshot.probeHash}.json`)
+    const committed = existsSync(committedPath)
+      ? parseSuiteManifest(committedPath, readFileSync(committedPath, "utf8"))
+      : undefined
+    expect(receipt.manifest).toEqual(
+      committed?.freeze ? { ...writerManifest, freeze: committed.freeze } : writerManifest,
+    )
   } finally {
     if (prevHash === undefined) delete process.env.TERMINFO_PROBE_HASH
     else process.env.TERMINFO_PROBE_HASH = prevHash
