@@ -354,8 +354,8 @@ export function candidate4Cohort(contentDir: string): CohortSpec {
     name: "candidate4",
     slices: ["extensions", "input"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
