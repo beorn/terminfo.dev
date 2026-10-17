@@ -25,6 +25,7 @@ import {
   buildReport,
   candidate2Cohort,
   candidate4Cohort,
+  COHORT_FACTORIES,
   categoryShares,
   cohortCategories,
   cohortHeaderLine,
@@ -121,7 +122,10 @@ describe("release 1 decisive-count reader", () => {
 
   it("preserves the default report and accepts only the named CLI selectors and positionals", () => {
     const contentDir = join(import.meta.dirname, "..", "content")
-    expect(buildReport({ contentDir })).toEqual(buildReport({ contentDir }))
+    // The default run measures no cohort at all: not an empty one, and not a fallback to a named one.
+    const baseline = buildReport({ contentDir })
+    expect(baseline.cohort).toBeUndefined()
+    expect(baseline.barRows.length).toBeGreaterThan(0)
     expect(parseReaderArgs([])).toEqual({ cohort: "candidate1", terminalIds: [] })
     expect(parseReaderArgs(["kitty", "--cohort", "candidate2", "xterm"])).toEqual({
       cohort: "candidate2",
@@ -131,6 +135,20 @@ describe("release 1 decisive-count reader", () => {
     expect(() => parseReaderArgs(["--cohort", "candidate3"])).toThrow(/candidate1, candidate2/)
     expect(() => parseReaderArgs(["--unknown"])).toThrow(/unknown/i)
     // Two complete real-data projections took 5.7s under measured host load; keep this bound local.
+  }, 15_000)
+
+  it("maps every accepted cohort value to a factory, candidate 1 to none", () => {
+    const contentDir = join(import.meta.dirname, "..", "content")
+    // The mapper is the only place a cohort value becomes a spec. A value accepted by the CLI but
+    // missing here would silently measure nothing, so each one is checked against the map.
+    expect(Object.keys(COHORT_FACTORIES).sort()).toEqual(["candidate1", "candidate2", "candidate4"])
+    expect(COHORT_FACTORIES.candidate1).toBeUndefined()
+    expect(COHORT_FACTORIES.candidate2?.(contentDir)?.name).toBe("candidate2")
+    expect(COHORT_FACTORIES.candidate4?.(contentDir)?.name).toBe("candidate4")
+    for (const value of ["candidate1", "candidate2", "candidate4"] as const) {
+      expect(parseReaderArgs(["--cohort", value]).cohort).toBe(value)
+      expect(Object.hasOwn(COHORT_FACTORIES, value)).toBe(true)
+    }
   }, 15_000)
 
   it("keeps the selected non-frozen run ineligible instead of replacing it with a competing frozen run", () => {
@@ -816,7 +834,7 @@ describe("per-category decisive share (28018 AC2)", () => {
   }, 20_000)
 })
 
-describe("candidate 4 reads candidate 2's frozen suite, said out loud (29629 AC2)", () => {
+describe("a cohort with no freeze of its own reads the frozen suite its caller names", () => {
   const contentDir = join(import.meta.dirname, "..", "content")
 
   it("names candidate 4's slices, its suite and whose freeze declared that suite", () => {
@@ -848,6 +866,26 @@ describe("candidate 4 reads candidate 2's frozen suite, said out loud (29629 AC2
     expect(candidate2.cohort.measuredIds).toHaveLength(125)
     expect(candidate2.cohort.frozenSuiteId).toBe("5753741410a9")
     expect(candidate2.cohort.suiteFrozenFor).toBe("candidate2")
+  }, 20_000)
+
+  it("derives the cohort from its data, never from its name", () => {
+    // The key-set comparison above proves the shape; this proves the PATH. A buildReport that chose
+    // the tier-1 exclusion from the cohort's name would still pass every other row in this file.
+    const renamed = { ...candidate4Cohort(contentDir), name: "candidate2" as const }
+    const report = buildReport({ contentDir, cohort: renamed })
+    if (!report.cohort) throw new Error("cohort report absent")
+    expect(report.cohort.measuredIds).toHaveLength(44)
+    expect(report.cohort.slices).toEqual(["extensions", "input"])
+    expect(report.cohort.measuredIds).not.toContain("extensions.osc777-notify")
+  }, 20_000)
+
+  it("refuses a suite whose manifest is not frozen for the cohort it would print", () => {
+    // The header says WHOSE freeze declared the suite. A spec that claims another cohort's suite as
+    // its own must refuse, or the printed ownership is a claim nothing checked.
+    const borrowed = { ...candidate4Cohort(contentDir), suiteFrozenFor: "candidate4" as const }
+    expect(() => buildReport({ contentDir, cohort: borrowed })).toThrow(
+      /freeze\.release is "candidate2", not "candidate4"/,
+    )
   }, 20_000)
 
   it("prints the suite it read and whose freeze that is, for either cohort", () => {

@@ -95,8 +95,8 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     const input = cohortIds(catalog, categories, ["input"], { excludingTier1: true })
     expect(extensions).toHaveLength(34)
     expect(input).toHaveLength(10)
-    expect(cohortIds(catalog, categories, ["extensions"])).toHaveLength(79)
-    expect(cohortIds(catalog, categories, ["input"])).toHaveLength(11)
+    expect(cohortIds(catalog, categories, ["extensions"], { excludingTier1: false })).toHaveLength(79)
+    expect(cohortIds(catalog, categories, ["input"], { excludingTier1: false })).toHaveLength(11)
     const ids = cohortIds(catalog, categories, ["extensions", "input"], { excludingTier1: true })
     expect(ids).toHaveLength(44)
     expect(new Set(ids).size).toBe(44)
@@ -104,23 +104,32 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // follows that order rather than any per-call grouping.
     expect(ids.slice(0, extensions.length)).toEqual(extensions)
     expect(ids.slice(extensions.length)).toEqual(input)
-    // An unknown slice must refuse loudly, never fall back to another cohort and never return [].
-    expect(() => cohortIds(catalog, categories, ["nonesuch" as never])).toThrow(/cohort is empty/)
-    // The same exclusion over classics drops exactly the two rows 28018 counts as "not new"
-    // (125 catalog rows, 123 new), so the option is the tier filter and nothing else.
+    // A requested slice no category carries refuses and NAMES it, even beside a slice that does.
+    // Silently dropping the unknown member would answer with a cohort the caller did not ask for.
+    expect(() => cohortIds(catalog, categories, ["nonesuch" as never], { excludingTier1: false })).toThrow(
+      /asks for slice nonesuch, which no category carries/,
+    )
+    expect(() => cohortIds(catalog, categories, ["classics", "nonesuch" as never], { excludingTier1: false })).toThrow(
+      /nonesuch/,
+    )
+    expect(() => cohortIds(catalog, categories, [], { excludingTier1: false })).toThrow(/asks for no slices/)
+    // The same exclusion over classics drops exactly the two rows the candidate-2 count treats as
+    // not new (125 catalog rows, 123 new), so the option is the tier filter and nothing else.
     expect(cohortIds(catalog, categories, ["classics"], { excludingTier1: true })).toHaveLength(123)
-    // An empty result refuses and says WHY, rather than returning [] for a caller to read as a
-    // measurement.
-    expect(() => cohortIds(catalog, categories, ["nonesuch" as never], { excludingTier1: true })).toThrow(
-      /after excluding the tier-1 rows/,
+    // An empty result refuses and blames the exclusion, not the slices, when the exclusion did it.
+    const allTier1: Record<string, { slice: "tier1"; order: number }> = {
+      sgr: { slice: "tier1", order: 1 },
+    }
+    expect(() => cohortIds(catalog, allTier1, ["tier1"], { excludingTier1: true })).toThrow(
+      /already tier 1, so the exclusion leaves nothing/,
     )
   })
 
   it("derives the 125 classic cohort in the category catalog's order and refuses an empty classics slice", () => {
-    const ids = cohortIds(catalog, categories, ["classics"])
+    const ids = cohortIds(catalog, categories, ["classics"], { excludingTier1: false })
     expect(ids).toHaveLength(125)
     // The two classic rows that also carry a tier1 field stay in the cohort: the filter is the
-    // CATEGORY slice, matching 28018's accepted 125.
+    // CATEGORY slice, matching the accepted 125.
     expect(ids).toContain("cursor.position-report")
     expect(ids).toContain("editing.decrqcra")
     // ONE category order: the cohort follows each category's own `order`, the same field the site's
@@ -133,20 +142,25 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
       categories,
       name: "candidate2",
       slices: ["classics"],
+      excludingTier1: false,
       frozenSuiteId: "abc123abc123",
     })
     expect(cohort.name).toBe("candidate2")
     expect(cohort.frozenSuiteId).toBe("abc123abc123")
     expect(cohort.measuredIds).toEqual(ids)
-    expect(() => cohortIds(catalog, { sgr: { slice: "extensions", order: 1 } }, ["classics"])).toThrow(
-      /cohort is empty/,
-    )
+    // A slice the category map carries but no catalog row populates is an EMPTY cohort, a different
+    // refusal from an unknown slice; it names both the slice and the categories that were walked.
+    expect(() =>
+      cohortIds(catalog, { ghosts: { slice: "classics", order: 1 } }, ["classics"], {
+        excludingTier1: false,
+      }),
+    ).toThrow(/cohort is empty: the categories for slices classics carry no rows/)
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
     expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("5753741410a9")
-    // Candidate 4 has no freeze of its own; the reader must name candidate 2's suite EXPLICITLY rather
-    // than this lookup quietly answering with candidate 2's manifest (@cto b32f6438, option a).
+    // A cohort with no freeze of its own must be named EXPLICITLY by its caller; this lookup refuses
+    // rather than quietly answering with the manifest of a cohort that does have one.
     expect(() => frozenSuiteIdFor(contentDir, "candidate4")).toThrow(
       /no suite manifest declares freeze\.release "candidate4"/,
     )
