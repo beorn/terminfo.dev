@@ -149,6 +149,7 @@ if (-not $result.foregroundMatched) {
 
 for ($i = 0; $i -lt 20 -and -not (Test-Path "$received.started"); $i++) { Start-Sleep -Milliseconds 500 }
 $result.readerStarted = Test-Path "$received.started"
+if ($result.readerStarted) { $result.reader = Get-Content "$received.started" -Raw }
 
 $rect = New-Object Spike+RECT
 [Spike]::GetWindowRect($hwnd, [ref]$rect) | Out-Null

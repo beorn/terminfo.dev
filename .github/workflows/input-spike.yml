@@ -31,6 +31,7 @@ jobs:
           cat > "$OUT/reader.sh" <<READER
           #!/bin/bash
           rm -f "$OUT/received.bin" "$OUT/partial.bin"
+          printf '{"isTTY":%s,"tty":"%s"}\n' "$([ -t 0 ] && echo true || echo false)" "$(tty 2>/dev/null || echo none)" > "$OUT/reader.started"
           head -c 1 > "$OUT/partial.bin"
           mv "$OUT/partial.bin" "$OUT/received.bin"
           READER
@@ -61,6 +62,7 @@ jobs:
             echo "appleevent_err=$(cat "$OUT/appleevent.err" 2>/dev/null || true)"
             echo "attempts=$attempts"
             cat "$OUT/attempts.jsonl" 2>/dev/null || true
+            echo "reader=$(cat "$OUT/reader.started" 2>/dev/null || echo no-start-marker)"
             cat "$OUT/result.err" 2>/dev/null || true
           } | tee "$OUT/summary.txt"
       - uses: actions/upload-artifact@v4
