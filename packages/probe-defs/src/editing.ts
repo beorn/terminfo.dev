@@ -696,17 +696,9 @@ const editingProbeDefinitions: ProbeDefinition[] = [
       )
     },
     async (ctx) => {
-      if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 8) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: `Editing fixture needs at least 2x8, measured ${ctx.rows}x${ctx.cols}`,
-          },
-        }
-      }
+      // Deliberately no geometry read: when the owned terminal's geometry is unavailable, touching
+      // ctx.rows/ctx.cols throws UndeclaredTerminalGeometry and the whole run loses suiteComplete.
+      // The setting can still be attempted; without a cell readback the row stays unmeasured by name.
       ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
       const pos = await ctx.queryCursorPosition()
       return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
