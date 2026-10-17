@@ -94,9 +94,9 @@ function createComposedFixture(root: string): { fixture: string; git: (...args: 
   execFileSync("git", ["-c", "advice.detachedHead=false", "clone", "--shared", "--quiet", REPO_ROOT, fixture], {
     encoding: "utf8",
   })
-  const rootNodeModules = join(REPO_ROOT, "..", "..", "node_modules")
-  if (existsSync(rootNodeModules)) symlinkSync(rootNodeModules, join(root, "node_modules"))
   symlinkSync(join(REPO_ROOT, "node_modules"), join(fixture, "node_modules"))
+  const pkgNodeModules = join(REPO_ROOT, "packages", "terminfo.dev", "node_modules")
+  if (existsSync(pkgNodeModules)) symlinkSync(pkgNodeModules, join(fixture, "packages", "terminfo.dev", "node_modules"))
   const git = (...args: string[]): string =>
     execFileSync("git", args, { cwd: fixture, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
   git("config", "user.email", "fixture@example.invalid")
