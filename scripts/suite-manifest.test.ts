@@ -7,22 +7,27 @@
  * @testonly none
  */
 import { execFileSync } from "node:child_process"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { afterEach, expect, test } from "vitest"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import { probeSuiteSnapshot, type ProbeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { parseDisposableReceipt, readDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { getTrustedSuiteReceipt } from "../packages/terminfo.dev/src/serve.ts"
 import {
   assertDeclareIsAuthoring,
   checkCitedSuiteManifests,
+  declareCurrentSuiteManifest,
   derivedSuiteManifest,
   persistSuiteManifest,
-  suiteDeclarationState,
   suiteManifestMode,
   uncommittedCollectorDirt,
   verifySuiteManifest,
 } from "./suite-manifest.ts"
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -179,46 +184,88 @@ test("declaring refuses a checkout whose HEAD is already on origin/main and allo
   git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
 
   const undeclared = "a".repeat(12)
+  const snapshot = snapshotOf(undeclared)
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/origin\/main/)
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(
     new RegExp(`Suite ${undeclared} cannot be declared or admitted on this checkout`),
   )
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/admit-run\.ts --for/)
+  expect(() => declareCurrentSuiteManifest(directory, snapshot)).toThrow(/origin\/main/)
 
   writeFileSync(join(directory, "b.txt"), "two\n")
   git("add", "b.txt")
   git("commit", "-q", "-m", "two")
   expect(() => assertDeclareIsAuthoring(directory)).not.toThrow()
+  const declared = declareCurrentSuiteManifest(directory, snapshot)
+  expect(declared.status).toBe("created")
+  expect(existsSync(declared.path)).toBe(true)
 })
 
-/**
- * A non-fast-forward compose lands a suite nobody declared. The BUILD must stay green on that tree
- * and the state must be nameable by the receipt, while a checkout that CAN author still declares
- * (27864 A/B). RED BEFORE: this was an unconditional throw out of declaredSuiteManifest().
- */
-test("an undeclared suite on a composed tree is a state, and an authoring checkout still declares", () => {
-  const directory = temp("terminfo-suite-state-")
+test("the source-tree collector derives the same manifest that the admission writer persists", () => {
+  const snapshot = probeSuiteSnapshot()
+  const directory = temp("terminfo-serve-writer-parity-")
   const git = (...args: string[]): string =>
     execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
   git("init", "-q", "-b", "main")
   git("config", "user.email", "fixture@example.invalid")
   git("config", "user.name", "fixture")
-  mkdirSync(join(directory, "content", "suites"), { recursive: true })
   writeFileSync(join(directory, "a.txt"), "one\n")
   git("add", "a.txt")
   git("commit", "-q", "-m", "one")
   git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
-
-  const hash = "a".repeat(12)
-  const snapshot = snapshotOf(hash)
-  expect(suiteDeclarationState(snapshot, directory)).toEqual({ kind: "undeclared", probeHash: hash })
-
   writeFileSync(join(directory, "b.txt"), "two\n")
   git("add", "b.txt")
   git("commit", "-q", "-m", "two")
-  const authoring = suiteDeclarationState(snapshot, directory)
-  expect(authoring.kind).toBe("declared")
-  expect(authoring.kind === "declared" && authoring.manifest.probeHash).toBe(hash)
+
+  const declared = declareCurrentSuiteManifest(directory, snapshot)
+  const writerManifest = parseSuiteManifest(declared.path, readFileSync(declared.path, "utf8"))
+
+  const prevHash = process.env.TERMINFO_PROBE_HASH
+  const prevRev = process.env.TERMINFO_SOURCE_REVISION
+  try {
+    process.env.TERMINFO_SOURCE_REVISION = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+    }).trim()
+    process.env.TERMINFO_PROBE_HASH = "0".repeat(12)
+    expect(() => getTrustedSuiteReceipt()).toThrow(/differs from TERMINFO_PROBE_HASH/)
+
+    process.env.TERMINFO_PROBE_HASH = snapshot.probeHash
+    const receipt = getTrustedSuiteReceipt()
+    expect(receipt.manifest).toEqual(writerManifest)
+  } finally {
+    if (prevHash === undefined) delete process.env.TERMINFO_PROBE_HASH
+    else process.env.TERMINFO_PROBE_HASH = prevHash
+    if (prevRev === undefined) delete process.env.TERMINFO_SOURCE_REVISION
+    else process.env.TERMINFO_SOURCE_REVISION = prevRev
+  }
+})
+
+test("committed disposable receipts verify unchanged and new receipts without manifestSha256 verify", () => {
+  const receiptsDir = join(REPO_ROOT, "content", "receipts")
+  const receiptFiles = readdirSync(receiptsDir)
+    .filter((file) => file.endsWith(".json"))
+    .sort()
+  expect(receiptFiles.length).toBeGreaterThan(0)
+  let linuxReceiptPath: string | undefined
+  for (const file of receiptFiles) {
+    const path = join(receiptsDir, file)
+    const parsed = readDisposableReceipt(path)
+    if (parsed.kind === "linux-xvfb-container" && !linuxReceiptPath) linuxReceiptPath = path
+  }
+  expect(linuxReceiptPath).toBeDefined()
+  const existing = readDisposableReceipt(linuxReceiptPath!)
+  expect(existing.kind).toBe("linux-xvfb-container")
+
+  const raw = JSON.parse(readFileSync(linuxReceiptPath!, "utf8")) as {
+    runnerArtifact: { build: Record<string, unknown> }
+  }
+  expect(raw.runnerArtifact.build.manifestSha256).toMatch(/^[0-9a-f]{64}$/)
+  delete raw.runnerArtifact.build.manifestSha256
+  delete raw.runnerArtifact.build.suiteState
+  const withoutManifestDigest = parseDisposableReceipt(`${JSON.stringify(raw, null, 2)}\n`)
+  expect(withoutManifestDigest.kind).toBe("linux-xvfb-container")
+  expect(withoutManifestDigest.identity).toEqual(existing.identity)
 })
 
 /**

@@ -30,6 +30,7 @@ import { DetectView } from "./views/DetectView.tsx"
 import { decodeCollectorRun } from "@terminfo/run-parser"
 import { createDraft } from "./submit.ts"
 import { probeOutputStream } from "./probe-output.ts"
+import { getCliSuiteProbeHash } from "./serve.ts"
 
 /** Collect the same explicit v2 run as the daemon endpoint. */
 async function runProbes(out?: NodeJS.WriteStream) {
@@ -55,7 +56,7 @@ async function printView(element: React.ReactElement): Promise<void> {
 const program = new Command()
   .name("terminfo")
   .description(`Can your terminal do that? — record available checks across ${ALL_PROBES.length} feature definitions`)
-  .version(packageVersion)
+  .version(`${packageVersion} (${getCliSuiteProbeHash()})`)
 
 program.addHelpSection("Examples:", [
   ["$ npx terminfo.dev test", "Record available checks; other checks may be refused"],

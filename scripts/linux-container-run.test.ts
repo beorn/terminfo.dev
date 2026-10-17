@@ -491,31 +491,42 @@ describe("cli producer receipt gate", () => {
     schemaVersion: 1,
     probeHash: "a".repeat(12),
     collectorRevision: "b".repeat(40),
-    manifestSha256: "c".repeat(64),
     bundleSha256: "d".repeat(64),
     ...overrides,
   })
-  const gate = (value: unknown) => {
+  const gate = (value: unknown, cliBin?: string) => {
     const file = join(dir, "cli-receipt.json")
     writeFileSync(file, JSON.stringify(value))
-    return spawnSync("bash", ["-c", 'source "$1"; require_cli_producer_receipt "$2"', "_", launcher, file], {
-      encoding: "utf8",
-    })
+    return spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; require_cli_producer_receipt "$2" "${3:-}"',
+        "_",
+        launcher,
+        file,
+        ...(cliBin ? [cliBin] : []),
+      ],
+      {
+        encoding: "utf8",
+      },
+    )
   }
 
-  it("accepts a declared producer receipt", () => {
-    expect(gate(receipt()).status).toBe(0)
+  it("accepts a live-identity producer receipt and prints its suite hash", () => {
+    const result = gate(receipt())
+    expect(result.status).toBe(0)
+    expect(result.stdout.trim()).toBe("a".repeat(12))
   })
 
-  // A non-fast-forward compose lands a suite nobody declared: the build stays green and the receipt
-  // carries the state, so the launcher's FIRST sentence must name the suite, not read as a malformed
-  // receipt (27864 C).
-  it("refuses an undeclared suite BY NAME, not as a malformed receipt", () => {
-    const result = gate(receipt({ manifestSha256: null, suiteState: "undeclared" }))
+  it("refuses when the CLI bundle reports a suite hash that disagrees with the producer receipt", () => {
+    const fakeCli = join(dir, "fake-terminfo.mjs")
+    writeFileSync(fakeCli, `console.log("4.0.0 (${"f".repeat(12)})")\n`)
+    const result = gate(receipt(), fakeCli)
     expect(result.status).toBe(2)
-    expect(result.stderr).toContain(`Suite ${"a".repeat(12)}`)
-    expect(result.stderr).toMatch(/undeclared/i)
-    expect(result.stderr).not.toContain("Invalid CLI producer receipt")
+    expect(result.stderr).toContain(
+      `CLI bundle suite ${"f".repeat(12)} differs from producer receipt ${"a".repeat(12)}`,
+    )
   })
 
   it("still refuses a malformed producer receipt generically", () => {

@@ -15,7 +15,7 @@
 
 import { createStyle } from "@silvery/ansi"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
-import { mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join, win32 } from "node:path"
 import { homedir } from "node:os"
 import { randomBytes, timingSafeEqual } from "node:crypto"
@@ -46,6 +46,7 @@ import {
   type TerminalAppOwnerAssertion,
 } from "./owned-terminal.ts"
 import { parseRunProvenance } from "@terminfo/run-parser"
+import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
 const s = createStyle()
 
@@ -75,6 +76,18 @@ function assertLoadedAppSuite(manifest: ProbeSuiteManifest, probeHash: string, l
   }
 }
 
+export function getCliSuiteProbeHash(): string {
+  if (bundledSuite) {
+    const { manifest, collectorRevision } = bundledSuite
+    if (!/^[0-9a-f]{12}$/.test(manifest.probeHash) || !/^[0-9a-f]{40}$/.test(collectorRevision)) {
+      throw new Error("Compiled CLI has invalid suite or collector revision metadata")
+    }
+    assertLoadedAppSuite(manifest, manifest.probeHash, "compiled CLI receipt")
+    return manifest.probeHash
+  }
+  return probeSuiteSnapshot(SOURCE_ROOT).probeHash
+}
+
 export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collectorRevision: string } {
   if (bundledSuite) {
     const { manifest, collectorRevision } = bundledSuite
@@ -97,28 +110,18 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
       "v2 collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
     )
   }
+  const snapshot = probeSuiteSnapshot(SOURCE_ROOT)
+  if (snapshot.probeHash !== probeHash) {
+    throw new Error(`Collector suite ${snapshot.probeHash} differs from TERMINFO_PROBE_HASH`)
+  }
   const manifestPath = join(SOURCE_ROOT, "content", "suites", `${probeHash}.json`)
-  const manifest: ProbeSuiteManifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ProbeSuiteManifest
-  assertLoadedAppSuite(manifest, probeHash, manifestPath)
+  const manifest: ProbeSuiteManifest = existsSync(manifestPath)
+    ? (JSON.parse(readFileSync(manifestPath, "utf8")) as ProbeSuiteManifest)
+    : derivedSuiteManifest(snapshot)
+  assertLoadedAppSuite(manifest, probeHash, existsSync(manifestPath) ? manifestPath : "derived source suite")
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: SOURCE_ROOT, encoding: "utf8" }).trim()
   if (revision !== sourceRevision) throw new Error(`Collector revision differs from TERMINFO_SOURCE_REVISION`)
-  const dirty = execFileSync(
-    "git",
-    [
-      "status",
-      "--porcelain",
-      "--",
-      "packages/probe-defs/src",
-      "packages/terminfo.dev/src",
-      "packages/terminfo.dev/package.json",
-      "packages/run-parser/src",
-      "packages/run-parser/package.json",
-    ],
-    {
-      cwd: SOURCE_ROOT,
-      encoding: "utf8",
-    },
-  ).trim()
+  const dirty = uncommittedCollectorDirt(SOURCE_ROOT, snapshot)
   if (dirty) throw new Error(`Collector source is uncommitted: ${dirty}`)
   return { manifest, collectorRevision: sourceRevision }
 }

@@ -1,12 +1,19 @@
 /** Record and validate the immutable declaration of an executable probe suite. */
 
-import { execFileSync, spawnSync } from "node:child_process"
+import { spawnSync } from "node:child_process"
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { probeSuiteSnapshot, type ProbeSuiteSnapshot } from "./versions.ts"
+import {
+  derivedSuiteManifest,
+  probeSuiteSnapshot,
+  uncommittedCollectorDirt,
+  type ProbeSuiteSnapshot,
+} from "./versions.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
+
+export { derivedSuiteManifest, uncommittedCollectorDirt }
 
 /**
  * The one suite manifest whose `freeze.release` names this release. The 83 manifests ARE the suite
@@ -42,7 +49,6 @@ export function frozenSuiteIdFor(contentDir: string, release: string): string {
 }
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
-const SUITES_DIR = join(ROOT, "content", "suites")
 const RUN_DIRS = ["probes-apps", "probes-libs", "probes-mux"] as const
 const KINDS = ["app", "headless", "mux"] as const
 
@@ -105,38 +111,9 @@ export function persistSuiteManifest(
 }
 
 /**
- * The declaration a consumer BOUND TO ONE SUITE needs (the published CLI bundle). This is not the
- * composed-tree `--check` gate — that one deliberately does not require the tree's own suite to be
- * declared. A bundle build is a first use of the suite: it embeds the suite identity, so an
- * authoring checkout declares the derived record here, while a checkout whose HEAD is already on
- * origin/main can only verify what a commit already carries. There is still no standalone declare
- * command: admission and this bundle binding call the same primitives.
- */
-export function declaredSuiteManifest(
-  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
-  root: string = ROOT,
-): ProbeSuiteManifest {
-  const path = join(root, "content", "suites", `${snapshot.probeHash}.json`)
-  if (existsSync(path)) return verifySuiteManifest(path, snapshot)
-  assertDeclareIsAuthoring(root, snapshot.probeHash)
-  return persistSuiteManifest(path, derivedSuiteManifest(snapshot), snapshot) === "created"
-    ? derivedSuiteManifest(snapshot)
-    : verifySuiteManifest(path, snapshot)
-}
-
-/**
- * Declaring a suite is authoring (27843 AC2), so it may only run on a checkout carrying work that
- * is not yet on main: a declare on a shared-main checkout writes a manifest no commit will take —
- * the stray that reached /hh/dev twice. `--check` still runs anywhere; validating a stored
- * declaration is a read.
- *
- * The refusal NAMES THE STATE, because it is the operator's first signal (27864). When a
- * non-fast-forward compose lands a suite nobody declared, an ordinary build on that checkout fails
- * here, and "HEAD is already on origin/main" reads like a git problem rather than an undeclared
- * suite. So when the caller knows the hash, the message carries it and the cure. It never CLAIMS
- * the suite is undeclared: `admit-run.ts` calls this guard unconditionally, so the manifest may
- * well exist on this checkout — the real condition is that HEAD is on origin/main, where a
- * declaration or an admission lands on no commit (27929 D2).
+ * Declaring a suite is authoring, so it may only run on a checkout carrying work that
+ * is not yet on main: a declare on a shared-main checkout writes a manifest no commit will take.
+ * `--check` still runs anywhere; validating a stored declaration is a read.
  *
  * ADMISSION PASSES THIS GUARD. `scripts/admit-run.ts` declares the run's manifest and admits the
  * run in one commit on a branch ahead of origin/main, so the guard holds unchanged. Do not weaken
@@ -176,85 +153,12 @@ export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void 
   )
 }
 
-export type SuiteDeclarationState =
-  | { kind: "declared"; manifest: ProbeSuiteManifest }
-  | { kind: "undeclared"; probeHash: string }
-
-/**
- * What a bundle build can say about THIS tree's suite declaration, as a STATE rather than a throw.
- * A build is a first use of the suite, so an authoring checkout declares the derived record; a
- * checkout whose HEAD is already on origin/main can only verify what a commit already carries —
- * and when a non-fast-forward compose lands a suite nobody declared, that is a nameable state the
- * receipt must carry while the build stays green (27864 A/B). The refusal is NOT weakened where a
- * declaration is required: `declaredSuiteManifest` and admission still throw
- * (`assertDeclareIsAuthoring`), and the launcher refuses an undeclared receipt by name.
- */
-export function suiteDeclarationState(
-  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
+export function declareCurrentSuiteManifest(
   root: string = ROOT,
-): SuiteDeclarationState {
+  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(root),
+): { status: "created" | "existing"; path: string } {
+  assertDeclareIsAuthoring(root, snapshot.probeHash)
   const path = join(root, "content", "suites", `${snapshot.probeHash}.json`)
-  if (existsSync(path)) return { kind: "declared", manifest: verifySuiteManifest(path, snapshot) }
-  if (declarationCheckoutState(root) === "on-main") return { kind: "undeclared", probeHash: snapshot.probeHash }
-  return { kind: "declared", manifest: declaredSuiteManifest(snapshot, root) }
-}
-
-/**
- * The committed inputs a CLI bundle must be reproducible from (28029, T7). The tree's OWN suite
- * declaration is deliberately EXCLUDED: on an authoring checkout it is DERIVED and written so the
- * collector can read the file (`serve.ts` refuses a v2 collection whose suite is absent), and it is
- * committed ONCE at the RC freeze act — never per probe change. Listing it here added no coverage
- * (`verifySuiteManifest` already checks its content against the live snapshot) while imposing a
- * declaration commit on every probe development change (the measured 13 commits / ~1 h in one week).
- */
-function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
-  return [
-    ...snapshot.sourcePaths,
-    "packages/terminfo.dev/src",
-    "packages/terminfo.dev/bin/terminfo.mjs",
-    "packages/admin/versions.ts",
-    "packages/run-parser/src",
-    "packages/run-parser/package.json",
-    "scripts/build-cli.ts",
-    "scripts/suite-manifest.ts",
-    "packages/admin/suite-manifest.ts",
-    "bun.lock",
-  ]
-}
-
-/**
- * The collector inputs that are not committed, so a bundle built from them is not reproducible.
- * The derived in-development declaration is not among them (28029/T7): its file existing is what
- * the collector needs, and its commitment belongs to the freeze act, not to this check.
- */
-export function uncommittedCollectorDirt(
-  cwd: string = ROOT,
-  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
-): string {
-  return execFileSync("git", ["status", "--porcelain", "--", ...collectorCommittedInputs(snapshot)], {
-    cwd,
-    encoding: "utf8",
-  }).trim()
-}
-
-/**
- * Declare the current tree's suite as a DERIVED record: `probeHash`, `adapterVersion` and `probes`
- * only, a pure function of the suite sources (27832 direction (2)). No `sourceRevision`/
- * `generatedAt` are recorded, so a recomposition of the same sources is never a new declaration.
- * The one public caller is `scripts/admit-run.ts`; there is no standalone declare verb.
- */
-export function derivedSuiteManifest(snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
-  return {
-    probeHash: snapshot.probeHash,
-    adapterVersion: snapshot.adapterVersion,
-    probes: snapshot.probes,
-  }
-}
-
-export function declareCurrentSuiteManifest(): { status: "created" | "existing"; path: string } {
-  const snapshot = probeSuiteSnapshot()
-  assertDeclareIsAuthoring(ROOT, snapshot.probeHash)
-  const path = join(SUITES_DIR, `${snapshot.probeHash}.json`)
   if (existsSync(path)) {
     verifySuiteManifest(path, snapshot)
     return { status: "existing", path }

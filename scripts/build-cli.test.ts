@@ -9,6 +9,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import {
   appendFileSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -62,7 +63,6 @@ it("refuses an absent or mismatched packed bundle receipt before execution", () 
         schemaVersion: 1,
         probeHash: "a".repeat(12),
         collectorRevision: "b".repeat(40),
-        manifestSha256: "c".repeat(64),
         bundleSha256: "d".repeat(64),
       }),
     )
@@ -75,82 +75,130 @@ it("refuses an absent or mismatched packed bundle receipt before execution", () 
   }
 })
 
+const WORKTREE_SYNC_FILES = [
+  "packages/admin/versions.ts",
+  "packages/admin/suite-manifest.ts",
+  "packages/terminfo.dev/src/serve.ts",
+  "packages/terminfo.dev/src/index.tsx",
+  "packages/terminfo.dev/bin/terminfo.mjs",
+  "scripts/build-cli.ts",
+  "scripts/suite-manifest.ts",
+  "scripts/linux-container-run.sh",
+]
+
+function createComposedFixture(root: string): { fixture: string; git: (...args: string[]) => string } {
+  const fixture = join(root, "composed")
+  // REPO_ROOT may itself be a detached checkout (a submodule at a shared-main pin): cloning it
+  // then prints git's detached-HEAD advice on stderr, which execFileSync inherits and the Vitest
+  // output gate rejects. `advice.detachedHead=false` keeps the clone quiet in both states.
+  execFileSync("git", ["-c", "advice.detachedHead=false", "clone", "--shared", "--quiet", REPO_ROOT, fixture], {
+    encoding: "utf8",
+  })
+  const rootNodeModules = join(REPO_ROOT, "..", "..", "node_modules")
+  if (existsSync(rootNodeModules)) symlinkSync(rootNodeModules, join(root, "node_modules"))
+  symlinkSync(join(REPO_ROOT, "node_modules"), join(fixture, "node_modules"))
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: fixture, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("config", "user.email", "fixture@example.invalid")
+  git("config", "user.name", "fixture")
+  for (const relativePath of WORKTREE_SYNC_FILES) {
+    copyFileSync(join(REPO_ROOT, relativePath), join(fixture, relativePath))
+  }
+  // A composed probe change moves the suite hash; the manifest for that hash is never committed.
+  appendFileSync(join(fixture, "packages/probes/vitest.config.ts"), "\n// composed tree: a suite nobody declared\n")
+  git("add", "packages/probes/vitest.config.ts", ...WORKTREE_SYNC_FILES)
+  git("commit", "-q", "-m", "fixture: composed probe change")
+  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
+  expect(() => git("merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/main")).not.toThrow()
+  return { fixture, git }
+}
+
+it("refuses dirty collector sources before building a CLI bundle", () => {
+  const root = mkdtempSync(join(tmpdir(), "terminfo-dirty-tree-"))
+  try {
+    const { fixture } = createComposedFixture(root)
+    appendFileSync(join(fixture, "packages/probes/vitest.config.ts"), "// uncommitted collector edit\n")
+    const build = spawnSync("bun", ["scripts/build-cli.ts"], { cwd: fixture, encoding: "utf8" })
+    expect(build.status).not.toBe(0)
+    expect(build.stderr).toContain("Cannot bundle an uncommitted CLI collector")
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 /**
- * The 27864 fixture: a NON-FAST-FORWARD COMPOSE lands a suite nobody declared. The tree's HEAD is
- * on origin/main (so it cannot author a declaration) and its composed suite has no manifest. The
- * BUILD must run and stay GREEN there — not only `--check` — and the receipt must carry the state,
- * which the launcher then refuses BY NAME before any container starts. RED BEFORE: the build threw
- * out of `declaredSuiteManifest()` on exactly this tree.
+ * On a composed tree whose HEAD is on origin/main and whose suite has no committed declaration file,
+ * the build derives the suite in memory without writing content/suites/<probeHash>.json, emits a
+ * live-identity receipt without manifestSha256 or suiteState, and both launchers accept it and
+ * verify the bundle's reported suite hash against the receipt.
  */
-it("stays green on a composed tree and hands the launcher a receipt it refuses by name", () => {
+it("stays green on a composed tree and records the live suite identity that the launchers accept", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-composed-tree-"))
   try {
-    const fixture = join(root, "composed")
-    // REPO_ROOT may itself be a detached checkout (a submodule at a shared-main pin): cloning it
-    // then prints git's detached-HEAD advice on stderr, which execFileSync inherits and the Vitest
-    // output gate rejects. `advice.detachedHead=false` keeps the clone quiet in both states.
-    execFileSync("git", ["-c", "advice.detachedHead=false", "clone", "--shared", "--quiet", REPO_ROOT, fixture], {
-      encoding: "utf8",
-    })
-    symlinkSync(join(REPO_ROOT, "node_modules"), join(fixture, "node_modules"))
-    const git = (...args: string[]): string =>
-      execFileSync("git", args, { cwd: fixture, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
-    git("config", "user.email", "fixture@example.invalid")
-    git("config", "user.name", "fixture")
-    // A composed probe change moves the suite hash; the manifest for that hash is never committed.
-    appendFileSync(join(fixture, "packages/probes/vitest.config.ts"), "\n// composed tree: a suite nobody declared\n")
-    git("add", "packages/probes/vitest.config.ts")
-    git("commit", "-q", "-m", "fixture: composed probe change")
-    git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
-    expect(() => git("merge-base", "--is-ancestor", "HEAD", "refs/remotes/origin/main")).not.toThrow()
+    const { fixture, git } = createComposedFixture(root)
+    const headRevision = git("rev-parse", "HEAD").trim()
 
-    // The build is a Bun program (Bun.build + TS entrypoints), so it runs on the repo's bun, the
-    // same binary the launcher itself invokes.
     const build = spawnSync("bun", ["scripts/build-cli.ts"], { cwd: fixture, encoding: "utf8" })
     expect(build.stderr).toBe("")
     expect(build.status).toBe(0)
-    expect(build.stdout).toContain("suite undeclared on this checkout")
 
     const receiptPath = join(fixture, "packages/terminfo.dev/dist/terminfo.bundle.receipt.json")
     const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as {
+      schemaVersion: number
       probeHash: string
-      manifestSha256: unknown
-      suiteState: unknown
+      collectorRevision: string
+      bundleSha256: string
+      manifestSha256?: unknown
+      suiteState?: unknown
     }
-    expect(receipt.suiteState).toBe("undeclared")
-    expect(receipt.manifestSha256).toBeNull()
+    expect(Object.keys(receipt).sort()).toEqual(["bundleSha256", "collectorRevision", "probeHash", "schemaVersion"])
+    expect(receipt.schemaVersion).toBe(1)
     expect(receipt.probeHash).toMatch(/^[0-9a-f]{12}$/)
+    expect(receipt.collectorRevision).toBe(headRevision)
+    expect(receipt.bundleSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(receipt.manifestSha256).toBeUndefined()
+    expect(receipt.suiteState).toBeUndefined()
+
+    const launcherBin = join(fixture, "packages/terminfo.dev/bin/terminfo.mjs")
+    const hosted = spawnSync(process.execPath, [launcherBin, "--version"], { encoding: "utf8" })
+    expect(hosted.stderr).toBe("")
+    expect(hosted.status).toBe(0)
+    expect(hosted.stdout.trim()).toMatch(new RegExp(`\\(${receipt.probeHash}\\)$`))
 
     const gate = spawnSync(
       "bash",
       [
         "-c",
-        'source "$1"; require_cli_producer_receipt "$2"',
+        'source "$1"; require_cli_producer_receipt "$2" "$3"',
         "_",
         join(fixture, "scripts/linux-container-run.sh"),
         receiptPath,
+        launcherBin,
       ],
       { encoding: "utf8" },
     )
-    expect(gate.status).toBe(2)
-    expect(gate.stderr).toContain(`Suite ${receipt.probeHash} is undeclared on this checkout`)
-    expect(gate.stderr).not.toContain("Invalid CLI producer receipt")
+    expect(gate.stderr).toBe("")
+    expect(gate.status).toBe(0)
+    expect(gate.stdout.trim()).toBe(receipt.probeHash)
 
-    // Hosted macOS/Windows workflows smoke-check the npm-installed bin (`terminfo --version`)
-    // after build-cli. That launcher is terminfo.mjs, not linux-container-run.sh. An undeclared
-    // receipt uses manifestSha256: null; treating that as "invalid fields" is the 28533 hosted
-    // collect die at install (macos-measurement #30 on eeef831). The clone is HEAD; copy the
-    // working-tree launcher so this assertion covers the uncommitted bin.
-    copyFileSync(
-      join(REPO_ROOT, "packages/terminfo.dev/bin/terminfo.mjs"),
-      join(fixture, "packages/terminfo.dev/bin/terminfo.mjs"),
+    // When the receipt's probeHash disagrees with the bundle's embedded suite, the launcher refuses.
+    writeFileSync(receiptPath, `${JSON.stringify({ ...receipt, probeHash: "0".repeat(12) }, null, 2)}\n`)
+    const divergedGate = spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; require_cli_producer_receipt "$2" "$3"',
+        "_",
+        join(fixture, "scripts/linux-container-run.sh"),
+        receiptPath,
+        launcherBin,
+      ],
+      { encoding: "utf8" },
     )
-    const hosted = spawnSync(process.execPath, [join(fixture, "packages/terminfo.dev/bin/terminfo.mjs"), "--version"], {
-      encoding: "utf8",
-    })
-    expect(hosted.status).not.toBe(0)
-    expect(hosted.stderr).toContain(`Suite ${receipt.probeHash} is undeclared on this checkout`)
-    expect(hosted.stderr).not.toMatch(/invalid fields/)
+    expect(divergedGate.status).toBe(2)
+    expect(divergedGate.stderr).toContain(
+      `CLI bundle suite ${receipt.probeHash} differs from producer receipt ${"0".repeat(12)}`,
+    )
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
