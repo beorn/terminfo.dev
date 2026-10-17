@@ -1024,31 +1024,29 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: { ris?: boolean } =
   return { ctx, cells }
 }
 
-test("a terminal whose SGR 0 retains italic cannot pass reset.sgr on a circular expected frame", async () => {
-  const partial = statefulTerminal(["bold", "inverse"])
-  const result = await captureRegionVerdict(partial.ctx, "reset.sgr", familyRow("reset.sgr"))
-  expect(result?.observation, "reset.sgr produced no observation").toBeDefined()
-  expect(result?.observation?.outcome, "a retained italic must never read as supported").not.toBe("supported")
-})
-
-test("a terminal whose SGR 0 retains underline cannot pass sgr.reset on a circular expected frame", async () => {
-  const partial = statefulTerminal(["bold", "italic"])
-  const result = await captureRegionVerdict(partial.ctx, "sgr.reset", familyRow("sgr.reset"))
-  expect(result?.observation?.outcome, "a retained underline must never read as supported").not.toBe("supported")
-})
-
-test("a terminal that ignores RIS cannot pass reset.sgr even with a partial SGR 0", async () => {
-  // Without the setup pre-paint, an ignored reference leaves the expected frame inheriting the
-  // target's own partial-reset state, which reproduces the fault as a pass.
-  const brokenReference = statefulTerminal(["bold", "inverse"], { ris: false })
-  const result = await captureRegionVerdict(brokenReference.ctx, "reset.sgr", familyRow("reset.sgr"))
-  expect(result?.observation?.outcome, "an ignored reference must never read as supported").not.toBe("supported")
-})
-
-test("a correct SGR 0 still decides both full-reset rows supported, so the fixture is not vacuous", async () => {
-  for (const id of ["reset.sgr", "sgr.reset"] as const) {
-    const correct = statefulTerminal(["bold", "italic", "inverse", "underline"])
-    const result = await captureRegionVerdict(correct.ctx, id, familyRow(id))
-    expect(result?.observation?.outcome, id).toBe("supported")
+test("the stateful terminal grades the two full-reset rows exactly: partial SGR 0 inconclusive, ignored RIS inconclusive, both correct supported", async () => {
+  // @cto's three-case table (ab8cd612 r2): the expected frame cannot reproduce a fault in the
+  // sequence it tests, and an inert reference cannot be read as a pass.
+  const all: SgrAttr[] = ["bold", "italic", "inverse", "underline"]
+  const cases: Array<{ id: "reset.sgr" | "sgr.reset"; sgr0: SgrAttr[]; ris: boolean; outcome: string }> = [
+    // SGR 0 keeps italic (reset.sgr) / keeps underline (sgr.reset): the target still carries it,
+    // while the expected frame is painted from a fully specified pre-state through RIS.
+    { id: "reset.sgr", sgr0: ["bold", "inverse"], ris: true, outcome: "inconclusive" },
+    { id: "sgr.reset", sgr0: ["bold", "italic"], ris: true, outcome: "inconclusive" },
+    // SGR 0 correct, RIS ignored: the expected frame falls back to the setup paint, so it equals the
+    // ignored frame — cannot separate, never a pass.
+    { id: "reset.sgr", sgr0: all, ris: false, outcome: "inconclusive" },
+    { id: "sgr.reset", sgr0: all, ris: false, outcome: "inconclusive" },
+    // Both mechanisms correct: the rows decide supported, so the fixture is not vacuous.
+    { id: "reset.sgr", sgr0: all, ris: true, outcome: "supported" },
+    { id: "sgr.reset", sgr0: all, ris: true, outcome: "supported" },
+  ]
+  for (const entry of cases) {
+    const terminal = statefulTerminal(entry.sgr0, { ris: entry.ris })
+    const result = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    expect(
+      result?.observation?.outcome,
+      `${entry.id} with SGR0 clearing ${entry.sgr0.join("+") || "nothing"} and RIS ${entry.ris ? "working" : "ignored"}`,
+    ).toBe(entry.outcome)
   }
 })
