@@ -103,6 +103,16 @@ export interface RegionReadback {
    * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
    */
   ignored?: string
+  /**
+   * Set when the expected frame cannot be produced without the sequence under test: a row whose
+   * reset clears TWO OR MORE of its setup attributes (reset.sgr, sgr.reset, sgr.selective-reset.bold)
+   * can leave the reset under test and the reference both missing the same part of that cleared set,
+   * so the surviving attribute is painted into the expected frame and the row reads supported while
+   * it survived. Such a row
+   * is INCONCLUSIVE BY NAME on the pixel path, before a byte, rather than graded against a reference
+   * that shares the tested sequence's failure.
+   */
+  noIndependentReference?: string
   /** The terminal's own pixel report, carried into every capture request. */
   pixelGeometry: PixelGeometry
   /**
@@ -186,6 +196,25 @@ function inconclusive(
  */
 function refused(id: string, note: string): ProbeResult {
   return inconclusive(id, note, "insufficient-evidence", "none")
+}
+
+/**
+ * A caller that had already written and queried before asking (the DECRQSS SGR readback) cannot
+ * carry evidence "none": run-parser requires a zero-byte trace for it. Rewrite any "none" refusal
+ * into the same observation with truthful query evidence and say why in the note. Pixel verdicts and
+ * every non-"none" refusal pass through untouched.
+ */
+function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "query"): ProbeResult | null {
+  const observation = result?.observation
+  if (callerEvidence === "none" || !observation || observation.evidence !== "none") return result
+  return {
+    ...result,
+    observation: {
+      ...observation,
+      evidence: "query",
+      note: `${observation.note ?? "refused"} — the caller wrote before this refusal, so this is not a zero-byte trace`,
+    },
+  }
 }
 
 function positive(value: number): boolean {
@@ -500,28 +529,45 @@ async function deriveCellSizeFromTextArea(
  * that answers those queries with something unusable is inconclusive BY NAME with evidence "query"
  * — the query bytes are already written, so it is not the zero-byte "none" shape, and a missing
  * report is never a capability verdict.
+ *
+ * `refusalEvidence` is the caller's account of bytes it already wrote on this row before asking:
+ * every "none" refusal below defaults to "none" only for a genuinely untouched run, and a caller
+ * whose own readback (the DECRQSS SGR report) wrote and queried first passes "query", which is
+ * applied to whichever refusal this oracle takes.
  */
 export async function captureRegionVerdict(
   ctx: TermContext,
   id: string,
   spec: Omit<RegionReadback, "pixelGeometry">,
+  refusalEvidence: "none" | "query" = "none",
 ): Promise<ProbeResult | null> {
   const read = collectorRegionRead(ctx)
   if (!read) return null
+  // A row whose reset clears two or more setup attributes has no reference independent of that
+  // reset, so this oracle declines it BY NAME before a byte: a reference that misses the same part of
+  // the cleared set would reproduce the fault and grade it supported.
+  // A caller that already wrote and queried says so: evidence "none" promises run-parser a
+  // zero-byte trace, and that promise is false after a silent DECRQSS attempt.
+  if (spec.noIndependentReference) {
+    return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), refusalEvidence)
+  }
   // Geometry first: an undersized terminal is refused before a single query byte.
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
-  if (bounds) return bounds
+  if (bounds) return afterCallerBytes(bounds, refusalEvidence)
   const calibrated = ctx.captureGeometry?.geometry
   if (
     calibrated &&
     (calibrated.textWidth !== calibrated.cellWidth * ctx.cols ||
       calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
   ) {
-    return inconclusive(
-      id,
-      `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
-      "insufficient-evidence",
-      "none",
+    return afterCallerBytes(
+      inconclusive(
+        id,
+        `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
+        "insufficient-evidence",
+        "none",
+      ),
+      refusalEvidence,
     )
   }
   const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
@@ -533,11 +579,14 @@ export async function captureRegionVerdict(
       "query",
     )
   }
-  return captureRegionReadbackDecision(
-    ctx,
-    id,
-    { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
-    read,
+  return afterCallerBytes(
+    await captureRegionReadbackDecision(
+      ctx,
+      id,
+      { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
+      read,
+    ),
+    refusalEvidence,
   )
 }
 
@@ -699,6 +748,15 @@ export async function captureRegionReadbackDecision(
       )
     }
     const supported = after === expected
+    // The decision table below is tested branch by branch:
+    //   seed == expected             -> inconclusive, named (the run cannot separate them)
+    //   expected == ignored          -> inconclusive, named (the run cannot separate them)
+    //   after == expected            -> supported
+    //   after == seed                -> unsupported (the sequence left the screen untouched)
+    //   after == ignored             -> unsupported (the measured negative)
+    //   otherwise                    -> inconclusive, naming the observation
+    // The order is part of the contract: a match on the EXPECTED frame is decided before any
+    // negative branch, so a frame cannot be called a negative while it is also the expected one.
     // A frame equal to `seed` is the sequence leaving the screen untouched; a frame equal to
     // `ignored` is the sequence running while dropping the attribute the row claims. Both are
     // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
@@ -713,6 +771,7 @@ export async function captureRegionReadbackDecision(
       // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
       // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
       // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
+      const note = `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
       return {
         pass: false,
         response: observed,
@@ -722,7 +781,7 @@ export async function captureRegionReadbackDecision(
           evidence: "pixels",
           screenshotRef: frames[3]?.ref,
           frames,
-          note: `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
+          note,
         },
       }
     }

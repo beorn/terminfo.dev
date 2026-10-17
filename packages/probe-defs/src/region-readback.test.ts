@@ -29,6 +29,9 @@ import type {
   TermContext,
   TerminalQueryOutcome,
 } from "./types.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
+import { sgrProbes } from "./sgr.ts"
+import { resetProbes } from "./reset.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -735,4 +738,522 @@ test("compared frames cropped at ONE position decide as before, so it is the rec
   })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("supported")
+})
+
+// ── The reset-family decision table ──────────────────────────────────────────────────────────────
+//
+// The seeded negatives behind these tests, each refusing a false pass: a vacuous after == seed (the
+// control test above), a no-op once the ignored frame IS the seed (below), an unrelated change
+// outside the compared cells (below), cursor blink (DECTCEM is off before the first capture, and the
+// outside-region test keeps the window moving), one anti-aliased pixel INSIDE the region (the
+// third-distinct test), a control already in the target state (the seed-equals-expected test),
+// geometry drift (the crop-rectangle tests), an invisible attribute (the ignored-equals-expected
+// test), and a coincidental ignored match (the attribute-dropping test).
+
+test("a no-op is the measured negative only when the caller's ignored frame IS the seed frame", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("seed") })
+  const result = await decide(fake, { ...PLANES, ignored: PLANES.seed })
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.assertions?.[0]?.kind).toBe("negative")
+})
+
+test("a change outside the compared cells moves the whole window and not the verdict", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "frame" })
+  const stable = fake.read
+  const read: RegionRead = async (request) => {
+    const captured = await stable(request)
+    if (key(request.region) === SENTINEL_CELL) return captured
+    // A status line, a clock or the cursor repaints on every capture, so the WHOLE-WINDOW digest
+    // changes each read while the compared cells are byte-identical to the expected frame.
+    const digest = request.label.endsWith("pre-edit seed") ? "seed" : "expected"
+    return { ...captured, regionDigest: digest, pixelsDigest: `window|${request.label}` }
+  }
+  const result = await captureRegionReadbackDecision(fake.ctx, "editing.delete-chars", spec(), read)
+  expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+})
+
+const RESET_FAMILY_ROWS = [
+  "reset.sgr",
+  "sgr.reset",
+  "sgr.fg.default",
+  "sgr.bg.default",
+  "sgr.underline-color-reset",
+  "sgr.selective-reset.bold",
+  "sgr.selective-reset.underline",
+  "sgr.selective-reset.italic",
+  "sgr.selective-reset.inverse",
+] as const
+
+/**
+ * The rows whose reset clears two or more setup attributes. Their expected pixel cannot be produced
+ * by a reference independent of that reset, so the pixel oracle declines them by name instead of
+ * grading them against a reference that can share the tested sequence's failure.
+ */
+const NO_REFERENCE_ROWS = ["reset.sgr", "sgr.reset", "sgr.selective-reset.bold"] as const
+const GRADED_ROWS = RESET_FAMILY_ROWS.filter((id) => !(NO_REFERENCE_ROWS as readonly string[]).includes(id))
+
+/** The reset-family witness cell, and the shape of one read of its own compared region. */
+const FAMILY_SENTINEL = "1,1,1,1"
+
+function familyRow(id: (typeof RESET_FAMILY_ROWS)[number]): Omit<RegionReadback, "pixelGeometry"> {
+  const row = RESET_FAMILY_CAPTURE[id]
+  if (!row) throw new Error(`${id}: no capture-region row is declared`)
+  return row
+}
+
+async function familyDecide(id: (typeof RESET_FAMILY_ROWS)[number], applied: string): Promise<MeasuredProbeResult> {
+  const result = await captureRegionVerdict(familyTerminal(applied), id, familyRow(id))
+  if (!result?.observation) throw new Error(`${id}: the fixture run produced no observation`)
+  return result as MeasuredProbeResult
+}
+
+function familyDigest(label: string, applied: string): string {
+  return label.endsWith("pre-edit seed")
+    ? "seed"
+    : label.endsWith("post-sequence target")
+      ? applied
+      : label.endsWith("expected frame")
+        ? "expected"
+        : "ignored"
+}
+
+/** A terminal that shows the witness glyph the oracle just wrote and the named plane per frame. */
+function familyTerminal(applied: string): TermContext {
+  let glyph = ""
+  let reads = 0
+  const frameFor = (role: ObservationFrame["role"], label: string): ObservationFrame => {
+    reads += 1
+    return { role, label, capturedAt: reads, ref: `sha256:${String(reads).repeat(64)}` }
+  }
+  return {
+    rows: 24,
+    cols: 80,
+    captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
+    write(sequence) {
+      const witness = /^\x1b\[(\d+);(\d+)H(.)$/.exec(sequence)
+      if (witness) glyph = witness[3] ?? glyph
+    },
+    capture: async (request) => {
+      // The region reader always asks with cells; a capture without them is not this fixture.
+      if (!("cells" in request) || !request.cells) throw new Error("the reset-family fixture is read by region")
+      const frame = frameFor(request.role, request.label)
+      const digest = key(request.cells) === FAMILY_SENTINEL ? `witness|${glyph}` : familyDigest(request.label, applied)
+      return {
+        ...frame,
+        regionDigest: digest,
+        pixelsDigest: `window|${digest}`,
+        regionRectangle: { x: 0, y: 0, width: 16, height: 16 },
+      }
+    },
+    queryCursorPosition: async () => ({ row: 4, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+  }
+}
+
+test("the nine reset-family rows declare one capture-region row each", () => {
+  expect(Object.keys(RESET_FAMILY_CAPTURE).sort()).toEqual([...RESET_FAMILY_ROWS].sort())
+})
+
+test("every reset-family row keeps its witness and cursor out of the compared cells, and its ignored frame is the seed", () => {
+  for (const id of RESET_FAMILY_ROWS) {
+    const row = familyRow(id)
+    const insideRow = row.sentinel.row >= row.region.top && row.sentinel.row <= row.region.bottom
+    const insideColumn = row.sentinel.col >= row.region.left && row.sentinel.col <= row.region.right
+    expect(insideRow && insideColumn, `${id}: the witness cell lies outside the compared region`).toBe(false)
+    expect(
+      row.cursorRow >= row.region.top && row.cursorRow <= row.region.bottom,
+      `${id}: the cursor row lies outside the compared region`,
+    ).toBe(false)
+    expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
+    expect(row.expected, `${id}: the expected frame differs from the seed`).not.toBe(row.seed)
+    expect(row.edit, `${id}: the edit repaints the compared cells in place`).toContain("\x1b[3;")
+  }
+})
+
+test("each reset-family row decides supported from its own same-run expected frame", async () => {
+  for (const id of GRADED_ROWS) {
+    const result = await familyDecide(id, "expected")
+    expect(result.observation.outcome, id).toBe("supported")
+    expect(result.observation.evidence, id).toBe("pixels")
+    expect(result.assertions?.[0]?.kind, id).toBe("positive")
+  }
+})
+
+test("each reset-family row reads a no-op as the measured negative, never as a vacuous pass", async () => {
+  for (const id of GRADED_ROWS) {
+    const result = await familyDecide(id, "ignored")
+    expect(result.observation.outcome, id).toBe("unsupported")
+    expect(result.assertions?.[0]?.kind, id).toBe("negative")
+  }
+})
+
+test("each reset-family row names a third distinct frame instead of guessing a capability", async () => {
+  for (const id of GRADED_ROWS) {
+    const result = await familyDecide(id, "third")
+    expect(result.observation.outcome, id).toBe("inconclusive")
+    expect(result.observation.note, id).toContain("a third distinct frame")
+  }
+})
+
+test("every reset-family probe hands its capture arm to the region oracle, on the DECRQSS-silent path", async () => {
+  const probes = [...sgrProbes, ...resetProbes]
+  for (const id of GRADED_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    expect(probe, `${id}: a probe definition`).toBeDefined()
+    const ctx = familyTerminal("expected")
+    const result = await probe!.term!(ctx)
+    const observation = result.observation
+    expect(observation, `${id}: an observation`).toBeDefined()
+    expect(observation!.outcome, id).toBe("supported")
+    expect(observation!.evidence, id).toBe("pixels")
+    expect(observation!.note ?? "", `${id}: no ungraded "review required" note`).not.toContain(
+      "visual interpretation requires review",
+    )
+  }
+  for (const id of NO_REFERENCE_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    expect(probe, `${id}: a probe definition`).toBeDefined()
+    const result = await probe!.term!(familyTerminal("expected"))
+    expect(result.observation?.outcome, id).toBe("inconclusive")
+    // The production callback runs the DECRQSS readback first, which writes and queries before the
+    // capture fixture stays silent: the refusal is truthful QUERY evidence, never the zero-byte "none"
+    // shape run-parser reserves for a trace with no writes, queries or events.
+    expect(result.observation?.evidence, id).toBe("query")
+    expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
+  }
+})
+
+test("a silent DECRQSS readback is truthful query evidence, and an answering one still grades the row", async () => {
+  // A named inconclusive after an attempted readback must keep truthful evidence: the production
+  // callbacks write SGR0 + the tested sequence, query DECRQSS, then write a cleanup, so by the time
+  // the region oracle declines the row the trace is NOT empty. run-parser refuses evidence "none"
+  // unless writes, queries and events are all empty, so these three rows must report "query".
+  // The DECRQSS-supported path must survive: a terminal that reports the post-reset state is still
+  // graded structurally, and only a silent one reaches the named refusal.
+  const probes = [...sgrProbes, ...resetProbes]
+  for (const id of NO_REFERENCE_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    expect(probe, `${id}: a probe definition`).toBeDefined()
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
+    const result = await probe!.term!(terminal.ctx)
+    expect(result.observation?.outcome, id).toBe("inconclusive")
+    expect(result.observation?.evidence, id).toBe("query")
+    expect(terminal.writes.length, `${id}: the readback wrote before declining`).toBeGreaterThan(0)
+    expect(terminal.queries, `${id}: the DECRQSS query was sent`).toContain("\x1bP$qm\x1b\\")
+    expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
+    expect(result.observation?.note ?? "", id).toContain("the caller wrote before this refusal")
+  }
+  const reported: Record<(typeof NO_REFERENCE_ROWS)[number], string> = {
+    "reset.sgr": "0",
+    "sgr.reset": "0",
+    "sgr.selective-reset.bold": "3",
+  }
+  for (const id of NO_REFERENCE_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
+    terminal.ctx.queryWithSentinelOutcome = async () => ({
+      match: [`\x1bP1$r${reported[id]}m\x1b\\`, reported[id]],
+      reason: "reply" as const,
+      raw: "",
+      rawBase64: "",
+    })
+    const result = await probe!.term!(terminal.ctx)
+    expect(result.observation?.outcome, `${id}: DECRQSS still grades this row`).toBe("supported")
+    expect(result.observation?.evidence, id).toBe("query")
+  }
+})
+
+// ── Behavioural proof against a circular expected frame ────────────────────────────────────────
+//
+// The label-driven fixtures above cannot see a terminal whose SGR 0 is PARTIAL: they hand back the
+// digest the label asks for. This terminal paints a real cell grid instead, so the expected frame's
+// own bytes decide what it shows. A terminal that clears bold and inverse but retains italic paints
+// the expected frame with italic still set, which is the false pass this fixture exists to catch.
+
+type SgrAttr = "bold" | "italic" | "inverse" | "underline" | "faint"
+type SgrColor = "fg" | "bg" | "uc"
+const SGR_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
+
+interface StatefulTerminal {
+  ctx: TermContext
+  cells: Map<string, string>
+  /** The attributes and colours currently set, read straight from the model. */
+  snapshot: () => Set<string>
+  /** Every byte this terminal was written, in order — the raw trace the evidence must match. */
+  writes: string[]
+  /** Every sequence it was queried with, in order. */
+  queries: string[]
+}
+
+interface StatefulOptions {
+  ris?: boolean
+  /** Attributes the reference does NOT clear: a partial-RIS terminal. */
+  risRetains?: readonly (SgrAttr | SgrColor)[]
+  risClearsCells?: boolean
+  /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
+  resetMisses?: readonly (SgrAttr | SgrColor)[]
+}
+
+/** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
+function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {}): StatefulTerminal {
+  const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false, faint: false }
+  const color: Record<SgrColor, string | undefined> = { fg: undefined, bg: undefined, uc: undefined }
+  const cells = new Map<string, string>()
+  const writes: string[] = []
+  const queries: string[] = []
+  let row = 1
+  let col = 1
+  let reads = 0
+  const paint = () =>
+    cells.set(
+      `${row},${col}`,
+      `${state.bold ? "b" : "-"}${state.faint ? "f" : "-"}${state.italic ? "i" : "-"}${state.inverse ? "v" : "-"}${state.underline ? "u" : "-"}|${color.fg ?? ""}|${color.bg ?? ""}|${color.uc ?? ""}`,
+    )
+  const miss = new Set<SgrAttr | SgrColor>(options.resetMisses ?? [])
+  const clear = (attribute: SgrAttr) => {
+    if (!miss.has(attribute) && sgr0.includes(attribute)) state[attribute] = false
+  }
+  const clearColour = (attribute: SgrColor) => {
+    if (!miss.has(attribute)) color[attribute] = undefined
+  }
+  const applySgr = (params: readonly number[]) => {
+    const codes = params.length === 0 ? [0] : params
+    for (let index = 0; index < codes.length; index += 1) {
+      const code = codes[index]!
+      if (code === 0) {
+        // A cleared attribute goes to false; one the terminal fails to clear KEEPS whatever it was.
+        for (const attribute of SGR_ATTRS) clear(attribute)
+        clearColour("fg")
+        clearColour("bg")
+        clearColour("uc")
+      } else if (code === 1) state.bold = true
+      else if (code === 2) state.faint = true
+      else if (code === 3) state.italic = true
+      else if (code === 4 || code === 21) state.underline = true
+      else if (code === 7) state.inverse = true
+      else if (code === 22) {
+        if (!miss.has("bold")) state.bold = false
+        if (!miss.has("faint")) state.faint = false
+      } else if (code === 23) {
+        if (!miss.has("italic")) state.italic = false
+      } else if (code === 24) {
+        if (!miss.has("underline")) state.underline = false
+      } else if (code === 27) {
+        if (!miss.has("inverse")) state.inverse = false
+      } else if (code >= 30 && code <= 37) color.fg = String(code)
+      else if (code === 39) clearColour("fg")
+      else if (code >= 40 && code <= 47) color.bg = String(code)
+      else if (code === 49) clearColour("bg")
+      else if (code === 58) {
+        color.uc = codes.slice(index).join(";")
+        index = codes.length
+      } else if (code === 59) clearColour("uc")
+    }
+  }
+  const snapshot = () =>
+    new Set<string>([
+      ...SGR_ATTRS.filter((attribute) => state[attribute]),
+      ...(["fg", "bg", "uc"] as SgrColor[]).filter((attribute) => color[attribute] !== undefined),
+    ])
+  const write = (sequence: string) => {
+    writes.push(sequence)
+    let index = 0
+    while (index < sequence.length) {
+      const char = sequence[index]!
+      if (char === "\x1b" && sequence[index + 1] === "c") {
+        // A terminal that ignores RIS leaves both the cells and the SGR state exactly as they were.
+        if (options.ris !== false) {
+          const keep = new Set<SgrAttr | SgrColor>(options.risRetains ?? [])
+          for (const attribute of SGR_ATTRS) if (!keep.has(attribute)) state[attribute] = false
+          if (!keep.has("fg")) color.fg = undefined
+          if (!keep.has("bg")) color.bg = undefined
+          if (!keep.has("uc")) color.uc = undefined
+          if (options.risClearsCells !== false) cells.clear()
+          row = 1
+          col = 1
+        }
+        index += 2
+        continue
+      }
+      if (char === "\x1b" && sequence[index + 1] === "[") {
+        let end = index + 2
+        while (end < sequence.length && !/[@-~]/.test(sequence[end]!)) end += 1
+        const final = sequence[end] ?? ""
+        const raw = sequence.slice(index + 2, end)
+        const params = raw === "" ? [] : raw.split(";").map((entry) => (entry === "" ? 0 : Number(entry)))
+        if (final === "m") applySgr(params)
+        else if (final === "H") {
+          row = params[0] ?? 1
+          col = params[1] ?? 1
+        } else if (final === "J") cells.clear()
+        index = end + 1
+        continue
+      }
+      paint()
+      col += 1
+      index += 1
+    }
+  }
+  const ctx = {
+    rows: 24,
+    cols: 80,
+    captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
+    write,
+    capture: async (request: { role: ObservationFrame["role"]; label: string; cells?: CaptureCells }) => {
+      if (!request.cells) throw new Error("the stateful terminal is read by region")
+      reads += 1
+      const frame: ObservationFrame = {
+        role: request.role,
+        label: request.label,
+        capturedAt: reads,
+        ref: `sha256:${String(reads).repeat(64)}`,
+      }
+      const key = `${request.cells.top},${request.cells.left},${request.cells.bottom},${request.cells.right}`
+      const digest =
+        key === FAMILY_SENTINEL
+          ? `witness|${cells.get("1,1") ?? ""}`
+          : `${cells.get("3,5") ?? "empty"}/${cells.get("3,6") ?? "empty"}`
+      return {
+        ...frame,
+        regionDigest: digest,
+        pixelsDigest: `window|${digest}`,
+        regionRectangle: { x: 0, y: 0, width: 16, height: 16 },
+      }
+    },
+    queryCursorPosition: async () => ({ row: 4, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence: string) => {
+      queries.push(sequence)
+      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    },
+    queryMode: async () => null,
+  } as unknown as TermContext
+  return { ctx, cells, snapshot, writes, queries }
+}
+
+const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
+
+/** Every subset, including the empty one: the exhaustive table's domain. */
+function subsets<T>(items: readonly T[]): T[][] {
+  return items.reduce<T[][]>((sets, item) => [...sets, ...sets.map((set) => [...set, item])], [[]])
+}
+
+test("the three no-reference rows are inconclusive by name on the pixel path, whatever the terminal does", async () => {
+  // A row whose reset clears two or more attributes can be
+  // fooled by a reset and a RIS that miss the same part of the cleared set. Each case below WOULD read
+  // supported without the refusal; the refusal comes before a byte and says why.
+  const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
+    { id: "reset.sgr", miss: ["italic"], keep: ["italic"] },
+    { id: "sgr.reset", miss: ["underline"], keep: ["underline"] },
+    { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
+  ]
+  for (const entry of cases) {
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
+    const result = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    expect(result?.observation?.outcome, entry.id).toBe("inconclusive")
+    expect(result?.observation?.evidence, entry.id).toBe("none")
+    expect(result?.observation?.note ?? "", entry.id).toContain("no reference independent of a full reset")
+    // "none" promises run-parser a trace with no writes, queries or events; the direct path is
+    // refused before a byte, so the terminal saw neither a write nor a query.
+    expect(terminal.writes, `${entry.id}: the direct refusal wrote nothing`).toEqual([])
+    expect(terminal.queries, `${entry.id}: the direct refusal queried nothing`).toEqual([])
+  }
+  const correct = statefulTerminal(ALL_ATTRS, { ris: true })
+  for (const id of NO_REFERENCE_ROWS) {
+    const result = await captureRegionVerdict(correct.ctx, id, familyRow(id))
+    expect(result?.observation?.outcome, `${id}: a correct terminal cannot buy a pixel verdict here`).toBe(
+      "inconclusive",
+    )
+  }
+})
+
+test("the refused rows are exactly the rows whose reset clears two or more attributes, and each would read supported without the refusal", async () => {
+  // Both directions of the refused set. First: membership is derived from the model, not restated.
+  const clearsTwoOrMore = RESET_FAMILY_ROWS.filter((id) => {
+    const probe = statefulTerminal(ALL_ATTRS, { ris: true })
+    const row = familyRow(id)
+    probe.ctx.write(row.seed)
+    const setup = [...probe.snapshot()]
+    probe.ctx.write(row.edit)
+    const afterReset = probe.snapshot()
+    return setup.filter((attribute) => !afterReset.has(attribute)).length >= 2
+  })
+  const flagged = RESET_FAMILY_ROWS.filter((id) => familyRow(id).noIndependentReference !== undefined)
+  expect(flagged).toEqual([...NO_REFERENCE_ROWS])
+  expect(clearsTwoOrMore).toEqual([...NO_REFERENCE_ROWS])
+
+  // Second: strip the flag and grade the same cases. Each one reads supported, so the refusal is
+  // what prevents the false pass rather than a coincidence of the fixtures.
+  const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
+    { id: "reset.sgr", miss: ["italic"], keep: ["italic"] },
+    { id: "sgr.reset", miss: ["underline"], keep: ["underline"] },
+    { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
+  ]
+  for (const entry of cases) {
+    const { noIndependentReference: _refusal, ...bare } = familyRow(entry.id)
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
+    const refused = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    expect(refused?.observation?.outcome, `${entry.id}: with the refusal`).toBe("inconclusive")
+    const graded = await captureRegionVerdict(terminal.ctx, entry.id, bare)
+    expect(graded?.observation?.outcome, `${entry.id}: with the refusal stripped`).toBe("supported")
+  }
+})
+
+test("the bold row's faint case is the third no-reference row", async () => {
+  // SGR 22 clears bold AND faint while the residual repaints only italic, so
+  // 22 and RIS both keeping faint left the row reading supported. This is the case the named grade
+  // removes; with the grade removed it reads supported.
+  const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: ["faint"], risRetains: ["faint"] })
+  const result = await captureRegionVerdict(
+    terminal.ctx,
+    "sgr.selective-reset.bold",
+    familyRow("sgr.selective-reset.bold"),
+  )
+  expect(result?.observation?.outcome).toBe("inconclusive")
+  expect(result?.observation?.note ?? "").toContain("no reference independent of a full reset")
+})
+
+test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {
+  // Every row of RESET_FAMILY_CAPTURE, every subset of its CLEARED set
+  // (what the reset under test misses) x every subset of its SETUP (what RIS keeps), with the cleared
+  // set computed from this model rather than a hand-picked list.
+  for (const id of RESET_FAMILY_ROWS) {
+    const row = familyRow(id)
+    const probe = statefulTerminal(ALL_ATTRS, { ris: true })
+    probe.ctx.write(row.seed)
+    const setup = [...probe.snapshot()]
+    probe.ctx.write(row.edit)
+    const afterReset = probe.snapshot()
+    const cleared = setup.filter((attribute) => !afterReset.has(attribute))
+    for (const misses of subsets(cleared)) {
+      for (const keeps of subsets(setup)) {
+        const terminal = statefulTerminal(ALL_ATTRS, {
+          ris: true,
+          resetMisses: misses as Array<SgrAttr | SgrColor>,
+          risRetains: keeps as Array<SgrAttr | SgrColor>,
+        })
+        const result = await captureRegionVerdict(terminal.ctx, id, familyRow(id))
+        const outcome = result?.observation?.outcome
+        const label = `${id}: reset misses [${misses.join("+")}] and RIS keeps [${keeps.join("+")}] (cleared [${cleared.join("+")}])`
+        if (outcome === "supported") {
+          expect(misses, `${label}: supported although the reset missed part of its cleared set`).toEqual([])
+        }
+        const keepsOnlyResidual = keeps.every((attribute) => !cleared.includes(attribute))
+        if (misses.length === 0 && keepsOnlyResidual && (GRADED_ROWS as readonly string[]).includes(id)) {
+          expect(
+            outcome,
+            `${label}: a correct reset retaining nothing from the cleared set must decide supported`,
+          ).toBe("supported")
+        }
+      }
+    }
+  }
 })

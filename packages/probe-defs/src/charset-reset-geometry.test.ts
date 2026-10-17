@@ -263,39 +263,32 @@ function decaln() {
   return definition
 }
 
-test("reset.sgr capture renders a styled control and a reset target instead of consumed evidence", async () => {
+test("reset.sgr capture declines by name after a silent DECRQSS instead of grading pixels", async () => {
   const definition = resetProbes.find((probe) => probe.id === "reset.sgr")
   if (!definition?.term) throw new Error("missing app reset.sgr callback")
   const events: string[] = []
   const context = app(3, 34, events, [{ row: 1, col: 2 }], "silent")
-  const frames: ObservationFrame[] = []
-  context.capture = async ({ role, label }) => {
-    const frame = {
-      role,
-      label,
-      capturedAt: frames.length + 1,
-      ref: `sha256:${String(frames.length + 1).repeat(64)}`,
-    }
-    frames.push(frame)
-    return frame
-  }
+  const capture = vi.fn(async ({ role, label }: { role: ObservationFrame["role"]; label: string }) => ({
+    role,
+    label,
+    capturedAt: 1,
+    ref: "never",
+  }))
+  context.capture = capture
   const result = await definition.term(context)
-  // The shared DECRQSS readback writes its own reset and setup before it queries, and this fixture
-  // answers nothing, so the two capture writes follow them: select the pair by their content.
-  const control = events.find((event) => event.includes("\x1b[1;3;7mX"))
-  const target = events.find((event) => event.includes("\x1b[1;3;7mX\x1b[0mY"))
-  expect(control).toBeDefined()
-  expect(control).not.toContain("Y")
-  expect(target).toBeDefined()
-  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  // A row whose reset clears two or more attributes has no reference
+  // independent of a full reset, so the region oracle declines it before any pixel read. The shared
+  // DECRQSS readback ran first and this fixture answered nothing, so the trace is NOT empty and the
+  // evidence is truthful "query" — never the zero-byte "none" shape run-parser reserves.
+  expect(capture).not.toHaveBeenCalled()
+  expect(events).toContain("\x1b[0m")
+  expect(events.some((event) => event.includes("\x1b[1;3;7mX"))).toBe(false)
   expect(result.pass).toBe(false)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
-    frames,
-    screenshotRef: frames[1]?.ref,
-    note: expect.stringContaining("unstyled"),
+    evidence: "query",
+    note: expect.stringContaining("no reference independent of a full reset"),
   })
 })
 
