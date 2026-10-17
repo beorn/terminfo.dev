@@ -28,6 +28,7 @@ import { loadCategories } from "./categories.ts"
 import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
   buildReport,
+  candidate2Cohort,
   categoryShares,
   cohortCategories,
   decisiveShare,
@@ -144,7 +145,7 @@ export interface Candidate2Data {
  * Feature display names, from the same catalog the declarations are validated against. The catalog
  * loader refuses a nameless entry before this page ever runs, so a row can never be labelled with its
  * own id through a quiet fallback: every cohort id is a catalog row by construction
- * (`classicCohortIds` filters the catalog itself).
+ * (`cohortIds` filters the catalog itself).
  */
 function loadCatalogNames(): Record<string, string> {
   const names: Record<string, string> = {}
@@ -166,8 +167,8 @@ function groupKey(id: string, known: ReadonlySet<string>): string {
 }
 
 export function loadCandidate2Data(): Candidate2Data {
-  const report = buildReport({ contentDir, cohort: "candidate2" })
-  const cohort = report.candidate2
+  const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+  const cohort = report.cohort
   if (!cohort) throw new Error("candidate-2 report carried no cohort; the page has nothing to claim")
   const names = loadCatalogNames()
   const catalog = loadCategories(contentDir)
