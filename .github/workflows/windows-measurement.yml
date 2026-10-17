@@ -116,6 +116,7 @@ jobs:
           \$ErrorActionPreference = "Continue"
           \$env:PATH = "$WT_DIR;$NODE_DIR;$TERMINFO_DIR;" + \$env:PATH
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
+          \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
 
           \$attempts = 0
           while (-not (Test-Path "$WIN_OUT\\collector-ready")) {
