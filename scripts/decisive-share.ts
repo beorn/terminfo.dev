@@ -474,7 +474,12 @@ export function buildReport(args: {
       suiteFrozenFor: args.cohort.suiteFrozenFor,
     }
   }
-  const projection = loadCurrentResults(args.contentDir).projection
+  // The cohort names the suite it reads; the projection takes it from there, so one home decides which
+  // runs are current and the page can never publish a run the bar will refuse.
+  const projection = loadCurrentResults(
+    args.contentDir,
+    args.cohort === undefined ? {} : { releaseSuiteId: args.cohort.suiteId },
+  ).projection
   const current = Object.entries(projection.current).map(([key, selected]) =>
     candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
   )

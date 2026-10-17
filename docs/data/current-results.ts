@@ -139,10 +139,14 @@ function currentResultsCache(): Map<string, CurrentResults> {
   return (cacheHost[RESULTS_CACHE] ??= new Map())
 }
 
-export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
-  // `releaseSuiteIdFor` is read first and throws loudly when the registry names no suite, exactly as the
-  // argument it used to be evaluated as did.
-  const releaseSuiteId = releaseSuiteIdFor(contentDir)
+export function loadCurrentResults(
+  contentDir: string,
+  options: { artifactDir?: string; releaseSuiteId?: string } = {},
+): CurrentResults {
+  // A caller that already holds the suite (a cohort spec) names it here, so the suite has ONE home and
+  // the projection cannot resolve a different one behind the reader's back. Otherwise the registry is
+  // read and throws loudly when it names no suite, exactly as the argument it used to be evaluated as did.
+  const releaseSuiteId = options.releaseSuiteId ?? releaseSuiteIdFor(contentDir)
   const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}`
   const cache = currentResultsCache()
   const memoized = cache.get(key)
