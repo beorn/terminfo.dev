@@ -103,6 +103,15 @@ export interface RegionReadback {
    * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
    */
   ignored?: string
+  /**
+   * Set when the expected frame cannot be produced without the sequence under test: a FULL RESET row
+   * (reset.sgr, sgr.reset) reaches the terminal default only through a reset that is itself a full
+   * reset, so a reference that misses one attribute paints the surviving attribute into the expected
+   * frame and the row reads supported while the attribute survived (@dev/review2, reproduced R8 at
+   * 29816; @cto c17551dc). Such a row is INCONCLUSIVE BY NAME on the pixel path, before a byte,
+   * rather than graded against a reference that shares the tested sequence's failure.
+   */
+  noIndependentReference?: string
   /** The terminal's own pixel report, carried into every capture request. */
   pixelGeometry: PixelGeometry
   /**
@@ -508,6 +517,10 @@ export async function captureRegionVerdict(
 ): Promise<ProbeResult | null> {
   const read = collectorRegionRead(ctx)
   if (!read) return null
+  // A full-reset row has no reference independent of a full reset, so this oracle declines it BY
+  // NAME before a byte: a reference that misses one attribute would reproduce the fault and grade it
+  // supported (@cto c17551dc, 29816).
+  if (spec.noIndependentReference) return refused(id, `${id}: ${spec.noIndependentReference}`)
   // Geometry first: an undersized terminal is refused before a single query byte.
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
   if (bounds) return bounds

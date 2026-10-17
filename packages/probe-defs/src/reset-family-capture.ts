@@ -43,6 +43,13 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  * equal to the ignored frame, which is the cannot-separate branch (inconclusive), never a pass.
  *
  * ED (`\x1b[2J`) clears cells only: it never changes SGR state and is not the sequence under test.
+ *
+ * RIS is the reference for the SEVEN single-attribute rows. The two FULL RESET rows (reset.sgr,
+ * sgr.reset) cannot use it: their expected frame needs the terminal default, and only a full reset
+ * reaches it, so a RIS that misses one attribute paints the surviving attribute into the expected
+ * frame and the row would read supported while the attribute survived (@dev/review2, reproduced R8).
+ * They carry `noIndependentReference`, and the pixel oracle declines them BY NAME before a byte
+ * (@cto c17551dc).
  */
 function expectedFrame(setup: string, residual: string): string {
   return (
@@ -80,8 +87,14 @@ function row(setup: string, reset: string, residual: string): Omit<RegionReadbac
  * preserves. Empty means the row's claim is "back to the terminal default".
  */
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "reset.sgr": row("\x1b[1;3;7m", "\x1b[0m", ""),
-  "sgr.reset": row("\x1b[1;3;4m", "\x1b[0m", ""),
+  "reset.sgr": {
+    ...row("\x1b[1;3;7m", "\x1b[0m", ""),
+    noIndependentReference: "no reference independent of a full reset",
+  },
+  "sgr.reset": {
+    ...row("\x1b[1;3;4m", "\x1b[0m", ""),
+    noIndependentReference: "no reference independent of a full reset",
+  },
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
   "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
