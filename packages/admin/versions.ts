@@ -9,8 +9,6 @@ import { ALL_PROBES, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(__dirname, "..", "..")
-const PROBES_DIR = join(REPO_ROOT, "packages", "probes")
-const PROBE_DEFS_DIR = join(REPO_ROOT, "packages", "probe-defs", "src")
 const ADAPTER_PACKAGE_PATH = "packages/terminfo.dev/package.json"
 // Include the collector's executed local imports: ownership and identity affect the observation too.
 const ADAPTER_SOURCE_PATHS = [
@@ -67,13 +65,13 @@ export interface ProbeSuiteSnapshot {
 }
 
 /** Compute suite identity and applicable membership from the same live inputs. */
-export function probeSuiteSnapshot(): ProbeSuiteSnapshot {
+export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnapshot {
   const hash = createHash("md5")
 
-  const probeFiles = readdirSync(PROBES_DIR)
+  const probeFiles = readdirSync(join(repoRoot, "packages", "probes"))
     .filter((f) => f.endsWith(".probe.ts"))
     .sort()
-  const definitionFiles = readdirSync(PROBE_DEFS_DIR)
+  const definitionFiles = readdirSync(join(repoRoot, "packages", "probe-defs", "src"))
     .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".spec.ts"))
     .sort()
   const sourcePaths = [
@@ -86,10 +84,10 @@ export function probeSuiteSnapshot(): ProbeSuiteSnapshot {
   for (const relativePath of sourcePaths) {
     if (relativePath === ADAPTER_PACKAGE_PATH) continue
     hash.update(relativePath)
-    hash.update(readFileSync(join(REPO_ROOT, relativePath)))
+    hash.update(readFileSync(join(repoRoot, relativePath)))
   }
 
-  const adapterPackage: unknown = JSON.parse(readFileSync(join(REPO_ROOT, ADAPTER_PACKAGE_PATH), "utf8"))
+  const adapterPackage: unknown = JSON.parse(readFileSync(join(repoRoot, ADAPTER_PACKAGE_PATH), "utf8"))
   if (!isRecord(adapterPackage) || typeof adapterPackage.version !== "string" || !adapterPackage.version) {
     throw new Error(`Invalid adapter version in ${ADAPTER_PACKAGE_PATH}`)
   }
@@ -111,6 +109,41 @@ export function probeSuiteSnapshot(): ProbeSuiteSnapshot {
     probes: { app, headless, mux: [...app] },
     sourcePaths,
   }
+}
+
+/** Derive the suite declaration record from a live suite snapshot. */
+export function derivedSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot()): ProbeSuiteManifest {
+  return {
+    probeHash: snapshot.probeHash,
+    adapterVersion: snapshot.adapterVersion,
+    probes: snapshot.probes,
+  }
+}
+
+function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
+  return [
+    ...snapshot.sourcePaths,
+    "packages/terminfo.dev/src",
+    "packages/terminfo.dev/bin/terminfo.mjs",
+    "packages/admin/versions.ts",
+    "packages/run-parser/src",
+    "packages/run-parser/package.json",
+    "scripts/build-cli.ts",
+    "scripts/suite-manifest.ts",
+    "packages/admin/suite-manifest.ts",
+    "bun.lock",
+  ]
+}
+
+/** Committed collector inputs that have local modifications and cannot produce a reproducible build or run. */
+export function uncommittedCollectorDirt(
+  cwd: string = REPO_ROOT,
+  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(cwd),
+): string {
+  return execFileSync("git", ["status", "--porcelain", "--", ...collectorCommittedInputs(snapshot)], {
+    cwd,
+    encoding: "utf8",
+  }).trim()
 }
 
 /** Executable suite identity, independent of the backend that runs it. */

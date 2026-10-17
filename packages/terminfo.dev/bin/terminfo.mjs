@@ -27,20 +27,12 @@ try {
   process.exit(1)
 }
 const hex = (value, length) => typeof value === "string" && new RegExp(`^[0-9a-f]{${length}}$`).test(value)
-const declared =
+const valid =
   receipt?.schemaVersion === 1 &&
   hex(receipt.probeHash, 12) &&
   hex(receipt.collectorRevision, 40) &&
-  hex(receipt.manifestSha256, 64) &&
   hex(receipt.bundleSha256, 64)
-const undeclared =
-  receipt?.schemaVersion === 1 &&
-  receipt.suiteState === "undeclared" &&
-  receipt.manifestSha256 === null &&
-  hex(receipt.probeHash, 12) &&
-  hex(receipt.collectorRevision, 40) &&
-  hex(receipt.bundleSha256, 64)
-if (!declared && !undeclared) {
+if (!valid) {
   console.error(`CLI bundle receipt has invalid fields: ${receiptPath}`)
   process.exit(1)
 }
@@ -50,19 +42,21 @@ if (actualBundleSha256 !== receipt.bundleSha256) {
   console.error(`CLI bundle SHA256 digest mismatch: ${entry}`)
   process.exit(1)
 }
-if (undeclared) {
-  console.error(`Suite ${receipt.probeHash} is undeclared on this checkout`)
-  process.exit(1)
+
+const childEnv = {
+  ...process.env,
+  TERMINFO_PROBE_HASH: process.env.TERMINFO_PROBE_HASH ?? receipt.probeHash,
+  TERMINFO_SOURCE_REVISION: process.env.TERMINFO_SOURCE_REVISION ?? receipt.collectorRevision,
 }
 
 // Bun is preferred; Node can run the JavaScript bundle when Bun is absent.
 const bun = spawnSync("bun", [entry, ...process.argv.slice(2)], {
   stdio: "inherit",
-  env: process.env,
+  env: childEnv,
 })
 
 if (bun.error?.code === "ENOENT") {
-  const node = spawnSync(process.execPath, [entry, ...process.argv.slice(2)], { stdio: "inherit", env: process.env })
+  const node = spawnSync(process.execPath, [entry, ...process.argv.slice(2)], { stdio: "inherit", env: childEnv })
   process.exit(node.status ?? 1)
 } else {
   if (bun.error) throw bun.error
