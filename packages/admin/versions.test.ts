@@ -50,6 +50,7 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/terminfo.dev/src/linux-capture.ts",
     "packages/terminfo.dev/src/capture-core.ts",
     "packages/terminfo.dev/src/darwin-capture.ts",
+    "packages/terminfo.dev/src/darwin-terminal-text.ts",
     "packages/terminfo.dev/src/capture-calibration.ts",
     "packages/terminfo.dev/src/linux-input.ts",
     "packages/terminfo.dev/src/serve.ts",
