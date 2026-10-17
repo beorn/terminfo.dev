@@ -316,11 +316,7 @@ export interface Report {
  * every denominator and are named beside each fraction: the ids the schedule does not cover
  * (`unavailableIds`) and the rows no app run can decide (`libraryOnlyIds`).
  */
-export type ScorableCohort = FeatureCohort & {
-  readonly decidableIds: readonly string[]
-  /** Suites this cohort also reads, named as data: a run is never accepted for its age. */
-  readonly supersededSuites?: readonly string[]
-}
+export type ScorableCohort = FeatureCohort & { readonly decidableIds: readonly string[] }
 
 /**
  * The cohort as DATA, so one report serves every cohort: its name, the catalog category slices it is
@@ -335,8 +331,6 @@ export interface CohortSpec {
   suiteId: string
   /** The cohort whose manifest froze `suiteId`; the report prints that this suite is read for another. */
   suiteFrozenFor: FeatureCohortName
-  /** Suites this cohort also reads, named as data: a run is never accepted for its age. */
-  supersededSuites: readonly string[]
 }
 
 /**
@@ -351,7 +345,6 @@ export function candidate2Cohort(contentDir: string): CohortSpec {
     excludingTier1: false,
     suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
     suiteFrozenFor: "candidate4",
-    supersededSuites: [frozenSuiteIdFor(contentDir, "candidate2")],
   }
 }
 
@@ -367,7 +360,6 @@ export function candidate4Cohort(contentDir: string): CohortSpec {
     excludingTier1: true,
     suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
     suiteFrozenFor: "candidate2",
-    supersededSuites: [],
   }
 }
 
@@ -399,8 +391,7 @@ export type CohortRun =
 export type CohortBarRow = NotMeasuredRow | (CohortRun & { context: ReleaseContext; selection: RunSelection })
 
 function cohortRun(run: ContextCandidate, cohort: ScorableCohort, role: "selected" | "admitted"): CohortRun {
-  const readSuites = [cohort.frozenSuiteId, ...(cohort.supersededSuites ?? [])]
-  if (!readSuites.includes(run.suiteId)) {
+  if (run.suiteId !== cohort.frozenSuiteId) {
     return {
       run,
       measured: false,
@@ -470,7 +461,6 @@ export function buildReport(args: {
       decidableIds: basis.decidableIds,
       slices: args.cohort.slices,
       suiteFrozenFor: args.cohort.suiteFrozenFor,
-      supersededSuites: args.cohort.supersededSuites,
     }
   }
   const projection = loadCurrentResults(args.contentDir).projection
