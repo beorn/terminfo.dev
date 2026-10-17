@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-17T20:43:22Z",
+  "runId": "57a27b3d9cdee55c2401250000e6ea75",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "alacritty",
+    "version": "0.17.0",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/alacritty/alacritty/archive/refs/tags/v0.17.0.tar.gz",
+    "sri": "sha256-vfn7ZLqknQkZjkbCJ7dcu7TTPUqJIJQ8TNamE7rKKjM=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-iZtCH2DrSs6o3AG2koI2TyC3116aMlawHFkCd0TYhas=",
+    "revision": "refs/tags/v0.17.0"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev/luna3/notes/29816-landed/57a27b3d9cdee55c2401250000e6ea75/prep/runner-bundle.tar",
+    "sha256": "773c7c327e23766aa675cc431e6a305355be08a4f21cc1686f8b62af0c6398fa",
+    "narSha256": "sha256-9OzNabqK0LNT3tX5d8DKJwXpwRyJrH88+jrQU4EINqY=",
+    "frozenRunnerSha256": "8db3a578cd8a9ad94f9c4d249f3c28c4d3f67b2e4894d4be569bf45c766d0981",
+    "buildReceiptSha256": "a06f6d4e0523bff0d7fb60dd602e9302073be82713940abe5622aa8705b0ecd6",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "c24025ea22fc",
+      "collectorRevision": "319d9fdbed7dee7f8efe8036bb7b9738c20a2c29",
+      "bundleSha256": "1df869fa7b6ae11bcddfe0541845afec94ee0af3f17b3d1473614f88b3b248e4"
+    },
+    "rootBunLockSha256": "2e069b311431cb637a4410c259fe6943e0fdca51867154c9974177d0743b31e7"
+  },
+  "runtime": {
+    "imageId": "sha256:cd712da648621aefe52dcf97c4c1d23d1cbc25a9bc0d711615c6e52c0b8cf079",
+    "imageTarSha256": "cc327e51d6e556f6362672b3bf8c2f66e3989dc56f2bcd41a3f0f7e18e7e109d",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "319d9fdbed7dee7f8efe8036bb7b9738c20a2c29",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "51af76baccfa8de190a2da2aaa53567841d4302f",
+    "suiteHash": "c24025ea22fc"
+  },
+  "status": "raw-unreviewed-history"
+}
