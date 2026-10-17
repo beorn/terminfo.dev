@@ -494,14 +494,18 @@ export const deviceProbes: ProbeDefinition[] = [
       async (ctx) => {
         ctx.write("\x1b]2;pushed-title\x07")
         ctx.write("\x1b[22;0t") // push
-        ctx.write("\x1b]2;new-title\x07") // overwrite
-        const pos = await ctx.queryCursorPosition()
-        return {
-          pass: false,
-          note: pos
-            ? "Cursor answered after title push; title stack was not measured"
-            : "No DSR response after title push",
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed" },
+        try {
+          ctx.write("\x1b]2;new-title\x07") // overwrite
+          const pos = await ctx.queryCursorPosition()
+          return {
+            pass: false,
+            note: pos
+              ? "Cursor answered after title push; title stack was not measured"
+              : "No DSR response after title push",
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed" },
+          }
+        } finally {
+          ctx.write("\x1b[23;0t")
         }
       },
     ),
