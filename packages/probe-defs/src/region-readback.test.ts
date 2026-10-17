@@ -923,8 +923,51 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     expect(probe, `${id}: a probe definition`).toBeDefined()
     const result = await probe!.term!(familyTerminal("expected"))
     expect(result.observation?.outcome, id).toBe("inconclusive")
-    expect(result.observation?.evidence, id).toBe("none")
+    // The production callback runs the DECRQSS readback first, which writes and queries before the
+    // capture fixture stays silent: the refusal is truthful QUERY evidence, never the zero-byte "none"
+    // shape run-parser reserves for a trace with no writes, queries or events (29816, @dev/review2).
+    expect(result.observation?.evidence, id).toBe("query")
     expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
+  }
+})
+
+test("a silent DECRQSS readback is truthful query evidence, and an answering one still grades the row", async () => {
+  // A named inconclusive after an attempted readback must keep truthful evidence: the production
+  // callbacks write SGR0 + the tested sequence, query DECRQSS, then write a cleanup, so by the time
+  // the region oracle declines the row the trace is NOT empty. run-parser refuses evidence "none"
+  // unless writes, queries and events are all empty, so these three rows must report "query".
+  // The DECRQSS-supported path must survive: a terminal that reports the post-reset state is still
+  // graded structurally, and only a silent one reaches the named refusal.
+  const probes = [...sgrProbes, ...resetProbes]
+  for (const id of NO_REFERENCE_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    expect(probe, `${id}: a probe definition`).toBeDefined()
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
+    const result = await probe!.term!(terminal.ctx)
+    expect(result.observation?.outcome, id).toBe("inconclusive")
+    expect(result.observation?.evidence, id).toBe("query")
+    expect(terminal.writes.length, `${id}: the readback wrote before declining`).toBeGreaterThan(0)
+    expect(terminal.queries, `${id}: the DECRQSS query was sent`).toContain("\x1bP$qm\x1b\\")
+    expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
+    expect(result.observation?.note ?? "", id).toContain("DECRQSS SGR readback ran first")
+  }
+  const reported: Record<(typeof NO_REFERENCE_ROWS)[number], string> = {
+    "reset.sgr": "0",
+    "sgr.reset": "0",
+    "sgr.selective-reset.bold": "3",
+  }
+  for (const id of NO_REFERENCE_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
+    terminal.ctx.queryWithSentinelOutcome = async () => ({
+      match: [`\x1bP1$r${reported[id]}m\x1b\\`, reported[id]],
+      reason: "reply" as const,
+      raw: "",
+      rawBase64: "",
+    })
+    const result = await probe!.term!(terminal.ctx)
+    expect(result.observation?.outcome, `${id}: DECRQSS still grades this row`).toBe("supported")
+    expect(result.observation?.evidence, id).toBe("query")
   }
 })
 
@@ -944,6 +987,10 @@ interface StatefulTerminal {
   cells: Map<string, string>
   /** The attributes and colours currently set, read straight from the model. */
   snapshot: () => Set<string>
+  /** Every byte this terminal was written, in order — the raw trace the evidence must match. */
+  writes: string[]
+  /** Every sequence it was queried with, in order. */
+  queries: string[]
 }
 
 interface StatefulOptions {
@@ -960,6 +1007,8 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
   const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false, faint: false }
   const color: Record<SgrColor, string | undefined> = { fg: undefined, bg: undefined, uc: undefined }
   const cells = new Map<string, string>()
+  const writes: string[] = []
+  const queries: string[] = []
   let row = 1
   let col = 1
   let reads = 0
@@ -1015,6 +1064,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       ...(["fg", "bg", "uc"] as SgrColor[]).filter((attribute) => color[attribute] !== undefined),
     ])
   const write = (sequence: string) => {
+    writes.push(sequence)
     let index = 0
     while (index < sequence.length) {
       const char = sequence[index]!
@@ -1083,10 +1133,13 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
-    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence: string) => {
+      queries.push(sequence)
+      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    },
     queryMode: async () => null,
   } as unknown as TermContext
-  return { ctx, cells, snapshot }
+  return { ctx, cells, snapshot, writes, queries }
 }
 
 const ALL_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]

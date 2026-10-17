@@ -808,7 +808,10 @@ test("the EL-with-attrs row names an erase that drops the current background uns
   expect(conforming.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
 
   const inert = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-noop"]).context)
-  expect(inert.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  // @cto ab8cd612 (29816): a frame equal to the caller's own seed is a vacuous run, never a
+  // negative — an EL that never ran and an EL that was ignored leave the same screen.
+  expect(inert.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(inert.observation?.note ?? "").toContain("equals the caller's control (seed) frame")
 
   const noBackground = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-default-bg"]).context)
   expect(noBackground.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })

@@ -198,6 +198,25 @@ function refused(id: string, note: string): ProbeResult {
   return inconclusive(id, note, "insufficient-evidence", "none")
 }
 
+/**
+ * A caller that had already written and queried before asking (the DECRQSS SGR readback) cannot
+ * carry evidence "none": run-parser requires a zero-byte trace for it. Rewrite any "none" refusal
+ * into the same observation with truthful query evidence and say why in the note. Pixel verdicts and
+ * every non-"none" refusal pass through untouched.
+ */
+function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "query"): ProbeResult | null {
+  const observation = result?.observation
+  if (callerEvidence === "none" || !observation || observation.evidence !== "none") return result
+  return {
+    ...result,
+    observation: {
+      ...observation,
+      evidence: "query",
+      note: `${observation.note ?? "refused"} — the DECRQSS SGR readback ran first, wrote bytes and stayed silent, so this is not a zero-byte trace`,
+    },
+  }
+}
+
 function positive(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0
 }
@@ -510,32 +529,45 @@ async function deriveCellSizeFromTextArea(
  * that answers those queries with something unusable is inconclusive BY NAME with evidence "query"
  * — the query bytes are already written, so it is not the zero-byte "none" shape, and a missing
  * report is never a capability verdict.
+ *
+ * `refusalEvidence` is the caller's account of bytes it already wrote on this row before asking:
+ * every "none" refusal below defaults to "none" only for a genuinely untouched run, and a caller
+ * whose own readback (the DECRQSS SGR report) wrote and queried first passes "query", which is
+ * applied to whichever refusal this oracle takes.
  */
 export async function captureRegionVerdict(
   ctx: TermContext,
   id: string,
   spec: Omit<RegionReadback, "pixelGeometry">,
+  refusalEvidence: "none" | "query" = "none",
 ): Promise<ProbeResult | null> {
   const read = collectorRegionRead(ctx)
   if (!read) return null
   // A row whose reset clears two or more setup attributes has no reference independent of that
   // reset, so this oracle declines it BY NAME before a byte: a reference that misses the same part of
   // the cleared set would reproduce the fault and grade it supported (@cto c17551dc + correction).
-  if (spec.noIndependentReference) return refused(id, `${id}: ${spec.noIndependentReference}`)
+  // A caller that already wrote and queried says so: evidence "none" promises run-parser a
+  // zero-byte trace, and that promise is false after a silent DECRQSS attempt.
+  if (spec.noIndependentReference) {
+    return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), refusalEvidence)
+  }
   // Geometry first: an undersized terminal is refused before a single query byte.
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
-  if (bounds) return bounds
+  if (bounds) return afterCallerBytes(bounds, refusalEvidence)
   const calibrated = ctx.captureGeometry?.geometry
   if (
     calibrated &&
     (calibrated.textWidth !== calibrated.cellWidth * ctx.cols ||
       calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
   ) {
-    return inconclusive(
-      id,
-      `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
-      "insufficient-evidence",
-      "none",
+    return afterCallerBytes(
+      inconclusive(
+        id,
+        `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
+        "insufficient-evidence",
+        "none",
+      ),
+      refusalEvidence,
     )
   }
   const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
@@ -547,11 +579,14 @@ export async function captureRegionVerdict(
       "query",
     )
   }
-  return captureRegionReadbackDecision(
-    ctx,
-    id,
-    { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
-    read,
+  return afterCallerBytes(
+    await captureRegionReadbackDecision(
+      ctx,
+      id,
+      { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
+      read,
+    ),
+    refusalEvidence,
   )
 }
 

@@ -34,7 +34,18 @@ function sgrTermReadback(
       const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
       if (refusal) return refusal
     }
-    return (await sgrReadbackDecision(ctx, id, sequence, readback)) ?? fallback(ctx)
+    const decided = await sgrReadbackDecision(ctx, id, sequence, readback)
+    if (decided) return decided
+    // The DECRQSS readback wrote its sequence and its query before staying silent, so a named
+    // no-reference refusal from the region oracle after it is truthful QUERY evidence, never the
+    // zero-byte "none" shape run-parser demands. Rows with an independent reference are untouched:
+    // their pixel decision keeps the existing shape and the fallback below still owns the rest.
+    const region = RESET_FAMILY_CAPTURE[id]
+    if (region) {
+      const verdict = await captureRegionVerdict(ctx, id, region, "query")
+      if (verdict) return verdict
+    }
+    return fallback(ctx)
   }
 }
 

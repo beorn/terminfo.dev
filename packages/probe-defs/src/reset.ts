@@ -56,7 +56,11 @@ export const resetProbes: ProbeDefinition[] = [
         if (captureRefusal) return captureRefusal
         const measuredRoom =
           Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= 1 && ctx.cols >= 2
+        // A silent DECRQSS attempt still wrote its sequence and query, so the named refusal from
+        // the region oracle must report QUERY evidence, not the zero-byte "none" shape.
+        let readbackAttempted = false
         if (measuredRoom) {
+          readbackAttempted = true
           const readback = await sgrReadbackDecision(ctx, "reset.sgr", "\x1b[1;3;7m\x1b[0m", {
             require: [],
             forbid: [1, 3, 7],
@@ -69,7 +73,12 @@ export const resetProbes: ProbeDefinition[] = [
           // ignored frame painted in this same run, not against "the two captures differ".
           const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
           if (regionReadback) {
-            const verdict = await captureRegionVerdict(ctx, "reset.sgr", regionReadback)
+            const verdict = await captureRegionVerdict(
+              ctx,
+              "reset.sgr",
+              regionReadback,
+              readbackAttempted ? "query" : "none",
+            )
             if (verdict) return verdict
           }
           try {
