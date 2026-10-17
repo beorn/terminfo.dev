@@ -128,6 +128,22 @@ describe("candidate-2 page: publication rule (AC4)", () => {
     }
   })
 
+  it("prints the reader's declared blocker, word for word, for a blocked macOS context", () => {
+    // @chief's acceptance condition: the dark contexts read NOT MEASURED with the cause, not a bare
+    // suite refusal. The page prints the reader's reason verbatim, so this pins the two together.
+    const readerRow = report.cohort?.barRows.find(
+      (row) => row.context.terminalId === "terminal-app" && row.context.os === "macos",
+    )
+    if (!readerRow) throw new Error("reader carries no terminal-app/macos bar row")
+    if (readerRow.measured) throw new Error("terminal-app/macos should be blocked, not measured")
+    const pageRow = data.contexts.find((row) => row.context === "terminal-app/macos")
+    if (!pageRow) throw new Error("page carries no terminal-app/macos row")
+    expect(pageRow.published).toBe(false)
+    expect(pageRow.reason).toBe(readerRow.reason)
+    expect(pageRow.reason).toContain("Screen Recording permission gate")
+    expect(pageRow.reason).toContain("29918")
+  })
+
   it("never publishes the same context twice", () => {
     const keys = data.contexts.map((row) => row.context)
     expect(new Set(keys).size).toBe(keys.length)
