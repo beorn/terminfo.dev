@@ -14,7 +14,7 @@ import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
-import { loadCategories } from "./categories.ts"
+import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
 import { type CellTable } from "./selected-results.ts"
 import {
@@ -95,6 +95,8 @@ export interface ProbeData {
   baselineStats: Record<string, Record<string, BaselineStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
+  /** Category IDs in the curated catalog's numeric display order. */
+  categoryOrder: string[]
   /** platform id -> display label, so a printed score can name the OS it came from (macos -> macOS) */
   platformLabels: Record<string, string>
   generated: string
@@ -149,13 +151,6 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
   return raw as Record<string, { note: string; url?: string; result?: string }>
 }
 
-function loadCategoryLabels(): Record<string, string> {
-  // The category catalog is read through its one owner, docs/data/categories.ts.
-  return Object.fromEntries(
-    Object.entries(loadCategories(join(__dirname, "..", "..", "content"))).map(([id, value]) => [id, value.label]),
-  )
-}
-
 /** platform id -> display label; the site prints it beside a score so the OS is never implied. */
 function loadPlatformLabels(): Record<string, string> {
   const path = join(contentDir, "platforms.json")
@@ -192,6 +187,7 @@ declare const data: Omit<ProbeData, "selected">
 export { data }
 
 export function loadFullProbes(): ProbeData {
+  const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
   const published = publicResults(projection, compatibilityTargets(projection, contentDir))
   const byTarget = new Map(Object.entries(published.selectedByBackend))
@@ -256,7 +252,7 @@ export function loadFullProbes(): ProbeData {
       .map((v) => v.measuredAt)
       .sort()
       .at(-1) ?? ""
-  const release = loadReleaseScope({ catalog: featureDescriptions, categories: loadCategories(contentDir) })
+  const release = loadReleaseScope({ catalog: featureDescriptions, categories: categoryCatalog })
   const releaseScope = {
     ...release,
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
@@ -306,7 +302,8 @@ export function loadFullProbes(): ProbeData {
     featureDescriptions,
     baselines: {},
     baselineStats: {},
-    categoryLabels: loadCategoryLabels(),
+    categoryLabels: Object.fromEntries(Object.entries(categoryCatalog).map(([id, value]) => [id, value.label])),
+    categoryOrder: orderedCategoryIds(categoryCatalog),
     platformLabels: loadPlatformLabels(),
     generated,
     selected: published.projection,

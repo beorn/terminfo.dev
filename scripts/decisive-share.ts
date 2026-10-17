@@ -57,7 +57,7 @@ import {
   loadFeatureCohort,
   type FeatureCohort,
 } from "../docs/data/load-release-scope.ts"
-import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
+import { loadCategories, orderedCategoryIds, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   aggregateCells,
   d3Verdict,
@@ -481,8 +481,8 @@ export function cohortCategories(
   if (assigned !== measuredIds.length) {
     throw new Error(`category partition covered ${assigned} ids, not the cohort's ${measuredIds.length}`)
   }
-  grouped.sort((left, right) => left.order - right.order)
-  return grouped
+  const order = orderedCategoryIds(Object.fromEntries(grouped.map((category) => [category.key, category])))
+  return order.flatMap((key) => grouped.filter((category) => category.key === key))
 }
 
 /** One category's decisive share over its own ids, at the same D3 bar as the cohort. */

@@ -204,6 +204,54 @@ describe("website build identity", () => {
 describe("website sidebar metadata", () => {
   const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
 
+  it("follows catalog order in navigation and both page category lists", () => {
+    // Changing the real catalog's order must reach the consumers, rather than matching a copied list.
+    const script = `
+      import * as fs from "node:fs";
+      import { mock } from "bun:test";
+      import { ref, computed } from "vue";
+      const read = fs.readFileSync;
+      const catalog = JSON.parse(read("./content/categories.json", "utf8"));
+      const expected = Object.keys(catalog).filter(id => !id.startsWith("$")).reverse();
+      expected.forEach((id, order) => { catalog[id].order = order; });
+      mock.module("node:fs", () => ({
+        ...fs,
+        readFileSync: (path, ...args) => String(path).endsWith("/content/categories.json")
+          ? JSON.stringify(catalog) : read(path, ...args),
+      }));
+      const { default: config } = await import("./docs/.vitepress/config.ts");
+      const { loadFullProbes } = await import("./docs/data/probes.data.ts");
+      const presentation = await import("./docs/data/release-scope.ts");
+      const data = loadFullProbes();
+      const categoryId = item => item.link.slice(1);
+      const nav = config.themeConfig.nav.find(item => item.text === "Features").items
+        .filter(item => item.link && Object.hasOwn(catalog, categoryId(item))).map(categoryId);
+      const sidebar = config.themeConfig.sidebar.find(item => item.text === "Categories").items.map(categoryId);
+      function pageCategories(path, binding) {
+        const source = read(path, "utf8");
+        const setup = source.slice(source.indexOf("<script setup>") + 14, source.indexOf("</script>"))
+          .replace(/^import[^\\n]*\\n/gm, "");
+        // Execute the complete page computation with its real Vue primitives, data and presentation imports.
+        return new Function("ref", "computed", "data", ...Object.keys(presentation),
+          setup + "\\nreturn " + binding + ".value;")
+          (ref, computed, data, ...Object.values(presentation));
+      }
+      console.log(JSON.stringify({ expected, nav, sidebar,
+        home: pageCategories("./docs/index.md", "sortedCategories"),
+        features: pageCategories("./docs/features.md", "activeCategories") }));
+    `
+    const observed = JSON.parse(
+      execFileSync(process.execPath, ["-e", script], { cwd: siteRoot, encoding: "utf8", timeout: 20_000 }),
+    ) as { expected: string[]; nav: string[]; sidebar: string[]; home: string[]; features: string[] }
+    expect(observed).toEqual({
+      expected: observed.expected,
+      nav: observed.expected,
+      sidebar: observed.expected,
+      home: observed.expected,
+      features: observed.expected,
+    })
+  }, 25_000)
+
   it.each([
     ["features", "features.json"],
     ["terminals", 'entry "ghostty" is missing a non-empty "label"'],

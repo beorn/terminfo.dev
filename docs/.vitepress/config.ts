@@ -7,6 +7,7 @@ import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
+import { loadCategories, orderedCategoryIds } from "../data/categories.ts"
 
 function stripHtml(html: string): string {
   return html
@@ -78,30 +79,10 @@ function buildSidebar() {
   })
 
   // Load category labels from content/categories.json
-  const categoriesData = JSON.parse(readFileSync(join(docsDir, "..", "content", "categories.json"), "utf-8")) as Record<
-    string,
-    { label: string; order: number }
-  >
+  const categoriesData = loadCategories(contentDir)
   const categoryLabels: Record<string, string> = Object.fromEntries(
     Object.entries(categoriesData).map(([k, v]) => [k, v.label]),
   )
-
-  // Order: rendering → navigation → clearing → behavior → advanced → protocols
-  const categoryOrder = [
-    "sgr",
-    "cursor",
-    "text",
-    "erase",
-    "editing",
-    "modes",
-    "scrollback",
-    "reset",
-    "charsets",
-    "device",
-    "input",
-    "extensions",
-    "unicode",
-  ]
 
   // Determine categories and features from the same required catalog.
   const categories = new Map<string, Array<{ id: string; name: string; slug: string }>>()
@@ -114,14 +95,7 @@ function buildSidebar() {
     categoryFeatures.push({ id, name: entry.name, slug })
   }
 
-  const sortedCategories = [...categories.keys()].sort((a, b) => {
-    const ai = categoryOrder.indexOf(a)
-    const bi = categoryOrder.indexOf(b)
-    if (ai >= 0 && bi >= 0) return ai - bi
-    if (ai >= 0) return -1
-    if (bi >= 0) return 1
-    return a.localeCompare(b)
-  })
+  const sortedCategories = orderedCategoryIds(categoriesData).filter((id) => categories.has(id))
 
   // Load historical terminals from content/terminals.json
   const historicalTerminals: Array<{ text: string; link: string; year: number }> = []

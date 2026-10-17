@@ -19,7 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { coverageSentence } from './data/release-scope.ts'
+import { coverageSentence, visibleCategoryIds } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -40,7 +40,6 @@ const baselineFeatureIds = computed(() => {
   return new Set(data.baselines[baselineFilter.value] ?? [])
 })
 
-const categoryOrder = ['sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback', 'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode']
 const categoryLabels = data.categoryLabels ?? {}
 
 // ONE basis for this page: the release bar. Its widths, its tooltips and this order all fold the same
@@ -92,17 +91,7 @@ function supportFraction(backendName) {
   return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : 'Not measured'
 }
 
-const sortedCategories = computed(() => {
-  const keys = Object.keys(data.categories)
-  return keys.sort((a, b) => {
-    const ai = categoryOrder.indexOf(a)
-    const bi = categoryOrder.indexOf(b)
-    if (ai >= 0 && bi >= 0) return ai - bi
-    if (ai >= 0) return -1
-    if (bi >= 0) return 1
-    return a.localeCompare(b)
-  })
-})
+const sortedCategories = computed(() => visibleCategoryIds(data.categoryOrder, data.categories))
 
 const filteredCategories = computed(() => {
   let cats = sortedCategories.value
