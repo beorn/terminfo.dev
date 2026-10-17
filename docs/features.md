@@ -7,11 +7,7 @@ next: false
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-
-const categoryOrder = [
-  'sgr', 'cursor', 'text', 'erase', 'editing', 'modes', 'scrollback',
-  'reset', 'extensions', 'charsets', 'device', 'input', 'graphics', 'unicode'
-]
+import { visibleCategoryIds } from './data/release-scope.ts'
 
 const categoryLabels = data.categoryLabels ?? {}
 
@@ -64,10 +60,6 @@ const categoryMeta = {
     icon: '⌨️',
     tagline: 'Enhanced keyboard and mouse reporting beyond VT100',
   },
-  graphics: {
-    icon: '🖼️',
-    tagline: 'Inline images: Sixel, Kitty graphics, and beyond',
-  },
   unicode: {
     icon: '🌐',
     tagline: 'UTF-8 is table stakes; width is where terminals disagree',
@@ -75,12 +67,7 @@ const categoryMeta = {
 }
 
 // Get categories that actually have features in probe data
-const activeCategories = computed(() => {
-  return categoryOrder.filter(cat => {
-    const features = data.categories[cat]
-    return features && features.length > 0
-  })
-})
+const activeCategories = computed(() => visibleCategoryIds(data.categoryOrder, data.categories))
 
 function catLabel(cat) {
   return categoryLabels[cat] ?? cat.charAt(0).toUpperCase() + cat.slice(1)

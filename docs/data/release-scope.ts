@@ -1,5 +1,13 @@
 /** Release 1 measurement claim: 62 query/reply features of the 270-feature catalog. */
 
+/** The populated categories a page displays, preserving the catalog's supplied order. */
+export function visibleCategoryIds(
+  categoryOrder: readonly string[],
+  categories: Readonly<Record<string, readonly unknown[]>>,
+): string[] {
+  return categoryOrder.filter((id) => (categories[id]?.length ?? 0) > 0)
+}
+
 export interface ReleaseFeature {
   id: string
   name: string

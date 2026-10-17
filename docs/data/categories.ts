@@ -19,6 +19,13 @@ export interface CategoryMeta {
   slice: Slice
 }
 
+/** Category IDs in their curated display order; equal orders retain catalog entry order. */
+export function orderedCategoryIds(categories: Readonly<Record<string, Pick<CategoryMeta, "order">>>): string[] {
+  return Object.entries(categories)
+    .sort(([, left], [, right]) => left.order - right.order)
+    .map(([id]) => id)
+}
+
 /** Load and shape-check `content/categories.json` from a content directory. Throws on any defect. */
 export function loadCategories(contentDir: string): Record<string, CategoryMeta> {
   const path = join(contentDir, "categories.json")

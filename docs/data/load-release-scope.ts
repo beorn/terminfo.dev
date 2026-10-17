@@ -10,6 +10,7 @@
 import { splitAppObservable } from "@terminfo/probe-defs"
 import { slice, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
+import { orderedCategoryIds } from "./categories.ts"
 export { frozenSuiteIdFor } from "../../packages/admin/suite-manifest.ts"
 
 /** Release 1's own two constants, the ones its tier line prints. */
@@ -43,11 +44,9 @@ export function classicCohortIds(
   catalog: FeatureCatalog,
   categories: Readonly<Record<string, CohortCategoryMeta>>,
 ): string[] {
-  const classic = Object.entries(categories)
-    .filter(([, category]) => category.slice === "classics")
-    .sort((left, right) => left[1].order - right[1].order)
+  const classic = orderedCategoryIds(categories).filter((id) => categories[id]?.slice === "classics")
   const ids: string[] = []
-  for (const [key] of classic) {
+  for (const key of classic) {
     const prefix = `${key}.`
     for (const id of Object.keys(catalog)
       .filter((id) => id.startsWith(prefix))
