@@ -52,12 +52,17 @@ export interface Candidate2Group {
   label: string
   order: number
   /**
-   * True only when EVERY context with a published run clears the group's pass bar. The page may not
-   * claim a group globally included while a measured context sits below the bar (@chief cf1daa5a).
+   * True only when EVERY context with a published run clears the group's pass bar, so the group is
+   * included on every context the page measured. A group included on only SOME contexts is not
+   * `included`; it names them in `includedOn` instead (@chief option A, 2026-10-17).
    */
   included: boolean
+  /** The published contexts that CLEAR this group's bar, in page order — what the page includes it on. */
+  includedOn: string[]
   /** The measured contexts that keep this group out of the included set, in page order. */
   heldBy: Candidate2HeldContext[]
+  /** Contexts with no published run: neither included nor held, named with the row's own reason. */
+  unmeasured: Candidate2Unmeasured[]
   /** Every included capability of this group (the ratified base). */
   capabilities: Candidate2Capability[]
   /** How many of them every fraction below divides over — the decidable base. */
@@ -66,6 +71,12 @@ export interface Candidate2Group {
   libraryOnly: Candidate2Capability[]
   /** Included, with no probe in the frozen suite at all: named beside the fraction, never scored. */
   unavailable: Candidate2Capability[]
+}
+
+/** One context the page cannot judge a group on, with the reader's own reason for the missing run. */
+export interface Candidate2Unmeasured {
+  context: string
+  reason: string
 }
 
 /** One measured context that is below a group's pass bar, with the fraction that says so. */
@@ -184,19 +195,23 @@ export function loadCandidate2Data(): Candidate2Data {
   const libraryOnly = new Set(cohort.libraryOnlyIds)
   const unavailable = new Set(cohort.unavailableIds)
 
-  const groups: Omit<Candidate2Group, "included" | "heldBy">[] = included.map((category) => {
-    const scored = decidableByKey.get(category.key)
-    if (!scored) throw new Error(`group ${category.key} is included but has no decidable rows; the two bases disagree`)
-    return {
-      key: category.key,
-      label: category.label,
-      order: category.order,
-      capabilities: category.ids.map(capability),
-      denominator: scored.ids.length,
-      libraryOnly: category.ids.filter((id) => libraryOnly.has(id)).map(capability),
-      unavailable: category.ids.filter((id) => unavailable.has(id)).map(capability),
-    }
-  })
+  const groups: Omit<Candidate2Group, "included" | "includedOn" | "heldBy" | "unmeasured">[] = included.map(
+    (category) => {
+      const scored = decidableByKey.get(category.key)
+      if (!scored) {
+        throw new Error(`group ${category.key} is included but has no decidable rows; the two bases disagree`)
+      }
+      return {
+        key: category.key,
+        label: category.label,
+        order: category.order,
+        capabilities: category.ids.map(capability),
+        denominator: scored.ids.length,
+        libraryOnly: category.ids.filter((id) => libraryOnly.has(id)).map(capability),
+        unavailable: category.ids.filter((id) => unavailable.has(id)).map(capability),
+      }
+    },
+  )
   const scoredTotal = decidable.reduce((count, category) => count + category.ids.length, 0)
   if (scoredTotal !== cohort.decidableIds.length) {
     throw new Error(`decidable groups cover ${scoredTotal} ids, not the cohort's ${cohort.decidableIds.length}`)
@@ -295,6 +310,7 @@ export function loadCandidate2Data(): Candidate2Data {
   // context we actually measured clears its pass bar, and the contexts that do not are named. A
   // context with no published run cannot hold a group, and cannot accept one either.
   const groupsWithState: Candidate2Group[] = groups.map((group) => {
+    const includedOn: string[] = []
     const heldBy: Candidate2HeldContext[] = []
     let measuredContexts = 0
     for (const row of contexts) {
@@ -319,9 +335,22 @@ export function loadCandidate2Data(): Candidate2Data {
           decisivePct: basis.decisivePct,
           verdictLabel: basis.verdictLabel,
         })
+      } else {
+        includedOn.push(row.context)
       }
     }
-    return { ...group, included: measuredContexts > 0 && heldBy.length === 0, heldBy }
+    // A context without a published run is neither included nor held: it is named as unmeasured with
+    // the reader's own reason, so no claim and no "held" verdict is manufactured for it.
+    const unmeasured = contexts
+      .filter((row) => !row.published)
+      .map((row) => ({ context: row.context, reason: row.reason ?? "no published run" }))
+    return {
+      ...group,
+      included: measuredContexts > 0 && heldBy.length === 0,
+      includedOn,
+      heldBy,
+      unmeasured,
+    }
   })
 
   return {
