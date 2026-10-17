@@ -333,36 +333,43 @@ export interface CohortSpec {
   suiteFrozenFor: FeatureCohortName
 }
 
-/** Candidate 2's cohort: the categories the catalog labels `classics`, on its own frozen suite. */
+/**
+ * Candidate 2's cohort: the categories the catalog labels `classics`, read on the suite the
+ * candidate-4 freeze declares. The classics bar moves to that suite so the reading never falls
+ * between two freezes; the printed ownership says whose freeze declared it.
+ */
 export function candidate2Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate2",
     slices: ["classics"],
     excludingTier1: false,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
-/** Candidate 3's modes/device additions, explicitly read on candidate 2's frozen suite. */
+/** Candidate 3's modes/device additions, read on the suite the candidate-4 freeze declares. */
 export function candidate3Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate3",
     slices: ["modes", "device"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
-/** Candidate 4's extensions/input additions, explicitly read on candidate 2's frozen suite. */
+/**
+ * Candidate 4's cohort: the extensions and input slices, read on the suite candidate 4's own freeze
+ * declares. The suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
+ */
 export function candidate4Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate4",
     slices: ["extensions", "input"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
