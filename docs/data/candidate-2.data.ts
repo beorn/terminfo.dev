@@ -53,14 +53,14 @@ export interface Candidate2Group {
   order: number
   /**
    * True only when EVERY context with a published run clears the group's pass bar, so the group is
-   * included on every context the page measured. A group included on only SOME contexts is not
-   * `included`; it names them in `includedOn` instead (@chief option A, 2026-10-17).
+   * included on every context the page measured. Editing and Character Sets may also name partial
+   * inclusion in `includedOn` without changing this global state.
    */
   included: boolean
   /**
    * The published contexts that CLEAR this group's bar, in page order — what the page includes it on
    * when per-context inclusion applies to the group. Only the two groups the ruling names carry a
-   * claim here; every other group leaves this empty and stays held.
+   * claim here; other groups leave this empty and retain their global inclusion state.
    */
   includedOn: string[]
   /** The measured contexts that keep this group out of the included set, in page order. */
@@ -343,7 +343,7 @@ export function loadCandidate2Data(): Candidate2Data {
           verdictLabel: basis.verdictLabel,
         })
       } else if (PER_CONTEXT_INCLUDED.has(group.key)) {
-        // Per-context inclusion is ruled for these groups only; the rest keep their hold, so no
+        // Per-context inclusion applies only to these groups; the rest keep their global state, so no
         // consumer can promote them on a context the ruling did not cover.
         includedOn.push(row.context)
       }

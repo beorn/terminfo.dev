@@ -238,7 +238,7 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
   })
 })
 
-/** The two groups the per-context include ruling names; every other group stays held. */
+/** The two groups with per-context inclusion; other groups retain their global inclusion state. */
 const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets"])
 
 describe("candidate-2 page: wiring", () => {
@@ -266,7 +266,7 @@ describe("candidate-2 page: wiring", () => {
       expect(group.included).toBe(shares.length > 0 && below.length === 0)
       // The per-context include is the SAME basis decision, not a second rule: for a group the
       // ruling names, a context is in includedOn exactly when its share clears the bar, and the two
-      // lists partition the measured contexts. Every other group keeps its hold and carries no
+      // lists partition the measured contexts. Every other group keeps its global state and carries no
       // per-context claim at all.
       const ruled = PER_CONTEXT_INCLUDED.has(group.key)
       expect(group.includedOn).toEqual(
@@ -321,7 +321,7 @@ describe("candidate-2 page: wiring", () => {
     }
   })
 
-  it("keeps every group outside the ruling held, with no per-context claim", () => {
+  it("preserves global inclusion outside the two-group context scope", () => {
     // The ruling names two groups. A group outside it must not gain includedOn entries even where
     // its share clears the bar on a context: the page would then promote a held group.
     const outside = data.groups.filter((group) => !PER_CONTEXT_INCLUDED.has(group.key))
