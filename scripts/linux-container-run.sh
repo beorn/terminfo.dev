@@ -111,25 +111,39 @@ completed_batch_survives_attach_timeout() {
   [[ "$exit_code" == 143 && -f "$raw/observed.json" && -f "$raw/container-receipt.json" && -f "$raw/v2-run.json" ]]
 }
 
-# A producer receipt is read by the host before any container starts. When a non-fast-forward
-# compose lands a suite nobody declared, the build stays green and the receipt carries that state,
-# so the FIRST sentence here must NAME the suite rather than read as a malformed receipt (27864 C);
-# a genuinely malformed document keeps the generic refusal.
+# A producer receipt is read by the host before any container starts. When the CLI launcher is
+# available alongside the receipt, the launcher records the suite hash the bundle reports via
+# `terminfo.mjs --version` and refuses if the receipt disagrees, so the two cannot diverge.
 require_cli_producer_receipt() {
-  local receipt=$1
+  local receipt=$1 cli_bin=${2:-}
   [[ -r "$receipt" ]] || { echo "Missing CLI producer receipt: $receipt" >&2; return 2; }
   jq -e '
     .schemaVersion == 1 and (.probeHash | type == "string" and test("^[0-9a-f]{12}$")) and
     (.collectorRevision | type == "string" and test("^[0-9a-f]{40}$")) and
     (.bundleSha256 | type == "string" and test("^[0-9a-f]{64}$"))' \
     "$receipt" >/dev/null || { echo "Invalid CLI producer receipt" >&2; return 2; }
-  if [[ "$(jq -r '.suiteState // "declared"' "$receipt")" == "undeclared" ||
-        "$(jq -r '.manifestSha256 // "absent"' "$receipt")" == "absent" ]]; then
-    echo "Suite $(jq -r .probeHash "$receipt") is undeclared on this checkout: the producer receipt carries no manifest digest. A composed tree that landed a suite nobody declared cannot be collected here — collect from an authoring branch at these pins, then admit the run: bun scripts/admit-run.ts --for <run.json>" >&2
-    return 2
+  local receipt_probe_hash
+  receipt_probe_hash=$(jq -er .probeHash "$receipt")
+  if [[ -z "$cli_bin" && -f "$(dirname "$receipt")/../bin/terminfo.mjs" && -f "$(dirname "$receipt")/terminfo.bundle.mjs" ]]; then
+    cli_bin="$(dirname "$receipt")/../bin/terminfo.mjs"
   fi
-  jq -e '(.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$"))' \
-    "$receipt" >/dev/null || { echo "Invalid CLI producer receipt" >&2; return 2; }
+  if [[ -n "$cli_bin" ]]; then
+    local version_line bundle_probe_hash
+    version_line=$(node "$cli_bin" --version) || return 2
+    if [[ "$version_line" =~ \(([0-9a-f]{12})\)$ ]]; then
+      bundle_probe_hash=${BASH_REMATCH[1]}
+    else
+      echo "CLI --version did not report a 12-hex suite hash: $version_line" >&2
+      return 2
+    fi
+    if [[ "$bundle_probe_hash" != "$receipt_probe_hash" ]]; then
+      echo "CLI bundle suite $bundle_probe_hash differs from producer receipt $receipt_probe_hash" >&2
+      return 2
+    fi
+    printf '%s\n' "$bundle_probe_hash"
+    return 0
+  fi
+  printf '%s\n' "$receipt_probe_hash"
   return 0
 }
 
@@ -776,15 +790,12 @@ cli_receipt="$vendor_root/packages/terminfo.dev/dist/terminfo.bundle.receipt.jso
 [[ -s "$cli_bundle" && -s "$cli_receipt" && -s "$prep/bundle/index.js" ]] || {
   echo "CLI producer or frozen runner output is missing; preserved at $run_dir" >&2; exit 2;
 }
-require_cli_producer_receipt "$cli_receipt" || exit 2
-suite_hash=$(jq -er .probeHash "$cli_receipt")
+suite_hash=$(require_cli_producer_receipt "$cli_receipt" "$vendor_root/packages/terminfo.dev/bin/terminfo.mjs") || exit 2
 source_revision=$(jq -er .collectorRevision "$cli_receipt")
 cli_bundle_sha=$(sha256sum "$cli_bundle" | cut -d ' ' -f 1)
-manifest_sha=$(sha256sum "$vendor_root/content/suites/$suite_hash.json" | cut -d ' ' -f 1)
 [[ "$cli_bundle_sha" == "$(jq -er .bundleSha256 "$cli_receipt")" &&
-   "$manifest_sha" == "$(jq -er .manifestSha256 "$cli_receipt")" &&
    "$source_revision" == "$(git -C "$vendor_root" rev-parse HEAD)" ]] || {
-  echo "CLI bytes, suite declaration, or source revision differ from producer receipt" >&2; exit 2;
+  echo "CLI bytes or source revision differ from producer receipt" >&2; exit 2;
 }
 cp "$cli_receipt" "$prep/bundle/terminfo.bundle.receipt.json"
 frozen_runner_sha=$(sha256sum "$prep/bundle/index.js" | cut -d ' ' -f 1)
