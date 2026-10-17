@@ -31,6 +31,7 @@ export const INVALID_HANDLE_VALUE = 0xffffffffffffffffn
 export interface Kernel32Symbols {
   CreateFileW: Kernel32HandleSymbol
   GetConsoleScreenBufferInfo: Kernel32Symbol
+  ReadConsoleOutputW: Kernel32Symbol
   GetConsoleWindow: Kernel32HandleSymbol
   CreateToolhelp32Snapshot: Kernel32HandleSymbol
   Process32FirstW: Kernel32Symbol
@@ -74,6 +75,10 @@ export function kernel32Declaration(types: {
       returns: types.u64,
     },
     GetConsoleScreenBufferInfo: { args: [types.u64, types.ptr], returns: types.i32 },
+    // HANDLE, PCHAR_INFO, COORD dwBufferSize, COORD dwBufferCoord, PSMALL_RECT lpReadRegion.
+    // The two COORDs are passed BY VALUE, so they are u32 with X in the low half and Y in the high
+    // half (packCoord in windows-console-cells.ts); a pointer here would read the wrong argument.
+    ReadConsoleOutputW: { args: [types.u64, types.ptr, types.u32, types.u32, types.ptr], returns: types.i32 },
     GetConsoleWindow: { args: [], returns: types.u64 },
     CreateToolhelp32Snapshot: { args: [types.u32, types.u32], returns: types.u64 },
     Process32FirstW: { args: [types.u64, types.ptr], returns: types.i32 },

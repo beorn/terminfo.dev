@@ -21,7 +21,7 @@
  * testable where Windows is not, and the matching check refuses with the chain it actually found.
  */
 
-import { INVALID_HANDLE_VALUE, loadKernel32 } from "./windows-kernel32.ts"
+import { INVALID_HANDLE_VALUE, loadKernel32, type Kernel32 } from "./windows-kernel32.ts"
 
 /** The rows of the walk, structurally the `AncestryRow` the Darwin arm already speaks. */
 export interface WindowsProcessRow {
@@ -119,9 +119,12 @@ const ERROR_NO_MORE_FILES = 18
  * The whole process table, one decoded record at a time. `runtime.arch` is injectable so the layout
  * choice is testable; the default is the running process's own architecture.
  */
-export async function readWindowsProcessTable(runtime: { arch?: string } = process): Promise<WindowsProcessRow[]> {
+export async function readWindowsProcessTable(
+  runtime: { arch?: string } = process,
+  kernel?: Kernel32,
+): Promise<WindowsProcessRow[]> {
   const layout = processEntry32WLayout(pointerBytesForArch(runtime.arch ?? process.arch))
-  const { symbols, ptr } = await loadKernel32()
+  const { symbols, ptr } = kernel ?? (await loadKernel32())
   const snapshot = symbols.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS as never, 0 as never)
   // A refused snapshot is INVALID_HANDLE_VALUE, never NULL and never zero, and it must be refused
   // HERE: its own Win32 code is read first, and there is nothing to close on a failed handle.
@@ -215,8 +218,9 @@ export function windowsProcessAncestry(rows: readonly WindowsProcessRow[], start
 export async function readWindowsProcessAncestry(
   startPid: number,
   runtime: { arch?: string } = process,
+  kernel?: Kernel32,
 ): Promise<WindowsProcessRow[]> {
-  return windowsProcessAncestry(await readWindowsProcessTable(runtime), startPid)
+  return windowsProcessAncestry(await readWindowsProcessTable(runtime, kernel), startPid)
 }
 
 /** A Windows image name: the receipt's executablePath is a full path, the table's name is a base

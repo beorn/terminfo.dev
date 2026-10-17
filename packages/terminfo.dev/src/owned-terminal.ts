@@ -6,12 +6,20 @@ import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
 import { readWindowsConsoleIdentity } from "./windows-console-ffi.ts"
+import {
+  consoleHostFromTable,
+  readWindowsConsoleCells,
+  type ConsoleCellRead,
+  type ConsoleHostLookup,
+} from "./windows-console-cells.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import {
-  readWindowsProcessAncestry,
+  readWindowsProcessTable,
   requireHostedWindowsAppAncestor,
   windowsCommBase,
+  windowsProcessAncestry,
 } from "./windows-process-ancestry.ts"
+import { loadKernel32 } from "./windows-kernel32.ts"
 
 export type GeometrySource =
   | "stty size on a /proc/self/fd reopen of the verified output device"
@@ -91,6 +99,9 @@ export interface OwnedTerminal {
   readonly hostedAppPid?: number
   readonly clipboard?: LinuxClipboardAdapter
   readGeometry(): Promise<GeometryMeasurement>
+  /** Hosted Windows only: the visible window's cells, read from the console host's buffer. Absent on
+   * every other arm, where the pixel capture is the read. */
+  readCells?(): Promise<ConsoleCellRead>
   dispose(): Promise<void>
 }
 
@@ -495,6 +506,14 @@ export async function createOwnedTerminal(options: {
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
   let hostedWindows = false
+  /** The console host whose buffer the Windows cell read sees, or the reason none could be
+   * selected. Windows Terminal draws the window and the host owns the buffer, so the name must come
+   * from the process table and never from the drawing program. */
+  let windowsConsoleHost: ConsoleHostLookup | undefined
+  /** The console identity this run bound to, re-checked before every cell read. */
+  let windowsConsoleIdentity: string | undefined
+  /** One kernel32 binding for the whole arm: the identity, table and cell reads share it. */
+  let windowsKernel: Awaited<ReturnType<typeof loadKernel32>> | undefined
   if (linux) {
     if (process.platform !== "linux") throw new Error("Owned Linux fixture requires Linux")
     binding = linuxOutput(out)
@@ -558,14 +577,37 @@ export async function createOwnedTerminal(options: {
     // The walk runs and PRINTS before the CONOUT$ precondition is checked: a refusal at the binding
     // must not leave the toolhelp32 layout - the one read here never yet seen from real bytes - unread
     // in the artifact. The Darwin arm prints its ps evidence to stderr the same way.
-    const windowsAncestry = await readWindowsProcessAncestry(process.pid)
+    windowsKernel = await loadKernel32()
+    // The TABLE, not the ancestry walk: the console host is the terminal's other child, a sibling
+    // of the shell, so a chain from this process can never contain it.
+    const windowsTable = await readWindowsProcessTable(process, windowsKernel)
+    const windowsAncestry = windowsProcessAncestry(windowsTable, process.pid)
     process.stderr.write(
       `Hosted Windows measured process ancestry: ${windowsAncestry
         .map((row) => `${String(row.pid)}:${row.comm}`)
         .join(" <- ")}\n`,
     )
     hostedAncestor = requireHostedWindowsAppAncestor(HOSTED_WINDOWS_TERMINAL_COMM, windowsAncestry)
-    binding = windowsHostedOutput(out, await readWindowsConsoleIdentity())
+    const terminals = windowsAncestry.filter(
+      (row) => windowsCommBase(row.comm) === windowsCommBase(HOSTED_WINDOWS_TERMINAL_COMM),
+    )
+    if (terminals.length > 1) {
+      throw new Error(
+        `Hosted Windows ancestry holds ${String(terminals.length)} ${HOSTED_WINDOWS_TERMINAL_COMM} processes: ${terminals
+          .map((row) => `pid ${String(row.pid)}`)
+          .join(", ")}`,
+      )
+    }
+    windowsConsoleHost = consoleHostFromTable(hostedAncestor.pid, windowsTable)
+    process.stderr.write(
+      `Hosted Windows console buffer owner: ${
+        windowsConsoleHost.status === "named"
+          ? `${windowsConsoleHost.host.image} (pid ${String(windowsConsoleHost.host.pid)}, parent ${String(windowsConsoleHost.host.ppid)})`
+          : `refused: ${windowsConsoleHost.reason}`
+      }\n`,
+    )
+    windowsConsoleIdentity = await readWindowsConsoleIdentity(windowsKernel)
+    binding = windowsHostedOutput(out, windowsConsoleIdentity)
     hostedReceiptSha256 = receipt.sha256
     hostedWindows = true
   }
@@ -586,6 +628,9 @@ export async function createOwnedTerminal(options: {
         windowsHosted: {
           appId: "windows-terminal",
           ancestor: hostedAncestor,
+          // Which program's buffer a cell read returns, so the evidence can name it.
+          consoleHost: windowsConsoleHost?.status === "named" ? windowsConsoleHost.host : null,
+          consoleHostRefusal: windowsConsoleHost?.status === "refused" ? windowsConsoleHost.reason : null,
           receiptKind: "github-hosted-runner",
           receiptSha256: hostedReceiptSha256,
         },
@@ -636,6 +681,26 @@ export async function createOwnedTerminal(options: {
         }
         return readBoundGeometry(current)
       },
+      ...(hostedWindows && {
+        async readCells() {
+          if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
+          // The console is re-checked as the geometry read re-checks its device: a cell read on a
+          // different console than this run bound to is not this run's frame.
+          const identity = await readWindowsConsoleIdentity(windowsKernel)
+          if (identity !== windowsConsoleIdentity) {
+            throw new Error(
+              `Owned cell read saw console ${identity}, not the console ${windowsConsoleIdentity ?? "unbound"} this run bound to`,
+            )
+          }
+          if (windowsConsoleHost === undefined || windowsConsoleHost.status === "refused") {
+            return {
+              status: "refused",
+              reason: windowsConsoleHost?.reason ?? "this arm selected no console host",
+            }
+          }
+          return readWindowsConsoleCells({ bufferOwner: windowsConsoleHost.host, kernel: windowsKernel })
+        },
+      }),
       async dispose() {
         verifiedTerminalOwners.delete(owner)
         await clipboard?.dispose()
