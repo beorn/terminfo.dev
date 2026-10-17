@@ -354,9 +354,10 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /**
    * DECSACE's extent for the attribute changes DECCARA/DECRARA apply: Ps 0 and 1 are stream, Ps 2 is
-   * rectangle. The surface starts at the rectangle the existing DECCARA/DECRARA fixtures measure; a
-   * fixture that wants the stream extent selects it with DECSACE 0 or 1 before its write, so one
-   * row's mode can never leak into another's.
+   * rectangle. The surface starts at the rectangle the existing DECCARA/DECRARA rows assume without
+   * selecting it - not the DEC power-on default, which is stream. A fixture that wants the stream
+   * extent selects it with DECSACE 0 or 1 before its write, so one row's mode can never leak into
+   * another's. 29817 flips the start to stream once every row selects its extent explicitly.
    */
   let attributeExtent: 0 | 1 = 1
   const clampCol = (col: number): number => (col < 0 ? 0 : col > cols - 1 ? cols - 1 : col)
