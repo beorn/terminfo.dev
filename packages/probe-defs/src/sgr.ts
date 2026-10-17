@@ -8,6 +8,8 @@ import {
   type SgrReadback,
   probe,
 } from "./helpers.ts"
+import { captureRegionVerdict } from "./region-readback.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -32,7 +34,17 @@ function sgrTermReadback(
       const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
       if (refusal) return refusal
     }
-    return (await sgrReadbackDecision(ctx, id, sequence, readback)) ?? fallback(ctx)
+    const decided = await sgrReadbackDecision(ctx, id, sequence, readback)
+    if (decided) return decided
+    // The readback may have written its sequence and query before returning no decisive answer, so a
+    // named refusal from the region oracle after it is truthful QUERY evidence, never the zero-byte
+    // "none" shape run-parser demands. A caller that wrote nothing still passes "none".
+    const region = RESET_FAMILY_CAPTURE[id]
+    if (region) {
+      const verdict = await captureRegionVerdict(ctx, id, region, "query")
+      if (verdict) return verdict
+    }
+    return fallback(ctx)
   }
 }
 
@@ -97,6 +109,8 @@ async function consumedSgrReset(
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
+    // A reset-family row never reaches this fallback: the DECRQSS readback path in
+    // sgrTermReadback asks the same-run region oracle first and returns its verdict.
     try {
       return await sgrCaptureFrames(
         ctx,
@@ -240,6 +254,8 @@ async function consumedResetSgr(ctx: TermContext, id: string, setup: string, res
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
+    // A reset-family row never reaches this fallback: the DECRQSS readback path in
+    // sgrTermReadback asks the same-run region oracle first and returns its verdict.
     try {
       return await sgrCaptureFrames(
         ctx,

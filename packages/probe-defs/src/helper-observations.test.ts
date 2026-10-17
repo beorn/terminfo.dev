@@ -238,9 +238,10 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
   expect(captureWrites.length).toBeGreaterThan(0)
 })
 
-// Every SGR capture fixture shares one guard, so a measured small terminal refuses before
-// writes; the underlined SGR 59 control must itself carry an underline, not just SGR 0.
-test("SGR reset capture fixtures share the 3x34 guard and render an underlined default reference", async () => {
+// Every SGR capture fixture shares one guard, so a measured small terminal refuses before writes.
+// The region fixture that now owns these rows needs a fourth row for its cursor park, so a 3-row
+// terminal passes the guard and is then declined BY NAME — after the DECRQSS readback's bytes.
+test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for the region fixture", async () => {
   const ids = [
     "sgr.fg.default",
     "sgr.bg.default",
@@ -289,19 +290,14 @@ test("SGR reset capture fixtures share the 3x34 guard and render an underlined d
         },
       }),
     )
-    expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    // A 3-row grid passes the SGR guard but cannot map the 4-row region fixture. The trace is not
+    // empty (the silent DECRQSS readback wrote its sequence and query), so the evidence is "query"
+    // and no capture is ever requested.
+    expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "query" })
     expect(ok.assertions, id).toBeUndefined()
-    expect(roles, id).toEqual(["control", "target"])
-    expect(ok.observation?.frames, id).toHaveLength(2)
-    expect(writes.length, id).toBeGreaterThanOrEqual(2)
-    if (id === "sgr.underline-color-reset") {
-      // The DECRQSS readback writes its probe sequences first on a silent terminal; the capture
-      // fixture follows. Locate the fixture runs rather than pinning their indices.
-      const control = writes.find((write) => write.endsWith("\x1b[4mXXYY"))
-      const target = writes.find((write) => write.includes("\x1b[58;2;255;0;128m"))
-      expect(control, id).toBe("\x1b[0m\x1b[2J\x1b[3;3H\x1b[4mXXYY")
-      expect(target, id).toContain("\x1b[58;2;255;0;128m")
-    }
+    expect(roles, id).toEqual([])
+    expect(ok.observation?.frames, id).toBeUndefined()
+    expect(writes.length, id).toBeGreaterThanOrEqual(3)
   }
 })
 

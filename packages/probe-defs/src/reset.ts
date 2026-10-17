@@ -1,5 +1,6 @@
 import type { ProbeDefinition } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall, sgrReadbackDecision } from "./helpers.ts"
 
 /**
@@ -55,7 +56,11 @@ export const resetProbes: ProbeDefinition[] = [
         if (captureRefusal) return captureRefusal
         const measuredRoom =
           Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= 1 && ctx.cols >= 2
+        // A silent DECRQSS attempt still wrote its sequence and query, so the named refusal from
+        // the region oracle must report QUERY evidence, not the zero-byte "none" shape.
+        let readbackAttempted = false
         if (measuredRoom) {
+          readbackAttempted = true
           const readback = await sgrReadbackDecision(ctx, "reset.sgr", "\x1b[1;3;7m\x1b[0m", {
             require: [],
             forbid: [1, 3, 7],
@@ -63,6 +68,19 @@ export const resetProbes: ProbeDefinition[] = [
           if (readback) return readback
         }
         if (ctx.capture) {
+          // The same-run region oracle owns this row wherever the run can map cells onto its own
+          // window: a reset with no independent reference is declined by name, and every other row
+          // is graded against expected and ignored frames painted in this same run.
+          const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
+          if (regionReadback) {
+            const verdict = await captureRegionVerdict(
+              ctx,
+              "reset.sgr",
+              regionReadback,
+              readbackAttempted ? "query" : "none",
+            )
+            if (verdict) return verdict
+          }
           try {
             return await sgrCaptureFrames(
               ctx,
