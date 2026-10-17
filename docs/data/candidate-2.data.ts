@@ -301,13 +301,18 @@ export function loadCandidate2Data(): Candidate2Data {
       const share = row.groups.find((entry) => entry.key === group.key)
       if (!share) continue
       measuredContexts++
-      if (share.decisivePct < D3_VERDICT_BAR.passPct) {
+      // The bar is the group's RULED basis: where the reader carries an acceptance share (the
+      // decidable rows plus the group's defined library-only rows), that is the denominator the
+      // group is accepted over. The app-observable fraction is narrower and can read 100% while
+      // the acceptance basis sits below the bar (@dev/review2 023f208b).
+      const basis = share.acceptance ?? share
+      if (basis.decisivePct < D3_VERDICT_BAR.passPct) {
         heldBy.push({
           context: row.context,
-          decisive: share.decisive,
-          denominator: share.denominator,
-          decisivePct: share.decisivePct,
-          verdictLabel: share.verdictLabel,
+          decisive: basis.decisive,
+          denominator: basis.denominator,
+          decisivePct: basis.decisivePct,
+          verdictLabel: basis.verdictLabel,
         })
       }
     }

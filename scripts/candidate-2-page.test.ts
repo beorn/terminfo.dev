@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest"
 import * as reader from "./decisive-share.ts"
 import { loadCandidate2Data } from "../docs/data/candidate-2.data.ts"
 import { inconclusiveRows } from "./decisive-share.ts"
+import type { Candidate2GroupShare } from "../docs/data/candidate-2.data.ts"
 
 const root = join(import.meta.dirname, "..")
 const data = loadCandidate2Data()
@@ -238,13 +239,20 @@ describe("candidate-2 page: wiring", () => {
       const shares = publishedRows.flatMap((row) =>
         row.groups.filter((entry) => entry.key === group.key).map((entry) => entry),
       )
-      const below = shares.filter((entry) => entry.decisivePct < 90)
-      expect(group.heldBy.map((row) => row.context)).toEqual(
-        below.map((entry) => publishedRows.find((row) => row.groups.includes(entry))?.context),
+      // The bar is the group's ruled acceptance basis where the reader carries one: the same basis
+      // the loader uses, so the test cannot agree with a narrower app-observable fraction.
+      const basis = (entry: Candidate2GroupShare) => entry.acceptance ?? entry
+      const below = shares.filter((entry) => basis(entry).decisivePct < 90)
+      expect(group.heldBy.map((row) => [row.context, row.decisive, row.denominator, row.decisivePct])).toEqual(
+        below.map((entry) => [
+          publishedRows.find((row) => row.groups.includes(entry))?.context,
+          basis(entry).decisive,
+          basis(entry).denominator,
+          basis(entry).decisivePct,
+        ]),
       )
       expect(group.included).toBe(shares.length > 0 && below.length === 0)
     }
-    // The live tree must exercise BOTH states, or the rule is untested on the data that ships.
     expect(data.groups.some((group) => group.included)).toBe(true)
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
