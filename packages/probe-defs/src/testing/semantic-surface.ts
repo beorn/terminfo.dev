@@ -352,6 +352,14 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     return best === -1 ? 0 : best
   }
 
+  /**
+   * DECSACE's extent for the attribute changes DECCARA/DECRARA apply: Ps 0 and 1 are stream, Ps 2 is
+   * rectangle. The surface starts at the rectangle the existing DECCARA/DECRARA rows assume without
+   * selecting it - not the DEC power-on default, which is stream. A fixture that wants the stream
+   * extent selects it with DECSACE 0 or 1 before its write, so one row's mode can never leak into
+   * another's. The start flips to stream once every row selects its extent explicitly.
+   */
+  let attributeExtent: 0 | 1 = 1
   const clampCol = (col: number): number => (col < 0 ? 0 : col > cols - 1 ? cols - 1 : col)
   const cellAt = (row: number, col: number): SurfaceCell => grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES)
 
@@ -473,6 +481,31 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
     }
   }
 
+  /**
+   * The cells an attribute change covers under the DECSACE extent: the rectangle itself for extent 1,
+   * and for extent 0 the reading-order span from its top-left cell to its bottom-right cell — the rest
+   * of the top row, whole rows between, then the left part of the bottom row.
+   */
+  const eachCellInExtent = (
+    params: readonly number[],
+    apply: (cell: SurfaceCell, row: number, col: number) => SurfaceCell | undefined,
+  ): void => {
+    if (attributeExtent === 1) {
+      eachCellIn(params, apply)
+      return
+    }
+    const { top, left, bottom, right } = rect(params)
+    for (let row = top; row <= bottom; row++) {
+      const start = row === top ? left : 0
+      const end = row === bottom ? right : cols - 1
+      for (let col = start; col <= end; col++) {
+        const current = grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES)
+        const next = apply(current, row, col)
+        if (next && grid[row]) grid[row]![col] = next
+      }
+    }
+  }
+
   /** ICH — insert blank cells at the cursor, shifting the rest of the row right. */
   const insertChars = (count: number): void => {
     if (mutations.has("ich-noop")) return
@@ -578,7 +611,7 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
   /** DECCARA / DECRARA — set or reverse the listed attributes across the rectangle. */
   const changeRectAttributes = (params: readonly number[], reverse: boolean): void => {
     const codes = params.slice(4)
-    eachCellIn(params, (cell) => ({
+    eachCellInExtent(params, (cell) => ({
       ...cell,
       ...(reverse ? reverseCodes(cell, codes) : applyCodes(cell, codes)),
     }))
@@ -699,7 +732,8 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
       return
     }
     if (intermediate === "*") {
-      // DECSACE selects the attribute-change extent (no cell effect); DECRQCRA frames a checksum reply.
+      // DECSACE selects the attribute-change extent; DECRQCRA frames a checksum reply.
+      if (final === "x") attributeExtent = first === 2 ? 1 : 0
       if (final === "y") requestChecksum(params)
       return
     }

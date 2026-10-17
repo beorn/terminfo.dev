@@ -23,8 +23,8 @@ import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 /**
  * The 17 Editing capabilities of 28018's Editing row; ids drawn from editing.ts, claims are the
- * contract. `editing.decsace` is by design inconclusive - its own probe records that sequence
- * consumption cannot measure attribute-change extent - so its expected outcome is named, not decided.
+ * contract. `editing.decsace` measures attribute-change extent by differential: DECSACE 2 confines
+ * the same DECCARA to its rectangle, DECSACE 0 reaches the rest of the reading-order span.
  */
 const EDITING_CONTRACT: GroupContract = [
   { id: "editing.insert-chars", expected: "decided", claim: "ICH inserts a blank at column 3, shifting text right" },
@@ -40,8 +40,8 @@ const EDITING_CONTRACT: GroupContract = [
   { id: "editing.decrara", expected: "decided", claim: "DECRARA clears inverse on the measured 3x5 cells" },
   {
     id: "editing.decsace",
-    expected: "inconclusive",
-    claim: "DECSACE attribute-change extent is not observable from sequence consumption",
+    expected: "decided",
+    claim: "DECSACE rectangle extent confines DECCARA to the 2x2 block, stream extent reaches the rest of the span",
   },
   { id: "editing.decrqcra", expected: "decided", claim: "DECRQCRA frames a four-digit checksum reply for request 1" },
   { id: "editing.sl", expected: "decided", claim: "SL shifts the measured cells of two rows left by two columns" },
@@ -99,9 +99,9 @@ test("the harness replays every editing capability deterministically", async () 
 
 // The bound satisfaction proof: each decided row reads "supported" against a surface that really
 // performs its edit - ICH/DCH, IL/DL, REP, the VT420 rectangle ops (DECFRA/DECERA/DECSERA/DECCRA/
-// DECCARA/DECRARA), a framed DECRQCRA reply, the screen-wide SL/SR shift and the column DECIC/DECDC -
-// and the one by-design row reads exactly its named inconclusive outcome. A probe whose own
-// expectation disagrees with the terminal cannot pass this test.
+// DECCARA/DECRARA), the DECSACE extent differential, a framed DECRQCRA reply, the screen-wide SL/SR
+// shift and the column DECIC/DECDC. A probe whose own expectation disagrees with the terminal cannot
+// pass this test.
 test("every editing contract row reads its declared outcome against a surface that implements its claim", async () => {
   for (const row of EDITING_CONTRACT) {
     const probe = editingProbes.find((entry) => entry.id === row.id)
