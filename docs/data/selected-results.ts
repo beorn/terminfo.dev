@@ -447,6 +447,7 @@ export function projectResults(
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null
+  const movedPastRelease = treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId)
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
   for (const run of runs) {
@@ -527,9 +528,22 @@ export function projectResults(
       const choices = byVersion.get(version)
       if (!choices?.length) throw new Error(`missing run choices for ${key} ${version}`)
       choices.sort((a, b) => {
-        const af = a.probeHash === policy.currentProbeHash && a.suiteComplete ? 1 : 0
-        const bf = b.probeHash === policy.currentProbeHash && b.suiteComplete ? 1 : 0
-        return bf - af || Date.parse(b.measuredAt) - Date.parse(a.measuredAt) || b.runId.localeCompare(a.runId)
+        // 29933 (@cto 2b222e2b): while this tree has moved past the declared release, the suite the
+        // cohort READS outranks the suite the tree happens to measure — release, then tree, then older.
+        // Ranking the tree's own hash first let an older tree-suite run bury a newer release-suite run
+        // forever, because recency only broke ties inside one rank. Unchanged when no release is named
+        // or the tree still equals it, so this never reorders a tree that is at its release.
+        const rank = (value: LoadedRun): number =>
+          !value.suiteComplete || value.probeHash === null
+            ? 0
+            : value.probeHash === policy.currentProbeHash
+              ? 1
+              : movedPastRelease && value.probeHash === releaseSuiteId
+                ? 2
+                : 0
+        return (
+          rank(b) - rank(a) || Date.parse(b.measuredAt) - Date.parse(a.measuredAt) || b.runId.localeCompare(a.runId)
+        )
       })
       const chosen = choices[0]
       if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
@@ -558,7 +572,7 @@ export function projectResults(
     exclusions,
     releaseSuiteId,
     treeSuiteId: policy.currentProbeHash,
-    treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
+    treeMovedPastRelease: movedPastRelease,
   }
 }
 

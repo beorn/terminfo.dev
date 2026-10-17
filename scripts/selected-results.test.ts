@@ -16,8 +16,10 @@ import {
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission } from "./admit-run.ts"
+import { barRowForContext } from "./decisive-share.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
+import { candidateFromSelected } from "../docs/data/run-selection.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
@@ -460,6 +462,75 @@ describe("selected results", () => {
     expect(onOther?.suiteFreshness).toMatch(/^older suite \(\d+ probes\)$/)
     expect(onOther?.suiteRelation).toBe("older")
     expect(isStaleRelation(onOther!.suiteRelation)).toBe(true)
+  })
+
+  describe("29933 — an older tree-suite run must not displace the release-suite row", () => {
+    const releaseSuiteId = "a8bafe49cdd4"
+    const liveTree = "21739d9e768f"
+    const onTree = parseRun(
+      "tree.json",
+      JSON.stringify(run("on-tree", { probeHash: liveTree, measuredAt: "2026-09-28T18:00:00.000Z" })),
+      catalog,
+    )
+    const onRelease = parseRun(
+      "release.json",
+      JSON.stringify(run("on-release", { probeHash: releaseSuiteId, measuredAt: "2026-09-28T12:00:00.000Z" })),
+      catalog,
+    )
+    const reviews = [reviewFor(onTree), reviewFor(onRelease)]
+
+    it("selects the release-suite run even though the tree-suite run is NEWER", () => {
+      // RED before the fix: ranking by the tree's own hash first selected `on-tree`, so the cohort read
+      // a run it refuses while a newer admissible run sat unused.
+      const cohort = projectResults([onTree, onRelease], reviews, catalog, {
+        currentProbeHash: liveTree,
+        releaseSuiteId,
+      })
+      expect(cohort.current["app:kitty"]?.runId).toBe("on-release")
+      expect(cohort.current["app:kitty"]?.suiteRelation).toBe("release")
+    })
+
+    it("keeps the old ordering when no release is named, or the tree still equals it", () => {
+      const unnamed = projectResults([onTree, onRelease], reviews, catalog, { currentProbeHash: liveTree })
+      expect(unnamed.current["app:kitty"]?.runId).toBe("on-tree")
+
+      // release == tree: the shared suite still outranks a NEWER run on an older suite, exactly as before.
+      const onOlder = parseRun(
+        "older.json",
+        JSON.stringify(run("on-older", { probeHash: "9918f283121a", measuredAt: "2026-09-29T00:00:00.000Z" })),
+        catalog,
+      )
+      const atRelease = projectResults([onOlder, onRelease], [reviewFor(onOlder), reviewFor(onRelease)], catalog, {
+        currentProbeHash: releaseSuiteId,
+        releaseSuiteId,
+      })
+      expect(atRelease.current["app:kitty"]?.runId).toBe("on-release")
+    })
+
+    it("leaves the selected run identical when a same-version tree-suite capture is admitted", () => {
+      const policy = { currentProbeHash: liveTree, releaseSuiteId }
+      const alone = projectResults([onRelease], [reviewFor(onRelease)], catalog, policy)
+      const withTree = projectResults([onTree, onRelease], reviews, catalog, policy)
+
+      expect(withTree.current["app:kitty"]).toEqual(alone.current["app:kitty"])
+      // The tree capture is kept and labelled, never dropped: history may hold it, never claim it.
+      expect(withTree.history["app:kitty"]?.map((value) => value.runId).sort()).toEqual(["on-release", "on-tree"])
+      expect(withTree.history["app:kitty"]?.find((value) => value.runId === "on-tree")?.suiteRelation).toBe("tree")
+
+      // The bar row is the consumer that was blanked in the field, so pin it literally: admitting the
+      // same-version tree capture leaves the row byte-identical, not merely equally-selected.
+      const rowFor = (projection: ReturnType<typeof projectResults>) => {
+        const selected = projection.current["app:kitty"]
+        if (!selected) throw new Error("missing selected run")
+        return barRowForContext({
+          context: { terminalId: "kitty", os: "macos" },
+          candidates: [candidateFromSelected("app:kitty", selected, {})],
+          tier62Ids: catalog,
+          tier52Ids: catalog,
+        })
+      }
+      expect(rowFor(withTree)).toEqual(rowFor(alone))
+    })
   })
 
   it("classifies every read run once into the projection table, one row per feature, named per basis (28792)", () => {
