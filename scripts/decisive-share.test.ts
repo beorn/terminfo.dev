@@ -132,7 +132,8 @@ describe("release 1 decisive-count reader", () => {
       terminalIds: ["kitty", "xterm"],
     })
     expect(parseReaderArgs(["--cohort", "candidate4"])).toEqual({ cohort: "candidate4", terminalIds: [] })
-    expect(() => parseReaderArgs(["--cohort", "candidate3"])).toThrow(/candidate1, candidate2/)
+    expect(parseReaderArgs(["--cohort", "candidate3"])).toEqual({ cohort: "candidate3", terminalIds: [] })
+    expect(() => parseReaderArgs(["--cohort", "candidate99"])).toThrow(/Unknown cohort candidate99/)
     expect(() => parseReaderArgs(["--unknown"])).toThrow(/unknown/i)
     // Two complete real-data projections took 5.7s under measured host load; keep this bound local.
   }, 15_000)
@@ -141,15 +142,56 @@ describe("release 1 decisive-count reader", () => {
     const contentDir = join(import.meta.dirname, "..", "content")
     // The mapper is the only place a cohort value becomes a spec. A value accepted by the CLI but
     // missing here would silently measure nothing, so each one is checked against the map.
-    expect(Object.keys(COHORT_FACTORIES).sort()).toEqual(["candidate1", "candidate2", "candidate4"])
+    expect(Object.keys(COHORT_FACTORIES).sort()).toEqual(["candidate1", "candidate2", "candidate3", "candidate4"])
     expect(COHORT_FACTORIES.candidate1).toBeUndefined()
     expect(COHORT_FACTORIES.candidate2?.(contentDir)?.name).toBe("candidate2")
     expect(COHORT_FACTORIES.candidate4?.(contentDir)?.name).toBe("candidate4")
-    for (const value of ["candidate1", "candidate2", "candidate4"] as const) {
+    for (const value of ["candidate1", "candidate2", "candidate3", "candidate4"] as const) {
       expect(parseReaderArgs(["--cohort", value]).cohort).toBe(value)
       expect(Object.hasOwn(COHORT_FACTORIES, value)).toBe(true)
     }
   }, 15_000)
+
+  it("reports candidate 3's exact modes/device delta on the explicitly named candidate-2 freeze", () => {
+    // The generic reader already covers suite selection and grading; this checks the new CLI value's
+    // actual data path, including all unavailable rows, rather than constructing its spec in the test.
+    const contentDir = join(import.meta.dirname, "..", "content")
+    const selected = parseReaderArgs(["--cohort", "candidate3"])
+    const factory = COHORT_FACTORIES[selected.cohort]
+    if (!factory) throw new Error("named cohort has no factory")
+    const spec = factory(contentDir)
+    const cohort = buildReport({ contentDir, cohort: spec }).cohort
+    if (!cohort) throw new Error("cohort report absent")
+    expect(cohort.frozenSuiteId).toBe("5753741410a9")
+    // Independent catalog census: all 44 new IDs, excluding the fourteen already included Device IDs.
+    expect(
+      createHash("sha256")
+        .update([...cohort.measuredIds].sort().join("\n"))
+        .digest("hex"),
+    ).toBe("8169578733a75fabb8da1edf4e32fb37a35ea40de9287ea5c30851136b3a3ced")
+    expect(cohort.scoredIds).toHaveLength(44)
+    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(29)
+    expect(cohort.decidableIds.filter((id) => id.startsWith("device."))).toHaveLength(5)
+    expect(cohort.unavailableIds).toHaveLength(10)
+    expect(cohort.unavailableIds.filter((id) => id.startsWith("device.env-"))).toHaveLength(9)
+    expect(cohort.unavailableIds).toContain("modes.decsscls")
+    expect(cohort.libraryOnlyIds).toEqual([])
+    expect(cohortHeaderLine(cohort)).toContain("frozen for candidate2, read here for candidate3 ids")
+    expect(() => frozenSuiteIdFor(contentDir, "candidate3")).toThrow(
+      /no suite manifest declares freeze\.release "candidate3"/,
+    )
+    const otherSuite = frozenSuiteIdFor(contentDir, "candidate4")
+    const row = barRowForContext({
+      context: { terminalId: "alacritty", os: "linux" },
+      candidates: [candidate({ suiteId: otherSuite })],
+      tier62Ids: IDS,
+      tier52Ids: IDS,
+    })
+    expect(cohortRowForSelected(row, cohort)).toMatchObject({
+      measured: false,
+      reason: `ineligible: selected run on suite ${otherSuite}, required 5753741410a9`,
+    })
+  }, 20_000)
 
   it("keeps the selected non-frozen run ineligible instead of replacing it with a competing frozen run", () => {
     const frozen = candidate({

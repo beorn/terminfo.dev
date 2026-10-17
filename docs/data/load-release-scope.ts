@@ -22,7 +22,7 @@ export interface CohortCategoryMeta {
   order: number
 }
 
-export type FeatureCohortName = "candidate2" | "candidate4"
+export type FeatureCohortName = "candidate2" | "candidate3" | "candidate4"
 
 export interface FeatureCohort {
   name: FeatureCohortName
@@ -69,8 +69,8 @@ export function cohortIds(
     for (const id of Object.keys(catalog)
       .filter((id) => id.startsWith(prefix))
       .sort()) {
-      // A tier-1 row is measured by its own release; candidate 4 is the tier this cohort ADDS, so it
-      // drops exactly those rows. The exclusion is data, never a per-cohort branch in a reader.
+      // A cohort that measures a release's additions drops the rows already measured by tier 1.
+      // The exclusion is data, never a per-cohort branch in a reader.
       if (options.excludingTier1 && slice(catalog, categories, id) === "tier1") {
         droppedTier1 += 1
         continue
