@@ -2546,7 +2546,7 @@
     "url": "https://sw.kovidgoyal.net/kitty/pointer-shapes/",
     "tags": ["osc", "xterm-extensions", "kitty-extensions"],
     "body": "OSC 22 controls the mouse pointer shape. Kitty extends xterm’s original mechanism with standardized shape names, a push/pop stack and queries. For example, <code>OSC 22 ; ?__current__ ST</code> asks for the selected shape, while <code>OSC 22 ; ?pointer,crosshair ST</code> asks whether named shapes are supported. A reply reports protocol state or recognized names; observing the visible pointer is a separate check.",
-    "probe": "The current app probe sends <code>OSC 22 ; pointer BEL</code> and reads the text cursor position. It does not query OSC 22 state or observe the mouse pointer, so the result remains inconclusive. No headless callback is implemented.",
+    "probe": "Send <code>OSC 22 ; pointer BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so the pointer shape is not observable from the cell grid: an ignored sequence and an honoured one leave the same screen. The result stays inconclusive by contract; the visible pointer is outside this collector's evidence.",
     "baseline": "rich",
     "sequence": "ESC ] 22 ; shape BEL"
   },
@@ -2567,7 +2567,7 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc"],
     "body": "OSC 777 is the rxvt-unicode (urxvt) notification extension, providing structured desktop notifications with separate title and body fields. The sequence <code>ESC ] 777 ; notify ; title ; body BEL</code> triggers a system notification. Unlike OSC 9 which sends a single message string, OSC 777 separates the title and body, giving notification managers more control over presentation. Originally from rxvt-unicode, it has been adopted by foot, Ghostty, WezTerm, and other modern terminals as a simple cross-terminal notification mechanism.",
-    "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code> and verify the terminal consumes the notification sequence (cursor position unchanged).",
+    "probe": "Send <code>OSC 777 ; notify ; test ; body BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so notification delivery is not observable from the cell grid: an ignored sequence and a delivered one leave the same screen. The result stays inconclusive by contract.",
     "baseline": "rich",
     "sequence": "ESC ] 777 ; notify ; title ; body BEL"
   },
@@ -2578,7 +2578,7 @@
     "url": "https://gitlab.gnome.org/GNOME/vte",
     "tags": ["osc"],
     "body": "OSC 666 is the VTE terminal property protocol, allowing applications to set typed key-value metadata on the terminal session. The sequence <code>ESC ] 666 ; key=value BEL</code> sets a named property. Properties are typed (string, boolean, integer, color, UUID) and can be queried by the terminal emulator or desktop environment. Designed for integration between terminal applications and the GNOME desktop — properties can signal the shell type, current context, user identity, and session metadata. Defined by VTE (the GNOME terminal widget) and supported by GNOME Terminal, Prompt (GNOME's new terminal), and kgx.",
-    "probe": "Send <code>OSC 666 ; test-prop=value BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "probe": "Send <code>OSC 666 ; test-prop=value BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so the terminal property change is not observable from the cell grid: an ignored sequence and an applied one leave the same screen. The result stays inconclusive by contract.",
     "baseline": "rich",
     "sequence": "ESC ] 666 ; key=value BEL"
   },
@@ -2589,7 +2589,7 @@
     "url": "https://uapi-group.org/specifications/specs/osc_context/",
     "tags": ["osc"],
     "body": "OSC 3008 is the systemd/UAPI group context signaling protocol for hierarchical session tracking. The sequence <code>ESC ] 3008 ; params BEL</code> communicates context changes — when a shell enters a container, SSH session, sudo context, or virtual machine. The terminal can display this context hierarchy (e.g., in the title bar or tab) so users always know where their commands execute. Parameters use a key-value format to convey the context type, label, and nesting depth. Defined by the UAPI group (systemd ecosystem), currently supported by VTE-based terminals (GNOME Terminal, Prompt, kgx).",
-    "probe": "Send <code>OSC 3008 ; type=test BEL</code> and verify the terminal consumes the context sequence (cursor position unchanged).",
+    "probe": "Send <code>OSC 3008 ; type=test BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so the systemd context is not observable from the cell grid: an ignored sequence and an applied one leave the same screen. The result stays inconclusive by contract.",
     "baseline": "rich",
     "sequence": "ESC ] 3008 ; params BEL"
   },
@@ -2655,7 +2655,7 @@
     "url": "https://codeberg.org/dnkl/foot/wiki",
     "tags": ["osc"],
     "body": "OSC 176 sets the Wayland window's app-id at runtime. The sequence is <code>ESC ] 176 ; app-id BEL</code> and is specific to <a href=\"https://codeberg.org/dnkl/foot\" class=\"hover-link\">foot</a>, the Wayland-native terminal emulator. Wayland window managers use the app-id to group windows, apply per-application rules, and select icons — analogous to <code>WM_CLASS</code> on X11. By exposing app-id setting as an escape sequence, foot lets shell scripts and TUIs differentiate themselves at the compositor level (for example, marking a terminal running a specific TUI so a tiling window manager can place it on a dedicated workspace). No other terminal implements OSC 176; on non-foot terminals the sequence is silently consumed or ignored.",
-    "probe": "Send <code>OSC 176 ; terminfo-test BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "probe": "Send <code>OSC 176 ; terminfo-test BEL</code>, then ask for the cursor position. No reply is defined for this sequence, and the Wayland app-id lives outside the cell grid: an ignored sequence and an applied one leave the same screen. The result stays inconclusive by contract.",
     "baseline": "rich",
     "sequence": "ESC ] 176 ; app-id BEL"
   },
@@ -2666,7 +2666,7 @@
     "url": "https://codeberg.org/dnkl/foot/wiki",
     "tags": ["osc"],
     "body": "OSC 555 triggers a visual bell — the terminal briefly flashes its background color, drawing the user's attention without playing an audible bell. The sequence is <code>ESC ] 555 BEL</code> and is foot-specific. Visual bells are commonly bound to shell error events, IRC/chat notifications, or completion of long-running commands. Most terminals expose visual bell behavior through preferences rather than an escape sequence; foot is unusual in giving applications direct control. Other terminals silently consume OSC 555 (no flash) or pass it through unchanged.",
-    "probe": "Send <code>OSC 555 BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "probe": "Send <code>OSC 555 BEL</code>, then ask for the cursor position. No reply is defined for this sequence, so the screen flash is not observable from the cell grid: a still capture cannot distinguish it from an ignored sequence. The result stays inconclusive by contract.",
     "baseline": "rich",
     "sequence": "ESC ] 555 BEL"
   },
@@ -2677,7 +2677,7 @@
     "url": "https://mintty.github.io/",
     "tags": ["osc"],
     "body": "OSC 440 plays a WAV audio file as terminal output. The sequence is <code>ESC ] 440 ; wavfile BEL</code> where <code>wavfile</code> is a path or identifier for an audio sample. This is a <a href=\"https://mintty.github.io/\" class=\"hover-link\">mintty</a>-only extension and one of the most unusual terminal features in the wild — no other terminal emulator exposes general-purpose audio playback through an escape sequence. mintty originally added this for accessibility and notification scripting on Windows, where Cygwin/MSYS shell scripts could trigger arbitrary sound effects without a separate player. Other terminals silently consume the sequence; audio playback happens nowhere except mintty.",
-    "probe": "Send <code>OSC 440 ; bell.wav BEL</code> and verify the terminal consumes the sequence (cursor position unchanged).",
+    "probe": "Send <code>OSC 440 ; bell.wav BEL</code>, then ask for the cursor position. No reply is defined for this sequence, and audio playback has no cell-grid witness: an ignored sequence and a played sound leave the same screen. The result stays inconclusive by contract.",
     "baseline": "legacy",
     "sequence": "ESC ] 440 ; wavfile BEL"
   },
