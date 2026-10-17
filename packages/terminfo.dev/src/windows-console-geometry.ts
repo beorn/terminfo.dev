@@ -41,11 +41,6 @@ export function parseModeConGeometry(stdout: string): ConsoleGeometry {
   return { cols, rows }
 }
 
-const defaultFfiRead = async (): Promise<ConsoleGeometry> => {
-  const ffi = await import("./windows-console-ffi.ts")
-  return ffi.readWindowsConsoleGeometry()
-}
-
 const defaultModeConRead = (): ModeConReply => {
   const result = spawnSync("cmd", ["/c", "mode", "con"], { encoding: "utf8", timeout: 5000, windowsHide: true })
   return { stdout: result.stdout ?? "", stderr: result.stderr ?? "", status: result.status }
@@ -61,7 +56,9 @@ export async function readConsoleGeometry(
 ): Promise<ConsoleGeometryRead> {
   const platform = options.platform ?? process.platform
   const onWindows = platform === "win32"
-  const ffi = options.ffi ?? (onWindows ? defaultFfiRead : undefined)
+  // No default ffi read: the arm passes its one bound kernel, and a caller that names none gets the
+  // `mode con` attempt alone rather than a second, silent kernel32 load.
+  const ffi = options.ffi
   const modeCon = options.modeCon ?? (onWindows ? defaultModeConRead : undefined)
   if (ffi === undefined && modeCon === undefined) {
     return {
