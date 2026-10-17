@@ -19,6 +19,7 @@ export {
   OBSERVATION_REASONS,
   OBSERVATION_EVIDENCE,
   NON_MEASURING_EVIDENCE,
+  frameDigests,
   isNonMeasuringEvidence,
 } from "./types.ts"
 export type {

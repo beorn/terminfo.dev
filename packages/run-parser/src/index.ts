@@ -4,6 +4,7 @@ import {
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
+  frameDigests,
   isNonMeasuringEvidence,
   type NotTestedCoverage,
   type Observation,
@@ -38,6 +39,9 @@ export interface LoadedRun {
   rawReplies: Record<string, string>
   assertions: ProbeAssertion[]
   screenshotRefs: string[]
+  /** Retained text snapshots: the text-frame twin of `screenshotRefs`, kept separate
+   * because every consumer of that list assumes a PNG. Absent in runs written before it exists. */
+  textSnapshotRefs: string[]
   observations: Observation[]
   notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
@@ -83,6 +87,29 @@ function frameRegionRectangle(
   }
   if (rectangle.x < 0 || rectangle.y < 0 || rectangle.width < 1 || rectangle.height < 1) {
     fail(path, `invalid frame regionRectangle ${index} for ${featureId}: edges are non-negative and sizes positive`)
+  }
+  return rectangle
+}
+
+/** The compared rectangle of a text-cells frame, in CELLS. Same rule as a pixel crop: carried, never
+ * dropped, and refused when it is not a real rectangle. */
+function frameCellRectangle(
+  value: unknown,
+  path: string,
+  index: number,
+  featureId: string,
+): Extract<ObservationFrame, { kind: "text-cells" }>["cellRectangle"] {
+  if (!object(value)) fail(path, `invalid frame cellRectangle ${index} for ${featureId}`)
+  const edge = (name: "top" | "left" | "bottom" | "right"): number => {
+    const edgeValue = value[name]
+    if (typeof edgeValue !== "number" || !Number.isSafeInteger(edgeValue) || edgeValue < 1) {
+      fail(path, `invalid frame cellRectangle ${name} ${index} for ${featureId}`)
+    }
+    return edgeValue
+  }
+  const rectangle = { top: edge("top"), left: edge("left"), bottom: edge("bottom"), right: edge("right") }
+  if (rectangle.bottom < rectangle.top || rectangle.right < rectangle.left) {
+    fail(path, `invalid frame cellRectangle ${index} for ${featureId}: the rectangle is empty`)
   }
   return rectangle
 }
@@ -274,11 +301,12 @@ export function parseObservationFrames(
   path: string,
   featureId: string,
   screenshotRefs: readonly string[],
+  textSnapshotRefs: readonly string[],
   primaryRef: string | undefined,
   evidence: Observation["evidence"],
 ): ObservationFrame[] | undefined {
   if (value === undefined) return undefined
-  if (evidence !== "pixels" || !Array.isArray(value) || value.length < 2) {
+  if ((evidence !== "pixels" && evidence !== "text") || !Array.isArray(value) || value.length < 2) {
     fail(path, `invalid frames for ${featureId}; pixels require control and target`)
   }
   const frames: ObservationFrame[] = value.map((entry: unknown, index: number) => {
@@ -287,7 +315,40 @@ export function parseObservationFrames(
     }
     const ref = asString(entry.ref, path, `frame ${index} ref for ${featureId}`)
     if (!screenshotDigest(ref)) fail(path, `invalid frame ref ${index} for ${featureId}`)
-    if (!screenshotRefs.includes(ref)) fail(path, `frame ${ref} is absent from run`)
+    // Read-side exclusivity: a kind and its fields must agree, and the ref must be
+    // listed under the SAME kind. A text snapshot in the screenshot list would be refused at
+    // admission or served as an image, which is the confusion the union exists to prevent.
+    const kind = entry.kind === undefined ? "pixels" : entry.kind
+    if (kind !== "pixels" && kind !== "text-cells") {
+      fail(path, `invalid frame kind ${String(entry.kind)} ${index} for ${featureId}`)
+    }
+    // Evidence and frame kind must agree: a text row is decided from the terminal's own cells and a
+    // pixels row from a raster, so a run cannot grade one from the other's frame.
+    if (evidence === "text" && kind !== "text-cells") {
+      fail(path, `text observation for ${featureId} cites a ${kind} frame ${index}`)
+    }
+    if (evidence === "pixels" && kind !== "pixels") {
+      fail(path, `pixels observation for ${featureId} cites a ${kind} frame ${index}`)
+    }
+    const textFields = ["cellDigest", "frameDigest", "cellRectangle"] as const
+    const pixelFields = ["regionDigest", "pixelsDigest", "regionRectangle"] as const
+    if (kind === "pixels") {
+      const stray = textFields.find((field) => entry[field] !== undefined)
+      if (stray !== undefined) {
+        fail(path, `pixel frame ${index} for ${featureId} carries text field ${stray} without kind "text-cells"`)
+      }
+      if (!screenshotRefs.includes(ref)) {
+        fail(path, `pixel frame ${ref} for ${featureId} is absent from the run's screenshotRefs`)
+      }
+    } else {
+      const stray = pixelFields.find((field) => entry[field] !== undefined)
+      if (stray !== undefined) {
+        fail(path, `text-cells frame ${index} for ${featureId} carries pixel field ${stray}`)
+      }
+      if (!textSnapshotRefs.includes(ref)) {
+        fail(path, `text-cells frame ${ref} for ${featureId} is absent from the run's textSnapshotRefs`)
+      }
+    }
     if (typeof entry.capturedAt !== "number" || !Number.isFinite(entry.capturedAt) || entry.capturedAt < 0) {
       fail(path, `invalid frame capturedAt ${index} for ${featureId}`)
     }
@@ -307,12 +368,23 @@ export function parseObservationFrames(
       fail(path, `invalid frame pixelsDigest ${index} for ${featureId}`)
     }
     const regionRectangle = frameRegionRectangle(entry.regionRectangle, path, index, featureId)
-    return {
+    const base = {
       role: entry.role as ObservationFrame["role"],
       ref,
       capturedAt: entry.capturedAt,
       label,
       ...(sourceRef && { sourceRef }),
+    }
+    if (kind === "text-cells") {
+      const cellDigest = asString(entry.cellDigest, path, `frame cellDigest ${index} for ${featureId}`)
+      if (!screenshotDigest(cellDigest)) fail(path, `invalid frame cellDigest ${index} for ${featureId}`)
+      const frameDigest = asString(entry.frameDigest, path, `frame frameDigest ${index} for ${featureId}`)
+      if (!screenshotDigest(frameDigest)) fail(path, `invalid frame frameDigest ${index} for ${featureId}`)
+      const cellRectangle = frameCellRectangle(entry.cellRectangle, path, index, featureId)
+      return { ...base, kind: "text-cells" as const, cellDigest, frameDigest, cellRectangle }
+    }
+    return {
+      ...base,
       ...(regionDigest && { regionDigest }),
       ...(pixelsDigest && { pixelsDigest }),
       ...(regionRectangle && { regionRectangle }),
@@ -322,7 +394,8 @@ export function parseObservationFrames(
   if (!frames.some((frame) => frame.role === "control") || targets.length === 0) {
     fail(path, `frames for ${featureId} require control and target`)
   }
-  if (!primaryRef || !targets.some((frame) => frame.ref === primaryRef)) {
+  // A text verdict has no screenshot: its frames' own refs are the retained artifacts it cites.
+  if (evidence === "pixels" && (!primaryRef || !targets.some((frame) => frame.ref === primaryRef))) {
     fail(path, `primary screenshotRef for ${featureId} must be a target frame`)
   }
   let priorTargetAt = -1
@@ -342,6 +415,7 @@ function parseObservation(
   rawReplies: Record<string, string>,
   assertions: ProbeAssertion[],
   screenshotRefs: string[],
+  textSnapshotRefs: string[],
 ): Observation {
   if (!object(value)) fail(path, "invalid observation")
   const featureId = asString(value.featureId, path, "observation.featureId")
@@ -357,13 +431,13 @@ function parseObservation(
   // measurement, so it belongs in the raw run; a lone screenshotRef is still a pixel the collector
   // cannot decide, and it keeps the old refusal. Bounds, roles and capturedAt are enforced below.
   if (
-    value.evidence === "pixels" &&
+    (value.evidence === "pixels" || value.evidence === "text") &&
     (value.outcome === "supported" || value.outcome === "unsupported") &&
     value.frames === undefined
   ) {
     fail(
       path,
-      `pixels verdict for ${featureId} requires control and target frames; a lone screenshotRef stays inconclusive`,
+      `${String(value.evidence)} verdict for ${featureId} requires control and target frames; a lone screenshotRef stays inconclusive`,
     )
   }
   const rawReplyRef =
@@ -378,6 +452,11 @@ function parseObservation(
   if (value.evidence === "pixels" && value.outcome !== "error" && !screenshotRef) {
     fail(path, `pixels observation ${featureId} requires screenshotRef`)
   }
+  // A text snapshot is never a screenshot: the two lists name different artifact kinds, and a text
+  // row points at its frames alone.
+  if (value.evidence === "text" && screenshotRef !== undefined) {
+    fail(path, `text observation ${featureId} cannot carry screenshotRef`)
+  }
   if (screenshotRef && !screenshotRefs.includes(screenshotRef)) {
     fail(path, `screenshotRef ${screenshotRef} is absent from run`)
   }
@@ -386,6 +465,7 @@ function parseObservation(
     path,
     featureId,
     screenshotRefs,
+    textSnapshotRefs,
     screenshotRef,
     value.evidence as Observation["evidence"],
   )
@@ -405,7 +485,7 @@ function parseObservation(
   // that assertion cites is a frame's ref or cell-aligned regionDigest. A reviewed Interpretation is
   // exempt — its evidence is the frame pair itself, checked by its own validator.
   if (
-    observation.evidence === "pixels" &&
+    (observation.evidence === "pixels" || observation.evidence === "text") &&
     (observation.outcome === "supported" || observation.outcome === "unsupported")
   ) {
     requireCitedFrameDigests(observation, boundAssertion(observation, path, assertions), path)
@@ -437,13 +517,21 @@ function requireCitedFrameDigests(observation: Observation, assertion: ProbeAsse
   const frames = observation.frames ?? []
   const cited = assertion.observed.match(/sha256:[0-9a-f]{64}/g) ?? []
   if (cited.length === 0) {
-    fail(path, `pixels verdict for ${featureId} must cite the frame digest it decided on`)
+    fail(path, `${observation.evidence} verdict for ${featureId} must cite the frame digest it decided on`)
   }
   for (const digest of cited) {
-    if (!frames.some((frame) => frame.ref === digest || frame.regionDigest === digest)) {
+    // The same accessor the probe compares with, so a text verdict recomputes exactly as a pixel one
+    // does: the cited digest must be a frame's ref or the digest of the cells it compared. The
+    // whole-frame digest is NOT enough, because a verdict citing it alone decided no cells.
+    if (
+      !frames.some((frame) => {
+        const digests = frameDigests(frame)
+        return frame.ref === digest || digests.cells === digest
+      })
+    ) {
       fail(
         path,
-        `pixels verdict for ${featureId} cites ${digest}, which is not the ref or regionDigest of a frame in this observation`,
+        `${observation.evidence} verdict for ${featureId} cites ${digest}, which is not the ref or a digest of a frame in this observation`,
       )
     }
   }
@@ -496,7 +584,7 @@ export function validateObservation(
   // A pixels observation reaching this validator is a reviewed Interpretation: its evidence is the
   // frame pair, not an assertion in the run, and selected-results checks those frames itself. The
   // raw-run path enforces the recomputability of the collector's own pixels verdicts in parseObservation.
-  if (evidence === "pixels") return
+  if (evidence === "pixels" || evidence === "text") return
   const assertion = boundAssertion(observation, path, assertions)
   if (evidence === "parser-state" || evidence === "interaction") {
     const state = parseJsonStrict(`${path}: ${featureId} state snapshot`, assertion.observed)
@@ -831,6 +919,18 @@ export function parseRun(
     ) {
       fail(path, "invalid assertions or screenshotRefs")
     }
+    // Optional: absent in every run written before text frames existed, and that absence means none.
+    if (
+      raw.textSnapshotRefs !== undefined &&
+      (!Array.isArray(raw.textSnapshotRefs) || !raw.textSnapshotRefs.every(screenshotDigest))
+    ) {
+      fail(path, "invalid textSnapshotRefs")
+    }
+    const textSnapshotRefs = (raw.textSnapshotRefs as string[] | undefined) ?? []
+    // One digest, one kind. A ref listed as both a screenshot and a text snapshot would be verified
+    // as a PNG on one path and as UTF-8 text on the other.
+    const bothLists = textSnapshotRefs.filter((ref) => (raw.screenshotRefs as string[]).includes(ref))
+    if (bothLists.length > 0) fail(path, `text snapshot ${bothLists[0]} is also listed as a screenshotRef`)
     const assertions = raw.assertions as ProbeAssertion[]
     for (const assertion of assertions) {
       if (
@@ -853,6 +953,7 @@ export function parseRun(
         raw.rawReplies as Record<string, string>,
         assertions,
         raw.screenshotRefs as string[],
+        textSnapshotRefs,
       ),
     )
     if (new Set(observations.map((v) => v.featureId)).size !== observations.length) {
@@ -924,6 +1025,7 @@ export function parseRun(
       rawReplies: raw.rawReplies as Record<string, string>,
       assertions,
       screenshotRefs: raw.screenshotRefs as string[],
+      textSnapshotRefs,
       observations,
       notTested,
       ungradedDiagnostics,
@@ -974,6 +1076,7 @@ export function parseRun(
         : {},
     assertions: [],
     screenshotRefs: [],
+    textSnapshotRefs: [],
     observations,
     notTested: [],
     ungradedDiagnostics: {},
@@ -1030,6 +1133,7 @@ export function decodeCollectorRun(
     rawReplies: measured.rawReplies,
     assertions: measured.assertions,
     screenshotRefs: measured.screenshotRefs,
+    ...(measured.textSnapshotRefs.length > 0 && { textSnapshotRefs: measured.textSnapshotRefs }),
     observations: measured.observations,
     ...(measured.notTested.length > 0 && { notTested: measured.notTested }),
     ungradedDiagnostics: measured.ungradedDiagnostics,
