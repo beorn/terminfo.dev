@@ -23,8 +23,12 @@ import {
   categoryBlockHeader,
   barRowForContext,
   buildReport,
+  candidate2Cohort,
+  candidate4Cohort,
+  COHORT_FACTORIES,
   categoryShares,
   cohortCategories,
+  cohortHeaderLine,
   cohortRowForSelected,
   formatCategoryRow,
   formatCohortRow,
@@ -37,6 +41,7 @@ import {
   tierOneIds,
 } from "./decisive-share.ts"
 import { pickContextRun, type ContextCandidate } from "../docs/data/run-selection.ts"
+import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import { classifyCells, d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { loadFeatures } from "@terminfo/catalog"
@@ -79,20 +84,10 @@ describe("release 1 decisive-count reader", () => {
   it("names required category, feature and frozen-suite failures instead of returning an empty report", () => {
     const contentDir = mkdtempSync(join(tmpdir(), "reader-required-content-"))
     const real = join(import.meta.dirname, "..", "content")
-    const load = () => buildReport({ contentDir, cohort: "candidate2" })
+    const load = () => buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
     try {
-      const categories = join(contentDir, "categories.json")
-      expect(load).toThrow(categories)
-      writeFileSync(categories, "{")
-      expect(load).toThrow(categories)
-      writeFileSync(categories, readFileSync(join(real, "categories.json")))
-      const features = join(contentDir, "features.json")
-      expect(load).toThrow(features)
-      writeFileSync(features, "{")
-      expect(load).toThrow(features)
-      writeFileSync(features, readFileSync(join(real, "features.json")))
-      // The release's frozen suite is the suite registry's own pointer (item 3), so no declaration
-      // file names it and no test needs to track one (28467).
+      // The cohort's suite is passed EXPLICITLY by its spec, so the registry is the first required
+      // resource: the reader never guesses which cohort a frozen suite belongs to.
       expect(load).toThrow(/the suite registry is required to name the current suite/)
       const suites = join(contentDir, "suites")
       mkdirSync(suites)
@@ -106,8 +101,20 @@ describe("release 1 decisive-count reader", () => {
         manifest,
         JSON.stringify({ ...raw, freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" } }),
       )
+      const categories = join(contentDir, "categories.json")
+      expect(load).toThrow(categories)
+      writeFileSync(categories, "{")
+      expect(load).toThrow(categories)
+      writeFileSync(categories, readFileSync(join(real, "categories.json")))
+      const features = join(contentDir, "features.json")
+      expect(load).toThrow(features)
+      writeFileSync(features, "{")
+      expect(load).toThrow(features)
+      writeFileSync(features, readFileSync(join(real, "features.json")))
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
-      expect(buildReport({ contentDir, cohort: "candidate2" }).candidate2?.frozenSuiteId).toBe("c3d1fbb77561")
+      expect(buildReport({ contentDir, cohort: candidate2Cohort(contentDir) }).cohort?.frozenSuiteId).toBe(
+        "c3d1fbb77561",
+      )
     } finally {
       rmSync(contentDir, { recursive: true })
     }
@@ -115,15 +122,33 @@ describe("release 1 decisive-count reader", () => {
 
   it("preserves the default report and accepts only the named CLI selectors and positionals", () => {
     const contentDir = join(import.meta.dirname, "..", "content")
-    expect(buildReport({ contentDir, cohort: "candidate1" })).toEqual(buildReport({ contentDir }))
+    // The default run measures no cohort at all: not an empty one, and not a fallback to a named one.
+    const baseline = buildReport({ contentDir })
+    expect(baseline.cohort).toBeUndefined()
+    expect(baseline.barRows.length).toBeGreaterThan(0)
     expect(parseReaderArgs([])).toEqual({ cohort: "candidate1", terminalIds: [] })
     expect(parseReaderArgs(["kitty", "--cohort", "candidate2", "xterm"])).toEqual({
       cohort: "candidate2",
       terminalIds: ["kitty", "xterm"],
     })
+    expect(parseReaderArgs(["--cohort", "candidate4"])).toEqual({ cohort: "candidate4", terminalIds: [] })
     expect(() => parseReaderArgs(["--cohort", "candidate3"])).toThrow(/candidate1, candidate2/)
     expect(() => parseReaderArgs(["--unknown"])).toThrow(/unknown/i)
     // Two complete real-data projections took 5.7s under measured host load; keep this bound local.
+  }, 15_000)
+
+  it("maps every accepted cohort value to a factory, candidate 1 to none", () => {
+    const contentDir = join(import.meta.dirname, "..", "content")
+    // The mapper is the only place a cohort value becomes a spec. A value accepted by the CLI but
+    // missing here would silently measure nothing, so each one is checked against the map.
+    expect(Object.keys(COHORT_FACTORIES).sort()).toEqual(["candidate1", "candidate2", "candidate4"])
+    expect(COHORT_FACTORIES.candidate1).toBeUndefined()
+    expect(COHORT_FACTORIES.candidate2?.(contentDir)?.name).toBe("candidate2")
+    expect(COHORT_FACTORIES.candidate4?.(contentDir)?.name).toBe("candidate4")
+    for (const value of ["candidate1", "candidate2", "candidate4"] as const) {
+      expect(parseReaderArgs(["--cohort", value]).cohort).toBe(value)
+      expect(Object.hasOwn(COHORT_FACTORIES, value)).toBe(true)
+    }
   }, 15_000)
 
   it("keeps the selected non-frozen run ineligible instead of replacing it with a competing frozen run", () => {
@@ -239,30 +264,31 @@ describe("release 1 decisive-count reader", () => {
   it("reports the ratified Candidate 2 cohort without dropping overlaps or its unavailable scrollback ID", () => {
     // The existing 52-ID reader cases cannot catch a named cohort being ignored or intersected
     // with the frozen schedule, which would silently shrink the approved 125-ID denominator.
-    const args = { contentDir: join(import.meta.dirname, "..", "content"), cohort: "candidate2" as const }
+    const contentDir = join(import.meta.dirname, "..", "content")
+    const args = { contentDir, cohort: candidate2Cohort(contentDir) }
     const report = buildReport(args)
-    expect(report).toHaveProperty("candidate2.name", "candidate2")
-    expect(report).toHaveProperty("candidate2.frozenSuiteId", "5753741410a9")
+    expect(report).toHaveProperty("cohort.name", "candidate2")
+    expect(report).toHaveProperty("cohort.frozenSuiteId", "5753741410a9")
     expect(report).toHaveProperty(
-      "candidate2.measuredIds",
+      "cohort.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
     )
-    expect(report).toHaveProperty("candidate2.measuredIds.length", 125)
-    expect(report).toHaveProperty("candidate2.unavailableIds", ["scrollback.viewport-hold-output"])
-    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    expect(report).toHaveProperty("cohort.measuredIds.length", 125)
+    expect(report).toHaveProperty("cohort.unavailableIds", ["scrollback.viewport-hold-output"])
+    if (!report.cohort) throw new Error("Candidate 2 report absent")
     // Independent ratification snapshot: SHA256 of JSON.stringify(sorted 125 IDs), not a prefix census.
     expect(
       createHash("sha256")
-        .update(JSON.stringify([...report.candidate2.measuredIds].sort()))
+        .update(JSON.stringify([...report.cohort.measuredIds].sort()))
         .digest("hex"),
     ).toBe("1a2012751b148b0230b97e27c74c11868ec36f1b3dd202fb798d42ec8abda17a")
-    report.candidate2.barRows.forEach((row, i) => {
+    report.cohort.barRows.forEach((row, i) => {
       const original = report.barRows[i]
       expect(row.context).toEqual(original?.context)
       if (original?.measured) expect(row).toHaveProperty("run", original.run)
     })
-    expect(report.candidate2.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
-    for (const row of report.candidate2.admittedRuns) {
+    expect(report.cohort.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
+    for (const row of report.cohort.admittedRuns) {
       expect(row.measured).toBe(row.run.suiteId === "5753741410a9")
       // The RELEASE share is the operator's D3 over the ratified cohort (125) MINUS the app-unobservable
       // rows the @chief option-B ruling moved out (three here, so 122); only the per-category block
@@ -539,11 +565,11 @@ describe("per-category decisive share (28018 AC2)", () => {
     // categories.json keys, partitioned over the decidable basis (Scrollback loses its one
     // unavailable id and its two library-only rows, Reset its one library-only row), so the derived
     // counts are 32/22/20/11/17/7/4/4/4 = 121.
-    const report = buildReport({ contentDir, cohort: "candidate2" })
-    if (!report.candidate2) throw new Error("Candidate 2 report absent")
-    expect(report.candidate2.measuredIds.length).toBe(125)
-    expect(report.candidate2.decidableIds.length).toBe(121)
-    const categories = cohortCategories(report.candidate2.decidableIds, catalog)
+    const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+    if (!report.cohort) throw new Error("Candidate 2 report absent")
+    expect(report.cohort.measuredIds.length).toBe(125)
+    expect(report.cohort.decidableIds.length).toBe(121)
+    const categories = cohortCategories(report.cohort.decidableIds, catalog)
     expect(categories.map((category) => category.key)).toEqual([
       "sgr",
       "cursor",
@@ -688,22 +714,18 @@ describe("per-category decisive share (28018 AC2)", () => {
   })
 
   it("names the unavailable id beside each fraction — the release line stays /122, the category line is /7", () => {
-    const report = buildReport({ contentDir, cohort: "candidate2" })
-    if (!report.candidate2) throw new Error("Candidate 2 report absent")
+    const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+    if (!report.cohort) throw new Error("Candidate 2 report absent")
     // The ratified cohort is still 125; the decidable basis is 121 and names its one unavailable id
     // and the three library-only rows the @chief option-B ruling moved out of the app denominator.
-    expect(report.candidate2.measuredIds).toHaveLength(125)
-    expect(report.candidate2.decidableIds).toHaveLength(121)
-    expect(report.candidate2.unavailableIds).toEqual(["scrollback.viewport-hold-output"])
+    expect(report.cohort.measuredIds).toHaveLength(125)
+    expect(report.cohort.decidableIds).toHaveLength(121)
+    expect(report.cohort.unavailableIds).toEqual(["scrollback.viewport-hold-output"])
     // In the cohort's own order — each category's `order`, the one category order the site prints.
-    expect(report.candidate2.libraryOnlyIds).toEqual([
-      "scrollback.accumulate",
-      "scrollback.total-lines",
-      "reset.method",
-    ])
-    expect(report.candidate2.decidableIds).not.toContain("scrollback.viewport-hold-output")
+    expect(report.cohort.libraryOnlyIds).toEqual(["scrollback.accumulate", "scrollback.total-lines", "reset.method"])
+    expect(report.cohort.decidableIds).not.toContain("scrollback.viewport-hold-output")
 
-    const categories = cohortCategories(report.candidate2.decidableIds, catalog)
+    const categories = cohortCategories(report.cohort.decidableIds, catalog)
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
     // Keep the real kitty/linux run selected before the freeze as an explicit historical witness.
     // The new suite has no selected run yet; history never substitutes for its current rows.
@@ -715,21 +737,21 @@ describe("per-category decisive share (28018 AC2)", () => {
       tier62Ids: report.tier62Ids,
       tier52Ids: report.tier52Ids,
     })
-    const row = cohortRowForSelected(selected, { ...report.candidate2, frozenSuiteId: "c3d1fbb77561" })
+    const row = cohortRowForSelected(selected, { ...report.cohort, frozenSuiteId: "c3d1fbb77561" })
     if (!row.measured || !("run" in row)) throw new Error("historical kitty/linux measured bar row absent")
     expect(row.run.suiteId).toBe("c3d1fbb77561")
     const printed = formatCohortRow(
       row,
       categories,
       labelWidth,
-      report.candidate2.unavailableIds,
-      report.candidate2.libraryOnlyIds,
+      report.cohort.unavailableIds,
+      report.cohort.libraryOnlyIds,
     )
     const text = printed.join("\n")
 
     // The RELEASE line keeps the operator's D3 denominator — the app-observable cohort size — and
     // names the unavailable id and the library-only rows beside it.
-    const releaseDenominator = report.candidate2.scoredIds.length
+    const releaseDenominator = report.cohort.scoredIds.length
     expect(
       printed.some(
         (line) =>
@@ -787,13 +809,13 @@ describe("per-category decisive share (28018 AC2)", () => {
   }, 15_000)
 
   it("moves no verdict label on today's runs — the only row the basis moves is Scrollback's denominator", () => {
-    const report = buildReport({ contentDir, cohort: "candidate2" })
-    if (!report.candidate2) throw new Error("Candidate 2 report absent")
-    const unavailable = new Set(report.candidate2.unavailableIds)
+    const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+    if (!report.cohort) throw new Error("Candidate 2 report absent")
+    const unavailable = new Set(report.cohort.unavailableIds)
     // Partition the FULL ratified cohort, so "before" is the retained-in-denominator basis.
-    const categories = cohortCategories(report.candidate2.measuredIds, catalog)
+    const categories = cohortCategories(report.cohort.measuredIds, catalog)
     let flips = 0
-    for (const row of report.candidate2.barRows) {
+    for (const row of report.cohort.barRows) {
       if (!("run" in row) || !row.measured) continue
       for (const category of categories) {
         const before = decisiveShare(row.run.states, category.ids)
@@ -812,6 +834,77 @@ describe("per-category decisive share (28018 AC2)", () => {
   }, 20_000)
 })
 
+describe("a cohort with no freeze of its own reads the frozen suite its caller names", () => {
+  const contentDir = join(import.meta.dirname, "..", "content")
+
+  it("names candidate 4's slices, its suite and whose freeze declared that suite", () => {
+    const spec = candidate4Cohort(contentDir)
+    expect(spec.name).toBe("candidate4")
+    expect(spec.slices).toEqual(["extensions", "input"])
+    // No candidate-4 freeze exists, so the suite is candidate 2's own frozen id, named explicitly.
+    expect(spec.suiteId).toBe("5753741410a9")
+    expect(spec.suiteFrozenFor).toBe("candidate2")
+    // The refusal is not a fallback: asking the registry for candidate 4 still throws.
+    expect(() => frozenSuiteIdFor(contentDir, "candidate4")).toThrow(
+      /no suite manifest declares freeze\.release "candidate4"/,
+    )
+  }, 15_000)
+
+  it("reports the 44 candidate-4 ids on the same buildReport path candidate 2 uses", () => {
+    const candidate2 = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+    const candidate4 = buildReport({ contentDir, cohort: candidate4Cohort(contentDir) })
+    if (!candidate2.cohort || !candidate4.cohort) throw new Error("cohort report absent")
+    // One shape, two DATA values: a per-cohort branch inside buildReport would show up here.
+    expect(Object.keys(candidate4.cohort).sort()).toEqual(Object.keys(candidate2.cohort).sort())
+    expect(candidate4.cohort.name).toBe("candidate4")
+    expect(candidate4.cohort.measuredIds).toHaveLength(44)
+    expect(candidate4.cohort.frozenSuiteId).toBe("5753741410a9")
+    expect(candidate4.cohort.slices).toEqual(["extensions", "input"])
+    expect(candidate4.cohort.suiteFrozenFor).toBe("candidate2")
+    // Candidate 2's own numbers do not move because a second cohort exists.
+    expect(candidate2.cohort.name).toBe("candidate2")
+    expect(candidate2.cohort.measuredIds).toHaveLength(125)
+    expect(candidate2.cohort.frozenSuiteId).toBe("5753741410a9")
+    expect(candidate2.cohort.suiteFrozenFor).toBe("candidate2")
+  }, 20_000)
+
+  it("derives the cohort from its data, never from its name", () => {
+    // The key-set comparison above proves the shape; this proves the PATH. A buildReport that chose
+    // the tier-1 exclusion from the cohort's name would still pass every other row in this file.
+    const expected = buildReport({ contentDir, cohort: candidate4Cohort(contentDir) }).cohort
+    const renamed = { ...candidate4Cohort(contentDir), name: "candidate2" as const }
+    const report = buildReport({ contentDir, cohort: renamed })
+    if (!expected || !report.cohort) throw new Error("cohort report absent")
+    expect(report.cohort.measuredIds).toHaveLength(44)
+    expect(report.cohort.measuredIds).toEqual(expected.measuredIds)
+    expect(report.cohort.decidableIds).toEqual(expected.decidableIds)
+    expect(report.cohort.slices).toEqual(["extensions", "input"])
+    expect(report.cohort.measuredIds).not.toContain("extensions.osc777-notify")
+  }, 20_000)
+
+  it("refuses a suite whose manifest is not frozen for the cohort it would print", () => {
+    // The header says WHOSE freeze declared the suite. A spec that claims another cohort's suite as
+    // its own must refuse, or the printed ownership is a claim nothing checked.
+    const borrowed = { ...candidate4Cohort(contentDir), suiteFrozenFor: "candidate4" as const }
+    expect(() => buildReport({ contentDir, cohort: borrowed })).toThrow(
+      /freeze\.release is "candidate2", not "candidate4"/,
+    )
+  }, 20_000)
+
+  it("prints the suite it read and whose freeze that is, for either cohort", () => {
+    const candidate2 = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) }).cohort
+    const candidate4 = buildReport({ contentDir, cohort: candidate4Cohort(contentDir) }).cohort
+    if (!candidate2 || !candidate4) throw new Error("cohort report absent")
+    const line2 = cohortHeaderLine(candidate2)
+    expect(line2).toContain("Candidate 2 classics · 125 IDs")
+    expect(line2).toContain("required suite 5753741410a9;")
+    expect(line2).not.toContain("frozen for")
+    const line4 = cohortHeaderLine(candidate4)
+    expect(line4).toContain("Candidate 4 extensions and input · 44 IDs")
+    expect(line4).toContain("required suite 5753741410a9 — frozen for candidate2, read here for candidate4 ids")
+  }, 20_000)
+})
+
 describe("the reader separates admitted runs from the site's refusals (28018)", () => {
   const contentDir = join(import.meta.dirname, "..", "content")
 
@@ -820,14 +913,14 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     // admission gate refuses both — they must never print under ADMITTED RUNS.
     const nativeProvenanceDirty = "d3c5c6a0bd41012bcb54abe044d9c5c3"
     const suiteIncomplete = "6993f2ac0b1831e525d12c95ab5e8bbe"
-    const report = buildReport({ contentDir, cohort: "candidate2" })
-    if (!report.candidate2) throw new Error("Candidate 2 report absent")
-    const admitted = report.candidate2.admittedRuns.map((row) => row.run.runId)
+    const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+    if (!report.cohort) throw new Error("Candidate 2 report absent")
+    const admitted = report.cohort.admittedRuns.map((row) => row.run.runId)
     expect(admitted).not.toContain(nativeProvenanceDirty)
     expect(admitted).not.toContain(suiteIncomplete)
     // An admitted run the bar does not select stays visible by run id (the section's whole purpose).
     expect(admitted).toContain("08add735cbbccf6f87373c7e77d2cf47")
-    const refused = new Map(report.candidate2.refusedRuns.map((row) => [row.run.runId, row.reason]))
+    const refused = new Map(report.cohort.refusedRuns.map((row) => [row.run.runId, row.reason]))
     expect(refused.get(nativeProvenanceDirty)).toBe("native-provenance-dirty")
     expect(refused.get(suiteIncomplete)).toBe("suite-incomplete")
     expect(report.refusedRuns.map((row) => row.run.runId)).toEqual(
@@ -888,7 +981,7 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
         readFileSync(join(real, "suites", `${libRun.suiteId}.json`)),
       )
 
-      const report = buildReport({ contentDir, cohort: "candidate2" })
+      const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
       expect(report.admittedRuns).toEqual([])
       expect(report.refusedRuns).toEqual([])
       expect(report.rejected).toBeGreaterThan(0)

@@ -24,8 +24,11 @@ const data = loadCandidate2Data()
 
 // An explicit historical witness, never a substitute for the live frozen suite's empty rows.
 // Reuse the admitted run and the reader's classifier; the page mapping still runs in full.
-const report = reader.buildReport({ contentDir: join(root, "content"), cohort: "candidate2" })
-const currentCohort = report.candidate2
+const report = reader.buildReport({
+  contentDir: join(root, "content"),
+  cohort: reader.candidate2Cohort(join(root, "content")),
+})
+const currentCohort = report.cohort
 if (!currentCohort) throw new Error("candidate2 cohort absent")
 const historicalRun = report.admittedRuns.find((run) => run.runId === "dfd4cd08416fb5f3be3eaeed5acce782")
 if (!historicalRun) throw new Error("historical kitty/linux admitted run absent")
@@ -40,7 +43,7 @@ const historicalRow = reader.cohortRowForSelected(historicalSelected, historical
 const uncollectedCohort = { ...currentCohort, frozenSuiteId: "0fb194cf6cea" }
 const historicalReport = vi.spyOn(reader, "buildReport").mockReturnValue({
   ...report,
-  candidate2: { ...historicalCohort, barRows: [historicalRow] },
+  cohort: { ...historicalCohort, barRows: [historicalRow] },
 })
 let historicalData: ReturnType<typeof loadCandidate2Data>
 let uncollectedData: ReturnType<typeof loadCandidate2Data>
@@ -48,7 +51,7 @@ try {
   historicalData = loadCandidate2Data()
   historicalReport.mockReturnValue({
     ...report,
-    candidate2: {
+    cohort: {
       ...uncollectedCohort,
       barRows: [reader.cohortRowForSelected(historicalSelected, uncollectedCohort)],
     },

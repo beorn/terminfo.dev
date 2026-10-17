@@ -34,17 +34,23 @@
  * document. It writes nothing. Bucket math is the site's own `aggregateCells` over the reader's
  * classified table, not a second copy.
  *
- * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2] [terminal-id ...]
+ * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2|candidate4] [terminal-id ...]
  * Candidate 1 is the default. Candidate 2 keeps all 125 classics on the suite registry's current freeze.
  * When live selection moves past it, bar rows name the selected run's suite and required frozen suite
  * as ineligible. Only admitted history on that required suite then receives the 125 verdict.
+ *
+ * Candidate 4 is the extensions and input slices the tier adds, read on candidate 2's required suite,
+ * passed EXPLICITLY and printed: that suite is frozen for candidate 2 and is being read for
+ * candidate-4 ids, because no candidate-4 freeze exists yet. The report never falls back to a
+ * manifest that does not name the cohort: a cohort with no manifest still refuses. Both cohorts run
+ * the ONE buildReport path: the cohort is data (name, slices, suite ownership).
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { parseArgs } from "node:util"
 import { parseJsonStrict, parseSuiteManifest } from "@terminfo/run-parser"
 import { splitDecidableBasis } from "@terminfo/probe-defs"
-import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
+import { loadFeatures, type FeatureCatalog, type Slice } from "@terminfo/catalog"
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
@@ -56,6 +62,7 @@ import {
   loadReleaseScope,
   loadFeatureCohort,
   type FeatureCohort,
+  type FeatureCohortName,
 } from "../docs/data/load-release-scope.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -288,25 +295,90 @@ export interface Report {
   legacySkipped: number
   rejected: number
   searched: string
-  candidate2?: ScorableCohort & {
+  /** The selected cohort's report; absent under candidate1. Named by `cohort.name`. */
+  cohort?: ScorableCohort & {
     decidableIds: string[]
     unavailableIds: string[]
     libraryOnlyIds: string[]
     barRows: CohortBarRow[]
     admittedRuns: CohortRun[]
     refusedRuns: RefusedRun[]
+    slices: CohortSpec["slices"]
+    suiteFrozenFor: FeatureCohortName
   }
 }
 
 /**
- * The cohort reduced to what a decisive share is scored over. The ratified `measuredIds` stay the full
- * 125 (pinned by SHA in the reader's test); the share divides over `scoredIds` — the ratified ids an
- * APP run can decide, which is `measuredIds` minus the app-unobservable rows — and the per-category
- * block divides over `decidableIds`, the scored ids the required suite's schedule also covers. Two
- * lists stay OUT of every denominator and are named beside each fraction: the ids the schedule does
- * not cover (`unavailableIds`) and the rows no app run can decide (`libraryOnlyIds`).
+ * The cohort reduced to what a decisive share is scored over. `measuredIds` holds the cohort's full
+ * catalog set; the release share divides over `scoredIds` — the cohort ids an APP run can decide,
+ * which is `measuredIds` minus the app-unobservable rows — and the per-category block divides over
+ * `decidableIds`, the scored ids the required suite's schedule also covers. Two lists stay OUT of
+ * every denominator and are named beside each fraction: the ids the schedule does not cover
+ * (`unavailableIds`) and the rows no app run can decide (`libraryOnlyIds`).
  */
 export type ScorableCohort = FeatureCohort & { readonly decidableIds: readonly string[] }
+
+/**
+ * The cohort as DATA, so one report serves every cohort: its name, the catalog category slices it is
+ * the union of, the suite the reading is taken on, and whose freeze declared that suite. Nobody
+ * branches on the cohort name; the only difference between two cohorts is this value.
+ */
+export interface CohortSpec {
+  name: FeatureCohortName
+  slices: readonly Slice[]
+  /** Candidate 4 is the tier this cohort ADDS, so it drops the rows already labelled tier 1. */
+  excludingTier1: boolean
+  suiteId: string
+  /** The cohort whose manifest froze `suiteId`; the report prints that this suite is read for another. */
+  suiteFrozenFor: FeatureCohortName
+}
+
+/** Candidate 2's cohort: the categories the catalog labels `classics`, on its own frozen suite. */
+export function candidate2Cohort(contentDir: string): CohortSpec {
+  return {
+    name: "candidate2",
+    slices: ["classics"],
+    excludingTier1: false,
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
+  }
+}
+
+/**
+ * Candidate 4's cohort: the extensions and input slices, read on candidate 2's frozen suite because no
+ * candidate-4 freeze exists yet. The suite is named here EXPLICITLY and the derivation still asks for
+ * candidate 2's manifest, so no lookup ever pretends candidate 4 has one.
+ */
+export function candidate4Cohort(contentDir: string): CohortSpec {
+  return {
+    name: "candidate4",
+    slices: ["extensions", "input"],
+    excludingTier1: true,
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
+  }
+}
+
+const COHORT_LABELS: Readonly<Record<FeatureCohortName, string>> = {
+  candidate2: "Candidate 2 classics",
+  candidate4: "Candidate 4 extensions and input",
+}
+
+type CohortReport = NonNullable<Report["cohort"]>
+
+/**
+ * The one header line every cohort prints. It names the required suite and WHOSE freeze declared it:
+ * reading another cohort's frozen suite is allowed only when it is said out loud, so the ownership is
+ * rendered, never inferred by the reader.
+ */
+export function cohortHeaderLine(cohort: CohortReport): string {
+  const suite = `required suite ${cohort.frozenSuiteId}`
+  const suiteNote =
+    cohort.suiteFrozenFor === cohort.name
+      ? suite
+      : `${suite} — frozen for ${cohort.suiteFrozenFor}, read here for ${cohort.name} ids`
+  return `${COHORT_LABELS[cohort.name]} · ${cohort.measuredIds.length} IDs (${cohort.decidableIds.length} with a probe in ${suite} and app-observable) · ${suiteNote}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the cohort verdict`
+}
 
 export type CohortRun =
   | { run: ContextCandidate; measured: true; share: DecisiveShare }
@@ -322,11 +394,10 @@ function cohortRun(run: ContextCandidate, cohort: ScorableCohort, role: "selecte
       reason: `ineligible: ${role} run on suite ${run.suiteId}, required ${cohort.frozenSuiteId}`,
     }
   }
-  // The RELEASE line is the operator's D3 bar over the ratified cohort (`measuredIds`, the 125) with
-  // the app-unobservable rows removed: an id leaves the 125 only on an operator ruling (@chief option
-  // B, 2026-10-11), and it leaves as a NAMED row, never silently. An id with no probe in the required
-  // suite counts as NOT decisive there and is named beside the fraction — the gap is in the suite, not
-  // in the cohort (@cto 2026-10-10T15:59Z). Only the per-category block divides over the decidable basis.
+  // The RELEASE line is the D3 bar over the cohort's `measuredIds` with the app-unobservable rows
+  // removed: an id leaves the cohort only as a NAMED row, never silently. An id with no probe in the
+  // required suite counts as NOT decisive there and is named beside the fraction — the gap is in the
+  // suite, not in the cohort. Only the per-category block divides over the decidable basis.
   return { run, measured: true, share: decisiveShare(run.states, cohort.scoredIds) }
 }
 
@@ -343,23 +414,35 @@ export function cohortRowForSelected(row: BarRow, cohort: ScorableCohort): Cohor
 export function buildReport(args: {
   contentDir: string
   contexts?: readonly ReleaseContext[]
-  cohort?: "candidate1" | "candidate2"
+  cohort?: CohortSpec
 }): Report {
-  let cohort: ScorableCohort | undefined
+  let cohort: (ScorableCohort & { slices: CohortSpec["slices"]; suiteFrozenFor: FeatureCohortName }) | undefined
   let unavailableIds: string[] = []
   let libraryOnlyIds: string[] = []
-  if (args.cohort === "candidate2") {
+  if (args.cohort) {
     const categories = loadCategories(args.contentDir)
     const declared = loadFeatureCohort({
       catalog: featureCatalog(args.contentDir),
       categories,
-      frozenSuiteId: frozenSuiteIdFor(args.contentDir, "candidate2"),
+      name: args.cohort.name,
+      slices: args.cohort.slices,
+      excludingTier1: args.cohort.excludingTier1,
+      frozenSuiteId: args.cohort.suiteId,
     })
     const manifestPath = join(args.contentDir, "suites", `${declared.frozenSuiteId}.json`)
     const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
     if (manifest.probeHash !== declared.frozenSuiteId) {
       throw new Error(
         `${manifestPath}: probeHash ${manifest.probeHash} does not match required ${declared.frozenSuiteId}`,
+      )
+    }
+    // The header prints whose freeze declared this suite, so the manifest must BE that cohort's freeze.
+    // Printing the spec's claim without checking it would let a stale or borrowed suite read aloud as
+    // the cohort's own.
+    if (manifest.freeze?.release !== args.cohort.suiteFrozenFor) {
+      throw new Error(
+        `${manifestPath}: freeze.release is "${manifest.freeze?.release ?? "(none)"}", not "${args.cohort.suiteFrozenFor}", ` +
+          `so the suite cannot be printed as frozen for ${args.cohort.suiteFrozenFor}`,
       )
     }
     // ONE basis, one owner: the required schedule is the source of availability. The split runs over
@@ -369,7 +452,12 @@ export function buildReport(args: {
     const basis = splitDecidableBasis(declared.scoredIds, manifest.probes.app)
     unavailableIds = [...basis.unavailableIds]
     libraryOnlyIds = [...declared.libraryOnlyIds]
-    cohort = { ...declared, decidableIds: basis.decidableIds }
+    cohort = {
+      ...declared,
+      decidableIds: basis.decidableIds,
+      slices: args.cohort.slices,
+      suiteFrozenFor: args.cohort.suiteFrozenFor,
+    }
   }
   const projection = loadCurrentResults(args.contentDir).projection
   const current = Object.entries(projection.current).map(([key, selected]) =>
@@ -428,7 +516,7 @@ export function buildReport(args: {
     searched: join(args.contentDir, "probes-apps"),
   }
   if (cohort) {
-    report.candidate2 = {
+    report.cohort = {
       ...cohort,
       decidableIds: [...cohort.decidableIds],
       unavailableIds,
@@ -674,33 +762,50 @@ export function refusedRunsSection(runs: readonly RefusedRun[]): string[] {
   return lines
 }
 
-export function parseReaderArgs(args: string[]): { cohort: "candidate1" | "candidate2"; terminalIds: string[] } {
+export function parseReaderArgs(args: string[]): {
+  cohort: ReaderCohort
+  terminalIds: string[]
+} {
   const { values, positionals: terminalIds } = parseArgs({
     args,
     strict: true,
     allowPositionals: true,
     options: { cohort: { type: "string", default: "candidate1" } },
   })
-  if (values.cohort !== "candidate1" && values.cohort !== "candidate2") {
-    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2`)
+  if (values.cohort !== "candidate1" && values.cohort !== "candidate2" && values.cohort !== "candidate4") {
+    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2, candidate4`)
   }
   return { cohort: values.cohort, terminalIds }
+}
+
+/** The cohort a reader run selects; candidate 1 measures no cohort of its own. */
+export type ReaderCohort = "candidate1" | FeatureCohortName
+
+/**
+ * Every accepted `--cohort` value mapped to its spec factory, candidate 1 included as the absence of
+ * one. A record rather than a chain of name comparisons: the key type makes a newly accepted cohort
+ * value a compile error until it is given a factory, so no accepted value can fall through to
+ * "no cohort" by omission.
+ */
+export const COHORT_FACTORIES: Readonly<Record<ReaderCohort, ((contentDir: string) => CohortSpec) | undefined>> = {
+  candidate1: undefined,
+  candidate2: candidate2Cohort,
+  candidate4: candidate4Cohort,
 }
 
 function main(): void {
   const contentDir = join(import.meta.dirname ?? process.cwd(), "..", "content")
   const { cohort: selectedCohort, terminalIds } = parseReaderArgs(process.argv.slice(2))
-  const report = buildReport({ contentDir, cohort: selectedCohort })
-  if (report.candidate2) {
-    const cohort = report.candidate2
-    console.log(
-      `Candidate 2 classics · ${cohort.measuredIds.length} IDs (${cohort.decidableIds.length} with a probe in required suite ${cohort.frozenSuiteId} and app-observable) · required suite ${cohort.frozenSuiteId}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the cohort verdict`,
-    )
+  const cohortSpec = COHORT_FACTORIES[selectedCohort]?.(contentDir)
+  const report = buildReport({ contentDir, cohort: cohortSpec })
+  if (report.cohort) {
+    const cohort = report.cohort
+    console.log(cohortHeaderLine(cohort))
     console.log(
       `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
     )
     console.log(
-      `basis: release: the operator's ${cohort.measuredIds.length} scored over the ${cohort.scoredIds.length} an app run can decide, an id with no probe in the required suite counts as not decisive and is named, and ${cohort.libraryOnlyIds.length} ${cohort.libraryOnlyIds.length === 1 ? "row is" : "rows are"} library-only and not scored in apps; categories: ids with a probe in the required suite (${cohort.decidableIds.length} of ${cohort.measuredIds.length}), unavailable named beside: ${cohort.unavailableIds.join(", ") || "none"}, library-only named beside: ${cohort.libraryOnlyIds.join(", ") || "none"}`,
+      `basis: release: the cohort's ${cohort.measuredIds.length} scored over the ${cohort.scoredIds.length} an app run can decide, an id with no probe in the required suite counts as not decisive and is named, and ${cohort.libraryOnlyIds.length} ${cohort.libraryOnlyIds.length === 1 ? "row is" : "rows are"} library-only and not scored in apps; categories: ids with a probe in the required suite (${cohort.decidableIds.length} of ${cohort.measuredIds.length}), unavailable named beside: ${cohort.unavailableIds.join(", ") || "none"}, library-only named beside: ${cohort.libraryOnlyIds.join(", ") || "none"}`,
     )
     const categories = cohortCategories(cohort.decidableIds, loadCategories(contentDir))
     const labelWidth = Math.max(...categories.map((category) => category.label.length))
