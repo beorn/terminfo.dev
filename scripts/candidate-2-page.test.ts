@@ -16,6 +16,7 @@ import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import * as reader from "./decisive-share.ts"
 import { loadCandidate2Data } from "../docs/data/candidate-2.data.ts"
+import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import { inconclusiveRows } from "./decisive-share.ts"
 import type { Candidate2GroupShare } from "../docs/data/candidate-2.data.ts"
 
@@ -380,6 +381,45 @@ describe("candidate-2 page: wiring", () => {
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group missing")
     expect(unicode.included).toBe(true)
+  })
+
+  it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
+    const real = join(import.meta.dirname, "..", "content")
+    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const cohort = baseReport.cohort
+    if (!cohort) throw new Error("candidate2 cohort absent")
+    const previous = frozenSuiteIdFor(real, "candidate2")
+    const hold = cohort.admittedRuns.find(
+      (entry) => entry.run.suiteId === previous && entry.run.terminalId === "terminal-app" && entry.run.os === "macos",
+    )
+    if (!hold) throw new Error("previous-freeze terminal-app run absent")
+    // A newer same-version capture at main takes selection, but it may not lift the hold: history
+    // holds a group, it never claims one, and the selected run is never replaced.
+    const displaced = { ...hold.run, suiteId: "45d6fda67445", runId: "displacing-run" }
+    const barRows = cohort.barRows.map((row) =>
+      row.context.terminalId === "terminal-app" && row.context.os === "macos"
+        ? {
+            context: row.context,
+            measured: false as const,
+            run: displaced,
+            reason: "ineligible: selected run on suite 45d6fda67445, required c24025ea22fc",
+          }
+        : row,
+    )
+    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+      ...baseReport,
+      cohort: { ...cohort, barRows, admittedRuns: [{ ...hold }, ...cohort.admittedRuns] },
+    })
+    try {
+      const dataAtSelection = loadCandidate2Data()
+      const text = dataAtSelection.groups.find((group) => group.key === "text")
+      if (!text) throw new Error("text group missing")
+      expect(text.included).toBe(false)
+      expect(text.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos"])
+      expect(text.darkHeldBy[0]).toMatchObject({ decisive: 17, denominator: 20 })
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it("preserves global inclusion outside the two-group context scope", () => {

@@ -26,6 +26,7 @@ import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
+import type { ContextCandidate } from "./run-selection.ts"
 import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
   buildReport,
@@ -221,27 +222,35 @@ export function loadCandidate2Data(): Candidate2Data {
   // The freeze candidate 2 published on before this cohort moved: a run there is data that WENT DARK,
   // not missing data. Runs on any older suite were never published and cannot hold a claim.
   const previousFreeze = frozenSuiteIdFor(contentDir, "candidate2")
+  // A hold may be read from history, a claim may not: the newest admitted run per context on the
+  // previous freeze is what a dark context held the group with. The report's admitted runs are
+  // already newest first, so the first per context is the one to use.
+  const previousRunsByContext = new Map<string, ContextCandidate>()
+  for (const entry of cohort.admittedRuns) {
+    const run = entry.run
+    if (run.suiteId !== previousFreeze) continue
+    const key = `${run.terminalId}/${run.os}`
+    if (!previousRunsByContext.has(key)) previousRunsByContext.set(key, run)
+  }
 
   const groups: Omit<
     Candidate2Group,
     "included" | "includedOn" | "heldBy" | "darkHeldBy" | "darkRuled" | "unmeasured"
-  >[] = included.map(
-    (category) => {
-      const scored = decidableByKey.get(category.key)
-      if (!scored) {
-        throw new Error(`group ${category.key} is included but has no decidable rows; the two bases disagree`)
-      }
-      return {
-        key: category.key,
-        label: category.label,
-        order: category.order,
-        capabilities: category.ids.map(capability),
-        denominator: scored.ids.length,
-        libraryOnly: category.ids.filter((id) => libraryOnly.has(id)).map(capability),
-        unavailable: category.ids.filter((id) => unavailable.has(id)).map(capability),
-      }
-    },
-  )
+  >[] = included.map((category) => {
+    const scored = decidableByKey.get(category.key)
+    if (!scored) {
+      throw new Error(`group ${category.key} is included but has no decidable rows; the two bases disagree`)
+    }
+    return {
+      key: category.key,
+      label: category.label,
+      order: category.order,
+      capabilities: category.ids.map(capability),
+      denominator: scored.ids.length,
+      libraryOnly: category.ids.filter((id) => libraryOnly.has(id)).map(capability),
+      unavailable: category.ids.filter((id) => unavailable.has(id)).map(capability),
+    }
+  })
   const scoredTotal = decidable.reduce((count, category) => count + category.ids.length, 0)
   if (scoredTotal !== cohort.decidableIds.length) {
     throw new Error(`decidable groups cover ${scoredTotal} ids, not the cohort's ${cohort.decidableIds.length}`)
@@ -351,8 +360,12 @@ export function loadCandidate2Data(): Candidate2Data {
     for (const [index, row] of contexts.entries()) {
       if (!row.published) {
         const bar = cohort.barRows[index]
-        const run = bar && "run" in bar ? bar.run : undefined
-        if (run?.suiteId !== previousFreeze) continue
+        const selectedRun = bar && "run" in bar ? bar.run : undefined
+        // History may HOLD a group, never CLAIM one. When a newer off-freeze run has taken selection,
+        // the hold is read from the previous freeze's admitted run rather than from the selected run;
+        // the selected run itself is never replaced (the 28467 pin).
+        const run = selectedRun?.suiteId === previousFreeze ? selectedRun : previousRunsByContext.get(row.context)
+        if (!run) continue
         if (!row.reason) {
           throw new Error(`unpublished context ${row.context} carries no reason; cannot name it as unmeasured`)
         }
