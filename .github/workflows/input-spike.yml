@@ -42,7 +42,7 @@ jobs:
           cat > "$OUT/open.applescript" <<APPLESCRIPT
           tell application "Terminal"
             activate
-            do script "$OUT/reader.sh"
+            do script "$OUT/reader.sh &"
           end tell
           APPLESCRIPT
           osascript "$OUT/open.applescript"
