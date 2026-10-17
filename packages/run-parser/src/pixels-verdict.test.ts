@@ -214,7 +214,8 @@ describe("in-run pixels verdicts", () => {
     const run = kittyRun()
     const assertions = run.assertions as Array<Record<string, unknown>>
     assertions[0]!.observed = digest("not-in-any-frame")
-    expect(() => parse(run)).toThrow(/is not the ref or regionDigest of a frame/)
+    // The same check now serves text verdicts, whose digests are cell-sized.
+    expect(() => parse(run)).toThrow(/is not the ref or a digest of a frame/)
   })
 
   it("refuses a verdict whose observed cites no digest at all", () => {
