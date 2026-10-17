@@ -276,7 +276,7 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
   }))
   context.capture = capture
   const result = await definition.term(context)
-  // The three-row ruling (@cto c17551dc and its correction, 29816): this row has no reference
+  // A row whose reset clears two or more attributes has no reference
   // independent of a full reset, so the region oracle declines it before any pixel read. The shared
   // DECRQSS readback ran first and this fixture answered nothing, so the trace is NOT empty and the
   // evidence is truthful "query" — never the zero-byte "none" shape run-parser reserves.

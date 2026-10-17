@@ -68,9 +68,9 @@ export const resetProbes: ProbeDefinition[] = [
           if (readback) return readback
         }
         if (ctx.capture) {
-          // The reset-family ruling (@cto ab8cd612, 29816) owns this row wherever the run can map
-          // cells onto its own window: reset.sgr is graded against an expected frame and an
-          // ignored frame painted in this same run, not against "the two captures differ".
+          // The same-run region oracle owns this row wherever the run can map cells onto its own
+          // window: a reset with no independent reference is declined by name, and every other row
+          // is graded against expected and ignored frames painted in this same run.
           const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
           if (regionReadback) {
             const verdict = await captureRegionVerdict(

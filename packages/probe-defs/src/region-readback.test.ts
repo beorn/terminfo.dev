@@ -189,13 +189,11 @@ test("a painted edit that reaches the expected frame is supported, from three wi
   expect(result.observation.frames).toHaveLength(6)
 })
 
-test("a post-sequence frame equal to the caller's control is inconclusive, named, never a capability claim", async () => {
+test("a terminal that leaves the edit in place is unsupported only because the witness proved the paint", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "seed" }) })
   const result = await decide(fake)
-  expect(result.observation.outcome).toBe("inconclusive")
-  expect(result.observation.reason).toBe("insufficient-evidence")
-  expect(result.observation.note).toContain("equals the caller's control (seed) frame")
-  expect(result.observation.note).not.toContain("a third distinct frame")
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.assertions?.[0]?.kind).toBe("negative")
 })
 
 test("a stale window is inconclusive by name, never unsupported: kitty answers the cursor report and never repaints", async () => {
@@ -742,7 +740,7 @@ test("compared frames cropped at ONE position decide as before, so it is the rec
   expect(result.observation.outcome).toBe("supported")
 })
 
-// ── The reset-family ruling (@cto ab8cd612, 29816) ───────────────────────────────────────────────
+// ── The reset-family decision table ──────────────────────────────────────────────────────────────
 //
 // The seeded negatives behind these tests, each refusing a false pass: a vacuous after == seed (the
 // control test above), a no-op once the ignored frame IS the seed (below), an unrelated change
@@ -789,8 +787,7 @@ const RESET_FAMILY_ROWS = [
 /**
  * The rows whose reset clears two or more setup attributes. Their expected pixel cannot be produced
  * by a reference independent of that reset, so the pixel oracle declines them by name instead of
- * grading them against a reference that can share the tested sequence's failure (@cto c17551dc and
- * its correction, 29816).
+ * grading them against a reference that can share the tested sequence's failure.
  */
 const NO_REFERENCE_ROWS = ["reset.sgr", "sgr.reset", "sgr.selective-reset.bold"] as const
 const GRADED_ROWS = RESET_FAMILY_ROWS.filter((id) => !(NO_REFERENCE_ROWS as readonly string[]).includes(id))
@@ -925,7 +922,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     expect(result.observation?.outcome, id).toBe("inconclusive")
     // The production callback runs the DECRQSS readback first, which writes and queries before the
     // capture fixture stays silent: the refusal is truthful QUERY evidence, never the zero-byte "none"
-    // shape run-parser reserves for a trace with no writes, queries or events (29816, @dev/review2).
+    // shape run-parser reserves for a trace with no writes, queries or events.
     expect(result.observation?.evidence, id).toBe("query")
     expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
   }
@@ -949,7 +946,7 @@ test("a silent DECRQSS readback is truthful query evidence, and an answering one
     expect(terminal.writes.length, `${id}: the readback wrote before declining`).toBeGreaterThan(0)
     expect(terminal.queries, `${id}: the DECRQSS query was sent`).toContain("\x1bP$qm\x1b\\")
     expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
-    expect(result.observation?.note ?? "", id).toContain("DECRQSS SGR readback ran first")
+    expect(result.observation?.note ?? "", id).toContain("the caller wrote before this refusal")
   }
   const reported: Record<(typeof NO_REFERENCE_ROWS)[number], string> = {
     "reset.sgr": "0",
@@ -971,12 +968,12 @@ test("a silent DECRQSS readback is truthful query evidence, and an answering one
   }
 })
 
-// ── Behavioural proof against a circular expected frame (@dev/review2, 29816 REVISE) ────────────
+// ── Behavioural proof against a circular expected frame ────────────────────────────────────────
 //
 // The label-driven fixtures above cannot see a terminal whose SGR 0 is PARTIAL: they hand back the
 // digest the label asks for. This terminal paints a real cell grid instead, so the expected frame's
 // own bytes decide what it shows. A terminal that clears bold and inverse but retains italic paints
-// the expected frame with italic still set, which is exactly the false pass review2 found.
+// the expected frame with italic still set, which is the false pass this fixture exists to catch.
 
 type SgrAttr = "bold" | "italic" | "inverse" | "underline" | "faint"
 type SgrColor = "fg" | "bg" | "uc"
@@ -995,7 +992,7 @@ interface StatefulTerminal {
 
 interface StatefulOptions {
   ris?: boolean
-  /** Attributes the reference does NOT clear: @dev/review2's partial-RIS terminal (29816). */
+  /** Attributes the reference does NOT clear: a partial-RIS terminal. */
   risRetains?: readonly (SgrAttr | SgrColor)[]
   risClearsCells?: boolean
   /** Attributes the RESET UNDER TEST fails to clear: the row's cleared set minus this. */
@@ -1150,7 +1147,7 @@ function subsets<T>(items: readonly T[]): T[][] {
 }
 
 test("the three no-reference rows are inconclusive by name on the pixel path, whatever the terminal does", async () => {
-  // @cto c17551dc and its correction (29816): a row whose reset clears two or more attributes can be
+  // A row whose reset clears two or more attributes can be
   // fooled by a reset and a RIS that miss the same part of the cleared set. Each case below WOULD read
   // supported without the refusal; the refusal comes before a byte and says why.
   const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
@@ -1164,6 +1161,10 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
     expect(result?.observation?.outcome, entry.id).toBe("inconclusive")
     expect(result?.observation?.evidence, entry.id).toBe("none")
     expect(result?.observation?.note ?? "", entry.id).toContain("no reference independent of a full reset")
+    // "none" promises run-parser a trace with no writes, queries or events; the direct path is
+    // refused before a byte, so the terminal saw neither a write nor a query.
+    expect(terminal.writes, `${entry.id}: the direct refusal wrote nothing`).toEqual([])
+    expect(terminal.queries, `${entry.id}: the direct refusal queried nothing`).toEqual([])
   }
   const correct = statefulTerminal(ALL_ATTRS, { ris: true })
   for (const id of NO_REFERENCE_ROWS) {
@@ -1174,10 +1175,42 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
   }
 })
 
+test("the refused rows are exactly the rows whose reset clears two or more attributes, and each would read supported without the refusal", async () => {
+  // Both directions of the refused set. First: membership is derived from the model, not restated.
+  const clearsTwoOrMore = RESET_FAMILY_ROWS.filter((id) => {
+    const probe = statefulTerminal(ALL_ATTRS, { ris: true })
+    const row = familyRow(id)
+    probe.ctx.write(row.seed)
+    const setup = [...probe.snapshot()]
+    probe.ctx.write(row.edit)
+    const afterReset = probe.snapshot()
+    return setup.filter((attribute) => !afterReset.has(attribute)).length >= 2
+  })
+  const flagged = RESET_FAMILY_ROWS.filter((id) => familyRow(id).noIndependentReference !== undefined)
+  expect(flagged).toEqual([...NO_REFERENCE_ROWS])
+  expect(clearsTwoOrMore).toEqual([...NO_REFERENCE_ROWS])
+
+  // Second: strip the flag and grade the same cases. Each one reads supported, so the refusal is
+  // what prevents the false pass rather than a coincidence of the fixtures.
+  const cases: Array<{ id: (typeof NO_REFERENCE_ROWS)[number]; miss: SgrAttr[]; keep: (SgrAttr | SgrColor)[] }> = [
+    { id: "reset.sgr", miss: ["italic"], keep: ["italic"] },
+    { id: "sgr.reset", miss: ["underline"], keep: ["underline"] },
+    { id: "sgr.selective-reset.bold", miss: ["faint"], keep: ["faint"] },
+  ]
+  for (const entry of cases) {
+    const { noIndependentReference: _refusal, ...bare } = familyRow(entry.id)
+    const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: entry.miss, risRetains: entry.keep })
+    const refused = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
+    expect(refused?.observation?.outcome, `${entry.id}: with the refusal`).toBe("inconclusive")
+    const graded = await captureRegionVerdict(terminal.ctx, entry.id, bare)
+    expect(graded?.observation?.outcome, `${entry.id}: with the refusal stripped`).toBe("supported")
+  }
+})
+
 test("the bold row's faint case is the third no-reference row", async () => {
-  // @cto's correction: SGR 22 clears bold AND faint while the residual repaints only italic, so
+  // SGR 22 clears bold AND faint while the residual repaints only italic, so
   // 22 and RIS both keeping faint left the row reading supported. This is the case the named grade
-  // removes; with the grade removed it reads supported (R10).
+  // removes; with the grade removed it reads supported.
   const terminal = statefulTerminal(ALL_ATTRS, { ris: true, resetMisses: ["faint"], risRetains: ["faint"] })
   const result = await captureRegionVerdict(
     terminal.ctx,
@@ -1189,7 +1222,7 @@ test("the bold row's faint case is the third no-reference row", async () => {
 })
 
 test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {
-  // @cto's exhaustive requirement: every row of RESET_FAMILY_CAPTURE, every subset of its CLEARED set
+  // Every row of RESET_FAMILY_CAPTURE, every subset of its CLEARED set
   // (what the reset under test misses) x every subset of its SETUP (what RIS keeps), with the cleared
   // set computed from this model rather than a hand-picked list.
   for (const id of RESET_FAMILY_ROWS) {

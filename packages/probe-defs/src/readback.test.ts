@@ -180,10 +180,10 @@ test("reset.sgr stays inconclusive and never negative when the terminal never an
   expect(result.pass).toBe(false)
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.observation?.outcome).not.toBe("unsupported")
-  // The three-row ruling (@cto c17551dc + correction, 29816): a full reset has no reference
-  // independent of itself, so the pixel oracle declines it BY NAME. This terminal's DECRQSS readback
-  // ran first and stayed silent, so the trace is NOT empty and the evidence is truthful "query" —
-  // never the zero-byte "none" shape (@dev/review2, 29816).
+  // A full reset has no reference independent of itself, so the pixel oracle declines it BY NAME.
+  // This terminal's DECRQSS readback ran first and stayed silent, so the trace is NOT empty and the
+  // evidence is truthful "query" — never the zero-byte "none" shape a trace with no writes, queries
+  // or events reserves.
   expect(result.observation).toMatchObject({ evidence: "query" })
   expect(result.observation?.note ?? "").toContain("no reference independent of a full reset")
 })

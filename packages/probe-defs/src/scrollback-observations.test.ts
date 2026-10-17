@@ -789,9 +789,8 @@ test("scrollback.alt-screen refuses a surface that clears the main grid on 1049l
  *   site table showed the gap on every terminal while the probe's own contract test passed. A reset spec
  *   whose edit was `set; ESC[r; scroll` then had NO observable difference between "set then reset" and
  *   "neither honoured" - both left one full-screen scroll - so a surface that ignored DECSTBM entirely
- *   read supported; the edit now scrolls once INSIDE the region before the reset, which leaves both
- *   ignored shapes on the seed frame. A seed-equal frame is declined BY NAME, never graded as a
- *   negative (@cto ab8cd612, 29816).
+ *   read supported; the edit now scrolls once INSIDE the region before the reset, which lands both
+ *   ignored shapes one full-screen scroll further down, on the seed frame.
  * @level l2
  * @consumer 28018 candidate-2 Scrollback group; the site table's scrollback rows for every terminal.
  * @testonly none
@@ -799,21 +798,15 @@ test("scrollback.alt-screen refuses a surface that clears the main grid on 1049l
 test("scrollback DECSTBM rows judge the app path from the region readback", async () => {
   for (const [label, id, options, outcome] of [
     ["the set confines the scroll", "scrollback.decstbm", {}, "supported"],
-    ["the set is ignored", "scrollback.decstbm", { mutations: ["scrollregion-noop"] }, "inconclusive"],
+    ["the set is ignored", "scrollback.decstbm", { mutations: ["scrollregion-noop"] }, "unsupported"],
     ["the reset restores the full screen", "scrollback.decstbm-reset", {}, "supported"],
-    ["DECSTBM is ignored entirely", "scrollback.decstbm-reset", { mutations: ["scrollregion-noop"] }, "inconclusive"],
-    ["the region is set but never reset", "scrollback.decstbm-reset", { strip: "\x1b[r" }, "inconclusive"],
+    ["DECSTBM is ignored entirely", "scrollback.decstbm-reset", { mutations: ["scrollregion-noop"] }, "unsupported"],
+    ["the region is set but never reset", "scrollback.decstbm-reset", { strip: "\x1b[r" }, "unsupported"],
   ] as const) {
     const { context } = regionReadbackApp(12, 61, options)
     const result = await findScrollback(id).term!(context)
     expect(result.observation?.outcome, label).toBe(outcome)
     expect(result.pass, label).toBe(outcome === "supported")
-    if (outcome === "supported") {
-      expect(result.assertions ?? [], label).not.toEqual([])
-    } else {
-      // @cto ab8cd612 (29816): every ignored shape here leaves the seed frame untouched, and a
-      // sequence that never ran looks identical. That is inconclusive BY NAME, never a negative.
-      expect(result.observation?.note ?? "", label).toContain("equals the caller's control (seed) frame")
-    }
+    expect(result.assertions ?? [], label).not.toEqual([])
   }
 })

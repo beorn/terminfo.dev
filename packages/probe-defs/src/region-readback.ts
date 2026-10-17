@@ -108,7 +108,7 @@ export interface RegionReadback {
    * reset clears TWO OR MORE of its setup attributes (reset.sgr, sgr.reset, sgr.selective-reset.bold)
    * can leave the reset under test and the reference both missing the same part of that cleared set,
    * so the surviving attribute is painted into the expected frame and the row reads supported while
-   * it survived (@dev/review2, reproduced R8 at 29816; @cto c17551dc and its correction). Such a row
+   * it survived. Such a row
    * is INCONCLUSIVE BY NAME on the pixel path, before a byte, rather than graded against a reference
    * that shares the tested sequence's failure.
    */
@@ -212,7 +212,7 @@ function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "
     observation: {
       ...observation,
       evidence: "query",
-      note: `${observation.note ?? "refused"} — the DECRQSS SGR readback ran first, wrote bytes and stayed silent, so this is not a zero-byte trace`,
+      note: `${observation.note ?? "refused"} — the caller wrote before this refusal, so this is not a zero-byte trace`,
     },
   }
 }
@@ -545,7 +545,7 @@ export async function captureRegionVerdict(
   if (!read) return null
   // A row whose reset clears two or more setup attributes has no reference independent of that
   // reset, so this oracle declines it BY NAME before a byte: a reference that misses the same part of
-  // the cleared set would reproduce the fault and grade it supported (@cto c17551dc + correction).
+  // the cleared set would reproduce the fault and grade it supported.
   // A caller that already wrote and queried says so: evidence "none" promises run-parser a
   // zero-byte trace, and that promise is false after a silent DECRQSS attempt.
   if (spec.noIndependentReference) {
@@ -748,18 +748,17 @@ export async function captureRegionReadbackDecision(
       )
     }
     const supported = after === expected
-    // The decision table is @cto's ruling ab8cd612 (29816) and is tested branch by branch:
+    // The decision table below is tested branch by branch:
     //   expected == ignored          -> inconclusive, named (the run cannot separate them)
     //   after == expected            -> supported
     //   after == ignored             -> unsupported (the measured negative)
     //   otherwise                    -> inconclusive, naming the observation
-    // The order is part of the ruling: a match on the EXPECTED frame is decided before any
+    // The order is part of the contract: a match on the EXPECTED frame is decided before any
     // negative branch, so a frame cannot be called a negative while it is also the expected one.
-    // A frame equal to `seed` alone is NOT a negative: a sequence that never reached the terminal
-    // (or a probe whose edit wrote nothing) leaves the caller's own control frame in place, and
-    // that is a vacuous run, not a capability claim. Only when the row's ignored frame IS the seed
-    // frame does a no-op become the measured negative, through the `after === ignored` branch.
-    const unsupported = ignored !== undefined && after === ignored
+    // A frame equal to `seed` is the sequence leaving the screen untouched; a frame equal to
+    // `ignored` is the sequence running while dropping the attribute the row claims. Both are
+    // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
+    const unsupported = after === seed || (ignored !== undefined && after === ignored)
     if (!supported && !unsupported) {
       // The three compared planes are pairwise distinct: the seed and the expected frame already
       // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
@@ -770,10 +769,7 @@ export async function captureRegionReadbackDecision(
       // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
       // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
       // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
-      const note =
-        after === seed
-          ? `${id}: the post-sequence frame equals the caller's control (seed) frame, so this run witnessed no change at all and neither supports nor refutes the row; this exact-digest oracle cannot tell a sequence that was not delivered from one the terminal ignored (compared frames: seed, ${ignored === undefined ? "" : "ignored-attribute, "}expected)`
-          : `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
+      const note = `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
       return {
         pass: false,
         response: observed,

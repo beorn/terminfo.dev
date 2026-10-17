@@ -37,7 +37,7 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  * That pre-paint is what makes the reference safe. A frame painted straight after a reset (SGR 0 or
  * RIS) inherits whatever the TARGET step left when that reset fails to clear part of the state, so
  * a broken reset would reproduce its own fault in the expected frame and the row would read
- * supported (@dev/review2's P1 on the first head: SGR 0 clears bold+inverse but retains italic, so
+ * supported (SGR 0 clears bold+inverse but retains italic, so
  * seed is bold+italic+inverse, after is italic, expected is italic — supported while claiming
  * italic was cleared). With the pre-paint, a reference that does NOTHING leaves the expected frame
  * equal to the ignored frame, which is the cannot-separate branch (inconclusive), never a pass.
@@ -48,14 +48,14 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  * MORE attributes (reset.sgr: three, sgr.reset: three, sgr.selective-reset.bold: bold+faint) cannot
  * use it: a reset under test and a RIS that both miss the same part of the cleared set leave
  * expected equal to after and different from ignored, so the row reads supported while the attribute
- * survived (@dev/review2, reproduced R8; @cto c17551dc and its correction). They carry
+ * survived. They carry
  * `noIndependentReference`, and the pixel oracle declines them BY NAME before a byte.
  */
 function expectedFrame(setup: string, residual: string): string {
   return (
     `\x1b[2J\x1b[3;3H${setup}XX\x1b[3;5H${setup}YY` +
     // The INDEPENDENT neutral reference. It is not the sequence under test on any of these rows.
-    "\x1bc" +
+    "\x1bc\x1b[?25l" +
     `\x1b[3;5H${residual}YY\x1b[3;3H${setup}XX\x1b[${CURSOR_ROW};1H`
   )
 }
@@ -82,7 +82,7 @@ function row(setup: string, reset: string, residual: string): Omit<RegionReadbac
 }
 
 /**
- * The nine reset-family rows (@cto ab8cd612, 29816), keyed by the probe id that owns each claim.
+ * The nine reset-family rows, keyed by the probe id that owns each claim.
  * `residual` is the SGR the expected frame paints on YY: the attribute set the row says the reset
  * preserves. Empty means the row's claim is "back to the terminal default".
  */
