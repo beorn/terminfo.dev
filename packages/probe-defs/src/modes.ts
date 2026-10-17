@@ -569,9 +569,13 @@ export const modesProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         // IRM is ANSI mode 4; DECRQM (`CSI 4 $ p`) reports it without reading cells.
         // A complete report decides the claim; no report falls through to the cell fixture below.
-        ctx.write("\x1b[4h")
-        const on = await queryAnsiMode(ctx, 4)
-        ctx.write("\x1b[4l")
+        let on: Awaited<ReturnType<typeof queryAnsiMode>>
+        try {
+          ctx.write("\x1b[4h")
+          on = await queryAnsiMode(ctx, 4)
+        } finally {
+          ctx.write("\x1b[4l")
+        }
         if (on === "set" || on === "reset") {
           const off = await queryAnsiMode(ctx, 4)
           if (off === "set" || off === "reset") {

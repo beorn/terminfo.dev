@@ -1,5 +1,5 @@
 /**
- * @failure Direct mode fixtures write into undersized terminals or leave their own mode/cursor state set after a write failure.
+ * @failure Direct mode fixtures write into undersized terminals or leave their own mode/cursor state set after a write or query failure.
  * @level l1
  * @consumer App mode observations collected for terminal support cells.
  * @testonly none
@@ -118,6 +118,20 @@ test("direct mode fixtures attempt only their entered-state cleanup after a late
       expect(events, id).not.toContain("CPR")
     }
   }
+})
+
+test("insert mode is disabled when its initial ANSI mode query rejects", async () => {
+  const definition = modesProbes.find((probe) => probe.id === "modes.insert-replace")
+  if (!definition?.term) throw new Error("Missing insert-replace app callback")
+  const events: string[] = []
+  const context = app(1, 6, events)
+  context.queryWithSentinelOutcome = async () => {
+    events.push("ANSI mode query")
+    throw new Error("injected ANSI mode query failure")
+  }
+
+  await expect(definition.term(context)).rejects.toThrow("injected ANSI mode query failure")
+  expect(events).toEqual(["\x1b[4h", "ANSI mode query", "\x1b[4l"])
 })
 
 test.each(stateFixtures)(

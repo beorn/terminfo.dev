@@ -54,6 +54,37 @@ function callback(id: string) {
   return { headless: definition.termless, terminal: definition.term }
 }
 
+/**
+ * @failure A title-stack checkpoint leaks into later probes after the app callback returns or its query rejects.
+ * @level l1
+ * @consumer Application device observations sharing one owned terminal.
+ * @testonly none
+ */
+test.each([false, true])("title push restores its checkpoint when CPR rejects=%s", async (rejectQuery) => {
+  const writes: string[] = []
+  const context = {
+    write: (bytes: string) => writes.push(bytes),
+    queryCursorPosition: async () => {
+      if (rejectQuery) throw new Error("injected title CPR failure")
+      return { row: 1, col: 1 }
+    },
+  } as unknown as TermContext
+
+  const result = callback("device.xtwinops-22").terminal(context)
+  if (rejectQuery) {
+    await expect(result).rejects.toThrow("injected title CPR failure")
+  } else {
+    expect((await result).observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "consumed",
+    })
+  }
+  expect(writes.filter((bytes) => bytes === "\x1b[22;0t")).toHaveLength(1)
+  expect(writes.filter((bytes) => bytes === "\x1b[23;0t")).toHaveLength(1)
+  expect(writes.at(-1)).toBe("\x1b[23;0t")
+})
+
 const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
 const DECRQSS_DECSTBM_QUERY = "\x1bP$qr\x1b\\"
 const DECRQSS_SGR_VALID = "\x1bP1$r0m\x1b\\"
