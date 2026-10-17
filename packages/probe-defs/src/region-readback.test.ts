@@ -29,6 +29,9 @@ import type {
   TermContext,
   TerminalQueryOutcome,
 } from "./types.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
+import { sgrProbes } from "./sgr.ts"
+import { resetProbes } from "./reset.ts"
 
 const SEED = "\x1b[1;1Hseed"
 const EDIT = "\x1b[1;3H\x1b[1P"
@@ -186,11 +189,13 @@ test("a painted edit that reaches the expected frame is supported, from three wi
   expect(result.observation.frames).toHaveLength(6)
 })
 
-test("a terminal that leaves the edit in place is unsupported only because the witness proved the paint", async () => {
+test("a post-sequence frame equal to the caller's control is inconclusive, named, never a capability claim", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "seed" }) })
   const result = await decide(fake)
-  expect(result.observation.outcome).toBe("unsupported")
-  expect(result.assertions?.[0]?.kind).toBe("negative")
+  expect(result.observation.outcome).toBe("inconclusive")
+  expect(result.observation.reason).toBe("insufficient-evidence")
+  expect(result.observation.note).toContain("equals the caller's control (seed) frame")
+  expect(result.observation.note).not.toContain("a third distinct frame")
 })
 
 test("a stale window is inconclusive by name, never unsupported: kitty answers the cursor report and never repaints", async () => {
@@ -735,4 +740,173 @@ test("compared frames cropped at ONE position decide as before, so it is the rec
   })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("supported")
+})
+
+// ── The reset-family ruling (@cto ab8cd612, 29816) ───────────────────────────────────────────────
+//
+// The seeded negatives behind these tests, each refusing a false pass: a vacuous after == seed (the
+// control test above), a no-op once the ignored frame IS the seed (below), an unrelated change
+// outside the compared cells (below), cursor blink (DECTCEM is off before the first capture, and the
+// outside-region test keeps the window moving), one anti-aliased pixel INSIDE the region (the
+// third-distinct test), a control already in the target state (the seed-equals-expected test),
+// geometry drift (the crop-rectangle tests), an invisible attribute (the ignored-equals-expected
+// test), and a coincidental ignored match (the attribute-dropping test).
+
+test("a no-op is the measured negative only when the caller's ignored frame IS the seed frame", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: planePainter("seed") })
+  const result = await decide(fake, { ...PLANES, ignored: PLANES.seed })
+  expect(result.observation.outcome).toBe("unsupported")
+  expect(result.assertions?.[0]?.kind).toBe("negative")
+})
+
+test("a change outside the compared cells moves the whole window and not the verdict", async () => {
+  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "frame" })
+  const stable = fake.read
+  const read: RegionRead = async (request) => {
+    const captured = await stable(request)
+    if (key(request.region) === SENTINEL_CELL) return captured
+    // A status line, a clock or the cursor repaints on every capture, so the WHOLE-WINDOW digest
+    // changes each read while the compared cells are byte-identical to the expected frame.
+    const digest = request.label.endsWith("pre-edit seed") ? "seed" : "expected"
+    return { ...captured, regionDigest: digest, pixelsDigest: `window|${request.label}` }
+  }
+  const result = await captureRegionReadbackDecision(fake.ctx, "editing.delete-chars", spec(), read)
+  expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+})
+
+const RESET_FAMILY_ROWS = [
+  "reset.sgr",
+  "sgr.reset",
+  "sgr.fg.default",
+  "sgr.bg.default",
+  "sgr.underline-color-reset",
+  "sgr.selective-reset.bold",
+  "sgr.selective-reset.underline",
+  "sgr.selective-reset.italic",
+  "sgr.selective-reset.inverse",
+] as const
+
+/** The reset-family witness cell, and the shape of one read of its own compared region. */
+const FAMILY_SENTINEL = "1,1,1,1"
+
+function familyRow(id: (typeof RESET_FAMILY_ROWS)[number]): Omit<RegionReadback, "pixelGeometry"> {
+  const row = RESET_FAMILY_CAPTURE[id]
+  if (!row) throw new Error(`${id}: no capture-region row is declared`)
+  return row
+}
+
+async function familyDecide(id: (typeof RESET_FAMILY_ROWS)[number], applied: string): Promise<MeasuredProbeResult> {
+  const result = await captureRegionVerdict(familyTerminal(applied), id, familyRow(id))
+  if (!result?.observation) throw new Error(`${id}: the fixture run produced no observation`)
+  return result as MeasuredProbeResult
+}
+
+function familyDigest(label: string, applied: string): string {
+  return label.endsWith("pre-edit seed")
+    ? "seed"
+    : label.endsWith("post-sequence target")
+      ? applied
+      : label.endsWith("expected frame")
+        ? "expected"
+        : "ignored"
+}
+
+/** A terminal that shows the witness glyph the oracle just wrote and the named plane per frame. */
+function familyTerminal(applied: string): TermContext {
+  let glyph = ""
+  let reads = 0
+  const frameFor = (role: ObservationFrame["role"], label: string): ObservationFrame => {
+    reads += 1
+    return { role, label, capturedAt: reads, ref: `sha256:${String(reads).repeat(64)}` }
+  }
+  return {
+    rows: 24,
+    cols: 80,
+    captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
+    write(sequence) {
+      const witness = /^\x1b\[(\d+);(\d+)H(.)$/.exec(sequence)
+      if (witness) glyph = witness[3] ?? glyph
+    },
+    capture: async (request) => {
+      // The region reader always asks with cells; a capture without them is not this fixture.
+      if (!("cells" in request) || !request.cells) throw new Error("the reset-family fixture is read by region")
+      const frame = frameFor(request.role, request.label)
+      const digest = key(request.cells) === FAMILY_SENTINEL ? `witness|${glyph}` : familyDigest(request.label, applied)
+      return {
+        ...frame,
+        regionDigest: digest,
+        pixelsDigest: `window|${digest}`,
+        regionRectangle: { x: 0, y: 0, width: 16, height: 16 },
+      }
+    },
+    queryCursorPosition: async () => ({ row: 4, col: 1 }),
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+  }
+}
+
+test("the nine reset-family rows declare one capture-region row each", () => {
+  expect(Object.keys(RESET_FAMILY_CAPTURE).sort()).toEqual([...RESET_FAMILY_ROWS].sort())
+})
+
+test("every reset-family row keeps its witness and cursor out of the compared cells, and its ignored frame is the seed", () => {
+  for (const id of RESET_FAMILY_ROWS) {
+    const row = familyRow(id)
+    const insideRow = row.sentinel.row >= row.region.top && row.sentinel.row <= row.region.bottom
+    const insideColumn = row.sentinel.col >= row.region.left && row.sentinel.col <= row.region.right
+    expect(insideRow && insideColumn, `${id}: the witness cell lies outside the compared region`).toBe(false)
+    expect(
+      row.cursorRow >= row.region.top && row.cursorRow <= row.region.bottom,
+      `${id}: the cursor row lies outside the compared region`,
+    ).toBe(false)
+    expect(row.ignored, `${id}: the ignored frame IS the seed frame`).toBe(row.seed)
+    expect(row.expected, `${id}: the expected frame differs from the seed`).not.toBe(row.seed)
+    expect(row.edit, `${id}: the edit repaints the compared cells in place`).toContain("\x1b[3;")
+  }
+})
+
+test("each reset-family row decides supported from its own same-run expected frame", async () => {
+  for (const id of RESET_FAMILY_ROWS) {
+    const result = await familyDecide(id, "expected")
+    expect(result.observation.outcome, id).toBe("supported")
+    expect(result.observation.evidence, id).toBe("pixels")
+    expect(result.assertions?.[0]?.kind, id).toBe("positive")
+  }
+})
+
+test("each reset-family row reads a no-op as the measured negative, never as a vacuous pass", async () => {
+  for (const id of RESET_FAMILY_ROWS) {
+    const result = await familyDecide(id, "ignored")
+    expect(result.observation.outcome, id).toBe("unsupported")
+    expect(result.assertions?.[0]?.kind, id).toBe("negative")
+  }
+})
+
+test("each reset-family row names a third distinct frame instead of guessing a capability", async () => {
+  for (const id of RESET_FAMILY_ROWS) {
+    const result = await familyDecide(id, "third")
+    expect(result.observation.outcome, id).toBe("inconclusive")
+    expect(result.observation.note, id).toContain("a third distinct frame")
+  }
+})
+
+test("every reset-family probe hands its capture arm to the region oracle, on the DECRQSS-silent path", async () => {
+  const probes = [...sgrProbes, ...resetProbes]
+  for (const id of RESET_FAMILY_ROWS) {
+    const probe = probes.find((candidate) => candidate.id === id)
+    expect(probe, `${id}: a probe definition`).toBeDefined()
+    const ctx = familyTerminal("expected")
+    const result = await probe!.term!(ctx)
+    const observation = result.observation
+    expect(observation, `${id}: an observation`).toBeDefined()
+    expect(observation!.outcome, id).toBe("supported")
+    expect(observation!.evidence, id).toBe("pixels")
+    expect(observation!.note ?? "", `${id}: no ungraded "review required" note`).not.toContain(
+      "visual interpretation requires review",
+    )
+  }
 })

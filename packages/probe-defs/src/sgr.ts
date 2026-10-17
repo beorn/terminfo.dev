@@ -8,6 +8,8 @@ import {
   type SgrReadback,
   probe,
 } from "./helpers.ts"
+import { captureRegionVerdict } from "./region-readback.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -97,6 +99,14 @@ async function consumedSgrReset(
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
+    // The reset-family ruling (@cto ab8cd612, 29816): the same-run region oracle decides this row
+    // wherever the run can map cells onto its own window, so a reset is graded against an expected
+    // frame painted in this run, never against "the two frames differ".
+    const readback = RESET_FAMILY_CAPTURE[id]
+    if (readback) {
+      const verdict = await captureRegionVerdict(ctx, id, readback)
+      if (verdict) return verdict
+    }
     try {
       return await sgrCaptureFrames(
         ctx,
@@ -240,6 +250,12 @@ async function consumedResetSgr(ctx: TermContext, id: string, setup: string, res
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
+    // Same reset-family ruling: the region oracle owns the row where the run has its own window.
+    const readback = RESET_FAMILY_CAPTURE[id]
+    if (readback) {
+      const verdict = await captureRegionVerdict(ctx, id, readback)
+      if (verdict) return verdict
+    }
     try {
       return await sgrCaptureFrames(
         ctx,

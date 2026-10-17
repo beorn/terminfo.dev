@@ -699,10 +699,18 @@ export async function captureRegionReadbackDecision(
       )
     }
     const supported = after === expected
-    // A frame equal to `seed` is the sequence leaving the screen untouched; a frame equal to
-    // `ignored` is the sequence running while dropping the attribute the row claims. Both are
-    // measured negatives of the same claim, so both read `unsupported`, never `inconclusive`.
-    const unsupported = after === seed || (ignored !== undefined && after === ignored)
+    // The decision table is @cto's ruling ab8cd612 (29816) and is tested branch by branch:
+    //   expected == ignored          -> inconclusive, named (the run cannot separate them)
+    //   after == expected            -> supported
+    //   after == ignored             -> unsupported (the measured negative)
+    //   otherwise                    -> inconclusive, naming the observation
+    // The order is part of the ruling: a match on the EXPECTED frame is decided before any
+    // negative branch, so a frame cannot be called a negative while it is also the expected one.
+    // A frame equal to `seed` alone is NOT a negative: a sequence that never reached the terminal
+    // (or a probe whose edit wrote nothing) leaves the caller's own control frame in place, and
+    // that is a vacuous run, not a capability claim. Only when the row's ignored frame IS the seed
+    // frame does a no-op become the measured negative, through the `after === ignored` branch.
+    const unsupported = ignored !== undefined && after === ignored
     if (!supported && !unsupported) {
       // The three compared planes are pairwise distinct: the seed and the expected frame already
       // differ (the earlier `seed === expected` branch would have fired otherwise), and `after`
@@ -713,6 +721,10 @@ export async function captureRegionReadbackDecision(
       // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
       // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
       // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
+      const note =
+        after === seed
+          ? `${id}: the post-sequence frame equals the caller's control (seed) frame, so this run witnessed no change at all and neither supports nor refutes the row; this exact-digest oracle cannot tell a sequence that was not delivered from one the terminal ignored (compared frames: seed, ${ignored === undefined ? "" : "ignored-attribute, "}expected)`
+          : `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
       return {
         pass: false,
         response: observed,
@@ -722,7 +734,7 @@ export async function captureRegionReadbackDecision(
           evidence: "pixels",
           screenshotRef: frames[3]?.ref,
           frames,
-          note: `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
+          note,
         },
       }
     }

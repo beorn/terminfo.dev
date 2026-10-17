@@ -1,5 +1,6 @@
 import type { ProbeDefinition } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall, sgrReadbackDecision } from "./helpers.ts"
 
 /**
@@ -63,6 +64,14 @@ export const resetProbes: ProbeDefinition[] = [
           if (readback) return readback
         }
         if (ctx.capture) {
+          // The reset-family ruling (@cto ab8cd612, 29816) owns this row wherever the run can map
+          // cells onto its own window: reset.sgr is graded against an expected frame and an
+          // ignored frame painted in this same run, not against "the two captures differ".
+          const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
+          if (regionReadback) {
+            const verdict = await captureRegionVerdict(ctx, "reset.sgr", regionReadback)
+            if (verdict) return verdict
+          }
           try {
             return await sgrCaptureFrames(
               ctx,
