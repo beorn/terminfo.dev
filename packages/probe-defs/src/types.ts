@@ -289,6 +289,12 @@ export interface ProbeSuiteManifest {
   generatedAt?: string
   adapterVersion: string
   probes: Record<ProbeTarget["kind"], string[]>
+  /**
+   * Written only by a freeze act, never by a human: the release whose current suite this manifest
+   * is. `frozenSuiteIdFor` reads this pointer, so a manifest that declares no freeze simply is not
+   * a release's suite.
+   */
+  freeze?: { release: string; at: string }
 }
 
 export interface ProbeAssertion {

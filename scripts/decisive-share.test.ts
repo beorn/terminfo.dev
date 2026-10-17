@@ -307,10 +307,13 @@ describe("release 1 decisive-count reader", () => {
     // The existing 52-ID reader cases cannot catch a named cohort being ignored or intersected
     // with the frozen schedule, which would silently shrink the approved 125-ID denominator.
     const contentDir = join(import.meta.dirname, "..", "content")
+    // The suite is read from the registry rather than retyped: a freeze is a data addition, and an
+    // expectation that spells the hash by hand has to be edited every time one lands.
+    const candidate2Suite = frozenSuiteIdFor(contentDir, "candidate2")
     const args = { contentDir, cohort: candidate2Cohort(contentDir) }
     const report = buildReport(args)
     expect(report).toHaveProperty("cohort.name", "candidate2")
-    expect(report).toHaveProperty("cohort.frozenSuiteId", "5753741410a9")
+    expect(report).toHaveProperty("cohort.frozenSuiteId", candidate2Suite)
     expect(report).toHaveProperty(
       "cohort.measuredIds",
       expect.arrayContaining(["cursor.position-report", "editing.decrqcra", "scrollback.viewport-hold-output"]),
@@ -331,14 +334,14 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(report.cohort.admittedRuns.map((row) => row.run)).toEqual(report.admittedRuns)
     for (const row of report.cohort.admittedRuns) {
-      expect(row.measured).toBe(row.run.suiteId === "5753741410a9")
+      expect(row.measured).toBe(row.run.suiteId === candidate2Suite)
       // The RELEASE share is the operator's D3 over the ratified cohort (125) MINUS the app-unobservable
       // rows the @chief option-B ruling moved out (three here, so 122); only the per-category block
       // divides over the decidable basis (@chief 2026-10-10T15:56Z).
       if (row.measured) expect(row.share.denominator).toBe(122)
       else {
         expect(row).not.toHaveProperty("share")
-        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required 5753741410a9`)
+        expect(row.reason).toBe(`ineligible: admitted run on suite ${row.run.suiteId}, required ${candidate2Suite}`)
       }
     }
   })
@@ -885,7 +888,7 @@ describe("the candidate-4 cohort reads the frozen suite its caller names", () =>
     expect(spec.slices).toEqual(["extensions", "input"])
     // The reader still names candidate 2's own frozen id explicitly: moving the cohort onto its own
     // freeze is a separate reader change, so this naming is a decision, not a registry fallback.
-    expect(spec.suiteId).toBe("5753741410a9")
+    expect(spec.suiteId).toBe(frozenSuiteIdFor(contentDir, "candidate2"))
     expect(spec.suiteFrozenFor).toBe("candidate2")
     // The registry carries candidate 4's own freeze now, and a release nothing freezes still refuses.
     expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe("c24025ea22fc")
@@ -898,17 +901,18 @@ describe("the candidate-4 cohort reads the frozen suite its caller names", () =>
     const candidate2 = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
     const candidate4 = buildReport({ contentDir, cohort: candidate4Cohort(contentDir) })
     if (!candidate2.cohort || !candidate4.cohort) throw new Error("cohort report absent")
+    const candidate2Suite = frozenSuiteIdFor(contentDir, "candidate2")
     // One shape, two DATA values: a per-cohort branch inside buildReport would show up here.
     expect(Object.keys(candidate4.cohort).sort()).toEqual(Object.keys(candidate2.cohort).sort())
     expect(candidate4.cohort.name).toBe("candidate4")
     expect(candidate4.cohort.measuredIds).toHaveLength(44)
-    expect(candidate4.cohort.frozenSuiteId).toBe("5753741410a9")
+    expect(candidate4.cohort.frozenSuiteId).toBe(candidate2Suite)
     expect(candidate4.cohort.slices).toEqual(["extensions", "input"])
     expect(candidate4.cohort.suiteFrozenFor).toBe("candidate2")
     // Candidate 2's own numbers do not move because a second cohort exists.
     expect(candidate2.cohort.name).toBe("candidate2")
     expect(candidate2.cohort.measuredIds).toHaveLength(125)
-    expect(candidate2.cohort.frozenSuiteId).toBe("5753741410a9")
+    expect(candidate2.cohort.frozenSuiteId).toBe(candidate2Suite)
     expect(candidate2.cohort.suiteFrozenFor).toBe("candidate2")
   }, 20_000)
 
@@ -939,13 +943,14 @@ describe("the candidate-4 cohort reads the frozen suite its caller names", () =>
     const candidate2 = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) }).cohort
     const candidate4 = buildReport({ contentDir, cohort: candidate4Cohort(contentDir) }).cohort
     if (!candidate2 || !candidate4) throw new Error("cohort report absent")
+    const candidate2Suite = frozenSuiteIdFor(contentDir, "candidate2")
     const line2 = cohortHeaderLine(candidate2)
     expect(line2).toContain("Candidate 2 classics · 125 IDs")
-    expect(line2).toContain("required suite 5753741410a9;")
+    expect(line2).toContain(`required suite ${candidate2Suite};`)
     expect(line2).not.toContain("frozen for")
     const line4 = cohortHeaderLine(candidate4)
     expect(line4).toContain("Candidate 4 extensions and input · 44 IDs")
-    expect(line4).toContain("required suite 5753741410a9 — frozen for candidate2, read here for candidate4 ids")
+    expect(line4).toContain(`required suite ${candidate2Suite} — frozen for candidate2, read here for candidate4 ids`)
   }, 20_000)
 })
 

@@ -21,6 +21,8 @@ import {
   checkCitedSuiteManifests,
   declareCurrentSuiteManifest,
   derivedSuiteManifest,
+  freezeCurrentSuiteManifest,
+  frozenSuiteIdFor,
   persistSuiteManifest,
   suiteManifestMode,
   uncommittedCollectorDirt,
@@ -36,6 +38,24 @@ afterEach(() => {
 const temp = (prefix: string): string => {
   const directory = mkdtempSync(join(tmpdir(), prefix))
   temporaryPaths.push(directory)
+  return directory
+}
+
+/** A checkout one commit ahead of origin/main: the state a declaration is allowed to author in. */
+const authoringRepo = (prefix: string): string => {
+  const directory = temp(prefix)
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("init", "-q", "-b", "main")
+  git("config", "user.email", "fixture@example.invalid")
+  git("config", "user.name", "fixture")
+  writeFileSync(join(directory, "a.txt"), "one\n")
+  git("add", "a.txt")
+  git("commit", "-q", "-m", "one")
+  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
+  writeFileSync(join(directory, "b.txt"), "two\n")
+  git("add", "b.txt")
+  git("commit", "-q", "-m", "two")
   return directory
 }
 
@@ -199,6 +219,121 @@ test("declaring refuses a checkout whose HEAD is already on origin/main and allo
   const declared = declareCurrentSuiteManifest(directory, snapshot)
   expect(declared.status).toBe("created")
   expect(existsSync(declared.path)).toBe(true)
+})
+
+test("a freeze act writes the release pointer on a suite that admission already declared", () => {
+  const directory = authoringRepo("terminfo-suite-freeze-")
+  const snapshot = snapshotOf("b".repeat(12))
+  // Admission declares a suite without claiming it as any release's current one; the freeze is a
+  // SEPARATE later act on that same manifest, which is the transition this test exists for.
+  expect(derivedSuiteManifest(snapshot).freeze).toBeUndefined()
+  const declared = declareCurrentSuiteManifest(directory, snapshot)
+  expect(declared.status).toBe("created")
+
+  const at = "2026-10-17T21:12:41.181Z"
+  const frozen = freezeCurrentSuiteManifest(directory, "candidate4", { snapshot, at })
+  expect(frozen.status).toBe("frozen")
+  // A caller can pin the instant, so the record is a pure function of its inputs.
+  expect(parseSuiteManifest(declared.path, readFileSync(declared.path, "utf8")).freeze).toEqual({
+    release: "candidate4",
+    at,
+  })
+  expect(frozen.suiteId).toBe(snapshot.probeHash)
+  expect(frozenSuiteIdFor(join(directory, "content"), "candidate4")).toBe(snapshot.probeHash)
+  // Idempotent: freezing the same release again writes nothing and still resolves.
+  expect(freezeCurrentSuiteManifest(directory, "candidate4", { snapshot, at }).status).toBe("existing")
+})
+
+test("a second claimant fails before any write and leaves the registry bytes unchanged", () => {
+  const directory = authoringRepo("terminfo-suite-two-claimants-")
+  const first = snapshotOf("c".repeat(12))
+  const second = snapshotOf("d".repeat(12))
+  expect(freezeCurrentSuiteManifest(directory, "candidate4", { snapshot: first }).suiteId).toBe(first.probeHash)
+  const registry = join(directory, "content", "suites")
+  const names = readdirSync(registry).sort()
+  const bytes = names.map((name) => readFileSync(join(registry, name), "utf8"))
+  // Fail-now: the reader's own scan runs before the write, so the refusal names the existing claimant
+  // and NOT ONE BYTE changes — no second declaration file appears.
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate4", { snapshot: second })).toThrow(
+    new RegExp(`2 suite manifests claim release "candidate4": ${first.probeHash}, ${second.probeHash}`),
+  )
+  expect(readdirSync(registry).sort()).toEqual(names)
+  expect(names.map((name) => readFileSync(join(registry, name), "utf8"))).toEqual(bytes)
+})
+
+test("re-freezing a suite for another release cannot leave the old one with no suite", () => {
+  const directory = authoringRepo("terminfo-suite-move-freeze-")
+  const snapshot = snapshotOf("a".repeat(12))
+  expect(freezeCurrentSuiteManifest(directory, "candidate2", { snapshot }).suiteId).toBe(snapshot.probeHash)
+  const registry = join(directory, "content", "suites")
+  const names = readdirSync(registry).sort()
+  const bytes = names.map((name) => readFileSync(join(registry, name), "utf8"))
+  // The write would leave candidate2 with zero suites. That is the reader's own zero-claimant state,
+  // so the same refusal fires here, before any byte moves, and names both releases and the suite.
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate4", { snapshot })).toThrow(
+    /no suite manifest declares freeze\.release "candidate2" would remain/,
+  )
+  expect(readdirSync(registry).sort()).toEqual(names)
+  expect(names.map((name) => readFileSync(join(registry, name), "utf8"))).toEqual(bytes)
+  expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(snapshot.probeHash)
+})
+
+test("a move that would leave the old release with two claimants is refused before any write", () => {
+  const directory = authoringRepo("terminfo-suite-move-freeze-crowded-")
+  const at = "2026-10-17T21:12:41.181Z"
+  const a = snapshotOf("a".repeat(12))
+  const b = snapshotOf("b".repeat(12))
+  const c = snapshotOf("c".repeat(12))
+  // A registry that already carries two claimants is unreadable; the writer must still refuse to make
+  // it worse, and the two-claimants-to-one repair must remain a write this check allows.
+  const claim = (snapshot: ProbeSuiteSnapshot): void => {
+    const path = join(directory, "content", "suites", `${snapshot.probeHash}.json`)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, `${JSON.stringify(derivedSuiteManifest(snapshot, { release: "candidate2", at }), null, 2)}\n`)
+  }
+  for (const snapshot of [a, b, c]) claim(snapshot)
+  const registry = join(directory, "content", "suites")
+  const names = readdirSync(registry).sort()
+  const bytes = names.map((name) => readFileSync(join(registry, name), "utf8"))
+  // Moving one suite out leaves candidate2 with two claimants: the reader's own two-claimant refusal,
+  // evaluated before the write, so not one byte changes.
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate4", { snapshot: a })).toThrow(
+    new RegExp(`2 suite manifests would claim release "candidate2": ${b.probeHash}, ${c.probeHash}`),
+  )
+  expect(readdirSync(registry).sort()).toEqual(names)
+  expect(names.map((name) => readFileSync(join(registry, name), "utf8"))).toEqual(bytes)
+  // With one claimant removed out of band, the same move leaves exactly one and succeeds.
+  rmSync(join(registry, `${c.probeHash}.json`))
+  const frozen = freezeCurrentSuiteManifest(directory, "candidate4", { snapshot: a })
+  expect(frozen.suiteId).toBe(a.probeHash)
+  expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(b.probeHash)
+})
+
+test("the declaration API cannot write a release claim, so no writer bypasses the checked act", () => {
+  const directory = authoringRepo("terminfo-suite-no-bypass-")
+  const first = snapshotOf("e".repeat(12))
+  const second = snapshotOf("f".repeat(12))
+  // Admission declares; it has no way to claim a release. If it could, it would be a second write
+  // path around the claimant scan the freeze act performs.
+  expect(declareCurrentSuiteManifest(directory, first).status).toBe("created")
+  expect(declareCurrentSuiteManifest(directory, second).status).toBe("created")
+  for (const snapshot of [first, second]) {
+    const path = join(directory, "content", "suites", `${snapshot.probeHash}.json`)
+    expect(parseSuiteManifest(path, readFileSync(path, "utf8")).freeze).toBeUndefined()
+  }
+  // Two declarations, and the registry still refuses the release: nothing claimed it on the way past.
+  expect(() => frozenSuiteIdFor(join(directory, "content"), "candidate4")).toThrow(
+    /no suite manifest declares freeze\.release "candidate4"/,
+  )
+})
+
+test("the freeze verb is its own mode, and --check still parses as before", () => {
+  expect(suiteManifestMode(["--check"])).toBe("check")
+  expect(suiteManifestMode(["--freeze", "candidate4"])).toBe("freeze")
+  expect(suiteManifestMode(["--freeze"])).toBe("usage")
+  expect(suiteManifestMode(["--freeze", " "])).toBe("usage")
+  expect(suiteManifestMode([])).toBe("usage")
+  expect(suiteManifestMode(["--check", "extra"])).toBe("usage")
 })
 
 test("the source-tree collector derives the same manifest that the admission writer persists", () => {
