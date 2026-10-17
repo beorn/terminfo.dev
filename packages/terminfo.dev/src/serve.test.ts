@@ -769,6 +769,91 @@ describe("private finite daemon startup", () => {
     },
   )
 
+  it.each(["capture", "refusal"])(
+    "a hosted Windows capture with a retention directory takes the %s branch without Linux provenance",
+    (expectation) => {
+      home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
+      const result = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      const hosted = process.env.FIXTURE_EXPECT === "capture"
+      Object.defineProperty(process, "platform", { value: "win32" })
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      let capture
+      let captureKind = "absent"
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        collectorRevision: "b".repeat(40)
+      }
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "windows-terminal", version: "", os: "windows", osVersion: "fixture" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({
+          geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
+          summary: "owned fixture",
+          readCells: async () => ({ status: "measured", cells: [["x"]] }),
+          dispose: async () => {}
+        })
+      }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async callback => callback(), drainStdin: async () => {},
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          const raw = "\\x1b[8;24;80t"
+          return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
+        runProbeBatch: async options => {
+          capture = options.capture
+          captureKind = options.captureKind ?? "absent"
+          return {
+            rawReplies: {},
+            observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
+            assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
+          }
+        }
+      }))
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      if (!hosted) {
+        await assert.rejects(
+          collectProbeRun({ ids: ["device.xtversion"] }),
+          /Controlled Linux collection requires runtime provenance/u,
+        )
+      } else {
+        await collectProbeRun({ ids: ["device.xtversion"] })
+        assert.equal(captureKind, "text-cells")
+        assert.equal(typeof capture, "function")
+      }
+      `,
+        ],
+        {
+          cwd: packageRoot,
+          env: {
+            ...process.env,
+            HOME: home,
+            FIXTURE_EXPECT: expectation,
+            TERMINFO_CAPTURE_DIRECTORY: join(home, "capture"),
+            TERMINFO_DISPOSABLE_RECEIPT: expectation === "capture" ? "hardware-receipt-fixture" : "",
+            TERMINFO_RUNTIME_PROVENANCE: "",
+            TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          },
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stderr).toBe("")
+    },
+  )
+
   it.each([undefined, '["cursor.hide","reset.decaln"]'])(
     "forwards startup selection %s once and preserves producer completeness",
     async (selection) => {

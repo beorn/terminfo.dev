@@ -320,9 +320,11 @@ export async function collectProbeRun(
   if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
     throw new Error("Darwin capture directory requires a verified hosted-runner terminal receipt")
   }
-  const hostedDarwinCapture = process.platform === "darwin" && kind === "darwinHosted" && Boolean(captureDirectory)
+  // A hosted capture is a runner-owned terminal, not a controlled Linux run: macOS names
+  // darwinHosted and Windows names windowsHosted, and neither can supply Linux runtime provenance.
+  const hostedCapture = Boolean(captureDirectory) && (kind === "darwinHosted" || kind === "windowsHosted")
   const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
-  if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedDarwinCapture) {
+  if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedCapture) {
     throw new Error("Controlled Linux collection requires runtime provenance")
   }
   if (provenancePath && !captureDirectory && !clipboardReceipt) {
@@ -330,7 +332,7 @@ export async function collectProbeRun(
   }
   const provenanceSource: unknown = provenancePath ? JSON.parse(readFileSync(provenancePath, "utf8")) : undefined
   const executable = provenanceSource ? measuredExecutable(provenanceSource) : undefined
-  if ((captureDirectory || clipboardReceipt) && !executable && !hostedDarwinCapture) {
+  if ((captureDirectory || clipboardReceipt) && !executable && !hostedCapture) {
     throw new Error("Controlled Linux collection lacks measured executable")
   }
   let capture: ProbeCapture | undefined
