@@ -5,8 +5,12 @@ import { writeFileSync } from "node:fs"
 const out = process.argv[2]
 if (!out) throw new Error("usage: input-spike-reader.mjs <output path>")
 
+// A start marker separates "the terminal never ran the reader" from "no byte arrived".
+writeFileSync(`${out}.started`, String(process.pid))
+
 process.stdin.once("data", (chunk) => {
   writeFileSync(out, chunk)
+  writeFileSync(`${out}.done`, "1")
   process.exit(0)
 })
 process.stdin.resume()

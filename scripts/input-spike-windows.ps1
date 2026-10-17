@@ -9,6 +9,10 @@ $result = [ordered]@{
   hwnd              = $null
   foregroundMatched = $false
   sent              = $false
+  inputSize         = $null
+  sendError         = $null
+  readerStarted     = $false
+  clicked           = $false
   delivered         = $false
   bytes             = $null
   notes             = @()
@@ -49,9 +53,16 @@ public static class Spike {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
-  [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KEYBDINPUT ki; [FieldOffset(8)] public MOUSEINPUT mi; }
   [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+  public static int lastError;
+  public static int InputSize() { return Marshal.SizeOf(typeof(INPUT)); }
   public static IntPtr FindWindow(uint pid) {
     IntPtr found = IntPtr.Zero;
     EnumWindows((h, l) => {
@@ -66,7 +77,19 @@ public static class Spike {
     INPUT[] inputs = new INPUT[2];
     inputs[0].type = 1; inputs[0].ki.wVk = 0x41;
     inputs[1].type = 1; inputs[1].ki.wVk = 0x41; inputs[1].ki.dwFlags = 2;
-    return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT))) == 2;
+    uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = Marshal.GetLastWin32Error();
+    return sent == 2;
+  }
+  // A virtual key alone is not the only shape an OS-level sender can use; a scan-code event is
+  // what a physical keyboard produces, and some console hosts treat the two differently.
+  public static bool SendScanCodeA() {
+    INPUT[] inputs = new INPUT[2];
+    inputs[0].type = 1; inputs[0].ki.wScan = 0x1E; inputs[0].ki.dwFlags = 0x0008;
+    inputs[1].type = 1; inputs[1].ki.wScan = 0x1E; inputs[1].ki.dwFlags = 0x0008 -bor 0x0002;
+    uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = Marshal.GetLastWin32Error();
+    return sent == 2;
   }
 }
 "@
@@ -124,8 +147,28 @@ if (-not $result.foregroundMatched) {
   $result.foregroundMatched = ($fgPid -eq [uint32]$new.Id)
 }
 
-$result.sent = [Spike]::SendA()
-Start-Sleep -Seconds 2
+for ($i = 0; $i -lt 20 -and -not (Test-Path "$received.started"); $i++) { Start-Sleep -Milliseconds 500 }
+$result.readerStarted = Test-Path "$received.started"
+
+$rect = New-Object Spike+RECT
+[Spike]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+[Spike]::SetCursorPos([int](($rect.Left + $rect.Right) / 2), [int](($rect.Top + $rect.Bottom) / 2)) | Out-Null
+[Spike]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+[Spike]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 400
+$result.clicked = $true
+
+$result.inputSize = [Spike]::InputSize()
+$variants = @()
+for ($i = 0; $i -lt 6 -and -not (Test-Path $received); $i++) {
+  if ($i % 2 -eq 0) { $ok = [Spike]::SendA(); $variants += "vk" }
+  else { $ok = [Spike]::SendScanCodeA(); $variants += "scan" }
+  if ($ok) { $result.sent = $true }
+  $result.sendError = [Spike]::lastError
+  Start-Sleep -Milliseconds 800
+}
+$result.attempts = $variants.Count
+$result.variants = $variants
 $result.delivered = Test-Path $received
 if ($result.delivered) { $result.bytes = (Format-Hex -Path $received | Out-String) }
 

@@ -26,16 +26,29 @@ jobs:
           set -euo pipefail
           OUT="$RUNNER_TEMP/input-spike"
           mkdir -p "$OUT"
-          cat > "$OUT/open.applescript" <<APPLESCRIPT
-          tell application "Terminal"
-            activate
-            do script "rm -f $OUT/received.bin; head -c 1 > $OUT/received.bin"
-          end tell
-          APPLESCRIPT
-          osascript "$OUT/open.applescript"
+          # LaunchServices opens the script in Terminal without an AppleEvent; a minimal AppleEvent
+          # is probed separately so an Automation denial is named, not folded into the key result.
+          cat > "$OUT/reader.sh" <<READER
+          #!/bin/bash
+          rm -f "$OUT/received.bin" "$OUT/partial.bin"
+          head -c 1 > "$OUT/partial.bin"
+          mv "$OUT/partial.bin" "$OUT/received.bin"
+          READER
+          chmod +x "$OUT/reader.sh"
+          open -a Terminal "$OUT/reader.sh"
           sleep 2
-          osascript -l JavaScript scripts/input-spike-macos.js > "$OUT/result.json" 2> "$OUT/result.err" || true
-          sleep 3
+          ( osascript -e 'tell application "Terminal" to get version' > "$OUT/appleevent.txt" 2> "$OUT/appleevent.err" ) || true
+          open -a Terminal
+          sleep 1
+          # A single post cannot separate "the tap swallowed it" from "the app did not read it":
+          # retry across all three taps, one second apart, and stop the moment a byte arrives.
+          attempts=0
+          for attempt in 0 1 2 3 4 5; do
+            attempts=$((attempt + 1))
+            osascript -l JavaScript scripts/input-spike-macos.js "$attempt" >> "$OUT/attempts.jsonl" 2>> "$OUT/result.err" || true
+            sleep 1
+            if [ -f "$OUT/received.bin" ]; then break; fi
+          done
           {
             echo "spike=macos"
             if [ -f "$OUT/received.bin" ]; then
@@ -44,7 +57,10 @@ jobs:
             else
               echo "delivered=false"
             fi
-            cat "$OUT/result.json"
+            echo "appleevent=$(cat "$OUT/appleevent.txt" 2>/dev/null || true)"
+            echo "appleevent_err=$(cat "$OUT/appleevent.err" 2>/dev/null || true)"
+            echo "attempts=$attempts"
+            cat "$OUT/attempts.jsonl" 2>/dev/null || true
             cat "$OUT/result.err" 2>/dev/null || true
           } | tee "$OUT/summary.txt"
       - uses: actions/upload-artifact@v4
