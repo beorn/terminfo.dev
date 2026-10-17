@@ -21,7 +21,7 @@
  * testable where Windows is not, and the matching check refuses with the chain it actually found.
  */
 
-import { INVALID_HANDLE_VALUE, loadKernel32 } from "./windows-kernel32.ts"
+import { INVALID_HANDLE_VALUE, loadKernel32, type Kernel32 } from "./windows-kernel32.ts"
 
 /** The rows of the walk, structurally the `AncestryRow` the Darwin arm already speaks. */
 export interface WindowsProcessRow {
@@ -119,9 +119,12 @@ const ERROR_NO_MORE_FILES = 18
  * The whole process table, one decoded record at a time. `runtime.arch` is injectable so the layout
  * choice is testable; the default is the running process's own architecture.
  */
-export async function readWindowsProcessTable(runtime: { arch?: string } = process): Promise<WindowsProcessRow[]> {
+export async function readWindowsProcessTable(
+  runtime: { arch?: string } = process,
+  kernel?: Kernel32,
+): Promise<WindowsProcessRow[]> {
   const layout = processEntry32WLayout(pointerBytesForArch(runtime.arch ?? process.arch))
-  const { symbols, ptr } = await loadKernel32()
+  const { symbols, ptr } = kernel ?? (await loadKernel32())
   const snapshot = symbols.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS as never, 0 as never)
   // A refused snapshot is INVALID_HANDLE_VALUE, never NULL and never zero, and it must be refused
   // HERE: its own Win32 code is read first, and there is nothing to close on a failed handle.
@@ -211,14 +214,6 @@ export function windowsProcessAncestry(rows: readonly WindowsProcessRow[], start
   return chain
 }
 
-/** The whole read: this process's own ancestry, from a fresh snapshot. */
-export async function readWindowsProcessAncestry(
-  startPid: number,
-  runtime: { arch?: string } = process,
-): Promise<WindowsProcessRow[]> {
-  return windowsProcessAncestry(await readWindowsProcessTable(runtime), startPid)
-}
-
 /** A Windows image name: the receipt's executablePath is a full path, the table's name is a base
  * name, and Windows compares image names without case. */
 export function windowsCommBase(comm: string): string {
@@ -238,13 +233,23 @@ export function requireHostedWindowsAppAncestor(
   rows: readonly WindowsProcessRow[],
 ): WindowsProcessRow {
   const want = windowsCommBase(expectedComm)
-  const named = rows.find((row) => windowsCommBase(row.comm) === want)
-  if (!named) {
+  const named = rows.filter((row) => windowsCommBase(row.comm) === want)
+  const only = named[0]
+  if (only === undefined) {
     const found = [...rows]
       .reverse()
       .map((row) => `${row.comm} (pid ${String(row.pid)})`)
       .join(", ")
     throw new Error(`Hosted Windows ancestry never reached ${want}; found ${found}`)
   }
-  return named
+  // Two terminals on the chain means the ancestry does not say which one launched this collector,
+  // and a buffer attributed to the wrong one decides nothing.
+  if (named.length > 1) {
+    throw new Error(
+      `Hosted Windows ancestry holds ${String(named.length)} ${expectedComm} processes: ${named
+        .map((row) => `pid ${String(row.pid)}`)
+        .join(", ")}`,
+    )
+  }
+  return only
 }

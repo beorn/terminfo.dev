@@ -172,6 +172,19 @@ describe("requireHostedWindowsAppAncestor", () => {
       /Hosted Windows ancestry never reached windowsterminal\.exe; found Runner\.Listener\.exe \(pid 4872\), Runner\.Worker\.exe \(pid 1508\), bash\.exe \(pid 4328\), bash\.exe \(pid 2196\), bash\.exe \(pid 5492\), explorer\.exe \(pid 5796\), powershell\.exe \(pid 8848\)/,
     )
   })
+
+  it("refuses two terminals on the chain, naming both, rather than picking one", () => {
+    // The chain is this process's ancestry: a second terminal has to be ON it, so the bash step's
+    // parent becomes a second WindowsTerminal.exe above the first.
+    const rows: WindowsProcessRow[] = [
+      ...MEASURED_CHAIN.map((row) => (row.pid === 5492 ? { ...row, ppid: 6100 } : row)),
+      { pid: 6100, ppid: 2196, comm: "WindowsTerminal.exe" },
+    ]
+    const chain = windowsProcessAncestry(rows, 8848)
+    expect(() => requireHostedWindowsAppAncestor("WindowsTerminal.exe", chain)).toThrow(
+      /Hosted Windows ancestry holds 2 WindowsTerminal\.exe processes: pid 5796, pid 6100/u,
+    )
+  })
 })
 
 describe("collectProcessTable", () => {

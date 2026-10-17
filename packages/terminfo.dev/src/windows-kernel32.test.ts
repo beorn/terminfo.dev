@@ -25,6 +25,10 @@ describe("kernel32Declaration", () => {
     expect(declaration.Process32FirstW?.args).toEqual(["u64", "ptr"])
     expect(declaration.Process32NextW?.args).toEqual(["u64", "ptr"])
     expect(declaration.GetConsoleScreenBufferInfo?.args).toEqual(["u64", "ptr"])
+    // ReadConsoleOutputW: HANDLE, PCHAR_INFO, then two COORDs BY VALUE (u32, X low half) and the
+    // PSMALL_RECT. A COORD declared as ptr would make the native call read a pointer as a number.
+    expect(declaration.ReadConsoleOutputW?.args).toEqual(["u64", "ptr", "u32", "u32", "ptr"])
+    expect(declaration.ReadConsoleOutputW?.returns).toBe("i32")
     expect(declaration.CloseHandle?.args).toEqual(["u64"])
     // hTemplateFile is the seventh argument of CreateFileW and is a HANDLE too.
     expect(declaration.CreateFileW?.args).toEqual(["ptr", "u32", "u32", "ptr", "u32", "u32", "u64"])
