@@ -238,6 +238,9 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
   })
 })
 
+/** The two groups with per-context inclusion; other groups retain their global inclusion state. */
+const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets"])
+
 describe("candidate-2 page: wiring", () => {
   // @chief cf1daa5a / review2 cd06b94c: the page may not claim a group included while a measured
   // context sits below the bar. Nothing else in this suite reads the inclusion state, so without
@@ -261,9 +264,97 @@ describe("candidate-2 page: wiring", () => {
         ]),
       )
       expect(group.included).toBe(shares.length > 0 && below.length === 0)
+      // The per-context include is the SAME basis decision, not a second rule: for a group the
+      // ruling names, a context is in includedOn exactly when its share clears the bar, and the two
+      // lists partition the measured contexts. Every other group keeps its global state and carries no
+      // per-context claim at all.
+      const ruled = PER_CONTEXT_INCLUDED.has(group.key)
+      expect(group.includedOn).toEqual(
+        ruled
+          ? shares
+              .filter((entry) => basis(entry).decisivePct >= 90)
+              .map((entry) => publishedRows.find((row) => row.groups.includes(entry))?.context)
+          : [],
+      )
+      if (ruled) {
+        expect(new Set([...group.includedOn, ...group.heldBy.map((row) => row.context)]).size).toBe(
+          publishedRows.length,
+        )
+      }
+      // A context with no published run is neither included nor held, and its own reason is kept.
+      expect(group.unmeasured.map((row) => row.context)).toEqual(
+        data.contexts.filter((row) => !row.published).map((row) => row.context),
+      )
+      for (const row of group.unmeasured) expect(row.reason, row.context).toBeTruthy()
     }
     expect(data.groups.some((group) => group.included)).toBe(true)
     expect(data.groups.some((group) => !group.included)).toBe(true)
+  })
+
+  it("includes Editing and Character Sets on the six ruled contexts and names the rest", () => {
+    // Included per context on the six that clear 90 percent, every
+    // other context held or named not measured, nothing claimed on ten. A new suite or collection
+    // that moves these numbers must change this table deliberately, never loosen the assertion.
+    const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
+    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"]
+    // The page must say all of it in the group's State cell, not only in its data.
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain("Included on {{ group.includedOn.length }} of")
+    expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
+    for (const key of ["editing", "charsets"]) {
+      const group = data.groups.find((entry) => entry.key === key)
+      if (!group) throw new Error(`group ${key} is missing from the page`)
+      expect(group.included, key).toBe(false)
+      expect(group.includedOn, key).toEqual(six)
+      expect(
+        group.heldBy.map((row) => row.context),
+        key,
+      ).toEqual(below)
+      // kitty/macOS carries a run the frozen suite does not admit: named, never counted.
+      expect(
+        group.unmeasured.map((row) => row.context),
+        key,
+      ).toEqual(["kitty/macos"])
+      expect(group.unmeasured[0]?.reason, key).toContain(
+        "ineligible: selected run on suite 9918f283121a, required 5753741410a9",
+      )
+    }
+  })
+
+  it("preserves global inclusion outside the two-group context scope", () => {
+    // The ruling names two groups. A group outside it must not gain includedOn entries even where
+    // its share clears the bar on a context: the page would then promote a held group.
+    const outside = data.groups.filter((group) => !PER_CONTEXT_INCLUDED.has(group.key))
+    expect(outside.length).toBeGreaterThan(0)
+    for (const group of outside) expect(group.includedOn, group.key).toEqual([])
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain("Per-context inclusion is ruled for Editing and Character Sets only")
+    // The bottom scope bullet must agree with the lede and the State cells, not keep the old
+    // page-wide-only definition that the per-context ruling replaced.
+    expect(page).toContain("for Editing and Character Sets the page also says <strong>included on</strong>")
+    expect(page).not.toContain("cleared the bar in every measured context")
+    // An empty includedOn is a SCOPE result, never a measurement: a held group may clear some
+    // contexts, so the page may not say no context clears the bar, and an included group must not
+    // print an includedOn count that is empty by construction.
+    expect(page).not.toContain("no context clears the bar")
+    expect(page).toContain("below the bar on {{ group.heldBy.length }} of {{ published.length }} measured contexts")
+    expect(page).not.toContain("every measured context ({{ group.includedOn.length }})")
+    const measured = data.contexts.filter((row) => row.published).length
+    expect(outside.filter((group) => group.heldBy.length < measured).length).toBeGreaterThan(0)
+    // The included branch still exists and reads truthfully: Unicode clears every measured context
+    // even though it carries no per-context claim of its own.
+    const unicode = data.groups.find((group) => group.key === "unicode")
+    if (!unicode) throw new Error("unicode group is missing")
+    expect(unicode.included).toBe(true)
+    expect(unicode.includedOn).toEqual([])
+    // Each prose surface must carry the corrected claim ITSELF: the note repeating it does not
+    // excuse a lede that still lumps an included group into "every other group is held".
+    const lede = page.match(/<p class="c2-lede">([\s\S]*?)<\/p>/)?.[1]
+    const note = page.match(/<p class="c2-note">([\s\S]*?)<\/p>/)?.[1]
+    if (!lede || !note) throw new Error("lede or note missing")
+    expect(lede).toContain("keeps its previous state")
+    expect(note).toContain("keeps its previous state")
+    expect(lede).not.toContain("Every other group is <strong>held</strong>")
   })
 
   // review2: a published context must carry every included group's share (the loader now throws
