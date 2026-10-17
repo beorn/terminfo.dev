@@ -139,15 +139,21 @@ function currentResultsCache(): Map<string, CurrentResults> {
   return (cacheHost[RESULTS_CACHE] ??= new Map())
 }
 
-export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
+export function loadCurrentResults(
+  contentDir: string,
+  options: { artifactDir?: string; selectionSuiteId?: string | null } = {},
+): CurrentResults {
   // `releaseSuiteIdFor` is read first and throws loudly when the registry names no suite, exactly as the
   // argument it used to be evaluated as did.
   const releaseSuiteId = releaseSuiteIdFor(contentDir)
-  const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}`
+  const selectionSuiteId = options.selectionSuiteId ?? null
+  // 29930: a release-bound reading selects within its declared freeze, so each selection suite has its
+  // own projection and the cache key must say which one it caches.
+  const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}\u0000${selectionSuiteId ?? ""}`
   const cache = currentResultsCache()
   const memoized = cache.get(key)
   if (memoized) return memoized
-  const projection = loadSelectedResults(contentDir, probeHash(), { ...options, releaseSuiteId })
+  const projection = loadSelectedResults(contentDir, probeHash(), { ...options, releaseSuiteId, selectionSuiteId })
   const results: CurrentResults = { projection }
   cache.set(key, results)
   return results

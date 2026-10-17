@@ -467,7 +467,13 @@ export function buildReport(args: {
       suiteFrozenFor: args.cohort.suiteFrozenFor,
     }
   }
-  const projection = loadCurrentResults(args.contentDir).projection
+  // 29930: a cohort reading selects within its declared freeze, so the bar rows read the newest
+  // suite-complete run on the frozen suite rather than the running tree's suite. Live site views keep
+  // the tree-preferred current because they load without a cohort.
+  const projection = loadCurrentResults(
+    args.contentDir,
+    cohort ? { selectionSuiteId: cohort.frozenSuiteId } : {},
+  ).projection
   const current = Object.entries(projection.current).map(([key, selected]) =>
     candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
   )

@@ -443,10 +443,11 @@ export function projectResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
-  policy: { currentProbeHash: string; releaseSuiteId?: string | null },
+  policy: { currentProbeHash: string; releaseSuiteId?: string | null; selectionSuiteId?: string | null },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null
+  const selectionSuiteId = policy.selectionSuiteId ?? null
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
   for (const run of runs) {
@@ -524,8 +525,16 @@ export function projectResults(
     }
     versions[key] = []
     for (const version of [...byVersion.keys()].sort((a, b) => versionCompare(b, a))) {
-      const choices = byVersion.get(version)
-      if (!choices?.length) throw new Error(`missing run choices for ${key} ${version}`)
+      const all = byVersion.get(version)
+      if (!all?.length) throw new Error(`missing run choices for ${key} ${version}`)
+      // 29930: a release-bound reading chooses only within its declared freeze. A version with no
+      // suite-complete run there is skipped, so a newer off-freeze version or capture can never
+      // displace the frozen reading. Context keys are still computed over every run above; the input
+      // is never filtered, or reviews keyed on the stem would break.
+      const choices = selectionSuiteId
+        ? all.filter((run) => run.suiteComplete && run.probeHash === selectionSuiteId)
+        : all
+      if (choices.length === 0) continue
       choices.sort((a, b) => {
         const af = a.probeHash === policy.currentProbeHash && a.suiteComplete ? 1 : 0
         const bf = b.probeHash === policy.currentProbeHash && b.suiteComplete ? 1 : 0
@@ -540,7 +549,15 @@ export function projectResults(
       )
     }
     const selected = versions[key][0]
-    if (!selected) throw new Error(`missing selected version for ${key}`)
+    if (!selected) {
+      // A context with no run on the declared freeze has no selected run at all: the reader names it,
+      // and an empty row is never published as a zero-row basis.
+      if (selectionSuiteId) {
+        delete versions[key]
+        continue
+      }
+      throw new Error(`missing selected version for ${key}`)
+    }
     current[key] = selected
   }
   // One classification per cell, for every run the projection read: `current` and `versions` are drawn
@@ -601,7 +618,7 @@ export function readVerifiedArtifact(
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
-  options: { artifactDir?: string; releaseSuiteId?: string | null } = {},
+  options: { artifactDir?: string; releaseSuiteId?: string | null; selectionSuiteId?: string | null } = {},
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
@@ -648,5 +665,6 @@ export function loadSelectedResults(
   return projectResults(runs, interpretations, catalog, {
     currentProbeHash,
     releaseSuiteId: options.releaseSuiteId ?? null,
+    selectionSuiteId: options.selectionSuiteId ?? null,
   })
 }

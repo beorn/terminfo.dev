@@ -44,6 +44,8 @@ const manifests = new Map([
   ["a8bafe49cdd4", manifest("a8bafe49cdd4")],
   ["21739d9e768f", manifest("21739d9e768f")],
   ["9918f283121a", manifest("9918f283121a")],
+  ["tree", manifest("tree")],
+  ["frozen", manifest("frozen")],
 ])
 const parseRun = (path: string, source: string, catalogIds: readonly string[]) =>
   parseRunSource(path, source, catalogIds, manifests)
@@ -795,6 +797,58 @@ describe("selected results", () => {
       notTested: 1,
       conclusive: 2,
     })
+  })
+
+  // 29930: a release-bound reading selects within its declared freeze. The tree-preferred key runs
+  // first today, so an older run on the running tree's suite beats a newer run on the suite the
+  // cohort requires; the selection suite makes the freeze the whole choice set.
+  it("selects within the declared freeze: a newer frozen-suite run outranks an older tree-suite run (29930)", () => {
+    const runs = [
+      run("tree-suite", { probeHash: "tree", measuredAt: "2026-10-17T23:08:16.413Z" }),
+      run("frozen-suite", { probeHash: "frozen", measuredAt: "2026-10-17T23:19:21.384Z" }),
+    ].map((value) => parseRun(`${value.runId}.json`, JSON.stringify(value), catalog))
+    const reviews = runs.map(reviewFor)
+    expect(projectResults(runs, reviews, catalog, { currentProbeHash: "tree" }).current["app:kitty"]?.runId).toBe(
+      "tree-suite",
+    )
+    expect(
+      projectResults(runs, reviews, catalog, { currentProbeHash: "tree", selectionSuiteId: "frozen" }).current[
+        "app:kitty"
+      ]?.runId,
+    ).toBe("frozen-suite")
+  })
+
+  it("skips a newer version with no run on the selection suite, and names a context with none (29930)", () => {
+    const runs = [
+      run("frozen-old-version", { probeHash: "frozen", measuredAt: "2026-10-17T00:00:00.000Z" }),
+      run("tree-new-version", {
+        probeHash: "tree",
+        measuredAt: "2026-10-17T01:00:00.000Z",
+        target: { ...target, version: "0.47.0" },
+        rawReplies: {
+          ...identityReplies,
+          "device.xtversion": "kitty(0.47.0)",
+          "extensions.query": "ACK",
+          "extensions.graphics": "NO",
+          "cursor.position": "",
+        },
+      }),
+    ].map((value) => parseRun(`${value.runId}.json`, JSON.stringify(value), catalog))
+    const reviews = runs.map(reviewFor)
+    // The version sort runs first: today the newer tree-suite version wins outright.
+    expect(projectResults(runs, reviews, catalog, { currentProbeHash: "tree" }).current["app:kitty"]?.runId).toBe(
+      "tree-new-version",
+    )
+    const bound = projectResults(runs, reviews, catalog, { currentProbeHash: "tree", selectionSuiteId: "frozen" })
+    expect(bound.current["app:kitty"]?.runId).toBe("frozen-old-version")
+    expect(bound.versions["app:kitty"]?.map((value) => value.runId)).toEqual(["frozen-old-version"])
+    const onlyTree = runs.filter((value) => value.runId === "tree-new-version")
+    const treeOnly = projectResults(onlyTree, onlyTree.map(reviewFor), catalog, {
+      currentProbeHash: "tree",
+      selectionSuiteId: "frozen",
+    })
+    expect(treeOnly.current["app:kitty"]).toBeUndefined()
+    expect(treeOnly.history["app:kitty"]).toHaveLength(1)
   })
 
   it("scopes reviewed corrections and leaves raw run bytes unchanged", () => {
