@@ -34,7 +34,7 @@
  * document. It writes nothing. Bucket math is the site's own `aggregateCells` over the reader's
  * classified table, not a second copy.
  *
- * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2|candidate4] [terminal-id ...]
+ * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2|candidate3|candidate4] [terminal-id ...]
  * Candidate 1 is the default. Candidate 2 keeps all 125 classics on the suite registry's current freeze.
  * When live selection moves past it, bar rows name the selected run's suite and required frozen suite
  * as ineligible. Only admitted history on that required suite then receives the 125 verdict.
@@ -326,7 +326,7 @@ export type ScorableCohort = FeatureCohort & { readonly decidableIds: readonly s
 export interface CohortSpec {
   name: FeatureCohortName
   slices: readonly Slice[]
-  /** Candidate 4 is the tier this cohort ADDS, so it drops the rows already labelled tier 1. */
+  /** A cohort measuring a release's additions drops the rows already labelled tier 1. */
   excludingTier1: boolean
   suiteId: string
   /** The cohort whose manifest froze `suiteId`; the report prints that this suite is read for another. */
@@ -344,11 +344,18 @@ export function candidate2Cohort(contentDir: string): CohortSpec {
   }
 }
 
-/**
- * Candidate 4's cohort: the extensions and input slices, read on candidate 2's frozen suite because no
- * candidate-4 freeze exists yet. The suite is named here EXPLICITLY and the derivation still asks for
- * candidate 2's manifest, so no lookup ever pretends candidate 4 has one.
- */
+/** Candidate 3's modes/device additions, explicitly read on candidate 2's frozen suite. */
+export function candidate3Cohort(contentDir: string): CohortSpec {
+  return {
+    name: "candidate3",
+    slices: ["modes", "device"],
+    excludingTier1: true,
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
+  }
+}
+
+/** Candidate 4's extensions/input additions, explicitly read on candidate 2's frozen suite. */
 export function candidate4Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate4",
@@ -361,6 +368,7 @@ export function candidate4Cohort(contentDir: string): CohortSpec {
 
 const COHORT_LABELS: Readonly<Record<FeatureCohortName, string>> = {
   candidate2: "Candidate 2 classics",
+  candidate3: "Candidate 3 modes and device",
   candidate4: "Candidate 4 extensions and input",
 }
 
@@ -772,8 +780,13 @@ export function parseReaderArgs(args: string[]): {
     allowPositionals: true,
     options: { cohort: { type: "string", default: "candidate1" } },
   })
-  if (values.cohort !== "candidate1" && values.cohort !== "candidate2" && values.cohort !== "candidate4") {
-    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2, candidate4`)
+  if (
+    values.cohort !== "candidate1" &&
+    values.cohort !== "candidate2" &&
+    values.cohort !== "candidate3" &&
+    values.cohort !== "candidate4"
+  ) {
+    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2, candidate3, candidate4`)
   }
   return { cohort: values.cohort, terminalIds }
 }
@@ -790,6 +803,7 @@ export type ReaderCohort = "candidate1" | FeatureCohortName
 export const COHORT_FACTORIES: Readonly<Record<ReaderCohort, ((contentDir: string) => CohortSpec) | undefined>> = {
   candidate1: undefined,
   candidate2: candidate2Cohort,
+  candidate3: candidate3Cohort,
   candidate4: candidate4Cohort,
 }
 
