@@ -926,7 +926,7 @@ interface StatefulTerminal {
 }
 
 /** A terminal that paints cells under real SGR state; `sgr0` lists what its SGR 0 actually clears. */
-function statefulTerminal(sgr0: readonly SgrAttr[]): StatefulTerminal {
+function statefulTerminal(sgr0: readonly SgrAttr[], options: { ris?: boolean } = {}): StatefulTerminal {
   const state: Record<SgrAttr, boolean> = { bold: false, italic: false, inverse: false, underline: false }
   const cells = new Map<string, string>()
   let row = 1
@@ -958,10 +958,13 @@ function statefulTerminal(sgr0: readonly SgrAttr[]): StatefulTerminal {
     while (index < sequence.length) {
       const char = sequence[index]!
       if (char === "\x1b" && sequence[index + 1] === "c") {
-        for (const attribute of Object.keys(state) as SgrAttr[]) state[attribute] = false
-        cells.clear()
-        row = 1
-        col = 1
+        // A terminal that ignores RIS leaves both the cells and the SGR state exactly as they were.
+        if (options.ris !== false) {
+          for (const attribute of Object.keys(state) as SgrAttr[]) state[attribute] = false
+          cells.clear()
+          row = 1
+          col = 1
+        }
         index += 2
         continue
       }
@@ -1032,6 +1035,14 @@ test("a terminal whose SGR 0 retains underline cannot pass sgr.reset on a circul
   const partial = statefulTerminal(["bold", "italic"])
   const result = await captureRegionVerdict(partial.ctx, "sgr.reset", familyRow("sgr.reset"))
   expect(result?.observation?.outcome, "a retained underline must never read as supported").not.toBe("supported")
+})
+
+test("a terminal that ignores RIS cannot pass reset.sgr even with a partial SGR 0", async () => {
+  // Without the setup pre-paint, an ignored reference leaves the expected frame inheriting the
+  // target's own partial-reset state, which reproduces the fault as a pass.
+  const brokenReference = statefulTerminal(["bold", "inverse"], { ris: false })
+  const result = await captureRegionVerdict(brokenReference.ctx, "reset.sgr", familyRow("reset.sgr"))
+  expect(result?.observation?.outcome, "an ignored reference must never read as supported").not.toBe("supported")
 })
 
 test("a correct SGR 0 still decides both full-reset rows supported, so the fixture is not vacuous", async () => {

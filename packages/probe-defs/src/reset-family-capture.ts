@@ -29,12 +29,31 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
   return `${repaint}\x1b[3;5H${yy}\x1b[3;3H${setup}XX\x1b[${CURSOR_ROW};1H`
 }
 
-function row(
-  setup: string,
-  reset: string,
-  residual: string,
-  expectedRepaint = "\x1b[0m\x1b[2J",
-): Omit<RegionReadback, "pixelGeometry"> {
+/**
+ * The expected frame. Its state before the neutral reference is FULLY SPECIFIED by painting the
+ * setup attribute on the compared cells first; the reference then clears the screen and the SGR
+ * state, and only the attributes the row says survive are painted afterwards.
+ *
+ * That pre-paint is what makes the reference safe. A frame painted straight after a reset (SGR 0 or
+ * RIS) inherits whatever the TARGET step left when that reset fails to clear part of the state, so
+ * a broken reset would reproduce its own fault in the expected frame and the row would read
+ * supported (@dev/review2's P1 on the first head: SGR 0 clears bold+inverse but retains italic, so
+ * seed is bold+italic+inverse, after is italic, expected is italic — supported while claiming
+ * italic was cleared). With the pre-paint, a reference that does NOTHING leaves the expected frame
+ * equal to the ignored frame, which is the cannot-separate branch (inconclusive), never a pass.
+ *
+ * ED (`\x1b[2J`) clears cells only: it never changes SGR state and is not the sequence under test.
+ */
+function expectedFrame(setup: string, residual: string): string {
+  return (
+    `\x1b[2J\x1b[3;3H${setup}XX\x1b[3;5H${setup}YY` +
+    // The INDEPENDENT neutral reference. It is not the sequence under test on any of these rows.
+    "\x1bc" +
+    `\x1b[3;5H${residual}YY\x1b[3;3H${setup}XX\x1b[${CURSOR_ROW};1H`
+  )
+}
+
+function row(setup: string, reset: string, residual: string): Omit<RegionReadback, "pixelGeometry"> {
   const styledYY = `${setup}YY`
   const seed = frame(setup, styledYY)
   return {
@@ -43,7 +62,7 @@ function row(
     cursorRow: CURSOR_ROW,
     seed,
     edit: `\x1b[3;3H${setup}XX${reset}YY\x1b[${CURSOR_ROW};1H`,
-    expected: frame(setup, `${residual}YY`, expectedRepaint),
+    expected: expectedFrame(setup, residual),
     // The frame a terminal that IGNORED this reset leaves: the setup attribute still on YY. It is
     // the seed frame by construction, so the "cannot separate" branch can never fire on a row with a
     // real discriminator, and a no-op still reads as the measured negative through `after == ignored`.
@@ -61,15 +80,8 @@ function row(
  * preserves. Empty means the row's claim is "back to the terminal default".
  */
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  // SGR 0 is the sequence under test on these two rows, so it cannot also paint their expected
-  // frame. A terminal that clears only part of the attribute set would paint the expected frame
-  // with the retained attribute and match its own broken output: @dev/review2's P1 counterexample
-  // has SGR 0 clear bold+inverse but retain italic, so seed is bold+italic+inverse, after is
-  // italic, expected is italic, and the row read supported while claiming italic was cleared. RIS
-  // is an INDEPENDENT neutral reference: a terminal that ignores it leaves expected == ignored,
-  // which is branch 1 (inconclusive), never a pass.
-  "reset.sgr": row("\x1b[1;3;7m", "\x1b[0m", "", "\x1bc"),
-  "sgr.reset": row("\x1b[1;3;4m", "\x1b[0m", "", "\x1bc"),
+  "reset.sgr": row("\x1b[1;3;7m", "\x1b[0m", ""),
+  "sgr.reset": row("\x1b[1;3;4m", "\x1b[0m", ""),
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
   "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
