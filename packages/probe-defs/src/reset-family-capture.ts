@@ -49,7 +49,7 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  * use it: a reset under test and a RIS that both miss the same part of the cleared set leave
  * expected equal to after and different from ignored, so the row reads supported while the attribute
  * survived. They carry
- * `noIndependentReference`, and the pixel oracle declines them BY NAME before a byte.
+ * `noIndependentReference`, and the region oracle declines them BY NAME before a byte.
  */
 function expectedFrame(setup: string, residual: string): string {
   return (
