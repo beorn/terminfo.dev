@@ -14,12 +14,7 @@ import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "../docs/data/categories.ts"
-import {
-  classicCohortIds,
-  frozenSuiteIdFor,
-  loadFeatureCohort,
-  loadReleaseScope,
-} from "../docs/data/load-release-scope.ts"
+import { cohortIds, frozenSuiteIdFor, loadFeatureCohort, loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
   aggregateCells,
   classifyCells,
@@ -93,8 +88,36 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     expect(tier1Included(catalog, scope.measuredIds)).not.toContain("extensions.osc777-notify")
   })
 
+  it("derives candidate 4 as the extensions and input slices, 44 ids, and refuses an unknown slice", () => {
+    // Candidate 4 is the tier it ADDS: every extensions and input row that is not already tier 1
+    // (extensions holds 79 rows, 45 labelled tier 1; input holds 11, 1 labelled tier 1).
+    const extensions = cohortIds(catalog, categories, ["extensions"], { excludingTier1: true })
+    const input = cohortIds(catalog, categories, ["input"], { excludingTier1: true })
+    expect(extensions).toHaveLength(34)
+    expect(input).toHaveLength(10)
+    expect(cohortIds(catalog, categories, ["extensions"])).toHaveLength(79)
+    expect(cohortIds(catalog, categories, ["input"])).toHaveLength(11)
+    const ids = cohortIds(catalog, categories, ["extensions", "input"], { excludingTier1: true })
+    expect(ids).toHaveLength(44)
+    expect(new Set(ids).size).toBe(44)
+    // One order: the category catalog opens with extensions and closes with input, and the cohort
+    // follows that order rather than any per-call grouping.
+    expect(ids.slice(0, extensions.length)).toEqual(extensions)
+    expect(ids.slice(extensions.length)).toEqual(input)
+    // An unknown slice must refuse loudly, never fall back to another cohort and never return [].
+    expect(() => cohortIds(catalog, categories, ["nonesuch" as never])).toThrow(/cohort is empty/)
+    // The same exclusion over classics drops exactly the two rows 28018 counts as "not new"
+    // (125 catalog rows, 123 new), so the option is the tier filter and nothing else.
+    expect(cohortIds(catalog, categories, ["classics"], { excludingTier1: true })).toHaveLength(123)
+    // An empty result refuses and says WHY, rather than returning [] for a caller to read as a
+    // measurement.
+    expect(() => cohortIds(catalog, categories, ["nonesuch" as never], { excludingTier1: true })).toThrow(
+      /after excluding the tier-1 rows/,
+    )
+  })
+
   it("derives the 125 classic cohort in the category catalog's order and refuses an empty classics slice", () => {
-    const ids = classicCohortIds(catalog, categories)
+    const ids = cohortIds(catalog, categories, ["classics"])
     expect(ids).toHaveLength(125)
     // The two classic rows that also carry a tier1 field stay in the cohort: the filter is the
     // CATEGORY slice, matching 28018's accepted 125.
@@ -105,17 +128,28 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // precedes Reset (8). The 125-member SET is pinned by SHA in decisive-share.test.ts.
     expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
     expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
-    const cohort = loadFeatureCohort({ catalog, categories, frozenSuiteId: "abc123abc123" })
+    const cohort = loadFeatureCohort({
+      catalog,
+      categories,
+      name: "candidate2",
+      slices: ["classics"],
+      frozenSuiteId: "abc123abc123",
+    })
     expect(cohort.name).toBe("candidate2")
     expect(cohort.frozenSuiteId).toBe("abc123abc123")
     expect(cohort.measuredIds).toEqual(ids)
-    expect(() => classicCohortIds(catalog, { sgr: { slice: "extensions", order: 1 } })).toThrow(
-      /classics cohort is empty/,
+    expect(() => cohortIds(catalog, { sgr: { slice: "extensions", order: 1 } }, ["classics"])).toThrow(
+      /cohort is empty/,
     )
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
     expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("5753741410a9")
+    // Candidate 4 has no freeze of its own; the reader must name candidate 2's suite EXPLICITLY rather
+    // than this lookup quietly answering with candidate 2's manifest (@cto b32f6438, option a).
+    expect(() => frozenSuiteIdFor(contentDir, "candidate4")).toThrow(
+      /no suite manifest declares freeze\.release "candidate4"/,
+    )
     const dir = mkdtempSync(join(tmpdir(), "suite-registry-"))
     try {
       mkdirSync(join(dir, "suites"))

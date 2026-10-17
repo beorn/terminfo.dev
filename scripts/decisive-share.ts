@@ -34,10 +34,16 @@
  * document. It writes nothing. Bucket math is the site's own `aggregateCells` over the reader's
  * classified table, not a second copy.
  *
- * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2] [terminal-id ...]
+ * Usage: bun scripts/decisive-share.ts [--cohort candidate1|candidate2|candidate4] [terminal-id ...]
  * Candidate 1 is the default. Candidate 2 keeps all 125 classics on the suite registry's current freeze.
  * When live selection moves past it, bar rows name the selected run's suite and required frozen suite
  * as ineligible. Only admitted history on that required suite then receives the 125 verdict.
+ *
+ * Candidate 4 is the extensions and input slices (44 ids) read on candidate 2's required suite,
+ * passed EXPLICITLY and printed: that suite is frozen for candidate 2 and is being read for
+ * candidate-4 ids, because no candidate-4 freeze exists (@cto b32f6438, option a). The report never
+ * falls back to a manifest that does not name the cohort: frozenSuiteIdFor(contentDir, "candidate4")
+ * keeps refusing. Both cohorts run the ONE buildReport path: the cohort is data (name, slices, owner).
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -56,6 +62,7 @@ import {
   loadReleaseScope,
   loadFeatureCohort,
   type FeatureCohort,
+  type FeatureCohortName,
 } from "../docs/data/load-release-scope.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
@@ -288,13 +295,16 @@ export interface Report {
   legacySkipped: number
   rejected: number
   searched: string
-  candidate2?: ScorableCohort & {
+  /** The selected cohort's report; absent under candidate1. Named by `cohort.name`. */
+  cohort?: ScorableCohort & {
     decidableIds: string[]
     unavailableIds: string[]
     libraryOnlyIds: string[]
     barRows: CohortBarRow[]
     admittedRuns: CohortRun[]
     refusedRuns: RefusedRun[]
+    slices: CohortSpec["slices"]
+    suiteFrozenFor: FeatureCohortName
   }
 }
 
@@ -307,6 +317,68 @@ export interface Report {
  * not cover (`unavailableIds`) and the rows no app run can decide (`libraryOnlyIds`).
  */
 export type ScorableCohort = FeatureCohort & { readonly decidableIds: readonly string[] }
+
+/**
+ * The cohort as DATA, so one report serves every cohort: its name, the catalog category slices it is
+ * the union of, the suite the reading is taken on, and whose freeze declared that suite. Nobody
+ * branches on the cohort name; the only difference between candidate 2 and candidate 4 is this value.
+ */
+export interface CohortSpec {
+  name: FeatureCohortName
+  slices: readonly ("tier1" | "classics" | "extensions" | "input" | "modes" | "device")[]
+  /** Candidate 4 is the tier this cohort ADDS, so it drops the rows already labelled tier 1. */
+  excludingTier1: boolean
+  suiteId: string
+  /** The cohort whose manifest froze `suiteId`; the report prints that this suite is read for another. */
+  suiteFrozenFor: FeatureCohortName
+}
+
+/** Candidate 2's cohort: the categories the catalog labels `classics`, on its own frozen suite. */
+export function candidate2Cohort(contentDir: string): CohortSpec {
+  return {
+    name: "candidate2",
+    slices: ["classics"],
+    excludingTier1: false,
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
+  }
+}
+
+/**
+ * Candidate 4's cohort: the extensions and input slices, read on candidate 2's frozen suite because
+ * no candidate-4 freeze exists (@cto b32f6438, option a). The suite is named here EXPLICITLY and the
+ * derivation still asks for candidate2's manifest, so no lookup ever pretends candidate 4 has one.
+ */
+export function candidate4Cohort(contentDir: string): CohortSpec {
+  return {
+    name: "candidate4",
+    slices: ["extensions", "input"],
+    excludingTier1: true,
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
+  }
+}
+
+const COHORT_LABELS: Readonly<Record<FeatureCohortName, string>> = {
+  candidate2: "Candidate 2 classics",
+  candidate4: "Candidate 4 extensions and input",
+}
+
+type CohortReport = NonNullable<Report["cohort"]>
+
+/**
+ * The one header line every cohort prints. It names the required suite and WHOSE freeze declared it:
+ * reading another cohort's frozen suite is allowed only when it is said out loud (@cto b32f6438,
+ * option a), so the ownership is rendered, never inferred by the reader.
+ */
+export function cohortHeaderLine(cohort: CohortReport): string {
+  const suite = `required suite ${cohort.frozenSuiteId}`
+  const suiteNote =
+    cohort.suiteFrozenFor === cohort.name
+      ? suite
+      : `${suite} — frozen for ${cohort.suiteFrozenFor}, read here for ${cohort.name} ids`
+  return `${COHORT_LABELS[cohort.name]} · ${cohort.measuredIds.length} IDs (${cohort.decidableIds.length} with a probe in ${suite} and app-observable) · ${suiteNote}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the cohort verdict`
+}
 
 export type CohortRun =
   | { run: ContextCandidate; measured: true; share: DecisiveShare }
@@ -343,17 +415,20 @@ export function cohortRowForSelected(row: BarRow, cohort: ScorableCohort): Cohor
 export function buildReport(args: {
   contentDir: string
   contexts?: readonly ReleaseContext[]
-  cohort?: "candidate1" | "candidate2"
+  cohort?: CohortSpec
 }): Report {
-  let cohort: ScorableCohort | undefined
+  let cohort: (ScorableCohort & { slices: CohortSpec["slices"]; suiteFrozenFor: FeatureCohortName }) | undefined
   let unavailableIds: string[] = []
   let libraryOnlyIds: string[] = []
-  if (args.cohort === "candidate2") {
+  if (args.cohort) {
     const categories = loadCategories(args.contentDir)
     const declared = loadFeatureCohort({
       catalog: featureCatalog(args.contentDir),
       categories,
-      frozenSuiteId: frozenSuiteIdFor(args.contentDir, "candidate2"),
+      name: args.cohort.name,
+      slices: args.cohort.slices,
+      excludingTier1: args.cohort.excludingTier1,
+      frozenSuiteId: args.cohort.suiteId,
     })
     const manifestPath = join(args.contentDir, "suites", `${declared.frozenSuiteId}.json`)
     const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
@@ -369,7 +444,12 @@ export function buildReport(args: {
     const basis = splitDecidableBasis(declared.scoredIds, manifest.probes.app)
     unavailableIds = [...basis.unavailableIds]
     libraryOnlyIds = [...declared.libraryOnlyIds]
-    cohort = { ...declared, decidableIds: basis.decidableIds }
+    cohort = {
+      ...declared,
+      decidableIds: basis.decidableIds,
+      slices: args.cohort.slices,
+      suiteFrozenFor: args.cohort.suiteFrozenFor,
+    }
   }
   const projection = loadCurrentResults(args.contentDir).projection
   const current = Object.entries(projection.current).map(([key, selected]) =>
@@ -428,7 +508,7 @@ export function buildReport(args: {
     searched: join(args.contentDir, "probes-apps"),
   }
   if (cohort) {
-    report.candidate2 = {
+    report.cohort = {
       ...cohort,
       decidableIds: [...cohort.decidableIds],
       unavailableIds,
@@ -674,15 +754,18 @@ export function refusedRunsSection(runs: readonly RefusedRun[]): string[] {
   return lines
 }
 
-export function parseReaderArgs(args: string[]): { cohort: "candidate1" | "candidate2"; terminalIds: string[] } {
+export function parseReaderArgs(args: string[]): {
+  cohort: "candidate1" | "candidate2" | "candidate4"
+  terminalIds: string[]
+} {
   const { values, positionals: terminalIds } = parseArgs({
     args,
     strict: true,
     allowPositionals: true,
     options: { cohort: { type: "string", default: "candidate1" } },
   })
-  if (values.cohort !== "candidate1" && values.cohort !== "candidate2") {
-    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2`)
+  if (values.cohort !== "candidate1" && values.cohort !== "candidate2" && values.cohort !== "candidate4") {
+    throw new Error(`Unknown cohort ${values.cohort}; accepted values: candidate1, candidate2, candidate4`)
   }
   return { cohort: values.cohort, terminalIds }
 }
@@ -690,12 +773,16 @@ export function parseReaderArgs(args: string[]): { cohort: "candidate1" | "candi
 function main(): void {
   const contentDir = join(import.meta.dirname ?? process.cwd(), "..", "content")
   const { cohort: selectedCohort, terminalIds } = parseReaderArgs(process.argv.slice(2))
-  const report = buildReport({ contentDir, cohort: selectedCohort })
-  if (report.candidate2) {
-    const cohort = report.candidate2
-    console.log(
-      `Candidate 2 classics · ${cohort.measuredIds.length} IDs (${cohort.decidableIds.length} with a probe in required suite ${cohort.frozenSuiteId} and app-observable) · required suite ${cohort.frozenSuiteId}; ineligible: selected run on suite X, required ${cohort.frozenSuiteId} when live selection moves; only frozen-suite admitted history then receives the cohort verdict`,
-    )
+  const cohortSpec =
+    selectedCohort === "candidate2"
+      ? candidate2Cohort(contentDir)
+      : selectedCohort === "candidate4"
+        ? candidate4Cohort(contentDir)
+        : undefined
+  const report = buildReport({ contentDir, cohort: cohortSpec })
+  if (report.cohort) {
+    const cohort = report.cohort
+    console.log(cohortHeaderLine(cohort))
     console.log(
       `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
     )

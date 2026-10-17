@@ -22,8 +22,10 @@ export interface CohortCategoryMeta {
   order: number
 }
 
+export type FeatureCohortName = "candidate2" | "candidate4"
+
 export interface FeatureCohort {
-  name: "candidate2"
+  name: FeatureCohortName
   frozenSuiteId: string
   measuredIds: string[]
   /** The cohort ids an APP run can decide, in cohort order — the scored denominator. */
@@ -33,30 +35,40 @@ export interface FeatureCohort {
 }
 
 /**
- * The candidate-2 cohort in its published order: every catalog row whose CATEGORY slice is `classics`,
- * category by category in the category catalog's own `order`, each category's ids ascending. That is
- * the ONE category order the site prints (@cto 2026-10-12, item 3), so the cohort cannot disagree
- * with the category blocks beside it. The two classic rows that also carry a `tier1` field stay IN
- * the cohort: the filter is the category's slice, matching 28018's accepted 125.
+ * A cohort in its published order: every catalog row whose CATEGORY slice is one of `slices`, category
+ * by category in the category catalog's own `order`, each category's ids ascending. That is the ONE
+ * category order the site prints (@cto 2026-10-12, item 3), so the cohort cannot disagree with the
+ * category blocks beside it. Candidate 2 keeps every classic row, including the two that carry a
+ * `tier1` field, because its filter is the category's slice (28018's accepted 125). Candidate 4 is
+ * the tier it ADDS, so it asks for `excludingTier1` and drops exactly the rows already labelled tier 1.
  */
-export function classicCohortIds(
+export function cohortIds(
   catalog: FeatureCatalog,
   categories: Readonly<Record<string, CohortCategoryMeta>>,
+  slices: readonly Slice[],
+  options: { readonly excludingTier1?: boolean } = {},
 ): string[] {
-  const classic = Object.entries(categories)
-    .filter(([, category]) => category.slice === "classics")
+  const wanted = new Set<string>(slices)
+  const selected = Object.entries(categories)
+    .filter(([, category]) => wanted.has(category.slice))
     .sort((left, right) => left[1].order - right[1].order)
   const ids: string[] = []
-  for (const [key] of classic) {
+  for (const [key] of selected) {
     const prefix = `${key}.`
     for (const id of Object.keys(catalog)
       .filter((id) => id.startsWith(prefix))
       .sort()) {
+      // A tier-1 row is measured by its own release; candidate 4 is the tier this cohort ADDS, so it
+      // drops exactly those rows. The exclusion is data, never a per-cohort branch in a reader.
+      if (options.excludingTier1 && catalog[id]?.tier1 !== undefined) continue
       ids.push(id)
     }
   }
   if (ids.length === 0) {
-    throw new Error('classics cohort is empty: no category carries slice "classics"')
+    throw new Error(
+      `cohort is empty: no category carries any of the slices ${slices.join(", ") || "(none given)"}` +
+        (options.excludingTier1 ? " after excluding the tier-1 rows" : ""),
+    )
   }
   return ids
 }
@@ -65,12 +77,17 @@ export function classicCohortIds(
 export function loadFeatureCohort(args: {
   catalog: FeatureCatalog
   categories: Readonly<Record<string, CohortCategoryMeta>>
+  name: FeatureCohortName
+  slices: readonly Slice[]
+  excludingTier1?: boolean
   frozenSuiteId: string
 }): FeatureCohort {
-  const measuredIds = classicCohortIds(args.catalog, args.categories)
+  const measuredIds = cohortIds(args.catalog, args.categories, args.slices, {
+    excludingTier1: args.excludingTier1,
+  })
   const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
   return {
-    name: "candidate2",
+    name: args.name,
     frozenSuiteId: args.frozenSuiteId,
     measuredIds,
     scoredIds: [...scoredIds],
