@@ -139,10 +139,14 @@ function currentResultsCache(): Map<string, CurrentResults> {
   return (cacheHost[RESULTS_CACHE] ??= new Map())
 }
 
-export function loadCurrentResults(contentDir: string, options: { artifactDir?: string } = {}): CurrentResults {
-  // `releaseSuiteIdFor` is read first and throws loudly when the registry names no suite, exactly as the
-  // argument it used to be evaluated as did.
-  const releaseSuiteId = releaseSuiteIdFor(contentDir)
+export function loadCurrentResults(
+  contentDir: string,
+  options: { artifactDir?: string; releaseSuiteId?: string } = {},
+): CurrentResults {
+  // A reading may be taken on another cohort's freeze (candidate 2 reads the c240 suite candidate 4
+  // froze). The caller that holds that suite names it here, so one home decides it; otherwise the
+  // registry is read and throws loudly when it names no suite.
+  const releaseSuiteId = options.releaseSuiteId ?? releaseSuiteIdFor(contentDir)
   const key = `${contentDir}\u0000${probeHash()}\u0000${options.artifactDir ?? ""}\u0000${releaseSuiteId}`
   const cache = currentResultsCache()
   const memoized = cache.get(key)

@@ -128,6 +128,22 @@ describe("candidate-2 page: publication rule (AC4)", () => {
     }
   })
 
+  it("prints the reader's declared blocker, word for word, for a blocked macOS context", () => {
+    // @chief's acceptance condition: the dark contexts read NOT MEASURED with the cause, not a bare
+    // suite refusal. The page prints the reader's reason verbatim, so this pins the two together.
+    const readerRow = report.cohort?.barRows.find(
+      (row) => row.context.terminalId === "terminal-app" && row.context.os === "macos",
+    )
+    if (!readerRow) throw new Error("reader carries no terminal-app/macos bar row")
+    if (readerRow.measured) throw new Error("terminal-app/macos should be blocked, not measured")
+    const pageRow = data.contexts.find((row) => row.context === "terminal-app/macos")
+    if (!pageRow) throw new Error("page carries no terminal-app/macos row")
+    expect(pageRow.published).toBe(false)
+    expect(pageRow.reason).toBe(readerRow.reason)
+    expect(pageRow.reason).toContain("Screen Recording permission gate")
+    expect(pageRow.reason).toContain("29918")
+  })
+
   it("never publishes the same context twice", () => {
     const keys = data.contexts.map((row) => row.context)
     expect(new Set(keys).size).toBe(keys.length)
@@ -291,12 +307,15 @@ describe("candidate-2 page: wiring", () => {
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
-  it("includes Editing and Character Sets on the six ruled contexts and names the rest", () => {
-    // Included per context on the six that clear 90 percent, every
-    // other context held or named not measured, nothing claimed on ten. A new suite or collection
-    // that moves these numbers must change this table deliberately, never loosen the assertion.
-    const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
-    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"]
+  it("includes Editing and Character Sets on the four measured contexts that clear the bar, and names the rest", () => {
+    // Included per context on the measured contexts that clear 90 percent, every other measured
+    // context held, and every context with no run on the required suite named not measured. The
+    // lists moved with the c240 suite: the macOS contexts lost their runs, so no macOS context can
+    // carry a per-context inclusion claim and kitty/macos now names its blocker. A new suite or
+    // collection that moves these numbers must change this table deliberately, never loosen it.
+    const clearing = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
+    const below = ["ghostty/linux", "windows-terminal/windows"]
+    const dark = ["terminal-app/macos", "iterm2/macos", "ghostty/macos", "alacritty/macos", "kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("Included on {{ group.includedOn.length }} of")
@@ -305,19 +324,20 @@ describe("candidate-2 page: wiring", () => {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} is missing from the page`)
       expect(group.included, key).toBe(false)
-      expect(group.includedOn, key).toEqual(six)
+      expect(group.includedOn, key).toEqual(clearing)
       expect(
         group.heldBy.map((row) => row.context),
         key,
       ).toEqual(below)
-      // kitty/macOS carries a run the frozen suite does not admit: named, never counted.
+      // Every dark context is named, never counted, and carries its declared cause.
       expect(
         group.unmeasured.map((row) => row.context),
         key,
-      ).toEqual(["kitty/macos"])
-      expect(group.unmeasured[0]?.reason, key).toContain(
-        "ineligible: selected run on suite 9918f283121a, required 5753741410a9",
-      )
+      ).toEqual(dark)
+      expect(group.unmeasured[0]?.reason, key).toContain("Screen Recording permission gate")
+      expect(group.unmeasured[0]?.reason, key).toContain("29918")
+      expect(group.unmeasured[4]?.reason, key).toContain("no hosted kitty route")
+      expect(group.unmeasured[4]?.reason, key).toContain("27928")
     }
   })
 

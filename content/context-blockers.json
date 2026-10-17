@@ -1,0 +1,29 @@
+{
+  "blockers": [
+    {
+      "terminalId": "alacritty",
+      "os": "macos",
+      "reason": "no macOS run on the required suite: the local collector is blocked by the Screen Recording permission gate, so this context is not measured rather than failed (29918)"
+    },
+    {
+      "terminalId": "ghostty",
+      "os": "macos",
+      "reason": "no macOS run on the required suite: the local collector is blocked by the Screen Recording permission gate, so this context is not measured rather than failed (29918)"
+    },
+    {
+      "terminalId": "iterm2",
+      "os": "macos",
+      "reason": "no macOS run on the required suite: the local collector is blocked by the Screen Recording permission gate, so this context is not measured rather than failed (29918)"
+    },
+    {
+      "terminalId": "kitty",
+      "os": "macos",
+      "reason": "no hosted kitty route: hosted runners open no Kitty (no GPU 27834) and no hosted workflow runs kitty, so there is no run on the required suite (27928)"
+    },
+    {
+      "terminalId": "terminal-app",
+      "os": "macos",
+      "reason": "no macOS run on the required suite: the local collector is blocked by the Screen Recording permission gate, so this context is not measured rather than failed (29918)"
+    }
+  ]
+}

@@ -209,6 +209,35 @@ export function tierOneIds(contentDir: string): string[] {
   return loadReleaseScope({ catalog, categories: loadCategories(contentDir) }).measuredIds
 }
 
+export interface ContextBlocker {
+  readonly terminalId: string
+  readonly os: string
+  readonly reason: string
+}
+
+/**
+ * Contexts with no route to the required suite, keyed `terminalId/os`. Each says in words why no run
+ * exists, with its bead as a trailing pointer. The file is REQUIRED: a reader that cannot find it must
+ * not quietly print a suite refusal as if the suite were the cause.
+ */
+export function loadContextBlockers(contentDir: string): ReadonlyMap<string, string> {
+  const path = join(contentDir, "context-blockers.json")
+  const parsed = parseJsonStrict(path, readFileSync(path, "utf8"))
+  const blockers = (parsed as { blockers?: unknown } | null)?.blockers
+  if (!Array.isArray(blockers)) throw new Error(`${path}: expected {"blockers": [...]}`)
+  const byContext = new Map<string, string>()
+  for (const entry of blockers) {
+    const record = entry as Partial<Record<keyof ContextBlocker, unknown>>
+    if (typeof record.terminalId !== "string" || typeof record.os !== "string" || typeof record.reason !== "string") {
+      throw new Error(`${path}: every blocker needs terminalId, os and reason; got ${JSON.stringify(entry)}`)
+    }
+    const key = `${record.terminalId}/${record.os}`
+    if (byContext.has(key)) throw new Error(`${path}: ${key} is declared twice`)
+    byContext.set(key, record.reason)
+  }
+  return byContext
+}
+
 function featureCatalog(contentDir: string): FeatureCatalog {
   return loadFeatures(contentDir)
 }
@@ -333,36 +362,43 @@ export interface CohortSpec {
   suiteFrozenFor: FeatureCohortName
 }
 
-/** Candidate 2's cohort: the categories the catalog labels `classics`, on its own frozen suite. */
+/**
+ * Candidate 2's cohort: the categories the catalog labels `classics`, read on the suite the
+ * candidate-4 freeze declares. The classics bar moves to that suite so the reading never falls
+ * between two freezes; the printed ownership says whose freeze declared it.
+ */
 export function candidate2Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate2",
     slices: ["classics"],
     excludingTier1: false,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
-/** Candidate 3's modes/device additions, explicitly read on candidate 2's frozen suite. */
+/** Candidate 3's modes/device additions, read on the suite the candidate-4 freeze declares. */
 export function candidate3Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate3",
     slices: ["modes", "device"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
-/** Candidate 4's extensions/input additions, explicitly read on candidate 2's frozen suite. */
+/**
+ * Candidate 4's cohort: the extensions and input slices, read on the suite candidate 4's own freeze
+ * declares. The suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
+ */
 export function candidate4Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate4",
     slices: ["extensions", "input"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
@@ -410,9 +446,18 @@ function cohortRun(run: ContextCandidate, cohort: ScorableCohort, role: "selecte
 }
 
 /** Eligibility follows the site's completed selection; history never replaces the selected run. */
-export function cohortRowForSelected(row: BarRow, cohort: ScorableCohort): CohortBarRow {
+export function cohortRowForSelected(row: BarRow, cohort: ScorableCohort, blocker?: string): CohortBarRow {
   if (!row.measured) return row
-  return { ...cohortRun(row.run, cohort, "selected"), context: row.context, selection: row.selection }
+  const verdict = cohortRun(row.run, cohort, "selected")
+  // A declared blocker explains why NO run on the required suite exists, so it replaces the suite
+  // refusal only where that refusal is what the reader would otherwise print: the selected run is off
+  // the cohort's suite. An on-suite run that fails a different check keeps its own reason, and a
+  // measured row is never reworded (an eligible run makes its context's blocker stale, pinned by test).
+  const offSuite = row.run.suiteId !== cohort.frozenSuiteId
+  if (!verdict.measured && offSuite && blocker !== undefined) {
+    return { run: row.run, measured: false, reason: blocker, context: row.context, selection: row.selection }
+  }
+  return { ...verdict, context: row.context, selection: row.selection }
 }
 
 /**
@@ -467,7 +512,12 @@ export function buildReport(args: {
       suiteFrozenFor: args.cohort.suiteFrozenFor,
     }
   }
-  const projection = loadCurrentResults(args.contentDir).projection
+  // The cohort names the suite its reading is taken on; the projection takes it from there, so one
+  // home decides which runs are fresh and the page can never publish a run the bar will refuse.
+  const projection = loadCurrentResults(
+    args.contentDir,
+    args.cohort === undefined ? {} : { releaseSuiteId: args.cohort.suiteId },
+  ).projection
   const current = Object.entries(projection.current).map(([key, selected]) =>
     candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
   )
@@ -501,6 +551,7 @@ export function buildReport(args: {
   const tier62Ids = tierOneIds(args.contentDir)
   const tier52Ids = tier1Included(featureCatalog(args.contentDir), tier62Ids)
   const contexts = args.contexts ?? RELEASE_1_CONTEXTS
+  const blockers = loadContextBlockers(args.contentDir)
   const barRows = contexts.map((context) =>
     barRowForContext({
       context,
@@ -529,7 +580,9 @@ export function buildReport(args: {
       decidableIds: [...cohort.decidableIds],
       unavailableIds,
       libraryOnlyIds,
-      barRows: barRows.map((row) => cohortRowForSelected(row, cohort)),
+      barRows: barRows.map((row) =>
+        cohortRowForSelected(row, cohort, blockers.get(`${row.context.terminalId}/${row.context.os}`)),
+      ),
       admittedRuns: admitted.map((run) => cohortRun(run, cohort, "admitted")),
       refusedRuns: refused,
     }
