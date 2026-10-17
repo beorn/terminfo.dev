@@ -16,19 +16,16 @@ import { parseSuiteManifest } from "@terminfo/run-parser"
 export { derivedSuiteManifest, uncommittedCollectorDirt }
 
 /**
- * The one suite manifest whose `freeze.release` names this release. The 83 manifests ARE the suite
- * registry, so the pointer cannot name a suite no manifest carries. Two manifests claiming one
- * release, or a release no manifest freezes, is refused loudly — a silent fallback would relabel
- * every run on the release suite "older" and suppress the tree-move banner.
+ * The one scan that answers "which suites claim this release". `frozenSuiteIdFor` reads it, and the
+ * freeze act runs the same scan BEFORE writing, so a write can never leave a registry its own reader
+ * refuses. One copy, so the two can never disagree about what a claim is.
  */
-export function frozenSuiteIdFor(contentDir: string, release: string): string {
+function suiteClaimsFor(
+  contentDir: string,
+  release: string,
+): { dir: string; claims: string[]; registryExists: boolean } {
   const dir = join(contentDir, "suites")
-  if (!existsSync(dir)) {
-    throw new Error(
-      `${dir}: the suite registry is required to name the current suite for release "${release}"; ` +
-        'without it every run on the release suite is relabelled "older suite" and the tree-move banner is suppressed',
-    )
-  }
+  if (!existsSync(dir)) return { dir, claims: [], registryExists: false }
   const claims: string[] = []
   for (const name of readdirSync(dir)
     .filter((file) => file.endsWith(".json"))
@@ -36,6 +33,24 @@ export function frozenSuiteIdFor(contentDir: string, release: string): string {
     const path = join(dir, name)
     const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
     if (manifest.freeze?.release === release) claims.push(manifest.probeHash)
+  }
+  return { dir, claims, registryExists: true }
+}
+
+/**
+ * The one suite manifest whose `freeze.release` names this release. The 83 manifests ARE the suite
+ * registry, so the pointer cannot name a suite no manifest carries. Two manifests claiming one
+ * release, or a release no manifest freezes, is refused loudly — a silent fallback would relabel
+ * every run on the release suite "older" and suppress the tree-move banner.
+ */
+export function frozenSuiteIdFor(contentDir: string, release: string): string {
+  const { dir, claims, registryExists } = suiteClaimsFor(contentDir, release)
+  // A reader must resolve a release against a registry; a writer may create the first declaration.
+  if (!registryExists) {
+    throw new Error(
+      `${dir}: the suite registry is required to name the current suite for release "${release}"; ` +
+        'without it every run on the release suite is relabelled "older suite" and the tree-move banner is suppressed',
+    )
   }
   if (claims.length === 0) {
     throw new Error(`${dir}: no suite manifest declares freeze.release "${release}"`)
@@ -166,6 +181,79 @@ export function declareCurrentSuiteManifest(
   return { status: persistSuiteManifest(path, derivedSuiteManifest(snapshot), snapshot), path }
 }
 
+/**
+ * Add or replace the release pointer on a declaration that already exists. The record itself is not
+ * rewritten: only the `freeze` key changes, so the probes and versions an admission verified stay
+ * exactly as written.
+ */
+function applySuiteFreeze(
+  path: string,
+  freeze: { release: string; at?: string },
+): { status: "existing" | "frozen"; path: string } {
+  const stored = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>
+  const current = stored.freeze as { release?: unknown; at?: unknown } | undefined
+  if (current?.release === freeze.release && typeof current.at === "string") return { status: "existing", path }
+  stored.freeze = { release: freeze.release, at: freeze.at ?? new Date().toISOString() }
+  writeFileSync(path, `${JSON.stringify(stored, null, 2)}\n`)
+  return { status: "frozen", path }
+}
+
+/**
+ * The freeze act as one operation: scan the release's claimants, refuse before writing if any suite
+ * already claims it, write the pointer, then resolve the way a reader does. The check is the reader's
+ * own scan rather than a second rule, so a freeze can never leave a registry its reader refuses.
+ */
+export function freezeCurrentSuiteManifest(
+  root: string,
+  release: string,
+  options: { snapshot?: ProbeSuiteSnapshot; at?: string } = {},
+): { status: "created" | "existing" | "frozen"; path: string; suiteId: string } {
+  const snapshot = options.snapshot ?? probeSuiteSnapshot(root)
+  assertDeclareIsAuthoring(root, snapshot.probeHash)
+  const contentDir = join(root, "content")
+  const path = join(contentDir, "suites", `${snapshot.probeHash}.json`)
+  // One check, not two policies: compute the claims this write would LEAVE, for every release it
+  // touches — the one requested and the one this suite claims now — and refuse unless each ends with
+  // exactly one suite. Every read goes through the same scan frozenSuiteIdFor uses.
+  const requested = suiteClaimsFor(contentDir, release)
+  const others = requested.claims.filter((claim) => claim !== snapshot.probeHash)
+  if (others.length > 0) {
+    const pair = [...others, snapshot.probeHash]
+    throw new Error(`${requested.dir}: ${pair.length} suite manifests claim release "${release}": ${pair.join(", ")}`)
+  }
+  const current = existsSync(path) ? parseSuiteManifest(path, readFileSync(path, "utf8")).freeze?.release : undefined
+  if (current !== undefined && current !== release) {
+    const remaining = suiteClaimsFor(contentDir, current).claims.filter((claim) => claim !== snapshot.probeHash)
+    // Both arms of the reader's exactly-one rule, not just the zero one: a move that leaves the old
+    // release with two claimants would put the registry in the state `frozenSuiteIdFor` refuses.
+    if (remaining.length === 0) {
+      throw new Error(
+        `${requested.dir}: no suite manifest declares freeze.release "${current}" would remain: freezing suite ` +
+          `${snapshot.probeHash} for "${release}" would leave "${current}" with no suite. Freeze a different suite ` +
+          `for "${release}", or have the cohort read "${current}".`,
+      )
+    }
+    if (remaining.length > 1) {
+      throw new Error(
+        `${requested.dir}: ${remaining.length} suite manifests would claim release "${current}": ` +
+          `${remaining.join(", ")}. Freezing suite ${snapshot.probeHash} for "${release}" would leave "${current}" ` +
+          `with more than one suite, which its reader refuses. Freeze a different suite for "${release}", or have ` +
+          `the cohort read "${current}".`,
+      )
+    }
+  }
+  // The instant is captured here, at the write boundary, so record derivation stays a pure function
+  // of its inputs and a caller can pin a fixed instant in a test.
+  const frozen = { release, at: options.at ?? new Date().toISOString() }
+  if (!existsSync(path)) {
+    const created = persistSuiteManifest(path, derivedSuiteManifest(snapshot, frozen), snapshot)
+    return { status: created, path, suiteId: frozenSuiteIdFor(contentDir, release) }
+  }
+  verifySuiteManifest(path, snapshot)
+  const applied = applySuiteFreeze(path, frozen)
+  return { ...applied, suiteId: frozenSuiteIdFor(contentDir, release) }
+}
+
 /** Every committed run names the suite that produced it. */
 export function citedSuiteHashes(cwd = ROOT): Map<string, string[]> {
   const byHash = new Map<string, string[]>()
@@ -230,11 +318,11 @@ export function checkCitedSuiteManifests(
   return { cited: cited.size, manifests: cited.size }
 }
 
-export type SuiteManifestMode = "check" | "usage"
+export type SuiteManifestMode = "check" | "freeze" | "usage"
 
 /** A bare invocation is never a declare: the write needs the explicit verb (27843 AC2). */
 export function suiteManifestMode(argv: string[]): SuiteManifestMode {
-  if (argv.length !== 1) return "usage"
-  if (argv[0] === "--check") return "check"
+  if (argv.length === 1 && argv[0] === "--check") return "check"
+  if (argv.length === 2 && argv[0] === "--freeze" && argv[1] !== undefined && argv[1].trim() !== "") return "freeze"
   return "usage"
 }

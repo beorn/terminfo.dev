@@ -114,11 +114,20 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
 }
 
 /** Derive the suite declaration record from a live suite snapshot. */
-export function derivedSuiteManifest(snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot()): ProbeSuiteManifest {
+/**
+ * The manifest a declaration writes. A freeze act passes the release it is freezing, so the pointer
+ * is part of what the writer emits and no human appends it to the JSON afterwards; admission passes
+ * nothing, because admitting a run names a suite without claiming it as a release's current one.
+ */
+export function derivedSuiteManifest(
+  snapshot: ProbeSuiteSnapshot = probeSuiteSnapshot(),
+  freeze?: { release: string; at: string },
+): ProbeSuiteManifest {
   return {
     probeHash: snapshot.probeHash,
     adapterVersion: snapshot.adapterVersion,
     probes: snapshot.probes,
+    ...(freeze === undefined ? {} : { freeze: { release: freeze.release, at: freeze.at } }),
   }
 }
 
