@@ -86,7 +86,7 @@ public static class Spike {
   public static bool SendScanCodeA() {
     INPUT[] inputs = new INPUT[2];
     inputs[0].type = 1; inputs[0].ki.wScan = 0x1E; inputs[0].ki.dwFlags = 0x0008;
-    inputs[1].type = 1; inputs[1].ki.wScan = 0x1E; inputs[1].ki.dwFlags = 0x0008 -bor 0x0002;
+    inputs[1].type = 1; inputs[1].ki.wScan = 0x1E; inputs[1].ki.dwFlags = 0x0008 | 0x0002;
     uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
     lastError = Marshal.GetLastWin32Error();
     return sent == 2;
