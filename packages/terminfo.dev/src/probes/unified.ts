@@ -140,6 +140,9 @@ export interface ProbeBatch {
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   suiteComplete: boolean
   screenshotRefs: string[]
+  /** Retained text snapshots, kept apart from `screenshotRefs` because every consumer of that list
+   * assumes a PNG. */
+  textSnapshotRefs: string[]
   /** The apparatus-measured launch receipt, parsed by the ONE parser; the caller copies this block
    * into origin.appLaunch of the run document, adding and editing nothing (28216). */
   appLaunch?: DisposableReceipt["appLaunch"]
@@ -228,11 +231,31 @@ function refusedClaimEvidence(result: ProbeResult): string {
   return parts.join(" and ")
 }
 
+/**
+ * Whether this probe is offered a capture adapter at all.
+ *
+ * A pixel run is gated by the measured-geometry refusal. A text run is gated by the consumer
+ * instead: only the probe whose verdict is about cells may read the text snapshot, because every
+ * other probe grades pixels and must take its own named no-capture branch rather than record a
+ * pixel claim over a text frame. A text adapter needs no pixel geometry, so a refusal never blocks
+ * it.
+ */
+export function captureAdapterEligible(
+  probe: Pick<ProbeDefinition, "cellReadback">,
+  captureKind: "pixels" | "text-cells" | undefined,
+  captureGeometryRefusal: string | undefined,
+): boolean {
+  return captureKind === "text-cells" ? probe.cellReadback === true : !captureGeometryRefusal
+}
+
 /** Collect the real callback result, without treating its legacy boolean as an observation. */
 export async function runProbeBatch(
   options: {
     ids?: string[]
     capture?: ProbeCapture
+    /** What the installed adapter reads; a text adapter is honest even where pixel geometry was
+     * refused, so it is installed regardless of `captureGeometryRefusal`. */
+    captureKind?: "pixels" | "text-cells"
     /** Prepare owned capture calibration and verify restoration before the first callback. */
     prepareCapture?: (input: {
       context: TermContext
@@ -268,6 +291,7 @@ export async function runProbeBatch(
     ungradedDiagnostics: {},
     suiteComplete: false,
     screenshotRefs: [],
+    textSnapshotRefs: [],
   }
   const geometryChecks: Array<{
     featureId: string
@@ -347,7 +371,10 @@ export async function runProbeBatch(
       throw new Error(`Capture adapter returned an invalid frame for ${featureId}`)
     }
     captures.push(result)
-    if (!batch.screenshotRefs.includes(result.frame.ref)) batch.screenshotRefs.push(result.frame.ref)
+    // The frame's own kind decides which list holds its ref, so a text snapshot is never listed as a
+    // screenshot.
+    const refs = result.frame.kind === "text-cells" ? batch.textSnapshotRefs : batch.screenshotRefs
+    if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
   }
   for (const probe of selected) {
     const writes: string[] = []
@@ -430,12 +457,28 @@ export async function runProbeBatch(
     }
     if (options.input) context.input = options.input
     const capture = options.capture
-    if (capture && !captureGeometryRefusal) {
-      context.capture = async (checkpoint) => {
-        captureAttempted = true
-        const result = await capture({ featureId: probe.id, ...checkpoint })
-        recordCapture(probe.id, captures, result, checkpoint.role)
-        return result.frame
+    // A text run hands its adapter to the region readback alone: it is the one consumer whose
+    // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
+    // its own named no-capture branch — an error row where a named refusal belongs is exactly what
+    // the no-capture branches exist to avoid.
+    const textCells = options.captureKind === "text-cells"
+    const captureEligible = captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
+    if (capture && captureEligible) {
+      if (textCells) {
+        context.captureKind = "text-cells"
+        context.cells = async (checkpoint) => {
+          captureAttempted = true
+          const result = await capture({ featureId: probe.id, ...checkpoint })
+          recordCapture(probe.id, captures, result, checkpoint.role)
+          return result.frame
+        }
+      } else {
+        context.capture = async (checkpoint) => {
+          captureAttempted = true
+          const result = await capture({ featureId: probe.id, ...checkpoint })
+          recordCapture(probe.id, captures, result, checkpoint.role)
+          return result.frame
+        }
       }
     }
     const prepareCapture = options.prepareCapture
@@ -634,7 +677,9 @@ export async function runProbeBatch(
         name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable"
           ? undefined
           : captureAttempted
-            ? "pixels"
+            ? options.captureKind === "text-cells"
+              ? "text"
+              : "pixels"
             : probe.termObservationEvidence
       if (errorEvidence) {
         batch.observations.push({

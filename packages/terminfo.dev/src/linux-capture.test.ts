@@ -666,6 +666,7 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
     trace: { fixture: "plain" },
   })
   expect(plain.frame).toEqual({
+    kind: "pixels",
     role: "control",
     label: "plain",
     capturedAt: 123,

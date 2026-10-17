@@ -287,6 +287,7 @@ describe("release collection hands every produced run to the admission owner", (
         manifest: "existing",
         run: "created",
         screenshots: { created: 0, existing: 0 },
+        textSnapshots: { created: 0, existing: 0 },
         receipt: { placed: "none", detail: "fixture" },
       })
       try {

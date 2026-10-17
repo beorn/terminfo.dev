@@ -343,6 +343,7 @@ export const resetProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    cellReadback: true,
   },
 
   {

@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
-import { readVerifiedScreenshot, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { readVerifiedArtifact, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -251,7 +251,7 @@ function writeEvidence(
       if (!digest) continue
       const path = `artifacts/${digest}.png`
       if (!expected.has(path)) {
-        expected.set(path, readVerifiedScreenshot(contentDir, `sha256:${digest}`, document.runId))
+        expected.set(path, readVerifiedArtifact(contentDir, `sha256:${digest}`, document.runId))
       }
     }
   }

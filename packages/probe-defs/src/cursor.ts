@@ -1002,7 +1002,8 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (ctx.capture && (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6)) {
+        const adapter = ctx.capture ?? ctx.cells
+        if (adapter && (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6)) {
           return {
             pass: false,
             observation: {
@@ -1013,7 +1014,7 @@ export const cursorProbes: ProbeDefinition[] = [
             },
           }
         }
-        if (ctx.capture) {
+        if (adapter) {
           const verdict = await captureRegionVerdict(ctx, "cursor.cup-scroll-region", CURSOR_CUP_SCROLL_REGION_READBACK)
           if (verdict) return verdict
           try {
@@ -1115,6 +1116,7 @@ export const cursorProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    cellReadback: true,
 
     termlessObservationEvidence: "parser-state",
   },

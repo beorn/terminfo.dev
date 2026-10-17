@@ -13,7 +13,7 @@ import {
   loadSelectedResults,
   parseInterpretations,
   projectResults,
-  readVerifiedScreenshot,
+  readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
@@ -558,13 +558,13 @@ describe("selected results", () => {
       loadSelectedResults(content, "current").history["app:kitty"]?.[0]?.cells["extensions.graphics"],
     ).toBeDefined()
     expect(existsSync(output)).toBe(false)
-    expect(readVerifiedScreenshot(content, screenshotRef, "pixels.json")).toEqual(png)
-    expect(readVerifiedScreenshot(content, controlRef, "pixels.json")).toEqual(controlPng)
+    expect(readVerifiedArtifact(content, screenshotRef, "pixels.json")).toEqual(png)
+    expect(readVerifiedArtifact(content, controlRef, "pixels.json")).toEqual(controlPng)
     const invalidPng = Buffer.from("not a PNG")
     const invalidRef = `sha256:${createHash("sha256").update(invalidPng).digest("hex")}`
     writeFileSync(join(content, "artifacts", `${invalidRef.slice(7)}.png`), invalidPng)
-    expect(() => readVerifiedScreenshot(content, invalidRef, "pixels.json")).toThrow(/not a PNG/)
-    expect(() => readVerifiedScreenshot(content, "../../outside.png", "pixels.json")).toThrow(/invalid screenshotRef/)
+    expect(() => readVerifiedArtifact(content, invalidRef, "pixels.json")).toThrow(/not a PNG/)
+    expect(() => readVerifiedArtifact(content, "../../outside.png", "pixels.json")).toThrow(/invalid screenshotRef/)
     writeFileSync(artifactPath, Buffer.concat([png, Buffer.from("changed")]))
     expect(() => loadSelectedResults(content, "current")).toThrow(/artifact.*(hash|digest)/)
     rmSync(artifactPath)
@@ -1694,7 +1694,7 @@ describe("selected results", () => {
     const base = observed.observations[0]
     if (!base) throw new Error("missing visual observation")
     expect(() => invalid({ ...base, frames: [{ ...frames[0], ref: `sha256:${"e".repeat(64)}` }, frames[1]] })).toThrow(
-      /frame.*absent from run/,
+      /absent from the run's screenshotRefs/,
     )
     expect(() => invalid({ ...base, frames: [frames[1]] })).toThrow(/control.*target/)
     expect(() => invalid({ ...base, frames: [frames[0]] })).toThrow(/control.*target/)
@@ -1708,6 +1708,92 @@ describe("selected results", () => {
         frames: [frames[0], frames[1], { role: "target", ref: later, capturedAt: 2, label: "later" }],
       }),
     ).toThrow(/target.*capturedAt/)
+  })
+
+  it("serves a text frame as .txt, keeps it non-conclusive, and binds text interpretations to the run", () => {
+    const content = temporaryContent()
+    const snapshot = Buffer.from("ab \ncd \n", "utf8")
+    const digest = createHash("sha256").update(snapshot).digest("hex")
+    const snapshotRef = `sha256:${digest}`
+    writeFileSync(join(content, "artifacts", `${digest}.txt`), snapshot)
+    // The same bytes under the screenshot extension: the kind, not the extension alone, decides the
+    // check, so a text snapshot can never pass a PNG's rules.
+    writeFileSync(join(content, "artifacts", `${digest}.png`), snapshot)
+    const textFrame = (role: "control" | "target", at: number) => ({
+      kind: "text-cells" as const,
+      role,
+      ref: snapshotRef,
+      capturedAt: at,
+      label: `${role} text`,
+      cellDigest: snapshotRef,
+      frameDigest: snapshotRef,
+      cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
+    })
+    const frames: [ObservationFrame, ObservationFrame] = [textFrame("control", 1), textFrame("target", 2)]
+    const textRun = run("text-cells", {
+      probeHash: "pixels",
+      assertions: [],
+      screenshotRefs: [],
+      textSnapshotRefs: [snapshotRef],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "text",
+          frames,
+        },
+      ],
+    })
+    writeFileSync(join(content, "probes-apps", "text-cells.json"), JSON.stringify(textRun))
+    const measured = parseRun("text-cells.json", JSON.stringify(textRun), catalog)
+    const projection = loadSelectedResults(content, "current")
+    const cell = projection.history["app:kitty"]?.[0]?.cells["extensions.graphics"]
+    expect(cell?.record.frames?.map((frame) => frame.url)).toEqual([
+      `/artifacts/${digest}.txt`,
+      `/artifacts/${digest}.txt`,
+    ])
+    // Text stays non-measuring until the app's hosted rows pass the five shapes.
+    expect(cell?.conclusive).toBe(false)
+    expect(readVerifiedArtifact(content, snapshotRef, "text-cells.json", "text-snapshot")).toEqual(snapshot)
+    expect(() => readVerifiedArtifact(content, snapshotRef, "text-cells.json")).toThrow(/is not a PNG/)
+    const correction = {
+      ...reviewFor(measured),
+      featureId: "extensions.graphics",
+      sources: [snapshotRef],
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "text" as const,
+        frames,
+      },
+    }
+    // A text interpretation is recomputable exactly as a pixel one is: this run's bytes, its own
+    // recorded frames, and a decision that still reads non-conclusive on the site.
+    const reviewed = projectResults([measured], [correction], catalog, { currentProbeHash: "current" })
+    expect(reviewed.history["app:kitty"]?.[0]?.cells["extensions.graphics"]?.outcome).toBe("supported")
+    expect(reviewed.history["app:kitty"]?.[0]?.cells["extensions.graphics"]?.conclusive).toBe(false)
+    expect(() =>
+      projectResults(
+        [measured],
+        [{ ...correction, observation: { ...correction.observation, frames: undefined } }],
+        catalog,
+        { currentProbeHash: "current" },
+      ),
+    ).toThrow(/text interpretation .* requires control and target frames/)
+    expect(() =>
+      projectResults(
+        [measured],
+        [
+          {
+            ...correction,
+            observation: { ...correction.observation, frames: [frames[0], { ...frames[1], capturedAt: 99 }] },
+          },
+        ],
+        catalog,
+        { currentProbeHash: "current" },
+      ),
+    ).toThrow(/immutable.*feature frame/)
   })
 
   it("cannot borrow another feature's retained image for a reviewed pixel result", () => {

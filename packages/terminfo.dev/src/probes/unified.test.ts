@@ -15,7 +15,7 @@ import { decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
-import { runProbeBatch } from "./unified.ts"
+import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 
 // 28752: the decode-context measurement is the ONE tty round trip this file must not perform; every
@@ -1150,6 +1150,125 @@ it("grades cursor.shape and cursor.reverse-wrap when each declares its measured-
   expect(batch.observations.find((item) => item.featureId === "cursor.reverse-wrap")).toMatchObject({
     outcome: "supported",
     evidence: "query",
+  })
+})
+
+// A text adapter answers a cell-readback row where pixel geometry was refused, and its ref lands in
+// the text list — never in `screenshotRefs`, whose every consumer assumes a PNG.
+it("keeps a text frame's ref out of screenshotRefs on the row whose verdict reads cells", async () => {
+  verifiedBatchFixture()
+  let reads = 0
+  const refs: string[] = []
+  const written: string[] = []
+  process.stdout.write = ((text: string) => {
+    written.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["erase.el-with-attrs"],
+    captureKind: "text-cells",
+    captureGeometryRefusal: "the app answers no cell geometry",
+    capture: async ({ role, label }) => {
+      reads += 1
+      // A fresh screen each read: the paint witness must differ from its baseline, as it does on a
+      // terminal that actually painted.
+      const ref = `sha256:${String(reads).padStart(64, "0")}`
+      refs.push(ref)
+      return {
+        frame: {
+          kind: "text-cells",
+          role,
+          label,
+          capturedAt: reads,
+          ref,
+          cellDigest: ref,
+          frameDigest: ref,
+          cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+        },
+        trace: { kind: "text-cells", retained: "snapshot.txt", source: "the terminal's own text snapshot" },
+      }
+    },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+  })
+  expect(reads).toBeGreaterThan(0)
+  expect(written.length).toBeGreaterThan(0)
+  expect(batch.screenshotRefs).toEqual([])
+  expect(batch.textSnapshotRefs).toEqual([...new Set(refs)])
+})
+
+// Only the region readback can decide a row from cells. Every other consumer reads pixels, so a text
+// run hands it no adapter at all and it takes its own named no-capture branch instead of recording a
+// pixel claim over a text frame.
+it("offers a text run's adapter to cell-readback probes alone and never gates it on pixel geometry", () => {
+  const refused = "the app answers no cell geometry"
+  expect(captureAdapterEligible({ cellReadback: true }, "text-cells", refused)).toBe(true)
+  expect(captureAdapterEligible({ cellReadback: true }, "text-cells", undefined)).toBe(true)
+  expect(captureAdapterEligible({}, "text-cells", undefined)).toBe(false)
+  expect(captureAdapterEligible({}, "text-cells", refused)).toBe(false)
+  expect(captureAdapterEligible({ cellReadback: true }, "pixels", refused)).toBe(false)
+  expect(captureAdapterEligible({ cellReadback: true }, "pixels", undefined)).toBe(true)
+  expect(captureAdapterEligible({}, undefined, undefined)).toBe(true)
+})
+
+it("hands no adapter to a non-cell-readback probe on a text run", async () => {
+  verifiedBatchFixture()
+  let reads = 0
+  const written: string[] = []
+  process.stdout.write = ((text: string) => {
+    written.push(text)
+    return true
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: ["cursor.shape"],
+    captureKind: "text-cells",
+    captureGeometryRefusal: "the app answers no cell geometry",
+    capture: async () => {
+      reads += 1
+      throw new Error("a non-region probe must not be handed the text adapter")
+    },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+  })
+  expect(reads).toBe(0)
+  expect(batch.screenshotRefs).toEqual([])
+  expect(batch.textSnapshotRefs ?? []).toEqual([])
+  expect(batch.observations.find((item) => item.featureId === "cursor.shape")).toMatchObject({
+    outcome: "inconclusive",
+  })
+  expect(batch.observations.find((item) => item.featureId === "cursor.shape")?.evidence).not.toBe("pixels")
+})
+
+// A callback that fails after its text read is a collector error about cells, not a pixel claim.
+it("records a text run's collector throw as text evidence", async () => {
+  verifiedBatchFixture()
+  let reads = 0
+  const batch = await runProbeBatch({
+    ids: ["erase.el-with-attrs"],
+    captureKind: "text-cells",
+    captureGeometryRefusal: "the app answers no cell geometry",
+    capture: async ({ role, label }) => {
+      reads += 1
+      if (reads > 1) throw new Error("the snapshot read failed after a frame")
+      const ref = `sha256:${"e".repeat(64)}`
+      return {
+        frame: {
+          kind: "text-cells",
+          role,
+          label,
+          capturedAt: 1,
+          ref,
+          cellDigest: ref,
+          frameDigest: ref,
+          cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+        },
+        trace: { kind: "text-cells", retained: "snapshot.txt", source: "the terminal's own text snapshot" },
+      }
+    },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+  })
+  expect(batch.observations.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({
+    outcome: "error",
+    reason: "collector-error",
+    evidence: "text",
   })
 })
 

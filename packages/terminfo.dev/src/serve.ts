@@ -18,10 +18,11 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { existsSync, mkdirSync, writeFileSync, unlinkSync, readdirSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join, win32 } from "node:path"
 import { homedir } from "node:os"
-import { randomBytes, timingSafeEqual } from "node:crypto"
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import {
+  type CaptureCells,
   DEFAULT_TIMEOUT_MS,
   queryPixelGeometry,
   type PixelGeometrySource,
@@ -38,6 +39,7 @@ import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCaptur
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
+import { retain } from "./capture-core.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
@@ -47,6 +49,30 @@ import {
 } from "./owned-terminal.ts"
 import { parseRunProvenance } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
+
+/**
+ * The checkpoint's cells as rows of the read, or a refusal. A checkpoint that names cells the read
+ * does not cover is refused BY NAME: silently cropping it would digest less than the row asked for.
+ */
+export function textCellRegion(
+  rows: readonly string[],
+  gridRows: number,
+  gridCols: number,
+  requested?: CaptureCells,
+): { cells: CaptureCells; rows: readonly string[] } {
+  const cells = requested ?? {
+    top: 1,
+    left: 1,
+    bottom: rows.length,
+    right: Math.max(...rows.map((row) => row.length), 1),
+  }
+  if (cells.top < 1 || cells.left < 1 || cells.bottom > gridRows || cells.right > gridCols) {
+    throw new Error(
+      `the checkpoint asks for rows ${String(cells.top)}-${String(cells.bottom)} and columns ${String(cells.left)}-${String(cells.right)} of a ${String(gridRows)}x${String(gridCols)} text read, so the snapshot cannot cover it`,
+    )
+  }
+  return { cells, rows: rows.slice(cells.top - 1, cells.bottom).map((row) => row.slice(cells.left - 1, cells.right)) }
+}
 
 const s = createStyle()
 
@@ -231,6 +257,88 @@ export async function collectProbeRun(
     throw new Error("Controlled Linux collection lacks measured executable")
   }
   let capture: ProbeCapture | undefined
+  /** Set when `capture` above reads the terminal's own text rather than pixels. */
+  let textCapture = false
+  /**
+   * The text-snapshot adapter: the terminal's own cells, for the arm whose pixels cannot be read at
+   * all. It answers a checkpoint with a text-cells frame whose digests are computed from the cells —
+   * never from a raster — and it retains the snapshot in the run's artifact directory so admission
+   * can place it and re-hash it. A refused read throws: a row that asked for a frame must not be
+   * graded as if the screen were empty.
+   *
+   * Only the hosted Darwin arm installs it today. The app arm and the hosted Windows arm can read
+   * cells too, but neither run supplies a retention directory, so both name that skip and every row
+   * keeps its own no-capture branch rather than grading an unretainable read.
+   */
+  const installTextCapture = (terminal: OwnedTerminal): boolean => {
+    const readCells = terminal.readCells?.bind(terminal)
+    if (!readCells) return false
+    if (!captureDirectory) {
+      // No retention directory, so no frame: the arm keeps exactly the behaviour it had, and the
+      // rows that need a frame name the absent adapter instead of grading an unretainable read.
+      process.stderr.write(
+        `${kind}: this arm can read cells from the terminal's own text, but the run has no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in, so every row takes its own no-capture branch\n`,
+      )
+      return false
+    }
+    // captureDirectory IS the artifact directory: the launch receipt hands the collector
+    // `<out>/artifacts`, and admission reads the bytes from there.
+    const artifactDirectory = captureDirectory
+    mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
+    const encode = (rows: readonly string[], attributes: readonly (readonly number[])[] | undefined): string =>
+      attributes === undefined
+        ? rows.join("\n")
+        : `${rows.join("\n")}\n#attributes\n${attributes.map((row) => row.join(",")).join("\n")}`
+    capture = async (checkpoint) => {
+      const read = await readCells()
+      if (read.status === "refused") {
+        throw new Error(`${checkpoint.label}: the terminal refused the text snapshot — ${read.reason}`)
+      }
+      const rows = "grid" in read ? read.grid.text : read.cells.text
+      const attributes = "grid" in read ? read.grid.attributes : undefined
+      const gridRows = "grid" in read ? read.grid.rows : read.cells.rows
+      const gridCols = "grid" in read ? read.grid.cols : read.cells.cols
+      const bufferOwner = "grid" in read ? read.bufferOwner : undefined
+      // A macOS text read says what it had to leave behind and fill in; the trace carries both so an
+      // evidence reader sees them without re-deriving them from the artifact.
+      const textGrid = "grid" in read ? undefined : read.cells
+      const whole = encode(rows, attributes)
+      const hex = createHash("sha256").update(whole).digest("hex")
+      const ref = `sha256:${hex}`
+      // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
+      // second write, and a digest that maps to different bytes is named instead of overwritten.
+      retain(artifactDirectory, Buffer.from(whole, "utf8"), "txt")
+      // The compared region, in CELLS. A checkpoint that names none compares the whole visible rect,
+      // which is what its own rectangle then says.
+      const region = textCellRegion(rows, gridRows, gridCols, checkpoint.cells)
+      const cells = region.cells
+      const regionRows = region.rows
+      const regionAttributes = attributes
+        ?.slice(cells.top - 1, cells.bottom)
+        .map((row) => row.slice(cells.left - 1, cells.right))
+      return {
+        frame: {
+          kind: "text-cells" as const,
+          role: checkpoint.role,
+          label: checkpoint.label,
+          capturedAt: Date.now(),
+          ref,
+          cellDigest: `sha256:${createHash("sha256").update(encode(regionRows, regionAttributes)).digest("hex")}`,
+          frameDigest: ref,
+          cellRectangle: cells,
+        },
+        trace: {
+          kind: "text-cells",
+          retained: `${hex}.txt`,
+          source: "the terminal's own text snapshot",
+          ...(textGrid === undefined ? {} : { droppedLines: textGrid.droppedLines, paddedRows: textGrid.paddedRows }),
+          ...(bufferOwner === undefined ? {} : { bufferOwner }),
+        },
+      }
+    }
+    textCapture = true
+    return true
+  }
   let prepareCapture:
     | ((input: {
         context: TermContext
@@ -275,6 +383,7 @@ export async function collectProbeRun(
       expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
       terminalApp: options.terminalAppOwner,
     })
+    installTextCapture(ownedTerminal)
   } else if (kind === "darwinHosted") {
     if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
     ownedTerminal = await createOwnedTerminal({
@@ -283,7 +392,10 @@ export async function collectProbeRun(
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       darwinHosted: { receiptPath: hostedReceipt },
     })
-    if (captureDirectory) {
+    // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
+    // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
+    // refuse by design, so preflight and the pixel install are skipped entirely.
+    if (!installTextCapture(ownedTerminal) && captureDirectory) {
       const appPid = ownedTerminal.hostedAppPid
       if (!appPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
@@ -408,6 +520,8 @@ export async function collectProbeRun(
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       windowsHosted: { receiptPath: hostedReceipt },
     })
+    // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
+    installTextCapture(ownedTerminal)
   }
   const clipboard = ownedTerminal?.clipboard
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
@@ -467,6 +581,7 @@ export async function collectProbeRun(
         // The run's own target, from the launched app: the receipt is bound to this before any write.
         target: { kind: "app", id: terminal.name, os: terminal.os },
         ...(capture && { capture }),
+        ...(textCapture && { captureKind: "text-cells" as const }),
         ...(input && { input }),
         ...(ownedTerminal && { ownedTerminal }),
         ...(geometryCorroboration && { geometryCorroboration }),
@@ -540,6 +655,8 @@ export async function collectProbeRun(
     rawReplies: batch.rawReplies,
     assertions: batch.assertions,
     screenshotRefs: batch.screenshotRefs,
+    // Absent rather than empty in runs with no text frames, so an old-shaped run stays old-shaped.
+    ...((batch.textSnapshotRefs?.length ?? 0) > 0 && { textSnapshotRefs: batch.textSnapshotRefs }),
     observations: batch.observations,
     ...(batch.notTested?.length ? { notTested: batch.notTested } : {}),
     ungradedDiagnostics: batch.ungradedDiagnostics,
