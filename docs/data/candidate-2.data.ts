@@ -30,6 +30,7 @@ import {
   buildReport,
   categoryShares,
   cohortCategories,
+  decisiveShare,
   inconclusiveRows,
   type CohortBarRow,
   type InconclusiveRow,
@@ -59,6 +60,19 @@ export interface Candidate2Group {
   unavailable: Candidate2Capability[]
 }
 
+/**
+ * A group's ACCEPTANCE share: the ruled base for the group, which counts its defined library-only
+ * rows alongside the app-observable ones. Null for a group with no library-only rows, whose acceptance
+ * base and decidable base are the same list.
+ */
+export interface Candidate2Acceptance {
+  decisive: number
+  denominator: number
+  decisivePct: number
+  verdictLabel: D3Label
+  inconclusive: InconclusiveRow[]
+}
+
 /** One group's decisive share inside one PUBLISHED context row. */
 export interface Candidate2GroupShare {
   key: string
@@ -67,6 +81,8 @@ export interface Candidate2GroupShare {
   decisivePct: number
   verdictLabel: D3Label
   inconclusive: InconclusiveRow[]
+  /** The group's ruled acceptance share, where it differs from the app-observable fraction above. */
+  acceptance: Candidate2Acceptance | null
 }
 
 export interface Candidate2ContextRow {
@@ -147,6 +163,7 @@ export function loadCandidate2Data(): Candidate2Data {
   const included = cohortCategories(cohort.measuredIds, catalog)
   const decidable = cohortCategories(cohort.decidableIds, catalog)
   const decidableByKey = new Map(decidable.map((category) => [category.key, category]))
+  const includedByKey = new Map(included.map((category) => [category.key, category]))
   const libraryOnly = new Set(cohort.libraryOnlyIds)
   const unavailable = new Set(cohort.unavailableIds)
 
@@ -214,14 +231,30 @@ export function loadCandidate2Data(): Candidate2Data {
       verdictLabel: share.verdict.label,
       inconclusive: inconclusiveRows(row.run.cells, share),
       remainder: share.remainder,
-      groups: categoryShares(row.run.states, decidable).map(({ category, share: groupShare }) => ({
-        key: category.key,
-        decisive: groupShare.decisive,
-        denominator: groupShare.denominator,
-        decisivePct: groupShare.decisivePct,
-        verdictLabel: groupShare.verdict.label,
-        inconclusive: inconclusiveRows(row.run.cells, groupShare),
-      })),
+      groups: categoryShares(row.run.states, decidable).map(({ category, share: groupShare }) => {
+        // The acceptance base is the reader's own: the category's decidable rows plus its defined
+        // library-only rows, aggregated by the same classifier. No second share is invented here.
+        const libraryOnlyIds = (includedByKey.get(category.key)?.ids ?? []).filter((id) => libraryOnly.has(id))
+        const acceptance =
+          libraryOnlyIds.length > 0 ? decisiveShare(row.run.states, [...category.ids, ...libraryOnlyIds]) : null
+        return {
+          key: category.key,
+          decisive: groupShare.decisive,
+          denominator: groupShare.denominator,
+          decisivePct: groupShare.decisivePct,
+          verdictLabel: groupShare.verdict.label,
+          inconclusive: inconclusiveRows(row.run.cells, groupShare),
+          acceptance: acceptance
+            ? {
+                decisive: acceptance.decisive,
+                denominator: acceptance.denominator,
+                decisivePct: acceptance.decisivePct,
+                verdictLabel: acceptance.verdict.label,
+                inconclusive: inconclusiveRows(row.run.cells, acceptance),
+              }
+            : null,
+        }
+      }),
     }
   })
 

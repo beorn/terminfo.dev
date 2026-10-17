@@ -147,6 +147,44 @@ describe("candidate-2 page: the two bases", () => {
     }
   })
 
+  it("carries the ruled acceptance share wherever a group has library-only rows, and nowhere else", () => {
+    const groupsByKey = new Map(data.groups.map((group) => [group.key, group]))
+    for (const context of data.contexts.filter((row) => row.published)) {
+      for (const share of context.groups) {
+        const group = groupsByKey.get(share.key)
+        if (!group) throw new Error(`${context.context} carries a group ${share.key} the page never claims`)
+        if (group.libraryOnly.length === 0) {
+          expect(share.acceptance, `${context.context} ${share.key}`).toBeNull()
+          continue
+        }
+        // The acceptance base is the ruled one: the decidable rows PLUS the defined library-only rows.
+        expect(share.acceptance, `${context.context} ${share.key}`).not.toBeNull()
+        expect(share.acceptance?.denominator, `${context.context} ${share.key}`).toBe(
+          share.denominator + group.libraryOnly.length,
+        )
+        expect(share.acceptance?.decisive ?? -1).toBeGreaterThanOrEqual(share.decisive)
+        expect((share.acceptance?.decisive ?? 0) + (share.acceptance?.inconclusive.length ?? 0)).toBeLessThanOrEqual(
+          share.acceptance?.denominator ?? 0,
+        )
+      }
+    }
+  })
+
+  it("reads the Scrollback group at its ruled 7/9 with gaps on the contexts that decide it", () => {
+    const kitty = data.contexts.find((row) => row.context === "kitty/linux")
+    if (!kitty?.published) throw new Error("kitty/linux is not published; nothing to read")
+    const scrollback = kitty.groups.find((share) => share.key === "scrollback")
+    if (!scrollback) throw new Error("kitty/linux carries no scrollback group")
+    expect(scrollback.decisive).toBe(7)
+    expect(scrollback.denominator).toBe(7)
+    expect(scrollback.acceptance).toMatchObject({
+      decisive: 7,
+      denominator: 9,
+      decisivePct: 78,
+      verdictLabel: "with gaps",
+    })
+  })
+
   it("names every moved-out row in the page's own lists, with none left over or double-counted", () => {
     const named = new Set([...data.libraryOnly, ...data.unavailable].map((row) => row.id))
     const grouped = new Set(

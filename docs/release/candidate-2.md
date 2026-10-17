@@ -20,6 +20,13 @@ function groupShare(context, key) {
   return group ? `${group.decisive}/${group.denominator} · ${group.decisivePct}% · ${group.verdictLabel}` : null
 }
 
+function groupAcceptance(context, key) {
+  const group = context.groups.find((entry) => entry.key === key)
+  if (!group?.acceptance) return null
+  const { decisive, denominator, decisivePct, verdictLabel } = group.acceptance
+  return `acceptance ${decisive}/${denominator} · ${decisivePct}% · ${verdictLabel}`
+}
+
 function unnamedRows(group) {
   return [...group.libraryOnly, ...group.unavailable]
 }
@@ -58,6 +65,9 @@ function remainderLabel(row) {
       <td v-for="context in published" :key="context.context" class="c2-share">
         <template v-if="groupShare(context, group.key)">{{ groupShare(context, group.key) }}</template>
         <template v-else>—</template>
+        <template v-if="groupAcceptance(context, group.key)">
+          <span class="c2-acceptance">{{ groupAcceptance(context, group.key) }}</span>
+        </template>
       </td>
       <td class="c2-named-col">
         <template v-if="unnamedRows(group).length">{{ unnamedRows(group).map((row) => row.id).join(', ') }}</template>
@@ -137,6 +147,7 @@ function remainderLabel(row) {
 .c2-count-col { text-align: right; }
 .c2-named-col { white-space: normal; min-width: 12em; color: var(--vp-c-text-2); }
 .c2-share { font-variant-numeric: tabular-nums; }
+.c2-acceptance { display: block; font-size: 0.78rem; color: var(--vp-c-text-2); }
 .c2-note, .c2-gap { color: var(--vp-c-text-2); font-size: 0.9rem; }
 .c2-context { margin: 1.2em 0; }
 .c2-context-head { margin: 0 0 0.2em; }
