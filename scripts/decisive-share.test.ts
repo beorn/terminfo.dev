@@ -154,7 +154,7 @@ describe("release 1 decisive-count reader", () => {
     }
   }, 15_000)
 
-  it("reports candidate 3's exact modes/device delta on the explicitly named candidate-2 freeze", () => {
+  it("reports candidate 3's exact modes/device delta on the explicitly named c240 freeze", () => {
     // The generic reader already covers suite selection and grading; this checks the new CLI value's
     // actual data path, including all unavailable rows, rather than constructing its spec in the test.
     const contentDir = join(import.meta.dirname, "..", "content")
@@ -164,7 +164,7 @@ describe("release 1 decisive-count reader", () => {
     const spec = factory(contentDir)
     const cohort = buildReport({ contentDir, cohort: spec }).cohort
     if (!cohort) throw new Error("cohort report absent")
-    expect(cohort.frozenSuiteId).toBe("5753741410a9")
+    expect(cohort.frozenSuiteId).toBe("c24025ea22fc")
     // Independent catalog census: all 44 new IDs, excluding the fourteen already included Device IDs.
     expect(
       createHash("sha256")
@@ -178,11 +178,11 @@ describe("release 1 decisive-count reader", () => {
     expect(cohort.unavailableIds.filter((id) => id.startsWith("device.env-"))).toHaveLength(9)
     expect(cohort.unavailableIds).toContain("modes.decsscls")
     expect(cohort.libraryOnlyIds).toEqual([])
-    expect(cohortHeaderLine(cohort)).toContain("frozen for candidate2, read here for candidate3 ids")
+    expect(cohortHeaderLine(cohort)).toContain("frozen for candidate4, read here for candidate3 ids")
     expect(() => frozenSuiteIdFor(contentDir, "candidate3")).toThrow(
       /no suite manifest declares freeze\.release "candidate3"/,
     )
-    const otherSuite = frozenSuiteIdFor(contentDir, "candidate4")
+    const otherSuite = frozenSuiteIdFor(contentDir, "candidate2")
     const row = barRowForContext({
       context: { terminalId: "alacritty", os: "linux" },
       candidates: [candidate({ suiteId: otherSuite })],
@@ -191,7 +191,7 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(cohortRowForSelected(row, cohort)).toMatchObject({
       measured: false,
-      reason: `ineligible: selected run on suite ${otherSuite}, required 5753741410a9`,
+      reason: `ineligible: selected run on suite ${otherSuite}, required c24025ea22fc`,
     })
   }, 20_000)
 
