@@ -12,6 +12,7 @@ import {
   type ConsoleCellRead,
   type ConsoleHostLookup,
 } from "./windows-console-cells.ts"
+import { readTerminalTextSnapshot, type TerminalTextApp, type TerminalTextRead } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import {
   readWindowsProcessTable,
@@ -99,9 +100,11 @@ export interface OwnedTerminal {
   readonly hostedAppPid?: number
   readonly clipboard?: LinuxClipboardAdapter
   readGeometry(): Promise<GeometryMeasurement>
-  /** Hosted Windows only: the visible window's cells, read from the console host's buffer. Absent on
-   * every other arm, where the pixel capture is the read. */
-  readCells?(): Promise<ConsoleCellRead>
+  /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
+   * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
+   * cannot be calibrated answer with their own text snapshot, which carries no attributes by
+   * construction. Absent on every other arm, where the pixel capture is the read. */
+  readCells?(): Promise<ConsoleCellRead | TerminalTextRead>
   dispose(): Promise<void>
 }
 
@@ -612,6 +615,17 @@ export async function createOwnedTerminal(options: {
     hostedWindows = true
   }
   let clipboard: LinuxClipboardAdapter | undefined
+  // The two macOS terminals that answer no cell geometry (28754, 28638): their read is the app's own
+  // text snapshot, selected by the owned tab's TTY. Every other Darwin app keeps the capture path.
+  const darwinTextApp: TerminalTextApp | undefined =
+    binding.platform === "darwin"
+      ? terminalApp
+        ? "terminal-app"
+        : hostedApp?.id === "terminal-app" || hostedApp?.id === "iterm2"
+          ? hostedApp.id
+          : undefined
+      : undefined
+  const darwinTextTty = binding.platform === "darwin" ? binding.tabTty : undefined
   try {
     if (linux) clipboard = await createLinuxClipboardAdapter(linux.receiptPath, expectedLaunchRunId, linux.executable)
     const geometryAtGrant = await readBoundGeometry(binding)
@@ -701,6 +715,25 @@ export async function createOwnedTerminal(options: {
           return readWindowsConsoleCells({ bufferOwner: windowsConsoleHost.host, kernel: windowsKernel })
         },
       }),
+      ...(darwinTextApp !== undefined &&
+        darwinTextTty !== undefined && {
+          async readCells() {
+            if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
+            const geometry = await owner.readGeometry()
+            if (geometry.status !== "measured") {
+              return {
+                status: "refused",
+                reason: `the ${darwinTextApp} text snapshot needs a measured grid: ${geometry.diagnostic}`,
+              } satisfies TerminalTextRead
+            }
+            return readTerminalTextSnapshot({
+              app: darwinTextApp,
+              tty: darwinTextTty,
+              cols: geometry.cols,
+              rows: geometry.rows,
+            })
+          },
+        }),
       async dispose() {
         verifiedTerminalOwners.delete(owner)
         await clipboard?.dispose()
