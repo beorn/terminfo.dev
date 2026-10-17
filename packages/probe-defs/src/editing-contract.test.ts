@@ -99,9 +99,9 @@ test("the harness replays every editing capability deterministically", async () 
 
 // The bound satisfaction proof: each decided row reads "supported" against a surface that really
 // performs its edit - ICH/DCH, IL/DL, REP, the VT420 rectangle ops (DECFRA/DECERA/DECSERA/DECCRA/
-// DECCARA/DECRARA), a framed DECRQCRA reply, the screen-wide SL/SR shift and the column DECIC/DECDC -
-// and the one by-design row reads exactly its named inconclusive outcome. A probe whose own
-// expectation disagrees with the terminal cannot pass this test.
+// DECCARA/DECRARA), the DECSACE extent differential, a framed DECRQCRA reply, the screen-wide SL/SR
+// shift and the column DECIC/DECDC. A probe whose own expectation disagrees with the terminal cannot
+// pass this test.
 test("every editing contract row reads its declared outcome against a surface that implements its claim", async () => {
   for (const row of EDITING_CONTRACT) {
     const probe = editingProbes.find((entry) => entry.id === row.id)

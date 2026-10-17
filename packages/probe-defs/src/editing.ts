@@ -657,10 +657,10 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
-  // DECSACE selects the extent DECCARA/DECRARA apply over: stream (0) or rectangle (1). The claim is
+  // DECSACE selects the extent DECCARA/DECRARA apply over: stream (0 or 1) or rectangle (2). The claim is
   // measurable without pixels because the effect is an ATTRIBUTE on cells the parser already holds:
-  // the same DECCARA over the same coordinates must mark exactly the rectangle under extent 1, and
-  // the reading-order span from its top-left to its bottom-right under extent 0. The stream frame is
+  // the same DECCARA over the same coordinates must mark exactly the rectangle under DECSACE 2, and
+  // the reading-order span from its top-left to its bottom-right under DECSACE 0. The stream frame is
   // the control that proves the setting was honoured rather than ignored; when the two frames agree
   // the extent modes are indistinguishable here and the row is inconclusive BY NAME, never a pass.
   probe(
