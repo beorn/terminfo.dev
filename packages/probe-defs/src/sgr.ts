@@ -463,6 +463,13 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
 function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
   const setup = channel === "fg" ? 31 : 42
   const reset = channel === "fg" ? 39 : 49
+  // Default means no explicit color in this channel, not just absence of the setup sample.
+  const firstColor = channel === "fg" ? 30 : 40
+  const nondefaultColors = [
+    ...Array.from({ length: 8 }, (_, index) => firstColor + index),
+    ...Array.from({ length: 8 }, (_, index) => firstColor + 60 + index),
+    firstColor + 8,
+  ]
   return {
     ...probe(
       id,
@@ -484,7 +491,7 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [], forbid: [setup] }, (ctx) =>
+      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [], forbid: nondefaultColors }, (ctx) =>
         consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
       ),
       "consumed",

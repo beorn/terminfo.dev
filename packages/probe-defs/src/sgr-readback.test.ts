@@ -162,6 +162,12 @@ test.each([
   ["sgr.underline-color-indexed", "0;4;58:5:5", "supported"],
   ["sgr.bold", "0;38;2;255;1;5", "unsupported"],
   ["sgr.selective-reset.bold", "0;3;38;2;255;1;5", "supported"],
+  ["sgr.fg.default", "0;38;5;31", "unsupported"],
+  ["sgr.bg.default", "0;48;5;42", "unsupported"],
+  ["sgr.fg.default", "0;34", "unsupported"],
+  ["sgr.bg.default", "0;104", "unsupported"],
+  ["sgr.fg.default", "0;48;5;31", "supported"],
+  ["sgr.bg.default", "0;38;2;255;42;0", "supported"],
 ] as const)("%s with DECRQSS %s is %s", async (id, reply, outcome) => {
   const { ctx } = sgrReadbackContext(reply)
   const result = await sgrTerm(id)(ctx)
