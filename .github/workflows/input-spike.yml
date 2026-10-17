@@ -36,7 +36,16 @@ jobs:
           mv "$OUT/partial.bin" "$OUT/received.bin"
           READER
           chmod +x "$OUT/reader.sh"
-          open -a Terminal "$OUT/reader.sh"
+          # LaunchServices can run the document WITHOUT handing it the terminal's stdin — measured
+          # isTTY=false — which makes its silence unreadable. A do-script in the front window runs
+          # the same file as a command, so the reader holds the tty the key would arrive on.
+          cat > "$OUT/open.applescript" <<APPLESCRIPT
+          tell application "Terminal"
+            activate
+            do script "$OUT/reader.sh"
+          end tell
+          APPLESCRIPT
+          osascript "$OUT/open.applescript"
           sleep 2
           ( osascript -e 'tell application "Terminal" to get version' > "$OUT/appleevent.txt" 2> "$OUT/appleevent.err" ) || true
           open -a Terminal
