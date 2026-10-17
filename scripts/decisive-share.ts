@@ -349,17 +349,16 @@ export function candidate2Cohort(contentDir: string): CohortSpec {
 }
 
 /**
- * Candidate 4's cohort: the extensions and input slices, read on candidate 2's frozen suite. The suite
- * is named here EXPLICITLY and the derivation still asks for candidate 2's manifest, so the printed
- * ownership is read, never assumed.
+ * Candidate 4's cohort: the extensions and input slices, read on the suite candidate 4's own freeze
+ * declares. The suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
  */
 export function candidate4Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate4",
     slices: ["extensions", "input"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
-    suiteFrozenFor: "candidate2",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
+    suiteFrozenFor: "candidate4",
   }
 }
 
