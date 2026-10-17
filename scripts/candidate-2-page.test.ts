@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from "vitest"
 import * as reader from "./decisive-share.ts"
 import { loadCandidate2Data } from "../docs/data/candidate-2.data.ts"
 import { inconclusiveRows } from "./decisive-share.ts"
+import type { Candidate2GroupShare } from "../docs/data/candidate-2.data.ts"
 
 const root = join(import.meta.dirname, "..")
 const data = loadCandidate2Data()
@@ -100,6 +101,12 @@ describe("candidate-2 page: publication rule (AC4)", () => {
     expect(uncollectedData.contexts[0]?.reason).toBe(
       "ineligible: selected run on suite c3d1fbb77561, required 0fb194cf6cea",
     )
+    // review2: no published run means the group is held WITHOUT naming a context. The page names
+    // that state in words instead of rendering "HOLD — 0 contexts below the bar".
+    for (const group of uncollectedData.groups) {
+      expect(group.included, group.key).toBe(false)
+      expect(group.heldBy, group.key).toEqual([])
+    }
     const historicalPublished = historicalData.contexts.filter((row) => row.published)
     expect(historicalPublished).toHaveLength(1)
     for (const row of [...published, ...historicalPublished]) {
@@ -229,6 +236,51 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
 })
 
 describe("candidate-2 page: wiring", () => {
+  // @chief cf1daa5a / review2 cd06b94c: the page may not claim a group included while a measured
+  // context sits below the bar. Nothing else in this suite reads the inclusion state, so without
+  // this the page could silently go back to a page-wide include claim.
+  it("marks a group included only when every measured context clears its bar", () => {
+    const publishedRows = data.contexts.filter((row) => row.published)
+    for (const group of data.groups) {
+      const shares = publishedRows.flatMap((row) =>
+        row.groups.filter((entry) => entry.key === group.key).map((entry) => entry),
+      )
+      // The bar is the group's ruled acceptance basis where the reader carries one: the same basis
+      // the loader uses, so the test cannot agree with a narrower app-observable fraction.
+      const basis = (entry: Candidate2GroupShare) => entry.acceptance ?? entry
+      const below = shares.filter((entry) => basis(entry).decisivePct < 90)
+      expect(group.heldBy.map((row) => [row.context, row.decisive, row.denominator, row.decisivePct])).toEqual(
+        below.map((entry) => [
+          publishedRows.find((row) => row.groups.includes(entry))?.context,
+          basis(entry).decisive,
+          basis(entry).denominator,
+          basis(entry).decisivePct,
+        ]),
+      )
+      expect(group.included).toBe(shares.length > 0 && below.length === 0)
+    }
+    expect(data.groups.some((group) => group.included)).toBe(true)
+    expect(data.groups.some((group) => !group.included)).toBe(true)
+  })
+
+  // review2: a published context must carry every included group's share (the loader now throws
+  // rather than skipping it), and the page must name the no-measurement state instead of printing
+  // "HOLD — 0 contexts below the bar". Both are read from the shipped tree, not a fixture.
+  it("carries every group share in a published row and names the no-measurement state", () => {
+    for (const row of data.contexts.filter((entry) => entry.published)) {
+      for (const group of data.groups) {
+        expect(
+          row.groups.some((entry) => entry.key === group.key),
+          `${row.context} is published without a ${group.key} share`,
+        ).toBe(true)
+      }
+    }
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain("no eligible measured context yet")
+    expect(page).not.toContain("left out of every fraction above")
+    expect(page).not.toContain("included rows are decided by the parser surface")
+  })
+
   it("the VitePress page reads its loader, and the nav names the route", () => {
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("from '../data/candidate-2.data'")
