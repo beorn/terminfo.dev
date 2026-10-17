@@ -52,6 +52,8 @@ export const OBSERVATION_EVIDENCE = [
   "behavior",
   "parser-state",
   "pixels",
+  /** The terminal's own text snapshot: the cells it reports, never its pixels. */
+  "text",
   "interaction",
   "consumed",
   "legacy",
@@ -82,13 +84,29 @@ export interface Observation {
 }
 
 /** Collector-owned capture checkpoint, with the published PNG bound by its digest. */
-export interface ObservationFrame {
+export interface ObservationFrameBase {
   role: "control" | "target"
   ref: string
   capturedAt: number
   label: string
   /** Original capture bytes, such as XWD; retained with the raw run receipt. */
   sourceRef?: string
+}
+
+/**
+ * A frame read from the screen's PIXELS. Its digests are over raw bytes, so two frames are
+ * comparable only when their rectangles match.
+ */
+export interface PixelObservationFrame extends ObservationFrameBase {
+  /**
+   * Optional HERE on purpose: every frame written before text frames existed is a pixel frame and every one of
+   * them parses as exactly that. A text frame is the only frame that must say so, and the `never`
+   * fields below make the two kinds mutually exclusive, so no reader can treat one as the other.
+   */
+  kind?: "pixels"
+  cellDigest?: never
+  frameDigest?: never
+  cellRectangle?: never
   /**
    * Raw-pixel digest of the cell-aligned region named by the request's `cells`, taken in-run from
    * the same buffer as `pixelsDigest`. Present exactly when the request named cells.
@@ -109,6 +127,39 @@ export interface ObservationFrame {
    * carries neither.
    */
   regionRectangle?: CaptureRectangle
+}
+
+/**
+ * A frame read from the terminal's OWN TEXT: exact cells, never pixels.
+ * It exists as a separate kind so no reader can mistake a text snapshot for a pixel witness — the
+ * pixel-only fields are not present here at all, and a digest that is absent has exactly one
+ * meaning in each kind.
+ */
+export interface TextCellsObservationFrame extends ObservationFrameBase {
+  kind: "text-cells"
+  regionDigest?: never
+  pixelsDigest?: never
+  regionRectangle?: never
+  /** Digest over the named cells' characters, and their attributes where the arm reports them. */
+  cellDigest: string
+  /** Digest over the whole visible rect, so "the screen moved while the cells stood still" is
+   * still separable, exactly as `pixelsDigest` does for a pixel frame. */
+  frameDigest: string
+  /** The compared rectangle in CELLS: the text frame's twin of `regionRectangle`. */
+  cellRectangle: CaptureCells
+}
+
+/** One checkpoint, in the one kind it was actually read in. */
+export type ObservationFrame = PixelObservationFrame | TextCellsObservationFrame
+
+/** The two digests every frame carries, whichever kind it is: the cells that were compared, and
+ * the whole screen they sat in. This is the ONLY way a comparison should reach them, so the
+ * three-frame path is one path for both kinds. */
+export function frameDigests(frame: ObservationFrame): { cells: string | undefined; whole: string | undefined } {
+  // "Not text-cells" is a pixel frame: that is what every frame written before text frames existed is.
+  return frame.kind === "text-cells"
+    ? { cells: frame.cellDigest, whole: frame.frameDigest }
+    : { cells: frame.regionDigest, whole: frame.pixelsDigest }
 }
 
 /** A rectangle in the captured window's own pixels: zero-based edges, positive sizes, integers. */
@@ -336,6 +387,9 @@ export interface ProbeRun {
   rawReplies: Record<string, string>
   assertions: ProbeAssertion[]
   screenshotRefs: string[]
+  /** Retained TEXT snapshots, the text-frame twin of `screenshotRefs` and a separate list because
+   * every consumer of that one assumes a PNG. Absent in runs written before it existed. */
+  textSnapshotRefs?: string[]
   observations: Observation[]
   /** Named coverage records for features with no applicable observable here; disjoint from observations. */
   notTested?: NotTestedCoverage[]
@@ -516,6 +570,14 @@ export interface TermContext {
   withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
+  /** The terminal's OWN CELLS, on a text arm. Separate from `capture` because only the region
+   * readback can decide a row from cells: every other consumer reads pixels, so a text run hands it
+   * no adapter and the consumer takes its own named no-capture branch. */
+  cells?: (request: CaptureRequest) => Promise<ObservationFrame>
+  /** What the adapter reads: the screen's pixels, or the terminal's own text. Absent when
+   * no adapter is installed, and absent in every run recorded before text frames existed, where the
+   * only adapter that could have been installed was a pixel one. */
+  captureKind?: "pixels" | "text-cells"
   /** Present only when an owned OS XTEST adapter is installed for this run. */
   input?: InputFixture
   /** Read unsolicited stdin. `inject` runs after the stdin listener is attached. */
@@ -538,6 +600,9 @@ export interface ProbeDefinition {
   termNeedsDisposable?: true
   /** App callback requires measured geometry from its owned output stream. */
   termNeedsGeometry?: true
+  /** This callback decides at least one row through the region readback, so a text-cells run hands
+   * it the cells adapter. Every other probe is handed nothing on such a run. */
+  cellReadback?: true
   /** Explicit opt-in for recording callback exceptions as observations. */
   termObservationEvidence?: ObservationEvidence
   /** Every observation this Termless callback returns names this method, or none for a refusal before measurement. */

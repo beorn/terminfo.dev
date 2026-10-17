@@ -32,6 +32,7 @@ import type {
   TermContext,
   TerminalQueryOutcome,
 } from "./types.ts"
+import { frameDigests } from "./types.ts"
 import { utf8DecodingRefusal } from "./helpers.ts"
 
 export type CellRegion = CaptureCells
@@ -56,7 +57,8 @@ export type RegionRead = (request: {
   role: ObservationFrame["role"]
   label: string
   region: CellRegion
-  pixelGeometry: PixelGeometry
+  /** Absent on a text arm: it reads cells, so there is no cell-to-pixel mapping to report. */
+  pixelGeometry?: PixelGeometry
 }) => Promise<RegionCapture>
 
 /**
@@ -65,18 +67,22 @@ export type RegionRead = (request: {
  * measurement, so it raises instead of quietly degrading the verdict.
  */
 export function collectorRegionRead(ctx: TermContext): RegionRead | null {
-  const capture = ctx.capture
+  // A text arm hands the region readback its own cells adapter; every other arm reads pixels.
+  const capture = ctx.cells ?? ctx.capture
   if (!capture) return null
   return async ({ role, label, region, pixelGeometry }) => {
     const frame = await capture({ role, label, cells: region, pixelGeometry })
-    if (frame.regionDigest === undefined || frame.pixelsDigest === undefined) {
+    // ONE accessor for both kinds: a pixel frame hands over its raw-pixel digests, a
+    // text frame its cell digests. The comparison below never names a field, so it is one path.
+    const digests = frameDigests(frame)
+    if (digests.cells === undefined || digests.whole === undefined) {
       throw new Error(
-        `${label}: the capture adapter returned no raw-pixel digest for the requested cells (regionDigest ${String(frame.regionDigest)}, pixelsDigest ${String(frame.pixelsDigest)})`,
+        `${label}: the capture adapter returned a ${frame.kind ?? "pixels"} frame with no digest for the requested cells (cells ${String(digests.cells)}, whole ${String(digests.whole)})`,
       )
     }
     return {
-      regionDigest: frame.regionDigest,
-      pixelsDigest: frame.pixelsDigest,
+      regionDigest: digests.cells,
+      pixelsDigest: digests.whole,
       ...(frame.regionRectangle ? { regionRectangle: frame.regionRectangle } : {}),
       frame,
     }
@@ -103,8 +109,9 @@ export interface RegionReadback {
    * discriminator is the whole point. Absent when the row's sequence has no attribute to ignore.
    */
   ignored?: string
-  /** The terminal's own pixel report, carried into every capture request. */
-  pixelGeometry: PixelGeometry
+  /** The terminal's own pixel report, carried into every capture request. Absent on a text arm,
+   * which reads cells and never maps them onto pixels. */
+  pixelGeometry?: PixelGeometry
   /**
    * WHERE that report came from, in words, so a reader can tell a geometry problem from a slow paint
    * (@cto 2026-10-12, 28763 fix 1): a terminal that answers CSI 16 t is `reported by CSI 16 t`, and one
@@ -163,7 +170,7 @@ function inconclusive(
   id: string,
   note: string,
   reason: "timeout" | "insufficient-evidence",
-  evidence: "pixels" | "none" | "query" = "pixels",
+  evidence: "pixels" | "text" | "none" | "query" = "pixels",
   citation?: { screenshotRef?: string; frames?: ObservationFrame[] },
 ): ProbeResult {
   return {
@@ -193,7 +200,13 @@ function positive(value: number): boolean {
 }
 
 /** Refuse before any byte when the grid, the region, the witness or the pixel report cannot decide. */
-function regionRefusal(id: string, spec: RegionReadback, rows: number, cols: number): ProbeResult | undefined {
+function regionRefusal(
+  id: string,
+  spec: RegionReadback,
+  rows: number,
+  cols: number,
+  textMode = false,
+): ProbeResult | undefined {
   const minRows = spec.minRows ?? 1
   const minCols = spec.minCols ?? 1
   if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
@@ -202,17 +215,22 @@ function regionRefusal(id: string, spec: RegionReadback, rows: number, cols: num
       `${id}: capture-region readback needs a measured grid of at least ${minRows}x${minCols}; measured ${rows}x${cols}`,
     )
   }
-  const geometry = spec.pixelGeometry
-  if (
-    !positive(geometry.cellWidth) ||
-    !positive(geometry.cellHeight) ||
-    !positive(geometry.textWidth) ||
-    !positive(geometry.textHeight)
-  ) {
-    return refused(
-      id,
-      `${id}: capture-region readback needs the terminal's own positive pixel report (cell size and text area); got ${JSON.stringify(geometry)}`,
-    )
+  // A text arm reads cells directly: there is no pixel report to demand, and demanding one would
+  // refuse exactly the terminals the pixel path cannot calibrate.
+  if (!textMode) {
+    const geometry = spec.pixelGeometry
+    if (
+      geometry === undefined ||
+      !positive(geometry.cellWidth) ||
+      !positive(geometry.cellHeight) ||
+      !positive(geometry.textWidth) ||
+      !positive(geometry.textHeight)
+    ) {
+      return refused(
+        id,
+        `${id}: capture-region readback needs the terminal's own positive pixel report (cell size and text area); got ${JSON.stringify(geometry)}`,
+      )
+    }
   }
   const { region, sentinel, cursorRow } = spec
   const edges = [region.top, region.left, region.bottom, region.right]
@@ -270,13 +288,16 @@ async function awaitPaintWitness(options: {
   id: string
   label: string
   witnessCell: CellRegion
-  pixelGeometry: PixelGeometry
+  pixelGeometry?: PixelGeometry
   geometrySource?: PixelGeometrySource
   baseline: RegionCapture
   timeoutMs: number
   pollMs: number
+  /** How this run sees its frames: the timeout branch names it rather than claiming pixels. */
+  evidence?: "pixels" | "text"
 }): Promise<{ witness: RegionCapture } | ProbeResult> {
   const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs } = options
+  const evidence = options.evidence ?? "pixels"
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const painted = await read({
@@ -294,8 +315,10 @@ async function awaitPaintWitness(options: {
           ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
           : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one (cell geometry ${geometrySource ?? "unknown"})`,
         "timeout",
-        "pixels",
-        { screenshotRef: painted.frame.ref },
+        evidence,
+        // A text timeout cites no frame: a lone frame is not the pair a verdict needs, and the row
+        // is inconclusive about the paint, not about a snapshot it could point a reader at.
+        evidence === "pixels" ? { screenshotRef: painted.frame.ref } : {},
       )
     }
     await new Promise<void>((resolve) => {
@@ -383,6 +406,8 @@ export type PixelGeometrySource =
   | typeof GEOMETRY_REPORTED
   | typeof GEOMETRY_DERIVED
   | "measured by complete raster calibration"
+  /** A text arm: the compared cells came from the terminal's own text, never from a raster. */
+  | "cells read from the terminal's own text"
 
 /**
  * Why a cell-to-pixel geometry could not be measured, and whether the cause is the terminal or this
@@ -509,8 +534,18 @@ export async function captureRegionVerdict(
   const read = collectorRegionRead(ctx)
   if (!read) return null
   // Geometry first: an undersized terminal is refused before a single query byte.
-  const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols)
+  const textMode = ctx.captureKind === "text-cells"
+  const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols, textMode)
   if (bounds) return bounds
+  if (textMode) {
+    // The adapter already reads the cells the row names; no pixel report, no calibration, no crop.
+    return captureRegionReadbackDecision(
+      ctx,
+      id,
+      { ...spec, pixelGeometry: undefined, geometrySource: "cells read from the terminal's own text" },
+      read,
+    )
+  }
   const calibrated = ctx.captureGeometry?.geometry
   if (
     calibrated &&
@@ -552,8 +587,16 @@ export async function captureRegionReadbackDecision(
   spec: RegionReadback,
   read: RegionRead | null,
 ): Promise<ProbeResult | null> {
+  // How this decision was seen: the terminal's own cells on a text arm, pixels everywhere else.
+  // Every branch below names it, so a published claim never says pixels it did not see.
+  const evidence = ctx.captureKind === "text-cells" ? ("text" as const) : ("pixels" as const)
+  /** A pixel verdict cites the frame the reader should look at; a text one has no image to point at. */
+  const cite = (ref: string | undefined, frames: ObservationFrame[]) => ({
+    ...(evidence === "pixels" && ref !== undefined ? { screenshotRef: ref } : {}),
+    frames,
+  })
   if (!read) return null
-  const refusal = regionRefusal(id, spec, ctx.rows, ctx.cols)
+  const refusal = regionRefusal(id, spec, ctx.rows, ctx.cols, ctx.captureKind === "text-cells")
   if (refusal) return refusal
   if (spec.requiresUtf8 === true) {
     const decodingRefusal = await utf8DecodingRefusal(ctx, id)
@@ -604,8 +647,9 @@ export async function captureRegionReadbackDecision(
         `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
         "insufficient-evidence",
         // No step has run yet, so no target frame exists: the citation is the stability read's ref.
-        "pixels",
-        { screenshotRef: stableB.frame.ref },
+        // On a text arm there is nothing to cite: one frame is not a frame pair.
+        evidence,
+        evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
       )
     }
     for (const [index, step] of steps.entries()) {
@@ -629,6 +673,7 @@ export async function captureRegionReadbackDecision(
         baseline,
         timeoutMs,
         pollMs,
+        evidence,
       })
       if (!witnessed(result)) return result
       frames.push(result.witness.frame)
@@ -677,7 +722,7 @@ export async function captureRegionReadbackDecision(
       ],
       response: observed,
       frames,
-      screenshotRef: frames[3]?.ref,
+      ...(evidence === "pixels" ? { screenshotRef: frames[3]?.ref } : {}),
     })
     if (cropRefusal) return cropRefusal
     if (seed === expected) {
@@ -685,8 +730,8 @@ export async function captureRegionReadbackDecision(
         id,
         `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
         "insufficient-evidence",
-        "pixels",
-        { screenshotRef: frames[3]?.ref, frames },
+        evidence,
+        cite(frames[3]?.ref, frames),
       )
     }
     if (ignored !== undefined && ignored === expected) {
@@ -694,8 +739,8 @@ export async function captureRegionReadbackDecision(
         id,
         `${id}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`,
         "insufficient-evidence",
-        "pixels",
-        { screenshotRef: frames[3]?.ref, frames },
+        evidence,
+        cite(frames[3]?.ref, frames),
       )
     }
     const supported = after === expected
@@ -719,9 +764,8 @@ export async function captureRegionReadbackDecision(
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "pixels",
-          screenshotRef: frames[3]?.ref,
-          frames,
+          evidence,
+          ...cite(frames[3]?.ref, frames),
           note: `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`,
         },
       }
@@ -731,9 +775,8 @@ export async function captureRegionReadbackDecision(
       response: observed,
       observation: {
         outcome: supported ? "supported" : "unsupported",
-        evidence: "pixels",
-        screenshotRef: frames[3]?.ref,
-        frames,
+        evidence,
+        ...cite(frames[3]?.ref, frames),
       },
       assertions: [
         {

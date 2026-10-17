@@ -77,7 +77,7 @@ interface Fake {
   read: RegionRead
   writes: string[]
   timeline: string[]
-  requests: Array<{ region: CellRegion; pixelGeometry: PixelGeometry; label: string }>
+  requests: Array<{ region: CellRegion; pixelGeometry: PixelGeometry | undefined; label: string }>
 }
 
 /**
@@ -669,7 +669,12 @@ test("region rows consume the same calibrated run geometry without re-dividing w
     // The real adapter always carries the crop rectangle beside the digest; a stub that dropped it
     // would model a capture the collector cannot produce.
     return {
-      ...captured.frame,
+      kind: "pixels" as const,
+      role: captured.frame.role,
+      label: captured.frame.label,
+      capturedAt: captured.frame.capturedAt,
+      ref: captured.frame.ref,
+      ...(captured.frame.sourceRef ? { sourceRef: captured.frame.sourceRef } : {}),
       regionDigest: captured.regionDigest,
       pixelsDigest: captured.pixelsDigest,
       ...(captured.regionRectangle ? { regionRectangle: captured.regionRectangle } : {}),

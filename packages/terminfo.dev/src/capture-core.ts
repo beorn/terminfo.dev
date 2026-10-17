@@ -63,7 +63,9 @@ function digest(bytes: Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
 }
 
-function retain(directory: string, bytes: Buffer, extension: string): string {
+/** Retain content-addressed bytes and return their `sha256:` ref. An identical repeat is the same
+ * artifact, not an error; different bytes behind the same digest is named rather than overwritten. */
+export function retain(directory: string, bytes: Buffer, extension: string): string {
   const hash = digest(bytes)
   const path = join(directory, `${hash}.${extension}`)
   try {
@@ -343,6 +345,7 @@ export async function finishCapture(input: {
   }
   return {
     frame: {
+      kind: "pixels",
       role,
       label,
       capturedAt,
