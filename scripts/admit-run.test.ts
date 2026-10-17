@@ -14,7 +14,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
@@ -73,16 +72,13 @@ function authoringFixture(): void {
   )
 }
 
-function declaredRelease(): string {
+/** The release a suite's own manifest freezes; two releases are declared now, so the suite names one. */
+function declaredRelease(suiteHash: string): string {
   const suites = join(import.meta.dirname, "..", "content", "suites")
-  const releases = readdirSync(suites).flatMap((name) => {
-    if (!name.endsWith(".json")) return []
-    const path = join(suites, name)
-    const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-    return manifest.freeze ? [manifest.freeze.release] : []
-  })
-  if (releases.length !== 1) throw new Error(`Expected one declared release in ${suites}, found ${releases.length}`)
-  return releases[0]!
+  const path = join(suites, `${suiteHash}.json`)
+  const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+  if (!manifest.freeze) throw new Error(`Suite ${suiteHash} declares no release freeze in ${suites}`)
+  return manifest.freeze.release
 }
 
 function runFixture(overrides: Record<string, unknown> = {}): string {
@@ -200,7 +196,8 @@ test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-
 )
 
 test("release admission cannot relabel the current suite as the declared freeze", () => {
-  const release = declaredRelease()
+  // The fixture run is the committed kitty run, which candidate2's freeze declares.
+  const release = declaredRelease("5753741410a9")
   const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
   // Keep the actual declaration reader; isolate a different current snapshot so the test remains
   // meaningful when Thursday's freeze later catches up with the live source tree.
@@ -225,7 +222,8 @@ test("release admission cannot relabel the current suite as the declared freeze"
 // If release is dropped, the declaration sentinel prevents any content write and exposes the bug.
 test("admission replans against the plan's declared release before declaring or placing", () => {
   authoringFixture()
-  const release = declaredRelease()
+  // The fixture run is the committed kitty run, which candidate2's freeze declares.
+  const release = declaredRelease("5753741410a9")
   const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
   const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
   vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({ ...probeSuiteSnapshot(), probeHash: current })
