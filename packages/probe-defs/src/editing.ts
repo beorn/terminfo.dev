@@ -757,5 +757,15 @@ const editingProbeDefinitions: ProbeDefinition[] = [
 export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map((definition) => {
   const original = definition.term
   if (!original || !(definition.id in EDITING_CAPTURE_SPECS)) return definition
-  return { ...definition, term: async (ctx) => (ctx.capture ? editCapture(ctx, definition.id) : original(ctx)) }
+  // A row with its own readback spec is decided from the region oracle, which reads the terminal's
+  // cells on a text arm; every other editing row reads pixels and needs the pixel adapter.
+  const readback = definition.id in EDITING_READBACK_SPECS
+  return {
+    ...definition,
+    ...(readback ? { cellReadback: true as const } : {}),
+    term: async (ctx) =>
+      ctx.capture !== undefined || (readback && ctx.cells !== undefined)
+        ? editCapture(ctx, definition.id)
+        : original(ctx),
+  }
 })

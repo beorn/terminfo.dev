@@ -640,7 +640,7 @@ describe("selected-run consumer parity", () => {
     )
     const digest = createHash("sha256").update(png).digest("hex")
     const screenshot = { url: `/artifacts/${digest}.png`, sha256: digest }
-    const imageReader = vi.spyOn(selectedResults, "readVerifiedScreenshot").mockImplementation((_content, ref) => {
+    const imageReader = vi.spyOn(selectedResults, "readVerifiedArtifact").mockImplementation((_content, ref) => {
       expect(ref).toBe(`sha256:${digest}`)
       return png
     })

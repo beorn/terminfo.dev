@@ -7,7 +7,7 @@ export {
   assessRunAdmission,
   placeOwnershipReceipt,
   placeRun,
-  placeScreenshots,
+  placeRetainedArtifacts,
   planAdmission,
   type IdentityAdmission,
   type AdmissionExclusionCode,
@@ -18,7 +18,7 @@ function usage(): never {
   console.error(
     "Usage: bun scripts/admit-run.ts --for <run.json> [--into <path>]\n" +
       "  Declares the run's suite manifest (derived record only) and places the run and every\n" +
-      "  screenshot it cites in content/. Refuses by name if a cited screenshot is missing.\n" +
+      "  retained artifact it cites in content/. Refuses by name if a cited artifact is missing.\n" +
       "  Refuses unless this tree runs the run's own suite; commit the admission in your own worktree.\n" +
       "  Refuses by name when a receipt the run cites is missing beside it, mismatched or bound to another target.",
   )

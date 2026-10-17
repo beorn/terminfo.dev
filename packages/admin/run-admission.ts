@@ -13,7 +13,13 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import type { Interpretation, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
-import { measuredVersionTokens, parseRun, parseSuiteManifest, type LoadedRun } from "@terminfo/run-parser"
+import {
+  decodeExactUtf8,
+  measuredVersionTokens,
+  parseRun,
+  parseSuiteManifest,
+  type LoadedRun,
+} from "@terminfo/run-parser"
 import {
   deriveIdentity,
   verifyTerminalIdentity,
@@ -379,7 +385,8 @@ export function planAdmission(
   }
   if (existsSync(manifestPath)) verifySuiteManifest(manifestPath, snapshot)
   preflightLinuxCompletionReceipt(source, loaded)
-  preflightScreenshots(source, loaded.screenshotRefs)
+  preflightArtifacts(source, loaded.screenshotRefs, CONTENT_DIR, "screenshot")
+  preflightArtifacts(source, loaded.textSnapshotRefs, CONTENT_DIR, "text-snapshot")
   const destination = into ?? join(CONTENT_DIR, RUN_DIRS[kind], `${id}-${version}-${os}-${runId}.json`)
   preflightDestination(destination, readFileSync(source), "admitted run")
   assertDeclareIsAuthoring(ROOT, parsed.probeHash)
@@ -425,47 +432,91 @@ export function placeRun(destination: string, bytes: string): "created" | "exist
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 
 /**
- * Place every screenshot the run cites, beside it, so an admitted run can never reference a PNG
- * that is not committed (27876: admission copied the run document but silently dropped its
- * `screenshotRefs`, and `content/artifacts/` then lacked them). Bytes come from `artifacts/`
- * next to the run file — the collector's `/out/artifacts/`. Each must hash to its cited digest and
- * be a PNG; a missing or mismatched source refuses BY NAME before the run is placed.
+ * A retained artifact's kind decides its file extension and the check its bytes must pass. ONE table
+ * and ONE verifier read both lists — never a second copy — so a text snapshot cannot be admitted
+ * under a PNG's rules, or the other way round. Both are exported because the site verifies the same
+ * retained bytes when it reads a projection; it must not grow a second table or a second check.
  */
-function preflightScreenshots(
+export const RETAINED_ARTIFACT_KINDS = {
+  screenshot: { extension: "png", noun: "Screenshot", png: true, utf8: false },
+  "text-snapshot": { extension: "txt", noun: "Text snapshot", png: false, utf8: true },
+} as const
+
+export type RetainedArtifactKind = keyof typeof RETAINED_ARTIFACT_KINDS
+
+/**
+ * Check retained bytes against the digest their reference cites and the rules their kind names.
+ * `where` is the path the bytes came from, so a failure names the artifact rather than a bare digest.
+ */
+export function verifyRetainedArtifact(kind: RetainedArtifactKind, bytes: Buffer, ref: string, where: string): void {
+  const rules = RETAINED_ARTIFACT_KINDS[kind]
+  if (!/^sha256:[a-f0-9]{64}$/.test(ref)) {
+    throw new Error(`${rules.noun} reference ${ref} at ${where} is not a sha256 digest`)
+  }
+  const digest = ref.slice("sha256:".length)
+  const actual = createHash("sha256").update(bytes).digest("hex")
+  if (actual !== digest) throw new Error(`${rules.noun} ${where} hashes to ${actual}, not its cited ${digest}`)
+  if (rules.png && !bytes.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    throw new Error(`${rules.noun} ${where} is not a PNG`)
+  }
+  if (rules.utf8) {
+    try {
+      // The run parser's one exact decoder: it refuses malformed bytes AND bytes that change when
+      // decoded (a BOM), so admitted text is the bytes that were retained, not a normalised reading.
+      decodeExactUtf8(bytes, where)
+    } catch {
+      throw new Error(`${rules.noun} ${where} is not exact UTF-8`)
+    }
+  }
+}
+
+function preflightArtifacts(
   source: string,
   refs: readonly string[],
   contentDir: string = CONTENT_DIR,
+  kind: RetainedArtifactKind = "screenshot",
 ): Array<{ destination: string; bytes: Buffer }> {
+  const rules = RETAINED_ARTIFACT_KINDS[kind]
   const directory = join(dirname(source), "artifacts")
   const artifacts: Array<{ destination: string; bytes: Buffer }> = []
   for (const ref of refs) {
+    if (!/^sha256:[a-f0-9]{64}$/.test(ref)) {
+      throw new Error(`Run cites ${rules.noun.toLowerCase()} ${ref}, but that is not a sha256 digest`)
+    }
     const digest = ref.slice("sha256:".length)
-    const origin = join(directory, `${digest}.png`)
+    const origin = join(directory, `${digest}.${rules.extension}`)
     if (!existsSync(origin)) {
-      throw new Error(`Run cites screenshot ${ref}, but ${origin} does not exist beside the run`)
+      throw new Error(`Run cites ${rules.noun.toLowerCase()} ${ref}, but ${origin} does not exist beside the run`)
     }
     const bytes = readFileSync(origin)
-    const actual = createHash("sha256").update(bytes).digest("hex")
-    if (actual !== digest) throw new Error(`Screenshot ${origin} hashes to ${actual}, not its cited ${digest}`)
-    if (!bytes.subarray(0, 8).equals(PNG_SIGNATURE)) throw new Error(`Screenshot ${origin} is not a PNG`)
-    const destination = join(contentDir, "artifacts", `${digest}.png`)
-    preflightDestination(destination, bytes, "screenshot")
+    verifyRetainedArtifact(kind, bytes, ref, origin)
+    const destination = join(contentDir, "artifacts", `${digest}.${rules.extension}`)
+    preflightDestination(destination, bytes, kind)
     artifacts.push({ destination, bytes })
   }
   return artifacts
 }
 
-export function placeScreenshots(
+/**
+ * Place every retained artifact the run cites, beside it, so an admitted run can never reference an
+ * artifact that is not committed: admission copies the run document and every digest it cites.
+ * Bytes come from `artifacts/` next to the run file — the collector's `/out/artifacts/`. Each must
+ * hash to its cited digest and pass its kind's check; a missing or mismatched source refuses BY NAME
+ * before the run is placed.
+ */
+export function placeRetainedArtifacts(
   source: string,
   refs: readonly string[],
   contentDir: string = CONTENT_DIR,
+  kind: RetainedArtifactKind = "screenshot",
 ): { created: number; existing: number } {
-  const artifacts = preflightScreenshots(source, refs, contentDir)
+  const artifacts = preflightArtifacts(source, refs, contentDir, kind)
   let created = 0
   let existing = 0
   for (const artifact of artifacts) {
-    if (placeExclusive(artifact.destination, artifact.bytes, "screenshot") === "created") created += 1
-    else existing += 1
+    if (placeExclusive(artifact.destination, artifact.bytes, RETAINED_ARTIFACT_KINDS[kind].noun) === "created") {
+      created += 1
+    } else existing += 1
   }
   return { created, existing }
 }
@@ -748,6 +799,8 @@ export function admitRun(plan: AdmissionPlan): {
   manifest: "created" | "existing"
   run: "created" | "existing"
   screenshots: { created: number; existing: number }
+  /** Retained text snapshots placed for this run's text frames; zero for a pixel-only run. */
+  textSnapshots: { created: number; existing: number }
   receipt: { placed: "created" | "existing" | "none"; detail: string }
 } {
   const snapshot = probeSuiteSnapshot()
@@ -793,7 +846,8 @@ export function admitRun(plan: AdmissionPlan): {
     loaded,
   )
 
-  const screenshots = placeScreenshots(plan.source, loaded.screenshotRefs)
+  const screenshots = placeRetainedArtifacts(plan.source, loaded.screenshotRefs)
+  const textSnapshots = placeRetainedArtifacts(plan.source, loaded.textSnapshotRefs, CONTENT_DIR, "text-snapshot")
   const run = placeRun(plan.destination, bytes)
-  return { manifest: declaration.status, run, screenshots, receipt }
+  return { manifest: declaration.status, run, screenshots, textSnapshots, receipt }
 }

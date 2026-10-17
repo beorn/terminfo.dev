@@ -22,7 +22,7 @@ import {
   assessRunAdmission,
   placeOwnershipReceipt,
   placeRun,
-  placeScreenshots,
+  placeRetainedArtifacts,
   planAdmission,
 } from "./admit-run.ts"
 import { object } from "./interpretations.ts"
@@ -489,24 +489,59 @@ test("admission carries every screenshot the run cites, and refuses a missing or
   mkdirSync(join(source, "..", "artifacts"), { recursive: true })
   writeFileSync(join(source, "..", "artifacts", `${digest}.png`), png)
 
-  expect(placeScreenshots(source, [ref], content)).toEqual({ created: 1, existing: 0 })
+  expect(placeRetainedArtifacts(source, [ref], content)).toEqual({ created: 1, existing: 0 })
   expect(readFileSync(join(content, "artifacts", `${digest}.png`))).toEqual(png)
-  expect(placeScreenshots(source, [ref], content)).toEqual({ created: 0, existing: 1 })
+  expect(placeRetainedArtifacts(source, [ref], content)).toEqual({ created: 0, existing: 1 })
 
   const absent = `sha256:${"a".repeat(64)}`
   // AC1: preflight every cited artifact before any placement; the old loop wrote the first PNG.
   const unplacedContent = temp("terminfo-preflight-content-")
-  expect(() => placeScreenshots(source, [ref, absent], unplacedContent)).toThrow(/does not exist beside the run/)
+  expect(() => placeRetainedArtifacts(source, [ref, absent], unplacedContent)).toThrow(/does not exist beside the run/)
   expect(existsSync(join(unplacedContent, "artifacts", `${digest}.png`))).toBe(false)
-  expect(() => placeScreenshots(source, [absent], content)).toThrow(/does not exist beside the run/)
+  expect(() => placeRetainedArtifacts(source, [absent], content)).toThrow(/does not exist beside the run/)
   const wrong = digest.slice(0, 63) + (digest[63] === "a" ? "b" : "a")
   writeFileSync(join(source, "..", "artifacts", `${wrong}.png`), png)
-  expect(() => placeScreenshots(source, [`sha256:${wrong}`], content)).toThrow(/hashes to/)
+  expect(() => placeRetainedArtifacts(source, [`sha256:${wrong}`], content)).toThrow(/hashes to/)
 
   const notPng = Buffer.from("not a png at all")
   const notPngDigest = createHash("sha256").update(notPng).digest("hex")
   writeFileSync(join(source, "..", "artifacts", `${notPngDigest}.png`), notPng)
-  expect(() => placeScreenshots(source, [`sha256:${notPngDigest}`], content)).toThrow(/is not a PNG/)
+  expect(() => placeRetainedArtifacts(source, [`sha256:${notPngDigest}`], content)).toThrow(/is not a PNG/)
+})
+
+test("admission carries a run's text snapshots as text, and refuses a missing or non-UTF-8 one", () => {
+  const source = join(temp("terminfo-admit-text-"), "run.json")
+  const content = temp("terminfo-admit-text-content-")
+  const snapshot = Buffer.from("hello\nworld\n", "utf8")
+  const digest = createHash("sha256").update(snapshot).digest("hex")
+  const ref = `sha256:${digest}`
+  mkdirSync(join(source, "..", "artifacts"), { recursive: true })
+  writeFileSync(join(source, "..", "artifacts", `${digest}.txt`), snapshot)
+
+  expect(placeRetainedArtifacts(source, [ref], content, "text-snapshot")).toEqual({ created: 1, existing: 0 })
+  expect(readFileSync(join(content, "artifacts", `${digest}.txt`))).toEqual(snapshot)
+  expect(placeRetainedArtifacts(source, [ref], content, "text-snapshot")).toEqual({ created: 0, existing: 1 })
+
+  const absent = `sha256:${"b".repeat(64)}`
+  const unplaced = temp("terminfo-admit-text-unplaced-")
+  expect(() => placeRetainedArtifacts(source, [ref, absent], unplaced, "text-snapshot")).toThrow(
+    /text snapshot .* does not exist beside the run/u,
+  )
+  expect(existsSync(join(unplaced, "artifacts", `${digest}.txt`))).toBe(false)
+
+  const invalid = Buffer.from([0xff, 0xfe, 0x00])
+  const invalidDigest = createHash("sha256").update(invalid).digest("hex")
+  writeFileSync(join(source, "..", "artifacts", `${invalidDigest}.txt`), invalid)
+  expect(() => placeRetainedArtifacts(source, [`sha256:${invalidDigest}`], content, "text-snapshot")).toThrow(
+    /is not exact UTF-8/u,
+  )
+
+  const bom = Buffer.from([0xef, 0xbb, 0xbf, 0x68, 0x69, 0x0a])
+  const bomDigest = createHash("sha256").update(bom).digest("hex")
+  writeFileSync(join(source, "..", "artifacts", `${bomDigest}.txt`), bom)
+  expect(() => placeRetainedArtifacts(source, [`sha256:${bomDigest}`], content, "text-snapshot")).toThrow(
+    /is not exact UTF-8/u,
+  )
 })
 
 // ---------------------------------------------------------------------------------------------

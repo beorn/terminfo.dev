@@ -1,5 +1,4 @@
 /** Reviewed selection and projection for terminal observations. */
-import { createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { classifyCells, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
@@ -23,7 +22,13 @@ import {
   validateObservation,
   validateObservationOutcome,
 } from "@terminfo/run-parser"
-import { assessRunAdmission, type IdentityAdmission } from "../../packages/admin/run-admission.ts"
+import {
+  assessRunAdmission,
+  RETAINED_ARTIFACT_KINDS,
+  verifyRetainedArtifact,
+  type IdentityAdmission,
+  type RetainedArtifactKind,
+} from "../../packages/admin/run-admission.ts"
 import {
   activeInterpretations,
   applies,
@@ -46,7 +51,9 @@ export interface SelectedCell extends Observation {
       role: ObservationFrame["role"]
       label: string
       capturedAt: number
-      url: string
+      /** Which read produced the frame. A text frame has no `url`: the site cannot render one yet. */
+      kind: "pixels" | "text-cells"
+      url?: string
       sha256: string
       sourceRef?: string
     }>
@@ -155,12 +162,17 @@ function observationRecord(run: LoadedRun, observation: Observation): SelectedCe
       },
     }),
     ...(observation.frames && {
+      // The frame's kind travels with its digest. A pixel frame also gets the .png URL the site can
+      // render; a text frame does NOT, because the site's evidence cell renders every frame as an
+      // <img> and its artifact inventory admits only .png. The public projection refuses a text
+      // frame BY NAME until the site can render one, rather than emitting a .txt URL nobody can.
       frames: observation.frames.map((frame) => ({
         role: frame.role,
         label: frame.label,
         capturedAt: frame.capturedAt,
-        url: `/artifacts/${frame.ref.slice("sha256:".length)}.png`,
+        kind: frame.kind ?? ("pixels" as const),
         sha256: frame.ref.slice("sha256:".length),
+        ...(frame.kind === "text-cells" ? {} : { url: `/artifacts/${frame.ref.slice("sha256:".length)}.png` }),
         ...(frame.sourceRef && { sourceRef: frame.sourceRef }),
       })),
     }),
@@ -183,6 +195,7 @@ function projectRun(
       record: observationRecord(run, observation),
       conclusive:
         !run.legacy &&
+        observation.evidence !== "text" &&
         !isNonMeasuringEvidence(observation.evidence) &&
         (observation.outcome === "supported" || observation.outcome === "unsupported"),
       chain: {
@@ -215,6 +228,9 @@ function projectRun(
     if (observation.evidence === "pixels" && !observation.screenshotRef) {
       throw new Error(`interpretation ${entry.id}: pixels requires screenshotRef`)
     }
+    if (observation.evidence === "text" && observation.screenshotRef) {
+      throw new Error(`interpretation ${entry.id}: text evidence cannot carry screenshotRef`)
+    }
     if (observation.screenshotRef && !run.screenshotRefs.includes(observation.screenshotRef)) {
       throw new Error(`interpretation ${entry.id}: unknown screenshotRef ${observation.screenshotRef}`)
     }
@@ -223,17 +239,19 @@ function projectRun(
       `interpretation ${entry.id}`,
       entry.featureId,
       run.screenshotRefs,
+      run.textSnapshotRefs,
       observation.screenshotRef,
       observation.evidence,
     )
-    if (
-      observation.evidence === "pixels" &&
-      (observation.outcome === "supported" || observation.outcome === "unsupported")
-    ) {
+    // A decided interpretation is recomputable from the run alone, pixels or cells: both kinds cite
+    // frames, and both must cite THIS run's bytes and the frames that run already recorded.
+    const decided = observation.outcome === "supported" || observation.outcome === "unsupported"
+    if ((observation.evidence === "pixels" || observation.evidence === "text") && decided) {
+      const kind = observation.evidence
       if (entry.runId !== run.runId || entry.runSha256 !== run.sha256) {
-        throw new Error(`pixels interpretation ${entry.id} requires exact run SHA256`)
+        throw new Error(`${kind} interpretation ${entry.id} requires exact run SHA256`)
       }
-      if (!frames) throw new Error(`pixels interpretation ${entry.id} requires control and target frames`)
+      if (!frames) throw new Error(`${kind} interpretation ${entry.id} requires control and target frames`)
       const originalFrames = [...(recordedObservation.frames ?? [])]
       for (const frame of frames) {
         const match = originalFrames.findIndex(
@@ -246,19 +264,21 @@ function projectRun(
         )
         if (match < 0) {
           throw new Error(
-            `pixels interpretation ${entry.id} cites a frame outside immutable ${entry.featureId} feature frames`,
+            `${kind} interpretation ${entry.id} cites a frame outside immutable ${entry.featureId} feature frames`,
           )
         }
         originalFrames.splice(match, 1)
       }
-      if (
-        TEMPORAL_PIXEL_FEATURES.has(entry.featureId) &&
-        frames.filter((frame) => frame.role === "target").length < 2
-      ) {
-        throw new Error(`temporal pixels interpretation ${entry.id} requires 2 target frames`)
-      }
-      if (run.target.os?.toLowerCase().startsWith("linux") && !run.provenance) {
-        throw new Error(`pixels interpretation ${entry.id} requires Linux fixture provenance for geometry and font`)
+      if (kind === "pixels") {
+        if (
+          TEMPORAL_PIXEL_FEATURES.has(entry.featureId) &&
+          frames.filter((frame) => frame.role === "target").length < 2
+        ) {
+          throw new Error(`temporal pixels interpretation ${entry.id} requires 2 target frames`)
+        }
+        if (run.target.os?.toLowerCase().startsWith("linux") && !run.provenance) {
+          throw new Error(`pixels interpretation ${entry.id} requires Linux fixture provenance for geometry and font`)
+        }
       }
     }
     cells[entry.featureId] = {
@@ -266,6 +286,7 @@ function projectRun(
       record: observationRecord(run, observation),
       conclusive:
         !run.legacy &&
+        observation.evidence !== "text" &&
         !isNonMeasuringEvidence(observation.evidence) &&
         (observation.outcome === "supported" || observation.outcome === "unsupported"),
       chain: {
@@ -551,18 +572,27 @@ export function statesFor(projection: SelectedProjection, runId: string): Readon
   return states
 }
 
-/** Read only the exact PNG bytes named by a digest-backed screenshot reference. */
-export function readVerifiedScreenshot(contentDir: string, ref: string, sourcePath: string): Buffer {
-  if (!/^sha256:[a-f0-9]{64}$/.test(ref)) fail(sourcePath, `invalid screenshotRef ${ref}`)
+/**
+ * Read only the exact bytes named by a digest-backed artifact reference, checked as its kind. The
+ * kind table and the check are admission's own (`verifyRetainedArtifact`), so the site accepts
+ * exactly what admission would place and no second PNG or UTF-8 check can drift from it.
+ */
+export function readVerifiedArtifact(
+  contentDir: string,
+  ref: string,
+  sourcePath: string,
+  kind: RetainedArtifactKind = "screenshot",
+): Buffer {
+  const rules = RETAINED_ARTIFACT_KINDS[kind]
+  if (!/^sha256:[a-f0-9]{64}$/.test(ref)) fail(sourcePath, `invalid ${kind}Ref ${ref}`)
   const digest = ref.slice("sha256:".length)
-  const artifactPath = join(contentDir, "artifacts", `${digest}.png`)
-  if (!existsSync(artifactPath)) fail(sourcePath, `missing screenshot artifact ${artifactPath}`)
+  const artifactPath = join(contentDir, "artifacts", `${digest}.${rules.extension}`)
+  if (!existsSync(artifactPath)) fail(sourcePath, `missing ${rules.noun.toLowerCase()} artifact ${artifactPath}`)
   const bytes = readFileSync(artifactPath)
-  if (createHash("sha256").update(bytes).digest("hex") !== digest) {
-    fail(sourcePath, `screenshot artifact digest mismatch at ${artifactPath}`)
-  }
-  if (!bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
-    fail(sourcePath, `screenshot artifact is not a PNG at ${artifactPath}`)
+  try {
+    verifyRetainedArtifact(kind, bytes, ref, artifactPath)
+  } catch (error) {
+    fail(sourcePath, error instanceof Error ? error.message : String(error))
   }
   return bytes
 }
@@ -589,7 +619,7 @@ export function loadSelectedResults(
     }
   }
   const runs: LoadedRun[] = []
-  const verifiedScreenshots = new Set<string>()
+  const verifiedArtifacts = new Set<string>()
   for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) {
     const path = join(contentDir, dir)
     if (!existsSync(path)) fail(path, "missing required probe directory")
@@ -599,9 +629,14 @@ export function loadSelectedResults(
       const runPath = join(path, file)
       const run = parseRun(runPath, readFileSync(runPath, "utf8"), catalog, suites)
       for (const ref of run.screenshotRefs) {
-        if (verifiedScreenshots.has(ref)) continue
-        readVerifiedScreenshot(contentDir, ref, runPath)
-        verifiedScreenshots.add(ref)
+        if (verifiedArtifacts.has(`screenshot:${ref}`)) continue
+        readVerifiedArtifact(contentDir, ref, runPath, "screenshot")
+        verifiedArtifacts.add(`screenshot:${ref}`)
+      }
+      for (const ref of run.textSnapshotRefs ?? []) {
+        if (verifiedArtifacts.has(`text-snapshot:${ref}`)) continue
+        readVerifiedArtifact(contentDir, ref, runPath, "text-snapshot")
+        verifiedArtifacts.add(`text-snapshot:${ref}`)
       }
       runs.push(run)
     }

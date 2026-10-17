@@ -13,7 +13,7 @@ import {
   loadSelectedResults,
   parseInterpretations,
   projectResults,
-  readVerifiedScreenshot,
+  readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
@@ -548,23 +548,31 @@ describe("selected results", () => {
         role: "control",
         label: "before",
         capturedAt: 1,
+        kind: "pixels",
         url: `/artifacts/${controlDigest}.png`,
         sha256: controlDigest,
       },
-      { role: "target", label: "after", capturedAt: 2, url: `/artifacts/${digest}.png`, sha256: digest },
+      {
+        role: "target",
+        label: "after",
+        capturedAt: 2,
+        kind: "pixels",
+        url: `/artifacts/${digest}.png`,
+        sha256: digest,
+      },
     ])
     expect(existsSync(output)).toBe(false)
     expect(
       loadSelectedResults(content, "current").history["app:kitty"]?.[0]?.cells["extensions.graphics"],
     ).toBeDefined()
     expect(existsSync(output)).toBe(false)
-    expect(readVerifiedScreenshot(content, screenshotRef, "pixels.json")).toEqual(png)
-    expect(readVerifiedScreenshot(content, controlRef, "pixels.json")).toEqual(controlPng)
+    expect(readVerifiedArtifact(content, screenshotRef, "pixels.json")).toEqual(png)
+    expect(readVerifiedArtifact(content, controlRef, "pixels.json")).toEqual(controlPng)
     const invalidPng = Buffer.from("not a PNG")
     const invalidRef = `sha256:${createHash("sha256").update(invalidPng).digest("hex")}`
     writeFileSync(join(content, "artifacts", `${invalidRef.slice(7)}.png`), invalidPng)
-    expect(() => readVerifiedScreenshot(content, invalidRef, "pixels.json")).toThrow(/not a PNG/)
-    expect(() => readVerifiedScreenshot(content, "../../outside.png", "pixels.json")).toThrow(/invalid screenshotRef/)
+    expect(() => readVerifiedArtifact(content, invalidRef, "pixels.json")).toThrow(/not a PNG/)
+    expect(() => readVerifiedArtifact(content, "../../outside.png", "pixels.json")).toThrow(/invalid screenshotRef/)
     writeFileSync(artifactPath, Buffer.concat([png, Buffer.from("changed")]))
     expect(() => loadSelectedResults(content, "current")).toThrow(/artifact.*(hash|digest)/)
     rmSync(artifactPath)
@@ -1694,7 +1702,7 @@ describe("selected results", () => {
     const base = observed.observations[0]
     if (!base) throw new Error("missing visual observation")
     expect(() => invalid({ ...base, frames: [{ ...frames[0], ref: `sha256:${"e".repeat(64)}` }, frames[1]] })).toThrow(
-      /frame.*absent from run/,
+      /absent from the run's screenshotRefs/,
     )
     expect(() => invalid({ ...base, frames: [frames[1]] })).toThrow(/control.*target/)
     expect(() => invalid({ ...base, frames: [frames[0]] })).toThrow(/control.*target/)
@@ -1708,6 +1716,201 @@ describe("selected results", () => {
         frames: [frames[0], frames[1], { role: "target", ref: later, capturedAt: 2, label: "later" }],
       }),
     ).toThrow(/target.*capturedAt/)
+  })
+
+  it("refuses to present a text-snapshot frame by name, because the site renders every frame as a PNG", () => {
+    const content = temporaryContent()
+    const snapshot = Buffer.from("ab \ncd \n", "utf8")
+    const digest = createHash("sha256").update(snapshot).digest("hex")
+    const snapshotRef = `sha256:${digest}`
+    writeFileSync(join(content, "artifacts", `${digest}.txt`), snapshot)
+    // The same bytes under the screenshot extension: the kind, not the extension alone, decides the
+    // check, so a text snapshot can never pass a PNG's rules.
+    writeFileSync(join(content, "artifacts", `${digest}.png`), snapshot)
+    const textFrame = (role: "control" | "target", at: number) => ({
+      kind: "text-cells" as const,
+      role,
+      ref: snapshotRef,
+      capturedAt: at,
+      label: `${role} text`,
+      cellDigest: snapshotRef,
+      frameDigest: snapshotRef,
+      cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
+    })
+    const frames: [ObservationFrame, ObservationFrame] = [textFrame("control", 1), textFrame("target", 2)]
+    const textRun = run("text-cells", {
+      probeHash: "pixels",
+      assertions: [],
+      screenshotRefs: [],
+      textSnapshotRefs: [snapshotRef],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "text",
+          frames,
+        },
+      ],
+    })
+    writeFileSync(join(content, "probes-apps", "text-cells.json"), JSON.stringify(textRun))
+    // The retained bytes are admitted as a text snapshot, and refused as a screenshot: one kind
+    // table decides both, so the same bytes cannot pass the other kind's check.
+    expect(readVerifiedArtifact(content, snapshotRef, "text-cells.json", "text-snapshot")).toEqual(snapshot)
+    expect(() => readVerifiedArtifact(content, snapshotRef, "text-cells.json")).toThrow(/is not a PNG/)
+    const measured = parseRun("text-cells.json", JSON.stringify(textRun), catalog)
+    const projection = projectResults([measured], [], catalog, { currentProbeHash: "current" })
+    const cell = projection.history["app:kitty"]?.[0]?.cells["extensions.graphics"]
+    // The frame keeps its kind and digest and gets NO url: no .txt URL is emitted for a renderer
+    // that only knows how to draw an <img>.
+    expect(cell?.record.frames?.map(({ kind, url, sha256 }) => ({ kind, url, sha256 }))).toEqual([
+      { kind: "text-cells", url: undefined, sha256: digest },
+      { kind: "text-cells", url: undefined, sha256: digest },
+    ])
+    expect(cell?.conclusive).toBe(false)
+    // A presentation decision is where the site publishes frames, and that is where a text frame is
+    // refused BY NAME rather than failing the API build with a missing PNG.
+    const present = {
+      id: "present-text",
+      runId: measured.runId,
+      runSha256: measured.sha256,
+      reviewer: "reviewer",
+      reason: "show the reviewed text snapshot",
+      scope: reviewFor(measured).scope,
+      sources: ["capture://text-cells"],
+      supersedes: [] as string[],
+      featureId: "extensions.graphics",
+      presentsEvidence: true,
+    }
+    const presented = projectResults([measured], [present], catalog, { currentProbeHash: "current" })
+    expect(() => publicResults(presented, new Map())).toThrow(/run text-cells feature extensions\.graphics/u)
+    expect(() => publicResults(presented, new Map())).toThrow(
+      new RegExp(`cannot present text-snapshot frame sha256:${digest}`, "u"),
+    )
+    expect(() => publicResults(presented, new Map())).toThrow(/renders every frame as a PNG/u)
+  })
+
+  it("keeps a supported raw text observation non-conclusive", () => {
+    const content = temporaryContent()
+    const snapshot = Buffer.from("ab \ncd \n", "utf8")
+    const digest = createHash("sha256").update(snapshot).digest("hex")
+    const snapshotRef = `sha256:${digest}`
+    writeFileSync(join(content, "artifacts", `${digest}.txt`), snapshot)
+    const textFrame = (role: "control" | "target", at: number) => ({
+      kind: "text-cells" as const,
+      role,
+      ref: snapshotRef,
+      capturedAt: at,
+      label: `${role} text`,
+      cellDigest: snapshotRef,
+      frameDigest: snapshotRef,
+      cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
+    })
+    const frames: [ObservationFrame, ObservationFrame] = [textFrame("control", 1), textFrame("target", 2)]
+    // A raw decided text row carries its own bound positive assertion, exactly as a decided pixel
+    // row does, and the assertion cites the frame digest the verdict rests on.
+    const textRun = run("text-supported", {
+      probeHash: "pixels",
+      textSnapshotRefs: [snapshotRef],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "supported",
+          evidence: "text",
+          rawReplyRef: "extensions.graphics",
+          frames,
+        },
+      ],
+      assertions: [
+        {
+          featureId: "extensions.graphics",
+          kind: "positive",
+          rawReplyRef: "extensions.graphics",
+          expected: "the text snapshot to show",
+          observed: snapshotRef,
+        },
+      ],
+    })
+    const measured = parseRun("text-supported.json", JSON.stringify(textRun), catalog)
+    const projection = projectResults([measured], [], catalog, { currentProbeHash: "current" })
+    const cell = projection.history["app:kitty"]?.[0]?.cells["extensions.graphics"]
+    // A raw text verdict reads as supported and is still never a measurement: the cells are not
+    // decisive until the app's own hosted rows pass all five readback shapes — a mid-line gap, a
+    // trailing gap, a soft wrap, an empty last row, and prior scrollback.
+    expect(cell?.outcome).toBe("supported")
+    expect(cell?.conclusive).toBe(false)
+  })
+
+  it("binds a text interpretation to the run's own frames, and keeps it non-conclusive", () => {
+    const content = temporaryContent()
+    const snapshot = Buffer.from("ab \ncd \n", "utf8")
+    const digest = createHash("sha256").update(snapshot).digest("hex")
+    const snapshotRef = `sha256:${digest}`
+    writeFileSync(join(content, "artifacts", `${digest}.txt`), snapshot)
+    const textFrame = (role: "control" | "target", at: number) => ({
+      kind: "text-cells" as const,
+      role,
+      ref: snapshotRef,
+      capturedAt: at,
+      label: `${role} text`,
+      cellDigest: snapshotRef,
+      frameDigest: snapshotRef,
+      cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
+    })
+    const frames: [ObservationFrame, ObservationFrame] = [textFrame("control", 1), textFrame("target", 2)]
+    const textRun = run("text-cells", {
+      probeHash: "pixels",
+      assertions: [],
+      screenshotRefs: [],
+      textSnapshotRefs: [snapshotRef],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "text",
+          frames,
+        },
+      ],
+    })
+    const measured = parseRun("text-cells.json", JSON.stringify(textRun), catalog)
+    const correction = {
+      ...reviewFor(measured),
+      featureId: "extensions.graphics",
+      sources: [snapshotRef],
+      observation: {
+        featureId: "extensions.graphics",
+        outcome: "supported" as const,
+        evidence: "text" as const,
+        frames,
+      },
+    }
+    // A text interpretation is recomputable exactly as a pixel one is: this run's bytes, its own
+    // recorded frames, and a decision that still reads non-conclusive on the site.
+    const reviewed = projectResults([measured], [correction], catalog, { currentProbeHash: "current" })
+    expect(reviewed.history["app:kitty"]?.[0]?.cells["extensions.graphics"]?.outcome).toBe("supported")
+    expect(reviewed.history["app:kitty"]?.[0]?.cells["extensions.graphics"]?.conclusive).toBe(false)
+    expect(() =>
+      projectResults(
+        [measured],
+        [{ ...correction, observation: { ...correction.observation, frames: undefined } }],
+        catalog,
+        { currentProbeHash: "current" },
+      ),
+    ).toThrow(/text interpretation .* requires control and target frames/)
+    expect(() =>
+      projectResults(
+        [measured],
+        [
+          {
+            ...correction,
+            observation: { ...correction.observation, frames: [frames[0], { ...frames[1], capturedAt: 99 }] },
+          },
+        ],
+        catalog,
+        { currentProbeHash: "current" },
+      ),
+    ).toThrow(/immutable.*feature frame/)
   })
 
   it("cannot borrow another feature's retained image for a reviewed pixel result", () => {

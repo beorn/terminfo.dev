@@ -602,5 +602,6 @@ export const eraseProbes: ProbeDefinition[] = [
       },
     ),
     termNeedsGeometry: true,
+    cellReadback: true,
   },
 ]

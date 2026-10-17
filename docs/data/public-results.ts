@@ -1,12 +1,19 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import type { Observation, ProbeAssertion, ProbeTarget, RunOrigin } from "@terminfo/probe-defs"
+import type { Observation, ObservationFrame, ProbeAssertion, ProbeTarget, RunOrigin } from "@terminfo/probe-defs"
 import type { CurrentResult } from "./current-results.ts"
 import { statesFor, type SelectedCell, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
-type PublicFrame = Omit<NonNullable<SelectedCell["record"]["frames"]>[number], "sourceRef">
+/** A published frame is always a rendered PNG: a text frame is refused before it is published. */
+type PublicFrame = {
+  role: ObservationFrame["role"]
+  label: string
+  capturedAt: number
+  url: string
+  sha256: string
+}
 type PublicImages = { screenshot?: SelectedCell["record"]["screenshot"]; frames?: PublicFrame[] }
 
 export interface EvidenceDocument {
@@ -66,17 +73,30 @@ function publicReview(review: PublicReview): PublicReview {
   return { id: review.id, reviewer: review.reviewer, reason: review.reason, sources: publicSources(review.sources) }
 }
 
-function images(record: SelectedCell["record"]): PublicImages {
+/**
+ * The public view of a cell's retained images. A text frame is refused BY NAME: every consumer of
+ * this record renders a frame as a PNG <img> and the evidence inventory admits only .png, so
+ * publishing one would fail the API build instead of showing evidence. This refusal lifts when the
+ * site can render a text snapshot; until then the frame is never presented.
+ */
+function images(record: SelectedCell["record"], where: string): PublicImages {
   return {
     ...(record.screenshot && { screenshot: { url: record.screenshot.url, sha256: record.screenshot.sha256 } }),
     ...(record.frames && {
-      frames: record.frames.map(({ role, label, capturedAt, url, sha256 }) => ({
-        role,
-        label,
-        capturedAt,
-        url,
-        sha256,
-      })),
+      frames: record.frames.map((frame) => {
+        if (frame.kind === "text-cells" || frame.url === undefined) {
+          throw new Error(
+            `${where}: the site cannot present text-snapshot frame sha256:${frame.sha256} — its evidence cell renders every frame as a PNG and its artifact inventory admits only .png, so text frames are refused by name until the site can render one`,
+          )
+        }
+        return {
+          role: frame.role,
+          label: frame.label,
+          capturedAt: frame.capturedAt,
+          url: frame.url,
+          sha256: frame.sha256,
+        }
+      }),
     }),
   }
 }
@@ -126,7 +146,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
         ...(observation.note !== undefined && { note: observation.note }),
       },
       record: {
-        ...images(record),
+        ...images(record, `run ${version.runId} feature ${cell.featureId}`),
         ...(record.rawReply !== undefined && { rawReply: record.rawReply }),
         assertions: record.assertions.map(({ featureId, kind, rawReplyRef, expected, observed, action, note }) => ({
           featureId,
@@ -146,7 +166,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     if (prior && prior.bytes !== bytes) throw new Error(`Conflicting evidence document ${url}`)
     documents.set(url, { bytes, document })
     result.presentation = { state: "presented", review, url, sha256: createHash("sha256").update(bytes).digest("hex") }
-    result.record = images(record)
+    result.record = images(record, `run ${version.runId} feature ${cell.featureId}`)
     return result
   }
   const target = (value: ProbeTarget): ProbeTarget => ({

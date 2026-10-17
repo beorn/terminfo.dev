@@ -24,8 +24,10 @@ export function createDraft(
   const raw = decodeExactUtf8(rawBytes, rawRunPath)
   const decoded = decodeCollectorRun(rawRunPath, raw, receipt.manifest, receipt.collectorRevision)
   const { run } = decoded
-  if (run.screenshotRefs.length > 0) {
-    throw new Error(`${rawRunPath}: screenshot artifact bytes are not retained with this offline draft`)
+  if (run.screenshotRefs.length > 0 || (run.textSnapshotRefs?.length ?? 0) > 0) {
+    throw new Error(
+      `${rawRunPath}: screenshot or text-snapshot artifact bytes are not retained with this offline draft`,
+    )
   }
   const expected = receipt.manifest.probes[run.target.kind].length
   const ungraded = Object.keys(run.ungradedDiagnostics ?? {}).length

@@ -331,6 +331,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
   return {
     id: row.id,
     termNeedsGeometry: true,
+    cellReadback: true,
     termlessObservationEvidence: "parser-state",
     termless(ctx) {
       // The termless context reports its width and nothing else: the parser arms address cells by

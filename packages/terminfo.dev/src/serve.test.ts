@@ -681,6 +681,94 @@ describe("private finite daemon startup", () => {
     expect(result.status).toBe(0)
   })
 
+  it.each(["windowsHosted", "terminalApp"])(
+    "names the %s arm's missing retention directory once, and hands the batch no text adapter",
+    (arm) => {
+      home = mkdtempSync(join(tmpdir(), "terminfo-serve-windows-skip-"))
+      const result = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      const arm = process.env.FIXTURE_ARM
+      Object.defineProperty(process, "platform", { value: arm === "terminalApp" ? "darwin" : "win32" })
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      let capture
+      let captureKind = "absent"
+      let reads = 0
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        collectorRevision: "b".repeat(40)
+      }
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "kitty", version: "", os: "windows", osVersion: "fixture" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({
+          geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
+          summary: "owned fixture",
+          readCells: async () => { reads += 1; return { status: "refused", reason: "no retention directory in this run" } },
+          dispose: async () => {}
+        })
+      }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async callback => callback(), drainStdin: async () => {},
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          const raw = "\\x1bP>|kitty(0.49.2)\\x1b\\\\\\x1b[?62;52;c"
+          return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
+        runProbeBatch: async options => {
+          capture = options.capture
+          captureKind = options.captureKind ?? "absent"
+          return {
+            rawReplies: {},
+            observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
+            assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
+          }
+        }
+      }))
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      const run = arm === "terminalApp"
+        ? await collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
+        : await collectProbeRun({ ids: ["device.xtversion"] })
+      assert.equal(capture, undefined)
+      assert.equal(captureKind, "absent")
+      assert.equal(reads, 0)
+      assert.deepEqual(run.textSnapshotRefs ?? [], [])
+      assert.equal(run.observations.filter(observation => observation.evidence === "text").length, 0)
+    `,
+        ],
+        {
+          cwd: packageRoot,
+          env: {
+            ...process.env,
+            HOME: home,
+            FIXTURE_ARM: arm,
+            TERMINFO_CAPTURE_DIRECTORY: "",
+            TERMINFO_DISPOSABLE_RECEIPT: arm === "windowsHosted" ? "hardware-receipt-fixture" : "",
+            TERMINFO_RUNTIME_PROVENANCE: "",
+            TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          },
+          encoding: "utf8",
+          timeout: 10_000,
+        },
+      )
+      const lines = result.stderr.split("\n").filter(Boolean)
+      expect(result.status, result.stderr).toBe(0)
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
+      expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
+      expect(lines[0]).toMatch(/no-capture branch$/u)
+    },
+  )
+
   it.each([undefined, '["cursor.hide","reset.decaln"]'])(
     "forwards startup selection %s once and preserves producer completeness",
     async (selection) => {

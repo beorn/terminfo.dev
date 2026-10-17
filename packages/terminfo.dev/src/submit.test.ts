@@ -112,4 +112,8 @@ it("refuses legacy booleans, malformed bytes, and unbound screenshot artifacts",
   expect(() => createDraft(rawPath, draftPath, receipt)).toThrow(/UTF-8/i)
   writeFileSync(rawPath, JSON.stringify({ ...partialRun, screenshotRefs: [`sha256:${"b".repeat(64)}`] }))
   expect(() => createDraft(rawPath, draftPath, receipt)).toThrow(/screenshot.*artifact/i)
+  // The second retained list is guarded too: a text snapshot alone would be cited by a draft that
+  // never carried its bytes, exactly as an unbound screenshot would.
+  writeFileSync(rawPath, JSON.stringify({ ...partialRun, textSnapshotRefs: [`sha256:${"c".repeat(64)}`] }))
+  expect(() => createDraft(rawPath, draftPath, receipt)).toThrow(/text-snapshot artifact/i)
 })
