@@ -1,4 +1,4 @@
-import { defineConfig } from "vitepress"
+import { defineConfig, type HeadConfig } from "vitepress"
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -25,7 +25,7 @@ const buildMetadata = createBuildMetadata(join(docsDir, ".."))
 function loadPlatformItems(): Array<{ text: string; link: string }> {
   const platformsPath = join(docsDir, "..", "content", "platforms.json")
   const platforms = JSON.parse(readFileSync(platformsPath, "utf-8")) as Record<string, { label: string; slug: string }>
-  delete (platforms as any).$comment
+  delete platforms.$comment
   return Object.values(platforms).map((p) => ({
     text: p.label,
     link: `/os/${p.slug}`,
@@ -108,9 +108,10 @@ function buildSidebar() {
   for (const [id, entry] of Object.entries(featuresData)) {
     if (id === "$comment") continue
     const cat = id.split(".")[0]
-    if (!categories.has(cat)) categories.set(cat, [])
+    const categoryFeatures = categories.get(cat) ?? []
+    if (!categories.has(cat)) categories.set(cat, categoryFeatures)
     const slug = entry.slug ?? id.replaceAll(".", "-")
-    categories.get(cat)!.push({ id, name: entry.name, slug })
+    categoryFeatures.push({ id, name: entry.name, slug })
   }
 
   const sortedCategories = [...categories.keys()].sort((a, b) => {
@@ -387,8 +388,8 @@ export default defineConfig({
     // Canonical URL (cleanUrls: true — no .html extension)
     const cleanPath = rel.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "")
     const canonicalUrl = `https://terminfo.dev/${cleanPath}`
-    pageData.frontmatter.head ??= []
-    pageData.frontmatter.head.push(["link", { rel: "canonical", href: canonicalUrl }])
+    const head = (pageData.frontmatter.head ??= []) as HeadConfig[]
+    head.push(["link", { rel: "canonical", href: canonicalUrl }])
 
     // --- Step 1: Set page title and description BEFORE breadcrumbs ---
     // (Breadcrumbs use pageData.title, so it must be resolved first)
@@ -540,7 +541,7 @@ export default defineConfig({
     }
 
     // --- Step 2: OG meta tags (after title/description are resolved) ---
-    pageData.frontmatter.head.push(
+    head.push(
       ["meta", { property: "og:title", content: pageData.title || "Terminfo.dev" }],
       [
         "meta",
@@ -566,7 +567,7 @@ export default defineConfig({
           item: `https://terminfo.dev/${path}`,
         })
       }
-      pageData.frontmatter.head.push([
+      head.push([
         "script",
         { type: "application/ld+json" },
         JSON.stringify({
@@ -601,12 +602,12 @@ export default defineConfig({
         article.dateModified = isoDate
         article.datePublished = isoDate
       }
-      pageData.frontmatter.head.push(["script", { type: "application/ld+json" }, JSON.stringify(article)])
+      head.push(["script", { type: "application/ld+json" }, JSON.stringify(article)])
     }
 
     // --- Step 5: Dataset schema on homepage ---
     if (rel === "index.md") {
-      pageData.frontmatter.head.push([
+      head.push([
         "script",
         { type: "application/ld+json" },
         JSON.stringify({
@@ -702,7 +703,7 @@ export default defineConfig({
     },
   },
 
-  async buildEnd(siteConfig) {
+  buildEnd(siteConfig) {
     // Build verification must not rewrite tracked docs/public artifacts.
     // Standalone `bun scripts/generate-api.ts` refreshes source-public
     // snapshots; VitePress build owns the ignored deploy artifact.
