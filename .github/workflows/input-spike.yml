@@ -1,0 +1,74 @@
+name: input-spike
+
+# Spike only (29814): prove whether each hosted host can deliver an OS-level key into an owned
+# terminal window, with no permission actuation and no runner configuration change. Workflow-only;
+# it writes no run document, admits nothing and never touches a frozen suite.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS CGEvent into the owned Terminal window
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report the Accessibility grant, then post one key
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/input-spike"
+          mkdir -p "$OUT"
+          cat > "$OUT/open.applescript" <<APPLESCRIPT
+          tell application "Terminal"
+            activate
+            do script "rm -f $OUT/received.bin; head -c 1 > $OUT/received.bin"
+          end tell
+          APPLESCRIPT
+          osascript "$OUT/open.applescript"
+          sleep 2
+          osascript -l JavaScript scripts/input-spike-macos.js > "$OUT/result.json" 2> "$OUT/result.err" || true
+          sleep 3
+          {
+            echo "spike=macos"
+            if [ -f "$OUT/received.bin" ]; then
+              echo "delivered=true"
+              echo "bytes=$(od -An -tx1 "$OUT/received.bin")"
+            else
+              echo "delivered=false"
+            fi
+            cat "$OUT/result.json"
+            cat "$OUT/result.err" 2>/dev/null || true
+          } | tee "$OUT/summary.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: input-spike-macos
+          path: ${{ runner.temp }}/input-spike
+
+  windows:
+    name: Windows SendInput into the owned Windows Terminal window
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Launch, focus, and send one key
+        run: ./scripts/input-spike-windows.ps1 -Out "$env:RUNNER_TEMP/input-spike"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: input-spike-windows
+          path: ${{ runner.temp }}/input-spike
