@@ -45,7 +45,7 @@ const manifests = new Map([
   ["21739d9e768f", manifest("21739d9e768f")],
   ["9918f283121a", manifest("9918f283121a")],
   ["tree", manifest("tree")],
-  ["frozen", manifest("frozen")],
+  ["release", manifest("release")],
 ])
 const parseRun = (path: string, source: string, catalogIds: readonly string[]) =>
   parseRunSource(path, source, catalogIds, manifests)
@@ -799,28 +799,50 @@ describe("selected results", () => {
     })
   })
 
-  // 29930: a release-bound reading selects within its declared freeze. The tree-preferred key runs
-  // first today, so an older run on the running tree's suite beats a newer run on the suite the
-  // cohort requires; the selection suite makes the freeze the whole choice set.
-  it("selects within the declared freeze: a newer frozen-suite run outranks an older tree-suite run (29930)", () => {
+  // 29930: a release-bound reading selects within its declared freeze. While the tree has moved past
+  // the release suite, a version's runs are ranked release suite, then tree suite, then older; a newer
+  // capture at the tree therefore cannot displace the frozen reading. With no move the ordering is the
+  // one the site has always used.
+  it("ranks the release suite above the tree suite while the tree has moved (29930)", () => {
     const runs = [
       run("tree-suite", { probeHash: "tree", measuredAt: "2026-10-17T23:08:16.413Z" }),
-      run("frozen-suite", { probeHash: "frozen", measuredAt: "2026-10-17T23:19:21.384Z" }),
+      run("release-suite", { probeHash: "release", measuredAt: "2026-10-17T23:19:21.384Z" }),
     ].map((value) => parseRun(`${value.runId}.json`, JSON.stringify(value), catalog))
     const reviews = runs.map(reviewFor)
+    expect(
+      projectResults(runs, reviews, catalog, { currentProbeHash: "tree", releaseSuiteId: "release" }).current["app:kitty"]
+        ?.runId,
+    ).toBe("release-suite")
+    // No move: no release declaration, or one that IS the tree suite -- today's choice, unchanged.
     expect(projectResults(runs, reviews, catalog, { currentProbeHash: "tree" }).current["app:kitty"]?.runId).toBe(
       "tree-suite",
     )
     expect(
-      projectResults(runs, reviews, catalog, { currentProbeHash: "tree", selectionSuiteId: "frozen" }).current[
-        "app:kitty"
-      ]?.runId,
-    ).toBe("frozen-suite")
+      projectResults(runs, reviews, catalog, { currentProbeHash: "tree", releaseSuiteId: "tree" }).current["app:kitty"]
+        ?.runId,
+    ).toBe("tree-suite")
   })
 
-  it("skips a newer version with no run on the selection suite, and names a context with none (29930)", () => {
+  it("leaves the selected run byte-identical when a same-version tree-suite capture is admitted (29930)", () => {
+    const release = run("release-run", { probeHash: "release", measuredAt: "2026-10-17T00:00:00.000Z" })
+    const capture = run("tree-capture", { probeHash: "tree", measuredAt: "2026-10-17T01:00:00.000Z" })
+    const policy = { currentProbeHash: "tree", releaseSuiteId: "release" }
+    const build = (values: Record<string, unknown>[]) => {
+      const parsed = values.map((value) => parseRun(`${value.runId as string}.json`, JSON.stringify(value), catalog))
+      return projectResults(parsed, parsed.map(reviewFor), catalog, policy)
+    }
+    const before = build([release])
+    const after = build([release, capture])
+    expect(after.current["app:kitty"]).toEqual(before.current["app:kitty"])
+    // The capture is admitted and kept in history, labelled -- it just cannot be the selected run.
+    expect(after.history["app:kitty"]?.map((value) => value.runId)).toContain("tree-capture")
+  })
+
+  it("still selects a newer terminal version measured only at the tree, off the release suite (29930)", () => {
+    // The version sort runs first, so a newer version with no release-suite run is still selected and
+    // reads ineligible at a cohort: an honest dark, never a claim.
     const runs = [
-      run("frozen-old-version", { probeHash: "frozen", measuredAt: "2026-10-17T00:00:00.000Z" }),
+      run("release-old-version", { probeHash: "release", measuredAt: "2026-10-17T00:00:00.000Z" }),
       run("tree-new-version", {
         probeHash: "tree",
         measuredAt: "2026-10-17T01:00:00.000Z",
@@ -835,20 +857,11 @@ describe("selected results", () => {
       }),
     ].map((value) => parseRun(`${value.runId}.json`, JSON.stringify(value), catalog))
     const reviews = runs.map(reviewFor)
-    // The version sort runs first: today the newer tree-suite version wins outright.
-    expect(projectResults(runs, reviews, catalog, { currentProbeHash: "tree" }).current["app:kitty"]?.runId).toBe(
-      "tree-new-version",
-    )
-    const bound = projectResults(runs, reviews, catalog, { currentProbeHash: "tree", selectionSuiteId: "frozen" })
-    expect(bound.current["app:kitty"]?.runId).toBe("frozen-old-version")
-    expect(bound.versions["app:kitty"]?.map((value) => value.runId)).toEqual(["frozen-old-version"])
-    const onlyTree = runs.filter((value) => value.runId === "tree-new-version")
-    const treeOnly = projectResults(onlyTree, onlyTree.map(reviewFor), catalog, {
-      currentProbeHash: "tree",
-      selectionSuiteId: "frozen",
-    })
-    expect(treeOnly.current["app:kitty"]).toBeUndefined()
-    expect(treeOnly.history["app:kitty"]).toHaveLength(1)
+    const projection = projectResults(runs, reviews, catalog, { currentProbeHash: "tree", releaseSuiteId: "release" })
+    const selected = projection.current["app:kitty"]
+    expect(selected?.runId).toBe("tree-new-version")
+    expect(selected?.suiteId).toBe("suite-2")
+    expect(selected?.suiteRelation).toBe("tree")
   })
 
   it("scopes reviewed corrections and leaves raw run bytes unchanged", () => {

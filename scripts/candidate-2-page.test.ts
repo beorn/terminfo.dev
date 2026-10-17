@@ -310,14 +310,14 @@ describe("candidate-2 page: wiring", () => {
         group.heldBy.map((row) => row.context),
         key,
       ).toEqual(below)
-      // kitty/macOS carries no run on the frozen suite at all, so it has no selected run: named,
-      // never counted (29930 — a release-bound reading selects within its declared freeze, so an
-      // off-freeze run is not "selected and refused" any more).
+      // kitty/macOS carries a run the frozen suite does not admit: named, never counted.
       expect(
         group.unmeasured.map((row) => row.context),
         key,
       ).toEqual(["kitty/macos"])
-      expect(group.unmeasured[0]?.reason, key).toContain("no selected run for kitty/macos")
+      expect(group.unmeasured[0]?.reason, key).toContain(
+        "ineligible: selected run on suite 9918f283121a, required 5753741410a9",
+      )
     }
   })
 

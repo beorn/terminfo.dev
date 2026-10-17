@@ -443,11 +443,20 @@ export function projectResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
-  policy: { currentProbeHash: string; releaseSuiteId?: string | null; selectionSuiteId?: string | null },
+  policy: { currentProbeHash: string; releaseSuiteId?: string | null },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null
-  const selectionSuiteId = policy.selectionSuiteId ?? null
+  // 29930: a release-bound reading selects within its declared freeze. While the tree has moved past
+  // the release suite, a version's runs are ranked release suite, then tree suite, then older, so a
+  // newer capture at the tree cannot displace the frozen reading; measuredAt still breaks ties inside
+  // a rank. With no move (no release suite, or it equals the tree suite) the ordering is unchanged.
+  const treeMoved = releaseSuiteId !== null && releaseSuiteId !== policy.currentProbeHash
+  const suiteRank = (run: LoadedRun): number => {
+    if (!run.suiteComplete) return 0
+    if (treeMoved && run.probeHash === releaseSuiteId) return 2
+    return run.probeHash === policy.currentProbeHash ? 1 : 0
+  }
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
   for (const run of runs) {
@@ -525,21 +534,14 @@ export function projectResults(
     }
     versions[key] = []
     for (const version of [...byVersion.keys()].sort((a, b) => versionCompare(b, a))) {
-      const all = byVersion.get(version)
-      if (!all?.length) throw new Error(`missing run choices for ${key} ${version}`)
-      // 29930: a release-bound reading chooses only within its declared freeze. A version with no
-      // suite-complete run there is skipped, so a newer off-freeze version or capture can never
-      // displace the frozen reading. Context keys are still computed over every run above; the input
-      // is never filtered, or reviews keyed on the stem would break.
-      const choices = selectionSuiteId
-        ? all.filter((run) => run.suiteComplete && run.probeHash === selectionSuiteId)
-        : all
-      if (choices.length === 0) continue
-      choices.sort((a, b) => {
-        const af = a.probeHash === policy.currentProbeHash && a.suiteComplete ? 1 : 0
-        const bf = b.probeHash === policy.currentProbeHash && b.suiteComplete ? 1 : 0
-        return bf - af || Date.parse(b.measuredAt) - Date.parse(a.measuredAt) || b.runId.localeCompare(a.runId)
-      })
+      const choices = byVersion.get(version)
+      if (!choices?.length) throw new Error(`missing run choices for ${key} ${version}`)
+      choices.sort(
+        (a, b) =>
+          suiteRank(b) - suiteRank(a) ||
+          Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
+          b.runId.localeCompare(a.runId),
+      )
       const chosen = choices[0]
       if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
       const assessment = assessments.get(chosen.runId)
@@ -549,15 +551,7 @@ export function projectResults(
       )
     }
     const selected = versions[key][0]
-    if (!selected) {
-      // A context with no run on the declared freeze has no selected run at all: the reader names it,
-      // and an empty row is never published as a zero-row basis.
-      if (selectionSuiteId) {
-        delete versions[key]
-        continue
-      }
-      throw new Error(`missing selected version for ${key}`)
-    }
+    if (!selected) throw new Error(`missing selected version for ${key}`)
     current[key] = selected
   }
   // One classification per cell, for every run the projection read: `current` and `versions` are drawn
@@ -618,7 +612,7 @@ export function readVerifiedArtifact(
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
-  options: { artifactDir?: string; releaseSuiteId?: string | null; selectionSuiteId?: string | null } = {},
+  options: { artifactDir?: string; releaseSuiteId?: string | null } = {},
 ): SelectedProjection {
   const featuresPath = join(contentDir, "features.json")
   if (!existsSync(featuresPath)) fail(featuresPath, "missing required catalog")
@@ -665,6 +659,5 @@ export function loadSelectedResults(
   return projectResults(runs, interpretations, catalog, {
     currentProbeHash,
     releaseSuiteId: options.releaseSuiteId ?? null,
-    selectionSuiteId: options.selectionSuiteId ?? null,
   })
 }
