@@ -261,9 +261,53 @@ describe("candidate-2 page: wiring", () => {
         ]),
       )
       expect(group.included).toBe(shares.length > 0 && below.length === 0)
+      // The per-context include is the SAME basis decision, not a second rule: a context is in
+      // includedOn exactly when its share clears the bar, and the two lists partition the measured
+      // contexts, so no context can be silently dropped or double-claimed (@chief option A).
+      expect(group.includedOn).toEqual(
+        shares
+          .filter((entry) => basis(entry).decisivePct >= 90)
+          .map((entry) => publishedRows.find((row) => row.groups.includes(entry))?.context),
+      )
+      expect(new Set([...group.includedOn, ...group.heldBy.map((row) => row.context)]).size).toBe(publishedRows.length)
+      // A context with no published run is neither included nor held, and its own reason is kept.
+      expect(group.unmeasured.map((row) => row.context)).toEqual(
+        data.contexts.filter((row) => !row.published).map((row) => row.context),
+      )
+      for (const row of group.unmeasured) expect(row.reason, row.context).toBeTruthy()
     }
     expect(data.groups.some((group) => group.included)).toBe(true)
     expect(data.groups.some((group) => !group.included)).toBe(true)
+  })
+
+  it("includes Editing and Character Sets on the six ruled contexts and names the rest", () => {
+    // @chief option A, 2026-10-17: included per context on the six that clear 90 percent, every
+    // other context held or named not measured, nothing claimed on ten. A new suite or collection
+    // that moves these numbers must change this table deliberately, never loosen the assertion.
+    const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
+    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"]
+    // The page must say all of it in the group's State cell, not only in its data.
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain("Included on {{ group.includedOn.length }} of")
+    expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
+    for (const key of ["editing", "charsets"]) {
+      const group = data.groups.find((entry) => entry.key === key)
+      if (!group) throw new Error(`group ${key} is missing from the page`)
+      expect(group.included, key).toBe(false)
+      expect(group.includedOn, key).toEqual(six)
+      expect(
+        group.heldBy.map((row) => row.context),
+        key,
+      ).toEqual(below)
+      // kitty/macOS carries a run the frozen suite does not admit: named, never counted.
+      expect(
+        group.unmeasured.map((row) => row.context),
+        key,
+      ).toEqual(["kitty/macos"])
+      expect(group.unmeasured[0]?.reason, key).toContain(
+        "ineligible: selected run on suite 9918f283121a, required 5753741410a9",
+      )
+    }
   })
 
   // review2: a published context must carry every included group's share (the loader now throws

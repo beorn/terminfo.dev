@@ -12,7 +12,8 @@ import { D3_VERDICT_BAR } from '../data/release-scope.ts'
 const published = data.contexts.filter((row) => row.published)
 const omitted = data.contexts.filter((row) => !row.published)
 const includedGroups = data.groups.filter((group) => group.included).length
-const heldGroups = data.groups.length - includedGroups
+const includedOnSome = data.groups.filter((group) => !group.included && group.includedOn.length > 0).length
+const heldEverywhere = data.groups.length - includedGroups - includedOnSome
 const measuredOn = data.measuredAt
   ? new Date(data.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
   : null
@@ -40,10 +41,10 @@ function remainderLabel(row) {
 
 # terminfo v0.1 candidate 2 — the classics
 
-<p class="c2-lede">This page is <strong>terminfo v0.1 candidate 2</strong>: the classic terminal capabilities. A group is marked <strong>included</strong> only where every measured context clears its pass bar on the group's in-scope basis; every other group is shown as <strong>held</strong>, with the contexts that hold it named beside the fraction. It previews a release that has not been <em>ratified</em>, and it is a separate surface &mdash; the published matrix still reports Release 1.</p>
+<p class="c2-lede">This page is <strong>terminfo v0.1 candidate 2</strong>: the classic terminal capabilities. A group is <strong>included on each context</strong> that clears its pass bar on the group's in-scope basis, and the contexts that do not clear it are named as <strong>held</strong> with their fraction; a context with no published run is named as <strong>not measured</strong> and is never counted for or against a group. It previews a release that has not been <em>ratified</em>, and it is a separate surface &mdash; the published matrix still reports Release 1.</p>
 
 <div class="c2-basis">
-  <p><strong>{{ data.ratifiedCount }} capabilities are in scope</strong> across {{ data.groups.length }} groups, of which <strong>{{ includedGroups }}</strong> groups read included and <strong>{{ heldGroups }}</strong> are held. Each context total divides over the <strong>{{ data.scoredCount }}</strong> rows a terminal application run can decide; each per-group fraction divides over the <strong>{{ data.decidableCount }}</strong> of those rows the frozen suite also carries a probe for. The rows outside each basis are named beside their group and never scored.</p>
+  <p><strong>{{ data.ratifiedCount }} capabilities are in scope</strong> across {{ data.groups.length }} groups: <strong>{{ includedGroups }}</strong> clear the bar on every measured context, <strong>{{ includedOnSome }}</strong> clear it on some contexts and are held on the rest, and <strong>{{ heldEverywhere }}</strong> clear it nowhere. Each context total divides over the <strong>{{ data.scoredCount }}</strong> rows a terminal application run can decide; each per-group fraction divides over the <strong>{{ data.decidableCount }}</strong> of those rows the frozen suite also carries a probe for. The rows outside each basis are named beside their group and never scored.</p>
   <p>Measured on the frozen probe suite <code>{{ data.frozenSuiteId }}</code><template v-if="measuredOn">, on {{ measuredOn }}</template>.</p>
   <p>A terminal <strong>passes</strong> at {{ D3_VERDICT_BAR.passPct }}% of a group's in-scope basis reading decisive &mdash; its app-decidable rows plus the library-only rows the group counts &mdash; <strong>with gaps</strong> from {{ D3_VERDICT_BAR.gapsPct }}%, and <strong>fails</strong> below; the fraction is always printed beside the label.</p>
 </div>
@@ -66,14 +67,13 @@ function remainderLabel(row) {
       <td class="c2-group-col"><a :href="'/' + group.key">{{ group.label }}</a></td>
       <td class="c2-count-col">{{ group.capabilities.length }}</td>
       <td class="c2-state-col">
-        <template v-if="group.included"><strong>Included</strong></template>
-        <template v-else-if="group.heldBy.length === 0">
-          <strong>HELD</strong> &mdash; no eligible measured context yet, so nothing is claimed
-        </template>
-        <template v-else>
-          <strong>HELD</strong> &mdash; {{ group.heldBy.length }} context<template v-if="group.heldBy.length !== 1">s</template> below the bar:
-          {{ group.heldBy.map((row) => row.context + ' ' + row.decisive + '/' + row.denominator + ' (' + row.decisivePct + '%)').join(', ') }}
-        </template>
+        <template v-if="group.included"><strong>Included</strong> on every measured context ({{ group.includedOn.length }})</template>
+        <template v-else-if="group.includedOn.length > 0"><strong>Included on {{ group.includedOn.length }} of {{ group.includedOn.length + group.heldBy.length }}</strong> measured contexts</template>
+        <template v-else-if="group.heldBy.length > 0"><strong>HELD</strong> &mdash; no context clears the bar</template>
+        <template v-else><strong>HELD</strong> &mdash; no eligible measured context yet, so nothing is claimed</template>
+        <template v-if="!group.included && group.includedOn.length > 0">: {{ group.includedOn.join(', ') }}</template>
+        <template v-if="group.heldBy.length > 0">; below the bar: {{ group.heldBy.map((row) => row.context + ' ' + row.decisive + '/' + row.denominator + ' (' + row.decisivePct + '%)').join(', ') }}</template>
+        <template v-if="group.unmeasured.length > 0">; not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}</template>
       </td>
       <td v-for="context in published" :key="context.context" class="c2-share">
         <template v-if="groupShare(context, group.key)">{{ groupShare(context, group.key) }}</template>
@@ -91,7 +91,7 @@ function remainderLabel(row) {
 </table>
 </div>
 
-<p class="c2-note">A group is <strong>included</strong> only when every measured context clears the {{ D3_VERDICT_BAR.passPct }}% bar on the group's in-scope basis; a group with any context below the bar is <strong>held</strong> and names those contexts in its State cell. A group with no eligible measured context is held without naming a context, because no measurement may be claimed as one. A &ldquo;pass&rdquo; beside a fraction says how much of the group that run could decide, not that the terminal supports every row: it is decisiveness, and the failing rows are always printed.</p>
+<p class="c2-note">A group is <strong>included on each context</strong> that clears the {{ D3_VERDICT_BAR.passPct }}% bar on the group's in-scope basis, and the contexts below it are <strong>held</strong> and named with their fraction in the State cell. A context with no published run is named <strong>not measured</strong> and is not counted either way, so no group is claimed on a context that never measured it. A group with no eligible measured context is held without naming a context, because no measurement may be claimed as one. A &ldquo;pass&rdquo; beside a fraction says how much of the group that run could decide, not that the terminal supports every row: it is decisiveness, and the failing rows are always printed.</p>
 
 ## The contexts behind the fractions {#contexts}
 
