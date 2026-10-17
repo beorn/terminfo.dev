@@ -45,7 +45,9 @@ jobs:
             do script "$OUT/reader.sh &"
           end tell
           APPLESCRIPT
-          osascript "$OUT/open.applescript"
+          # The AppleEvent does not return while the reader waits on its tty, so launch it detached:
+          # the terminal still runs the command, and the runner continues to the post.
+          osascript "$OUT/open.applescript" &
           sleep 2
           ( osascript -e 'tell application "Terminal" to get version' > "$OUT/appleevent.txt" 2> "$OUT/appleevent.err" ) || true
           open -a Terminal
