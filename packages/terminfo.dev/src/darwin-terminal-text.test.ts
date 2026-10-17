@@ -1,8 +1,8 @@
 /**
  * @failure The macOS app arms read class-A rows without a cell readback, and a readback that walked
  *   an iTerm2 window for sessions it does not expose, mapped scrollback or a soft-wrapped line onto
- *   the screen, guessed a trimmed row's missing width, or trusted a grid other than the measured one
- *   would decide those rows on a snapshot nobody could place on the grid.
+ *   the screen, padded a row containing a character whose width it cannot name, or trusted a grid
+ *   other than the measured one would decide those rows on a snapshot nobody could place on the grid.
  * @level l1
  * @consumer readTerminalTextSnapshot, the macOS half of the hosted-arm cell readback.
  * @testonly none
@@ -197,11 +197,12 @@ describe("isPrintableAsciiCell — one code point, one cell, or the mapping is r
 })
 
 describe("mapSnapshotToCells — exact, or padded-and-named, never guessed", () => {
-  it("maps a snapshot that fits the measured grid exactly, dropping nothing", () => {
+  it("maps a snapshot that fits the measured grid exactly, padding nothing and dropping nothing", () => {
     expect(mapSnapshotToCells("abc\ndef\n", 3, 2)).toEqual({
       cols: 3,
       rows: 2,
       text: ["abc", "def"],
+      paddedRows: [],
       droppedLines: 0,
     })
   })
@@ -211,6 +212,7 @@ describe("mapSnapshotToCells — exact, or padded-and-named, never guessed", () 
       cols: 2,
       rows: 1,
       text: ["ab"],
+      paddedRows: [],
       droppedLines: 7,
     })
   })
@@ -235,9 +237,34 @@ describe("mapSnapshotToCells — exact, or padded-and-named, never guessed", () 
     expect(mapped).toMatch(/not printable ASCII/u)
   })
 
-  it("refuses a trimmed row, because its missing width is unknown without padding", () => {
-    expect(mapSnapshotToCells("ab\n", 3, 1)).toMatch(/row 1 is 2 characters under 3 columns/u)
-    expect(mapSnapshotToCells("ab\n\n", 3, 2)).toMatch(/row 1 is 2 characters under 3 columns/u)
+  it("pads a trimmed row back to the measured width and names it as padded", () => {
+    expect(mapSnapshotToCells("ab\n", 3, 1)).toEqual({
+      cols: 3,
+      rows: 1,
+      text: ["ab "],
+      paddedRows: [1],
+      droppedLines: 0,
+    })
+  })
+
+  it("leaves a row that already reaches the measured width untouched", () => {
+    expect(mapSnapshotToCells("ab\nabcd\n", 4, 2)).toEqual({
+      cols: 4,
+      rows: 2,
+      text: ["ab  ", "abcd"],
+      paddedRows: [1],
+      droppedLines: 0,
+    })
+  })
+
+  it("maps an empty last row to blanks, which is what it is", () => {
+    expect(mapSnapshotToCells("ab\n\n", 3, 2)).toEqual({
+      cols: 3,
+      rows: 2,
+      text: ["ab ", "   "],
+      paddedRows: [1, 2],
+      droppedLines: 0,
+    })
   })
 
   it("refuses a snapshot whose line count is not the screen's row count", () => {
@@ -286,12 +313,12 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     expect(read).toEqual({
       status: "read",
       app: "iterm2",
-      cells: { cols: 3, rows: 1, text: ["abc"], droppedLines: 0 },
+      cells: { cols: 3, rows: 1, text: ["abc"], paddedRows: [], droppedLines: 0 },
     })
   })
 
   it("runs its own generated script against the app's object model end to end", () => {
-    const session = itermSession({ contents: () => "scrolled away\nscroll\nbbbbbb\n", columns: () => 6 })
+    const session = itermSession({ contents: () => "scrolled away\nscroll\naaa\n", columns: () => 6 })
     const read = readTerminalTextSnapshot({
       ...base,
       cols: 6,
@@ -304,7 +331,7 @@ describe("readTerminalTextSnapshot — one path, refusals with reasons", () => {
     expect(read).toEqual({
       status: "read",
       app: "iterm2",
-      cells: { cols: 6, rows: 2, text: ["scroll", "bbbbbb"], droppedLines: 1 },
+      cells: { cols: 6, rows: 2, text: ["scroll", "aaa   "], paddedRows: [2], droppedLines: 1 },
     })
   })
 

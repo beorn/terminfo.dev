@@ -27,9 +27,10 @@
  * Automation (TCC) denial, which is named as a denial rather than reported as a generic script
  * failure.
  *
- * A row shorter than `cols` is a refusal, not a padding: a printable ASCII code point fills exactly
- * one cell, so the missing width is trailing blanks the terminal trimmed, and the row's exact
- * characters are then unknown.
+ * Padding depends on that allowlist and on nothing else: a printable ASCII code point fills exactly
+ * one cell, so a row shorter than `cols` that passed every check is a row whose trailing blanks the
+ * terminal trimmed, and padding them back restores its exact characters. Every padded row is named
+ * in `paddedRows` so the evidence label can say so.
  *
  * Empty text is a VALUE. Nothing here turns "no characters" into "could not read".
  */
@@ -48,6 +49,9 @@ export interface TerminalCellGrid {
   readonly cols: number
   readonly rows: number
   readonly text: readonly string[]
+  /** 1-based rows whose trailing blanks the terminal trimmed and this read padded back to `cols`.
+   * Named, never silent: the evidence label says which rows were padded. */
+  readonly paddedRows: readonly number[]
   /** Lines the snapshot carried above the visible screen and the read did not map. Zero for a
    * terminal that reports its screen alone. */
   readonly droppedLines: number
@@ -196,6 +200,7 @@ export function mapSnapshotToCells(
     return `the snapshot has ${String(lines.length)} lines where the measured screen has ${String(rows)} rows`
   }
   const mapped: string[] = []
+  const paddedRows: number[] = []
   for (const [index, line] of lines.entries()) {
     const row = index + 1
     const points = [...line]
@@ -208,12 +213,12 @@ export function mapSnapshotToCells(
     if (points.length > cols) {
       return `row ${String(row)} is ${String(points.length)} characters over ${String(cols)} columns, so the terminal wrapped it and the row boundary is unknown`
     }
-    if (points.length < cols) {
-      return `row ${String(row)} is ${String(points.length)} characters under ${String(cols)} columns, so the terminal trimmed it and the row's exact characters are unknown`
-    }
-    mapped.push(line)
+    // A row that passed those checks has width `cols`: the terminal trims only trailing blanks, so
+    // padding them back is a measurement. The row is recorded so the evidence label can say so.
+    if (points.length < cols) paddedRows.push(row)
+    mapped.push(points.length < cols ? `${line}${" ".repeat(cols - points.length)}` : line)
   }
-  return { cols, rows, text: mapped, droppedLines }
+  return { cols, rows, text: mapped, paddedRows, droppedLines }
 }
 
 export interface TerminalTextReadOptions {
