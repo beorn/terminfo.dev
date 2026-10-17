@@ -57,7 +57,11 @@ export interface Candidate2Group {
    * `included`; it names them in `includedOn` instead (@chief option A, 2026-10-17).
    */
   included: boolean
-  /** The published contexts that CLEAR this group's bar, in page order — what the page includes it on. */
+  /**
+   * The published contexts that CLEAR this group's bar, in page order — what the page includes it on
+   * when per-context inclusion applies to the group. Only the two groups the ruling names carry a
+   * claim here; every other group leaves this empty and stays held.
+   */
   includedOn: string[]
   /** The measured contexts that keep this group out of the included set, in page order. */
   heldBy: Candidate2HeldContext[]
@@ -309,6 +313,9 @@ export function loadCandidate2Data(): Candidate2Data {
   // Inclusion is MEASURED per group, never claimed page-wide: a group is included only when every
   // context we actually measured clears its pass bar, and the contexts that do not are named. A
   // context with no published run cannot hold a group, and cannot accept one either.
+  // The groups the per-context include ruling names. Membership is data, not a name test at the
+  // call site, so the page and its tests read the same list.
+  const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets"])
   const groupsWithState: Candidate2Group[] = groups.map((group) => {
     const includedOn: string[] = []
     const heldBy: Candidate2HeldContext[] = []
@@ -335,7 +342,9 @@ export function loadCandidate2Data(): Candidate2Data {
           decisivePct: basis.decisivePct,
           verdictLabel: basis.verdictLabel,
         })
-      } else {
+      } else if (PER_CONTEXT_INCLUDED.has(group.key)) {
+        // Per-context inclusion is ruled for these groups only; the rest keep their hold, so no
+        // consumer can promote them on a context the ruling did not cover.
         includedOn.push(row.context)
       }
     }
