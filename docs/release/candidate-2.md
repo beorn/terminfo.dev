@@ -11,6 +11,8 @@ import { D3_VERDICT_BAR } from '../data/release-scope.ts'
 
 const published = data.contexts.filter((row) => row.published)
 const omitted = data.contexts.filter((row) => !row.published)
+const includedGroups = data.groups.filter((group) => group.included).length
+const heldGroups = data.groups.length - includedGroups
 const measuredOn = data.measuredAt
   ? new Date(data.measuredAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
   : null
@@ -38,22 +40,23 @@ function remainderLabel(row) {
 
 # terminfo v0.1 candidate 2 — the classics
 
-<p class="c2-lede">This page is <strong>terminfo v0.1 candidate 2</strong>: the classic terminal capabilities, shown as <strong>included</strong>. It previews a release that has not been <em>ratified</em>, and it is a separate surface &mdash; the published matrix still reports Release 1.</p>
+<p class="c2-lede">This page is <strong>terminfo v0.1 candidate 2</strong>: the classic terminal capabilities. A group is marked <strong>included</strong> only where every measured context clears its pass bar; every other group is shown as <strong>held</strong>, with the contexts that hold it named beside the fraction. It previews a release that has not been <em>ratified</em>, and it is a separate surface &mdash; the published matrix still reports Release 1.</p>
 
 <div class="c2-basis">
-  <p><strong>{{ data.ratifiedCount }} capabilities are included</strong> across {{ data.groups.length }} groups. Each context total divides over the <strong>{{ data.scoredCount }}</strong> included rows a terminal application run can decide; each per-group fraction divides over the <strong>{{ data.decidableCount }}</strong> of those rows the frozen suite also carries a probe for. The rows outside each basis are named beside their group and never scored.</p>
+  <p><strong>{{ data.ratifiedCount }} capabilities are in scope</strong> across {{ data.groups.length }} groups, of which <strong>{{ includedGroups }}</strong> groups read included and <strong>{{ heldGroups }}</strong> are held. Each context total divides over the <strong>{{ data.scoredCount }}</strong> rows a terminal application run can decide; each per-group fraction divides over the <strong>{{ data.decidableCount }}</strong> of those rows the frozen suite also carries a probe for. The rows outside each basis are named beside their group and never scored.</p>
   <p>Measured on the frozen probe suite <code>{{ data.frozenSuiteId }}</code><template v-if="measuredOn">, on {{ measuredOn }}</template>.</p>
   <p>A terminal <strong>passes</strong> at {{ D3_VERDICT_BAR.passPct }}% of a group's included rows reading decisive, <strong>with gaps</strong> from {{ D3_VERDICT_BAR.gapsPct }}%, and <strong>fails</strong> below &mdash; the fraction is always printed beside the label.</p>
 </div>
 
-## The included groups {#groups}
+## The groups {#groups}
 
 <div class="c2-scroll">
 <table class="c2-matrix">
   <thead>
     <tr>
-      <th class="c2-group-col">Included capability group</th>
-      <th class="c2-count-col">Included</th>
+      <th class="c2-group-col">Capability group</th>
+      <th class="c2-count-col">Rows</th>
+      <th class="c2-state-col">State</th>
       <th v-for="context in published" :key="context.context">{{ context.context }}</th>
       <th class="c2-named-col">Named, never scored</th>
     </tr>
@@ -62,6 +65,13 @@ function remainderLabel(row) {
     <tr v-for="group in data.groups" :key="group.key">
       <td class="c2-group-col"><a :href="'/' + group.key">{{ group.label }}</a></td>
       <td class="c2-count-col">{{ group.capabilities.length }}</td>
+      <td class="c2-state-col">
+        <template v-if="group.included"><strong>Included</strong></template>
+        <template v-else>
+          <strong>HOLD</strong> &mdash; {{ group.heldBy.length }} context<template v-if="group.heldBy.length !== 1">s</template> below the bar:
+          {{ group.heldBy.map((row) => row.context + ' ' + row.decisive + '/' + row.denominator + ' (' + row.decisivePct + '%)').join(', ') }}
+        </template>
+      </td>
       <td v-for="context in published" :key="context.context" class="c2-share">
         <template v-if="groupShare(context, group.key)">{{ groupShare(context, group.key) }}</template>
         <template v-else>—</template>
@@ -78,7 +88,7 @@ function remainderLabel(row) {
 </table>
 </div>
 
-<p class="c2-note">Every group above is <strong>included</strong> in candidate 2. A &ldquo;pass&rdquo; says how much of the group the run could decide, not that the terminal supports every row: it is decisiveness, and the failing rows are always printed.</p>
+<p class="c2-note">A group is <strong>included</strong> only when every measured context clears the {{ D3_VERDICT_BAR.passPct }}% bar for it; a group with any context below the bar is <strong>held</strong> and names those contexts in its State cell. A &ldquo;pass&rdquo; beside a fraction says how much of the group that run could decide, not that the terminal supports every row: it is decisiveness, and the failing rows are always printed.</p>
 
 ## The contexts behind the fractions {#contexts}
 

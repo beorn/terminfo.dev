@@ -229,6 +229,26 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
 })
 
 describe("candidate-2 page: wiring", () => {
+  // @chief cf1daa5a / review2 cd06b94c: the page may not claim a group included while a measured
+  // context sits below the bar. Nothing else in this suite reads the inclusion state, so without
+  // this the page could silently go back to a page-wide include claim.
+  it("marks a group included only when every measured context clears its bar", () => {
+    const publishedRows = data.contexts.filter((row) => row.published)
+    for (const group of data.groups) {
+      const shares = publishedRows.flatMap((row) =>
+        row.groups.filter((entry) => entry.key === group.key).map((entry) => entry),
+      )
+      const below = shares.filter((entry) => entry.decisivePct < 90)
+      expect(group.heldBy.map((row) => row.context)).toEqual(
+        below.map((entry) => publishedRows.find((row) => row.groups.includes(entry))?.context),
+      )
+      expect(group.included).toBe(shares.length > 0 && below.length === 0)
+    }
+    // The live tree must exercise BOTH states, or the rule is untested on the data that ships.
+    expect(data.groups.some((group) => group.included)).toBe(true)
+    expect(data.groups.some((group) => !group.included)).toBe(true)
+  })
+
   it("the VitePress page reads its loader, and the nav names the route", () => {
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("from '../data/candidate-2.data'")

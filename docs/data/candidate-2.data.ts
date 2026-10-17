@@ -25,7 +25,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
-import type { D3Label } from "./release-scope.ts"
+import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
   buildReport,
   categoryShares,
@@ -50,6 +50,13 @@ export interface Candidate2Group {
   key: string
   label: string
   order: number
+  /**
+   * True only when EVERY context with a published run clears the group's pass bar. The page may not
+   * claim a group globally included while a measured context sits below the bar (@chief cf1daa5a).
+   */
+  included: boolean
+  /** The measured contexts that keep this group out of the included set, in page order. */
+  heldBy: Candidate2HeldContext[]
   /** Every included capability of this group (the ratified base). */
   capabilities: Candidate2Capability[]
   /** How many of them every fraction below divides over — the decidable base. */
@@ -58,6 +65,15 @@ export interface Candidate2Group {
   libraryOnly: Candidate2Capability[]
   /** Included, with no probe in the frozen suite at all: named beside the fraction, never scored. */
   unavailable: Candidate2Capability[]
+}
+
+/** One measured context that is below a group's pass bar, with the fraction that says so. */
+export interface Candidate2HeldContext {
+  context: string
+  decisive: number
+  denominator: number
+  decisivePct: number
+  verdictLabel: D3Label
 }
 
 /**
@@ -167,7 +183,7 @@ export function loadCandidate2Data(): Candidate2Data {
   const libraryOnly = new Set(cohort.libraryOnlyIds)
   const unavailable = new Set(cohort.unavailableIds)
 
-  const groups: Candidate2Group[] = included.map((category) => {
+  const groups: Omit<Candidate2Group, "included" | "heldBy">[] = included.map((category) => {
     const scored = decidableByKey.get(category.key)
     if (!scored) throw new Error(`group ${category.key} is included but has no decidable rows; the two bases disagree`)
     return {
@@ -274,6 +290,30 @@ export function loadCandidate2Data(): Candidate2Data {
     }
   }
 
+  // Inclusion is MEASURED per group, never claimed page-wide: a group is included only when every
+  // context we actually measured clears its pass bar, and the contexts that do not are named. A
+  // context with no published run cannot hold a group, and cannot accept one either.
+  const groupsWithState: Candidate2Group[] = groups.map((group) => {
+    const heldBy: Candidate2HeldContext[] = []
+    let measuredContexts = 0
+    for (const row of contexts) {
+      if (!row.published) continue
+      const share = row.groups.find((entry) => entry.key === group.key)
+      if (!share) continue
+      measuredContexts++
+      if (share.decisivePct < D3_VERDICT_BAR.passPct) {
+        heldBy.push({
+          context: row.context,
+          decisive: share.decisive,
+          denominator: share.denominator,
+          decisivePct: share.decisivePct,
+          verdictLabel: share.verdictLabel,
+        })
+      }
+    }
+    return { ...group, included: measuredContexts > 0 && heldBy.length === 0, heldBy }
+  })
+
   return {
     name: cohort.name,
     frozenSuiteId: cohort.frozenSuiteId,
@@ -283,7 +323,7 @@ export function loadCandidate2Data(): Candidate2Data {
     measuredAt,
     libraryOnly: cohort.libraryOnlyIds.map(capability),
     unavailable: cohort.unavailableIds.map(capability),
-    groups,
+    groups: groupsWithState,
     contexts,
   }
 }
