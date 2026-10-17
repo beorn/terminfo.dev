@@ -26,14 +26,19 @@ jobs:
           set -euo pipefail
           OUT="$RUNNER_TEMP/input-spike"
           mkdir -p "$OUT"
-          cat > "$OUT/open.applescript" <<APPLESCRIPT
-          tell application "Terminal"
-            activate
-            do script "rm -f $OUT/received.bin; head -c 1 > $OUT/received.bin"
-          end tell
-          APPLESCRIPT
-          osascript "$OUT/open.applescript"
-          sleep 2
+          # LaunchServices opens the script in Terminal without an AppleEvent; a minimal AppleEvent
+          # is probed separately so an Automation denial is named, not folded into the key result.
+          cat > "$OUT/reader.sh" <<READER
+          #!/bin/bash
+          rm -f "$OUT/received.bin"
+          head -c 1 > "$OUT/received.bin"
+          READER
+          chmod +x "$OUT/reader.sh"
+          open -a Terminal "$OUT/reader.sh"
+          sleep 3
+          ( osascript -e 'tell application "Terminal" to get version' > "$OUT/appleevent.txt" 2> "$OUT/appleevent.err" ) || true
+          open -a Terminal
+          sleep 1
           osascript -l JavaScript scripts/input-spike-macos.js > "$OUT/result.json" 2> "$OUT/result.err" || true
           sleep 3
           {
@@ -44,7 +49,9 @@ jobs:
             else
               echo "delivered=false"
             fi
-            cat "$OUT/result.json"
+            echo "appleevent=$(cat "$OUT/appleevent.txt" 2>/dev/null || true)"
+            echo "appleevent_err=$(cat "$OUT/appleevent.err" 2>/dev/null || true)"
+            cat "$OUT/result.json" 2>/dev/null || true
             cat "$OUT/result.err" 2>/dev/null || true
           } | tee "$OUT/summary.txt"
       - uses: actions/upload-artifact@v4

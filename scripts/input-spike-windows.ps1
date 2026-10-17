@@ -9,6 +9,8 @@ $result = [ordered]@{
   hwnd              = $null
   foregroundMatched = $false
   sent              = $false
+  inputSize         = $null
+  sendError         = $null
   delivered         = $false
   bytes             = $null
   notes             = @()
@@ -50,8 +52,11 @@ public static class Spike {
   [DllImport("user32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
-  [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+  [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KEYBDINPUT ki; [FieldOffset(8)] public MOUSEINPUT mi; }
   [DllImport("user32.dll", SetLastError = true)] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+  public static int lastError;
+  public static int InputSize() { return Marshal.SizeOf(typeof(INPUT)); }
   public static IntPtr FindWindow(uint pid) {
     IntPtr found = IntPtr.Zero;
     EnumWindows((h, l) => {
@@ -66,7 +71,9 @@ public static class Spike {
     INPUT[] inputs = new INPUT[2];
     inputs[0].type = 1; inputs[0].ki.wVk = 0x41;
     inputs[1].type = 1; inputs[1].ki.wVk = 0x41; inputs[1].ki.dwFlags = 2;
-    return SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT))) == 2;
+    uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(INPUT)));
+    lastError = Marshal.GetLastWin32Error();
+    return sent == 2;
   }
 }
 "@
@@ -124,7 +131,9 @@ if (-not $result.foregroundMatched) {
   $result.foregroundMatched = ($fgPid -eq [uint32]$new.Id)
 }
 
+$result.inputSize = [Spike]::InputSize()
 $result.sent = [Spike]::SendA()
+$result.sendError = [Spike]::lastError
 Start-Sleep -Seconds 2
 $result.delivered = Test-Path $received
 if ($result.delivered) { $result.bytes = (Format-Hex -Path $received | Out-String) }
