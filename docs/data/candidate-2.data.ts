@@ -299,7 +299,11 @@ export function loadCandidate2Data(): Candidate2Data {
     for (const row of contexts) {
       if (!row.published) continue
       const share = row.groups.find((entry) => entry.key === group.key)
-      if (!share) continue
+      if (!share) {
+        // Fail loud: every included group has a decidable category, so every published row must
+        // carry its share. Skipping one would judge "included" without checking an eligible row.
+        throw new Error(`published context ${row.context} carries no ${group.key} share; inclusion cannot skip it`)
+      }
       measuredContexts++
       // The bar is the group's RULED basis: where the reader carries an acceptance share (the
       // decidable rows plus the group's defined library-only rows), that is the denominator the
