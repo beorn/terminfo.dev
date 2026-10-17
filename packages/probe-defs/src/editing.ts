@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
@@ -521,6 +521,17 @@ async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
   }
 }
 
+const DECSACE_EXPECTED =
+  "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span"
+const DECSACE_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
+const DECSACE_DEC_CARA = "\x1b[1;2;2;3;7$r" // top 1, left 2, bottom 2, right 3; reverse video
+const decsaceFrame = (ctx: TermlessContext) =>
+  Array.from({ length: 2 }, (_, row) => Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col)))
+const DECSACE_RECTANGLE_PATTERN = ".##.....|.##....."
+const DECSACE_STREAM_PATTERN = ".#######|###....."
+const decsaceExtentPattern = (frame: ReturnType<typeof decsaceFrame>): string =>
+  frame.map((line) => line.map((cell) => (cell.inverse ? "#" : ".")).join("")).join("|")
+
 const editingProbeDefinitions: ProbeDefinition[] = [
   ...regionReadbackProbes(editingReadbackRows),
 
@@ -646,27 +657,59 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     termlessObservationEvidence: "parser-state",
   },
 
-  // Consumption alone cannot establish attribute-change extent. A future
-  // fixture can compare DECCARA effects or query DECSACE through DECRQSS.
+  // DECSACE selects the extent DECCARA/DECRARA apply over: stream (0) or rectangle (1). The claim is
+  // measurable without pixels because the effect is an ATTRIBUTE on cells the parser already holds:
+  // the same DECCARA over the same coordinates must mark exactly the rectangle under extent 1, and
+  // the reading-order span from its top-left to its bottom-right under extent 0. The stream frame is
+  // the control that proves the setting was honoured rather than ignored; when the two frames agree
+  // the extent modes are indistinguishable here and the row is inconclusive BY NAME, never a pass.
   probe(
     "editing.decsace",
     (ctx) => {
-      ctx.feed("\x1b[1;1H\x1b[2*x") // DECSACE select rectangle extent
-      const text = ctx.getText()
-      return {
-        pass: false,
-        response: JSON.stringify({ text }),
-        note: "Sequence consumption does not measure attribute-change extent",
-        observation: { outcome: "inconclusive", evidence: "consumed", reason: "insufficient-evidence" },
+      const rows = ctx.getScrollback().screenLines
+      if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 2) {
+        return parserStateResult(null, DECSACE_EXPECTED, { cols: ctx.cols, rows }, "Need a measured 2x8 fixture")
       }
+      ctx.feed(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
+      const rect = decsaceFrame(ctx)
+      ctx.feed(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
+      const stream = decsaceFrame(ctx)
+      const charsKept = (frame: typeof rect) =>
+        frame.map((line) => line.map((cell) => cell.char).join("")).join("|") === "abcdefgh|ijklmnop"
+      const rectPattern = decsaceExtentPattern(rect)
+      const streamPattern = decsaceExtentPattern(stream)
+      if (!charsKept(rect) || !charsKept(stream)) {
+        return parserStateResult(null, DECSACE_EXPECTED, { rect, stream }, "DECSACE frames changed the seed characters")
+      }
+      if (rectPattern === streamPattern) {
+        return parserStateResult(
+          null,
+          DECSACE_EXPECTED,
+          { rect, stream },
+          "Both DECSACE extent modes left the same frame; the setting is not measurable on this parser",
+        )
+      }
+      return parserStateResult(
+        rectPattern === DECSACE_RECTANGLE_PATTERN && streamPattern === DECSACE_STREAM_PATTERN,
+        DECSACE_EXPECTED,
+        { rect: rectPattern, stream: streamPattern },
+      )
     },
-    () => {
-      const note = "DECSACE was not attempted; this probe does not measure attribute-change extent"
-      return Promise.resolve<ProbeResult>({
-        pass: false,
-        note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
-      })
+    async (ctx) => {
+      if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 8) {
+        return {
+          pass: false,
+          observation: {
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "none",
+            note: `Editing fixture needs at least 2x8, measured ${ctx.rows}x${ctx.cols}`,
+          },
+        }
+      }
+      ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
+      const pos = await ctx.queryCursorPosition()
+      return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
     },
   ),
 

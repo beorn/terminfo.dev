@@ -23,8 +23,8 @@ import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 /**
  * The 17 Editing capabilities of 28018's Editing row; ids drawn from editing.ts, claims are the
- * contract. `editing.decsace` is by design inconclusive - its own probe records that sequence
- * consumption cannot measure attribute-change extent - so its expected outcome is named, not decided.
+ * contract. `editing.decsace` measures attribute-change extent by differential: DECSACE 2 confines
+ * the same DECCARA to its rectangle, DECSACE 0 reaches the rest of the reading-order span.
  */
 const EDITING_CONTRACT: GroupContract = [
   { id: "editing.insert-chars", expected: "decided", claim: "ICH inserts a blank at column 3, shifting text right" },
@@ -40,8 +40,8 @@ const EDITING_CONTRACT: GroupContract = [
   { id: "editing.decrara", expected: "decided", claim: "DECRARA clears inverse on the measured 3x5 cells" },
   {
     id: "editing.decsace",
-    expected: "inconclusive",
-    claim: "DECSACE attribute-change extent is not observable from sequence consumption",
+    expected: "decided",
+    claim: "DECSACE rectangle extent confines DECCARA to the 2x2 block, stream extent reaches the rest of the span",
   },
   { id: "editing.decrqcra", expected: "decided", claim: "DECRQCRA frames a four-digit checksum reply for request 1" },
   { id: "editing.sl", expected: "decided", claim: "SL shifts the measured cells of two rows left by two columns" },
