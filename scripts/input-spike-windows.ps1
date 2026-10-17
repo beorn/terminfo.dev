@@ -11,6 +11,8 @@ $result = [ordered]@{
   sent              = $false
   inputSize         = $null
   sendError         = $null
+  readerStarted     = $false
+  clicked           = $false
   delivered         = $false
   bytes             = $null
   notes             = @()
@@ -51,6 +53,10 @@ public static class Spike {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
   [StructLayout(LayoutKind.Sequential)] public struct KEYBDINPUT { public ushort wVk; public ushort wScan; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
   [StructLayout(LayoutKind.Sequential)] public struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
   [StructLayout(LayoutKind.Explicit)] public struct INPUT { [FieldOffset(0)] public uint type; [FieldOffset(8)] public KEYBDINPUT ki; [FieldOffset(8)] public MOUSEINPUT mi; }
@@ -130,6 +136,17 @@ if (-not $result.foregroundMatched) {
   [Spike]::GetWindowThreadProcessId($fg, [ref]$fgPid) | Out-Null
   $result.foregroundMatched = ($fgPid -eq [uint32]$new.Id)
 }
+
+for ($i = 0; $i -lt 20 -and -not (Test-Path "$received.started"); $i++) { Start-Sleep -Milliseconds 500 }
+$result.readerStarted = Test-Path "$received.started"
+
+$rect = New-Object Spike+RECT
+[Spike]::GetWindowRect($hwnd, [ref]$rect) | Out-Null
+[Spike]::SetCursorPos([int](($rect.Left + $rect.Right) / 2), [int](($rect.Top + $rect.Bottom) / 2)) | Out-Null
+[Spike]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)
+[Spike]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)
+Start-Sleep -Milliseconds 400
+$result.clicked = $true
 
 $result.inputSize = [Spike]::InputSize()
 $result.sent = [Spike]::SendA()

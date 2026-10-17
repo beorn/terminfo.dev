@@ -30,8 +30,9 @@ jobs:
           # is probed separately so an Automation denial is named, not folded into the key result.
           cat > "$OUT/reader.sh" <<READER
           #!/bin/bash
-          rm -f "$OUT/received.bin"
-          head -c 1 > "$OUT/received.bin"
+          rm -f "$OUT/received.bin" "$OUT/partial.bin"
+          head -c 1 > "$OUT/partial.bin"
+          mv "$OUT/partial.bin" "$OUT/received.bin"
           READER
           chmod +x "$OUT/reader.sh"
           open -a Terminal "$OUT/reader.sh"
