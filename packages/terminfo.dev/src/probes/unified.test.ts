@@ -1168,8 +1168,11 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
       { featureId: "editing.decsace", outcome: "supported", evidence: "pixels" },
     ])
     expect(labels).toEqual([
+      // The shared stability pair runs BEFORE the DECSACE writes (@cto round-3c B2), so the two reads
+      // of the untouched screen come first and the seed paint is the third capture.
+      "editing.decsace: capture stability 1",
+      "editing.decsace: capture stability 2",
       "editing.decsace: seed before DECSACE",
-      "editing.decsace: capture stability",
       "editing.decsace: DECSACE 2 rectangle frame",
       "editing.decsace: DECSACE 0 stream frame",
     ])

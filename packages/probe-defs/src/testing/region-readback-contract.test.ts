@@ -242,11 +242,21 @@ test("a byte-stable capture that decides nothing still seals an observation the 
  */
 test("28584 shape C: a byte-unstable capture's pixels refusal still carries what it captured", async () => {
   const { result, run, frames } = await drive("unstable")
-  const stabilityRefs = frames.filter((frame) => frame.label.includes("capture stability")).map((frame) => frame.ref)
+  const stabilityFrames = frames.filter((frame) => frame.label.includes("capture stability"))
+  const stabilityRefs = stabilityFrames.map((frame) => frame.ref)
   expect(stabilityRefs.length).toBeGreaterThan(0)
   expect(result.observation?.evidence).toBe("pixels")
   expect(stabilityRefs).toContain(result.observation?.screenshotRef)
   expect(result.observation?.frames ?? []).toHaveLength(0)
+  // The ONE stability shape (@cto round-3c B3): both reads travel in the response, the citation is
+  // the second capture taken, and the two digests disagree — that disagreement is the whole point.
+  const response = JSON.parse(String(result.response)) as {
+    stability: { regionDigest: string[]; pixelsDigest: string[] }
+  }
+  expect(response.stability.regionDigest).toEqual(stabilityFrames.map((frame) => frame.regionDigest))
+  expect(response.stability.pixelsDigest).toEqual(stabilityFrames.map((frame) => frame.pixelsDigest))
+  expect(response.stability.regionDigest[0]).not.toBe(response.stability.regionDigest[1])
+  expect(result.observation?.screenshotRef).toBe(stabilityFrames[1]?.ref)
   expect(() => parse(run)).not.toThrow()
 })
 

@@ -66,8 +66,9 @@ test("every converted row refuses by name and writes nothing without an owned ca
  * Restored from the deleted HAND_WRITTEN test (@cto round-2 B5): the converted attribute rows still
  * refuse a grid smaller than the extent they address, BEFORE any feature byte and before any query.
  * The old test's other half — "reaches CPR at its floor" — has no counterpart by design: these rows
- * now take the capture-region path, and the readback tests at 24x80 drive exactly that floor path
- * (seed, steps and captures) on an owned adapter.
+ * now take the capture-region path. The floor itself is 5x8 (the sentinel row and the compared
+ * region's right edge plus the family margin); 24x80 is only the roomy grid the readback tests use,
+ * and the boundary pair below pins both sides of the real floor (@cto round-3c B7).
  */
 test("a converted attribute row refuses an undersized grid before any byte or query", async () => {
   for (const id of ["editing.deccara", "editing.decrara"]) {
@@ -76,6 +77,7 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
     if (!row?.sentinel || !definition?.term) throw new Error(`missing app callback for ${id}`)
     for (const [rows, cols] of [
       [row.sentinel.row - 1, 8],
+      [row.sentinel.row, 7],
       [row.sentinel.row, 4],
       [Number.NaN, 80],
       [24, Number.POSITIVE_INFINITY],
@@ -95,5 +97,20 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
       })
       expect(String(result.observation?.note), `${id} at ${rows}x${cols}`).toContain("at least")
     }
+    // The other side of the boundary: 5x8 is the floor, so the arm must reach its own work instead
+    // of refusing. A capture that throws is the cheapest proof it got past the geometry gate.
+    const floor: TermContext = {
+      ...app(row.sentinel.row, 8, []),
+      // A calibrated geometry keeps the arm from needing an unanswerable pixel query, so the only
+      // thing that can stop it before the capture is the geometry gate this test measures.
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 8 * 8, textHeight: 16 * row.sentinel.row },
+        source: "measured by complete raster calibration",
+      },
+      capture: async () => {
+        throw new Error(`${id} reached capture at its 5x8 floor`)
+      },
+    }
+    await expect(definition.term(floor), `${id} at 5x8`).rejects.toThrow(/reached capture at its 5x8 floor/)
   }
 })

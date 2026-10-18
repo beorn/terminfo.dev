@@ -304,7 +304,11 @@ function unpaintedColor(
         if (plain === undefined) {
           return `the default-background seed does not report ${channel} at cell ${row},${col}, so the painted colour cannot be qualified`
         }
-        if (seed === undefined || seed === null) continue
+        if (seed === undefined || seed === null) {
+          // An unread painted seed cannot qualify a relative claim: continuing here would let a
+          // cell whose colour nothing measured satisfy the check (@cto round-3c B6).
+          return `the painted seed reports no ${channel} at cell ${row},${col}, so the colour claim cannot be qualified`
+        }
         if (plain !== null && plain.r === seed.r && plain.g === seed.g && plain.b === seed.b) {
           return `the painted seed reports the same colour as the default-background seed at cell ${row},${col} ${channel}, so the colour fixture was not established`
         }
@@ -444,12 +448,17 @@ function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
  * round-2 R2, which asks for a test of exactly this refusal).
  */
 function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
-  for (const [rowIndex, cells] of row.after.entries()) {
-    for (const [col, cell] of cells.entries()) {
-      if (typeof cell === "string") continue
-      if (cell.attributes.bg === undefined) continue
-      if (row.paint?.bg === undefined) {
-        throw new Error(`${row.id}: cell ${rowIndex},${col} asserts a relative bg with no paint bytes`)
+  // EVERY frame the row builds, not only `after`: `ignored` is painted by the same paintFrame call,
+  // so a relative claim there needs the same bytes (@cto round-3c B6). The message names the row, so
+  // a test that deletes this check cannot be satisfied by paintBytes' row-less fallback.
+  for (const cells of [row.after, ...(row.ignored === undefined ? [] : [row.ignored])]) {
+    for (const [rowIndex, line] of cells.entries()) {
+      for (const [col, cell] of line.entries()) {
+        if (typeof cell === "string") continue
+        if (cell.attributes.bg === undefined) continue
+        if (row.paint?.bg === undefined) {
+          throw new Error(`${row.id}: cell ${rowIndex},${col} asserts a relative bg with no paint bytes`)
+        }
       }
     }
   }

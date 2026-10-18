@@ -1066,7 +1066,25 @@ test("the EL-with-attrs row names an erase that drops the current background uns
  */
 test("a relative background claim refuses to load without its paint bytes", () => {
   const row = rowById("erase.el-with-attrs")
-  expect(() => regionReadbackProbe({ ...row, paint: undefined })).toThrow(/relative bg with no paint bytes/)
+  // The ROW ID is the discriminator (@cto round-3c B6): paintBytes also throws, without it, at frame
+  // build, so a regex that matches only the shared tail stays green when the load check is deleted.
+  expect(() => regionReadbackProbe({ ...row, paint: undefined })).toThrow(
+    new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
+  )
+})
+
+test("a relative background claim in the ignored frame refuses to load by row id", () => {
+  const row = rowById("erase.el-with-attrs")
+  const ignored = row.after.map((cells) =>
+    cells.map((cell) =>
+      typeof cell === "string" ? cell : { char: cell.char, attributes: { bg: cell.attributes.bg } },
+    ),
+  )
+  const claimed = ignored.flat().some((cell) => typeof cell !== "string" && cell.attributes.bg !== undefined)
+  expect(claimed, "the fixture needs at least one relative bg claim").toBe(true)
+  expect(() => regionReadbackProbe({ ...row, ignored, paint: undefined })).toThrow(
+    new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
+  )
 })
 
 test("a relative background claim refuses to load without a baseline fixture", () => {

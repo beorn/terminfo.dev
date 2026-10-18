@@ -625,11 +625,6 @@ export async function captureRegionVerdict(
 }
 
 /**
- * Decide `id` from three cell-aligned captures of one run, each taken behind its own paint witness.
- * `read` is null when this run has no owned capture, in which case the caller's existing
- * capture-inconclusive path stays in force — a missing readback is never a negative.
- */
-/**
  * The ONE capture lifecycle both pixel arms share, so no arm reimplements it and none forgets a half
  * (@cto round-2 B1b, @dev/review2 round-3 B1). Opening: SGR reset and DECTCEM off, so every capture of
  * the run sees the same cursor state. Closing, on every exit — decided, refused or thrown: the row's
@@ -642,12 +637,82 @@ export function beginCaptureLifecycle(ctx: TermContext): void {
   ctx.write("\x1b[?25l")
 }
 
+/** Close the shared capture lifecycle, running the arm's mode cleanup before DECTCEM is restored. */
 export function endCaptureLifecycle(ctx: TermContext, cleanup?: string): void {
   if (cleanup !== undefined) ctx.write(cleanup)
   ctx.write("\x1b[?25h")
   ctx.write("\x1b[0m\x1b[2J\x1b[H")
 }
 
+/** What a capture must report to enter the stability control: its digests and its frame. */
+export interface StabilityCapture {
+  readonly regionDigest?: string | undefined
+  readonly pixelsDigest?: string | undefined
+  readonly frame: ObservationFrame
+}
+
+/**
+ * The ONE stability control both pixel arms use (@cto round-3c B2/B3). Two reads of one static frame
+ * must agree before either arm compares extents or steps; the arm takes the pair before its own
+ * writes, so a frame that only looks stable after the measurement cannot pass. The refusal is one
+ * shape wherever it fires: inconclusive, no frames, both digests in the response, and the second
+ * stability capture as the citation — no target frame is fabricated (@cto 0e40f3b1).
+ */
+export async function captureStabilityPair<T extends StabilityCapture>(
+  id: string,
+  evidence: "pixels" | "text",
+  first: () => Promise<T>,
+  second: () => Promise<T>,
+): Promise<{ stable: T; refusal: ProbeResult | null }> {
+  const stableA = await first()
+  const stableB = await second()
+  const measured = (capture: StabilityCapture) =>
+    capture.regionDigest !== undefined || capture.pixelsDigest !== undefined
+  if (!measured(stableA) || !measured(stableB)) {
+    return {
+      stable: stableB,
+      refusal: inconclusive(
+        id,
+        `${id}: a stability capture reports no digest, so two reads of one static frame cannot be shown to agree`,
+        "insufficient-evidence",
+        evidence,
+        evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
+      ),
+    }
+  }
+  if (stableA.regionDigest === stableB.regionDigest && stableA.pixelsDigest === stableB.pixelsDigest) {
+    return { stable: stableB, refusal: null }
+  }
+  const refusal = inconclusive(
+    id,
+    `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
+    "insufficient-evidence",
+    evidence,
+    // No target frame exists on this path and none is fabricated (@cto 0e40f3b1): the citation is
+    // the stability capture actually taken. On a text arm there is no image to cite.
+    evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
+  )
+  // The decisive evidence is the PAIR of reads, so both digests travel in the response even though
+  // the observation carries no frames (@dev/review2 round-3 B1, @cto round-3c B3).
+  return {
+    stable: stableB,
+    refusal: {
+      ...refusal,
+      response: JSON.stringify({
+        stability: {
+          regionDigest: [stableA.regionDigest, stableB.regionDigest],
+          pixelsDigest: [stableA.pixelsDigest, stableB.pixelsDigest],
+        },
+      }),
+    },
+  }
+}
+
+/**
+ * Decide `id` from three cell-aligned captures of one run, each taken behind its own paint witness.
+ * `read` is null when this run has no owned capture, in which case the caller's existing
+ * capture-inconclusive path stays in force — a missing readback is never a negative.
+ */
 export async function captureRegionReadbackDecision(
   ctx: TermContext,
   id: string,
@@ -694,40 +759,26 @@ export async function captureRegionReadbackDecision(
   try {
     beginCaptureLifecycle(ctx)
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
-    const stableA = await read({
-      role: "control",
-      label: `${id}: capture stability 1`,
-      region: witnessCell,
-      pixelGeometry: spec.pixelGeometry,
-    })
-    const stableB = await read({
-      role: "control",
-      label: `${id}: capture stability 2`,
-      region: witnessCell,
-      pixelGeometry: spec.pixelGeometry,
-    })
-    if (stableA.regionDigest !== stableB.regionDigest || stableA.pixelsDigest !== stableB.pixelsDigest) {
-      const refusal = inconclusive(
-        id,
-        `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
-        "insufficient-evidence",
-        evidence,
-        // No target frame exists on this path and none is fabricated (@cto 0e40f3b1): the citation is
-        // the stability capture actually taken. On a text arm there is no image to cite.
-        evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
-      )
-      // The decisive evidence is the PAIR of reads, so both digests travel in the response even though
-      // the observation carries no frames (@dev/review2 round-3 B1).
-      return {
-        ...refusal,
-        response: JSON.stringify({
-          stability: {
-            regionDigest: [stableA.regionDigest, stableB.regionDigest],
-            pixelsDigest: [stableA.pixelsDigest, stableB.pixelsDigest],
-          },
+    // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
+    const { refusal: instability } = await captureStabilityPair(
+      id,
+      evidence,
+      () =>
+        read({
+          role: "control",
+          label: `${id}: capture stability 1`,
+          region: witnessCell,
+          pixelGeometry: spec.pixelGeometry,
         }),
-      }
-    }
+      () =>
+        read({
+          role: "control",
+          label: `${id}: capture stability 2`,
+          region: witnessCell,
+          pixelGeometry: spec.pixelGeometry,
+        }),
+    )
+    if (instability) return instability
     for (const [index, step] of steps.entries()) {
       ctx.write(step.writes)
       ctx.write(park)

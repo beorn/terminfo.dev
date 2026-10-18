@@ -1,7 +1,7 @@
 import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { beginCaptureLifecycle, endCaptureLifecycle } from "./region-readback.ts"
+import { beginCaptureLifecycle, captureStabilityPair, endCaptureLifecycle } from "./region-readback.ts"
 import {
   parserStateResult,
   probe,
@@ -493,6 +493,9 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
     sentinel: { row: 5, col: 1 },
     seedNote: "DECCARA character or attribute seed was not measured",
     controlNote: "DECCARA changed the text or the right flank outside its rectangle",
+    // DECSACE 2 is a terminal MODE the row sets to measure the rectangle extent; the shared lifecycle
+    // clears it on every exit so the next probe reads the power-on stream default.
+    cleanup: "\x1b[0*x",
     reset: "\x1b[0m",
   },
   {
@@ -562,6 +565,9 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
     sentinel: { row: 5, col: 1 },
     seedNote: "DECRARA inverse seed was not measured",
     controlNote: "DECRARA changed the text or the right flank outside its rectangle",
+    // DECSACE 2 is a terminal MODE the row sets to measure the rectangle extent; the shared lifecycle
+    // clears it on every exit so the next probe reads the power-on stream default.
+    cleanup: "\x1b[0*x",
     reset: "\x1b[0m",
   },
 ]
@@ -625,20 +631,36 @@ const editingProbeDefinitions: ProbeDefinition[] = [
       // run with no adapter falls back to the named unmeasured path below.
       const capture = ctx.capture
       if (!capture) {
-        ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
+        // The extent is a terminal MODE, not a cell write: leaving DECSACE 2 set would change what the
+        // next probe's DECCARA/DECRARA reach, and no lifecycle runs on this branch to clear it.
+        ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA + "\x1b[0*x")
         const pos = await ctx.queryCursorPosition()
         return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
       }
       try {
-        // The capture-region oracle's OWN lifecycle and controls, called rather than copied
-        // (region-readback.ts beginCaptureLifecycle/endCaptureLifecycle): the cursor stays hidden for
-        // every read and is restored on every exit, and two captures of ONE static frame must agree
-        // before any extent is compared. On a terminal that ignores DECSACE, a blinking cursor alone
-        // moves the whole-window digest (@cto round-2 B1b, @dev/review2 round-3 B1).
+        // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
+        // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
+        // captureStabilityPair (region-readback.ts). The cursor stays hidden for every read and is
+        // restored on every exit, and the pair runs BEFORE the DECSACE writes, so a frame that only
+        // looks stable after the measurement cannot qualify it. On a terminal that ignores DECSACE,
+        // a blinking cursor alone moves the whole-window digest (@cto round-2 B1b, round-3c B2).
         beginCaptureLifecycle(ctx)
+        // The stability pair is taken BEFORE the DECSACE writes, by the same function the region
+        // oracle calls, so both arms obey one rule (@cto round-3c B2): a pair that only looks stable
+        // after the measurement cannot qualify the measurement.
+        const stabilityRead = async (label: string) => {
+          const frame = await capture({ role: "control", label })
+          return { regionDigest: frame.regionDigest, pixelsDigest: frame.pixelsDigest, frame }
+        }
+        const { refusal: instability } = await captureStabilityPair(
+          "editing.decsace",
+          "pixels",
+          () => stabilityRead("editing.decsace: capture stability 1"),
+          () => stabilityRead("editing.decsace: capture stability 2"),
+        )
+        if (instability) return instability
         ctx.write(DECSACE_PAINT)
         const seed = await capture({ role: "control", label: "editing.decsace: seed before DECSACE" })
-        const stable = await capture({ role: "control", label: "editing.decsace: capture stability" })
         ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
         const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
         ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
@@ -679,42 +701,13 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
+              screenshotRef: stream.ref,
               frames,
               note: `These frames do not all report one measured digest kind (${described}), so the two DECSACE extents cannot be compared`,
             },
           }
         }
         const measured = digests.map((entry) => (kind === "whole" ? entry.whole : entry.cells)) as string[]
-        const stableEntry = frameDigests(stable)
-        const stableDigest = kind === "whole" ? stableEntry.whole : stableEntry.cells
-        if (stableDigest === undefined) {
-          return {
-            pass: false,
-            response: observed,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "pixels",
-              frames,
-              note: `The stability capture reports no ${kind} digest, so the two DECSACE extents cannot be compared`,
-            },
-          }
-        }
-        if (stableDigest !== measured[0]) {
-          return {
-            pass: false,
-            // The decisive evidence is the PAIR: carry the stable frame and both digests, so the
-            // refusal names the capture the verdict rests on (@dev/review2 round-3 B1).
-            response: JSON.stringify({ kind, seed: measured[0], stability: stableDigest }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "pixels",
-              frames: [seed, stable, rectangle, stream],
-              note: `Two captures of one static frame were not byte-stable (${measured[0]} then ${stableDigest}), so no extent can be read`,
-            },
-          }
-        }
         if (measured[1] === measured[2]) {
           return {
             pass: false,
@@ -723,6 +716,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
+              screenshotRef: stream.ref,
               frames,
               note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
             },
@@ -739,6 +733,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
+              screenshotRef: stream.ref,
               frames,
               note: `The ${still} frame did not differ from the seed, so DECCARA left no measurable change and an ignored DECCARA cannot be separated from a digest that cannot see attributes`,
             },
@@ -754,6 +749,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           observation: {
             outcome: "supported",
             evidence: "pixels",
+            screenshotRef: stream.ref,
             frames,
             note: "The rectangle and stream frames differ from the seed and from each other; exact extents are graded by the parser arm",
           },
@@ -766,7 +762,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           ],
         }
       } finally {
-        endCaptureLifecycle(ctx)
+        endCaptureLifecycle(ctx, "\x1b[0*x")
       }
     },
   ),
