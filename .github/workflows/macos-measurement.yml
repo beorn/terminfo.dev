@@ -60,13 +60,12 @@ jobs:
         with:
           bun-version: 1.4.3
 
-      - name: Build and install the current collector
+      - name: Build and retain the current collector
         run: |
           set -euo pipefail
           bun install --frozen-lockfile
           bun scripts/build-cli.ts
-          npm install -g ./packages/terminfo.dev
-          terminfo --version
+          bun packages/terminfo.dev/bin/terminfo.mjs --version
           OUT="$RUNNER_TEMP/measurement-artifacts"
           cp bun.lock "$OUT/collector-bun.lock"
           cp packages/terminfo.dev/dist/terminfo.bundle.receipt.json "$OUT/collector-build.json"
@@ -135,7 +134,9 @@ jobs:
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.command"
           NODE_DIR="$(dirname "$(command -v node)")"
-          COLLECTOR="$(command -v terminfo)"
+          COLLECTOR="$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs"
+          COLLECTOR_BUN="$(command -v bun)"
+          BUN_DIR="$(dirname "$COLLECTOR_BUN")"
           TARGET_VERSION_EXPORT=""
           if [ "$APP_ID" = alacritty ]; then
             bundle_status=0
@@ -155,7 +156,7 @@ jobs:
           cat > "$COMMAND_PATH" <<SCRIPT
           #!/bin/bash
           $TARGET_VERSION_EXPORT
-          export PATH="$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
+          export PATH="$BUN_DIR:$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
           export TERMINFO_CAPTURE_DIRECTORY="$OUT/artifacts"
           attempts=0
@@ -178,7 +179,7 @@ jobs:
           # process.stdout, and the owned-terminal arm binds fd0, stdout and the controlling tty as
           # one PTY. Redirecting stdout to the log made that binding impossible and failed every
           # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
-          "$COLLECTOR" test --output "$OUT/run.json" 2> "$OUT/collector.log"
+          "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json" 2> "$OUT/collector.log"
           status=\$?
           printf '%s\n' "\$status" > "$OUT/collector-exit"
           SCRIPT

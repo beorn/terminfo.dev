@@ -1,8 +1,8 @@
 /**
- * @failure An installed CLI silently falls back to absent source files when its compiled suite receipt is missing.
+ * @failure CLI build/hosted setup executes a global collector, or its compiled suite receipt is missing.
  * @level l1
  * @consumer Published terminfo.dev bin entry
- * @reach fs-walk <fixture-only: the composed tree is one owned temporary clone with a symlinked node_modules>
+ * @reach fs-walk .github/workflows/macos-measurement.yml .github/workflows/windows-measurement.yml
  * @testonly none
  */
 import { execFileSync, spawnSync } from "node:child_process"
@@ -21,6 +21,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, it } from "vitest"
+import { parse } from "yaml"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -139,9 +140,49 @@ it("stays green on a composed tree and records the live suite identity that the 
     const { fixture, git } = createComposedFixture(root)
     const headRevision = git("rev-parse", "HEAD").trim()
 
-    const build = spawnSync("bun", ["scripts/build-cli.ts"], { cwd: fixture, encoding: "utf8" })
-    expect(build.stderr).toBe("")
-    expect(build.status).toBe(0)
+    const bin = join(root, "bin")
+    mkdirSync(bin)
+    // Execute the actual workflow build steps; a global install or PATH-selected CLI is a failure.
+    for (const name of ["npm", "terminfo"]) {
+      writeFileSync(
+        join(bin, name),
+        `#!${process.execPath}\nconsole.error("unexpected global ${name}"); process.exit(86)\n`,
+        { mode: 0o755 },
+      )
+    }
+    const installs = join(root, "installs.jsonl")
+    writeFileSync(
+      join(bin, "bun"),
+      `#!${process.execPath}\nimport { appendFileSync } from "node:fs"; import { spawnSync } from "node:child_process"; const args=process.argv.slice(2); if(args[0]==="install") { appendFileSync(${JSON.stringify(installs)}, JSON.stringify(args)+"\\n"); } else { const child=spawnSync(${JSON.stringify(process.execPath)},args,{stdio:"inherit",env:process.env}); if(child.error) throw child.error; process.exit(child.status ?? 1); }\n`,
+      { mode: 0o755 },
+    )
+    for (const os of ["macos", "windows"]) {
+      const workflow = parse(readFileSync(join(REPO_ROOT, `.github/workflows/${os}-measurement.yml`), "utf8"))
+      const step = workflow.jobs[`measure-${os}`].steps.find(
+        (step: { name?: string }) => step.name === "Build and retain the current collector",
+      )
+      const runner = join(root, os)
+      mkdirSync(join(runner, "measurement-artifacts"), { recursive: true })
+      const build = spawnSync("bash", ["-c", step.run], {
+        cwd: fixture,
+        encoding: "utf8",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: runner, GITHUB_WORKSPACE: fixture },
+      })
+      expect(build.stderr, os).toBe("")
+      expect(build.status, os).toBe(0)
+      expect(readFileSync(join(runner, "measurement-artifacts/collector-bundle.mjs"))).toEqual(
+        readFileSync(join(fixture, "packages/terminfo.dev/dist/terminfo.bundle.mjs")),
+      )
+    }
+    expect(
+      readFileSync(installs, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      ["install", "--frozen-lockfile"],
+      ["install", "--frozen-lockfile"],
+    ])
 
     const receiptPath = join(fixture, "packages/terminfo.dev/dist/terminfo.bundle.receipt.json")
     const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as {
