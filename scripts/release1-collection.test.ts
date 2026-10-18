@@ -32,10 +32,11 @@ import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import * as catalog from "@terminfo/catalog"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
+import { classifyDevelopmentRun } from "../docs/data/selected-results.ts"
 import { buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,
@@ -875,8 +876,9 @@ it("refuses an ssh transport with no known-hosts file rather than inventing trus
 })
 
 // The collector's own argv builder, through the real driver, to the files the collector reads next:
-// one run JSON in <output>/transport and a receipt bound to the collected revision. parseRun and
-// classifyDevelopmentRun are untouched by this transport and stay exercised by the local route.
+// one run JSON in <output>/transport and a receipt bound to the collected revision. The run JSON is
+// an existing producer fixture with its own trusted suite manifest, and it is parsed and classified
+// here exactly as the collector classifies a run after transport.
 it("runs the collector's ssh route through the driver and reads the run JSON it wrote", () => {
   const directory = mkdtempSync(join(tmpdir(), "transport-route-"))
   const code = join(directory, "code")
@@ -925,6 +927,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       "verbose=0",
       'for a in "$@"; do [ "$a" = "-v" ] && verbose=1; done',
       'while [ "$1" = "-o" ]; do shift 2; done',
+      'while [ "$1" = "-l" ]; do shift 2; done',
       'while [ "$1" = "-v" ]; do shift; done',
       '[ "$1" = "--" ] && shift',
       "shift",
@@ -936,12 +939,9 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     "rsync",
     [
       "#!/bin/sh",
-      "set -e",
-      'while [ $# -gt 2 ]; do case "$1" in -a|--delete|-v) shift ;; -e) shift 2 ;; --exclude=*) shift ;; --) shift ;; *) break ;; esac; done',
-      'src="$1"; dest="$2"',
-      'case "$src" in *:*) src="${src#*:}" ;; esac',
-      'case "$dest" in *:*) dest="${dest#*:}" ;; esac',
-      'case "$src" in */) mkdir -p "$dest"; cp -R "$src". "$dest" ;; *) [ -d "$dest" ] && find "$dest" -depth -delete; mkdir -p "$(dirname "$dest")"; cp -R "$src" "$dest" ;; esac',
+      'REAL_RSYNC="${REAL_RSYNC:-/usr/bin/rsync}"',
+      'if [ "$1" = "--server" ]; then exec "$REAL_RSYNC" "$@"; fi',
+      '"$REAL_RSYNC" "$@"',
     ].join("\n"),
   )
   shim(
@@ -953,11 +953,13 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       "  --version) echo '1.2.3' ;;",
       "  *) out=''",
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
-      '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/kitty-1.0-macos-run1.json" ;;',
+      '     cp "$PRODUCER_RUN" "$out/kitty-0.48.2-macos.json" ;;',
       "esac",
     ].join("\n"),
   )
   shim("kitty", "#!/bin/sh\necho 'kitty 0.49.1'\n")
+  const producerRun = join(CONTENT, "probes-apps", "kitty-0.48.2-macos.json")
+  const producerBytes = readFileSync(producerRun)
   try {
     const command = ownedAppCommand(
       ownedAppContext,
@@ -975,6 +977,8 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
         PATH: `${shims}:/usr/bin:/bin`,
         OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
         OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+        PRODUCER_RUN: producerRun,
+        REAL_RSYNC: "/usr/bin/rsync",
       },
     })
     expect(result.status, result.stderr).toBe(0)
@@ -983,7 +987,27 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const proof = readOwnedAppTransportProof(join(transport, "transport-receipt.json"), revision)
     expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
     const runs = readdirSync(transport).filter((name) => name.endsWith(".json") && name !== "transport-receipt.json")
-    expect(runs).toEqual(["kitty-1.0-macos-run1.json"])
+    expect(runs).toEqual(["kitty-0.48.2-macos.json"])
+
+    // The transported bytes are the producer's bytes, and they parse and classify the way the
+    // collector classifies a run after transport.
+    const runPath = join(transport, "kitty-0.48.2-macos.json")
+    const runBytes = readFileSync(runPath)
+    expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
+      createHash("sha256").update(producerBytes).digest("hex"),
+    )
+    const raw = runBytes.toString("utf8")
+    const probeHash = (JSON.parse(raw) as { probeHash: string }).probeHash
+    const suitePath = join(CONTENT, "suites", `${probeHash.slice(0, 12)}.json`)
+    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+    const catalogIds = Object.keys(catalog.loadFeatures(CONTENT))
+    const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
+    expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "macos" })
+    expect(run.suiteComplete).toBe(true)
+    const classification = classifyDevelopmentRun(run, [])
+    expect(classification.mode).toBe("development")
+    expect(classification.runId).toBe(run.runId)
+    expect(Object.keys(classification.states).length).toBeGreaterThan(0)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

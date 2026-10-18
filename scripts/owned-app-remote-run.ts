@@ -38,11 +38,12 @@ import {
   readFileSync,
   readdirSync,
   readlinkSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join, resolve, sep } from "node:path"
+import { dirname, isAbsolute, join, relative as relativePath, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 
 /** Production roots. The two environment names exist so this file's own tests can point at an
@@ -132,13 +133,26 @@ function manifestScan(
     const relative = path.slice(root.length + 1)
     if (info.isSymbolicLink()) {
       const target = readlinkSync(path)
+      // A link's text is what the stage will hold, and the host resolves it from a different
+      // location. An absolute target would resolve against the HOST's filesystem, so identical
+      // text and identical staged bytes could still read a file this run never measured.
+      if (isAbsolute(target)) {
+        fail("broken staged symlink", `${relative} -> ${target} is absolute and cannot be relocated into the stage`)
+      }
       const resolved = resolve(dirname(path), target)
-      if (!existsSync(resolved)) fail("broken staged symlink", `${relative} -> ${target} does not resolve`)
-      if (resolved !== root && !resolved.startsWith(`${root}${sep}`)) {
+      let real: string
+      try {
+        real = realpathSync(resolved)
+      } catch {
+        fail("broken staged symlink", `${relative} -> ${target} does not resolve`)
+      }
+      // The real path follows every intermediate link, so a chain that leaves the tree and comes
+      // back — or leaves it for good — is refused on the bytes, not on the lexical text.
+      if (real !== root && !real.startsWith(`${root}${sep}`)) {
         fail("resource manifest mismatch", `${relative} -> ${target} escapes the staged tree`)
       }
-      linkTargets.push(resolved)
-      lines.push(`${relative}\tsymlink:${target}`)
+      linkTargets.push(real)
+      lines.push(`${relative}\tsymlink:${target}\tresolved:${relativePath(root, real).split(sep).join("/")}`)
       return
     }
     if (info.isDirectory()) {
@@ -197,15 +211,19 @@ function canonicalRemote(
     return `${path.replace(/\\/g, "/")}\tsha256:${hash}`
   })
   for (const line of links) {
-    const [rawPath, target, state] = line.split("\t")
-    if (rawPath === undefined || target === undefined || state === undefined) {
+    const [rawPath, target, state, resolved] = line.split("\t")
+    if (rawPath === undefined || target === undefined || state === undefined || resolved === undefined) {
       fail("resource manifest mismatch", `remote symlink line is malformed: ${JSON.stringify(line)}`)
     }
     const relative = rawPath.replace(/^\.\//, "")
-    // A link the host cannot resolve is a staged tree that differs from the one measured locally,
-    // even when the target text is byte-identical: refusal, never a manifest match.
-    if (state !== "ok") fail("broken staged symlink", `${relative} -> ${target} does not resolve in the stage`)
-    lines.push(`${relative}\tsymlink:${target}`)
+    // A link the host cannot resolve, or resolves outside the staged tree, is a staged tree that
+    // differs from the one measured locally even when the target text is byte-identical: refusal,
+    // never a manifest match. The resolved path is compared too, so an escape by any other route
+    // cannot ride on matching link text.
+    if (state !== "ok") {
+      fail("broken staged symlink", `${relative} -> ${target} resolves ${state} in the stage (${resolved})`)
+    }
+    lines.push(`${relative}\tsymlink:${target}\tresolved:${resolved}`)
   }
   lines.sort()
   return { ...digestValue(lines), lines }
@@ -589,7 +607,18 @@ function main(options: Parsed): OwnedAppTransportProof {
       options,
       "remote symlink listing",
       "broken staged symlink",
-      `cd ${shq(source)} && find . \\( -name .git -prune \\) -o -type l -exec sh -c 'printf "%s\\t%s\\t%s\\n" "$1" "$(readlink "$1")" "$(test -e "$1" && echo ok || echo dangling)"' _ {} \\;`,
+      [
+        `cd ${shq(source)}`,
+        `find . \\( -name .git -prune \\) -o -type l -exec sh -c '`,
+        `  target=$(readlink "$1")`,
+        `  if [ ! -e "$1" ]; then printf "%s\\t%s\\tdangling\\t%s\\n" "$1" "$target" "-"; exit 0; fi`,
+        `  real=$(realpath "$1")`,
+        `  case "$real" in`,
+        `    "$PWD"/*) printf "%s\\t%s\\tok\\t%s\\n" "$1" "$target" "\${real#"$PWD"/}" ;;`,
+        `    *) printf "%s\\t%s\\tescaped\\t%s\\n" "$1" "$target" "$real" ;;`,
+        `  esac`,
+        `' _ {} \\;`,
+      ].join("\n"),
     ).stdout
     const remote = canonicalRemote(files.trim().split("\n").filter(Boolean), links.trim().split("\n").filter(Boolean))
     if (remote.sha256 !== local.sha256) {

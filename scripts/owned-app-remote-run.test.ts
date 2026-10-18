@@ -115,6 +115,7 @@ function fixture(): void {
       "verbose=0",
       'for a in "$@"; do [ "$a" = "-v" ] && verbose=1; done',
       'while [ "$1" = "-o" ]; do shift 2; done',
+      'while [ "$1" = "-l" ]; do shift 2; done',
       'while [ "$1" = "-v" ]; do shift; done',
       '[ "$1" = "--" ] && shift',
       "shift",
@@ -131,16 +132,29 @@ function fixture(): void {
     join(shims, "rsync"),
     [
       "#!/bin/sh",
+      'REAL_RSYNC="${REAL_RSYNC:-/usr/bin/rsync}"',
+      'if [ "$1" = "--server" ]; then exec "$REAL_RSYNC" "$@"; fi',
       "{ printf 'RSYNC'; for a in \"$@\"; do printf '\\t%s' \"$a\"; done; printf '\\n'; } >> \"${SHIM_RSYNC_LOG:-/dev/null}\"",
       "set -e",
-      'while [ $# -gt 2 ]; do case "$1" in -a|--delete|-v) shift ;; -e) shift 2 ;; --exclude=*) shift ;; --) shift ;; *) break ;; esac; done',
-      'src="$1"; dest="$2"',
+      'prev=""',
+      'src=""',
+      'dest=""',
+      'for a in "$@"; do',
+      '  if [ "$prev" = "-e" ]; then prev=""; continue; fi',
+      '  case "$a" in',
+      "    -a|--delete|-v|--) ;;",
+      '    -e) prev="-e" ;;',
+      "    --exclude=*) ;;",
+      "    -*) ;;",
+      '    *) src="$dest"; dest="$a" ;;',
+      "  esac",
+      "done",
       'case "$src" in *:*) src="${src#*:}" ;; esac',
       'case "$dest" in *:*) dest="${dest#*:}" ;; esac',
       '[ -n "${SHIM_RSYNC_SLEEP:-}" ] && sleep "$SHIM_RSYNC_SLEEP"',
-      'if [ "${SHIM_RSYNC_SKIP_BACK:-}" = 1 ]; then case "$1" in *:*) exit 0 ;; esac; fi',
+      'if [ "${SHIM_RSYNC_SKIP_BACK:-}" = 1 ]; then case "$src" in *remote/*) exit 0 ;; esac; fi',
       'if [ "${SHIM_RSYNC_SKIP_EXTRA:-}" = 1 ]; then case "$src" in */extra/) exit 0 ;; esac; fi',
-      'case "$src" in */) mkdir -p "$dest"; cp -R "$src". "$dest" ;; *) [ -d "$dest" ] && find "$dest" -depth -delete; mkdir -p "$(dirname "$dest")"; cp -R "$src" "$dest" ;; esac',
+      '"$REAL_RSYNC" "$@"',
       'if [ "${SHIM_RSYNC_TAMPER:-}" = 1 ]; then case "$dest" in */source/package.json) printf \'tampered\' >> "$dest" ;; esac; fi',
       'if [ "${SHIM_RSYNC_TAMPER_RECEIPT:-}" = 1 ]; then case "$dest" in */transport/) printf \' \' >> "$dest/transport-receipt.json" ;; esac; fi',
       'if [ "${SHIM_RSYNC_TAMPER_NESTED:-}" = 1 ]; then case "$dest" in */transport/) printf \'tampered\' >> "$dest/nested/extra.log" ;; esac; fi',
@@ -178,10 +192,11 @@ function run(
     OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
     SHIM_SSH_LOG: sshLog,
     SHIM_RSYNC_LOG: rsyncLog,
+    REAL_RSYNC: "/usr/bin/rsync",
     ...extraEnv,
   }
   rmSync(join(output, "transport"), { recursive: true, force: true })
-  return spawnSync(
+  const result = spawnSync(
     process.execPath,
     [
       driver,
@@ -203,6 +218,7 @@ function run(
     ],
     { encoding: "utf8", env },
   )
+  return result
 }
 
 function proof(result: ReturnType<typeof run>) {
@@ -297,11 +313,16 @@ describe("owned-app ssh transport", () => {
     }
   }, 60_000)
 
-  it("keeps the persistent stage and refreshes it to the exact source on the next run", () => {
+  it("keeps the persistent stage and refreshes it to new source bytes and a new sha", () => {
     expect(run().status).toBe(0)
+    writeFileSync(join(source, "README.md"), "second revision\n")
+    git(source, "add", "-A")
+    git(source, "commit", "-q", "-m", "second revision")
+    revision = git(source, "rev-parse", "HEAD")
     const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
     expect(again.status, again.stderr).toBe(0)
     expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
+    expect(readFileSync(join(stage, "source", "vendor", "terminfo.dev", "README.md"), "utf8")).toBe("second revision\n")
   }, 60_000)
 
   it("removes the stage only when asked", () => {
@@ -344,6 +365,26 @@ describe("owned-app ssh transport", () => {
     const result = run({ SHIM_RSYNC_SKIP_EXTRA: "1" })
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("broken staged symlink")
+  }, 60_000)
+
+  it("refuses an absolute resource link, whose text would resolve against the host's filesystem", () => {
+    symlinkSync(join(code, "extra", "pkg"), join(code, "node_modules", "@terminfo", "absolute"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("broken staged symlink")
+    expect(result.stderr).toContain("absolute")
+    expect(lines(sshLog)).toHaveLength(1)
+  }, 60_000)
+
+  it("refuses a relative link whose real target leaves the tree through another link", () => {
+    mkdirSync(join(root, "outside"), { recursive: true })
+    writeFileSync(join(root, "outside", "payload.ts"), "export const outside = 'not ours'\n")
+    symlinkSync(join("..", "outside"), join(code, "hop"))
+    symlinkSync(join("..", "..", "hop"), join(code, "node_modules", "@terminfo", "chain"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("escapes the staged tree")
+    expect(lines(sshLog)).toHaveLength(1)
   }, 60_000)
 
   it("refuses a context that would escape the stage, before touching the host", () => {
