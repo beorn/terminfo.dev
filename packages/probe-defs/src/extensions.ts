@@ -11,6 +11,7 @@ import {
   sgrCaptureTooSmall,
   unmeasuredCellResult,
 } from "./helpers.ts"
+import { sgrTermReadback } from "./sgr.ts"
 
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
 const ITERM2_RED_PNG =
@@ -230,6 +231,104 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
       ),
     ),
     termlessObservationEvidence: "query",
+  }
+}
+
+/**
+ * Candidate test colours for the highlight-reset probes, tried in order. They differ from each other,
+ * so at most one can equal the colour a run starts on and a distinct change is always available.
+ */
+const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
+
+/**
+ * A highlight-colour RESET decides only against the colour the run started from — "the default" is
+ * not a known constant. So: query the initial value, set a known colour and confirm the terminal
+ * reports it, write the reset, query again, and compare that reading with the initial one. The
+ * initial value is restored from a finally, so the run leaves the slot as it found it. A silent
+ * initial read is inconclusive: without it a reset has nothing to be compared against. The set colour
+ * is chosen to differ from the observed initial one, so a terminal that starts on the usual test
+ * value still gets an observable change to grade the reset against.
+ */
+function highlightResetProbe(id: string, setCode: number, resetCode: number): ProbeDefinition {
+  const querySeq = `\x1b]${setCode};?\x07`
+  const pattern = new RegExp(
+    `\\x1b\\]${setCode};rgb:([0-9a-f]{1,4})/([0-9a-f]{1,4})/([0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
+    "i",
+  )
+  const read = async (ctx: TermContext) => {
+    const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
+    const match = reply.match
+    if (reply.reason !== "reply" || !match) return null
+    const [, r, g, b] = match
+    if (r === undefined || g === undefined || b === undefined) return null
+    return { raw: match[0] ?? "", rgb: `${r}/${g}/${b}` }
+  }
+  const inconclusive = (note: string): ProbeResult => ({
+    pass: false,
+    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+  })
+  return {
+    ...probe(
+      id,
+      (ctx) => {
+        ctx.feed(`\x1b]${resetCode}\x07X`)
+        return notTestedResult(`highlight colour reset (OSC ${resetCode})`, { cell: ctx.getCell(0, 0) })
+      },
+      async (ctx): Promise<ProbeResult> => {
+        const initial = await read(ctx)
+        if (!initial) {
+          return inconclusive(
+            `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
+          )
+        }
+        // A set that the terminal reports back as the initial colour would let both readings agree
+        // while the reset is ignored, so the changed state has to be distinct from the initial one.
+        const known = HIGHLIGHT_TEST_COLOURS.find((candidate) => candidate !== initial.rgb)
+        if (!known) {
+          return inconclusive(
+            `${id}: every candidate test colour equals the initial ${initial.rgb}, so no observable change is available to grade a reset against`,
+          )
+        }
+        try {
+          ctx.write(`\x1b]${setCode};rgb:${known}\x07`)
+          const applied = await read(ctx)
+          if (!applied) {
+            return inconclusive(
+              `${id}: the known colour was not read back after OSC ${setCode}; a reset cannot be graded against a set that did not apply`,
+            )
+          }
+          if (applied.rgb !== known) {
+            return inconclusive(
+              `${id}: OSC ${setCode} reported ${applied.rgb} after setting ${known}, so the set did not take and a reset means nothing`,
+            )
+          }
+          ctx.write(`\x1b]${resetCode}\x07`)
+          const afterReset = await read(ctx)
+          if (!afterReset) return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`)
+          const ok = afterReset.rgb === initial.rgb
+          return {
+            pass: ok,
+            response: JSON.stringify({ initial: initial.raw, set: applied.raw, afterReset: afterReset.raw }),
+            observation: { outcome: ok ? "supported" : "unsupported", evidence: "query" },
+            assertions: [
+              {
+                kind: (ok ? "positive" : "negative") as "positive" | "negative",
+                expected: `${id}: OSC ${setCode} reports the initial ${initial.rgb} after OSC ${resetCode}`,
+                observed: afterReset.raw,
+              },
+            ],
+          }
+        } finally {
+          // Restore what the run found; a probe never leaves a known test colour behind.
+          ctx.write(`\x1b]${setCode};rgb:${initial.rgb}\x07`)
+        }
+      },
+      "query",
+    ),
+    // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
+    // the same classification the OSC 10-14 reset probes carry.
+    termNeedsDisposable: true,
+    termlessObservationEvidence: "none",
   }
 }
 
@@ -1399,38 +1498,25 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
-      async (ctx) => {
-        if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "extensions.truecolor")
-          if (refusal) return refusal
-          const sample = "AaBb 0123456789 - terminal text"
-          try {
-            return await sgrCaptureFrames(
-              ctx,
-              "\x1b[0m\x1b[2J\x1b[3;3H" + sample,
-              "\x1b[0m\x1b[2J\x1b[3;3H\x1b[38;2;255;128;0m" +
-                sample.slice(0, 12) +
-                "\x1b[38;2;17;97;201m" +
-                sample.slice(12),
-              "extensions.truecolor",
-              { sample, startRow: 3, startCol: 3, firstRgb: "255;128;0", secondRgb: "17;97;201" },
-              "Two direct-RGB foreground samples; compare each against the unstyled control run before grading",
-            )
-          } finally {
-            // Disposable owned run: clear the surface so no sample text is left behind.
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
-        const pos = await ctx.queryCursorPosition()
-        if (!pos) return unverifiedEffect("No cursor response; RGB color was not measured")
-        return unverifiedEffect(
-          pos.col === 2
-            ? "SGR was consumed; RGB cell color was not measured"
-            : `Cursor at col ${pos.col}; RGB color was not measured`,
-        )
-      },
+      // The row's claim is the one sgr.fg.truecolor states: the cell stores the exact RGB values.
+      // DECRQSS SGR is therefore its oracle, not a pixel comparison of rendered glyphs.
+      sgrTermReadback(
+        "extensions.truecolor",
+        "\x1b[38;2;255;128;0m",
+        { require: [38], requireTokens: ["38:2:255:128:0"] },
+        async (ctx) => {
+          ctx.write("\x1b[1;1H\x1b[2K")
+          ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
+          const pos = await ctx.queryCursorPosition()
+          if (!pos) return unverifiedEffect("No cursor response; RGB color was not measured")
+          return unverifiedEffect(
+            pos.col === 2
+              ? "SGR was consumed; RGB cell color was not measured"
+              : `Cursor at col ${pos.col}; RGB color was not measured`,
+          )
+        },
+      ),
+      "consumed",
     ),
     termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
@@ -2329,48 +2415,10 @@ export const extensionsProbes: ProbeDefinition[] = [
   resetProbe("extensions.osc112-reset-cursor", 12, 112),
 
   // OSC 117 — reset highlight background
-  {
-    ...probe(
-      "extensions.osc117-reset-highlight-bg",
-      (ctx) => {
-        // Verify the reset sequence is consumed without producing visible output
-        ctx.feed("\x1b]117\x07X")
-        const cell = ctx.getCell(0, 0)
-        return notTestedResult("highlight background color", { cell })
-      },
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]117\x07")
-        const pos = await ctx.queryCursorPosition()
-        return unverifiedEffect(
-          pos ? "Cursor answered; highlight background was not read back" : "No cursor response after OSC 117",
-        )
-      },
-    ),
-    termlessObservationEvidence: "parser-state",
-  },
+  highlightResetProbe("extensions.osc117-reset-highlight-bg", 17, 117),
 
   // OSC 119 — reset highlight foreground
-  {
-    ...probe(
-      "extensions.osc119-reset-highlight-fg",
-      (ctx) => {
-        // Verify the reset sequence is consumed without producing visible output
-        ctx.feed("\x1b]119\x07X")
-        const cell = ctx.getCell(0, 0)
-        return notTestedResult("highlight foreground color", { cell })
-      },
-      async (ctx) => {
-        ctx.write("\x1b[1;1H\x1b[2K")
-        ctx.write("\x1b]119\x07")
-        const pos = await ctx.queryCursorPosition()
-        return unverifiedEffect(
-          pos ? "Cursor answered; highlight foreground was not read back" : "No cursor response after OSC 119",
-        )
-      },
-    ),
-    termlessObservationEvidence: "parser-state",
-  },
+  highlightResetProbe("extensions.osc119-reset-highlight-fg", 19, 119),
 
   // OSC 17 — highlight background color query
   oscColorQueryProbe("extensions.osc17-highlight-bg", 17),

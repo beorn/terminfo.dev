@@ -23,7 +23,7 @@ function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: numb
  * Prefer the terminal's own DECRQSS SGR report over the pixel/cursor fallback path. A terminal that
  * answers decides the claim structurally; one that stays silent keeps the probe's existing evidence.
  */
-function sgrTermReadback(
+export function sgrTermReadback(
   id: string,
   sequence: string,
   readback: SgrReadback,

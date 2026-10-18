@@ -6,6 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
+import { replayContext } from "./testing/group-harness.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
 
 function callback(id: string) {
@@ -47,6 +48,22 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
   } as unknown as TermlessContext)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
   expect(result.assertions).toBeUndefined()
+})
+
+test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle as sgr.fg.truecolor", async () => {
+  const definition = callback("extensions.truecolor")
+  const sgrQuery = "\x1bP$qm\x1b\\"
+  const answering = (raw: string) =>
+    replayContext(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
+  const supported = await definition.term!(answering("\x1bP1$r0;38;2;255;128;0m\x1b\\"))
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  // The cell-storage claim is exactly what sgr.fg.truecolor decides, so a report without the
+  // requested direct colour is a measured negative, not a cursor-consumption verdict.
+  const unsupported = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
+  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  // A silent terminal never becomes a negative: the existing cursor evidence stands.
+  const silent = await definition.term!(replayContext(new Map()))
+  expect(silent.observation?.outcome).toBe("inconclusive")
 })
 
 test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
@@ -500,4 +517,90 @@ test("the kitty graphics query still qualifies its i=31;OK reply (27915 kept the
   const definition = callback("extensions.kitty-graphics")
   const result = definition.termless!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as TermlessContext)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+})
+
+/**
+ * A terminal that models one highlight-colour slot: OSC 17/19 set it, OSC 117/119 reset it to the
+ * colour it held at run start, and a query reports it. `ignoresReset` models a terminal that consumes
+ * the reset without restoring the slot.
+ */
+function highlightTerminal(setCode: number, resetCode: number, initial: string, ignoresReset = false) {
+  let colour = initial
+  const writes: string[] = []
+  const queries: string[] = []
+  const ctx = {
+    rows: 24,
+    cols: 80,
+    write: (bytes: string) => {
+      writes.push(bytes)
+      const set = new RegExp(`\\x1b\\]${setCode};rgb:([0-9a-f]{1,4}/[0-9a-f]{1,4}/[0-9a-f]{1,4})\\x07`, "i").exec(bytes)
+      if (set?.[1]) colour = set[1]
+      if (!ignoresReset && bytes === `\x1b]${resetCode}\x07`) colour = initial
+    },
+    queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) => {
+      queries.push(_sequence)
+      const raw = `\x1b]${setCode};rgb:${colour}\x07`
+      return {
+        match: pattern.exec(raw),
+        reason: "reply" as const,
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      }
+    },
+    queryCursorPosition: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+    measureRenderedWidth: async () => null,
+  } as unknown as TermContext
+  return { ctx, writes, queries, colour: () => colour }
+}
+
+test.each([
+  ["extensions.osc117-reset-highlight-bg", 17, 117],
+  ["extensions.osc119-reset-highlight-fg", 19, 119],
+] as const)("%s decides the reset against the initial colour it read first", async (id, setCode, resetCode) => {
+  const definition = callback(id)
+  // It mutates the slot, so the collector's disposable-receipt classification applies — the same one
+  // the OSC 10-14 reset probes carry. A query-only arm would bypass the ownership admission.
+  expect(definition.termWrites).toBeUndefined()
+  expect(definition.termNeedsDisposable).toBe(true)
+  const honest = highlightTerminal(setCode, resetCode, "1111/2222/3333")
+  const supported = await definition.term!(honest.ctx)
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  // The initial colour is asked for first, and the run leaves the slot as it found it.
+  expect(honest.queries[0]).toBe(`\x1b]${setCode};?\x07`)
+  expect(honest.colour()).toBe("1111/2222/3333")
+
+  // A terminal that consumes the reset without restoring the slot is a measured negative.
+  const ignoring = highlightTerminal(setCode, resetCode, "1111/2222/3333", true)
+  const unsupported = await definition.term!(ignoring.ctx)
+  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  // The honest terminal restores the slot with its own reset, which would hide a missing finally.
+  // This one leaves the test colour behind unless the run restores what it found.
+  expect(ignoring.colour()).toBe("1111/2222/3333")
+
+  // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
+  const silent = await definition.term!(replayContext(new Map()))
+  expect(silent.observation?.outcome).toBe("inconclusive")
+
+  // A terminal that starts on the default test colour still needs an observed change: a fixed set
+  // colour would let both readings agree while the reset was ignored.
+  const collisionIgnoring = highlightTerminal(setCode, resetCode, "3030/6060/9090", true)
+  const collisionUnsupported = await definition.term!(collisionIgnoring.ctx)
+  expect(collisionUnsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(collisionIgnoring.colour()).toBe("3030/6060/9090")
+
+  const collisionHonest = highlightTerminal(setCode, resetCode, "3030/6060/9090")
+  const collisionSupported = await definition.term!(collisionHonest.ctx)
+  expect(collisionSupported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+})
+
+test.each([
+  ["extensions.osc117-reset-highlight-bg", "none"],
+  ["extensions.osc119-reset-highlight-fg", "none"],
+] as const)("%s declares its headless arm as a refusal before measurement (%s), never parser state", (id, evidence) => {
+  const definition = callback(id)
+  expect(definition.termlessObservationEvidence).toBe(evidence)
 })
