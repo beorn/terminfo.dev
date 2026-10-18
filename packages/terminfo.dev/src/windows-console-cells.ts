@@ -7,10 +7,15 @@
  * conhost.exe) and the shell as two children of itself, so an ancestry walk from this process sees
  * the terminal and the shell and never the host. Selection is therefore a table lookup, below.
  *
- * Under ConPTY that buffer is the text the terminal renders, so a read yields exact cells and
- * legacy attributes and never pixels. A sequence the console host does not interpret is invisible
- * here whatever the terminal does with it, which is why every result names its buffer owner and why
- * a row whose claim the host cannot show stays named rather than decided.
+ * Under ConPTY the terminal draws its window FROM that buffer, but whether the cells it draws equal
+ * the buffer's cells is UNMEASURED: nothing here compares the two, and no measurement of this app's
+ * drawn cells against the host buffer exists on the row's shapes. A Windows text row cannot count
+ * until that measurement is made for its app — its own plan, not this read. The five readback shapes
+ * gate macOS text-to-cell claims only, never Windows host-versus-terminal risk. So a read yields the
+ * buffer's exact cells and legacy attributes and never pixels — it does not yield what the terminal
+ * drew. A sequence the console host does not interpret is invisible here whatever the terminal does
+ * with it, which is why every result names its buffer owner and why a row whose claim the host
+ * cannot show stays named rather than decided.
  *
  * The read is the WINDOW rectangle, never the buffer height: the buffer is scrollback-inclusive,
  * the window is what the classics compare (windows-console-ffi.ts).
