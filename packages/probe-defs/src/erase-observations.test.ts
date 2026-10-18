@@ -560,6 +560,10 @@ const BOTTOM_REF = `sha256:${"b".repeat(64)}`
 const HISTORY_REF = `sha256:${"h".repeat(64)}`
 const ERASED_REF = `sha256:${"e".repeat(64)}`
 const OTHER_REF = `sha256:${"o".repeat(64)}`
+const BOTTOM_PIX = "sha256:pixels-bottom"
+const HISTORY_PIX = "sha256:pixels-history"
+const ERASED_PIX = "sha256:pixels-erased"
+const OTHER_PIX = "sha256:pixels-other"
 
 function scrollbackApp(script: {
   delivery?: string | null
@@ -567,6 +571,8 @@ function scrollbackApp(script: {
   clears?: boolean
   restore?: boolean
   afterRef?: string
+  encodingOnly?: boolean
+  divergentPixels?: boolean
 }): {
   ctx: TermContext
   keys: string[]
@@ -585,6 +591,7 @@ function scrollbackApp(script: {
   let historyExists = true
   let ed3 = false
   let captureCount = 0
+  let sawHistory = false
   const ctx: TermContext = {
     ...app({ row: 5, col: 5 }),
     write(text) {
@@ -617,15 +624,31 @@ function scrollbackApp(script: {
     },
     capture: async ({ role, label }) => {
       captureCount += 1
-      const ref =
-        script.afterRef && captureCount >= 5
-          ? script.afterRef
-          : viewport === "history" && historyExists
-            ? HISTORY_REF
-            : ed3
-              ? ERASED_REF
-              : BOTTOM_REF
-      return { role, label, capturedAt: Date.now(), ref }
+      let ref: string
+      let pixelsDigest: string
+      if (script.afterRef && captureCount >= 5) {
+        ref = script.afterRef
+        pixelsDigest = OTHER_PIX
+      } else if (viewport === "history" && historyExists) {
+        ref = HISTORY_REF
+        pixelsDigest = HISTORY_PIX
+      } else if (ed3) {
+        ref = ERASED_REF
+        pixelsDigest = ERASED_PIX
+      } else {
+        if (script.divergentPixels) {
+          ref = OTHER_REF
+          pixelsDigest = OTHER_PIX
+        } else if (script.encodingOnly && sawHistory) {
+          ref = OTHER_REF
+          pixelsDigest = BOTTOM_PIX
+        } else {
+          ref = BOTTOM_REF
+          pixelsDigest = BOTTOM_PIX
+        }
+      }
+      if (viewport === "history" && historyExists) sawHistory = true
+      return { role, label, capturedAt: Date.now(), ref, pixelsDigest }
     },
   }
   return { ctx, keys, clicks, writes }
@@ -698,6 +721,22 @@ test("erase.screen.scrollback is not tested when wheel-down does not restore the
     noObservable: expect.stringMatching(/wheel-down|restore|bottom/i),
   })
   expect(result.observation).toBeUndefined()
+})
+
+test("erase.screen.scrollback grades when the refs differ but the pixels agree", async () => {
+  // A ref names the encoded container; two identical screens can carry different refs. Before 30080
+  // this read not tested on every Linux context, because the restore check compared refs alone.
+  const { ctx } = scrollbackApp({ clears: true, encodingOnly: true })
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+})
+
+test("erase.screen.scrollback names moving pixels when the return never settles", async () => {
+  const { ctx } = scrollbackApp({ restore: false, divergentPixels: true })
+  const result = await byId("erase.screen.scrollback").term(ctx)
+  expect(result.observation).toBeUndefined()
+  expect(result.notTested?.noObservable).toMatch(/captured pixels differ/i)
 })
 
 test("erase.screen.scrollback records unsupported when history remains after ED3", async () => {

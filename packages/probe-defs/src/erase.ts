@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 
@@ -307,6 +307,27 @@ const SCROLLBACK_ED3_EXPECTED =
   "ED3 removes captured history: wheel-up after ED3 no longer shows the pre-ED3 history frame"
 
 /**
+ * Two captures of the same screen can carry different `ref`s — that id names the encoded container,
+ * whose text chunks differ between identical frames — while their pixels agree. `pixelsDigest` is the
+ * pixel truth (29580); `ref` stays the fallback for frames that name no digest.
+ */
+function sameFrame(left: ObservationFrame, right: ObservationFrame): boolean {
+  if (left.pixelsDigest !== undefined && right.pixelsDigest !== undefined) {
+    return left.pixelsDigest === right.pixelsDigest
+  }
+  return left.ref === right.ref
+}
+
+/** Why two frames disagree, in the terms the next run needs to tell the causes apart. */
+function frameDivergence(settled: ObservationFrame, bottom: ObservationFrame): string {
+  if (settled.pixelsDigest !== undefined && bottom.pixelsDigest !== undefined) {
+    if (settled.pixelsDigest === bottom.pixelsDigest) return "refs differ while the pixels agree (encoded container)"
+    return "the captured pixels differ"
+  }
+  return "the frame refs differ and no pixel digest was carried"
+}
+
+/**
  * App ED3 cannot read history as cells. Compose existing XTEST wheel + capture:
  * prove history is observable, then grade whether ED3 removes it.
  * Never enable mouse tracking — that would steal the wheel into stdin.
@@ -345,7 +366,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
     const bottom = await capture({ role: "control", label: "Bottom of seeded buffer" })
     await input.injectClick(4)
     const history = await capture({ role: "control", label: "After wheel-up before ED3" })
-    if (history.ref === bottom.ref) {
+    if (sameFrame(history, bottom)) {
       return notTestedResult("wheel-up did not change captured pixels; cannot observe history", {
         control,
         bottom,
@@ -354,8 +375,8 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
     }
     await input.injectClick(5)
     const restored = await capture({ role: "control", label: "After wheel-down before ED3" })
-    if (restored.ref !== bottom.ref) {
-      return notTestedResult("wheel-down did not restore the bottom frame; cannot return from history", {
+    if (!sameFrame(restored, bottom)) {
+      return notTestedResult(`wheel-down did not return to the bottom frame: ${frameDivergence(restored, bottom)}`, {
         control,
         bottom,
         history,
@@ -375,7 +396,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
       after: after.ref,
     }
     const frames = [bottom, history, restored, erased, after]
-    if (after.ref === history.ref) {
+    if (sameFrame(after, history)) {
       return {
         pass: false,
         response: JSON.stringify(observed),
@@ -395,7 +416,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
         ],
       }
     }
-    if (after.ref === erased.ref) {
+    if (sameFrame(after, erased)) {
       return {
         pass: true,
         response: JSON.stringify(observed),
