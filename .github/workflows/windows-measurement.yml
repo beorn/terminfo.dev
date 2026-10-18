@@ -71,7 +71,7 @@ jobs:
                 exit 1
               fi
               curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0-portable.exe" -o "$ALACRITTY_EXE"
-              ACTUAL_SHA256="$(sha256sum "$ALACRITTY_EXE" | awk '{print tolower($1)}')"
+              ACTUAL_SHA256="$(sha256sum "$ALACRITTY_EXE" | awk '{sub(/^\\/, "", $1); print tolower($1)}')"
               test "$ACTUAL_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
                 echo "Alacritty SHA256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ACTUAL_SHA256" >&2
                 exit 1
