@@ -32,16 +32,18 @@ import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import * as catalog from "@terminfo/catalog"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { buildReport } from "./decisive-share.ts"
+import { classifyDevelopmentRun } from "../docs/data/selected-results.ts"
 import {
   admitProducedRuns,
   collectPass,
   clipboardProfileFor,
   linuxLedger,
+  ownedAppRunSource,
   presetFor,
   release1Census,
   uncoveredContexts,
@@ -793,3 +795,71 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     rmSync(directory, { recursive: true, force: true })
   }
 }, 30_000)
+
+/**
+ * The owned-app route must refuse a transport's bad bytes as a collection refusal that names the file
+ * and the fields it lacks. Left to the canonical parser, truncated JSON reports a v2 parse failure and
+ * an identity-only object reports a legacy `backend/terminal` failure — both pointing the reader at
+ * the wrong layer, and neither naming what the transport failed to produce.
+ */
+describe("owned-app raw runs refuse before the parser", () => {
+  const directory = (name: string) => mkdtempSync(join(tmpdir(), `owned-app-${name}-`))
+
+  it("AC1/AC3: refuses invalid JSON by path, before any parse or classification", () => {
+    const dir = directory("invalid-json")
+    try {
+      const path = join(dir, "kitty.json")
+      writeFileSync(path, '{"schemaVersion": 2, "target": {"kind": "app"')
+      let message = ""
+      try {
+        ownedAppRunSource(path)
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error)
+      }
+      // The refusal is the route's own, starting with the file it names; the parser's would start
+      // with that path and describe JSON or a target, and never arrive here as a refusal.
+      expect(message.startsWith(`owned-app raw run is not valid JSON: ${path}`)).toBe(true)
+      expect(message).not.toMatch(/missing backend\/terminal|missing target|run must be an object/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("AC2/AC3: refuses a target-id-only run, naming the missing fields", () => {
+    const dir = directory("target-id-only")
+    try {
+      const path = join(dir, "kitty.json")
+      writeFileSync(path, JSON.stringify({ target: { id: "kitty" } }))
+      let message = ""
+      try {
+        ownedAppRunSource(path)
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error)
+      }
+      expect(message).toBe(`owned-app raw run names only target.id: ${path} is missing target.kind, target.version`)
+      expect(message).not.toMatch(/backend\/terminal|missing backend/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("AC4: a valid committed run still reaches parseRun and classifyDevelopmentRun unchanged", () => {
+    const path = join(CONTENT, "probes-apps", "kitty-0.49.2-linux-acd82c9f8287ee269b0b7dfc2b8b0ad3.json")
+    const source = ownedAppRunSource(path)
+    expect(source).toBe(readFileSync(path, "utf8"))
+    const manifestPath = join(CONTENT, "suites", "c24025ea22fc.json")
+    const manifest = parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8"))
+    const run = parseRun(
+      path,
+      source,
+      Object.keys(catalog.loadFeatures(CONTENT)),
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(run.schemaVersion).toBe(2)
+    expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "linux" })
+    const classification = classifyDevelopmentRun(run, [])
+    expect(classification.mode).toBe("development")
+    expect(classification.runId).toBe(run.runId)
+    expect(Object.keys(classification.states).length).toBeGreaterThan(0)
+  })
+})

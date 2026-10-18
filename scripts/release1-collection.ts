@@ -302,6 +302,35 @@ export interface CollectionPass {
 }
 
 /** Collect privately against live suite bytes; only an explicit, declared freeze enables admission. */
+/**
+ * The owned-app route's own refusal, before the canonical parser. A transport that returns truncated
+ * bytes or an identity-only object must fail as a collection refusal naming the file and the fields
+ * it lacks; left to parseRun it fails as a v2 parse error, or as a legacy `backend/terminal` error
+ * that points the reader at the wrong layer.
+ */
+export function ownedAppRunSource(path: string): string {
+  const source = readFileSync(path, "utf8")
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch (error) {
+    throw new Error(
+      `owned-app raw run is not valid JSON: ${path} (${error instanceof Error ? error.message : String(error)})`,
+    )
+  }
+  const target = (parsed as { target?: unknown } | null)?.target
+  if (target !== null && typeof target === "object" && "id" in target) {
+    const fields = target as Record<string, unknown>
+    const missing = ["kind", "version"].filter((field) => typeof fields[field] !== "string" || fields[field] === "")
+    if (missing.length > 0) {
+      throw new Error(
+        `owned-app raw run names only target.id: ${path} is missing ${missing.map((field) => `target.${field}`).join(", ")}`,
+      )
+    }
+  }
+  return source
+}
+
 export async function collectPass(outputDirectory: string, frozenSuiteId?: string): Promise<CollectionPass> {
   const snapshot = probeSuiteSnapshot()
   const freeze = frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
@@ -397,6 +426,7 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
     pass.contexts.push(row)
     try {
       let path: string
+      let source: string | undefined
       if (context.route === "linux-container") {
         const output = join(directory, "linux", context.id)
         row.directory = output
@@ -447,6 +477,7 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
         if (!path.startsWith(`${output}${sep}`)) {
           throw new Error(`owned-app raw output escaped its private context: ${path}`)
         }
+        source = ownedAppRunSource(path)
       } else if (context.route === "hosted-workflow") {
         const artifact = hosted.get(coverageKey(context.kind, context.id, context.os))
         if (!artifact) throw new Error("hosted dispatch lost its expected context result")
@@ -472,7 +503,7 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
         )
       }
       row.rawRun = path
-      const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
+      const run = parseRun(path, source ?? readFileSync(path, "utf8"), catalogIds, suites)
       if (
         run.schemaVersion !== 2 ||
         run.target.kind !== context.kind ||
