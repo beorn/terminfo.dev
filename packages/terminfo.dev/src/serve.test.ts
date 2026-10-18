@@ -673,6 +673,17 @@ describe("private finite daemon startup", () => {
         assert.equal(windows.target.version,productVersion)
         assert.deepEqual(windows.origin.appLaunch,launch)
       }
+      terminal={name:"alacritty",version:"",os:"windows",osVersion:"fixture"}
+      launch=parseAppLaunchReceipt({platform:"win32",executablePath:"D:/a/_temp/alacritty/alacritty.exe",
+        productVersion:"0.17.0",executableSha256:"c3".repeat(32),
+        sourceArtifact:{kind:"portable-exe",path:"D:/a/_temp/Alacritty-v0.17.0-portable.exe",sha256:"c3".repeat(32)},
+        mesaRenderer:{upstream:"https://github.com/mmozeiko/build-mesa",version:"26.2.5",
+          archivePath:"D:/a/_temp/mesa.7z",archiveSha256:"d4".repeat(32),
+          dlls:[{name:"opengl32.dll",path:"D:/a/_temp/alacritty/opengl32.dll",sha256:"e5".repeat(32)}]}},"collector","app","fixture")
+      process.env.TERMINFO_TARGET_VERSION=""
+      const winAlacritty=await collectProbeRun({ids:["device.xtversion"]})
+      assert.equal(winAlacritty.target.version,"0.17.0")
+      assert.deepEqual(winAlacritty.origin.appLaunch,launch)
     `,
       ],
       { cwd: packageRoot, env: { ...process.env, HOME: home }, encoding: "utf8", timeout: 5000 },
@@ -869,6 +880,96 @@ describe("private finite daemon startup", () => {
       expect(result.stderr).toBe("")
     },
   )
+
+  it("hosted Windows Alacritty requires detected terminal to match receipt appId and sets target.version from win32 appLaunch.productVersion", () => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-alacritty-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      Object.defineProperty(process, "platform", { value: "win32" })
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      let detectedName = "alacritty"
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        collectorRevision: "b".repeat(40)
+      }
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: detectedName, version: "", os: "windows", osVersion: "fixture" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({
+          geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
+          hostedWindowsAppId: "alacritty",
+          summary: "owned alacritty fixture",
+          readCells: async () => ({
+            status: "read",
+            grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
+            bufferOwner: { image: "conhost.exe", pid: 7216, ppid: 4684 }
+          }),
+          dispose: async () => {}
+        })
+      }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async callback => callback(), drainStdin: async () => {},
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          const raw = sequence.includes("[18t") ? "\\x1b[8;24;80t" : ""
+          return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
+        runProbeBatch: async options => ({
+          rawReplies: {},
+          appLaunch: {
+            platform: "win32",
+            executablePath: "D:\\\\a\\\\_temp\\\\alacritty\\\\alacritty.exe",
+            productVersion: "0.17.0",
+            executableSha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+            sourceArtifact: {
+              kind: "portable-exe",
+              path: "D:\\\\a\\\\_temp\\\\measurement-artifacts\\\\Alacritty-v0.17.0-portable.exe",
+              sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
+            }
+          },
+          observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
+          assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
+        })
+      }))
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      const run = await collectProbeRun({ ids: ["device.xtversion"] })
+      assert.equal(run.target.id, "alacritty")
+      assert.equal(run.target.version, "0.17.0")
+      detectedName = "windows-terminal"
+      await assert.rejects(
+        collectProbeRun({ ids: ["device.xtversion"] }),
+        /Hosted Windows terminal detected "windows-terminal" while the receipt names alacritty/u,
+      )
+      `,
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINFO_CAPTURE_DIRECTORY: join(home, "capture"),
+          TERMINFO_DISPOSABLE_RECEIPT: "hardware-receipt-fixture",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+          TERMINFO_TARGET_VERSION: "",
+        },
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    expect(result.stderr).toBe("")
+  })
 
   it.each([undefined, '["cursor.hide","reset.decaln"]'])(
     "forwards startup selection %s once and preserves producer completeness",

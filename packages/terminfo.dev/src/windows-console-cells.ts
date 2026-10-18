@@ -268,7 +268,7 @@ export async function readWindowsConsoleCells(options: ConsoleCellReadOptions): 
       reason: "no console buffer owner was named, so a cell read cannot say which program's buffer it saw",
     }
   }
-  const kernel = options.kernel ?? (await loadKernel32())
+  const kernel = options.kernel ?? loadKernel32()
   return withConsoleOutputHandle((handle, { symbols, ptr }) => {
     const info = Buffer.alloc(CSBI_BYTES)
     if (symbols.GetConsoleScreenBufferInfo(handle as never, ptr(info) as never) === 0) {
