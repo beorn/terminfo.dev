@@ -12,7 +12,14 @@ import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { cursorProbes, type ObservationFrame, type ProbeSuiteManifest, type TermContext } from "@terminfo/probe-defs"
+import {
+  cursorProbes,
+  editingProbes,
+  type ObservationFrame,
+  type ProbeSuiteManifest,
+  type ProbeResult,
+  type TermContext,
+} from "@terminfo/probe-defs"
 import { parseRun } from "./index.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
@@ -169,57 +176,171 @@ const scrollbackRun = () => ({
 
 const parse = (run: Record<string, unknown>) => parseRun("pixels-verdict.json", JSON.stringify(run), catalog, suites)
 
-describe("in-run pixels verdicts", () => {
-  it("parses the real cursor-cell verdict when PNG, whole-frame and cell digests differ", async () => {
-    const id = "cursor.hide"
-    const probe = cursorProbes.find((entry) => entry.id === id)
-    if (!probe?.term) throw new Error("Missing cursor.hide terminal callback")
-    let captureIndex = 0
-    const context: TermContext = {
-      rows: 24,
-      cols: 80,
-      write() {},
-      queryCursorPosition: async () => null,
-      measureRenderedWidth: async () => null,
-      query: async () => null,
-      queryWithSentinel: async () => null,
-      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-      queryMode: async () => null,
-      captureGeometry: {
-        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
-        source: "measured by complete raster calibration",
-      },
-      capture: async ({ role, label }) => {
-        captureIndex++
-        return {
-          ...frame(
-            role,
-            label,
-            captureIndex,
-            digest(`png-${captureIndex}`),
-            digest(captureIndex === 2 ? "hidden-cell" : "shown-cell"),
-            digest(`whole-${captureIndex}`),
+function callbackFixture(id: string) {
+  const writes: string[] = []
+  const queries: string[] = []
+  const requests: Array<Parameters<NonNullable<TermContext["capture"]>>[0]> = []
+  let captureIndex = 0
+  const context: TermContext = {
+    rows: 24,
+    cols: 80,
+    write(sequence) {
+      writes.push(sequence)
+    },
+    queryCursorPosition: async () => null,
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence) => {
+      queries.push(sequence)
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
+    queryMode: async () => null,
+    captureGeometry: {
+      geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+      source: "measured by complete raster calibration",
+    },
+    capture: async (request) => {
+      requests.push(request)
+      const { role, label } = request
+      captureIndex++
+      return {
+        ...frame(
+          role,
+          label,
+          captureIndex,
+          digest(`png-${captureIndex}`),
+          digest(
+            id === "cursor.hide"
+              ? captureIndex === 2
+                ? "hidden-cell"
+                : "shown-cell"
+              : captureIndex <= 2
+                ? "seed-cell"
+                : `extent-cell-${captureIndex}`,
           ),
-          regionRectangle: { x: 16, y: 16, width: 8, height: 16 },
+          digest(id === "editing.decsace" && captureIndex <= 2 ? "seed-whole" : `whole-${captureIndex}`),
+        ),
+        regionRectangle: {
+          x: 16,
+          y: 16,
+          width: id === "editing.decsace" ? 64 : 8,
+          height: id === "editing.decsace" ? 32 : 16,
+        },
+      }
+    },
+  }
+  return { context, writes, queries, requests }
+}
+
+function parseCallback(id: string, result: ProbeResult, fixture: ReturnType<typeof callbackFixture>) {
+  const frames = result.observation?.frames ?? []
+  const run = kittyRun({
+    rawReplies: { [id]: JSON.stringify({ writes: fixture.writes, queries: fixture.queries, events: [] }) },
+    assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id })),
+    observations: [{ ...result.observation, featureId: id, rawReplyRef: id }],
+    screenshotRefs: [
+      ...frames.filter((frame) => frame.kind !== "text-cells").map((frame) => frame.ref),
+      ...(result.observation?.screenshotRef ? [result.observation.screenshotRef] : []),
+    ],
+    textSnapshotRefs: frames.filter((frame) => frame.kind === "text-cells").map((frame) => frame.ref),
+  })
+  const callbackManifest: ProbeSuiteManifest = { ...manifest, probes: { app: [id], headless: [], mux: [] } }
+  return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]))
+}
+
+describe("in-run pixels verdicts", () => {
+  it.each(["cursor.hide", "editing.decsace"])(
+    "parses the real %s verdict when PNG, whole-frame and cell digests differ",
+    async (id) => {
+      const probe = [...cursorProbes, ...editingProbes].find((entry) => entry.id === id)
+      if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
+      const fixture = callbackFixture(id)
+      const { context } = fixture
+      // Native captures carry real SHA256s for all three representations. Placeholder whole-1
+      // values never reached the parser's citation scan and hid the Ghostty collector refusal.
+      const result = await probe.term(context)
+      expect(result.observation?.outcome).toBe("supported")
+      const frames = result.observation?.frames ?? []
+      const loaded = parseCallback(id, result, fixture)
+      expect(loaded.observations[0]?.outcome).toBe("supported")
+      expect(loaded.observations[0]?.frames).toHaveLength(3)
+      if (id === "editing.decsace") {
+        expect(fixture.requests).toHaveLength(4)
+        for (const request of fixture.requests) {
+          expect(request.cells).toEqual({ top: 1, left: 1, bottom: 2, right: 8 })
+          expect(request.pixelGeometry).toEqual(context.captureGeometry?.geometry)
         }
-      },
+      }
+      const assertion = result.assertions?.[0]
+      const pixel = frames.find((frame) => frame.kind !== "text-cells")
+      if (!assertion || !pixel || !pixel.pixelsDigest) {
+        throw new Error("Missing real callback citation control")
+      }
+      assertion.observed = pixel.pixelsDigest
+      expect(() => parseCallback(id, result, fixture)).toThrow("which is not the ref or a digest of a frame")
+    },
+  )
+
+  it.each([
+    ["missing report", "query", "CSI 16 t"],
+    ["short grid", "none", "at least 2x8"],
+    ["narrow grid", "none", "at least 2x8"],
+    ["text adapter", "none", "text-cells captures"],
+    ["text frame", "text", "text-cells"],
+    ["missing cells digest", "pixels", "required pixel cells digest"],
+    ["missing first digest", "pixels", "required pixel cells digest"],
+    ...[1, 2, 3, 4].map((capture) => [`crop ${capture}`, "pixels", "different screen positions"]),
+  ])("keeps DECSACE %s inconclusive and parser-valid", async (scenario, evidence, note) => {
+    const id = "editing.decsace"
+    const probe = editingProbes.find((entry) => entry.id === id)
+    if (!probe?.term) throw new Error("Missing DECSACE callback")
+    const fixture = callbackFixture(id)
+    const { context } = fixture
+    if (scenario === "missing report") delete context.captureGeometry
+    if (scenario === "short grid") context.rows = 1
+    if (scenario === "narrow grid") context.cols = 7
+    if (scenario === "text adapter") context.captureKind = "text-cells"
+    const capture = context.capture
+    if (!capture) throw new Error("Missing fixture capture")
+    let index = 0
+    context.capture = async (request) => {
+      const frame = await capture(request)
+      index++
+      if (frame.kind === "text-cells") throw new Error("Fixture must start with pixels")
+      if (scenario === "text frame") {
+        if (!frame.regionDigest || !frame.pixelsDigest) throw new Error("Missing fixture digests")
+        return {
+          kind: "text-cells",
+          role: frame.role,
+          label: frame.label,
+          capturedAt: frame.capturedAt,
+          ref: digest(`text-${index}`),
+          cellDigest: frame.regionDigest,
+          frameDigest: frame.pixelsDigest,
+          cellRectangle: { top: 1, left: 1, bottom: 2, right: 8 },
+        }
+      }
+      if (scenario === "missing cells digest" || (scenario === "missing first digest" && index === 1)) {
+        const { regionDigest: _unused, ...withoutCells } = frame
+        return withoutCells
+      }
+      if (scenario === `crop ${index}` && frame.regionRectangle) {
+        return { ...frame, regionRectangle: { ...frame.regionRectangle, x: frame.regionRectangle.x + 1 } }
+      }
+      return frame
     }
-    // Native captures carry real SHA256s for all three representations. Placeholder whole-1
-    // values never reached the parser's citation scan and hid the Ghostty collector refusal.
     const result = await probe.term(context)
-    expect(result.observation?.outcome).toBe("supported")
-    const frames = result.observation?.frames ?? []
-    const run = kittyRun({
-      rawReplies: { [id]: result.response ?? "" },
-      assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id })),
-      observations: [{ ...result.observation, featureId: id, rawReplyRef: id }],
-      screenshotRefs: frames.map((entry) => entry.ref),
-    })
-    const cursorManifest: ProbeSuiteManifest = { ...manifest, probes: { app: [id], headless: [], mux: [] } }
-    const loaded = parseRun("cursor-hide.json", JSON.stringify(run), [id], new Map([[SUITE, cursorManifest]]))
-    expect(loaded.observations[0]?.outcome).toBe("supported")
-    expect(loaded.observations[0]?.frames).toHaveLength(3)
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence })
+    expect(result.observation?.note).toContain(note)
+    expect(result.assertions).toBeUndefined()
+    if (scenario === "short grid" || scenario === "narrow grid" || scenario === "text adapter") {
+      expect(fixture.writes).toEqual([])
+      expect(fixture.queries).toEqual([])
+      expect(fixture.requests).toEqual([])
+    }
+    expect(parseCallback(id, result, fixture).observations[0]?.outcome).toBe("inconclusive")
   })
 
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
