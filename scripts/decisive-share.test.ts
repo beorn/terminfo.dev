@@ -26,6 +26,9 @@ import {
   candidate2Cohort,
   candidate4Cohort,
   COHORT_FACTORIES,
+  admittedShareText,
+  notMeasuredCoverageLine,
+  sharePct,
   categoryShares,
   cohortCategories,
   cohortHeaderLine,
@@ -1126,4 +1129,36 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     if (!measured || !measured.measured) throw new Error("kitty/linux is not a measured bar row")
     expect(cohortRowForSelected(measured, cohort, "must not appear").measured).toBe(true)
   }, 20_000)
+
+  /**
+   * Zero coverage is not a measured bar. A suite with probes for none of the cohort's ids used to
+   * print a fail fraction anyway: the missing probes were counted as non-decisive rows, so the
+   * reader published "fail 0/62" for a suite that decided nothing. @chief's ruling (tribe 1443730)
+   * is that it prints the not-measured line and no fraction, and that sharePct refuses a zero
+   * denominator instead of returning 0.
+   */
+  describe("zero coverage", () => {
+    it("sharePct refuses a zero denominator instead of publishing 0%", () => {
+      expect(() => sharePct(0, 0)).toThrow(/positive denominator/)
+      // Positive control: a real denominator still rounds the same way the printed bar assumes.
+      expect(sharePct(3, 4)).toBe(75)
+    })
+
+    it("names zero coverage and prints neither a fraction nor a verdict", () => {
+      const coverage = notMeasuredCoverageLine({ decidableIds: [], measuredIds: ["a", "b", "c"] })
+      expect(coverage).toBe("not measured: 0 of 3 cohort ids have probes")
+
+      const covered = decisiveShare({ a: "supported" } as never, ["a"])
+      const blocked = admittedShareText(covered.denominator, covered, coverage)
+      expect(blocked).toBe("not measured: 0 of 3 cohort ids have probes")
+      expect(blocked).not.toContain("decisive/")
+      expect(blocked).not.toContain("verdict")
+
+      // Positive control: with coverage the same function still prints the fraction and the verdict.
+      expect(notMeasuredCoverageLine({ decidableIds: ["a"], measuredIds: ["a"] })).toBeUndefined()
+      const printed = admittedShareText(1, covered, undefined)
+      expect(printed).toContain("decisive/1 1/1")
+      expect(printed).toContain("verdict")
+    })
+  })
 })
