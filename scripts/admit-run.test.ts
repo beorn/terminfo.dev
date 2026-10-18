@@ -73,6 +73,11 @@ function declaredRelease(suiteHash: string): string {
   return manifest.freeze.release
 }
 
+/** The suite candidate 2's freeze declares today, so a pointer move cannot strand these fixtures. */
+function currentCandidate2Release(): string {
+  return declaredRelease(frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), "candidate2"))
+}
+
 function runFixture(overrides: Record<string, unknown> = {}): string {
   const directory = temp("terminfo-admit-")
   const path = join(directory, "run.json")
@@ -209,7 +214,7 @@ test.each(["missing", "malformed", "wrong-hash", "wrong-probe-run", "wrong-host-
 
 test("release admission cannot relabel the current suite as the declared freeze", () => {
   // The fixture run is re-stamped onto the live snapshot, which candidate2's freeze declares.
-  const release = declaredRelease("68847e4d5355")
+  const release = currentCandidate2Release()
   const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
   // Keep the actual declaration reader; isolate a different current snapshot so the test remains
   // meaningful when Thursday's freeze later catches up with the live source tree.
@@ -235,7 +240,7 @@ test("release admission cannot relabel the current suite as the declared freeze"
 test("admission replans against the plan's declared release before declaring or placing", () => {
   authoringFixture()
   // The fixture run is re-stamped onto the live snapshot, which candidate2's freeze declares.
-  const release = declaredRelease("68847e4d5355")
+  const release = currentCandidate2Release()
   const declared = frozenSuiteIdFor(join(import.meta.dirname, "..", "content"), release)
   const current = declared === "fa".repeat(6) ? "fb".repeat(6) : "fa".repeat(6)
   vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({ ...probeSuiteSnapshot(), probeHash: current })
