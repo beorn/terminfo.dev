@@ -6,6 +6,7 @@
  *   the frozen one, or never admitted at all — so a row would land on the bar from a collection that
  *   does not count, and the census would read complete while it is not. Admission rejection must
  *   propagate from the single owner before the caller credits coverage.
+ *   Collector output failures must retain the pass ledger and raw files already collected.
  * @level l2
  * @consumer Full catalog/backend collection census and existing admission owner (scripts/release1-collection.ts)
  * @reach fs-walk vendor/terminfo.dev/content/** vendor/terminfo.dev/.github/workflows/**
@@ -121,7 +122,9 @@ it.each([
   ["matching", "none"],
   ["matching", "rewrite"],
   ["matching", "remove"],
-] as const)("retains a private %s-suite pass after input %s without admission", async (suite, inputChange) => {
+  ["matching", "blocked-hosted"],
+  ["matching", "blocked-macos"],
+] as const)("retains a private %s-suite pass after %s without admission", async (suite, inputChange) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
   const input = join(directory, "suite-input.ts")
   writeFileSync(input, "original private suite input")
@@ -152,6 +155,11 @@ it.each([
     // Use a private source canary: the failure must not delete or rewrite a real checkout input.
     if (inputChange === "remove") rmSync(input)
     if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
+    if (inputChange === "blocked-hosted") writeFileSync(join(dirname(output), "hosted"), "private obstruction")
+    if (inputChange === "blocked-macos") {
+      mkdirSync(join(dirname(output), "hosted"))
+      writeFileSync(join(dirname(output), "hosted", "macos"), "private obstruction")
+    }
     return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
   })
   // The real launcher owns containers and receipts. Its process boundary is replaced here;
@@ -237,7 +245,7 @@ it.each([
     }
     expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
     expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
-    if (inputChange !== "none") {
+    if (inputChange === "rewrite" || inputChange === "remove") {
       expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
     }
     expect(collector).toHaveBeenCalledTimes(1)
@@ -266,6 +274,21 @@ it.each([
       expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
       if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
       else expect(row?.rawRun && readFileSync(row.rawRun, "utf8")).toBe("{}")
+    }
+    expect(planner).not.toHaveBeenCalled()
+    expect(writer).not.toHaveBeenCalled()
+    expect(readFileSync(original, "utf8")).toBe(originalBytes)
+    if (inputChange === "blocked-hosted" || inputChange === "blocked-macos") {
+      const affected = pass.contexts.filter(
+        (row) =>
+          row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
+      )
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 5 : 4)
+      expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
+      expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
+        inputChange === "blocked-hosted" ? 0 : 1,
+      )
+      return
     }
     for (const os of ["macos", "windows"]) {
       expect(launcher).toHaveBeenCalledWith(
@@ -309,9 +332,6 @@ it.each([
       expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
       expect(windows?.error).toContain("run.json: missing backend/terminal")
     }
-    expect(planner).not.toHaveBeenCalled()
-    expect(writer).not.toHaveBeenCalled()
-    expect(readFileSync(original, "utf8")).toBe(originalBytes)
   } finally {
     collector.mockRestore()
     launcher.mockRestore()

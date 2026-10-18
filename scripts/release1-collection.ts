@@ -521,13 +521,13 @@ function collectHostedArtifacts(
 ): Map<string, { directory: string; path?: string; error?: string }> {
   const results = new Map<string, { directory: string; path?: string; error?: string }>()
   const root = join(directory, "hosted")
-  mkdirSync(root, { recursive: true })
   const logs = (directory: string, step: string) => ({
     stdout: join(directory, `${step}.stdout.log`),
     stderr: join(directory, `${step}.stderr.log`),
   })
   let branch: string
   try {
+    mkdirSync(root, { recursive: true })
     branch = runChild(["git", "symbolic-ref", "--short", "HEAD"], "hosted source branch", logs(root, "branch")).trim()
     const remote = runChild(
       ["git", "ls-remote", "--exit-code", "origin", `refs/heads/${branch}`],
@@ -552,8 +552,8 @@ function collectHostedArtifacts(
   for (const os of ["macos", "windows"]) {
     const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
     const output = join(root, os)
-    mkdirSync(output, { recursive: true })
     try {
+      mkdirSync(output, { recursive: true })
       const workflow = `${os}-measurement`
       const dispatchLogs = logs(output, "dispatch")
       const response =
