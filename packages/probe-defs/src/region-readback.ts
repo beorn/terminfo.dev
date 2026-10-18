@@ -210,6 +210,8 @@ function refused(id: string, note: string): ProbeResult {
  * into the same observation with truthful query evidence and say why in the note. Pixel verdicts and
  * every non-"none" refusal pass through untouched.
  */
+function afterCallerBytes(result: ProbeResult, callerEvidence: "none" | "query"): ProbeResult
+function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "query"): ProbeResult | null
 function afterCallerBytes(result: ProbeResult | null, callerEvidence: "none" | "query"): ProbeResult | null {
   const observation = result?.observation
   if (callerEvidence === "none" || !observation || observation.evidence !== "none") return result
@@ -228,9 +230,12 @@ function positive(value: number): boolean {
 }
 
 /** Refuse before any byte when the grid, the region, the witness or the pixel report cannot decide. */
+type RegionGeometrySpec = Pick<RegionReadback, "region" | "minRows" | "minCols" | "pixelGeometry"> &
+  Partial<Pick<RegionReadback, "sentinel" | "cursorRow">>
+
 function regionRefusal(
   id: string,
-  spec: RegionReadback,
+  spec: RegionGeometrySpec,
   rows: number,
   cols: number,
   textMode = false,
@@ -262,7 +267,7 @@ function regionRefusal(
   }
   const { region, sentinel, cursorRow } = spec
   const edges = [region.top, region.left, region.bottom, region.right]
-  if (edges.some((value) => !Number.isSafeInteger(value)) || !Number.isSafeInteger(cursorRow)) {
+  if (edges.some((value) => !Number.isSafeInteger(value)) || (cursorRow !== undefined && !Number.isSafeInteger(cursorRow))) {
     return refused(id, `${id}: capture-region readback needs integer cell edges`)
   }
   if (region.top < 1 || region.left < 1 || region.bottom < region.top || region.right < region.left) {
@@ -271,6 +276,8 @@ function regionRefusal(
   if (region.bottom > rows || region.right > cols) {
     return refused(id, `${id}: compared region ${JSON.stringify(region)} leaves the measured ${rows}x${cols} grid`)
   }
+  // Differential captures have no paint-witness or parked-cursor fixture to validate.
+  if (sentinel === undefined || cursorRow === undefined) return undefined
   if (!Number.isSafeInteger(sentinel.row) || !Number.isSafeInteger(sentinel.col)) {
     return refused(id, `${id}: paint witness needs integer cell coordinates`)
   }
@@ -377,7 +384,7 @@ function rectangleSpelling(rectangle: CaptureRectangle): string {
  * one capture producer sets the digest and the rectangle in a single branch, so a frame without one
  * is a hand-built read, never an owned capture. This adds a named refusal and moves no digest.
  */
-function cropPositionRefusal(input: {
+export function cropPositionRefusal(input: {
   id: string
   compared: Array<{ role: string; rectangle: CaptureRectangle | undefined }>
   response: string
@@ -547,6 +554,46 @@ async function deriveCellSizeFromTextArea(
   }
 }
 
+/** Shared grid, calibrated-footprint and terminal-report eligibility, in that order. */
+export async function captureRegionGeometry(
+  ctx: TermContext,
+  id: string,
+  spec: RegionGeometrySpec,
+  refusalEvidence: "none" | "query" = "none",
+): Promise<{ geometry: PixelGeometry | undefined; source: PixelGeometrySource } | ProbeResult> {
+  // Geometry first: an undersized terminal is refused before a single query byte.
+  const textMode = ctx.captureKind === "text-cells"
+  const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols, textMode)
+  if (bounds) return afterCallerBytes(bounds, refusalEvidence)
+  if (textMode) return { geometry: undefined, source: "cells read from the terminal's own text" }
+  const calibrated = ctx.captureGeometry?.geometry
+  if (
+    calibrated &&
+    (calibrated.textWidth !== calibrated.cellWidth * ctx.cols ||
+      calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
+  ) {
+    return afterCallerBytes(
+      inconclusive(
+        id,
+        `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
+        "insufficient-evidence",
+        "none",
+      ),
+      refusalEvidence,
+    )
+  }
+  const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
+  if ("missing" in reported) {
+    return inconclusive(
+      id,
+      `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`,
+      "insufficient-evidence",
+      "query",
+    )
+  }
+  return reported
+}
+
 /**
  * The whole region decision for one row, or null when this run has no owned capture. Bounds are
  * refused before any byte; then the terminal's own pixel report is queried here, once. A terminal
@@ -575,44 +622,8 @@ export async function captureRegionVerdict(
   if (spec.noIndependentReference) {
     return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), refusalEvidence)
   }
-  // Geometry first: an undersized terminal is refused before a single query byte.
-  const textMode = ctx.captureKind === "text-cells"
-  const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols, textMode)
-  if (bounds) return afterCallerBytes(bounds, refusalEvidence)
-  if (textMode) {
-    // The adapter already reads the cells the row names; no pixel report, no calibration, no crop.
-    return captureRegionReadbackDecision(
-      ctx,
-      id,
-      { ...spec, pixelGeometry: undefined, geometrySource: "cells read from the terminal's own text" },
-      read,
-    )
-  }
-  const calibrated = ctx.captureGeometry?.geometry
-  if (
-    calibrated &&
-    (calibrated.textWidth !== calibrated.cellWidth * ctx.cols ||
-      calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
-  ) {
-    return afterCallerBytes(
-      inconclusive(
-        id,
-        `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
-        "insufficient-evidence",
-        "none",
-      ),
-      refusalEvidence,
-    )
-  }
-  const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
-  if ("missing" in reported) {
-    return inconclusive(
-      id,
-      `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`,
-      "insufficient-evidence",
-      "query",
-    )
-  }
+  const reported = await captureRegionGeometry(ctx, id, spec, refusalEvidence)
+  if ("pass" in reported) return reported
   return afterCallerBytes(
     await captureRegionReadbackDecision(
       ctx,
