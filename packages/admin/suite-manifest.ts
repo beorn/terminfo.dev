@@ -102,6 +102,47 @@ function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSui
   return value
 }
 
+/** Every suite manifest is named by twelve lowercase hex characters (28018). */
+const SUITE_ID_RE = /^[0-9a-f]{12}$/u
+
+export type ExplicitSuiteTarget = Readonly<{ suiteId: string; path: string; manifest: ProbeSuiteManifest }>
+
+/**
+ * Read a suite the caller named instead of the live collector suite (28018). `--freeze`/`--move`
+ * derive their target from `probeSuiteSnapshot`, which is the suite the collector builds NOW; a ruling
+ * can name an older suite the registry still carries, and no collector can be made to re-derive it.
+ * The target is therefore read, never assumed: the id must be shaped like a suite id, a manifest must
+ * carry it, and that manifest must declare the id it is filed under. The live snapshot is not consulted
+ * and no live-suite comparison runs, because the named suite is deliberately not the live one.
+ */
+export function readExplicitSuiteTarget(root: string, suiteId: string): ExplicitSuiteTarget {
+  if (!SUITE_ID_RE.test(suiteId)) {
+    throw new Error(
+      `--suite ${JSON.stringify(suiteId)} is not a suite id: twelve lowercase hex characters name one suite manifest`,
+    )
+  }
+  const path = join(root, "content", "suites", `${suiteId}.json`)
+  if (!existsSync(path)) {
+    throw new Error(
+      `${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`,
+    )
+  }
+  let manifest: ProbeSuiteManifest
+  try {
+    manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+  } catch (cause) {
+    throw new Error(`${path}: the suite manifest does not parse, so --suite ${suiteId} cannot name a target`, {
+      cause,
+    })
+  }
+  if (manifest.probeHash !== suiteId) {
+    throw new Error(
+      `${path}: the manifest declares suite ${manifest.probeHash}, not ${suiteId}; --suite refuses a misfiled record`,
+    )
+  }
+  return { suiteId, path, manifest }
+}
+
 /** Verify a stored declaration against the currently executable suite. */
 export function verifySuiteManifest(path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
   let source: string
@@ -230,37 +271,44 @@ function applySuiteFreeze(
 export function freezeCurrentSuiteManifest(
   root: string,
   release: string,
-  options: { snapshot?: ProbeSuiteSnapshot; at?: string } = {},
+  options: { snapshot?: ProbeSuiteSnapshot; at?: string; suite?: string } = {},
 ): { status: "created" | "existing" | "frozen"; path: string; suiteId: string } {
-  const snapshot = options.snapshot ?? probeSuiteSnapshot(root)
-  assertDeclareIsAuthoring(root, snapshot.probeHash)
+  // An explicit suite is read from the registry and never compared with the live collector suite:
+  // the point of naming one is that the ruling names a suite the collector no longer builds (28018).
+  const named = options.suite === undefined ? undefined : readExplicitSuiteTarget(root, options.suite)
+  if (named !== undefined && options.snapshot !== undefined) {
+    throw new Error("--suite names its own target; pass a snapshot or a suite, never both")
+  }
+  const snapshot = named === undefined ? (options.snapshot ?? probeSuiteSnapshot(root)) : undefined
+  const suiteId = named?.suiteId ?? (snapshot as ProbeSuiteSnapshot).probeHash
+  assertDeclareIsAuthoring(root, suiteId)
   const contentDir = join(root, "content")
-  const path = join(contentDir, "suites", `${snapshot.probeHash}.json`)
+  const path = named?.path ?? join(contentDir, "suites", `${suiteId}.json`)
   // One check, not two policies: compute the claims this write would LEAVE, for every release it
   // touches — the one requested and the one this suite claims now — and refuse unless each ends with
   // exactly one suite. Every read goes through the same scan frozenSuiteIdFor uses.
   const requested = suiteClaimsFor(contentDir, release)
-  const others = requested.claims.filter((claim) => claim !== snapshot.probeHash)
+  const others = requested.claims.filter((claim) => claim !== suiteId)
   if (others.length > 0) {
-    const pair = [...others, snapshot.probeHash]
+    const pair = [...others, suiteId]
     throw new Error(`${requested.dir}: ${pair.length} suite manifests claim release "${release}": ${pair.join(", ")}`)
   }
   const current = existsSync(path) ? parseSuiteManifest(path, readFileSync(path, "utf8")).freeze?.release : undefined
   if (current !== undefined && current !== release) {
-    const remaining = suiteClaimsFor(contentDir, current).claims.filter((claim) => claim !== snapshot.probeHash)
+    const remaining = suiteClaimsFor(contentDir, current).claims.filter((claim) => claim !== suiteId)
     // Both arms of the reader's exactly-one rule, not just the zero one: a move that leaves the old
     // release with two claimants would put the registry in the state `frozenSuiteIdFor` refuses.
     if (remaining.length === 0) {
       throw new Error(
         `${requested.dir}: no suite manifest declares freeze.release "${current}" would remain: freezing suite ` +
-          `${snapshot.probeHash} for "${release}" would leave "${current}" with no suite. Freeze a different suite ` +
+          `${suiteId} for "${release}" would leave "${current}" with no suite. Freeze a different suite ` +
           `for "${release}", or have the cohort read "${current}".`,
       )
     }
     if (remaining.length > 1) {
       throw new Error(
         `${requested.dir}: ${remaining.length} suite manifests would claim release "${current}": ` +
-          `${remaining.join(", ")}. Freezing suite ${snapshot.probeHash} for "${release}" would leave "${current}" ` +
+          `${remaining.join(", ")}. Freezing suite ${suiteId} for "${release}" would leave "${current}" ` +
           `with more than one suite, which its reader refuses. Freeze a different suite for "${release}", or have ` +
           `the cohort read "${current}".`,
       )
@@ -270,10 +318,18 @@ export function freezeCurrentSuiteManifest(
   // of its inputs and a caller can pin a fixed instant in a test.
   const frozen = { release, at: options.at ?? new Date().toISOString() }
   if (!existsSync(path)) {
+    if (snapshot === undefined) {
+      throw new Error(
+        `${path}: --suite names an existing registry record; it never creates one. Freeze the live collector suite, ` +
+          "or admit a run on this suite first",
+      )
+    }
     const created = persistSuiteManifest(path, derivedSuiteManifest(snapshot, frozen), snapshot)
     return { status: created, path, suiteId: frozenSuiteIdFor(contentDir, release) }
   }
-  verifySuiteManifest(path, snapshot)
+  // A live suite is checked against the executable one. A named suite was checked against its own record
+  // by readExplicitSuiteTarget, and holding it to the live snapshot is exactly what naming it avoids.
+  if (snapshot !== undefined) verifySuiteManifest(path, snapshot)
   const applied = applySuiteFreeze(path, frozen)
   return { ...applied, suiteId: frozenSuiteIdFor(contentDir, release) }
 }
@@ -286,10 +342,17 @@ export function freezeCurrentSuiteManifest(
 export function moveReleasePointer(
   root: string,
   release: string,
-  options: { snapshot?: ProbeSuiteSnapshot; at?: string } = {},
+  options: { snapshot?: ProbeSuiteSnapshot; at?: string; suite?: string } = {},
 ): { status: "existing" | "moved"; from: string; to: string; path: string } {
-  const snapshot = options.snapshot ?? probeSuiteSnapshot(root)
-  assertDeclareIsAuthoring(root, snapshot.probeHash)
+  // A move names the suite the pointer lands on. Without --suite that is the live collector suite; with
+  // it, the registry record the caller named, read and checked against its own id (28018).
+  const named = options.suite === undefined ? undefined : readExplicitSuiteTarget(root, options.suite)
+  if (named !== undefined && options.snapshot !== undefined) {
+    throw new Error("--suite names its own target; pass a snapshot or a suite, never both")
+  }
+  const snapshot = named === undefined ? (options.snapshot ?? probeSuiteSnapshot(root)) : undefined
+  const to = named?.suiteId ?? (snapshot as ProbeSuiteSnapshot).probeHash
+  assertDeclareIsAuthoring(root, to)
   const contentDir = join(root, "content")
   const { claims } = suiteClaimsFor(contentDir, release)
   if (claims.length > 1) {
@@ -316,15 +379,16 @@ export function moveReleasePointer(
         "record disagree, so the pointer is neither moved nor reported as held",
     )
   }
-  const to = snapshot.probeHash
-  const path = join(contentDir, "suites", `${to}.json`)
+  const path = named?.path ?? join(contentDir, "suites", `${to}.json`)
   if (from === to) return { status: "existing", from, to, path }
   if (!existsSync(path)) {
     throw new Error(
       `${path}: the suite moving release "${release}" has no manifest; admit a run on it before moving the pointer`,
     )
   }
-  verifySuiteManifest(path, snapshot)
+  // Same rule as the freeze: a live target is verified against the executable suite, a named one against
+  // its own record. The named record is what the registry says this suite is, and that is the claim made.
+  if (snapshot !== undefined) verifySuiteManifest(path, snapshot)
   const target = parseSuiteManifest(path, readFileSync(path, "utf8"))
   // A manifest carries one freeze. Moving this release onto a suite another release already claims
   // would take that claim away and leave it with no suite, so it is refused by name.
@@ -422,7 +486,15 @@ export type SuiteManifestMode = "check" | "freeze" | "move" | "usage"
 /** A bare invocation is never a declare: the write needs the explicit verb (27843 AC2). */
 export function suiteManifestMode(argv: string[]): SuiteManifestMode {
   if (argv.length === 1 && argv[0] === "--check") return "check"
-  if (argv.length === 2 && argv[0] === "--freeze" && argv[1] !== undefined && argv[1].trim() !== "") return "freeze"
-  if (argv.length === 2 && argv[0] === "--move" && argv[1] !== undefined && argv[1].trim() !== "") return "move"
+  const [verb, release, flag, target, ...rest] = argv
+  if (rest.length > 0) return "usage"
+  const named = flag === "--suite"
+  if (named && (target === undefined || target.trim() === "")) return "usage"
+  if (flag !== undefined && !named) return "usage"
+  const verbLength = named ? 4 : 2
+  if (argv.length !== verbLength) return "usage"
+  if ((verb === "--freeze" || verb === "--move") && release !== undefined && release.trim() !== "") {
+    return verb === "--freeze" ? "freeze" : "move"
+  }
   return "usage"
 }
