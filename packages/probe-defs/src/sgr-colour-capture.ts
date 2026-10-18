@@ -16,8 +16,8 @@
  *     cannot separate the two and refuses by name;
  *   - 256-colour: the 16-colour entry its index quantises to (index 67 against SGR 90), so a
  *     terminal that quantises 256 colours to 16 cannot separate them;
- *   - truecolour: the RGB whose nearest xterm-256 entry is the tested RGB (255;128;0 against
- *     255;135;0), so a terminal that quantises truecolour to 256 cannot separate them;
+ *   - truecolour: the RGB that the tested RGB quantises to in the xterm-256 palette (255;128;0
+ *     against 255;135;0), so a terminal that quantises truecolour to 256 cannot separate them;
  *   - underline colour: the same underline in another colour, painted on a seed that already
  *     carries the underline, so the only possible difference is the colour.
  *
@@ -146,8 +146,12 @@ export function colourCaptureVerdict(id: string, verdict: ProbeResult): ProbeRes
   const observation = verdict.observation
   if (note === undefined || observation === undefined) return verdict
   if (observation.outcome === "unsupported") {
+    // A downgraded result keeps nothing from the verdict it replaced: the oracle's negative
+    // assertion names an outcome this path does not publish, and the batch reader records every
+    // assertion it is handed.
+    const { assertions: _assertions, ...rest } = verdict
     return {
-      ...verdict,
+      ...rest,
       pass: false,
       observation: {
         ...observation,
