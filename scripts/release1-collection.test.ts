@@ -37,7 +37,7 @@ import { buildReport } from "./decisive-share.ts"
 import { loadTerminals } from "@terminfo/catalog"
 import {
   admitProducedRuns,
-  collectDevelopmentPass,
+  collectPass,
   clipboardProfileFor,
   linuxLedger,
   presetFor,
@@ -214,7 +214,7 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
   })
   try {
-    const pass = await collectDevelopmentPass(directory)
+    const pass = await collectPass(directory)
     expect(pass.mode).toBe("development")
     expect(pass.contexts).toHaveLength(33)
     const engine = pass.contexts.find((row) => row.context.kind === "headless" && row.context.id === "xtermjs")
@@ -528,29 +528,47 @@ describe("release collection hands every produced run to the admission owner", (
       }
     },
   )
-  it.each(["planning", "placement"])(
-    "propagates owner %s rejection before any coverage credit or later input",
-    (phase) => {
+  it.each([
+    ["planning", 1],
+    ["planning", 2],
+    ["placement", 1],
+    ["placement", 2],
+  ] as const)(
+    "plans every input before placement, retaining partial progress for %s failure at %s",
+    (phase, failureAt) => {
       const rejection = new Error("Owner refused xterm/linux: required receipt is absent")
+      let planned = 0
+      let placed = 0
       const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
-        if (phase === "planning") throw rejection
+        planned += 1
+        if (phase === "planning" && planned === failureAt) throw rejection
         return plan
       })
       const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
-        throw rejection
+        placed += 1
+        if (phase === "placement" && placed === failureAt) throw rejection
+        return {
+          manifest: "existing",
+          run: "created",
+          screenshots: { created: 0, existing: 0 },
+          textSnapshots: { created: 0, existing: 0 },
+          receipt: { placed: "none", detail: "fixture" },
+        }
       })
+      const progress = vi.fn()
       try {
         let produced: ProducedRun[] | undefined
         let failure: unknown
         try {
-          produced = admitProducedRuns([source, "/private/later.json"], frozenSuiteId)
+          produced = admitProducedRuns([source, "/private/later.json"], frozenSuiteId, "candidate2", progress)
         } catch (error) {
           failure = error
         }
         expect(failure).toBe(rejection)
         expect(produced).toBeUndefined()
-        expect(planner).toHaveBeenCalledTimes(1)
-        expect(writer).toHaveBeenCalledTimes(phase === "planning" ? 0 : 1)
+        expect(planner).toHaveBeenCalledTimes(phase === "planning" ? failureAt : 2)
+        expect(writer).toHaveBeenCalledTimes(phase === "planning" ? 0 : failureAt)
+        expect(progress).toHaveBeenCalledTimes(phase === "placement" ? failureAt - 1 : 0)
       } finally {
         planner.mockRestore()
         writer.mockRestore()
@@ -558,3 +576,27 @@ describe("release collection hands every produced run to the admission owner", (
     },
   )
 })
+
+it("requires an existing declared freeze before final collection dispatch", () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-final-missing-freeze-"))
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/release1-collection.ts",
+        "--collect",
+        "--admit",
+        "--frozen-suite",
+        "000000000000",
+        "--output",
+        directory,
+      ],
+      { cwd: dirname(CONTENT), encoding: "utf8" },
+    )
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("declared frozen suite 000000000000")
+    expect(readdirSync(directory)).toEqual([])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 30_000)

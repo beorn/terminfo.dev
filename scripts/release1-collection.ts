@@ -6,7 +6,8 @@
  * and retains private classifications. WIP: headless, Linux and hosted dispatch are wired; other contexts
  * stays visible as unfinished work. No development admission, suite declaration or inclusion.
  * Supplied-run --admit retains its existing admission-owner path and decisive-share report.
- * Full platform dispatch and the frozen final collection mode remain unfinished. No deploy.
+ * Explicit final collection validates the declared freeze and every raw context before admission.
+ * Remaining platform routes and native qualification are unfinished. No deploy.
  */
 import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
@@ -25,7 +26,8 @@ import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
 import { loadFeatures, loadTerminals } from "@terminfo/catalog"
-import { parseRun } from "@terminfo/run-parser"
+import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
@@ -258,8 +260,9 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
   return Object.keys(backends).filter((name) => backends[name]?.type !== "os")
 }
 
-export interface DevelopmentCollection {
-  mode: "development"
+export interface CollectionPass {
+  mode: "development" | "admit"
+  freeze?: { id: string; release: string }
   directory: string
   probeHash: string
   sourceRevision: string
@@ -267,24 +270,26 @@ export interface DevelopmentCollection {
   catalogIds: string[]
   contexts: Array<{
     context: CollectionContext
-    status: "classified" | "failed"
+    status: "classified" | "admitted" | "failed"
     rawRun?: string
     directory?: string
+    admittedPath?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
     error?: string
   }>
   errors: string[]
 }
 
-/** Private collection uses live suite bytes only; it never enters admission or product selection. */
-export async function collectDevelopmentPass(outputDirectory: string): Promise<DevelopmentCollection> {
+/** Collect privately against live suite bytes; only an explicit, declared freeze enables admission. */
+export async function collectPass(outputDirectory: string, frozenSuiteId?: string): Promise<CollectionPass> {
+  const snapshot = probeSuiteSnapshot()
+  const freeze = frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
   mkdirSync(outputDirectory, { recursive: true })
   const output = realpathSync(outputDirectory)
   if (output === ROOT || output.startsWith(`${ROOT}${sep}`)) {
-    throw new Error(`Development output must be private, outside the source repository: ${output}`)
+    throw new Error(`Collection output must be private, outside the source repository: ${output}`)
   }
   const directory = mkdtempSync(join(output, "pass-"))
-  const snapshot = probeSuiteSnapshot()
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
@@ -318,8 +323,9 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
         }
       : context,
   )
-  const pass: DevelopmentCollection = {
-    mode: "development",
+  const pass: CollectionPass = {
+    mode: freeze ? "admit" : "development",
+    ...(freeze && { freeze }),
     directory,
     probeHash: snapshot.probeHash,
     sourceRevision,
@@ -363,7 +369,7 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
     pass.errors,
   )
   for (const context of census) {
-    const row: DevelopmentCollection["contexts"][number] = { context, status: "failed" }
+    const row: CollectionPass["contexts"][number] = { context, status: "failed" }
     pass.contexts.push(row)
     try {
       let path: string
@@ -446,8 +452,53 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
       pass.errors.push(`Pass input changed during collection: ${path}`)
     }
   }
+  if (freeze && pass.errors.length === 0 && pass.contexts.every((row) => row.status === "classified")) {
+    try {
+      const paths = pass.contexts.map((row) => {
+        if (!row.rawRun) throw new Error(`${labelOf(row.context)}: validated context lost its raw run path`)
+        return row.rawRun
+      })
+      admitProducedRuns(paths, freeze.id, freeze.release, (produced, destination) => {
+        const key = coverageKey(produced.target.kind, produced.target.id, produced.target.os)
+        const row = pass.contexts.find((row) => coverageKey(row.context.kind, row.context.id, row.context.os) === key)
+        if (!row) throw new Error(`Admission returned an unexpected context ${key}`)
+        row.status = "admitted"
+        row.admittedPath = destination
+      })
+    } catch (error) {
+      const message = `Admission stopped: ${error instanceof Error ? error.message : String(error)}`
+      pass.errors.push(message)
+      for (const row of pass.contexts) {
+        if (row.status !== "admitted") {
+          row.status = "failed"
+          row.error = `${labelOf(row.context)}: ${message}; raw run retained privately`
+        }
+      }
+    }
+  }
   writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
   return pass
+}
+
+/** Resolve the assertion through the existing frozen-suite owner; never declare a suite here. */
+function declaredCollectionFreeze(id: string, current: string): { id: string; release: string } {
+  if (!/^[a-f0-9]{12}$/.test(id)) throw new Error(`Invalid declared frozen suite id ${id}`)
+  const path = join(CONTENT, "suites", `${id}.json`)
+  let manifest: ReturnType<typeof parseSuiteManifest>
+  try {
+    manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+  } catch (cause) {
+    throw new Error(`Cannot read declared frozen suite ${id} at ${path}`, { cause })
+  }
+  if (!manifest.freeze) throw new Error(`Suite ${id} has no declared freeze in ${path}`)
+  const release = manifest.freeze.release
+  const selected = frozenSuiteIdFor(CONTENT, release)
+  if (selected !== id || current !== id) {
+    throw new Error(
+      `Declared frozen suite ${id}, registry suite ${selected} and current suite ${current} must match for ${release}`,
+    )
+  }
+  return { id, release }
 }
 
 /** Dispatch each existing hosted matrix once and retain every job's companion artifacts. */
@@ -744,15 +795,24 @@ export interface ProducedRun {
 }
 
 /** The owner completes admission before a produced input earns collection coverage. */
-export function admitProducedRuns(paths: readonly string[], assertedSuiteId?: string): ProducedRun[] {
-  const produced: ProducedRun[] = []
-  for (const path of paths) {
-    const plan = planAdmission(path, undefined, {
-      release: "candidate2",
+export function admitProducedRuns(
+  paths: readonly string[],
+  assertedSuiteId?: string,
+  release = "candidate2",
+  onAdmitted?: (produced: ProducedRun, destination: string) => void,
+): ProducedRun[] {
+  const plans = paths.map((path) =>
+    planAdmission(path, undefined, {
+      release,
       ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
-    })
+    }),
+  )
+  const produced: ProducedRun[] = []
+  for (const plan of plans) {
     admitRun(plan)
-    produced.push({ target: plan.target })
+    const run = { target: plan.target }
+    produced.push(run)
+    onAdmitted?.(run, plan.destination)
   }
   return produced
 }
@@ -828,12 +888,15 @@ function usage(): never {
   console.error(
     "Usage: bun run release1-collection [--plan]\n" +
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
+      "       bun run release1-collection --collect --admit --frozen-suite <id> --output <private-directory>\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
       "  --collect --development  collect private headless/Linux/hosted runs against the live suite.\n" +
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
+      "  --collect --admit  require the declared frozen suite; validate all contexts, plan all\n" +
+      "           admissions, then place runs through the existing owner. No inclusion or publication.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
       "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +
       "           --frozen-suite optionally asserts that id. Collection requires --collect;\n" +
@@ -869,10 +932,11 @@ if (import.meta.main) {
     }
   }
   if (collect) {
-    if (plan || admit || !development || !outputDirectory || frozenSuite || runs.length) usage()
+    if (plan || admit === development || !outputDirectory || (development && frozenSuite) || runs.length) usage()
     try {
-      const pass = await collectDevelopmentPass(resolve(outputDirectory))
-      console.log(`Private development pass: ${pass.directory}`)
+      if (admit && !frozenSuite) throw new Error("--collect --admit requires --frozen-suite <declared-id>")
+      const pass = await collectPass(resolve(outputDirectory), admit ? frozenSuite : undefined)
+      console.log(`${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}`)
       for (const row of pass.contexts) {
         console.log(`${labelOf(row.context)}: ${row.status}${row.error ? ` — ${row.error}` : ""}`)
       }

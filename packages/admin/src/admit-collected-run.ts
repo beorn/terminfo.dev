@@ -12,8 +12,9 @@ export function retainCollectedRun(
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
   outputDirectory?: string,
 ): string {
-  if (outputDirectory?.length === 0)
+  if (outputDirectory?.length === 0) {
     throw new Error("Raw collection output directory is empty; choose a private directory")
+  }
   const directory = resolve(outputDirectory ?? dirname(retainedResponsePath))
   const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..")
   if (outputDirectory !== undefined && (directory === root || directory.startsWith(`${root}${sep}`))) {
