@@ -18,7 +18,11 @@ import {
   requestDaemonProbe,
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
-import { assertOwnedTerminalWindow, closeOwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import {
+  assertOwnedTerminalWindow,
+  closeOwnedTerminalWindow,
+  parseKittyIdentity,
+} from "../../terminfo.dev/src/terminal-app-window.ts"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 
 vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn(), readFileSync: vi.fn(() => "") }))
@@ -154,5 +158,65 @@ describe("probe app --output", () => {
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
     expect(lines).toContain("  0/0 explicit observations (admitted)")
+  })
+})
+
+describe("kitty owned launch", () => {
+  beforeEach(() => {
+    vi.mocked(parseKittyIdentity).mockReturnValue({
+      windowId: 1,
+      kittyPid: 900,
+      tty: "/dev/ttys004",
+      term: "xterm-kitty",
+    })
+    vi.mocked(findOwnedDaemon).mockResolvedValue({
+      filepath: "/private/registration",
+      registration: { ...registration, terminal: "kitty" },
+    })
+  })
+
+  test("launches detached, sends no Terminal.app owner claim, and records the owned pid", async () => {
+    const spawn = vi.mocked(await import("node:child_process")).spawnSync
+    spawn.mockReturnValueOnce({ status: 0, stdout: "", stderr: "" } as never)
+    await handleApp("kitty", { output: "/private/out" })
+    expect(spawn).toHaveBeenCalledWith(
+      "/Applications/kitty.app/Contents/MacOS/kitty",
+      [
+        "--detach",
+        "--instance-group",
+        "terminfo-private-run",
+        "-1",
+        "--",
+        "/bin/bash",
+        "/private/run/serve.sh",
+      ],
+      expect.anything(),
+    )
+    expect(requestDaemonProbe).toHaveBeenCalledWith(expect.anything(), undefined)
+    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(
+      {
+        provider: "kitty",
+        windowId: 1,
+        tty: "/dev/ttys004",
+        kittyPid: 900,
+        executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+        instanceGroup: "terminfo-private-run",
+      },
+      555,
+    )
+    const saved = vi.mocked(retainCollectedRun).mock.calls[0]?.[0] as {
+      rawReplies: Record<string, string>
+      origin: Record<string, unknown>
+    }
+    expect(saved.origin.appLaunch).toBeUndefined()
+    expect(JSON.parse(saved.rawReplies["collector.kittyOwner"]!)).toEqual({
+      windowId: 1,
+      kittyPid: 900,
+      tty: "/dev/ttys004",
+      executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+      instanceGroup: "terminfo-private-run",
+    })
+    expect(JSON.parse(saved.rawReplies["collector.kittyLauncher"]!)).toEqual({ exitStatus: 0, stderr: "" })
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(expect.objectContaining({ provider: "kitty" }))
   })
 })

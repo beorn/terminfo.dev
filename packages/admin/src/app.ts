@@ -227,14 +227,21 @@ async function probeDaemon(
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
   assertOwnedTerminalWindow(ownedWindow, daemon.pid)
-  const res = await requestDaemonProbe(daemon, {
-    asserter: "terminfo-admin",
-    launchRunId: daemon.runId,
-    workerPid: daemon.pid,
-    windowId: ownedWindow.windowId,
-    tabTty: ownedWindow.tty,
-    intendedVersion: version,
-  })
+  // The daemon's owner-request field is Terminal.app's own assertion and refuses any other terminal;
+  // kitty's ownership is proved here, in the run trace, and never sent as a Terminal.app claim.
+  const res = await requestDaemonProbe(
+    daemon,
+    ownedWindow.provider === "terminal-app"
+      ? {
+          asserter: "terminfo-admin",
+          launchRunId: daemon.runId,
+          workerPid: daemon.pid,
+          windowId: ownedWindow.windowId,
+          tabTty: ownedWindow.tty,
+          intendedVersion: version,
+        }
+      : undefined,
+  )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
   const data = retained.run
