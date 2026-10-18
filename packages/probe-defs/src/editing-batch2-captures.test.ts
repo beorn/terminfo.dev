@@ -462,14 +462,16 @@ test("every DECSACE pixel return carries a target citation the run parser accept
     expect(observation.outcome, name).toBe(outcome)
     expect(String(observation.note), name).toContain(note)
     expect(observation.evidence, name).toBe("pixels")
-    expect(observation.screenshotRef, name).toBeDefined()
     const frames = (observation.frames ?? []) as ObservationFrame[]
     const refs = frames.map((frame) => frame.ref)
     expect(new Set(refs).size, name).toBe(refs.length)
+    // The parser is the witness, not this test: a dropped citation and a citation of a control
+    // frame both fail its own rules, so each red names the rule the arm has to satisfy.
     expect(
       () => parseObservationFrames(frames, "test", "editing.decsace", refs, [], observation.screenshotRef, "pixels"),
       name,
     ).not.toThrow()
+    expect(observation.screenshotRef, name).toBeDefined()
   }
 })
 
