@@ -1,4 +1,10 @@
-import { frameDigests, type ProbeDefinition, type ProbeResult, type TermContext, type TermlessContext } from "./types.ts"
+import {
+  frameDigests,
+  type ProbeDefinition,
+  type ProbeResult,
+  type TermContext,
+  type TermlessContext,
+} from "./types.ts"
 import { cursorProbe, cursorStyleReadbackDecision, parserStateResult, probe } from "./helpers.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 
@@ -238,7 +244,10 @@ export const cursorProbes: ProbeDefinition[] = [
               frame.kind === "text-cells" ? frame.cellRectangle : frame.regionRectangle
             const rectangles = frames.map(rectangle)
             const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, digests, rectangles })
-            if (digests.some((entry) => entry.cells === undefined) || new Set(rectangles.map(JSON.stringify)).size !== 1) {
+            if (
+              digests.some((entry) => entry.cells === undefined) ||
+              new Set(rectangles.map((entry) => JSON.stringify(entry))).size !== 1
+            ) {
               const note =
                 "Cursor pixel proof needs one cell-aligned raw-pixel digest per frame at the same rectangle; this capture supplied neither"
               return {
@@ -255,9 +264,12 @@ export const cursorProbes: ProbeDefinition[] = [
                 assertions: [{ kind: "positive", expected: note, observed }],
               }
             }
-            const shownDigest = digests[0]!.cells!
-            const hiddenDigest = digests[1]!.cells!
-            const restoredDigest = digests[2]!.cells!
+            const shownDigest = digests[0]?.cells
+            const hiddenDigest = digests[1]?.cells
+            const restoredDigest = digests[2]?.cells
+            if (shownDigest === undefined || hiddenDigest === undefined || restoredDigest === undefined) {
+              throw new Error("cell digest guard did not narrow")
+            }
             const changed = shownDigest !== hiddenDigest && hiddenDigest !== restoredDigest
             const returned = shownDigest === restoredDigest
             if (changed && returned) {
@@ -282,23 +294,20 @@ export const cursorProbes: ProbeDefinition[] = [
               }
             }
             if (!changed && returned) {
+              const note =
+                "Three equal digests cannot separate an absent, off-phase or unpainted cursor in the control from an ineffective hide; no visible-cursor control was established, so this is not a negative"
               return {
                 pass: false,
                 response: observed,
                 observation: {
-                  outcome: "unsupported",
+                  outcome: "inconclusive",
+                  reason: "insufficient-evidence",
                   evidence: "pixels",
                   screenshotRef: hidden.ref,
                   frames,
-                  note: "The cell's raw-pixel digest did not change when the cursor was hidden",
+                  note,
                 },
-                assertions: [
-                  {
-                    kind: "negative",
-                    expected: "Hiding the cursor changes the cursor cell's raw-pixel digest",
-                    observed,
-                  },
-                ],
+                assertions: [{ kind: "positive", expected: note, observed }],
               }
             }
             const note =

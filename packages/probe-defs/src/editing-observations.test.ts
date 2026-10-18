@@ -285,15 +285,27 @@ test("an explicit minimum geometry below what a row uses refuses at load", () =>
   )
 })
 
-test("decrqcra checks the seeded rectangle's 16-bit character sum", () => {
+test("decrqcra checks the one-cell character delta of the seeded rectangle", () => {
   const probe = ALL_PROBES.find((entry) => entry.id === "editing.decrqcra")
   if (!probe?.termless) throw new Error("decrqcra termless callback missing")
   expect(probe.termObservationEvidence).toBe("query")
   expect(probe.termlessObservationEvidence).toBe("query")
-  const right = headless({ feedCapture: () => "\x1bP1!~014F\x1b\\" })
-  expect(probe.termless(right)).toMatchObject({ pass: true, observation: { outcome: "supported", evidence: "query" } })
-  const wrong = headless({ feedCapture: () => "\x1bP1!~014E\x1b\\" })
-  expect(probe.termless(wrong)).toMatchObject({ pass: false, observation: { outcome: "unsupported", evidence: "query" } })
-  const none = headless({ feedCapture: () => "" })
-  expect(probe.termless(none)).toMatchObject({ pass: false, observation: { outcome: "inconclusive" } })
+  const run = (values: readonly string[]) => {
+    let index = 0
+    return probe.termless!(headless({ feedCapture: () => values[index++] ?? "" }))
+  }
+  expect(run(["\x1bP1!~014F\x1b\\", "\x1bP1!~0150\x1b\\"])).toMatchObject({
+    pass: true,
+    observation: { outcome: "supported", evidence: "query" },
+  })
+  // DEC-compatible default: the negated sum moves E->F by 65535 (modular -1).
+  expect(run(["\x1bP1!~014F\x1b\\", "\x1bP1!~014E\x1b\\"])).toMatchObject({
+    pass: true,
+    observation: { outcome: "supported", evidence: "query" },
+  })
+  expect(run(["\x1bP1!~014F\x1b\\", "\x1bP1!~014F\x1b\\"])).toMatchObject({
+    pass: false,
+    observation: { outcome: "unsupported", evidence: "query" },
+  })
+  expect(run(["", ""])).toMatchObject({ pass: false, observation: { outcome: "inconclusive" } })
 })

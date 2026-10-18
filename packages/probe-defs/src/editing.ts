@@ -9,39 +9,58 @@ import {
   unmeasuredCellResult,
 } from "./helpers.ts"
 
-// DECRQCRA is checked against arithmetic the probe can compute: five seeded cells, whose 16-bit
-// character-code sum is a known constant, requested as one rectangle. A framed reply with a
-// different value is a measured negative, not a capability.
+// DECRQCRA's checksum must be arithmetic over the requested cells. An absolute sum is not portable
+// (an implementation may hash attributes too), so the probe proves the DELTA: change one cell from
+// E to F and the same rectangle's 16-bit checksum must rise by exactly 1.
 const DECRQCRA_SEED = "ABCDE"
-const DECRQCRA_SEED_SUM = 0x014f
+const DECRQCRA_EDIT = "\x1b[1;5HF"
 const DECRQCRA_REQUEST = "\x1b[1;1;1;1;1;5*y"
-const DECRQCRA_EXPECTED = "0x014F, the 16-bit sum of the seeded cells A-E in the requested 1x5 rectangle"
+const DECRQCRA_EXPECTED =
+  "the same 1x5 rectangle's 16-bit checksum changes by 1 in the convention the terminal reports: +1 with the positive-checksum extension, or 65535 when the DEC-compatible default negates the sum"
 
-function checksumResult(response: string, lateNote?: string): ProbeResult {
+function checksumValue(response: string): number | undefined {
   const framed = /\x1bP1!~([0-9A-Fa-f]{4})\x1b\\/.exec(response)
-  const observedValue = framed?.[1]?.toUpperCase()
-  const matches = observedValue !== undefined && Number.parseInt(observedValue, 16) === DECRQCRA_SEED_SUM
+  return framed?.[1] === undefined ? undefined : Number.parseInt(framed[1], 16)
+}
+
+function checksumResult(first: string, second: string, lateNote?: string): ProbeResult {
+  const before = checksumValue(first)
+  const after = checksumValue(second)
+  const both = before !== undefined && after !== undefined
+  const delta = both ? (after - before + 0x10000) % 0x10000 : undefined
+  // DEC-compatible terminals negate the checksum unless the positive-checksum extension is enabled
+  // (xterm screen.c: the sum is negated unless csPOSITIVE). E to F is +1 of character sum, so the
+  // reported 16-bit value moves by +1 under the extension and by 65535 (modular -1) by default.
+  const matches = delta === 1 || delta === 65535
   // F1 (27832): a reply that lands after the DA1 sentinel is graded by its own bytes and recorded
   // as a late reply, exactly as device.ts:25-30 does for a device query.
   const late = lateNote ? ` ${lateNote}` : ""
   const note = matches
-    ? `Checks the framed reply, request id and the rectangle's 16-bit character sum.${late}`
-    : observedValue !== undefined
-      ? `Checksum reply ${observedValue} is not the seeded sum ${DECRQCRA_EXPECTED}.${late}`
-      : `No complete checksum reply for request 1; expected ${DECRQCRA_EXPECTED}.${late}`
-  const assertions: NonNullable<ProbeResult["assertions"]> | undefined =
-    observedValue !== undefined
-      ? [{ kind: matches ? "positive" : "negative", expected: `Request 1 returns ${DECRQCRA_EXPECTED}`, observed: response }]
-      : undefined
+    ? `Checks both framed replies, request id and the one-cell character delta under the DEC-compatible or positive-checksum convention.${late}`
+    : both
+      ? `The same rectangle changed by ${delta}, which is neither +1 nor the DEC-compatible 65535.${late}`
+      : `A complete checksum reply is missing for one of the two requests; expected ${DECRQCRA_EXPECTED}.${late}`
+  const assertions: NonNullable<ProbeResult["assertions"]> | undefined = both
+    ? [
+        {
+          kind: matches ? "positive" : "negative",
+          expected: `Request 1 returns ${DECRQCRA_EXPECTED}`,
+          observed: JSON.stringify({ first, second, delta }),
+        },
+      ]
+    : undefined
+  const outcome = matches ? ("supported" as const) : both ? ("unsupported" as const) : ("inconclusive" as const)
   return {
     pass: matches,
-    response,
+    response: JSON.stringify({ first, second }),
     note,
     observation: {
-      outcome: matches ? "supported" : observedValue !== undefined ? "unsupported" : "inconclusive",
+      outcome,
       evidence: "query",
       ...(lateNote && { note }),
-      ...(!matches && observedValue === undefined && { reason: response ? ("invalid-reply" as const) : ("no-response" as const) }),
+      ...(outcome === "inconclusive" && {
+        reason: first || second ? ("invalid-reply" as const) : ("no-response" as const),
+      }),
     },
     ...(assertions && { assertions }),
   }
@@ -724,60 +743,66 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     },
   ),
 
-  probe(
-    "editing.decrqcra",
-    (ctx) => {
-      // DECRQCRA sends a checksum request; the terminal should respond with
-      // DCS Pid ! ~ D...D ST where D...D is the hex checksum.
-      // The seeded cells fix the expected 16-bit sum, so the reply is checked as arithmetic.
-      ctx.feed(`${DECRQCRA_SEED}\x1b[1;1H`)
-      return checksumResult(ctx.feedCapture(DECRQCRA_REQUEST)) // id, page, top, left, bottom, right
-    },
-    async (ctx) => {
-      // The DA1 follow-up ends the read on a channel the terminal has already
-      // answered, so a terminal that never answers is disproved instead of
-      // being waited out on a bare timeout. id, page, top, left, bottom, right.
-      // The same five seeded cells as the headless arm, so both arms check the same arithmetic.
-      ctx.write(`\x1b[0m\x1b[2J\x1b[H${DECRQCRA_SEED}\x1b[1;1H`)
-      const reply = await ctx.queryWithSentinelOutcome(DECRQCRA_REQUEST, /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
-      if (reply.match) {
-        // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the frame
-        // and recorded with the ordering note — device.ts:25-30 applies the same rule. Only a
-        // measured sentinel proves that ordering, so a late frame without it keeps its null and
-        // falls through to the inconclusive grade below.
-        const frame = reply.match[0] ?? ""
-        const da1At = reply.raw.search(/\x1b\[\?[0-9;]*c/)
-        const unorderedLateFrame = da1At !== -1 && reply.raw.indexOf(frame) > da1At && !reply.sentinel
-        if (!unorderedLateFrame) {
-          return checksumResult(frame, reply.sentinel ? REPLY_AFTER_SENTINEL_NOTE : undefined)
+  {
+    ...probe(
+      "editing.decrqcra",
+      (ctx) => {
+        // DECRQCRA sends a checksum request; the terminal should respond with
+        // DCS Pid ! ~ D...D ST where D...D is the hex checksum.
+        ctx.feed(`${DECRQCRA_SEED}\x1b[1;1H`)
+        const first = ctx.feedCapture(DECRQCRA_REQUEST) // id, page, top, left, bottom, right
+        ctx.feed(`${DECRQCRA_EDIT}\x1b[1;1H`)
+        const second = ctx.feedCapture(DECRQCRA_REQUEST)
+        return checksumResult(first, second)
+      },
+      async (ctx) => {
+        // The DA1 follow-up ends each read on a channel the terminal has already answered, so a
+        // terminal that never answers is disproved instead of being waited out on a bare timeout.
+        ctx.write(`\x1b[0m\x1b[2J\x1b[H${DECRQCRA_SEED}\x1b[1;1H`)
+        const reads: { raw: string; frame: string }[] = []
+        for (const sequence of [DECRQCRA_SEED, DECRQCRA_EDIT]) {
+          if (reads.length === 1) ctx.write(`${sequence}\x1b[1;1H`)
+          const reply = await ctx.queryWithSentinelOutcome(DECRQCRA_REQUEST, /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
+          if (reply.match) {
+            // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the
+            // frame and recorded with the ordering note. Only a measured sentinel proves that
+            // ordering, so a late frame without it keeps its null and falls to the inconclusive grade.
+            const frame = reply.match[0] ?? ""
+            const da1At = reply.raw.search(/\x1b\[\?[0-9;]*c/)
+            const unorderedLateFrame = da1At !== -1 && reply.raw.indexOf(frame) > da1At && !reply.sentinel
+            if (!unorderedLateFrame) {
+              reads.push({ raw: frame, frame: reply.sentinel ? REPLY_AFTER_SENTINEL_NOTE : "" })
+              continue
+            }
+          }
+          // A DA1 answer with nothing else through the grace window is a measured negative, the same
+          // rule device.ts and extensions.ts apply. Anything else keeps the inconclusive grade below.
+          const silent = sentinelNegativeResult(
+            reply.raw,
+            reply.sentinel,
+            "Complete four-digit checksum reply for request 1",
+          )
+          if (silent) return silent
+          return {
+            pass: false,
+            response: reply.raw,
+            note: "No complete checksum reply before the DA1 sentinel",
+            observation: {
+              outcome: "inconclusive",
+              evidence: "query",
+              reason: reply.reason === "timeout" ? "timeout" : "no-response",
+            },
+          }
         }
-      }
-      // F1 (27832): a DA1 answer with nothing else through the grace window is a measured
-      // negative, the same rule device.ts and extensions.ts already apply. A raw that carries
-      // anything besides DA1, or a read with no DA1 at all, keeps the inconclusive grade below.
-      const silent = sentinelNegativeResult(
-        reply.raw,
-        reply.sentinel,
-        "Complete four-digit checksum reply for request 1",
-      )
-      if (silent) return silent
-      return {
-        pass: false,
-        response: reply.raw,
-        note: "No complete checksum reply before the DA1 sentinel",
-        observation: {
-          outcome: "inconclusive",
-          evidence: "query",
-          reason: reply.reason === "timeout" ? "timeout" : "no-response",
-        },
-      }
-    },
-  ),
-].map((definition) =>
-  definition.id === "editing.decrqcra"
-    ? { ...definition, termObservationEvidence: "query" as const, termlessObservationEvidence: "query" as const }
-    : definition,
-)
+        const [firstRead, secondRead] = reads
+        if (!firstRead || !secondRead) throw new Error("both checksum reads must exist before grading")
+        return checksumResult(firstRead.raw, secondRead.raw, reads.find((read) => read.frame)?.frame)
+      },
+    ),
+    termObservationEvidence: "query",
+    termlessObservationEvidence: "query",
+  },
+]
 
 export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map((definition) => {
   const original = definition.term

@@ -998,8 +998,10 @@ test("app cursor hide grades the cursor cell's raw-pixel digests across shown, h
   expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
   expect(supported.assertions).toMatchObject([{ kind: "positive", expected: expect.stringContaining("pixel digest") }])
   const unchanged = await captureFrames(["sha256:same", "sha256:same", "sha256:same"])
-  expect(unchanged.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
-  expect(unchanged.assertions).toMatchObject([{ kind: "negative" }])
+  expect(unchanged.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(unchanged.assertions).toMatchObject([
+    { kind: "positive", expected: expect.stringContaining("visible-cursor control") },
+  ])
   const unstable = await captureFrames(["sha256:a", "sha256:b", "sha256:c"])
   expect(unstable.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
 })

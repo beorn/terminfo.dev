@@ -345,11 +345,9 @@
     "url": "https://vt100.net/docs/vt510-rm/DECTCEM.html",
     "tags": ["dec-private-modes", "vt510"],
     "body": "DECTCEM (DEC Text Cursor Enable Mode) controls cursor visibility. Hide cursor: <code>ESC [ ? 25 l</code>. Show cursor: <code>ESC [ ? 25 h</code>. TUI applications typically hide the cursor during rendering to avoid flicker, then restore it at the final cursor position. Universally supported.",
-    "probe": "Headless: measure initial visibility, establish a shown control, check the hidden state and verify restoration. Missing readback or an invalid control stays inconclusive. This measures parser state; app cursor replies do not verify visible pixels.",
+    "probe": "Headless: measure initial visibility, establish a shown control, check the hidden state and verify restoration. App: with a measured raster, compare the cursor cell raw-pixel digest across shown, hidden and restored frames. Support needs the hidden digest to differ and the restored digest to equal the control; a run whose control does not establish a visible cursor, or whose frames do not return, stays inconclusive. DECRQM mode 25 reports the state when no raster is available.",
     "baseline": "core",
-    "sequence": "ESC [ ? 25 l",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: parser visibility state is measured on both arms, but pixels are never captured, so the hidden cursor itself is not observed"
+    "sequence": "ESC [ ? 25 l"
   },
   "cursor.shape": {
     "name": "Cursor shape (DECSCUSR)",
@@ -877,10 +875,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECRQCRA (<code>CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y</code>) computes a 16-bit checksum of the cells in a rectangular region and reports it back to the host as a DCS response (<code>DCS Pid ! ~ checksum ST</code>). <code>Pid</code> is a request identifier echoed in the response; <code>Ppid</code> is the page number. The checksum hashes both characters and SGR attributes, which is why it's used by DEC's terminal conformance test suites — a test script can paint a known pattern, ask the terminal for the checksum, and compare against an expected value to confirm the terminal rendered the pattern correctly. xterm still implements this. Almost no application has ever used it outside of test suites.",
-    "probe": "Request a checksum and check for a complete DCS reply with request ID 1 and four hexadecimal digits. The headless request covers five cells; the app request covers one. A positive result establishes reply capability only; checksum arithmetic is not verified.",
-    "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: both arms measure a complete checksum reply, but checksum arithmetic and the cells outside the request are not verified"
+    "probe": "Seed five known cells, request that rectangle twice and change one cell from E to F between the reads. Both arms check the framed DCS reply with request ID 1 and four hexadecimal digits, and require the 16-bit checksum to move by exactly 1 under the terminal convention: +1 with the positive-checksum extension, or 65535 with the DEC-compatible negated default. Any other delta is a negative; a missing reply stays inconclusive.",
+    "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y"
   },
   "input.modify-other-keys": {
     "name": "modifyOtherKeys",
