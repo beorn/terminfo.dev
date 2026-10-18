@@ -652,50 +652,38 @@ export interface StabilityCapture {
 }
 
 /**
- * The ONE stability control both pixel arms use (@cto round-3c B2/B3). Two reads of one static frame
- * must agree before either arm compares extents or steps; the arm takes the pair before its own
- * writes, so a frame that only looks stable after the measurement cannot pass. The refusal is one
- * shape wherever it fires: inconclusive, no frames, both digests in the response, and the second
- * stability capture as the citation — no target frame is fabricated (@cto 0e40f3b1).
+ * The ONE stability control both pixel arms use. Two reads of one frame must agree before either
+ * arm compares extents or steps, and each arm takes the pair on the frame it will measure — the
+ * region oracle on its witness cell, the DECSACE arm on its painted seed — so a frame that only
+ * looks stable after the measurement cannot pass. The refusal is inconclusive, carries no frames,
+ * reports both digests in the response, and cites the second stability capture; no target frame is
+ * fabricated. A pair whose reads both report no digest is not refused here: two absent digests
+ * agree without showing anything about stability, so the arm that owns the frames names the missing
+ * measurement when it compares them.
  */
 export async function captureStabilityPair<T extends StabilityCapture>(
   id: string,
   evidence: "pixels" | "text",
   first: () => Promise<T>,
   second: () => Promise<T>,
-): Promise<{ stable: T; refusal: ProbeResult | null }> {
+): Promise<{ refusal: ProbeResult | null }> {
   const stableA = await first()
   const stableB = await second()
-  const measured = (capture: StabilityCapture) =>
-    capture.regionDigest !== undefined || capture.pixelsDigest !== undefined
-  if (!measured(stableA) || !measured(stableB)) {
-    return {
-      stable: stableB,
-      refusal: inconclusive(
-        id,
-        `${id}: a stability capture reports no digest, so two reads of one static frame cannot be shown to agree`,
-        "insufficient-evidence",
-        evidence,
-        evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
-      ),
-    }
-  }
   if (stableA.regionDigest === stableB.regionDigest && stableA.pixelsDigest === stableB.pixelsDigest) {
-    return { stable: stableB, refusal: null }
+    return { refusal: null }
   }
   const refusal = inconclusive(
     id,
     `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
     "insufficient-evidence",
     evidence,
-    // No target frame exists on this path and none is fabricated (@cto 0e40f3b1): the citation is
-    // the stability capture actually taken. On a text arm there is no image to cite.
+    // No target frame exists on this path and none is fabricated: the citation is the stability
+    // capture actually taken. On a text arm there is no image to cite.
     evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
   )
   // The decisive evidence is the PAIR of reads, so both digests travel in the response even though
-  // the observation carries no frames (@dev/review2 round-3 B1, @cto round-3c B3).
+  // the observation carries no frames.
   return {
-    stable: stableB,
     refusal: {
       ...refusal,
       response: JSON.stringify({

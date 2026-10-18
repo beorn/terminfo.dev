@@ -1147,8 +1147,8 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
       capture: async ({ role, label }) => {
         reads += 1
         labels.push(label)
-        // A digit per MEASURED screen, not per read: the seed and the stability read see the same
-        // static frame, and only the two DECSACE extents differ (@cto round-2 B1b).
+        // A digit per MEASURED screen, not per read: the pair's two reads see the same seeded
+        // screen, and only the two DECSACE extents differ.
         const measured = label.includes("rectangle") ? "b" : label.includes("stream") ? "c" : "a"
         return {
           frame: {
@@ -1168,11 +1168,10 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
       { featureId: "editing.decsace", outcome: "supported", evidence: "pixels" },
     ])
     expect(labels).toEqual([
-      // The shared stability pair runs BEFORE the DECSACE writes (@cto round-3c B2), so the two reads
-      // of the untouched screen come first and the seed paint is the third capture.
-      "editing.decsace: capture stability 1",
-      "editing.decsace: capture stability 2",
-      "editing.decsace: seed before DECSACE",
+      // The seed paint happens first, then the shared stability pair reads the seeded screen: its
+      // second read IS the seed frame, so the extent frames follow.
+      "editing.decsace: seed stability 1",
+      "editing.decsace: seed stability 2",
       "editing.decsace: DECSACE 2 rectangle frame",
       "editing.decsace: DECSACE 0 stream frame",
     ])

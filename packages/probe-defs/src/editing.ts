@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { beginCaptureLifecycle, captureStabilityPair, endCaptureLifecycle } from "./region-readback.ts"
@@ -641,26 +641,28 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
         // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
         // captureStabilityPair (region-readback.ts). The cursor stays hidden for every read and is
-        // restored on every exit, and the pair runs BEFORE the DECSACE writes, so a frame that only
-        // looks stable after the measurement cannot qualify it. On a terminal that ignores DECSACE,
-        // a blinking cursor alone moves the whole-window digest (@cto round-2 B1b, round-3c B2).
+        // restored on every exit. The pair reads the SEEDED screen and its second read is the seed
+        // frame every extent is compared against, so a seed that is still settling is refused
+        // rather than measured, and a frame that only looks stable after the measurement cannot
+        // qualify it. On a terminal that ignores DECSACE, a blinking cursor alone moves the
+        // whole-window digest.
         beginCaptureLifecycle(ctx)
-        // The stability pair is taken BEFORE the DECSACE writes, by the same function the region
-        // oracle calls, so both arms obey one rule (@cto round-3c B2): a pair that only looks stable
-        // after the measurement cannot qualify the measurement.
+        ctx.write(DECSACE_PAINT)
+        let seed: ObservationFrame | undefined
         const stabilityRead = async (label: string) => {
           const frame = await capture({ role: "control", label })
-          return { regionDigest: frame.regionDigest, pixelsDigest: frame.pixelsDigest, frame }
+          seed = frame
+          const digests = frameDigests(frame)
+          return { regionDigest: digests.cells, pixelsDigest: digests.whole, frame }
         }
         const { refusal: instability } = await captureStabilityPair(
           "editing.decsace",
           "pixels",
-          () => stabilityRead("editing.decsace: capture stability 1"),
-          () => stabilityRead("editing.decsace: capture stability 2"),
+          () => stabilityRead("editing.decsace: seed stability 1"),
+          () => stabilityRead("editing.decsace: seed stability 2"),
         )
         if (instability) return instability
-        ctx.write(DECSACE_PAINT)
-        const seed = await capture({ role: "control", label: "editing.decsace: seed before DECSACE" })
+        if (seed === undefined) throw new Error("editing.decsace: the stability pair read no seed frame")
         ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
         const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
         ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
@@ -668,10 +670,10 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
         const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
         // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
-        // cannot establish an extent difference (review2 97414a37 P2 3). Compare the measured digest
-        // the frame kind actually carries — ONE kind for all three frames. A per-frame `whole ?? cells`
-        // compares one frame's whole-window digest with another's region digest, and the mismatch then
-        // reads as a measured difference (@cto round-2 B1a).
+        // cannot establish an extent difference. Compare the measured digest the frame kind
+        // actually carries — ONE kind for all three frames. A per-frame `whole ?? cells` compares
+        // one frame's whole-window digest with another's region digest, and that mismatch then
+        // reads as a measured difference.
         const frames = [seed, rectangle, stream]
         const digests = frames.map(frameDigests)
         const kind = digests.every((entry) => entry.whole !== undefined)
@@ -722,8 +724,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             },
           }
         }
-        // A frame that did not move from the seed has measured no change at all, so an ignored DECCARA
-        // and a digest that cannot see attributes are the same evidence (@cto round-2 B2, mutant 2).
+        // A frame that did not move from the seed has measured no change at all, so an ignored
+        // DECCARA and a digest that cannot see attributes are the same evidence.
         if (measured[1] === measured[0] || measured[2] === measured[0]) {
           const still = measured[1] === measured[0] ? "rectangle" : "stream"
           return {

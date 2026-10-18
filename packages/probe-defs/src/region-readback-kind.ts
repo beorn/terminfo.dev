@@ -306,7 +306,7 @@ function unpaintedColor(
         }
         if (seed === undefined || seed === null) {
           // An unread painted seed cannot qualify a relative claim: continuing here would let a
-          // cell whose colour nothing measured satisfy the check (@cto round-3c B6).
+          // cell whose colour nothing measured satisfy the check.
           return `the painted seed reports no ${channel} at cell ${row},${col}, so the colour claim cannot be qualified`
         }
         if (plain !== null && plain.r === seed.r && plain.g === seed.g && plain.b === seed.b) {
@@ -323,10 +323,8 @@ function attributeSgr(attributes: RegionReadbackAttributes, paint: RegionReadbac
   const codes: string[] = []
   if (attributes.inverse === true) codes.push("7")
   const bg = attributes.bg
-  // assertRelativeClaimsPainted proved at LOAD that every relative bg claim carries its bytes, so the
-  // painter reads them and carries no second refusal of its own (@cto round-3e B6).
-  // assertRelativeClaimsPainted proved at LOAD that every relative bg claim carries its bytes, so this
-  // narrowing is that proof, not a second refusal.
+  // assertRelativeClaimsPainted proved at LOAD that every relative bg claim carries its bytes, so
+  // this narrowing is that proof and the painter carries no second refusal of its own.
   if (bg !== undefined) codes.push(paintBytes(paint?.bg as string))
   return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`
 }
@@ -448,15 +446,15 @@ function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
  */
 function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
   // EVERY frame the row builds, not only `after`: `ignored` is painted by the same paintFrame call,
-  // so a relative claim there needs the same bytes (@cto round-3c B6). The message names the row, so
-  // a test that deletes this check cannot be satisfied by paintBytes' row-less fallback.
+  // so a relative claim there needs the same bytes. The message names the row, so a test that
+  // deletes this check cannot be satisfied by paintBytes' row-less fallback.
   for (const cells of [row.after, ...(row.ignored === undefined ? [] : [row.ignored])]) {
     for (const [rowIndex, line] of cells.entries()) {
       for (const [col, cell] of line.entries()) {
         if (typeof cell === "string") continue
         if (cell.attributes.bg === undefined) continue
         // Falsy, not only undefined: an empty string would paint no background and ship a claim no
-        // adapter can decide, so it refuses here with the row id (@cto round-3e B6).
+        // adapter can decide, so it refuses here with the row id.
         if (!row.paint?.bg) {
           throw new Error(`${row.id}: cell ${rowIndex},${col} asserts a relative bg with no paint bytes`)
         }
@@ -694,7 +692,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
       } finally {
         // The parser arm sets the same extent mode the app arm does (`2*x` inside the row's step), and
         // 2J does not reset it, so the row's own cleanup lands here too on every exit: decided,
-        // refused or thrown (@cto round-3e B4).
+        // refused or thrown.
         if (row.cleanup !== undefined) ctx.feed(row.cleanup)
         ctx.feed(row.reset)
       }

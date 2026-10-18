@@ -11,8 +11,9 @@ import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import { parseObservationFrames } from "@terminfo/run-parser"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
+import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ObservationFrame, ProbeDefinition, TermContext, TermlessContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, TermContext } from "./types.ts"
 
 const CAPTURE_IDS = [
   "editing.insert-chars",
@@ -258,8 +259,10 @@ test("without a capture adapter a converted row refuses by name and writes nothi
  * wrong extent, omits DECCARA, or grades the seed still earns three different digests and passes
  * (@cto round-2 B2, which reproduced exactly those three mutants at 7a364cac).
  *
- * The ref is deliberately CONSTANT: a frame pair compared by retained artifact would read "same
- * frame" here, so an arm that regressed to `ref` cannot pass this double.
+ * Each frame carries a DISTINCT ref, so the run parser's citation rule can fail on this double: a
+ * pixel return that cites a control frame, or a frame absent from the run's screenshotRefs, is
+ * refused. A comparison that regressed to `ref` is caught by the digest-versus-ref row below,
+ * which gives one measured screen three different refs.
  */
 function decsaceCaptureContext() {
   const DECSACE_SEED_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
@@ -300,11 +303,12 @@ function decsaceCaptureContext() {
     queryMode: async () => null,
   }
   context.capture = async ({ role, label }) => {
+    const index = frameWrites.length + 1
     const frame: ObservationFrame = {
       role,
       label,
-      capturedAt: frameWrites.length + 1,
-      ref: `sha256:${"a".repeat(64)}`,
+      capturedAt: index,
+      ref: `sha256:${createHash("sha256").update(`${index}:${label}`).digest("hex")}`,
       pixelsDigest: digest(),
     }
     frameWrites.push(sinceCapture)
@@ -315,23 +319,23 @@ function decsaceCaptureContext() {
 }
 
 /**
- * decsace converted with the attribute-cell kind (@cto 2026-10-18): on an adapter that reports
- * frames it measures BOTH extents. The stream frame is the control, so the arm is supported only
- * when DECSACE 2 and DECSACE 0 leave screens that differ from the seed AND from each other.
+ * DECSACE converted with the attribute-cell kind: on an adapter that reports frames it measures
+ * BOTH extents. The stream frame is the control, so the arm is supported only when DECSACE 2 and
+ * DECSACE 0 leave screens that differ from the seed AND from each other.
  */
 test("editing.decsace grades the frames its own writes produced", async () => {
   const { context, frameWrites, writes, seed, cara } = decsaceCaptureContext()
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
-  // The bytes each capture was taken after, in order: two reads of one static frame BEFORE any
-  // DECSACE write (the shared stability pair), then the seed paint, DECSACE 2 + DECCARA, then
-  // DECSACE 0 + DECCARA. A swapped, missing or late write changes this.
-  expect(frameWrites).toEqual(["\x1b[0m\x1b[?25l", "", seed, `${seed}\x1b[2*x${cara}`, `${seed}\x1b[0*x${cara}`])
-  // The observation cites the three DECIDED frames; the stability pair is the first two buckets
-  // above and exists as evidence in the arm's own sequence, not as frames to grade.
+  // The bytes each capture was taken after, in order: the seed paint, the pair's two reads of that
+  // SEEDED screen, then DECSACE 2 + DECCARA, then DECSACE 0 + DECCARA. The seed frame is the pair's
+  // second read, so a pair taken before the paint changes this.
+  expect(frameWrites).toEqual([`\x1b[0m\x1b[?25l${seed}`, "", `${seed}\x1b[2*x${cara}`, `${seed}\x1b[0*x${cara}`])
+  // The observation cites the seed — the pair's second read — and the two extent frames; the
+  // pair's first read is evidence in the arm's own sequence, not a frame to grade.
   const frames = (result.observation?.frames ?? []) as ObservationFrame[]
   expect(frames.map((frame) => frame.label)).toEqual([
-    "editing.decsace: seed before DECSACE",
+    "editing.decsace: seed stability 2",
     "editing.decsace: DECSACE 2 rectangle frame",
     "editing.decsace: DECSACE 0 stream frame",
   ])
@@ -375,44 +379,16 @@ test("editing.decsace clears its DECSACE extent before restoring the cursor", as
 
 test("editing.decsace parser arm refuses a grid below its 2x8 fixture", () => {
   const definition = find("editing.decsace")
-  /**
-   * The parser arm reads cols, feed, getCell and the scrollback. A surface has no title or
-   * capability census, so those two are named empty here rather than spread in as absent members.
-   */
-  const termless = (rows: number, cols: number): TermlessContext => {
-    const surface = createSemanticSurface({ rows, cols })
-    const feedCapture = surface.feedCapture
-    const getScrollback = surface.getScrollback
-    if (feedCapture === undefined || getScrollback === undefined) {
-      throw new Error("the semantic surface lacks a reader the parser arm needs")
-    }
-    return {
-      cols: surface.cols,
-      feed: surface.feed,
-      feedCapture,
-      getCell: surface.getCell,
-      getCursor: surface.getCursor,
-      getMode: surface.getMode,
-      getText: surface.getText,
-      getScrollback,
-      getTitle: () => "",
-      reset: surface.reset,
-      capabilities: {
-        truecolor: false,
-        kittyKeyboard: false,
-        kittyGraphics: false,
-        sixel: false,
-        osc8Hyperlinks: false,
-        semanticPrompts: false,
-        reflow: false,
-        unicode: "",
-        extensions: new Set<string>(),
-      },
-    }
-  }
+  // A semantic surface already supplies every field the parser arm reads, and the shared headless
+  // harness fills the inert remainder, so this test carries no hand-built context.
+  const termless = (rows: number, cols: number) => headlessContext(createSemanticSurface({ rows, cols }))
   const refused = definition.termless!(termless(1, 8))
   expect(refused.observation).toMatchObject({ outcome: "inconclusive" })
   expect(String(refused.observation?.note)).toContain("Need a measured 2x8 fixture")
+  // The floor has two halves: the row needs two rows AND eight columns.
+  const narrow = definition.termless!(termless(2, 7))
+  expect(narrow.observation).toMatchObject({ outcome: "inconclusive" })
+  expect(String(narrow.observation?.note)).toContain("Need a measured 2x8 fixture")
   const exact = definition.termless!(termless(2, 8))
   expect(exact.observation?.outcome).toBe("supported")
   expect(String(exact.assertions?.[0]?.observed)).toContain("##")
@@ -422,27 +398,79 @@ test("editing.decsace without a capture adapter still clears its DECSACE extent"
   const { context, writes } = captureContext(24, 80, false)
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive" })
-  // The no-capture branch runs no lifecycle, so the mode reset is its own job (@cto round-3c B4).
-  expect(writes.join("")).toContain("\x1b[2*x")
-  expect(writes.join("")).toContain("\x1b[0*x")
+  // The no-capture branch runs no lifecycle, so the mode reset is its own job: DECSACE 2 is set and
+  // then cleared, in that order, because a run that leaves the extent mode set changes the next
+  // probe's DECCARA/DECRARA reach.
+  const sequence = writes.join("")
+  expect(sequence).toContain("\x1b[2*x")
+  expect(sequence.indexOf("\x1b[0*x")).toBeGreaterThan(sequence.indexOf("\x1b[2*x"))
 })
 
-test("editing.decsace observations carry a target screenshotRef the run parser accepts", async () => {
-  const { context } = decsaceCaptureContext()
-  const result = await find("editing.decsace").term!(context)
-  const observation = result.observation
-  const frames = (observation?.frames ?? []) as ObservationFrame[]
-  const evidence = observation?.evidence
-  if (evidence === undefined) throw new Error("the DECSACE arm returned no evidence kind")
-  expect(evidence).toBe("pixels")
-  expect(observation?.screenshotRef).toBeDefined()
-  const refs = frames.map((frame) => frame.ref)
-  // The arm returns pixels for every outcome, and the run parser refuses a pixels observation
-  // without a screenshotRef and a non-target citation (@cto round-3c B1). Feeding the arm's own
-  // observation through that parser is the test that catches it.
-  expect(() =>
-    parseObservationFrames(frames, "test", "editing.decsace", refs, [], observation?.screenshotRef, evidence),
-  ).not.toThrow()
+/**
+ * The arm returns pixels on four paths — supported, equal extents, no measured digest, and a target
+ * that did not move from the seed. Every one of them is fed through the run parser's own rules with
+ * a DISTINCT ref per frame, so a return that cites a control frame, drops its citation, or names a
+ * frame absent from the run's screenshotRefs fails here rather than shipping.
+ */
+test("every DECSACE pixel return carries a target citation the run parser accepts", async () => {
+  const counted = (digestOf: (reads: number) => string | undefined) => () => {
+    const { context } = captureContext(24, 80)
+    let reads = 0
+    context.capture = async ({ role, label }) => {
+      reads += 1
+      const pixelsDigest = digestOf(reads)
+      return {
+        role,
+        label,
+        capturedAt: reads,
+        ref: `sha256:${String(reads).repeat(64)}`,
+        ...(pixelsDigest === undefined ? {} : { pixelsDigest }),
+      }
+    }
+    return context
+  }
+  const returns: Array<{ name: string; build: () => TermContext; outcome: string; note: string }> = [
+    {
+      name: "supported",
+      build: () => decsaceCaptureContext().context,
+      outcome: "supported",
+      note: "differ from the seed and from each other",
+    },
+    {
+      name: "equal extents",
+      build: counted(() => `sha256:${"f".repeat(64)}`),
+      outcome: "inconclusive",
+      note: "Both DECSACE extent modes left the same frame",
+    },
+    {
+      name: "no measured digest",
+      build: counted((reads) => (reads <= 2 ? `sha256:${"0".repeat(64)}` : undefined)),
+      outcome: "inconclusive",
+      note: "do not all report one measured digest kind",
+    },
+    {
+      name: "target did not move",
+      build: counted((reads) => `sha256:${(reads === 3 ? "b" : "a").repeat(64)}`),
+      outcome: "inconclusive",
+      note: "stream frame did not differ from the seed",
+    },
+  ]
+  for (const { name, build, outcome, note } of returns) {
+    const result = await find("editing.decsace").term!(build())
+    const observation = result.observation
+    if (observation === undefined) throw new Error(`${name}: the DECSACE arm returned no observation`)
+    expect(observation.outcome, name).toBe(outcome)
+    expect(String(observation.note), name).toContain(note)
+    expect(observation.evidence, name).toBe("pixels")
+    expect(observation.screenshotRef, name).toBeDefined()
+    const frames = (observation.frames ?? []) as ObservationFrame[]
+    const refs = frames.map((frame) => frame.ref)
+    expect(new Set(refs).size, name).toBe(refs.length)
+    expect(
+      () => parseObservationFrames(frames, "test", "editing.decsace", refs, [], observation.screenshotRef, "pixels"),
+      name,
+    ).not.toThrow()
+  }
 })
 
 /**
@@ -471,9 +499,10 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
   })
   expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
   expect(result.assertions).toBeUndefined()
-  // Two stability reads before the paint, then the seed and the two extent frames: the pair is the
-  // shared control every pixel arm runs (@cto round-3c B2), so it is part of this arm's sequence.
-  expect(frames).toHaveLength(5)
+  // The seed paint, the pair's two reads of that seeded screen, then the two extent frames: the pair
+  // is the shared control every pixel arm runs, so it is part of this arm's sequence and the seed
+  // frame is its second read.
+  expect(frames).toHaveLength(4)
 })
 
 /**
@@ -589,6 +618,40 @@ test("editing.decsace refuses a capture that is not byte-stable", async () => {
 })
 
 /**
+ * The stability pair measures the SEEDED screen: the seed paint is written before the first read and
+ * the pair's second read is the seed frame. A seed still settling between those two reads is refused
+ * with the same shape as any unstable capture — both digests in the response, the second read cited,
+ * and no frames — instead of being compared against the extent frames.
+ */
+test("editing.decsace refuses a seed that changes between the pair's two reads", async () => {
+  const { context, frameWrites, seed } = decsaceCaptureContext()
+  const capture = context.capture!
+  const refs: string[] = []
+  context.capture = async (request) => {
+    if (request.label === "editing.decsace: seed stability 2") context.write("\x1b[1;1HX")
+    const frame = await capture(request)
+    refs.push(frame.ref)
+    return frame
+  }
+  const result = await find("editing.decsace").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(String(result.observation?.note)).toContain("not byte-stable")
+  expect(result.assertions).toBeUndefined()
+  // The first read already came after the seed paint, so the pair measured the seeded screen.
+  expect(frameWrites[0]).toBe(`\x1b[0m\x1b[?25l${seed}`)
+  expect(frameWrites[1]).toBe("\x1b[1;1HX")
+  const response = JSON.parse(String(result.response)) as { stability: { pixelsDigest: string[] } }
+  expect(response.stability.pixelsDigest).toHaveLength(2)
+  expect(response.stability.pixelsDigest[0]).not.toBe(response.stability.pixelsDigest[1])
+  expect(result.observation?.screenshotRef).toBe(refs[1])
+  expect(result.observation?.frames ?? []).toHaveLength(0)
+})
+
+/**
  * @cto round-2 B2 mutant 2: a frame that did not move from the seed has measured no change at all,
  * so an ignored DECCARA cannot be separated from a digest that cannot see attributes.
  */
@@ -597,8 +660,9 @@ test("editing.decsace refuses a target frame that did not move from the seed", a
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
-    // Order: two stability reads, the seed paint, then the rectangle and the stream extents.
-    const digest = reads <= 2 ? "stable" : reads === 3 ? "seed" : reads === 4 ? "rect" : "seed"
+    // Order: the seed paint, the pair's two reads of that seeded screen (the second IS the seed
+    // frame), then the rectangle and the stream extents.
+    const digest = reads <= 2 ? "seed" : reads === 3 ? "rect" : "seed"
     return { role, label, capturedAt: reads, ref: `sha256:${digest}`, pixelsDigest: `sha256:${digest}` }
   }
   const result = await find("editing.decsace").term!(context)
