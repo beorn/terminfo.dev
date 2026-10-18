@@ -690,8 +690,9 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
       trace: {},
     }),
   ).rejects.toThrow("capture 639x480 differs from window 640x480")
-  // A plain frame still bypasses raw decoding and origin resolution, as Linux always did.
-  process.env.TEST_CAPTURE_FAIL = "conversion"
+  // A plain frame carries the whole-window digest and resolves no text-area origin (30092): the
+  // decode now runs for every pixel frame, so a conversion failure is no longer survivable here.
+  delete process.env.TEST_CAPTURE_FORCE_CAPTURE
   const plain = await finishCapture({
     directory,
     checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
@@ -709,8 +710,22 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
     capturedAt: 123,
     ref: result.frame.ref,
     sourceRef: result.frame.sourceRef,
+    pixelsDigest: `sha256:${createHash("sha256")
+      .update(Buffer.alloc(640 * 480 * 4))
+      .digest("hex")}`,
   })
   expect(plain.trace).toEqual({ fixture: "plain" })
+  process.env.TEST_CAPTURE_FAIL = "conversion"
+  await expect(
+    finishCapture({
+      directory,
+      checkpoint: { featureId: "fixture.plain", role: "control", label: "plain" },
+      source,
+      png: readFileSync(png),
+      origin: { origin: { x: 2, y: 34 }, basis: "calibration" },
+      trace: {},
+    }),
+  ).rejects.toThrow("conversion failed")
 })
 
 // 30092: a whole-frame scrollback capture names no cells, so the old path computed no
@@ -741,7 +756,9 @@ test.each(["xwd", "png"] as const)(
       trace: {},
     })
     expect(result.frame.pixelsDigest).toBe(
-      `sha256:${createHash("sha256").update(Buffer.alloc(640 * 480 * 4)).digest("hex")}`,
+      `sha256:${createHash("sha256")
+        .update(Buffer.alloc(640 * 480 * 4))
+        .digest("hex")}`,
     )
     expect(result.frame.regionDigest).toBeUndefined()
     expect(result.frame.regionRectangle).toBeUndefined()

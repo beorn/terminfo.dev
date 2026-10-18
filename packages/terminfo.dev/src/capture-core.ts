@@ -300,8 +300,12 @@ export async function finishCapture(input: {
   png: Buffer
   origin: NamedTextOrigin | OriginResolver
   trace: Record<string, unknown>
+  /** Pixels the caller already decoded for this exact capture; finalization reuses them (30092). */
+  decoded?: CapturedFrame
+  /** Absolute deadline for the one decode this finalizer runs when `decoded` is absent (30092). */
+  deadline?: number
 }): Promise<Awaited<ReturnType<ProbeCapture>>> {
-  const { directory, checkpoint, source, png, origin, trace } = input
+  const { directory, checkpoint, source, png, origin, trace, decoded: predecoded, deadline } = input
   const { featureId, role, label, cells, pixelGeometry } = checkpoint
   const { width, height, format, bytes: original, capturedAt } = source
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
@@ -311,19 +315,18 @@ export async function finishCapture(input: {
   const ref = retain(directory, png, "png")
   const sourceStem = sourceRef.replace(/^sha256:/, "")
   const pngStem = ref.replace(/^sha256:/, "")
-  let pixelsDigest: string | undefined
+  if ((cells === undefined) !== (pixelGeometry === undefined)) {
+    throw new Error(
+      `Capture ${featureId} was asked for a cell-aligned digest without both cells and the terminal's pixel report`,
+    )
+  }
+  const decoded = predecoded ?? (await decodeCapture({ source, featureId, deadline }))
+  const pixelsDigest = `sha256:${digest(Buffer.from(decoded.rgba.buffer, decoded.rgba.byteOffset, decoded.rgba.byteLength))}`
   let regionDigest: string | undefined
   let regionRectangle: CaptureRectangle | undefined
   let regionTrace: Record<string, unknown> = {}
-  if (cells !== undefined || pixelGeometry !== undefined) {
-    if (cells === undefined || pixelGeometry === undefined) {
-      throw new Error(
-        `Capture ${featureId} was asked for a cell-aligned digest without both cells and the terminal's pixel report`,
-      )
-    }
-    const frame = await decodeCapture({ source, featureId })
-    pixelsDigest = `sha256:${digest(Buffer.from(frame.rgba.buffer, frame.rgba.byteOffset, frame.rgba.byteLength))}`
-    const placement = typeof origin === "function" ? await origin({ frame, pixelGeometry }) : origin
+  if (cells !== undefined && pixelGeometry !== undefined) {
+    const placement = typeof origin === "function" ? await origin({ frame: decoded, pixelGeometry }) : origin
     if (!placement || typeof placement.basis !== "string" || placement.basis.trim().length === 0 || !placement.origin) {
       throw new Error(`Capture ${featureId} lacks a named text-area origin`)
     }
@@ -379,7 +382,8 @@ export async function finishCapture(input: {
       capturedAt,
       ref,
       sourceRef,
-      ...(regionDigest !== undefined && pixelsDigest !== undefined ? { regionDigest, pixelsDigest } : {}),
+      pixelsDigest,
+      ...(regionDigest !== undefined ? { regionDigest } : {}),
       ...(regionRectangle !== undefined ? { regionRectangle } : {}),
     },
     trace: { ...trace, ...regionTrace },

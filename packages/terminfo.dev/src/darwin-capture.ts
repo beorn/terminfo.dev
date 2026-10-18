@@ -165,6 +165,8 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
       checkpoint: { ...checkpoint, cells: undefined, pixelGeometry: undefined },
       source,
       png: source.bytes,
+      decoded,
+      ...(deadline === undefined ? {} : { deadline }),
       origin: () => {
         throw new Error("Darwin calibration raw capture cannot map cells before a named origin")
       },

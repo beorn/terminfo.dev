@@ -4,7 +4,8 @@
  * @consumer createDarwinCapture ownership, scale and attributed acquisition failures
  * @testonly none
  */
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test, vi } from "vitest"
@@ -68,3 +69,45 @@ test.each(["command failure", "missing output"])(
     }
   },
 )
+
+// 30092 review round 1: raw calibration already decoded the frame, so finalization must reuse those
+// pixels instead of decoding a second time outside the caller's deadline.
+test("Darwin raw calibration decodes once and within the caller's deadline (30092)", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-raw-"))
+  const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
+  const decodes: Array<{ featureId: string; deadline?: number }> = []
+  const decoder = vi.spyOn(captureCore, "decodeCapture").mockImplementation(async ({ source, featureId, deadline }) => {
+    decodes.push({ featureId, deadline })
+    return { width: source.width, height: source.height, rgba: Buffer.alloc(source.width * source.height * 4) }
+  })
+  const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args, _input, deadline) => {
+    if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+    if (file === "/usr/sbin/screencapture") {
+      writeFileSync(args.at(-1)!, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]))
+      return Buffer.alloc(0)
+    }
+    if (file !== "magick") throw new Error(`Unexpected command ${file}`)
+    if (args[0] === "-version") return Buffer.from("test converter")
+    return Buffer.from(`${own.bounds.width}x${own.bounds.height}`)
+  })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41 })
+    const deadline = Date.now() + 5_000
+    const { decoded, result } = await adapter.captureRaw(
+      { featureId: "extensions.truecolor", role: "control", label: "diagnostic" },
+      deadline,
+    )
+    expect(decodes).toEqual([{ featureId: "extensions.truecolor", deadline }])
+    expect(decoded.width).toBe(own.bounds.width)
+    expect(decoded.height).toBe(own.bounds.height)
+    expect(result.frame.pixelsDigest).toBe(
+      `sha256:${createHash("sha256")
+        .update(Buffer.alloc(own.bounds.width * own.bounds.height * 4))
+        .digest("hex")}`,
+    )
+  } finally {
+    decoder.mockRestore()
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
