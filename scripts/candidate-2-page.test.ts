@@ -313,12 +313,21 @@ describe("candidate-2 page: wiring", () => {
   it("includes Editing and Character Sets on the four measured contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
     // context held, and every context with no run on the required suite named not measured. The
-    // lists moved with the c240 suite: the macOS contexts lost their runs, so no macOS context can
-    // carry a per-context inclusion claim and kitty/macos now names its blocker. A new suite or
+    // lists moved with the b46 suite: the five Linux arms were re-collected on it, windows-terminal
+    // has not been, and the macOS contexts have never had a run on a current suite. A new suite or
     // collection that moves these numbers must change this table deliberately, never loosen it.
     const clearing = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
-    const below = ["ghostty/linux", "windows-terminal/windows"]
-    const dark = ["terminal-app/macos", "iterm2/macos", "ghostty/macos", "alacritty/macos", "kitty/macos"]
+    // windows-terminal has no run on this suite, so it is named unmeasured instead of held: a hold
+    // is a measurement, and this move weakened the claim rather than improving it.
+    const below = ["ghostty/linux"]
+    const dark = [
+      "terminal-app/macos",
+      "iterm2/macos",
+      "ghostty/macos",
+      "alacritty/macos",
+      "kitty/macos",
+      "windows-terminal/windows",
+    ]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -402,7 +411,7 @@ describe("candidate-2 page: wiring", () => {
             context: row.context,
             measured: false as const,
             run: displaced,
-            reason: "ineligible: selected run on suite 45d6fda67445, required c24025ea22fc",
+            reason: `ineligible: selected run on suite 45d6fda67445, required ${cohort.frozenSuiteId}`,
           }
         : row,
     )

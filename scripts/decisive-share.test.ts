@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { join } from "node:path"
+import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
@@ -96,9 +97,10 @@ describe("release 1 decisive-count reader", () => {
       expect(load).toThrow(/no suite manifest declares freeze.release "candidate4"/)
       // The site's selection projection resolves the release suite separately, so the fixture carries it.
       writeFileSync(join(suites, "5753741410a9.json"), readFileSync(join(real, "suites", "5753741410a9.json")))
-      const realManifest = join(real, "suites", "c24025ea22fc.json")
+      const currentSuite = frozenSuiteIdFor(real, "candidate4")
+      const realManifest = join(real, "suites", `${currentSuite}.json`)
       const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
-      const manifest = join(suites, "c24025ea22fc.json")
+      const manifest = join(suites, `${currentSuite}.json`)
       writeFileSync(manifest, JSON.stringify({ ...raw, freeze: { release: "candidate4", at: "not-a-date" } }))
       expect(load).toThrow(manifest)
       writeFileSync(
@@ -121,9 +123,7 @@ describe("release 1 decisive-count reader", () => {
       const blockers = join(contentDir, "context-blockers.json")
       expect(load).toThrow(blockers)
       writeFileSync(blockers, readFileSync(join(real, "context-blockers.json")))
-      expect(buildReport({ contentDir, cohort: candidate2Cohort(contentDir) }).cohort?.frozenSuiteId).toBe(
-        "c24025ea22fc",
-      )
+      expect(buildReport({ contentDir, cohort: candidate2Cohort(contentDir) }).cohort?.frozenSuiteId).toBe(currentSuite)
     } finally {
       rmSync(contentDir, { recursive: true })
     }
@@ -161,7 +161,7 @@ describe("release 1 decisive-count reader", () => {
     }
   }, 15_000)
 
-  it("reports candidate 3's exact modes/device delta on the explicitly named c240 freeze", () => {
+  it("reports candidate 3's exact modes/device delta on the explicitly named frozen suite", () => {
     // The generic reader already covers suite selection and grading; this checks the new CLI value's
     // actual data path, including all unavailable rows, rather than constructing its spec in the test.
     const contentDir = join(import.meta.dirname, "..", "content")
@@ -171,7 +171,7 @@ describe("release 1 decisive-count reader", () => {
     const spec = factory(contentDir)
     const cohort = buildReport({ contentDir, cohort: spec }).cohort
     if (!cohort) throw new Error("cohort report absent")
-    expect(cohort.frozenSuiteId).toBe("c24025ea22fc")
+    expect(cohort.frozenSuiteId).toBe(frozenSuiteIdFor(contentDir, "candidate4"))
     // Independent catalog census: all 44 new IDs, excluding the fourteen already included Device IDs.
     expect(
       createHash("sha256")
@@ -179,11 +179,13 @@ describe("release 1 decisive-count reader", () => {
         .digest("hex"),
     ).toBe("8169578733a75fabb8da1edf4e32fb37a35ea40de9287ea5c30851136b3a3ced")
     expect(cohort.scoredIds).toHaveLength(44)
-    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(29)
+    // modes.decsscls gained its probe in the suite this freeze names, so it moved out of unavailable;
+    // a suite that drops that probe again must move this number deliberately.
+    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(30)
     expect(cohort.decidableIds.filter((id) => id.startsWith("device."))).toHaveLength(5)
-    expect(cohort.unavailableIds).toHaveLength(10)
+    expect(cohort.unavailableIds).toHaveLength(9)
     expect(cohort.unavailableIds.filter((id) => id.startsWith("device.env-"))).toHaveLength(9)
-    expect(cohort.unavailableIds).toContain("modes.decsscls")
+    expect(cohort.decidableIds).toContain("modes.decsscls")
     expect(cohort.libraryOnlyIds).toEqual([])
     expect(cohortHeaderLine(cohort)).toContain("frozen for candidate4, read here for candidate3 ids")
     expect(() => frozenSuiteIdFor(contentDir, "candidate3")).toThrow(
@@ -198,7 +200,7 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(cohortRowForSelected(row, cohort)).toMatchObject({
       measured: false,
-      reason: `ineligible: selected run on suite ${otherSuite}, required c24025ea22fc`,
+      reason: `ineligible: selected run on suite ${otherSuite}, required ${cohort.frozenSuiteId}`,
     })
   }, 20_000)
 
@@ -924,11 +926,11 @@ describe("the candidate-4 cohort reads the frozen suite its caller names", () =>
     const spec = candidate4Cohort(contentDir)
     expect(spec.name).toBe("candidate4")
     expect(spec.slices).toEqual(["extensions", "input"])
-    // The reader names the c240 suite explicitly, read from the registry entry that froze it, so this
+    // The reader names the frozen suite explicitly, read from the registry entry that froze it, so this
     // naming is a decision, not a registry fallback; a release nothing freezes still refuses.
     expect(spec.suiteId).toBe(frozenSuiteIdFor(contentDir, "candidate4"))
     expect(spec.suiteFrozenFor).toBe("candidate4")
-    expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe("c24025ea22fc")
+    expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe(probeSuiteSnapshot(join(contentDir, "..")).probeHash)
     expect(() => frozenSuiteIdFor(contentDir, "candidate9")).toThrow(
       /no suite manifest declares freeze\.release "candidate9"/,
     )
@@ -1057,9 +1059,10 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
         join(contentDir, "suites", "5753741410a9.json"),
         readFileSync(join(real, "suites", "5753741410a9.json")),
       )
+      const frozenSuite = frozenSuiteIdFor(real, "candidate4")
       writeFileSync(
-        join(contentDir, "suites", "c24025ea22fc.json"),
-        readFileSync(join(real, "suites", "c24025ea22fc.json")),
+        join(contentDir, "suites", `${frozenSuite}.json`),
+        readFileSync(join(real, "suites", `${frozenSuite}.json`)),
       )
       for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
       // One real lib run the projection refuses: a NON-app document, so this reader must not name it

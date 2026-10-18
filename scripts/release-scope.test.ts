@@ -10,6 +10,7 @@
  */
 import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
 import { join, relative } from "node:path"
+import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures } from "@terminfo/catalog"
@@ -180,7 +181,7 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // Candidate 4 now has its own freeze, a different declaration from candidate 2's. The reader
     // still names candidate 2's suite explicitly, so the registry lookup and the cohort spec answer
     // two separate questions and must not be conflated.
-    expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe("c24025ea22fc")
+    expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe(probeSuiteSnapshot(join(contentDir, "..")).probeHash)
     const dir = mkdtempSync(join(tmpdir(), "suite-registry-"))
     try {
       mkdirSync(join(dir, "suites"))
