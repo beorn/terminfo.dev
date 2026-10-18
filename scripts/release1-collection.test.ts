@@ -271,7 +271,7 @@ it.each([
       if (args[1] === "download") {
         const artifacts = args[args.indexOf("--dir") + 1]
         if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
-        for (const id of mac ? ["terminal-app", "iterm2", "ghostty", "alacritty"] : ["windows-terminal"]) {
+        for (const id of mac ? ["terminal-app", "iterm2", "ghostty", "alacritty"] : ["windows-terminal", "alacritty"]) {
           const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
           mkdirSync(folder, { recursive: true })
           writeFileSync(join(folder, "run.json"), "{}")
@@ -368,7 +368,7 @@ it.each([
         (row) =>
           row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
       )
-      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 5 : 4)
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 6 : 4)
       expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
         inputChange === "blocked-hosted" ? 0 : 1,
@@ -382,7 +382,7 @@ it.each([
         expect.anything(),
       )
       const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-      expect(hosted).toHaveLength(os === "macos" ? 4 : 1)
+      expect(hosted).toHaveLength(os === "macos" ? 4 : 2)
       if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -465,6 +465,10 @@ describe("release 1 collection census", () => {
       /gh workflow run windows-measurement\.yml --repo beorn\/terminfo\.dev --ref <exact-source-ref>/,
     )
     expect(windows?.uncollectable).toBeNull()
+    const alacrittyWin = all.find((entry) => entry.id === "alacritty" && entry.os === "windows")
+    expect(alacrittyWin?.route).toBe("hosted-workflow")
+    expect(alacrittyWin?.command).toMatch(/win32-alacritty-<run-id>-<attempt>/)
+    expect(alacrittyWin?.uncollectable).toBeNull()
     for (const entry of all) {
       if (entry.route === null) expect(entry.uncollectable).not.toBeNull()
       else expect(entry.command).toBeTruthy()
@@ -472,8 +476,8 @@ describe("release 1 collection census", () => {
   })
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
-    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty only — there is no kitty job — and
-    // Chief bbf8eff9 retains the unresolved routes as expected work. kitty/macos is no longer one of
+    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty on macos and windows-terminal/alacritty on windows.
+    // All remaining unresolved routes stay recorded as expected route work. kitty/macos is no longer one of
     // them: 15323 gives it an owned local launch on the host the pass runs on, and the run is still
     // parsed and classified by this pass rather than by a second dispatcher.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
@@ -482,10 +486,13 @@ describe("release 1 collection census", () => {
     expect(kitty?.uncollectable).toBeNull()
     expect(kitty?.requires).toMatch(/owned app window launched by the admin/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(7)
+    expect(missing).toHaveLength(6)
     expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
+    }
+    for (const id of ["windows-terminal", "alacritty"]) {
+      expect(census().find((entry) => entry.id === id && entry.os === "windows")?.route).toBe("hosted-workflow")
     }
   })
 

@@ -65,8 +65,8 @@ export function decodeConsoleScreenBufferInfo(bytes: Uint8Array): ConsoleGeometr
 /** This process's own console window handle — the identity a re-read is checked against. It is
  * stable inside one console and different for a different console (measured: 327766 twice, then
  * 328074 in the previous run), which is what makes a per-read change check meaningful. */
-export async function readWindowsConsoleIdentity(kernel?: Kernel32): Promise<string> {
-  const { symbols } = kernel ?? (await loadKernel32())
+export function readWindowsConsoleIdentity(kernel?: Kernel32): string {
+  const { symbols } = kernel ?? loadKernel32()
   // GetConsoleWindow returns HWND, a handle, so it arrives as a BigInt (u64) and String() renders
   // all 64 bits as plain decimal - the same shape the measured identities were recorded in.
   return String(symbols.GetConsoleWindow())
@@ -80,7 +80,7 @@ export async function withConsoleOutputHandle<T>(
    * the argument packing and the decode are all asserted where no console exists. */
   kernel?: Kernel32,
 ): Promise<T> {
-  const binding = kernel ?? (await loadKernel32())
+  const binding = kernel ?? loadKernel32()
   const { symbols, ptr } = binding
   const handle = symbols.CreateFileW(
     ptr(Buffer.from("CONOUT$\u0000", "utf16le")) as never,

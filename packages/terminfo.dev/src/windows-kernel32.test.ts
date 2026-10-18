@@ -21,9 +21,12 @@ describe("kernel32Declaration", () => {
     expect(declaration.CreateFileW?.returns).toBe("u64")
     expect(declaration.CreateToolhelp32Snapshot?.returns).toBe("u64")
     expect(declaration.GetConsoleWindow?.returns).toBe("u64")
+    expect(declaration.OpenProcess?.returns).toBe("u64")
     // Handle ARGUMENTS.
     expect(declaration.Process32FirstW?.args).toEqual(["u64", "ptr"])
     expect(declaration.Process32NextW?.args).toEqual(["u64", "ptr"])
+    expect(declaration.OpenProcess?.args).toEqual(["u32", "i32", "u32"])
+    expect(declaration.QueryFullProcessImageNameW?.args).toEqual(["u64", "u32", "ptr", "ptr"])
     expect(declaration.GetConsoleScreenBufferInfo?.args).toEqual(["u64", "ptr"])
     // ReadConsoleOutputW: HANDLE, PCHAR_INFO, then two COORDs BY VALUE (u32, X low half) and the
     // PSMALL_RECT. A COORD declared as ptr would make the native call read a pointer as a number.
@@ -38,11 +41,14 @@ describe("kernel32Declaration", () => {
     expect(declaration.CreateFileW?.args[0]).toBe("ptr") // lpFileName
     expect(declaration.CreateFileW?.args[3]).toBe("ptr") // lpSecurityAttributes
     expect(declaration.GetConsoleScreenBufferInfo?.args[1]).toBe("ptr") // the CSBI buffer
+    expect(declaration.QueryFullProcessImageNameW?.args[2]).toBe("ptr") // lpExeName
+    expect(declaration.QueryFullProcessImageNameW?.args[3]).toBe("ptr") // lpdwSize
   })
 
   it("keeps the BOOL and error-code returns as the integer types they are", () => {
     expect(declaration.Process32FirstW?.returns).toBe("i32")
     expect(declaration.Process32NextW?.returns).toBe("i32")
+    expect(declaration.QueryFullProcessImageNameW?.returns).toBe("i32")
     expect(declaration.GetConsoleScreenBufferInfo?.returns).toBe("i32")
     expect(declaration.CloseHandle?.returns).toBe("i32")
     expect(declaration.GetLastError?.returns).toBe("u32")
