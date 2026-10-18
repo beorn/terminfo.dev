@@ -63,46 +63,54 @@ test("every converted row refuses by name and writes nothing without an owned ca
 })
 
 /**
- * The two attribute-rectangle rows stay hand-written (@cto 218ec7fe), so their own CPR callback is
- * still the no-capture path: it declines an incomplete extent before any feature byte or query, and
- * reaches CPR at its floor. Their coverage record lives on `EDITING_CAPTURE_SPECS` in editing.ts.
+ * Restored from the deleted HAND_WRITTEN test (@cto round-2 B5): the converted attribute rows still
+ * refuse a grid smaller than the extent they address, BEFORE any feature byte and before any query.
+ * The old test's other half — "reaches CPR at its floor" — has no counterpart by design: these rows
+ * now take the capture-region path. The floor itself is 5x8 (the sentinel row and the compared
+ * region's right edge plus the family margin); 24x80 is only the roomy grid the readback tests use,
+ * and the boundary pair below pins both sides of the real floor (@cto round-3c B7).
  */
-const HAND_WRITTEN = [
-  ["editing.deccara", 3, 5],
-  ["editing.decrara", 3, 5],
-] as const
-
-test("the hand-written attribute rows decline incomplete extents before feature bytes or CPR", async () => {
-  for (const [id, minRows, minCols] of HAND_WRITTEN) {
+test("a converted attribute row refuses an undersized grid before any byte or query", async () => {
+  for (const id of ["editing.deccara", "editing.decrara"]) {
+    const row = editingReadbackRows.find((entry) => entry.id === id)
     const definition = editingProbes.find((probe) => probe.id === id)
-    if (!definition?.term) throw new Error(`missing app callback for ${id}`)
-    const invalidDimensions: Array<readonly [number, number]> = [
-      [minRows - 1, minCols],
-      [minRows, minCols - 1],
-      [NaN, minCols],
-      [minRows, Infinity],
-    ]
-    for (const [rows, cols] of invalidDimensions) {
+    if (!row?.sentinel || !definition?.term) throw new Error(`missing app callback for ${id}`)
+    for (const [rows, cols] of [
+      [row.sentinel.row - 1, 8],
+      [row.sentinel.row, 7],
+      [row.sentinel.row, 4],
+      [Number.NaN, 80],
+      [24, Number.POSITIVE_INFINITY],
+    ] as const) {
       const events: string[] = []
-      const result = await definition.term(app(rows, cols, events))
+      const context: TermContext = {
+        ...app(rows, cols, events),
+        capture: async () => {
+          throw new Error(`${id} reached capture on an undersized grid`)
+        },
+      }
+      const result = await definition.term(context)
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
       expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "none",
       })
+      expect(String(result.observation?.note), `${id} at ${rows}x${cols}`).toContain("at least")
     }
-    expect(definition.termNeedsGeometry, id).toBe(true)
-    const events: string[] = []
-    const valid = await definition.term(app(minRows, minCols, events))
-    expect(events.length, id).toBeGreaterThan(1)
-    expect(events.at(-1), id).toBe("CPR")
-    expect(valid.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      evidence: "query",
-      reason: "insufficient-evidence",
-    })
-    expect(valid.pass, id).toBe(false)
-    expect(valid.response, id).toBe("3;6")
+    // The other side of the boundary: 5x8 is the floor, so the arm must reach its own work instead
+    // of refusing. A capture that throws is the cheapest proof it got past the geometry gate.
+    const floor: TermContext = {
+      ...app(row.sentinel.row, 8, []),
+      // A calibrated geometry keeps the arm from needing an unanswerable pixel query, so the only
+      // thing that can stop it before the capture is the geometry gate this test measures.
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 8 * 8, textHeight: 16 * row.sentinel.row },
+        source: "measured by complete raster calibration",
+      },
+      capture: async () => {
+        throw new Error(`${id} reached capture at its 5x8 floor`)
+      },
+    }
+    await expect(definition.term(floor), `${id} at 5x8`).rejects.toThrow(/reached capture at its 5x8 floor/)
   }
 })

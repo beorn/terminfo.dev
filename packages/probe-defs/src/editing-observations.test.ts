@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { ALL_PROBES } from "./index.ts"
-import { regionReadbackProbe } from "./region-readback-kind.ts"
+import { regionReadbackProbe, type RegionReadbackCell } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { TermlessContext } from "./types.ts"
@@ -17,10 +17,9 @@ import type { TermlessContext } from "./types.ts"
  * definition - or a probe that stops being built from its row - fails here rather than as a silently
  * smaller count in a census taken later.
  *
- * `editing.deccara` and `editing.decrara` are deliberately absent: they are attribute rectangles, and
- * the region kind compares characters (their one-line coverage record lives on `EDITING_CAPTURE_SPECS`
- * in editing.ts). `editing-contract.test.ts` binds all four hand-written rows -
- * deccara/decrara/decsace/decrqcra - beside these thirteen.
+ * `editing.decsace` and `editing.decrqcra` are deliberately absent: one measures whole-window extent
+ * frames and the other a DCS checksum reply, neither a cell window. `editing-contract.test.ts` binds
+ * both hand-written rows beside these fifteen.
  */
 const KIND_TABLE_ROWS = editingReadbackRows.map((row) => ({
   id: row.id,
@@ -94,21 +93,47 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredScreen(screens: Record<string, readonly (readonly string[])[]>, cols: number): TermlessContext {
-  let cells: readonly (readonly string[])[] = []
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+  if (cell === undefined || typeof cell === "string") {
+    // A plain cell is a cell the row claims NO attributes for, not one whose backend reports no
+    // field: a real `getCell` always says what the background is (null = none).
+    return { char: cell ?? " ", bold: false, inverse: false, fg: null, bg: null } as ReturnType<
+      TermlessContext["getCell"]
+    >
+  }
+  const attributes = cell.attributes
+  return {
+    char: cell.char,
+    bold: false,
+    inverse: attributes.inverse === true,
+    fg: null,
+    bg: attributes.bg ?? null,
+  } as ReturnType<TermlessContext["getCell"]>
+}
+
+function declaredScreen(
+  screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
+  cols: number,
+): TermlessContext {
+  let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
     feed: (sequence) => {
       const next = screens[sequence]
       if (next !== undefined) cells = next
     },
-    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+    getCell: (row, col) => declaredCell(cells[row]?.[col]),
   })
 }
 
 /** The kind reads a blank as `""` or `" "` alike, so a compare normalizes BOTH grids to spaces. */
-const toSpaces = (grid: readonly (readonly string[])[]) =>
-  grid.map((cells) => cells.map((cell) => (cell === "" ? " " : cell)))
+const toSpaces = (grid: readonly (readonly (string | RegionReadbackCell)[])[]) =>
+  grid.map((cells) =>
+    cells.map((cell) => {
+      if (typeof cell === "string") return cell === "" ? " " : cell
+      return cell.char === "" ? " " : cell.char
+    }),
+  )
 
 const firstStep = (id: string): string => {
   const row = editingReadbackRows.find((entry) => entry.id === id)
@@ -129,8 +154,54 @@ test("the kind table names every converted editing row, and every row reaches th
       `${row.id} is in the suite`,
     ).toBe(true)
   }
-  // Thirteen converted rows plus the four hand-written ones (deccara, decrara, decsace, decrqcra).
+  // Fifteen converted rows plus the two hand-written ones (decsace, decrqcra).
   expect(editingProbes).toHaveLength(17)
+})
+
+/**
+ * P2 from review2 source audit 97414a37: DECCARA/DECRARA claim a 3x5 rectangle whose RIGHT FLANK must
+ * stay plain. A stream-extent implementation inverts the flank as well. With the flank declared as a
+ * plain string the character still matches, so this used to read supported; the flank is a cell of the
+ * claim and its attribute must be compared.
+ */
+test("a stream-extent DECCARA that inverts the right flank reads unsupported", () => {
+  const row = editingReadbackRows.find((entry) => entry.id === "editing.deccara")
+  if (!row) throw new Error("missing editing.deccara")
+  const probe = editingProbes.find((entry) => entry.id === row.id)
+  if (!probe?.termless) throw new Error("missing headless editing.deccara")
+  const step = row.steps[0]?.write
+  if (step === undefined) throw new Error("missing editing.deccara step")
+  const marked = new Set(["a", "b", "c"])
+  const streamExtent = row.after.map((cells) =>
+    cells.map((cell) => {
+      const char = typeof cell === "string" ? cell : cell.char
+      return marked.has(char) ? cell : { char, attributes: { inverse: true } }
+    }),
+  )
+  const result = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: streamExtent }, 24))
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+})
+
+/**
+ * The other half of the same control: a seed whose OUT-OF-RECTANGLE flank is already inverse has not
+ * established the fixture either, so the row refuses by name instead of deciding on a surface whose
+ * flank was never plain.
+ */
+test("a DECCARA seed whose right flank is already inverse reads inconclusive", () => {
+  const row = editingReadbackRows.find((entry) => entry.id === "editing.deccara")
+  if (!row) throw new Error("missing editing.deccara")
+  const probe = editingProbes.find((entry) => entry.id === row.id)
+  if (!probe?.termless) throw new Error("missing headless editing.deccara")
+  const flanksInversed = row.before.map((cells) =>
+    cells.map((cell) => {
+      const char = typeof cell === "string" ? cell : cell.char
+      return char === "Z" || char === "Y" || char === "X" ? { char, attributes: { inverse: true } } : cell
+    }),
+  )
+  const result = probe.termless(declaredScreen({ [row.seed]: flanksInversed }, 24))
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
 })
 
 /**
@@ -217,6 +288,51 @@ for (const row of editingReadbackRows) {
       reason: "insufficient-evidence",
     })
     expect(fed, `${row.id} fed bytes on a screen narrower than its region`).toEqual([])
+  })
+}
+
+/**
+ * @cto round-3e B4: the parser arm sets the same DECSACE extent mode the app arm does - `2*x` is part
+ * of the row's step and 2J does not reset it - so its finally must run the row's own cleanup before
+ * the SGR reset on every exit: decided, refused, or thrown by the reader.
+ */
+for (const id of ["editing.deccara", "editing.decrara"]) {
+  test(`${id} clears its extent mode on the parser arm on every exit`, () => {
+    const row = editingReadbackRows.find((entry) => entry.id === id)
+    if (!row) throw new Error(`missing ${id}`)
+    const probe = editingProbes.find((entry) => entry.id === id)
+    if (!probe?.termless) throw new Error(`missing headless ${id}`)
+    const termless = probe.termless
+    const step = firstStep(id)
+
+    const watch = (ctx: TermlessContext) => {
+      const fed: string[] = []
+      const watched = {
+        ...ctx,
+        feed: (sequence: string) => {
+          fed.push(sequence)
+          ctx.feed(sequence)
+        },
+      }
+      return { fed, run: () => termless(watched) }
+    }
+
+    const supported = watch(declaredScreen({ [row.seed]: row.before, [step]: row.after }, 24))
+    expect(supported.run().observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.fed.slice(-2), `${id} cleanup on success`).toEqual(["\x1b[0*x", "\x1b[0m"])
+
+    const ignored = watch(declaredScreen({ [row.seed]: row.before }, 24))
+    expect(ignored.run().observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored.fed.slice(-2), `${id} cleanup on refusal`).toEqual(["\x1b[0*x", "\x1b[0m"])
+
+    const throwing = watch({
+      ...declaredScreen({ [row.seed]: row.before, [step]: row.after }, 24),
+      getCell: () => {
+        throw new Error("reader exploded")
+      },
+    })
+    expect(() => throwing.run(), `${id} reader throw`).toThrow("reader exploded")
+    expect(throwing.fed.slice(-2), `${id} cleanup on throw`).toEqual(["\x1b[0*x", "\x1b[0m"])
   })
 }
 
