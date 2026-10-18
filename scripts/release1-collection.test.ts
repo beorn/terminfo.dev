@@ -33,6 +33,7 @@ import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
+import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { buildReport } from "./decisive-share.ts"
 import {
@@ -124,6 +125,7 @@ it.each([
   ["matching", "remove"],
   ["matching", "blocked-hosted"],
   ["matching", "blocked-macos"],
+  ["frozen", "none"],
 ] as const)("retains a private %s-suite pass after %s without admission", async (suite, inputChange) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
   const input = join(directory, "suite-input.ts")
@@ -133,9 +135,10 @@ it.each([
   const raw = JSON.parse(originalBytes) as { probeHash: string; sourceRevision: string }
   raw.sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim()
   const bytes = JSON.stringify(raw)
-  const manifestPath = join(CONTENT, "suites", `${raw.probeHash}.json`)
+  const frozenSuite = suite === "frozen" ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
+  const manifestPath = join(CONTENT, "suites", `${frozenSuite ?? raw.probeHash}.json`)
   const snapshot =
-    suite === "matching"
+    suite !== "different"
       ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
           ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
           sourcePaths: [relative(dirname(CONTENT), input)],
@@ -231,11 +234,12 @@ it.each([
     return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
   })
   try {
-    const pass = await collectPass(directory)
-    expect(pass.mode).toBe("development")
+    const pass = await collectPass(directory, frozenSuite)
+    expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
+    if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
     expect(pass.contexts).toHaveLength(33)
     const engine = pass.contexts.find((row) => row.context.kind === "headless" && row.context.id === "xtermjs")
-    if (suite === "different") {
+    if (suite === "different" || suite === "frozen") {
       expect(engine?.status).toBe("failed")
       expect(engine?.error).toMatch(/xtermjs.*unknown suite 267a5d166f08; missing trusted manifest/)
     } else {
@@ -245,6 +249,16 @@ it.each([
     }
     expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
     expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
+    if (suite === "matching" && inputChange === "none") {
+      // Catalog scope and executed launcher/flake bytes must be reproducible from the private receipt.
+      for (const path of [
+        join(CONTENT, "features.json"),
+        join(CONTENT, "../scripts/linux-container-run.sh"),
+        join(CONTENT, "../../../flake.nix"),
+      ]) {
+        expect(pass.inputSha256[path], path).toBe(createHash("sha256").update(readFileSync(path)).digest("hex"))
+      }
+    }
     if (inputChange === "rewrite" || inputChange === "remove") {
       expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
     }
