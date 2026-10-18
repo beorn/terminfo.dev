@@ -632,10 +632,12 @@ test("--move takes exactly one release, through the same parser as --freeze", ()
 })
 
 test("the live registry records the candidate2 pointer move it already made", () => {
-  // The live registry carries the move that put candidate2 on 67ad: the current record names the
-  // suites it left and the window each held the pointer, so the lineage is recoverable from
-  // content alone rather than only from the Git history of the hand edit.
+  // The live registry carries both moves: the hand edit that put candidate2 on 67ad, and the
+  // supported writer's --move onto c24025ea22fc (28018). The current record names every suite it
+  // left and the window each held the pointer, so the lineage is recoverable from content alone
+  // rather than only from the Git history of the hand edit.
   expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual([
+    "c24025ea22fc",
     "67ad1f1d1580",
     "68847e4d5355",
     "5753741410a9",
@@ -829,10 +831,9 @@ test("a move onto an explicitly named suite lands the pointer and releases the o
   const moved = moveReleasePointer(directory, "candidate2", { suite: to.probeHash, at: EXPLICIT_AT })
   expect(moved).toMatchObject({ status: "moved", from: from.probeHash, to: to.probeHash })
   expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(to.probeHash)
-  const old = JSON.parse(readFileSync(join(directory, "content", "suites", `${from.probeHash}.json`), "utf8")) as Record<
-    string,
-    unknown
-  >
+  const old = JSON.parse(
+    readFileSync(join(directory, "content", "suites", `${from.probeHash}.json`), "utf8"),
+  ) as Record<string, unknown>
   expect(old.freeze).toBeUndefined()
   expect(parseSuiteManifest(moved.path, readFileSync(moved.path, "utf8")).freeze?.previous).toEqual([
     { suite: from.probeHash, from: EXPLICIT_AT, until: EXPLICIT_AT },

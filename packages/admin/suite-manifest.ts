@@ -123,7 +123,9 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
   }
   const path = join(root, "content", "suites", `${suiteId}.json`)
   if (!existsSync(path)) {
-    throw new Error(`${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`)
+    throw new Error(
+      `${path}: no suite manifest carries that id, so \"--suite ${suiteId}\" names no suite in this registry`,
+    )
   }
   let manifest: ProbeSuiteManifest
   try {
@@ -134,7 +136,9 @@ export function readExplicitSuiteTarget(root: string, suiteId: string): Explicit
     })
   }
   if (manifest.probeHash !== suiteId) {
-    throw new Error(`${path}: the manifest declares suite ${manifest.probeHash}, not ${suiteId}; --suite refuses a misfiled record`)
+    throw new Error(
+      `${path}: the manifest declares suite ${manifest.probeHash}, not ${suiteId}; --suite refuses a misfiled record`,
+    )
   }
   return { suiteId, path, manifest }
 }
