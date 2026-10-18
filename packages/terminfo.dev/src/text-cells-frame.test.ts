@@ -32,7 +32,13 @@ const consoleRead = (
 ) => ({
   status: "read" as const,
   grid: { cols: Math.max(...text.map((row) => row.length), 1), rows: text.length, text, attributes },
-  bufferOwner: { image: "OpenConsole.exe" as const, pid: 4242, ppid: 100 },
+  bufferOwner: {
+    image: "OpenConsole.exe" as const,
+    pid: 4242,
+    ppid: 100,
+    executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+    executableSha256: `sha256:${"a".repeat(64)}`,
+  },
   standIns,
 })
 
@@ -219,11 +225,22 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
     const mac = textCellsFrame(checkpoint, textRead(["ab", "cd "], 5), 1)
     expect(mac.trace).toMatchObject({ droppedLines: 5, paddedRows: [], source: "the terminal's own text snapshot" })
     const windows = textCellsFrame(checkpoint, consoleRead(["ab"], [[7, 7]]), 1)
-    expect(windows.trace).toMatchObject({ bufferOwner: { image: "OpenConsole.exe", pid: 4242, ppid: 100 } })
+    expect(windows.trace).toMatchObject({
+      bufferOwner: {
+        image: "OpenConsole.exe",
+        pid: 4242,
+        ppid: 100,
+        executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+        executableSha256: `sha256:${"a".repeat(64)}`,
+      },
+    })
     expect(windows.trace).not.toHaveProperty("droppedLines")
-    // The label must say what the collector recorded and nothing it did not: the host's image name
-    // is in hand, its path and digest are not, and a reader must not be left to assume they were.
-    expect(windows.trace.source).toBe("the console host's buffer (OpenConsole.exe); path and sha256 not recorded")
+    // The label must say what the collector recorded: the host's image, the executable path and its
+    // digest. A host whose executable cannot be resolved is refused before a frame exists, so no
+    // "not recorded" arm survives here (30042).
+    expect(windows.trace.source).toBe(
+      `the console host's buffer (OpenConsole.exe); executable C:\\Windows\\System32\\OpenConsole.exe sha256:${"a".repeat(64)}`,
+    )
   })
 
   it("throws naming the checkpoint when the terminal refused the read", () => {

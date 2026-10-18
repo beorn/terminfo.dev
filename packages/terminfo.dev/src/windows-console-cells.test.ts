@@ -15,6 +15,7 @@ import {
   decodeCharInfo,
   packCoord,
   readWindowsConsoleCells,
+  resolveConsoleHostIdentity,
   type ConsoleHostIdentity,
 } from "./windows-console-cells.ts"
 import { INVALID_HANDLE_VALUE, type Kernel32 } from "./windows-kernel32.ts"
@@ -23,7 +24,13 @@ import { textCellsFrame } from "./serve.ts"
 
 const LEADING = 0x0100
 const TRAILING = 0x0200
-const CONSOLE_HOST: ConsoleHostIdentity = { image: "OpenConsole.exe", pid: 4242, ppid: 100 }
+const CONSOLE_HOST: ConsoleHostIdentity = {
+  image: "OpenConsole.exe",
+  pid: 4242,
+  ppid: 100,
+  executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+  executableSha256: `sha256:${"a".repeat(64)}`,
+}
 
 /** A CONSOLE_SCREEN_BUFFER_INFO: dwSize is the whole buffer (scrollback included), srWindow the
  * visible window, four SHORTs at offsets 10, 12, 14 and 16. */
@@ -526,5 +533,123 @@ describe("readWindowsConsoleCells — the window rect, read back and checked", (
       1,
     )
     expect(outside.trace.standIns).toEqual([{ row: 1, column: 1, standIn: "U+FFFD" }])
+  })
+})
+
+describe("resolveConsoleHostIdentity — the executable is a path plus a hash (30042)", () => {
+  type Seen = { opened: Array<[number, number, number]>; closed: number }
+  const host = { image: "OpenConsole.exe" as const, pid: 4242, ppid: 100 }
+  const executable = "C:\\Windows\\System32\\OpenConsole.exe"
+
+  const fakeKernel = (
+    seen: Seen,
+    options: { handle?: bigint; path?: string; query?: number; error?: number } = {},
+  ): Kernel32 =>
+    ({
+      ptr: (data: Uint8Array) => data,
+      symbols: {
+        OpenProcess: (access: never, inherit: never, pid: never) => {
+          seen.opened.push([access as unknown as number, inherit as unknown as number, pid as unknown as number])
+          return options.handle ?? 9n
+        },
+        QueryFullProcessImageNameW: (_handle: never, _flags: never, name: never, size: never) => {
+          if (options.query === 0) return 0
+          const text = options.path ?? executable
+          ;(name as unknown as Buffer).write(text, 0, "utf16le")
+          ;(size as unknown as Buffer).writeUInt32LE(text.length, 0)
+          return 1
+        },
+        GetLastError: () => options.error ?? 0,
+        CloseHandle: () => {
+          seen.closed += 1
+          return 1
+        },
+      },
+    }) as unknown as Kernel32
+
+  it("opens the host with the limited-query right, decodes by the returned characters and closes the handle", () => {
+    const seen: Seen = { opened: [], closed: 0 }
+    const hashed: string[] = []
+    const resolved = resolveConsoleHostIdentity(host, {
+      kernel: fakeKernel(seen, { path: "C:\\Windows\\System32\\conhost.exe" }),
+      cache: new Map(),
+      hash: (path) => {
+        hashed.push(path)
+        return `sha256:${"b".repeat(64)}`
+      },
+    })
+    expect(resolved).toEqual({
+      status: "named",
+      host: { ...host, executablePath: "C:\\Windows\\System32\\conhost.exe", executableSha256: `sha256:${"b".repeat(64)}` },
+    })
+    expect(seen.opened).toEqual([[0x1000, 0, 4242]])
+    expect(seen.closed).toBe(1)
+    expect(hashed).toEqual(["C:\\Windows\\System32\\conhost.exe"])
+  })
+
+  it("refuses a host it cannot open by name, and never closes a handle it did not get", () => {
+    const seen: Seen = { opened: [], closed: 0 }
+    const resolved = resolveConsoleHostIdentity(host, {
+      kernel: fakeKernel(seen, { handle: 0n, error: 5 }),
+      cache: new Map(),
+      hash: () => `sha256:${"c".repeat(64)}`,
+    })
+    expect(resolved).toEqual({ status: "refused", reason: "cannot open console host pid 4242: error 5" })
+    expect(seen.closed).toBe(0)
+  })
+
+  it("refuses a failed path query by name and still closes the handle", () => {
+    const seen: Seen = { opened: [], closed: 0 }
+    const resolved = resolveConsoleHostIdentity(host, {
+      kernel: fakeKernel(seen, { query: 0, error: 6 }),
+      cache: new Map(),
+      hash: () => `sha256:${"c".repeat(64)}`,
+    })
+    expect(resolved).toEqual({
+      status: "refused",
+      reason: "cannot read the executable path of console host pid 4242: error 6",
+    })
+    expect(seen.closed).toBe(1)
+  })
+
+  it("hashes one executable once per pid and path, and hashes a different pid again", () => {
+    const cache = new Map<string, string>()
+    const hashed: string[] = []
+    const hash = (path: string) => {
+      hashed.push(path)
+      return `sha256:${String(hashed.length).repeat(64)}`
+    }
+    const seen: Seen = { opened: [], closed: 0 }
+    const kernel = fakeKernel(seen)
+    expect(resolveConsoleHostIdentity(host, { kernel, cache, hash }).status).toBe("named")
+    expect(resolveConsoleHostIdentity(host, { kernel, cache, hash }).status).toBe("named")
+    expect(hashed, "one hash for two reads of one pid").toHaveLength(1)
+    expect(resolveConsoleHostIdentity({ ...host, pid: 4243 }, { kernel, cache, hash }).status).toBe("named")
+    expect(hashed, "a different pid hashes again").toHaveLength(2)
+  })
+
+  it("refuses a hash failure for that read without caching the rejection", () => {
+    const cache = new Map<string, string>()
+    const seen: Seen = { opened: [], closed: 0 }
+    const kernel = fakeKernel(seen)
+    const failed = resolveConsoleHostIdentity(host, {
+      kernel,
+      cache,
+      hash: () => {
+        throw new Error("EACCES")
+      },
+    })
+    expect(failed).toEqual({
+      status: "refused",
+      reason: `cannot hash the executable of console host pid 4242 at ${executable}: EACCES`,
+    })
+    expect(cache.size).toBe(0)
+    const recovered = resolveConsoleHostIdentity(host, {
+      kernel,
+      cache,
+      hash: () => `sha256:${"d".repeat(64)}`,
+    })
+    expect(recovered.status).toBe("named")
+    expect(cache.size).toBe(1)
   })
 })

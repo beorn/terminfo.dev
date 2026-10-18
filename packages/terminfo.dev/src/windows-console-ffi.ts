@@ -72,6 +72,58 @@ export function readWindowsConsoleIdentity(kernel?: Kernel32): string {
   return String(symbols.GetConsoleWindow())
 }
 
+/** The least right that answers "which executable is this pid running":
+ * PROCESS_QUERY_LIMITED_INFORMATION, which a hosted runner grants without elevation. */
+export const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+/** One long-path buffer, in UTF-16 code units: MAX_PATH is not the ceiling on Windows, and a
+ * truncated path would name a file this run never hashed. */
+export const EXECUTABLE_PATH_CHARS = 32_768
+
+/** The executable a pid is running, or the named reason it could not be read. */
+export type ExecutablePathLookup =
+  | { readonly status: "named"; readonly path: string }
+  | { readonly status: "refused"; readonly reason: string }
+
+/**
+ * Resolve a process's image path with QueryFullProcessImageNameW. Every failure reads GetLastError
+ * FIRST and becomes a named refusal: the caller attributes a buffer to this program, so an empty or
+ * guessed path would be worse than no read at all (30042).
+ */
+export function readProcessImagePath(pid: number, kernel?: Kernel32): ExecutablePathLookup {
+  const { symbols, ptr } = kernel ?? loadKernel32()
+  const handle = symbols.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION as never, 0 as never, pid as never)
+  // OpenProcess returns NULL on failure. INVALID_HANDLE_VALUE is CreateFileW's sentinel, not this
+  // call's, so the test is zero rather than the shared constant.
+  if (handle === 0n) {
+    const code = symbols.GetLastError()
+    return { status: "refused", reason: `cannot open console host pid ${String(pid)}: error ${String(code)}` }
+  }
+  try {
+    const name = Buffer.alloc(EXECUTABLE_PATH_CHARS * 2)
+    const size = Buffer.alloc(4)
+    size.writeUInt32LE(EXECUTABLE_PATH_CHARS, 0)
+    if (symbols.QueryFullProcessImageNameW(handle as never, 0 as never, ptr(name) as never, ptr(size) as never) === 0) {
+      const code = symbols.GetLastError()
+      return {
+        status: "refused",
+        reason: `cannot read the executable path of console host pid ${String(pid)}: error ${String(code)}`,
+      }
+    }
+    // lpdwSize returns the number of UTF-16 code units written, NOT bytes: decoding by bytes would
+    // append half the following unit and name a file this run never opened.
+    const characters = size.readUInt32LE(0)
+    if (characters === 0 || characters > EXECUTABLE_PATH_CHARS) {
+      return {
+        status: "refused",
+        reason: `console host pid ${String(pid)} reported ${String(characters)} executable-path characters`,
+      }
+    }
+    return { status: "named", path: name.toString("utf16le", 0, characters * 2) }
+  } finally {
+    symbols.CloseHandle(handle as never)
+  }
+}
+
 /** Open this process's CONOUT$ for the duration of one read. Every console read on this arm goes
  * through here, so the handle dance (and the GetLastError-before-anything-else rule) exists once. */
 export async function withConsoleOutputHandle<T>(
