@@ -200,8 +200,8 @@ describe("candidate-2 page: the two bases", () => {
   })
 
   it("reads the Scrollback group at its ruled 7/9 with gaps on the contexts that decide it", () => {
-    // Re-pinned 2026-10-18: kitty/linux has no run on 67ad yet, so the published context carrying the
-    // ruled 7/9 acceptance today is wezterm/linux. The ruled basis does not move with the context.
+    // Re-pinned 2026-10-18 on 67ad: wezterm/linux is the published context this row reads for the
+    // ruled 7/9 acceptance. The ruled basis does not move with the context.
     const wezterm = data.contexts.find((row) => row.context === "wezterm/linux")
     if (!wezterm?.published) throw new Error("wezterm/linux is not published; nothing to read")
     const scrollback = wezterm.groups.find((share) => share.key === "scrollback")
@@ -321,7 +321,14 @@ describe("candidate-2 page: wiring", () => {
     // the four macOS captures are measured, so six contexts clear the bar and only kitty/macos — which
     // has no route at all — is not measured. A new suite or collection that moves these numbers must
     // change this table deliberately, never loosen it.
-    const clearing = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
+    const clearing = [
+      "kitty/linux",
+      "wezterm/linux",
+      "alacritty/linux",
+      "xterm/linux",
+      "ghostty/macos",
+      "alacritty/macos",
+    ]
     const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"]
     const dark = ["kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
@@ -384,14 +391,7 @@ describe("candidate-2 page: wiring", () => {
 
     // The two ruled groups read "ruled for six, measurable on four", and the two dark ruled
     // contexts are named rather than counted as included.
-    const six = [
-      "kitty/linux",
-      "wezterm/linux",
-      "alacritty/linux",
-      "xterm/linux",
-      "ghostty/macos",
-      "alacritty/macos",
-    ]
+    const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)

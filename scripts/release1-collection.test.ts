@@ -567,9 +567,12 @@ describe("release 1 Linux launcher flags", () => {
     )
     if (!bar?.measured) throw new Error("kitty/linux must be measured on the bar")
     const ledger = linuxLedger(CONTENT)
-    expect(bar.run.runId).toBe("da957298d115f98e520e8bc410845e33")
+    // The reviewed row names a CONTEXT, not a run id: the newest admitted run inside that context is
+    // the one both consumers read, so a re-collection must never need this test edited. Agreement is
+    // the assertion; the frozen-suite row keeps both of them on the suite candidate 2 counts.
     expect(ledger.kitty?.runId).toBe(bar.run.runId)
     expect(ledger.kitty?.selection).toBe("site-selected")
+    expect(bar.run.suiteId).toBe(frozenSuiteIdFor(CONTENT, "candidate2"))
   })
 
   // linuxLedger reads the whole committed corpus, which grows with every admitted run, so this row carries the
