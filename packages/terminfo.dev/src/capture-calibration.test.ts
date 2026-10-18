@@ -96,6 +96,8 @@ type Stage = "before grid paint" | "solid grid paint" | "column edge paint" | "r
 function calibration(
   options: {
     geometry?: typeof geometry
+    rows?: number
+    cols?: number
     frames?: Partial<Record<Stage, CapturedFrame[]>>
     beforeCapture?: (label: string, writes: readonly string[]) => void
     restoredVisibility?: "set" | "reset"
@@ -116,8 +118,8 @@ function calibration(
   const clock = vi.spyOn(Date, "now").mockImplementation(() => now)
   const promise = calibrateCaptureOrigin({
     ctx: {
-      rows: 4,
-      cols: 4,
+      rows: options.rows ?? 4,
+      cols: options.cols ?? 4,
       write: (text: string) => writes.push(text),
       queryMode: async () => options.restoredVisibility ?? options.visibility ?? "reset",
       queryWithSentinelOutcome: async () => modeOutcome(options.visibility === "set" ? "1" : "2"),
@@ -356,4 +358,95 @@ test("a failed restore retains the original grid error and the restoration error
       expect.objectContaining({ message: expect.stringMatching(/restore grid paint.*timeout/) }),
     ]),
   })
+})
+
+// The compositor paints a window's rounded corners black in EVERY stage, independent of what the
+// probe drew. #30027: the c240 macOS specimen refused with `non-solid grid: 476392 pixels in
+// 798x597`, whose 14 holes were exactly that mask (11 bottom-left, 3 bottom-right). A window-shaped
+// grid must therefore calibrate, while an interior hole must still refuse.
+function filletCorners(
+  source: CapturedFrame,
+  corners: ReadonlyArray<readonly [number, number]> = [
+    [2, 2],
+    [9, 2],
+    [2, 9],
+    [9, 9],
+  ],
+): CapturedFrame {
+  const result = { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+  for (const [x, y] of corners) result.rgba.set([0, 0, 0, 255], (y * result.width + x) * 4)
+  return result
+}
+
+test("window corner fillets do not defeat calibration of an exact raster", async () => {
+  const run = calibration({
+    frames: {
+      "solid grid paint": [filletCorners(rasterFrame("solid")), filletCorners(rasterFrame("solid"))],
+      "column edge paint": [filletCorners(rasterFrame("columns")), filletCorners(rasterFrame("columns"))],
+      "row edge paint": [filletCorners(rasterFrame("rows")), filletCorners(rasterFrame("rows"))],
+    },
+  })
+  await expect(run.promise).resolves.toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+})
+
+test("an interior hole is still refused once corner fillets are tolerated", async () => {
+  const solid = filletCorners(rasterFrame("solid"))
+  solid.rgba.set([0, 0, 0, 255], (5 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/non-solid grid/)
+})
+
+// The retained c240 frame, rebuilt from its recorded numbers rather than transported as a binary:
+// 800x628, a 798x597 magenta grid at y=29 for a 133x46 terminal (6.00 px columns; 46 rows of 13 px
+// clipped to 597), plus the documented corner staircase. The requirement this pins is narrow and
+// deliberate: the corner mask must stop being the reason calibration refuses. What the geometry
+// then measures is a separate question this test does not answer.
+function c240Specimen(stage: "solid" | "columns" | "rows"): CapturedFrame {
+  const width = 800,
+    height = 628
+  const rgba = new Uint8Array(width * height * 4)
+  for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
+  for (let y = 29; y < 626; y++) {
+    for (let x = 0; x < 798; x++) {
+      const column = Math.min(132, Math.floor(x / 6))
+      const row = Math.min(45, Math.floor((y - 29) / 13))
+      const rgb =
+        stage === "solid" ? [255, 0, 255] : (stage === "columns" ? column : row) % 2 === 0 ? [255, 0, 0] : [0, 0, 0]
+      rgba.set([...rgb, 255], (y * width + x) * 4)
+    }
+  }
+  const staircase: Array<readonly [number, number]> = [
+    [0, 621],
+    [0, 622],
+    [0, 623],
+    [1, 623],
+    [0, 624],
+    [1, 624],
+    [2, 624],
+    [797, 624],
+    [0, 625],
+    [1, 625],
+    [2, 625],
+    [3, 625],
+    [796, 625],
+    [797, 625],
+  ]
+  for (const [x, y] of staircase) rgba.set([0, 0, 0, 255], (y * width + x) * 4)
+  return { width, height, rgba }
+}
+
+test("the c240 window specimen no longer refuses for its corner fillets", async () => {
+  const empty = { width: 800, height: 628, rgba: new Uint8Array(800 * 628 * 4).fill(0) }
+  const run = calibration({
+    rows: 46,
+    cols: 133,
+    frames: {
+      "before grid paint": [empty, empty],
+      "solid grid paint": [c240Specimen("solid"), c240Specimen("solid")],
+      "column edge paint": [c240Specimen("columns"), c240Specimen("columns")],
+      "row edge paint": [c240Specimen("rows"), c240Specimen("rows")],
+      "restore grid paint": [empty, empty],
+    },
+  })
+  await expect(run.promise).rejects.not.toThrow(/non-solid grid/)
 })
