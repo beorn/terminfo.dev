@@ -175,4 +175,25 @@ describe("the real catalog", () => {
       "interaction",
     )
   })
+
+  it("derives decsscls partial from its two declared arms, with no catalog override", () => {
+    const features = loadFeatures(contentDir)
+    const declaration = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")
+    expect(declaration, "modes.decsscls").toBeDefined()
+    // The terminal arm keeps timed frames and reads them as pixels; the headless arm paints no frames
+    // at all and refuses before measuring, so it declares the canonical refusal kind rather than a
+    // method it cannot run. Both removals fail at their own declaration assertion, and the underlying
+    // derivations differ: without "none" the row falls to null and would read undeclared, while
+    // without "pixels" the remaining "none" still derives partial.
+    expect(declaration?.termObservationEvidence).toBe("pixels")
+    expect(declaration?.termlessObservationEvidence).toBe("none")
+    expect(derivedProbeStatus(declaration as ProbeDefinition)).toBe("partial")
+    expect(probeStatusOf("modes.decsscls", features)).toBe("partial")
+    // One home per truth: the derivation settles the badge, so the catalog carries no reviewed value
+    // and no gate holds the row.
+    expect(features["modes.decsscls"]?.probeStatus).toBeUndefined()
+    const summary = probeStatusSummary(features)
+    expect(summary.gated).not.toContain("modes.decsscls")
+    expect(summary.undeclared).not.toContain("modes.decsscls")
+  })
 })
