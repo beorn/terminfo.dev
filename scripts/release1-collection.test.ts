@@ -11,7 +11,7 @@
  * @reach fs-walk vendor/terminfo.dev/content/** vendor/terminfo.dev/.github/workflows/**
  * @testonly none
  */
-import { dirname, join } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync, spawnSync } from "node:child_process"
 import * as childProcesses from "node:child_process"
@@ -116,8 +116,15 @@ const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
 
 // The dispatch boundary must use the CURRENT in-memory suite, even when the corpus already
 // declares the returned run's old suite. Projection parity does not cover this collection seam.
-it.each(["different", "matching"])("retains a private %s-suite pass without admission", async (suite) => {
+it.each([
+  ["different", "none"],
+  ["matching", "none"],
+  ["matching", "rewrite"],
+  ["matching", "remove"],
+] as const)("retains a private %s-suite pass after input %s without admission", async (suite, inputChange) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
+  const input = join(directory, "suite-input.ts")
+  writeFileSync(input, "original private suite input")
   const original = join(CONTENT, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json")
   const originalBytes = readFileSync(original, "utf8")
   const raw = JSON.parse(originalBytes) as { probeHash: string; sourceRevision: string }
@@ -128,7 +135,7 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     suite === "matching"
       ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
           ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
-          sourcePaths: [],
+          sourcePaths: [relative(dirname(CONTENT), input)],
         })
       : undefined
   const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
@@ -142,6 +149,9 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     mkdirSync(output, { recursive: true })
     const raw = join(output, "xtermjs.json")
     writeFileSync(raw, bytes)
+    // Use a private source canary: the failure must not delete or rewrite a real checkout input.
+    if (inputChange === "remove") rmSync(input)
+    if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
     return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
   })
   // The real launcher owns containers and receipts. Its process boundary is replaced here;
@@ -227,6 +237,9 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     }
     expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
     expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
+    if (inputChange !== "none") {
+      expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
+    }
     expect(collector).toHaveBeenCalledTimes(1)
     expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(5)
     for (const id of Object.keys(LEDGER)) {

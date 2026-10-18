@@ -451,8 +451,14 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
     }
   }
   for (const [path, hash] of Object.entries(inputSha256)) {
-    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
-      pass.errors.push(`Pass input changed during collection: ${path}`)
+    try {
+      if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
+        pass.errors.push(`Pass input changed during collection: ${path}`)
+      }
+    } catch (error) {
+      pass.errors.push(
+        `Pass input cannot be re-read: ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
   }
   if (freeze && pass.errors.length === 0 && pass.contexts.every((row) => row.status === "classified")) {
