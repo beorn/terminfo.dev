@@ -285,6 +285,14 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
       ],
     ],
     paint: { bg: "\x1b[42m" },
+    // The default-background fixture the painted seed must DIFFER from: a backend that reports one
+    // concrete default RGB and ignores SGR 42 would otherwise satisfy present + same-as-before and
+    // grade an ordinary EL supported on a colour that was never painted (review2 97414a37 P2 1).
+    baseline: {
+      seed: "\x1b[1;1HXXXXX",
+      cells: [["X", "X", "X", "X", "X"]],
+    },
+    baselineNote: "EL background: the default-background seed was not measured",
     // An EL that drops back to the default background is a measured negative: the claim IS the
     // carried background, so that frame is exactly what "ignored" names.
     ignored: [[" ", " ", " ", " ", " "]],

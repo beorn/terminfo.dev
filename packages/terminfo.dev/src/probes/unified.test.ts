@@ -1148,7 +1148,13 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
         reads += 1
         labels.push(label)
         return {
-          frame: { role, label, capturedAt: reads, ref: `sha256:${String(reads).repeat(64)}` },
+          frame: {
+            role,
+            label,
+            capturedAt: reads,
+            ref: `sha256:${String(reads).repeat(64)}`,
+            pixelsDigest: `sha256:${String(reads).repeat(64)}`,
+          },
           trace: {},
         }
       },

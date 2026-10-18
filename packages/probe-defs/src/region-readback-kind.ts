@@ -74,6 +74,20 @@ export interface RegionReadbackPaint {
 }
 
 /**
+ * The terminal's OWN default-background fixture, measured before the row paints anything. A relative
+ * colour claim (`present`, `same-as-before`) is only established when the painted seed DIFFERS from
+ * this measurement at the same cell: a backend that reports one concrete RGB as its default and
+ * ignores the row's SGR would otherwise satisfy both sides of the claim (@dev/review2 source audit
+ * 97414a37, P2 1).
+ */
+export interface RegionReadbackBaseline {
+  /** The write that paints the default-background fixture, before the row's own seed. */
+  seed: string
+  /** The cells that write must show. Read char-only: only their MEASURED colours qualify the seed. */
+  cells: readonly (readonly RegionReadbackCell[])[]
+}
+
+/**
  * One compared cell: a plain character, or a character carrying the attributes its row asserts.
  * Character-only rows keep the string spelling, so their grids, test doubles and verdicts are
  * unchanged.
@@ -114,6 +128,14 @@ export interface RegionReadbackRow {
   reset: string
   /** The grid the sequence would leave if it IGNORED the one attribute it claims. */
   ignored?: readonly (readonly RegionReadbackCell[])[]
+  /**
+   * The terminal's own default-background fixture, measured first. REQUIRED when any compared cell
+   * makes a relative colour claim, because the claim is "the seed painted something the default does
+   * not show" and only a baseline measurement can establish that.
+   */
+  baseline?: RegionReadbackBaseline
+  /** The note when the baseline fixture itself was not measured. */
+  baselineNote?: string
   /**
    * The SGR the expected frame paints for a cell whose fg/bg assertion is `"present"` or
    * `"same-as-before"`. Loading refuses a row that declares one without its bytes: an unpainted
@@ -232,6 +254,68 @@ function sameColorClaim(measured: MeasuredColor, claim: RegionReadbackColor, ref
     return reference !== null && reference.r === measured.r && reference.g === measured.g && reference.b === measured.b
   }
   return measured.r === claim.r && measured.g === claim.g && measured.b === claim.b
+}
+
+/**
+ * The first declared attribute the measured cell does not report AT ALL, or null. Sparse test doubles
+ * can omit a field the real contract requires; an unread value is never equal and never unequal, so
+ * the row refuses by name instead of grading a negative or throwing on absent metadata.
+ */
+function unreadAttribute(
+  measured: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+  row: number,
+): string | null {
+  for (const [col, want] of (declared[row] ?? []).entries()) {
+    if (typeof want === "string") continue
+    const cell = measured[row]?.[col]
+    if (cell === undefined) return `cell ${row},${col} was not measured`
+    for (const field of ["bold", "inverse", "fg", "bg"] as const) {
+      if (want.attributes[field] === undefined) continue
+      if (cell[field] === undefined) return `cell ${row},${col} ${field}`
+    }
+  }
+  return null
+}
+
+/** Every unread declared attribute in a grid, as the note a refusal names. */
+function unreadAttributes(
+  measured: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+): string | null {
+  for (let row = 0; row < declared.length; row++) {
+    const unread = unreadAttribute(measured, declared, row)
+    if (unread !== null) return unread
+  }
+  return null
+}
+
+/**
+ * The first painted colour that equals the terminal's own default at the same cell, or null. This is
+ * the P2 1 qualification: `present` and `same-as-before` both hold vacuously on a backend whose
+ * default colour is the one it reports for the painted cells.
+ */
+function unpaintedColor(
+  painted: readonly (readonly MeasuredCell[])[],
+  baseline: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+): string | null {
+  for (const [row, cells] of declared.entries()) {
+    for (const [col, want] of cells.entries()) {
+      if (typeof want === "string") continue
+      for (const channel of ["fg", "bg"] as const) {
+        const claim = want.attributes[channel]
+        if (claim === undefined || typeof claim === "object") continue
+        const seed = painted[row]?.[col]?.[channel]
+        const plain = baseline[row]?.[col]?.[channel]
+        if (seed === undefined || seed === null) continue
+        if (plain !== null && plain !== undefined && plain.r === seed.r && plain.g === seed.g && plain.b === seed.b) {
+          return `cell ${row},${col} ${channel}`
+        }
+      }
+    }
+  }
+  return null
 }
 
 /** The SGR the expected frame paints for a declared attribute cell. */
@@ -405,6 +489,21 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
       throw new Error(`${row.id}: control column ${control.col} is outside the compared 0..${columns - 1}`)
     }
   }
+  // A relative colour claim is only established against a measured default: without a baseline the
+  // claim would hold vacuously on a backend that ignores the row's SGR (P2 1, review2 97414a37).
+  if (row.baseline === undefined) {
+    for (const cells of [...row.before, ...row.after]) {
+      for (const cell of cells) {
+        if (typeof cell === "string") continue
+        if (cell.attributes.fg !== undefined && typeof cell.attributes.fg !== "object") {
+          throw new Error(`${row.id}: a relative fg claim needs a baseline fixture to qualify the seed`)
+        }
+        if (cell.attributes.bg !== undefined && typeof cell.attributes.bg !== "object") {
+          throw new Error(`${row.id}: a relative bg claim needs a baseline fixture to qualify the seed`)
+        }
+      }
+    }
+  }
   // A relative color claim paints the expected frame with the row's own SGR. Without those bytes the
   // expected frame would read equal to the seed on every adapter and the row could only ever be
   // inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide.
@@ -469,7 +568,7 @@ function regionReadbackSpec(
     region: { top: geometry.top, left: geometry.left, bottom: geometry.bottom, right: geometry.right },
     sentinel: { row: geometry.sentinelRow, col: geometry.sentinelCol },
     cursorRow: geometry.cursorRow,
-    seed: prelude + row.seed + geometry.park,
+    seed: prelude + (row.baseline?.seed ?? "") + row.seed + geometry.park,
     edit: row.steps.map((step) => step.write).join("") + geometry.park,
     expected: prelude + paintFrame(row.after, geometry, row.paint) + geometry.park,
     ...(row.ignored === undefined
@@ -510,10 +609,44 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
         )
       }
       try {
+        const baselineRow = row.baseline
+        let baseline: MeasuredCell[][] | undefined
+        if (baselineRow !== undefined) {
+          ctx.feed(baselineRow.seed)
+          baseline = readGrid(ctx, geometry)
+          if (!gridMatch(baseline, baselineRow.cells)) {
+            return parserStateResult(
+              null,
+              row.expected,
+              { baseline: responseGrid(baseline, baselineRow.cells) },
+              row.baselineNote ?? `${row.id}: the default-background fixture was not measured`,
+            )
+          }
+        }
         ctx.feed(row.seed)
         const before = readGrid(ctx, geometry)
         if (!gridMatch(before, row.before)) {
           return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
+        }
+        const unreadSeed = unreadAttributes(before, row.before)
+        if (unreadSeed !== null) {
+          return parserStateResult(
+            null,
+            row.expected,
+            { before: responseGrid(before, row.before) },
+            `${row.id}: the backend does not report ${unreadSeed} on the seed, so the claim cannot be read`,
+          )
+        }
+        if (baseline !== undefined) {
+          const unpainted = unpaintedColor(before, baseline, row.before)
+          if (unpainted !== null) {
+            return parserStateResult(
+              null,
+              row.expected,
+              { before: responseGrid(before, row.before), baseline: responseGrid(baseline, baselineRow?.cells ?? []) },
+              `${row.id}: the painted seed reports the same colour as the default-background seed at ${unpainted}, so the colour fixture was not established`,
+            )
+          }
         }
         const setup: { x: number; y: number }[] = []
         for (const step of row.steps) {
@@ -531,6 +664,15 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           }
         }
         const after = readGrid(ctx, geometry)
+        const unreadAfter = unreadAttributes(after, row.after)
+        if (unreadAfter !== null) {
+          return parserStateResult(
+            null,
+            row.expected,
+            { before: responseGrid(before, row.before), after: responseGrid(after, row.after) },
+            `${row.id}: the backend does not report ${unreadAfter} after the sequence, so the claim cannot be read`,
+          )
+        }
         const controlsValid = row.controls.every((control) => {
           const cell = after[control.row]?.[control.col]
           return cell !== undefined && sameCell(cell, control.char)

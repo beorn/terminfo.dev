@@ -51,6 +51,7 @@ function captureContext(rows: number, cols: number, withCapture = true) {
         label,
         capturedAt: frames.length + 1,
         ref: `sha256:${String(frames.length + 1).repeat(64)}`,
+        pixelsDigest: `sha256:${String(frames.length + 1).repeat(64)}`,
       }
       frames.push(frame)
       return frame
@@ -271,7 +272,13 @@ test("editing.decsace measures both DECSACE extents when a capture adapter exist
 test("editing.decsace reads equal extents inconclusive by name, never supported", async () => {
   const { context, frames } = captureContext(24, 80)
   context.capture = async ({ role, label }) => {
-    const frame = { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}` }
+    const frame = {
+      role,
+      label,
+      capturedAt: 1,
+      ref: `sha256:${"a".repeat(64)}`,
+      pixelsDigest: `sha256:${"a".repeat(64)}`,
+    }
     frames.push(frame)
     return frame
   }
@@ -284,6 +291,50 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
   expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
   expect(result.assertions).toBeUndefined()
   expect(frames).toHaveLength(3)
+})
+
+/**
+ * P2 from review2 source audit 97414a37: `ref` is the RETAINED ARTIFACT, and the shared type says
+ * encoded container chunks can differ between identical images. Comparing refs alone therefore lets
+ * unchanged pixels read as a measured extent difference. The arm must compare the frame kind measured
+ * digest (pixelsDigest for pixels, cellDigest for text cells) and name the gap when one is absent.
+ */
+test("editing.decsace compares measured digests, not retained artifact refs", async () => {
+  const { context } = captureContext(24, 80)
+  let reads = 0
+  context.capture = async ({ role, label }) => {
+    reads += 1
+    // Three DIFFERENT artifact refs over ONE measured screen: the encoded bytes differ, the
+    // measurement does not.
+    return {
+      role,
+      label,
+      capturedAt: reads,
+      ref: `sha256:${String(reads).repeat(64)}`,
+      pixelsDigest: `sha256:${"f".repeat(64)}`,
+    }
+  }
+  const result = await find("editing.decsace").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(String(result.observation?.note)).toContain("same frame")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("editing.decsace names an adapter that reports no measured digest", async () => {
+  const { context } = captureContext(24, 80)
+  let reads = 0
+  context.capture = async ({ role, label }) => {
+    reads += 1
+    return { role, label, capturedAt: reads, ref: `sha256:${String(reads).repeat(64)}` }
+  }
+  const result = await find("editing.decsace").term!(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("no measured digest")
+  expect(result.assertions).toBeUndefined()
 })
 
 /**

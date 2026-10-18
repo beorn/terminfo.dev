@@ -155,6 +155,52 @@ test("the kind table names every converted editing row, and every row reaches th
 })
 
 /**
+ * P2 from review2 source audit 97414a37: DECCARA/DECRARA claim a 3x5 rectangle whose RIGHT FLANK must
+ * stay plain. A stream-extent implementation inverts the flank as well. With the flank declared as a
+ * plain string the character still matches, so this used to read supported; the flank is a cell of the
+ * claim and its attribute must be compared.
+ */
+test("a stream-extent DECCARA that inverts the right flank reads unsupported", () => {
+  const row = editingReadbackRows.find((entry) => entry.id === "editing.deccara")
+  if (!row) throw new Error("missing editing.deccara")
+  const probe = editingProbes.find((entry) => entry.id === row.id)
+  if (!probe?.termless) throw new Error("missing headless editing.deccara")
+  const step = row.steps[0]?.write
+  if (step === undefined) throw new Error("missing editing.deccara step")
+  const marked = new Set(["a", "b", "c"])
+  const streamExtent = row.after.map((cells) =>
+    cells.map((cell) => {
+      const char = typeof cell === "string" ? cell : cell.char
+      return marked.has(char) ? cell : { char, attributes: { inverse: true } }
+    }),
+  )
+  const result = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: streamExtent }, 24))
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
+})
+
+/**
+ * The other half of the same control: a seed whose OUT-OF-RECTANGLE flank is already inverse has not
+ * established the fixture either, so the row refuses by name instead of deciding on a surface whose
+ * flank was never plain.
+ */
+test("a DECCARA seed whose right flank is already inverse reads inconclusive", () => {
+  const row = editingReadbackRows.find((entry) => entry.id === "editing.deccara")
+  if (!row) throw new Error("missing editing.deccara")
+  const probe = editingProbes.find((entry) => entry.id === row.id)
+  if (!probe?.termless) throw new Error("missing headless editing.deccara")
+  const flanksInversed = row.before.map((cells) =>
+    cells.map((cell) => {
+      const char = typeof cell === "string" ? cell : cell.char
+      return char === "Z" || char === "Y" || char === "X" ? { char, attributes: { inverse: true } } : cell
+    }),
+  )
+  const result = probe.termless(declaredScreen({ [row.seed]: flanksInversed }, 24))
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.assertions).toBeUndefined()
+})
+
+/**
  * The derivation, measured: the probe the kind builds from a row reads THAT row's seed cells and THAT
  * row's target cells against a surface implementing the claim. A hand-written probe beside the table
  * cannot satisfy this without also carrying the row's own numbers.

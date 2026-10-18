@@ -1,4 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
   parserStateResult,
@@ -435,7 +436,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "a", attributes: { inverse: false } },
         { char: "a", attributes: { inverse: false } },
         { char: "a", attributes: { inverse: false } },
-        "Z",
+        { char: "Z", attributes: { inverse: false } },
       ],
       [
         { char: "b", attributes: { inverse: false } },
@@ -443,7 +444,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "b", attributes: { inverse: false } },
         { char: "b", attributes: { inverse: false } },
         { char: "b", attributes: { inverse: false } },
-        "Y",
+        { char: "Y", attributes: { inverse: false } },
       ],
       [
         { char: "c", attributes: { inverse: false } },
@@ -451,7 +452,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "c", attributes: { inverse: false } },
         { char: "c", attributes: { inverse: false } },
         { char: "c", attributes: { inverse: false } },
-        "X",
+        { char: "X", attributes: { inverse: false } },
       ],
     ],
     // DECSACE 2 selects the rectangle extent this row measures (29817): the surface default is stream.
@@ -463,7 +464,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "a", attributes: { inverse: true } },
         { char: "a", attributes: { inverse: true } },
         { char: "a", attributes: { inverse: true } },
-        "Z",
+        { char: "Z", attributes: { inverse: false } },
       ],
       [
         { char: "b", attributes: { inverse: true } },
@@ -471,7 +472,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "b", attributes: { inverse: true } },
         { char: "b", attributes: { inverse: true } },
         { char: "b", attributes: { inverse: true } },
-        "Y",
+        { char: "Y", attributes: { inverse: false } },
       ],
       [
         { char: "c", attributes: { inverse: true } },
@@ -479,7 +480,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "c", attributes: { inverse: true } },
         { char: "c", attributes: { inverse: true } },
         { char: "c", attributes: { inverse: true } },
-        "X",
+        { char: "X", attributes: { inverse: false } },
       ],
     ],
     controls: [
@@ -505,7 +506,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "a", attributes: { inverse: true } },
         { char: "a", attributes: { inverse: true } },
         { char: "a", attributes: { inverse: true } },
-        "Z",
+        { char: "Z", attributes: { inverse: false } },
       ],
       [
         { char: "b", attributes: { inverse: true } },
@@ -513,7 +514,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "b", attributes: { inverse: true } },
         { char: "b", attributes: { inverse: true } },
         { char: "b", attributes: { inverse: true } },
-        "Y",
+        { char: "Y", attributes: { inverse: false } },
       ],
       [
         { char: "c", attributes: { inverse: true } },
@@ -521,7 +522,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "c", attributes: { inverse: true } },
         { char: "c", attributes: { inverse: true } },
         { char: "c", attributes: { inverse: true } },
-        "X",
+        { char: "X", attributes: { inverse: false } },
       ],
     ],
     steps: [{ write: "\x1b[1;1H\x1b[2*x\x1b[1;1;3;5;7$t" }],
@@ -532,7 +533,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "a", attributes: { inverse: false } },
         { char: "a", attributes: { inverse: false } },
         { char: "a", attributes: { inverse: false } },
-        "Z",
+        { char: "Z", attributes: { inverse: false } },
       ],
       [
         { char: "b", attributes: { inverse: false } },
@@ -540,7 +541,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "b", attributes: { inverse: false } },
         { char: "b", attributes: { inverse: false } },
         { char: "b", attributes: { inverse: false } },
-        "Y",
+        { char: "Y", attributes: { inverse: false } },
       ],
       [
         { char: "c", attributes: { inverse: false } },
@@ -548,7 +549,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
         { char: "c", attributes: { inverse: false } },
         { char: "c", attributes: { inverse: false } },
         { char: "c", attributes: { inverse: false } },
-        "X",
+        { char: "X", attributes: { inverse: false } },
       ],
     ],
     controls: [
@@ -636,8 +637,28 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         // The stream frame is the control: the same DECCARA under the other extent. Equal frames mean
         // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
         const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
-        const observed = JSON.stringify({ seed: seed.ref, rectangle: rectangle.ref, stream: stream.ref })
-        if (rectangle.ref === stream.ref) {
+        // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
+        // cannot establish an extent difference (review2 97414a37 P2 3). Compare the measured digest
+        // the frame kind actually carries; a frame with none leaves the row inconclusive BY NAME.
+        const digests = [seed, rectangle, stream].map((frame) => {
+          const { cells, whole } = frameDigests(frame)
+          return whole ?? cells
+        })
+        const observed = JSON.stringify({ seed: seed.ref, rectangle: rectangle.ref, stream: stream.ref, digests })
+        if (digests.some((digest) => digest === undefined)) {
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              frames: [seed, rectangle, stream],
+              note: "This adapter returned a frame with no measured digest, so the two DECSACE extents cannot be compared",
+            },
+          }
+        }
+        if (digests[1] === digests[2]) {
           return {
             pass: false,
             response: observed,

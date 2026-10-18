@@ -140,11 +140,16 @@ function declaredScreen(
   screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
   cols: number,
   cursor: { x: number; y: number } = { x: 0, y: 0 },
+  baseline?: { seed: string; cells: readonly (readonly RegionReadbackCell[])[] },
 ): TermlessContext {
   let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
     feed: (sequence) => {
+      if (baseline !== undefined && sequence === baseline.seed) {
+        cells = baseline.cells
+        return
+      }
       const next = screens[sequence]
       if (next !== undefined) cells = next
     },
@@ -251,11 +256,13 @@ for (const row of eraseReadbackRows) {
     const cursor = stepCursor(row.id)
     const right = (row.region?.left ?? 1) + (row.before[0]?.length ?? 0) - 1
 
-    const supported = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols, cursor))
+    const supported = probe.termless(
+      declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols, cursor, row.baseline),
+    )
     expect(supported.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
     expect(supported.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
 
-    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols, cursor))
+    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols, cursor, row.baseline))
     expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     expect(ignored.assertions?.[0], row.id).toMatchObject({ kind: "negative" })
 
@@ -328,7 +335,7 @@ test("erase.el-with-attrs reads an ignored CUP inconclusive before grading cells
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
   if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
   const result = probe.termless(
-    declaredScreen({ [row.seed]: row.before, [firstStep(row.id)]: row.after }, 24, { x: 0, y: 1 }),
+    declaredScreen({ [row.seed]: row.before, [firstStep(row.id)]: row.after }, 24, { x: 0, y: 1 }, row.baseline),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(String(result.observation?.note)).toContain("CUP to the seeded row was ignored")
@@ -748,19 +755,24 @@ test("background erase measures a blank target that carries the seeded backgroun
   if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
   const background = { r: 130, g: 20, b: 70 }
   const other = { r: 1, g: 2, b: 3 }
+  const baselineSeed = row.baseline?.seed
+  if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
   const run = (
     seedBg: { r: number; g: number; b: number } | null,
     afterBg: { r: number; g: number; b: number } | null,
     char = " ",
   ) => {
-    let erased = false
+    // Three measured phases: the terminal's own default, the seed the row paints, then the erase.
+    let phase: "default" | "seed" | "after" = "default"
     return probe.termless!(
       headless({
         feed: (sequence) => {
-          if (sequence === step) erased = true
+          if (sequence === baselineSeed) phase = "default"
+          else if (sequence === step) phase = "after"
+          else if (sequence === row.seed) phase = "seed"
         },
         getCell: (_cellRow, col) => ({
-          char: erased ? char : "X",
+          char: phase === "after" ? char : "X",
           bold: false,
           dim: false,
           italic: false,
@@ -770,7 +782,7 @@ test("background erase measures a blank target that carries the seeded backgroun
           hidden: false,
           blink: false,
           fg: null,
-          bg: (erased ? afterBg : seedBg) ?? null,
+          bg: (phase === "after" ? afterBg : phase === "seed" ? seedBg : null) ?? null,
           wide: false,
         }),
       }),
@@ -790,6 +802,85 @@ test("background erase measures a blank target that carries the seeded backgroun
   expect(unseeded.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(String(unseeded.observation?.note)).toBe(row.seedNote)
   expect(unseeded.assertions).toBeUndefined()
+})
+
+/**
+ * P2 from review2 source audit 97414a37: a backend that reports ONE concrete RGB as its default and
+ * ignores SGR 42 satisfies both `present` on the seed and `same-as-before` on the erased cells, so
+ * the colour fixture was never established. The default-versus-painted qualification must catch it
+ * and refuse BY NAME — never grade the erase supported.
+ */
+test("a constant default background cannot establish the painted seed", () => {
+  const step = firstStep("erase.el-with-attrs")
+  const constant = { r: 0, g: 0, b: 0 }
+  let erased = false
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const result = probe.termless(
+    headless({
+      feed: (sequence) => {
+        if (sequence === step) erased = true
+      },
+      getCell: () => ({
+        char: erased ? " " : "X",
+        bold: false,
+        dim: false,
+        italic: false,
+        underline: false,
+        strikethrough: false,
+        inverse: false,
+        hidden: false,
+        blink: false,
+        fg: null,
+        bg: constant,
+        wide: false,
+      }),
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("default")
+  expect(result.assertions).toBeUndefined()
+})
+
+/**
+ * An attribute cell whose colour the backend does not report at all is UNREAD, never equal: the row
+ * must refuse by name instead of grading a negative (or throwing) on metadata the adapter lacked.
+ */
+test("an unread background on the erased cells is named inconclusive", () => {
+  const row = rowById("erase.el-with-attrs")
+  const step = firstStep("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const baselineSeed = row.baseline?.seed
+  if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
+  let phase: "default" | "seed" | "after" = "default"
+  const result = probe.termless(
+    headless({
+      feed: (sequence) => {
+        if (sequence === baselineSeed) phase = "default"
+        else if (sequence === step) phase = "after"
+        else if (sequence === row.seed) phase = "seed"
+      },
+      getCell: () =>
+        ({
+          char: phase === "after" ? " " : "X",
+          bold: false,
+          dim: false,
+          italic: false,
+          underline: false,
+          strikethrough: false,
+          inverse: false,
+          hidden: false,
+          blink: false,
+          fg: null,
+          bg: phase === "after" ? undefined : phase === "seed" ? { r: 1, g: 2, b: 3 } : null,
+          wide: false,
+        }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("does not report")
+  expect(result.assertions).toBeUndefined()
 })
 
 /**
