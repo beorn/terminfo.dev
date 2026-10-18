@@ -26,7 +26,6 @@ import {
   candidate2Cohort,
   candidate4Cohort,
   COHORT_FACTORIES,
-  admittedShareText,
   cohortReaderLines,
   notMeasuredCoverageLine,
   sharePct,
@@ -1145,35 +1144,105 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       expect(sharePct(3, 4)).toBe(75)
     })
 
-    it("names zero coverage on the real reader output path, with a covered positive control", () => {
+    const FIXTURE_RUN_ID = "zero-coverage-fixture-run"
+    // Real members of the required suite's probe list: the device ids are outside candidate2's
+    // scored ids, the sgr ids are inside it.
+    const ZERO_COVERAGE_PROBES = ["device.decrpm", "device.decrqss"] as const
+    const COVERED_PROBES = ["sgr.bg.256", "sgr.bg.bright"] as const
+
+    /**
+     * A fixture corpus with one real on-suite app run: the projection admits it and `cohortRun`
+     * marks it measured, so the rows that used to carry the false bar are populated rather than an
+     * empty table the renderer can pass without reading a run.
+     */
+    function readerFixture(probeIds: readonly string[]): string {
       const real = join(import.meta.dirname ?? process.cwd(), "..", "content")
       const contentDir = mkdtempSync(join(tmpdir(), "reader-zero-coverage-"))
-      try {
-        const suites = join(contentDir, "suites")
-        mkdirSync(suites)
-        // The projection's own suite, so the required suite is the only thing this fixture changes.
-        writeFileSync(join(suites, "5753741410a9.json"), readFileSync(join(real, "suites", "5753741410a9.json")))
-        const realManifest = join(real, "suites", "c24025ea22fc.json")
-        const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
-        // A suite that exists and is frozen for candidate4 but carries probes for NONE of the cohort:
-        // exactly the state that used to print a measured fail bar.
-        writeFileSync(
-          join(suites, "c24025ea22fc.json"),
-          JSON.stringify({ ...raw, probes: { ...raw.probes, app: [] } }, null, 2),
-        )
-        writeFileSync(join(contentDir, "categories.json"), readFileSync(join(real, "categories.json")))
-        writeFileSync(join(contentDir, "features.json"), readFileSync(join(real, "features.json")))
-        for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
-        writeFileSync(join(contentDir, "context-blockers.json"), readFileSync(join(real, "context-blockers.json")))
+      const suites = join(contentDir, "suites")
+      mkdirSync(suites)
+      // The projection's own suite, so the required suite is the only thing this fixture changes.
+      writeFileSync(join(suites, "5753741410a9.json"), readFileSync(join(real, "suites", "5753741410a9.json")))
+      const realManifest = join(real, "suites", "c24025ea22fc.json")
+      const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
+      for (const id of probeIds) {
+        if (!raw.probes.app.includes(id)) throw new Error(`${id} is not a probe of the real required suite`)
+      }
+      writeFileSync(
+        join(suites, "c24025ea22fc.json"),
+        JSON.stringify({ ...raw, probes: { ...raw.probes, app: [...probeIds] } }, null, 2),
+      )
+      writeFileSync(join(contentDir, "categories.json"), readFileSync(join(real, "categories.json")))
+      writeFileSync(join(contentDir, "features.json"), readFileSync(join(real, "features.json")))
+      writeFileSync(join(contentDir, "context-blockers.json"), readFileSync(join(real, "context-blockers.json")))
+      for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
+      const [supported, unsupported] = probeIds
+      if (supported === undefined || unsupported === undefined) throw new Error("the fixture needs two probes")
+      writeFileSync(
+        join(contentDir, "probes-apps", `${FIXTURE_RUN_ID}.json`),
+        JSON.stringify(
+          {
+            schemaVersion: 2,
+            runId: FIXTURE_RUN_ID,
+            // kitty/macos is a Release 1 context, so this run is the selected bar row as well.
+            target: {
+              kind: "app",
+              id: "kitty",
+              version: "0.46.2",
+              os: "macos",
+              osVersion: "25.4.0",
+              outerTerminal: null,
+              mux: null,
+              config: null,
+              permissions: null,
+            },
+            identity: "verified",
+            suiteId: "c24025ea22fc",
+            probeHash: "c24025ea22fc",
+            suiteComplete: true,
+            sourceRevision: "2".repeat(40),
+            measuredAt: "2026-10-18T00:00:00.000Z",
+            origin: { kind: "collector" },
+            rawReplies: {
+              "device.primary-da": "\u001b[?62;52;c",
+              "device.xtversion": "kitty(0.46.2)",
+              [supported]: "ACK",
+              [unsupported]: "NO",
+            },
+            assertions: [
+              { featureId: supported, kind: "positive", rawReplyRef: supported, expected: "ACK", observed: "ACK" },
+              { featureId: unsupported, kind: "negative", rawReplyRef: unsupported, expected: "ACK", observed: "NO" },
+            ],
+            screenshotRefs: [],
+            observations: [
+              { featureId: supported, outcome: "supported", evidence: "query", rawReplyRef: supported },
+              { featureId: unsupported, outcome: "unsupported", evidence: "query", rawReplyRef: unsupported },
+            ],
+          },
+          null,
+          2,
+        ),
+      )
+      return contentDir
+    }
 
+    it("prints not measured, with the selected and admitted rows present and carrying no fraction", () => {
+      const contentDir = readerFixture(ZERO_COVERAGE_PROBES)
+      try {
         const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
         const cohort = report.cohort
         if (!cohort) throw new Error("the fixture did not build a cohort")
+        expect(cohort.admittedRuns).toHaveLength(1)
+        expect(cohort.admittedRuns[0]?.measured).toBe(true)
+        expect(
+          cohort.barRows.find((row) => row.context.terminalId === "kitty" && row.context.os === "macos")?.measured,
+        ).toBe(true)
+        // Zero coverage means no probe in the required suite names a cohort id.
         expect(cohort.decidableIds).toHaveLength(0)
         expect(cohort.measuredIds.length).toBeGreaterThan(0)
         const printed = cohortReaderLines(report, cohort, [], contentDir).join("\n")
         expect(printed).toContain(`not measured: 0 of ${cohort.measuredIds.length} cohort ids have probes`)
-        // The old wiring printed a fraction and a verdict here; neither may appear.
+        // The admitted row is printed, and it is the row that used to carry the false fraction.
+        expect(printed).toContain(`kitty 0.46.2 macos ${FIXTURE_RUN_ID} · suite c24025ea22fc · not measured:`)
         expect(printed).not.toContain("decisive/")
         expect(printed).not.toMatch(/· verdict (pass|with gaps|fail)/)
       } finally {
@@ -1181,11 +1250,28 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       }
     })
 
-    it("keeps the fraction and verdict when the required suite does have coverage", () => {
-      const printed = admittedShareText(1, decisiveShare({ a: "supported" } as never, ["a"]), undefined)
-      expect(printed).toContain("decisive/1 1/1")
-      expect(printed).toContain("verdict")
-      expect(notMeasuredCoverageLine({ decidableIds: ["a"], measuredIds: ["a"] })).toBeUndefined()
+    it("keeps the fraction and verdict on the same fixture when the required suite has coverage", () => {
+      const contentDir = readerFixture(COVERED_PROBES)
+      try {
+        const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+        const cohort = report.cohort
+        if (!cohort) throw new Error("the fixture did not build a cohort")
+        expect(cohort.admittedRuns).toHaveLength(1)
+        expect(cohort.admittedRuns[0]?.measured).toBe(true)
+        expect(cohort.decidableIds).toHaveLength(COVERED_PROBES.length)
+        const printed = cohortReaderLines(report, cohort, [], contentDir).join("\n")
+        expect(printed).toContain(`decisive/${cohort.scoredIds.length}`)
+        expect(printed).toMatch(/· verdict (pass|with gaps|fail)/)
+        // The admitted row keeps its own fraction, so suppression is the zero-coverage decision and
+        // not an unconditional rewrite of every measured row.
+        expect(printed).toContain(`${FIXTURE_RUN_ID} · suite c24025ea22fc · decisive/`)
+        expect(printed).not.toContain("not measured: 0 of")
+        expect(
+          notMeasuredCoverageLine({ decidableIds: cohort.decidableIds, measuredIds: cohort.measuredIds }),
+        ).toBeUndefined()
+      } finally {
+        rmSync(contentDir, { recursive: true, force: true })
+      }
     })
   })
 })
