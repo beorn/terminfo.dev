@@ -318,12 +318,10 @@ function sameFrame(left: ObservationFrame, right: ObservationFrame): boolean {
   return left.ref === right.ref
 }
 
-/** Why two frames disagree, in the terms the next run needs to tell the causes apart. */
+/** Why two frames disagree, in the terms the next run needs to tell the causes apart. Both frames
+ * carrying equal digests would have read as the same frame, so only two causes reach here. */
 function frameDivergence(settled: ObservationFrame, bottom: ObservationFrame): string {
-  if (settled.pixelsDigest !== undefined && bottom.pixelsDigest !== undefined) {
-    if (settled.pixelsDigest === bottom.pixelsDigest) return "refs differ while the pixels agree (encoded container)"
-    return "the captured pixels differ"
-  }
+  if (settled.pixelsDigest !== undefined && bottom.pixelsDigest !== undefined) return "the captured pixels differ"
   return "the frame refs differ and no pixel digest was carried"
 }
 
