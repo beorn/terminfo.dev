@@ -11,6 +11,7 @@ import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import { parseObservationFrames } from "@terminfo/run-parser"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
+import { captureStabilityPair } from "./region-readback.ts"
 import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, ProbeDefinition, TermContext } from "./types.ts"
@@ -485,6 +486,24 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
     expect(String(observation.note), name).toContain(note)
     expect(observation.evidence, name).toBe("pixels")
     const frames = (observation.frames ?? []) as ObservationFrame[]
+    if (name === "no measured digest") {
+      const measured = frames.find((frame) => frame.kind !== "text-cells" && frame.pixelsDigest !== undefined)
+      const missing = frames.find((frame) => frame.kind !== "text-cells" && frame.pixelsDigest === undefined)
+      if (!measured || !missing) throw new Error("Missing measured/unmeasured capture controls")
+      for (const [first, second] of [
+        [measured, missing],
+        [missing, measured],
+        [missing, missing],
+      ] as const) {
+        const { stability } = await captureStabilityPair(
+          "editing.decsace",
+          "pixels",
+          async () => ({ frame: first }),
+          async () => ({ frame: second }),
+        )
+        expect(stability.wholeWindowChanged).toBeNull()
+      }
+    }
     const refs = frames.map((frame) => frame.ref)
     expect(new Set(refs).size, name).toBe(refs.length)
     // The parser is the witness, not this test: a dropped citation and a citation of a control

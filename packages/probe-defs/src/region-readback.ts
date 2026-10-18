@@ -701,7 +701,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
     regionDigest: Array<string | undefined>
     pixelsDigest: Array<string | undefined>
     frameDigest: Array<string | undefined>
-    wholeWindowChanged: boolean
+    wholeWindowChanged: boolean | null
   }
 }> {
   const stableA = await first()
@@ -714,7 +714,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
     regionDigest: [stableA.regionDigest, stableB.regionDigest],
     pixelsDigest: [stableA.pixelsDigest, stableB.pixelsDigest],
     frameDigest: [wholeA, wholeB],
-    wholeWindowChanged: wholeA !== wholeB,
+    wholeWindowChanged: wholeA === undefined || wholeB === undefined ? null : wholeA !== wholeB,
   }
   const response = JSON.stringify({ stability })
   const knownCrops = stableA.frame.regionRectangle !== undefined && stableB.frame.regionRectangle !== undefined
