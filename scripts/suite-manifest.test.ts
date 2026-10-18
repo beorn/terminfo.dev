@@ -34,6 +34,7 @@ import {
   frozenSuiteIdFor,
   frozenSuiteLineage,
   moveReleasePointer,
+  moveSummary,
   persistSuiteManifest,
   suiteManifestMode,
   uncommittedCollectorDirt,
@@ -473,6 +474,161 @@ test("the parser refuses a freeze lineage that is not the carried list", () => {
   expect(() => parseSuiteManifest("x.json", withPrevious([{ ...entry, until: "yesterday" }]))).toThrow(/previous until/)
   expect(() => parseSuiteManifest("x.json", withPrevious([entry, { ...entry }]))).toThrow(/repeats suite/)
   expect(parseSuiteManifest("x.json", withPrevious([entry])).freeze?.previous).toEqual([entry])
+})
+
+test("the parser refuses a lineage that names the suite the record freezes, or windows out of order", () => {
+  const own = "a".repeat(12)
+  const base = { probeHash: own, adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const at = "2026-10-18T03:00:00.000Z"
+  const first = { suite: "b".repeat(12), from: "2026-10-16T09:30:22.506Z", until: "2026-10-18T02:27:38.228Z" }
+  const second = { suite: "c".repeat(12), from: "2026-10-18T02:27:38.228Z", until: at }
+  const withPrevious = (previous: unknown): string =>
+    JSON.stringify({ ...base, freeze: { release: "candidate2", at, previous } })
+  // A lineage naming the record's own suite would make the reader name it twice.
+  expect(() => parseSuiteManifest("x.json", withPrevious([first, { ...second, suite: own }]))).toThrow(/repeats suite/)
+  // Oldest first, each window starting where the one before it ended, the last ending at this freeze.
+  expect(() => parseSuiteManifest("x.json", withPrevious([second, first]))).toThrow(/previous window/)
+  const backwards = { ...first, from: first.until, until: first.from }
+  expect(() => parseSuiteManifest("x.json", withPrevious([backwards, second]))).toThrow(/previous window/)
+  expect(() => parseSuiteManifest("x.json", withPrevious([first]))).toThrow(/not at this freeze/)
+  expect(parseSuiteManifest("x.json", withPrevious([first, second])).freeze?.previous).toEqual([first, second])
+})
+
+test("a move needs a pointer to move: a release no suite claims is refused and nothing is written", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-unclaimed-")
+  const contentDir = join(directory, "content")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-16T09:30:22.506Z" })
+  const secondPath = join(contentDir, "suites", `${second.probeHash}.json`)
+  const before = readFileSync(secondPath, "utf8")
+  // A typo is not a first freeze: "candidat2" has no suite, so there is no pointer to move.
+  expect(() =>
+    moveReleasePointer(directory, "candidat2", { snapshot: second, at: "2026-10-18T02:27:38.228Z" }),
+  ).toThrow(/no suite manifest declares freeze\.release "candidat2".*--freeze candidat2/)
+  expect(readFileSync(secondPath, "utf8")).toBe(before)
+})
+
+test("a move whose instant precedes the freeze it ends is refused before any byte moves", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-backwards-")
+  const contentDir = join(directory, "content")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-18T02:27:38.228Z" })
+  const secondPath = join(contentDir, "suites", `${second.probeHash}.json`)
+  const before = readFileSync(secondPath, "utf8")
+  // The window it would record ends before it starts: a record every reader refuses, so none is written.
+  expect(() =>
+    moveReleasePointer(directory, "candidate2", { snapshot: second, at: "2026-10-16T09:30:22.506Z" }),
+  ).toThrow(/previous window/)
+  expect(readFileSync(secondPath, "utf8")).toBe(before)
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(first.probeHash)
+})
+
+test("the move command says nothing moved when the pointer already names the suite", () => {
+  const a = "a".repeat(12)
+  const b = "b".repeat(12)
+  expect(moveSummary("candidate2", { status: "existing", from: a, to: a, path: `/x/${a}.json` })).toBe(
+    `Suite ${a}.json already declares freeze.release "candidate2"; nothing moved`,
+  )
+  expect(moveSummary("candidate2", { status: "moved", from: a, to: b, path: `/x/${b}.json` })).toBe(
+    `Suite ${b}.json declares freeze.release "candidate2"; candidate2 moved off suite ${a} to ${b}`,
+  )
+})
+
+test("a move onto the suite whose own record already declares the release writes nothing and says nothing moved", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-noop-")
+  const suitesDir = join(directory, "content", "suites")
+  const first = snapshotOf("a".repeat(12))
+  declareFixture(directory, "b".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-16T09:30:22.506Z" })
+  // The scan and the suite's own record agree, so the check in front of the no-op lets it through:
+  // the existing result, no byte written, and the summary the command prints says nothing moved.
+  const registry = (): string[][] =>
+    readdirSync(suitesDir)
+      .sort()
+      .map((name) => [name, readFileSync(join(suitesDir, name), "utf8")])
+  const before = registry()
+  const moved = moveReleasePointer(directory, "candidate2", { snapshot: first, at: "2026-10-18T02:27:38.228Z" })
+  expect(moved).toEqual({
+    status: "existing",
+    from: first.probeHash,
+    to: first.probeHash,
+    path: join(suitesDir, `${first.probeHash}.json`),
+  })
+  expect(registry()).toEqual(before)
+  expect(moveSummary("candidate2", moved)).toBe(
+    `Suite ${first.probeHash}.json already declares freeze.release "candidate2"; nothing moved`,
+  )
+})
+
+test.each([
+  { name: "no freeze, moving away", own: undefined, onto: "b" },
+  { name: "no freeze, onto the claimed suite", own: undefined, onto: "a" },
+  {
+    name: "another release, onto the claimed suite",
+    own: { release: "candidate4", at: "2026-10-17T09:00:00.000Z" },
+    onto: "a",
+  },
+] as const)("a move refuses when the claim scan and the claimed suite's own record disagree ($name)", (variant) => {
+  const directory = authoringRepo("terminfo-suite-pointer-disagree-")
+  const contentDir = join(directory, "content")
+  const suitesDir = join(contentDir, "suites")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-16T09:30:22.506Z" })
+  // The claim lives in a file not named for its suite, so the suite's own record carries no freeze or
+  // another release. Moving away from it, or onto it as a would-be no-op, must refuse by name.
+  const firstPath = join(suitesDir, `${first.probeHash}.json`)
+  const claimed = readFileSync(firstPath, "utf8")
+  writeFileSync(join(suitesDir, "misnamed.json"), claimed)
+  const own = JSON.parse(claimed) as Record<string, unknown>
+  if (variant.own === undefined) delete own.freeze
+  else own.freeze = variant.own
+  writeFileSync(firstPath, `${JSON.stringify(own, null, 2)}\n`)
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(first.probeHash)
+  const registry = (): string[][] =>
+    readdirSync(suitesDir)
+      .sort()
+      .map((name) => [name, readFileSync(join(suitesDir, name), "utf8")])
+  const before = registry()
+  const carries = variant.own === undefined ? "no freeze" : `freeze\\.release "${variant.own.release}"`
+  expect(() =>
+    moveReleasePointer(directory, "candidate2", {
+      snapshot: variant.onto === "a" ? first : second,
+      at: "2026-10-18T02:27:38.228Z",
+    }),
+  ).toThrow(new RegExp(`claim scan names suite a{12} for release "candidate2", but its record carries ${carries};`))
+  expect(registry()).toEqual(before)
+})
+
+test("the parser refuses a gap between windows that are otherwise in order and end at the freeze", () => {
+  const base = { probeHash: "a".repeat(12), adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const at = "2026-10-18T03:00:00.000Z"
+  const first = { suite: "b".repeat(12), from: "2026-10-16T09:30:22.506Z", until: "2026-10-18T02:27:38.228Z" }
+  // Each window runs forwards and the last ends at this freeze, but the second does not start where the
+  // first ended: only the order rule can refuse it.
+  const gapped = { suite: "c".repeat(12), from: "2026-10-18T02:40:00.000Z", until: at }
+  const source = JSON.stringify({ ...base, freeze: { release: "candidate2", at, previous: [first, gapped] } })
+  expect(() => parseSuiteManifest("x.json", source)).toThrow(/previous window for suite c{12}/)
+})
+
+test("an ordinary freeze checks the bytes it writes, so a bad instant never lands", () => {
+  const directory = authoringRepo("terminfo-suite-freeze-bytes-")
+  const second = declareFixture(directory, "b".repeat(12))
+  const path = join(directory, "content", "suites", `${second.probeHash}.json`)
+  const before = readFileSync(path, "utf8")
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: second, at: "2026-10-18" })).toThrow(
+    /invalid suite freeze at/,
+  )
+  expect(readFileSync(path, "utf8")).toBe(before)
+})
+
+test("--move takes exactly one release, through the same parser as --freeze", () => {
+  expect(suiteManifestMode(["--move", "candidate2"])).toBe("move")
+  expect(suiteManifestMode(["--move"])).toBe("usage")
+  expect(suiteManifestMode(["--move", " "])).toBe("usage")
+  expect(suiteManifestMode(["--move", "candidate2", "extra"])).toBe("usage")
 })
 
 test("the live registry records the candidate2 pointer move it already made", () => {

@@ -214,7 +214,11 @@ function applySuiteFreeze(
     at: freeze.at ?? new Date().toISOString(),
     ...(freeze.previous === undefined || freeze.previous.length === 0 ? {} : { previous: freeze.previous }),
   }
-  writeFileSync(path, `${JSON.stringify(stored, null, 2)}\n`)
+  // The one writer of the freeze key checks the exact bytes it is about to write with the reader's own
+  // parser, so neither a freeze nor a move can land a record every reader refuses.
+  const bytes = `${JSON.stringify(stored, null, 2)}\n`
+  parseSuiteManifest(path, bytes)
+  writeFileSync(path, bytes)
   return { status: "frozen", path }
 }
 
@@ -283,7 +287,7 @@ export function moveReleasePointer(
   root: string,
   release: string,
   options: { snapshot?: ProbeSuiteSnapshot; at?: string } = {},
-): { status: "existing" | "moved"; from?: string; to: string; path: string } {
+): { status: "existing" | "moved"; from: string; to: string; path: string } {
   const snapshot = options.snapshot ?? probeSuiteSnapshot(root)
   assertDeclareIsAuthoring(root, snapshot.probeHash)
   const contentDir = join(root, "content")
@@ -294,6 +298,24 @@ export function moveReleasePointer(
     )
   }
   const from = claims[0]
+  if (from === undefined) {
+    throw new Error(
+      `${join(contentDir, "suites")}: no suite manifest declares freeze.release "${release}", so there is no ` +
+        `pointer to move; a release's first suite is frozen with --freeze ${release}`,
+    )
+  }
+  // The claim scan named this suite, so its own record must carry the release. Anything else means the
+  // scan and the record disagree: a no-op would report a claim the record does not hold, and a move
+  // would silently leave the suite out of the lineage. One check, before either.
+  const fromPath = join(contentDir, "suites", `${from}.json`)
+  const fromFreeze = parseSuiteManifest(fromPath, readFileSync(fromPath, "utf8")).freeze
+  if (fromFreeze?.release !== release) {
+    throw new Error(
+      `${fromPath}: the claim scan names suite ${from} for release "${release}", but its record carries ` +
+        `${fromFreeze === undefined ? "no freeze" : `freeze.release "${fromFreeze.release}"`}; the scan and the ` +
+        "record disagree, so the pointer is neither moved nor reported as held",
+    )
+  }
   const to = snapshot.probeHash
   const path = join(contentDir, "suites", `${to}.json`)
   if (from === to) return { status: "existing", from, to, path }
@@ -315,13 +337,7 @@ export function moveReleasePointer(
   // New record first, old claim second: a crash between the two leaves two claimants, which every
   // reader refuses loudly, never zero, which would relabel the old suite's runs as unpublishable.
   const at = options.at ?? new Date().toISOString()
-  const fromPath = from === undefined ? undefined : join(contentDir, "suites", `${from}.json`)
-  const fromFreeze =
-    fromPath === undefined ? undefined : parseSuiteManifest(fromPath, readFileSync(fromPath, "utf8")).freeze
-  const carried = [...(fromFreeze?.previous ?? [])]
-  if (from !== undefined && fromFreeze !== undefined) {
-    carried.push({ suite: from, from: fromFreeze.at, until: at })
-  }
+  const carried = [...(fromFreeze.previous ?? []), { suite: from, from: fromFreeze.at, until: at }]
   // A repeat would leave a lineage the parser refuses, after the write had already landed. Refuse
   // before any byte moves: moving back onto a suite this release published on is a cycle, not a move.
   if (carried.some((entry) => entry.suite === to)) {
@@ -331,11 +347,9 @@ export function moveReleasePointer(
     )
   }
   applySuiteFreeze(path, { release, at, previous: carried })
-  if (fromPath !== undefined) {
-    const stored = JSON.parse(readFileSync(fromPath, "utf8")) as Record<string, unknown>
-    delete stored.freeze
-    writeFileSync(fromPath, `${JSON.stringify(stored, null, 2)}\n`)
-  }
+  const stored = JSON.parse(readFileSync(fromPath, "utf8")) as Record<string, unknown>
+  delete stored.freeze
+  writeFileSync(fromPath, `${JSON.stringify(stored, null, 2)}\n`)
   return { status: "moved", from, to, path }
 }
 
@@ -403,11 +417,12 @@ export function checkCitedSuiteManifests(
   return { cited: cited.size, manifests: cited.size }
 }
 
-export type SuiteManifestMode = "check" | "freeze" | "usage"
+export type SuiteManifestMode = "check" | "freeze" | "move" | "usage"
 
 /** A bare invocation is never a declare: the write needs the explicit verb (27843 AC2). */
 export function suiteManifestMode(argv: string[]): SuiteManifestMode {
   if (argv.length === 1 && argv[0] === "--check") return "check"
   if (argv.length === 2 && argv[0] === "--freeze" && argv[1] !== undefined && argv[1].trim() !== "") return "freeze"
+  if (argv.length === 2 && argv[0] === "--move" && argv[1] !== undefined && argv[1].trim() !== "") return "move"
   return "usage"
 }

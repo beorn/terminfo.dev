@@ -748,10 +748,22 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
             fail(path, `invalid suite freeze previous ${key}`)
           }
         }
-        if (lineage.some((seen) => seen.suite === entry.suite)) {
+        if (lineage.some((seen) => seen.suite === entry.suite) || entry.suite === probeHash) {
           fail(path, `suite freeze previous lineage repeats suite ${entry.suite}`)
         }
-        lineage.push({ suite: entry.suite, from: entry.from as string, until: entry.until as string })
+        // Oldest first, each window starting where the one before it ended: the move writes exactly
+        // this, so another order or a gap is a hand edit the lineage reader would misread.
+        const from = entry.from as string
+        const until = entry.until as string
+        const before = lineage[lineage.length - 1]
+        if (until < from || (before !== undefined && before.until !== from)) {
+          fail(path, `invalid suite freeze previous window for suite ${entry.suite}`)
+        }
+        lineage.push({ suite: entry.suite, from, until })
+      }
+      const last = lineage[lineage.length - 1]
+      if (last !== undefined && last.until !== raw.at) {
+        fail(path, `suite freeze previous lineage ends at ${last.until}, not at this freeze (${raw.at})`)
       }
       previous = lineage
     }

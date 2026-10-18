@@ -477,6 +477,42 @@ describe("candidate-2 page: wiring", () => {
     ])
   })
 
+  it("a run on the suite the cohort reads never holds a dark context, even when that suite is in the lineage", () => {
+    // The cohort reads a lineage suite, as after a pointer move onto it: runs there are measurement,
+    // so a context whose only history is there is not held from it. The page must subtract the suite
+    // it reads, not only the helper.
+    const real = join(import.meta.dirname, "..", "content")
+    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const cohort = baseReport.cohort
+    if (!cohort) throw new Error("candidate2 cohort absent")
+    const isWezterm = (run: { terminalId: string; os: string }) => run.terminalId === "wezterm" && run.os === "linux"
+    const below = cohort.admittedRuns.find((entry) => entry.run.suiteId === "5753741410a9" && isWezterm(entry.run))
+    if (!below) throw new Error("predecessor-suite wezterm/linux admitted run absent")
+    // The same below-bar states, on the suite the mocked cohort reads, and no other history.
+    const onReadingSuite = { ...below, run: { ...below.run, suiteId: "68847e4d5355", runId: "reading-suite-run" } }
+    const admittedRuns = [onReadingSuite, ...cohort.admittedRuns.filter((entry) => !isWezterm(entry.run))]
+    const barRows = cohort.barRows.map((row) =>
+      isWezterm(row.context)
+        ? {
+            context: row.context,
+            measured: false as const,
+            reason: "ineligible: selected run on suite 45d6fda67445, required 68847e4d5355",
+          }
+        : row,
+    )
+    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+      ...baseReport,
+      cohort: { ...cohort, frozenSuiteId: "68847e4d5355", barRows, admittedRuns },
+    })
+    try {
+      const scrollback = loadCandidate2Data().groups.find((group) => group.key === "scrollback")
+      if (!scrollback) throw new Error("scrollback group missing")
+      expect(scrollback.darkHeldBy.map((row) => row.context)).not.toContain("wezterm/linux")
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it("preserves global inclusion outside the two-group context scope", () => {
     // The ruling names two groups. A group outside it must not gain includedOn entries even where
     // its share clears the bar on a context: the page would then promote a held group.
