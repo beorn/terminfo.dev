@@ -1,11 +1,6 @@
 {
   "blockers": [
     {
-      "terminalId": "alacritty",
-      "os": "macos",
-      "reason": "no macOS run on the required suite: the local collector is blocked by the Screen Recording permission gate, so this context is not measured rather than failed (29918)"
-    },
-    {
       "terminalId": "ghostty",
       "os": "macos",
       "reason": "no macOS run on the required suite: the local collector is blocked by the Screen Recording permission gate, so this context is not measured rather than failed (29918)"
