@@ -1147,7 +1147,8 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     const cohort = report.cohort
     if (!cohort) throw new Error("cohort report absent")
     const blockers = loadContextBlockers(contentDir)
-    expect(blockers.size).toBeGreaterThan(0)
+    // The final blocked context now has an admitted run on the required suite.
+    expect(blockers.size).toBe(0)
 
     // Every declared key must name a context this cohort declares. barRows is built from exactly that
     // list, so without this a mistyped key would read as "no eligible run" and publish a blocker that
@@ -1168,12 +1169,14 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       expect(row.reason).toMatch(/\(\d{5}\)$/)
     }
 
-    // terminal-app/macos is measured on the converged suite, so kitty/macos — the one context with
-    // no route at all — is the declared blocker this row pins.
-    const mac = cohort.barRows.find((row) => row.context.terminalId === "kitty" && row.context.os === "macos")
-    if (!mac || mac.measured) throw new Error("kitty/macos should be blocked, not measured")
-    const printed = formatCohortRow(mac, [], 20).join("\n")
-    expect(printed).toContain("not measured — no hosted kitty route")
+    // Exercise the blocker with the selected real run on a deliberately different required suite;
+    // the contract must survive even when no live context needs a blocker.
+    const mac = report.barRows.find((row) => row.context.terminalId === "kitty" && row.context.os === "macos")
+    if (!mac?.measured) throw new Error("kitty/macos is not a measured bar row")
+    const reason = "no collection on the required suite (27928)"
+    const blocked = cohortRowForSelected(mac, { ...cohort, frozenSuiteId: "0fb194cf6cea" }, reason)
+    const printed = formatCohortRow(blocked, [], 20).join("\n")
+    expect(printed).toContain(`not measured — ${reason}`)
     expect(printed).toContain("27928")
     expect(printed).not.toContain("ineligible: selected run on suite")
 

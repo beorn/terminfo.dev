@@ -129,22 +129,24 @@ describe("candidate-2 page: publication rule (AC4)", () => {
     }
   })
 
-  it("prints the reader's declared blocker, word for word, for a blocked macOS context", () => {
+  it("prints the reader's declared blocker, word for word, for a blocked context", () => {
     // @chief's acceptance condition: the dark contexts read NOT MEASURED with the cause, not a bare
     // suite refusal. The page prints the reader's reason verbatim, so this pins the two together.
-    // Re-pinned 2026-10-18: terminal-app/macos is MEASURED on 67ad now, so the blocked macOS context
-    // is kitty/macos — the one macOS context with no route at all.
-    const readerRow = report.cohort?.barRows.find(
-      (row) => row.context.terminalId === "kitty" && row.context.os === "macos",
-    )
-    if (!readerRow) throw new Error("reader carries no kitty/macos bar row")
-    if (readerRow.measured) throw new Error("kitty/macos should be blocked, not measured")
-    const pageRow = data.contexts.find((row) => row.context === "kitty/macos")
-    if (!pageRow) throw new Error("page carries no kitty/macos row")
-    expect(pageRow.published).toBe(false)
-    expect(pageRow.reason).toBe(readerRow.reason)
-    expect(pageRow.reason).toContain("no hosted kitty route")
-    expect(pageRow.reason).toContain("27928")
+    // Every live context now has a measurement. Keep the blocked branch exercised through the
+    // existing historical witness, rather than require a terminal to remain unmeasured forever.
+    const reason = "no collection on the required suite (27928)"
+    const readerRow = reader.cohortRowForSelected(historicalSelected, uncollectedCohort, reason)
+    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+      ...report,
+      cohort: { ...uncollectedCohort, barRows: [readerRow] },
+    })
+    try {
+      const [pageRow] = loadCandidate2Data().contexts
+      expect(pageRow?.published).toBe(false)
+      expect(pageRow?.reason).toBe(reason)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it("never publishes the same context twice", () => {
@@ -310,16 +312,16 @@ describe("candidate-2 page: wiring", () => {
       )
       for (const row of group.unmeasured) expect(row.reason, row.context).toBeTruthy()
     }
-    expect(data.groups.some((group) => group.included)).toBe(true)
+    // The newly measured Kitty/macOS row holds every global group below the bar.
+    expect(data.groups.filter((group) => group.included)).toEqual([])
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
   it("includes Editing and Character Sets on the six measured contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
     // context held, and every context with no run on the required suite named not measured. The
-    // lists moved with the census landing on the converged suite (67ad): all five Linux app rows and
-    // the four macOS captures are measured, so six contexts clear the bar and only kitty/macos — which
-    // has no route at all — is not measured. A new suite or collection that moves these numbers must
+    // All eleven contexts are now measured on the converged suite (67ad). Kitty/macOS is below
+    // the bar, so the six clearing contexts stay unchanged. A new collection that moves these numbers must
     // change this table deliberately, never loosen it.
     const clearing = [
       "kitty/linux",
@@ -329,8 +331,8 @@ describe("candidate-2 page: wiring", () => {
       "ghostty/macos",
       "alacritty/macos",
     ]
-    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"]
-    const dark = ["kitty/macos"]
+    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "kitty/macos", "windows-terminal/windows"]
+    const dark: string[] = []
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -351,14 +353,12 @@ describe("candidate-2 page: wiring", () => {
         group.unmeasured.map((row) => row.context),
         key,
       ).toEqual(dark)
-      expect(group.unmeasured[0]?.reason, key).toContain("no hosted kitty route")
-      expect(group.unmeasured[0]?.reason, key).toContain("27928")
     }
   })
 
   it("never lets a public claim improve because a context went dark", () => {
     // @chief 2026-10-17: a public claim must never improve because data went dark. Re-pinned again
-    // 2026-10-18, after the census landed: every context except kitty/macos is measured on 67ad, so no
+    // 2026-10-18, after the census landed: every context is measured on 67ad, so no
     // group holds a claim back because a context WENT DARK on live data. The rule itself is pinned by
     // the mocked history test below ("reads a dark context's hold from history..."); what is pinned
     // here is the invariant that keeps the live page honest — no group may name a dark context that is
@@ -377,6 +377,7 @@ describe("candidate-2 page: wiring", () => {
       "ghostty/linux",
       "terminal-app/macos",
       "iterm2/macos",
+      "kitty/macos",
       "windows-terminal/windows",
     ])
 
@@ -389,8 +390,7 @@ describe("candidate-2 page: wiring", () => {
     )
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // The two ruled groups read "ruled for six, measurable on four", and the two dark ruled
-    // contexts are named rather than counted as included.
+    // Both ruled groups retain six clearing contexts, with no dark ruled context.
     const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
@@ -399,11 +399,11 @@ describe("candidate-2 page: wiring", () => {
       expect(group.darkRuled).toEqual([])
       expect(group.includedOn.length + group.darkRuled.length).toBe(6)
     }
-    // The rule pins the direction of the change, not a blanket demotion: Unicode clears its share on
-    // every dark context, so it legitimately stays included.
+    // A new below-bar measurement can lower the global claim; it cannot be hidden as a dark context.
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group missing")
-    expect(unicode.included).toBe(true)
+    expect(unicode.included).toBe(false)
+    expect(unicode.heldBy.map((row) => row.context)).toEqual(["kitty/macos"])
   })
 
   it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
@@ -556,12 +556,16 @@ describe("candidate-2 page: wiring", () => {
     expect(page).not.toContain("every measured context ({{ group.includedOn.length }})")
     const measured = data.contexts.filter((row) => row.published).length
     expect(outside.filter((group) => group.heldBy.length < measured).length).toBeGreaterThan(0)
-    // The included branch still exists and reads truthfully: Unicode clears every measured context
-    // even though it carries no per-context claim of its own.
+    // Unicode is globally held by the new measurement, while the existing historical witness
+    // still exercises an included group without inventing a per-context claim for it.
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group is missing")
-    expect(unicode.included).toBe(true)
+    expect(unicode.included).toBe(false)
+    expect(unicode.heldBy.map((row) => row.context)).toEqual(["kitty/macos"])
     expect(unicode.includedOn).toEqual([])
+    const historicalUnicode = historicalData.groups.find((group) => group.key === "unicode")
+    expect(historicalUnicode?.included).toBe(true)
+    expect(historicalUnicode?.includedOn).toEqual([])
     // Each prose surface must carry the corrected claim ITSELF: the note repeating it does not
     // excuse a lede that still lumps an included group into "every other group is held".
     const lede = page.match(/<p class="c2-lede">([\s\S]*?)<\/p>/)?.[1]
