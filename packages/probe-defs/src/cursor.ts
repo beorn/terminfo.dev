@@ -1,4 +1,10 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import {
+  frameDigests,
+  type ProbeDefinition,
+  type ProbeResult,
+  type TermContext,
+  type TermlessContext,
+} from "./types.ts"
 import { cursorProbe, cursorStyleReadbackDecision, parserStateResult, probe } from "./helpers.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 
@@ -202,8 +208,129 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
           }
         }
+        // The pixel arm is the strongest witness: when this run has a measured raster, hide the
+        // cursor at a fixed cell and compare raw-pixel digests of exactly that cell across the
+        // shown, hidden and restored frames. A terminal that cannot supply that proof falls back
+        // to DECRQM mode 25, which reports the mode state rather than the display.
+        const geometry = ctx.captureGeometry?.geometry
+        if (capture && geometry) {
+          const cells = { top: 2, left: 3, bottom: 2, right: 3 }
+          try {
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+            ctx.write("\x1b[1;1HCURSOR\x1b[2;1HL  R\x1b[2;3H\x1b[2 q\x1b[?25h")
+            const control = await capture({
+              role: "control",
+              label: "Shown steady block cursor requested at row 2 column 3",
+              cells,
+              pixelGeometry: geometry,
+            })
+            ctx.write("\x1b[?25l")
+            const hidden = await capture({
+              role: "target",
+              label: "Hidden cursor requested at the same cell",
+              cells,
+              pixelGeometry: geometry,
+            })
+            ctx.write("\x1b[?25h")
+            const restored = await capture({
+              role: "control",
+              label: "Shown again at the same cell",
+              cells,
+              pixelGeometry: geometry,
+            })
+            const frames = [control, hidden, restored]
+            const digests = frames.map(frameDigests)
+            const rectangle = (frame: (typeof frames)[number]) =>
+              frame.kind === "text-cells" ? frame.cellRectangle : frame.regionRectangle
+            const rectangles = frames.map(rectangle)
+            const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, digests, rectangles })
+            if (
+              digests.some((entry) => entry.cells === undefined) ||
+              new Set(rectangles.map((entry) => JSON.stringify(entry))).size !== 1
+            ) {
+              const note =
+                "Cursor pixel proof needs one cell-aligned raw-pixel digest per frame at the same rectangle; this capture supplied neither"
+              return {
+                pass: false,
+                response: observed,
+                observation: {
+                  outcome: "inconclusive",
+                  reason: "insufficient-evidence",
+                  evidence: "pixels",
+                  screenshotRef: hidden.ref,
+                  frames,
+                  note,
+                },
+                assertions: [{ kind: "positive", expected: note, observed }],
+              }
+            }
+            const shownDigest = digests[0]?.cells
+            const hiddenDigest = digests[1]?.cells
+            const restoredDigest = digests[2]?.cells
+            if (shownDigest === undefined || hiddenDigest === undefined || restoredDigest === undefined) {
+              throw new Error("cell digest guard did not narrow")
+            }
+            const changed = shownDigest !== hiddenDigest && hiddenDigest !== restoredDigest
+            const returned = shownDigest === restoredDigest
+            if (changed && returned) {
+              return {
+                pass: true,
+                response: observed,
+                observation: {
+                  outcome: "supported",
+                  evidence: "pixels",
+                  screenshotRef: hidden.ref,
+                  frames,
+                  note: "The cursor cell's raw-pixel digest changed while hidden and matched the shown control after restore",
+                },
+                assertions: [
+                  {
+                    kind: "positive",
+                    expected:
+                      "The cursor cell at row 2 column 3 has one pixel digest while the cursor is shown, a different digest while DECTCEM hides it, and the shown digest again after restore",
+                    observed,
+                  },
+                ],
+              }
+            }
+            if (!changed && returned) {
+              const note =
+                "Three equal digests cannot separate an absent, off-phase or unpainted cursor in the control from an ineffective hide; no visible-cursor control was established, so this is not a negative"
+              return {
+                pass: false,
+                response: observed,
+                observation: {
+                  outcome: "inconclusive",
+                  reason: "insufficient-evidence",
+                  evidence: "pixels",
+                  screenshotRef: hidden.ref,
+                  frames,
+                  note,
+                },
+                assertions: [{ kind: "positive", expected: note, observed }],
+              }
+            }
+            const note =
+              "Frames did not return to the shown control; a blink phase or another changing pixel cannot be separated from DECTCEM"
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: hidden.ref,
+                frames,
+                note,
+              },
+              assertions: [{ kind: "positive", expected: note, observed }],
+            }
+          } finally {
+            // Return this owned window to its configured default, without claiming prior-style restoration.
+            ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[0 q")
+          }
+        }
         // DECTCEM is DEC private mode 25; DECRQM reports shown/hidden without pixels.
-        // A complete report decides the claim; no report falls through to the pixel path below.
         ctx.write("\x1b[?25h")
         const shown = await ctx.queryMode(25)
         if (shown === "set" || shown === "reset") {
@@ -232,45 +359,59 @@ export const cursorProbes: ProbeDefinition[] = [
             }
           }
         }
-        // Only used inside the collector's owned disposable terminal, not an arbitrary user's screen.
-        try {
-          ctx.write("\x1b[0m\x1b[2J\x1b[H")
-          ctx.write("\x1b[1;1HCURSOR\x1b[2;1HL  R\x1b[2;3H\x1b[2 q\x1b[?25h")
-          const control = await capture({
-            role: "control",
-            label: "Shown steady block cursor requested at row 2 column 3",
-          })
-          ctx.write("\x1b[?25l")
-          const target = await capture({ role: "target", label: "Hidden cursor requested at the same cell" })
-          const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, control, target })
-          return {
-            pass: false,
-            response: observed,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "pixels",
-              screenshotRef: target.ref,
-              frames: [control, target],
-              note: "Seeded cursor pixels require independent review: control must visibly show the cursor; blink phase or missing focus cannot establish a negative",
-            },
-            assertions: [
-              {
-                kind: "positive",
-                expected:
-                  "Control visibly shows a cursor at row 2 column 3 between L and R; target removes that cursor while other seeded content is unchanged",
-                observed,
-                note: "capture-only assertion; cursor visibility and the control must be independently reviewed",
+        // No measured raster: keep the control/target record for a reviewer rather than grading it.
+        if (capture) {
+          try {
+            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+            ctx.write("\x1b[1;1HCURSOR\x1b[2;1HL  R\x1b[2;3H\x1b[2 q\x1b[?25h")
+            const control = await capture({
+              role: "control",
+              label: "Shown steady block cursor requested at row 2 column 3",
+            })
+            ctx.write("\x1b[?25l")
+            const target = await capture({ role: "target", label: "Hidden cursor requested at the same cell" })
+            const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, control, target })
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: target.ref,
+                frames: [control, target],
+                note: "No measured raster, so the same cell cannot be compared by raw-pixel digest; the pair needs independent review and blink phase cannot establish a negative",
               },
-            ],
+              assertions: [
+                {
+                  kind: "positive",
+                  expected:
+                    "Control visibly shows a cursor at row 2 column 3 between L and R; target removes that cursor while other seeded content is unchanged",
+                  observed,
+                  note: "capture-only assertion; no cell-aligned digest was available",
+                },
+              ],
+            }
+          } finally {
+            // Return this owned window to its configured default, without claiming prior-style restoration.
+            ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[0 q")
           }
-        } finally {
-          // Return this owned window to its configured default, without claiming prior-style restoration.
-          ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[0 q")
+        }
+        return {
+          pass: false,
+          response: "",
+          note: "Cursor visibility is not observable: DECRQM mode 25 is silent or unusable, no measured raster, and no capture adapter",
+          observation: {
+            outcome: "inconclusive",
+            reason: "no-response",
+            evidence: "none",
+            note: "DECRQM mode 25 is silent or unusable, no measured raster, and no capture adapter",
+          },
         }
       },
     ),
     termNeedsGeometry: true,
+    termObservationEvidence: "pixels",
     termlessObservationEvidence: "parser-state",
   },
 

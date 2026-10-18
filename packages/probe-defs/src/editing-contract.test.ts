@@ -43,7 +43,12 @@ const EDITING_CONTRACT: GroupContract = [
     expected: "decided",
     claim: "DECSACE rectangle extent confines DECCARA to the 2x2 block, stream extent reaches the rest of the span",
   },
-  { id: "editing.decrqcra", expected: "decided", claim: "DECRQCRA frames a four-digit checksum reply for request 1" },
+  {
+    id: "editing.decrqcra",
+    expected: "decided",
+    claim:
+      "DECRQCRA changes the same rectangle checksum by 1 under the DEC-compatible negated or positive-checksum convention when its last cell changes from E to F",
+  },
   { id: "editing.sl", expected: "decided", claim: "SL shifts the measured cells of two rows left by two columns" },
   { id: "editing.sr", expected: "decided", claim: "SR shifts the measured cells of two rows right by two columns" },
   { id: "editing.decic", expected: "decided", claim: "DECIC inserts two blank columns at column 3" },

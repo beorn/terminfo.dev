@@ -34,7 +34,8 @@ const CURSOR_CONTRACT: GroupContract = [
   {
     id: "cursor.hide",
     expected: "decided",
-    claim: "DECTCEM hides the cursor and restores the measured initial visibility",
+    claim:
+      "DECTCEM hides the cursor: mode 25 reports set then reset, and a measured raster shows the cursor cell pixels change and restore",
   },
   { id: "cursor.shape", expected: "decided", claim: "DECSCUSR CSI 6 SP q reports a beam cursor" },
   { id: "cursor.horizontal-absolute", expected: "decided", claim: "CHA CSI 15G selects column 14" },
