@@ -221,6 +221,9 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
     const windows = textCellsFrame(checkpoint, consoleRead(["ab"], [[7, 7]]), 1)
     expect(windows.trace).toMatchObject({ bufferOwner: { image: "OpenConsole.exe", pid: 4242, ppid: 100 } })
     expect(windows.trace).not.toHaveProperty("droppedLines")
+    // The label must say what the collector recorded and nothing it did not: the host's image name
+    // is in hand, its path and digest are not, and a reader must not be left to assume they were.
+    expect(windows.trace.source).toBe("the console host's buffer (OpenConsole.exe); path and sha256 not recorded")
   })
 
   it("throws naming the checkpoint when the terminal refused the read", () => {

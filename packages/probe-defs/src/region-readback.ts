@@ -434,8 +434,12 @@ export type PixelGeometrySource =
   | typeof GEOMETRY_REPORTED
   | typeof GEOMETRY_DERIVED
   | "measured by complete raster calibration"
-  /** A text arm: the compared cells came from the terminal's own text, never from a raster. */
-  | "cells read from the terminal's own text"
+  /**
+   * A text arm: the compared cells came from a text source — the console host's buffer on Windows,
+   * the app's own text on macOS — never from a raster. The older wording named "the terminal's own
+   * text", which is false on Windows (30033 ruling f1f3c64b).
+   */
+  | "cells read from a text source, not from pixels"
 
 /**
  * Why a cell-to-pixel geometry could not be measured, and whether the cause is the terminal or this
@@ -584,7 +588,10 @@ export async function captureRegionVerdict(
     return captureRegionReadbackDecision(
       ctx,
       id,
-      { ...spec, pixelGeometry: undefined, geometrySource: "cells read from the terminal's own text" },
+      // True on both text arms: Windows reads the console host's buffer and macOS reads the app's
+      // own snapshot, so a label claiming "the terminal's own text" is false on Windows. The host
+      // itself has one home, the per-read bufferOwner in the frame trace (30033 ruling f1f3c64b).
+      { ...spec, pixelGeometry: undefined, geometrySource: "cells read from a text source, not from pixels" },
       read,
     )
   }
