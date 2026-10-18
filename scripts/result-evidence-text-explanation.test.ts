@@ -17,6 +17,9 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
     const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "windows" })
     expect(text).toContain("console host")
     expect(text).toContain("not counted")
+    // The site projection carries no frame trace, so the cell says where the host IS recorded
+    // rather than leaving a reader to think nothing named it (@cto, ruling f1f3c64b addition).
+    expect(text).toContain("recorded in the run artifact")
   })
 
   it("names the app's own text snapshot and the five readback shapes on macOS", () => {

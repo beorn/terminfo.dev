@@ -16,7 +16,7 @@ export interface TextEvidenceRead {
 export function textEvidenceExplanation(read: TextEvidenceRead | undefined): string | undefined {
   if (read === undefined || read.evidence !== "text" || read.conclusive) return undefined
   if (read.os === "windows") {
-    return "Read as text from the console host that owns the window’s buffer, not from the cells the terminal drew — shown, not counted."
+    return "Read as text from the console host that owns the window’s buffer, not from the cells the terminal drew — shown, not counted. The host is recorded in the run artifact."
   }
   if (read.os === "macos") {
     return "Read from the app’s own text snapshot, not from the cells it drew — ungraded until that app’s hosted run passes the five readback shapes."
