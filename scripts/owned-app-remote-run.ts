@@ -20,7 +20,8 @@
  *   host unreachable | host key mismatch | bundle missing objects | stage source mismatch |
  *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent |
  *   kitty absent | output collision | rsync incomplete | receipt mismatch |
- *   invalid stage | stage not owned | invalid context | owned-app probe failed
+ *   invalid stage | stage not owned | invalid context | owned-app probe failed | timeout |
+ *   invalid timeout
  *
  * The local resource manifest is computed BEFORE anything is staged and the remote recompute must
  * match it byte for byte; that compare is the proof, not the act of re-staging. The source half of
@@ -68,8 +69,9 @@ const STAGED_FROM_BUNDLE = "vendor/terminfo.dev"
 const STAGE_MARKER = ".owned-app-transport-stage"
 const STAGE_MARKER_VALUE = "owned-app-transport stage v1"
 const CONNECT_TIMEOUT_SECONDS = "15"
-const SSH_RUN_TIMEOUT_MS = 15 * 60_000
-const RSYNC_RUN_TIMEOUT_MS = 30 * 60_000
+/** Default limits. Both are parameters so a test can drive a small one and prove the refusal. */
+const DEFAULT_SSH_TIMEOUT_MS = 15 * 60_000
+const DEFAULT_RSYNC_TIMEOUT_MS = 30 * 60_000
 const CONTEXT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 export interface OwnedAppRemoteOptions {
@@ -80,6 +82,8 @@ export interface OwnedAppRemoteOptions {
   readonly context: string
   readonly knownHosts: string
   readonly removeStage: boolean
+  readonly sshTimeoutMs: number
+  readonly rsyncTimeoutMs: number
   readonly argv: readonly string[]
 }
 
@@ -98,6 +102,11 @@ function fail(name: string, detail: string): never {
 
 function sha256(bytes: Buffer | string): string {
   return createHash("sha256").update(bytes).digest("hex")
+}
+
+/** Minutes of a millisecond limit, printed without trailing zeros. */
+function minutesOf(milliseconds: number): string {
+  return (milliseconds / 60_000).toFixed(2).replace(/\.?0+$/, "")
 }
 
 function shq(value: string): string {
@@ -229,7 +238,18 @@ function parseArgs(argv: readonly string[]): Parsed {
       removeStage = true
       continue
     }
-    if (!["--transport", "--stage", "--output", "--source-revision", "--context", "--known-hosts"].includes(arg)) {
+    if (
+      ![
+        "--transport",
+        "--stage",
+        "--output",
+        "--source-revision",
+        "--context",
+        "--known-hosts",
+        "--ssh-timeout-ms",
+        "--rsync-timeout-ms",
+      ].includes(arg)
+    ) {
       usage()
     }
     const value = argv[index + 1]
@@ -244,6 +264,8 @@ function parseArgs(argv: readonly string[]): Parsed {
   const sourceRevision = values["source-revision"] ?? usage()
   const context = values.context ?? usage()
   const knownHosts = values["known-hosts"] ?? usage()
+  const sshTimeoutMs = limitOf(values["ssh-timeout-ms"], DEFAULT_SSH_TIMEOUT_MS)
+  const rsyncTimeoutMs = limitOf(values["rsync-timeout-ms"], DEFAULT_RSYNC_TIMEOUT_MS)
   if (!rest.length) usage()
   if (!/^ssh:[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$/.test(transport)) {
     fail(
@@ -270,8 +292,23 @@ function parseArgs(argv: readonly string[]): Parsed {
     context,
     knownHosts: resolve(knownHosts),
     removeStage,
+    sshTimeoutMs,
+    rsyncTimeoutMs,
     argv: rest,
   }
+}
+
+/** A positive whole number of milliseconds, or the default. */
+function limitOf(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 1) {
+    fail(
+      "invalid timeout",
+      `--ssh-timeout-ms/--rsync-timeout-ms take positive whole milliseconds, got ${JSON.stringify(raw)}`,
+    )
+  }
+  return value
 }
 
 /** A stage is a driver-owned directory: absolute, normalized, neither the root nor a path whose
@@ -293,7 +330,8 @@ function usage(): never {
   console.error(
     "Usage: bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host> --stage <remote-dir>\n" +
       "         --output <local-output-dir> --source-revision <sha> --context <id>\n" +
-      "         --known-hosts <path> [--remove-stage] -- <owned-app argv starting with bun>",
+      "         --known-hosts <path> [--remove-stage] [--ssh-timeout-ms <ms>]\n" +
+      "         [--rsync-timeout-ms <ms>] -- <owned-app argv starting with bun>",
   )
   process.exit(2)
 }
@@ -336,9 +374,14 @@ function sshRun(
     "ssh",
     [...sshOptions(options), ...(extra.verbose ? ["-v"] : []), "--", options.transport.slice(4), command],
     // A wedged connection must fail the run by name rather than hang a collector forever.
-    { encoding: "utf8", input: extra.input, maxBuffer: 64 * 1024 * 1024, timeout: SSH_RUN_TIMEOUT_MS },
+    { encoding: "utf8", input: extra.input, maxBuffer: 64 * 1024 * 1024, timeout: options.sshTimeoutMs },
   )
-  if (result.error) fail("host unreachable", `${label}: ${result.error.message}`)
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
+      fail("timeout", `${label} exceeded ${minutesOf(options.sshTimeoutMs)} min`)
+    }
+    fail("host unreachable", `${label}: ${result.error.message}`)
+  }
   if (result.status !== 0) {
     const detail = `${result.stderr}${result.stdout}`.trim()
     // ssh names a rejected host key on its own rail; the run is refused as a trust failure, not as
@@ -413,12 +456,23 @@ function archiveOf(options: Parsed, destination: string): string {
   return destination
 }
 
-function rsync(options: Parsed, source: string, destination: string, extra: readonly string[] = []): void {
+function rsync(
+  options: Parsed,
+  label: string,
+  source: string,
+  destination: string,
+  extra: readonly string[] = [],
+): void {
   const result = spawnSync("rsync", ["-a", "-e", sshCommandLine(options), ...extra, "--", source, destination], {
     encoding: "utf8",
-    timeout: RSYNC_RUN_TIMEOUT_MS,
+    timeout: options.rsyncTimeoutMs,
   })
-  if (result.error) fail("rsync incomplete", `rsync ${source} -> ${destination}: ${result.error.message}`)
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
+      fail("timeout", `${label} exceeded ${minutesOf(options.rsyncTimeoutMs)} min`)
+    }
+    fail("rsync incomplete", `rsync ${source} -> ${destination}: ${result.error.message}`)
+  }
   if (result.status !== 0) {
     fail(
       "rsync incomplete",
@@ -490,7 +544,7 @@ function main(options: Parsed): OwnedAppTransportProof {
         `printf '%s\\n' ${shq(STAGE_MARKER_VALUE)} > ${shq(`${stage}/${STAGE_MARKER}`)}`,
       ].join("\n"),
     )
-    rsync(options, bundle, `${userAndHost}:${stage}/source.bundle`)
+    rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
     // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
     // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
     sshRun(
@@ -516,10 +570,13 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
 
     for (const entry of [...RESOURCE_DIRS, ...extras]) {
-      rsync(options, `${CODE_ROOT}/${entry}/`, `${userAndHost}:${source}/${entry}/`, ["--delete", "--exclude=.git"])
+      rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
+        "--delete",
+        "--exclude=.git",
+      ])
     }
     for (const entry of RESOURCE_FILES) {
-      rsync(options, `${CODE_ROOT}/${entry}`, `${userAndHost}:${source}/${entry}`)
+      rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}`, `${userAndHost}:${source}/${entry}`)
     }
 
     const files = sshRun(
@@ -656,7 +713,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       input: bytes,
     })
 
-    rsync(options, `${userAndHost}:${remoteOutput}/`, `${localOutput}/`)
+    rsync(options, "copy-back", `${userAndHost}:${remoteOutput}/`, `${localOutput}/`)
     for (const file of outputs) {
       const localPath = join(localOutput, file.path)
       if (!existsSync(localPath)) fail("rsync incomplete", `${file.path} did not arrive from ${hostname}`)

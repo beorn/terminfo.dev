@@ -118,6 +118,7 @@ function fixture(): void {
       'while [ "$1" = "-v" ]; do shift; done',
       '[ "$1" = "--" ] && shift',
       "shift",
+      '[ -n "${SHIM_SSH_SLEEP:-}" ] && sleep "$SHIM_SSH_SLEEP"',
       'command="$*"',
       'if [ "${SHIM_STAGE_CHECKOUT_FAIL:-}" = 1 ]; then',
       '  case "$command" in *"checkout --detach"*) echo "fatal: reference is not a tree: deadbeef" >&2; exit 128 ;; esac',
@@ -136,6 +137,7 @@ function fixture(): void {
       'src="$1"; dest="$2"',
       'case "$src" in *:*) src="${src#*:}" ;; esac',
       'case "$dest" in *:*) dest="${dest#*:}" ;; esac',
+      '[ -n "${SHIM_RSYNC_SLEEP:-}" ] && sleep "$SHIM_RSYNC_SLEEP"',
       'if [ "${SHIM_RSYNC_SKIP_BACK:-}" = 1 ]; then case "$1" in *:*) exit 0 ;; esac; fi',
       'if [ "${SHIM_RSYNC_SKIP_EXTRA:-}" = 1 ]; then case "$src" in */extra/) exit 0 ;; esac; fi',
       'case "$src" in */) mkdir -p "$dest"; cp -R "$src". "$dest" ;; *) [ -d "$dest" ] && find "$dest" -depth -delete; mkdir -p "$(dirname "$dest")"; cp -R "$src" "$dest" ;; esac',
@@ -368,6 +370,22 @@ describe("owned-app ssh transport", () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("host key mismatch")
   }, 60_000)
+
+  it("names the ssh step that outlived its limit instead of calling the host unreachable", () => {
+    const result = run({ SHIM_SSH_SLEEP: "5" }, ["--ssh-timeout-ms", "300"])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("timeout: reachability probe exceeded")
+    expect(result.stderr).toContain("min")
+    expect(result.stderr).not.toContain("host unreachable")
+  }, 30_000)
+
+  it("names the rsync step that outlived its limit instead of calling the transfer incomplete", () => {
+    const result = run({ SHIM_RSYNC_SLEEP: "5" }, ["--rsync-timeout-ms", "300"])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("timeout: bundle transfer exceeded")
+    expect(result.stderr).toContain("min")
+    expect(result.stderr).not.toContain("rsync incomplete")
+  }, 30_000)
 
   it("refuses source the bundle cannot carry", () => {
     revision = "a".repeat(40)
