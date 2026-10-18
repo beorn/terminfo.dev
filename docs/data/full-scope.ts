@@ -42,9 +42,25 @@ export const DESIGN_EXCLUSION_IDS = DESIGN_EXCLUSIONS.map(([id]) => id)
 /** The stated cause for each design exclusion, so a printed row is named and explained. */
 export const DESIGN_EXCLUSION_CAUSES: Readonly<Record<string, string>> = Object.fromEntries(DESIGN_EXCLUSIONS)
 
-/** The one wording for a mark the terminal consumes, with no query to ask it back. */
-const consumedMarkCause = (mark: string): string =>
-  `${mark} is consumed by the terminal and exposes no query; a shell-integration fixture that runs the shell with that integration and captures the emitted mark stream would observe it, and this release does not build one`
+/**
+ * Marks the terminal consumes, with no query to ask them back. The observable is the CONSUMER effect
+ * — what the terminal does with the mark — never the bytes the shell emitted: a shell sends the same
+ * stream to a terminal that implements the marks and to one that ignores every one of them.
+ */
+const commandBoundaryCause = (mark: string): string =>
+  `${mark} is consumed by the terminal and exposes no query; the consumer effect is the terminal's command-boundary model, which records where one command's output starts and ends so that output can be selected or copied. A per-terminal command-boundary adapter that asks the terminal for the last command's output range would observe it, and this release does not build one`
+
+const commandLineRegionCause = (mark: string): string =>
+  `${mark} is consumed by the terminal and exposes no query; the consumer effect is where the terminal places the commandline — the input region between prompt end and execution, which it can retain or let the user select. A per-terminal commandline-region adapter that reads that region back would observe it, and this release does not build one`
+
+const commandLineTextCause = (mark: string): string =>
+  `${mark} is consumed by the terminal and exposes no query; the consumer effect is the command text the terminal reconstructs for its own history, which it recalls when the user steps back through commands. A per-terminal commandline-history adapter that reads that text back would observe it, and this release does not build one`
+
+const propertyCause = (mark: string): string =>
+  `${mark} is consumed by the terminal and exposes no query; the consumer effect is terminal state keyed by the property, such as the working directory a later pane opens in. A per-terminal property adapter that reads that state back would observe it, and this release does not build one`
+
+const promptIntegrationCause = (name: string): string =>
+  `${name} are consumed by the terminal and expose no query; the consumer effect is the terminal's own prompt integration — the command boundaries it records, the commandline it recalls and the property state it derives. A per-terminal prompt-integration adapter that reads those effects back would observe them, and this release does not build one`
 
 /**
  * A PROMPT-START mark is the one mark prompt jumping can retain: the adapter navigates prompts and
@@ -63,18 +79,18 @@ const promptJumpCause = (mark: string): string =>
  */
 const INSTRUMENT_LIMIT_CAUSES_SOURCE = [
   ["extensions.osc133-a", promptJumpCause("OSC 133;A (prompt start)")],
-  ["extensions.osc133-b", consumedMarkCause("OSC 133;B (command start)")],
-  ["extensions.osc133-c", consumedMarkCause("OSC 133;C (command executed)")],
-  ["extensions.osc133-d", consumedMarkCause("OSC 133;D (command finished)")],
-  ["extensions.osc133-p", consumedMarkCause("OSC 133;P (properties)")],
+  ["extensions.osc133-b", commandLineRegionCause("OSC 133;B (command start)")],
+  ["extensions.osc133-c", commandBoundaryCause("OSC 133;C (command executed)")],
+  ["extensions.osc133-d", commandBoundaryCause("OSC 133;D (command finished)")],
+  ["extensions.osc133-p", propertyCause("OSC 133;P (properties)")],
   ["extensions.osc633-a", promptJumpCause("OSC 633;A (prompt start)")],
-  ["extensions.osc633-b", consumedMarkCause("OSC 633;B (prompt end)")],
-  ["extensions.osc633-c", consumedMarkCause("OSC 633;C (pre-execution)")],
-  ["extensions.osc633-d", consumedMarkCause("OSC 633;D (command finished)")],
-  ["extensions.osc633-e", consumedMarkCause("OSC 633;E (set commandline)")],
-  ["extensions.osc633-p", consumedMarkCause("OSC 633;P (properties)")],
-  ["extensions.semantic-prompts", consumedMarkCause("the semantic-prompt marks (OSC 133)")],
-  ["extensions.osc-633-vscode", consumedMarkCause("the VS Code shell-integration marks (OSC 633)")],
+  ["extensions.osc633-b", commandLineRegionCause("OSC 633;B (prompt end)")],
+  ["extensions.osc633-c", commandBoundaryCause("OSC 633;C (pre-execution)")],
+  ["extensions.osc633-d", commandBoundaryCause("OSC 633;D (command finished)")],
+  ["extensions.osc633-e", commandLineTextCause("OSC 633;E (set commandline)")],
+  ["extensions.osc633-p", propertyCause("OSC 633;P (properties)")],
+  ["extensions.semantic-prompts", promptIntegrationCause("the semantic-prompt marks (OSC 133)")],
+  ["extensions.osc-633-vscode", promptIntegrationCause("the VS Code shell-integration marks (OSC 633)")],
   [
     "extensions.notifications",
     "desktop notification delivery leaves the terminal for the session bus; a desktop-session fixture that watches that bus would observe it, and this release does not build one",
