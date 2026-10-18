@@ -1,4 +1,4 @@
-import type { ObservationFrame, ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { beginCaptureLifecycle, captureStabilityPair, endCaptureLifecycle } from "./region-readback.ts"
@@ -647,28 +647,26 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
           // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
           // captureStabilityPair (region-readback.ts). The cursor stays hidden for every read and is
-          // restored on every exit. The pair reads the SEEDED screen and its second read is the seed
-          // frame every extent is compared against, so a seed that is still settling is refused
+          // restored on every exit. The pair reads the SEEDED screen and returns its second read, the
+          // seed frame every extent is compared against, so a seed that is still settling is refused
           // rather than measured, and a frame that only looks stable after the measurement cannot
           // qualify it. On a terminal that ignores DECSACE, a blinking cursor alone moves the
           // whole-window digest.
           beginCaptureLifecycle(ctx)
           ctx.write(DECSACE_PAINT)
-          let seed: ObservationFrame | undefined
           const stabilityRead = async (label: string) => {
             const frame = await capture({ role: "control", label })
-            seed = frame
             const digests = frameDigests(frame)
             return { regionDigest: digests.cells, pixelsDigest: digests.whole, frame }
           }
-          const { refusal: instability } = await captureStabilityPair(
+          const { refusal: instability, second: seedCapture } = await captureStabilityPair(
             "editing.decsace",
             "pixels",
             () => stabilityRead("editing.decsace: seed stability 1"),
             () => stabilityRead("editing.decsace: seed stability 2"),
           )
           if (instability) return instability
-          if (seed === undefined) throw new Error("editing.decsace: the stability pair read no seed frame")
+          const seed = seedCapture.frame
           ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
           const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
           ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)

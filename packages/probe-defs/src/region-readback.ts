@@ -666,17 +666,21 @@ export interface StabilityCapture {
  * fabricated. A pair whose reads both report no digest is not refused here: two absent digests
  * agree without showing anything about stability, so the arm that owns the frames names the missing
  * measurement when it compares them.
+ *
+ * It returns the pair's SECOND read, which is the frame both reads just agreed on. An arm that
+ * measures against a stable seed takes it from here rather than keeping its own mutable copy, so one
+ * read is both the stability witness and the seed and no unreachable absent-seed branch is needed.
  */
 export async function captureStabilityPair<T extends StabilityCapture>(
   id: string,
   evidence: "pixels" | "text",
   first: () => Promise<T>,
   second: () => Promise<T>,
-): Promise<{ refusal: ProbeResult | null }> {
+): Promise<{ refusal: ProbeResult | null; second: T }> {
   const stableA = await first()
   const stableB = await second()
   if (stableA.regionDigest === stableB.regionDigest && stableA.pixelsDigest === stableB.pixelsDigest) {
-    return { refusal: null }
+    return { refusal: null, second: stableB }
   }
   const refusal = inconclusive(
     id,
@@ -699,6 +703,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
         },
       }),
     },
+    second: stableB,
   }
 }
 
