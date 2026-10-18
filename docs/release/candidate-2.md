@@ -86,9 +86,9 @@ function remainderLabel(row) {
       <td class="c2-count-col">{{ group.capabilities.length }}</td>
       <td class="c2-state-col">
         <template v-if="group.included"><strong>Included</strong> on every measured context</template>
-        <template v-else-if="group.includedOn.length > 0"><strong>ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}</strong><template v-if="group.darkRuled.length > 0">; {{ darkRuledSentence(group) }} not measured (29918)</template></template>
+        <template v-else-if="group.includedOn.length > 0"><strong>ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}</strong><template v-if="group.darkRuled.length > 0">; {{ darkRuledSentence(group) }} not measured (30033)</template></template>
         <template v-else-if="group.heldBy.length > 0"><strong>HELD</strong> &mdash; below the bar on {{ group.heldBy.length }} of {{ published.length }} measured contexts</template>
-        <template v-else-if="group.darkHeldBy.length > 0"><strong>HELD</strong> &mdash; held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (29918)</template>
+        <template v-else-if="group.darkHeldBy.length > 0"><strong>HELD</strong> &mdash; held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (30033)</template>
         <template v-else><strong>HELD</strong> &mdash; no eligible measured context yet, so nothing is claimed</template>
         <template v-if="!group.included && group.includedOn.length > 0"> &mdash; included on {{ group.includedOn.join(', ') }}</template>
         <template v-if="group.heldBy.length > 0">; below the bar: {{ group.heldBy.map((row) => row.context + ' ' + row.decisive + '/' + row.denominator + ' (' + row.decisivePct + '%)').join(', ') }}</template>
