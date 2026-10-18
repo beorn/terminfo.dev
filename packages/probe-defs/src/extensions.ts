@@ -235,11 +235,19 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
 }
 
 /**
+ * Candidate test colours for the highlight-reset probes, tried in order. They differ from each other,
+ * so at most one can equal the colour a run starts on and a distinct change is always available.
+ */
+const HIGHLIGHT_TEST_COLOURS = ["3030/6060/9090", "9090/3030/6060", "6060/9090/3030"] as const
+
+/**
  * A highlight-colour RESET decides only against the colour the run started from — "the default" is
  * not a known constant. So: query the initial value, set a known colour and confirm the terminal
  * reports it, write the reset, query again, and compare that reading with the initial one. The
  * initial value is restored from a finally, so the run leaves the slot as it found it. A silent
- * initial read is inconclusive: without it a reset has nothing to be compared against.
+ * initial read is inconclusive: without it a reset has nothing to be compared against. The set colour
+ * is chosen to differ from the observed initial one, so a terminal that starts on the usual test
+ * value still gets an observable change to grade the reset against.
  */
 function highlightResetProbe(id: string, setCode: number, resetCode: number): ProbeDefinition {
   const querySeq = `\x1b]${setCode};?\x07`
@@ -247,7 +255,6 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     `\\x1b\\]${setCode};rgb:([0-9a-f]{1,4})/([0-9a-f]{1,4})/([0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
   )
-  const known = "3030/6060/9090"
   const read = async (ctx: TermContext) => {
     const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
     const match = reply.match
@@ -261,57 +268,66 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
   })
   return {
-    ...queryOnly(
-      probe(
-        id,
-        (ctx) => {
-          ctx.feed(`\x1b]${resetCode}\x07X`)
-          return notTestedResult(`highlight colour reset (OSC ${resetCode})`, { cell: ctx.getCell(0, 0) })
-        },
-        async (ctx): Promise<ProbeResult> => {
-          const initial = await read(ctx)
-          if (!initial) {
+    ...probe(
+      id,
+      (ctx) => {
+        ctx.feed(`\x1b]${resetCode}\x07X`)
+        return notTestedResult(`highlight colour reset (OSC ${resetCode})`, { cell: ctx.getCell(0, 0) })
+      },
+      async (ctx): Promise<ProbeResult> => {
+        const initial = await read(ctx)
+        if (!initial) {
+          return inconclusive(
+            `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
+          )
+        }
+        // A set that the terminal reports back as the initial colour would let both readings agree
+        // while the reset is ignored, so the changed state has to be distinct from the initial one.
+        const known = HIGHLIGHT_TEST_COLOURS.find((candidate) => candidate !== initial.rgb)
+        if (!known) {
+          return inconclusive(
+            `${id}: every candidate test colour equals the initial ${initial.rgb}, so no observable change is available to grade a reset against`,
+          )
+        }
+        try {
+          ctx.write(`\x1b]${setCode};rgb:${known}\x07`)
+          const applied = await read(ctx)
+          if (!applied) {
             return inconclusive(
-              `${id}: OSC ${setCode} did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it`,
+              `${id}: the known colour was not read back after OSC ${setCode}; a reset cannot be graded against a set that did not apply`,
             )
           }
-          try {
-            ctx.write(`\x1b]${setCode};rgb:${known}\x07`)
-            const applied = await read(ctx)
-            if (!applied) {
-              return inconclusive(
-                `${id}: the known colour was not read back after OSC ${setCode}; a reset cannot be graded against a set that did not apply`,
-              )
-            }
-            if (applied.rgb !== known) {
-              return inconclusive(
-                `${id}: OSC ${setCode} reported ${applied.rgb} after setting ${known}, so the set did not take and a reset means nothing`,
-              )
-            }
-            ctx.write(`\x1b]${resetCode}\x07`)
-            const afterReset = await read(ctx)
-            if (!afterReset) return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`)
-            const ok = afterReset.rgb === initial.rgb
-            return {
-              pass: ok,
-              response: JSON.stringify({ initial: initial.raw, set: applied.raw, afterReset: afterReset.raw }),
-              observation: { outcome: ok ? "supported" : "unsupported", evidence: "query" },
-              assertions: [
-                {
-                  kind: (ok ? "positive" : "negative") as "positive" | "negative",
-                  expected: `${id}: OSC ${setCode} reports the initial ${initial.rgb} after OSC ${resetCode}`,
-                  observed: afterReset.raw,
-                },
-              ],
-            }
-          } finally {
-            // Restore what the run found; a probe never leaves a known test colour behind.
-            ctx.write(`\x1b]${setCode};rgb:${initial.rgb}\x07`)
+          if (applied.rgb !== known) {
+            return inconclusive(
+              `${id}: OSC ${setCode} reported ${applied.rgb} after setting ${known}, so the set did not take and a reset means nothing`,
+            )
           }
-        },
-        "query",
-      ),
+          ctx.write(`\x1b]${resetCode}\x07`)
+          const afterReset = await read(ctx)
+          if (!afterReset) return inconclusive(`${id}: OSC ${setCode} did not answer after OSC ${resetCode}`)
+          const ok = afterReset.rgb === initial.rgb
+          return {
+            pass: ok,
+            response: JSON.stringify({ initial: initial.raw, set: applied.raw, afterReset: afterReset.raw }),
+            observation: { outcome: ok ? "supported" : "unsupported", evidence: "query" },
+            assertions: [
+              {
+                kind: (ok ? "positive" : "negative") as "positive" | "negative",
+                expected: `${id}: OSC ${setCode} reports the initial ${initial.rgb} after OSC ${resetCode}`,
+                observed: afterReset.raw,
+              },
+            ],
+          }
+        } finally {
+          // Restore what the run found; a probe never leaves a known test colour behind.
+          ctx.write(`\x1b]${setCode};rgb:${initial.rgb}\x07`)
+        }
+      },
+      "query",
     ),
+    // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
+    // the same classification the OSC 10-14 reset probes carry.
+    termNeedsDisposable: true,
     termlessObservationEvidence: "none",
   }
 }

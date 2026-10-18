@@ -562,6 +562,10 @@ test.each([
   ["extensions.osc119-reset-highlight-fg", 19, 119],
 ] as const)("%s decides the reset against the initial colour it read first", async (id, setCode, resetCode) => {
   const definition = callback(id)
+  // It mutates the slot, so the collector's disposable-receipt classification applies — the same one
+  // the OSC 10-14 reset probes carry. A query-only arm would bypass the ownership admission.
+  expect(definition.termWrites).toBeUndefined()
+  expect(definition.termNeedsDisposable).toBe(true)
   const honest = highlightTerminal(setCode, resetCode, "1111/2222/3333")
   const supported = await definition.term!(honest.ctx)
   expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
@@ -573,10 +577,24 @@ test.each([
   const ignoring = highlightTerminal(setCode, resetCode, "1111/2222/3333", true)
   const unsupported = await definition.term!(ignoring.ctx)
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  // The honest terminal restores the slot with its own reset, which would hide a missing finally.
+  // This one leaves the test colour behind unless the run restores what it found.
+  expect(ignoring.colour()).toBe("1111/2222/3333")
 
   // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
   const silent = await definition.term!(replayContext(new Map()))
   expect(silent.observation?.outcome).toBe("inconclusive")
+
+  // A terminal that starts on the default test colour still needs an observed change: a fixed set
+  // colour would let both readings agree while the reset was ignored.
+  const collisionIgnoring = highlightTerminal(setCode, resetCode, "3030/6060/9090", true)
+  const collisionUnsupported = await definition.term!(collisionIgnoring.ctx)
+  expect(collisionUnsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(collisionIgnoring.colour()).toBe("3030/6060/9090")
+
+  const collisionHonest = highlightTerminal(setCode, resetCode, "3030/6060/9090")
+  const collisionSupported = await definition.term!(collisionHonest.ctx)
+  expect(collisionSupported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
 })
 
 test.each([
