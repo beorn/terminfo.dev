@@ -584,7 +584,10 @@ export async function captureRegionVerdict(
     return captureRegionReadbackDecision(
       ctx,
       id,
-      { ...spec, pixelGeometry: undefined, geometrySource: "cells read from the terminal's own text" },
+      // True on both text arms: Windows reads the console host's buffer and macOS reads the app's
+      // own snapshot, so a label claiming "the terminal's own text" is false on Windows. The host
+      // itself has one home, the per-read bufferOwner in the frame trace (30033 ruling f1f3c64b).
+      { ...spec, pixelGeometry: undefined, geometrySource: "cells read from a text source, not from pixels" },
       read,
     )
   }
