@@ -573,7 +573,7 @@ describe("release 1 Linux launcher flags", () => {
     expect(ledger.kitty?.runId).toBe(bar.run.runId)
     expect(ledger.kitty?.selection).toBe("site-selected")
     expect(bar.run.suiteId).toBe(frozenSuiteIdFor(CONTENT, "candidate2"))
-  })
+  }, 30_000)
 
   // linuxLedger reads the whole committed corpus, which grows with every admitted run, so this row carries the
   // budget the corpus-reading consumer-selection rows use (CI took 5054 ms against the 5000 ms default).
