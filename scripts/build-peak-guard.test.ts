@@ -120,6 +120,23 @@ describe("startPeakGuard", () => {
     ])
   })
 
+  it("enforces the ceiling on a phase-boundary sample before a later low reading", () => {
+    vi.useFakeTimers()
+    let rss = 900
+    const onBreach = vi.fn()
+    const guard = startPeakGuard({ ceilingBytes: 1000, rss: () => rss, onBreach })
+    guard.phase("bundles")
+    rss = 1300
+    guard.phase("rendering pages")
+    const breachesAtBoundary = onBreach.mock.calls.length
+    rss = 900
+    guard.stop()
+    expect(breachesAtBoundary).toBe(1)
+    expect(onBreach).toHaveBeenCalledTimes(1)
+    expect(onBreach.mock.calls[0]?.[0]).toMatchObject({ bytes: 1300, peakBytes: 1300, phase: "bundles" })
+    expect(guard.peakBytes()).toBe(1300)
+  })
+
   it("names a phase it never sampled instead of dropping it or inventing a zero", () => {
     const guard = startPeakGuard({ ceilingBytes: 10_000, rss: () => 100, onBreach: vi.fn() })
     guard.stop()

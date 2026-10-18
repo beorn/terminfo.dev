@@ -155,7 +155,7 @@ export function startPeakGuard(options: PeakGuardOptions): PeakGuard {
       // Sample before leaving the current phase: a phase can begin and end between two timer ticks, and this
       // boundary sample is then its only measurement. Repeating the same label (the render hook runs per page)
       // is not a transition and takes no sample.
-      if (label !== phase && !stopped) measure()
+      if (label !== phase && !stopped) tick()
       phase = label
       named.add(label)
     },
