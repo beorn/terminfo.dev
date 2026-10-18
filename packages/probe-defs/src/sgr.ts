@@ -4,12 +4,14 @@ import {
   sgrProbe,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
+  sgrPlainFixtureTooSmall,
   sgrReadbackDecision,
   type SgrReadback,
   probe,
 } from "./helpers.ts"
 import { captureRegionVerdict } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
+import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
 
@@ -44,12 +46,22 @@ function sgrTermReadback(
       const verdict = await captureRegionVerdict(ctx, id, region, "query")
       if (verdict) return verdict
     }
+    const colour = COLOUR_CAPTURE[id]
+    if (colour) {
+      const verdict = await captureRegionVerdict(ctx, id, colour, "query")
+      if (verdict) return colourCaptureVerdict(id, verdict)
+    }
     return fallback(ctx)
   }
 }
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
-async function consumedSgr(ctx: TermContext, id: string, sequence: string): Promise<ProbeResult> {
+async function consumedSgr(
+  ctx: TermContext,
+  id: string,
+  sequence: string,
+  controlLabel = `${id} control`,
+): Promise<ProbeResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -61,6 +73,8 @@ async function consumedSgr(ctx: TermContext, id: string, sequence: string): Prom
         "\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample,
         id,
         { sample, startRow: 3, startCol: 3, sampleCells: sample.length },
+        undefined,
+        controlLabel,
       )
     } finally {
       ctx.write("\x1b[0m")
@@ -155,49 +169,58 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
   const sequence = "\x1b[4m\x1b[58;2;255;0;128m"
   // DECRQSS must report the requested RGB, not merely SGR 58; the termless path independently
   // calibrates the exact color against default-color controls.
-  const original = sgrProbe(id, sequence, () => null, undefined, {
-    require: [4, 58],
-    requireTokens: ["58:2:255:0:128"],
-  })
+  const readback: SgrReadback = { require: [4, 58], requireTokens: ["58:2:255:0:128"] }
+  const armed = sgrTermReadback(id, sequence, readback, (ctx) => consumedSgr(ctx, id, sequence, "Unstyled text sample"))
   return {
-    ...original,
-    termless(ctx) {
-      // Two default-color controls distinguish an exposed, foreground-following
-      // underline from a backend that simply ignores SGR 58.
-      ctx.feed("\x1b[4m\x1b[59m\x1b[38;2;0;0;255mA\x1b[38;2;0;255;0mB\x1b[58;2;255;0;128mX")
-      const blueControl = ctx.getCell(0, 0)
-      const greenControl = ctx.getCell(0, 1)
-      const target = ctx.getCell(0, 2)
-      const state = { blueControl, greenControl, target }
-      const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
-      if (
-        blueControl.char !== "A" ||
-        greenControl.char !== "B" ||
-        target.char !== "X" ||
-        !blueControl.underline ||
-        !greenControl.underline ||
-        !target.underline ||
-        target.underlineColor == null
-      ) {
-        return parserStateResult(null, expected, state, "Underlined control, target, or target color was not exposed")
-      }
-      if (greenControl.underlineColor && sameRgb(greenControl.underlineColor, requestedUnderlineColor)) {
-        return parserStateResult(null, expected, state, "Default underline already matches the requested color")
-      }
-      if (sameRgb(target.underlineColor, requestedUnderlineColor)) return parserStateResult(true, expected, state)
-      if (
-        blueControl.fg &&
-        greenControl.fg &&
-        !sameRgb(blueControl.fg, greenControl.fg) &&
-        blueControl.underlineColor &&
-        greenControl.underlineColor &&
-        !sameRgb(blueControl.underlineColor, greenControl.underlineColor)
-      ) {
-        return parserStateResult(false, expected, state)
-      }
-      return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
-    },
-
+    ...probe(
+      id,
+      (ctx) => {
+        // Two default-color controls distinguish an exposed, foreground-following
+        // underline from a backend that simply ignores SGR 58.
+        ctx.feed("\x1b[4m\x1b[59m\x1b[38;2;0;0;255mA\x1b[38;2;0;255;0mB\x1b[58;2;255;0;128mX")
+        const blueControl = ctx.getCell(0, 0)
+        const greenControl = ctx.getCell(0, 1)
+        const target = ctx.getCell(0, 2)
+        const state = { blueControl, greenControl, target }
+        const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
+        if (
+          blueControl.char !== "A" ||
+          greenControl.char !== "B" ||
+          target.char !== "X" ||
+          !blueControl.underline ||
+          !greenControl.underline ||
+          !target.underline ||
+          target.underlineColor == null
+        ) {
+          return parserStateResult(null, expected, state, "Underlined control, target, or target color was not exposed")
+        }
+        if (greenControl.underlineColor && sameRgb(greenControl.underlineColor, requestedUnderlineColor)) {
+          return parserStateResult(null, expected, state, "Default underline already matches the requested color")
+        }
+        if (sameRgb(target.underlineColor, requestedUnderlineColor)) return parserStateResult(true, expected, state)
+        if (
+          blueControl.fg &&
+          greenControl.fg &&
+          !sameRgb(blueControl.fg, greenControl.fg) &&
+          blueControl.underlineColor &&
+          greenControl.underlineColor &&
+          !sameRgb(blueControl.underlineColor, greenControl.underlineColor)
+        ) {
+          return parserStateResult(false, expected, state)
+        }
+        return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
+      },
+      async (ctx) => {
+        // The readback writes the sequence before it answers, so the fixture's own geometry refusal
+        // has to run ahead of it — a 1x2 terminal must refuse with a zero-byte trace.
+        const refusal = sgrPlainFixtureTooSmall(ctx)
+        return refusal ?? (await armed(ctx))
+      },
+      // Unchanged from the sgrProbe this replaced: an exception in this arm is recorded as query
+      // evidence, because the arm asks DECRQSS before any capture falls back.
+      "query",
+    ),
+    termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
   }
 }
