@@ -252,6 +252,18 @@ test("without a capture adapter a converted row refuses by name and writes nothi
   expect(frames).toEqual([])
 })
 
+const DECSACE_GEOMETRY = {
+  geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+  source: "measured by complete raster calibration",
+} as const
+const DECSACE_RECTANGLE = { x: 0, y: 0, width: 64, height: 32 }
+
+function decsacePixelContext() {
+  const fixture = captureContext(24, 80)
+  fixture.context.captureGeometry = DECSACE_GEOMETRY
+  return fixture
+}
+
 /**
  * A capture adapter that MODELS DECSACE and DECCARA instead of handing every capture its own
  * digest: the digest is a function of the cells the writes actually left on screen. A double that
@@ -288,6 +300,7 @@ function decsaceCaptureContext() {
   const context: TermContext = {
     rows: 24,
     cols: 80,
+    captureGeometry: DECSACE_GEOMETRY,
     write: (sequence) => {
       writes.push(sequence)
       sinceCapture += sequence
@@ -308,7 +321,11 @@ function decsaceCaptureContext() {
       label,
       capturedAt: index,
       ref: `sha256:${createHash("sha256").update(`${index}:${label}`).digest("hex")}`,
-      pixelsDigest: digest(),
+      regionDigest: digest(),
+      pixelsDigest: `sha256:${createHash("sha256")
+        .update("whole:" + digest())
+        .digest("hex")}`,
+      regionRectangle: DECSACE_RECTANGLE,
     }
     frameWrites.push(sinceCapture)
     sinceCapture = ""
@@ -339,7 +356,7 @@ test("editing.decsace grades the frames its own writes produced", async () => {
     "editing.decsace: DECSACE 0 stream frame",
   ])
   const observed = JSON.parse(String(result.assertions?.[0]?.observed)) as Record<string, string>
-  expect(observed.kind).toBe("whole")
+  expect(observed.kind).toBe("cells")
   expect(observed.seed).not.toBe(observed.rectangle)
   expect(observed.seed).not.toBe(observed.stream)
   expect(observed.rectangle).not.toBe(observed.stream)
@@ -412,9 +429,9 @@ test("editing.decsace without a capture adapter still clears its DECSACE extent"
  * rather than shipping. The refs handed to the parser are the frames' own, so the parser's
  * absent-ref clause cannot fire on this arm; the two failures above are the ones it can produce.
  */
-test("every DECSACE pixel return carries a target citation the run parser accepts", async () => {
+test("every DECSACE pixel return carries target frames with a valid screenshot citation", async () => {
   const counted = (digestOf: (reads: number) => string | undefined) => () => {
-    const { context } = captureContext(24, 80)
+    const { context } = decsacePixelContext()
     let reads = 0
     context.capture = async ({ role, label }) => {
       reads += 1
@@ -424,7 +441,8 @@ test("every DECSACE pixel return carries a target citation the run parser accept
         label,
         capturedAt: reads,
         ref: `sha256:${String(reads).repeat(64)}`,
-        ...(pixelsDigest === undefined ? {} : { pixelsDigest }),
+        ...(pixelsDigest === undefined ? {} : { regionDigest: pixelsDigest, pixelsDigest }),
+        regionRectangle: DECSACE_RECTANGLE,
       }
     }
     return context
@@ -446,7 +464,7 @@ test("every DECSACE pixel return carries a target citation the run parser accept
       name: "no measured digest",
       build: counted((reads) => (reads <= 2 ? `sha256:${"0".repeat(64)}` : undefined)),
       outcome: "inconclusive",
-      note: "do not all report one measured digest kind",
+      note: "without the required pixel cells digest and rectangle",
     },
     {
       name: "target did not move",
@@ -476,19 +494,20 @@ test("every DECSACE pixel return carries a target citation the run parser accept
 })
 
 /**
- * A text-only double is the macOS case: its digest cannot see an attribute, so both extents read the
- * same frame. That must be inconclusive BY NAME — never a pass (nothing was separated) and never a
+ * An attribute-blind pixel double leaves both extents as the same measured cell region. That must be inconclusive BY NAME — never a pass (nothing was separated) and never a
  * negative (the attribute may well have been applied).
  */
 test("editing.decsace reads equal extents inconclusive by name, never supported", async () => {
-  const { context, frames } = captureContext(24, 80)
+  const { context, frames } = decsacePixelContext()
   context.capture = async ({ role, label }) => {
     const frame = {
       role,
       label,
       capturedAt: 1,
       ref: `sha256:${"a".repeat(64)}`,
+      regionDigest: `sha256:${"a".repeat(64)}`,
       pixelsDigest: `sha256:${"a".repeat(64)}`,
+      regionRectangle: DECSACE_RECTANGLE,
     }
     frames.push(frame)
     return frame
@@ -511,10 +530,10 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
  * `ref` is the RETAINED ARTIFACT, and the shared type says
  * encoded container chunks can differ between identical images. Comparing refs alone therefore lets
  * unchanged pixels read as a measured extent difference. The arm must compare the frame kind measured
- * digest (pixelsDigest for pixels, cellDigest for text cells) and name the gap when one is absent.
+ * cell-region digest and name the gap when one is absent; whole-window changes cannot decide this arm.
  */
 test("editing.decsace compares measured digests, not retained artifact refs", async () => {
-  const { context } = captureContext(24, 80)
+  const { context } = decsacePixelContext()
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
@@ -525,7 +544,9 @@ test("editing.decsace compares measured digests, not retained artifact refs", as
       label,
       capturedAt: reads,
       ref: `sha256:${String(reads).repeat(64)}`,
+      regionDigest: `sha256:${"f".repeat(64)}`,
       pixelsDigest: `sha256:${"f".repeat(64)}`,
+      regionRectangle: DECSACE_RECTANGLE,
     }
   }
   const result = await find("editing.decsace").term!(context)
@@ -539,7 +560,7 @@ test("editing.decsace compares measured digests, not retained artifact refs", as
 })
 
 test("editing.decsace names an adapter that reports no measured digest", async () => {
-  const { context } = captureContext(24, 80)
+  const { context } = decsacePixelContext()
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
@@ -551,12 +572,13 @@ test("editing.decsace names an adapter that reports no measured digest", async (
       label,
       capturedAt: reads,
       ref: `sha256:${String(reads).repeat(64)}`,
-      ...(reads <= 2 ? { pixelsDigest: `sha256:${"0".repeat(64)}` } : {}),
+      ...(reads <= 2 ? { regionDigest: `sha256:${"0".repeat(64)}` } : {}),
+      regionRectangle: DECSACE_RECTANGLE,
     }
   }
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(String(result.observation?.note)).toContain("do not all report one measured digest kind")
+  expect(String(result.observation?.note)).toContain("without the required pixel cells digest and rectangle")
   expect(result.assertions).toBeUndefined()
 })
 
@@ -566,7 +588,7 @@ test("editing.decsace names an adapter that reports no measured digest", async (
  * difference. One kind must be present on ALL three frames, or the row is inconclusive.
  */
 test("editing.decsace refuses frames whose measured digests are of different kinds", async () => {
-  const { context } = captureContext(24, 80)
+  const { context } = decsacePixelContext()
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
@@ -581,7 +603,7 @@ test("editing.decsace refuses frames whose measured digests are of different kin
   }
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(String(result.observation?.note)).toContain("one measured digest kind")
+  expect(String(result.observation?.note)).toContain("without the required pixel cells digest and rectangle")
   expect(result.assertions).toBeUndefined()
 })
 
@@ -591,7 +613,7 @@ test("editing.decsace refuses frames whose measured digests are of different kin
  * the same static screen cannot decide anything.
  */
 test("editing.decsace refuses a capture that is not byte-stable", async () => {
-  const { context } = captureContext(24, 80)
+  const { context } = decsacePixelContext()
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
@@ -603,6 +625,7 @@ test("editing.decsace refuses a capture that is not byte-stable", async () => {
       ref: `sha256:${mark}`,
       regionDigest: `sha256:${mark}`,
       pixelsDigest: `sha256:${mark}`,
+      regionRectangle: DECSACE_RECTANGLE,
     }
   }
   const result = await find("editing.decsace").term!(context)
@@ -615,7 +638,7 @@ test("editing.decsace refuses a capture that is not byte-stable", async () => {
     stability: { regionDigest: string[]; pixelsDigest: string[] }
   }
   expect(response.stability.regionDigest).toEqual([`sha256:${"1".repeat(64)}`, `sha256:${"2".repeat(64)}`])
-  expect(response.stability.pixelsDigest).toEqual([`sha256:${"1".repeat(64)}`, `sha256:${"2".repeat(64)}`])
+  expect(response.stability.pixelsDigest).toEqual([null, null])
   expect(result.observation?.screenshotRef).toBe(`sha256:${"2".repeat(64)}`)
   expect(result.observation?.frames ?? []).toHaveLength(0)
 })
@@ -647,9 +670,9 @@ test("editing.decsace refuses a seed that changes between the pair's two reads",
   // The first read already came after the seed paint, so the pair measured the seeded screen.
   expect(frameWrites[0]).toBe(`\x1b[0m\x1b[?25l${seed}`)
   expect(frameWrites[1]).toBe("\x1b[1;1HX")
-  const response = JSON.parse(String(result.response)) as { stability: { pixelsDigest: string[] } }
-  expect(response.stability.pixelsDigest).toHaveLength(2)
-  expect(response.stability.pixelsDigest[0]).not.toBe(response.stability.pixelsDigest[1])
+  const response = JSON.parse(String(result.response)) as { stability: { regionDigest: string[] } }
+  expect(response.stability.regionDigest).toHaveLength(2)
+  expect(response.stability.regionDigest[0]).not.toBe(response.stability.regionDigest[1])
   expect(result.observation?.screenshotRef).toBe(refs[1])
   expect(result.observation?.frames ?? []).toHaveLength(0)
 })
@@ -659,14 +682,22 @@ test("editing.decsace refuses a seed that changes between the pair's two reads",
  * so an ignored DECCARA cannot be separated from a digest that cannot see attributes.
  */
 test("editing.decsace refuses a target frame that did not move from the seed", async () => {
-  const { context } = captureContext(24, 80)
+  const { context } = decsacePixelContext()
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
     // Order: the seed paint, the pair's two reads of that seeded screen (the second IS the seed
     // frame), then the rectangle and the stream extents.
     const digest = reads <= 2 ? "seed" : reads === 3 ? "rect" : "seed"
-    return { role, label, capturedAt: reads, ref: `sha256:${digest}`, pixelsDigest: `sha256:${digest}` }
+    return {
+      role,
+      label,
+      capturedAt: reads,
+      ref: `sha256:${digest}`,
+      regionDigest: `sha256:${digest}`,
+      pixelsDigest: `sha256:${digest}`,
+      regionRectangle: DECSACE_RECTANGLE,
+    }
   }
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })

@@ -267,7 +267,10 @@ function regionRefusal(
   }
   const { region, sentinel, cursorRow } = spec
   const edges = [region.top, region.left, region.bottom, region.right]
-  if (edges.some((value) => !Number.isSafeInteger(value)) || (cursorRow !== undefined && !Number.isSafeInteger(cursorRow))) {
+  if (
+    edges.some((value) => !Number.isSafeInteger(value)) ||
+    (cursorRow !== undefined && !Number.isSafeInteger(cursorRow))
+  ) {
     return refused(id, `${id}: capture-region readback needs integer cell edges`)
   }
   if (region.top < 1 || region.left < 1 || region.bottom < region.top || region.right < region.left) {

@@ -1,7 +1,13 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermlessContext, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { beginCaptureLifecycle, captureStabilityPair, endCaptureLifecycle, captureRegionGeometry, cropPositionRefusal } from "./region-readback.ts"
+import {
+  beginCaptureLifecycle,
+  captureStabilityPair,
+  endCaptureLifecycle,
+  captureRegionGeometry,
+  cropPositionRefusal,
+} from "./region-readback.ts"
 import {
   parserStateResult,
   probe,
@@ -642,11 +648,50 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
         }
         if (ctx.captureKind === "text-cells") {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note: "editing.decsace: text-cells captures cannot establish this pixel-cell extent comparison" } }
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "editing.decsace: text-cells captures cannot establish this pixel-cell extent comparison",
+            },
+          }
         }
         const cells = { top: 1, left: 1, bottom: 2, right: 8 }
         const reported = await captureRegionGeometry(ctx, "editing.decsace", { region: cells, minRows: 2, minCols: 8 })
         if ("pass" in reported) return reported
+        const captureEligibilityRefusal = (captures: ObservationFrame[]): ProbeResult | null => {
+          const text = captures.find((frame) => frame.kind === "text-cells")
+          if (text) {
+            return {
+              pass: false,
+              response: JSON.stringify({ frame: text.ref, kind: text.kind }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "text",
+                note: `editing.decsace: ${text.label} returned text-cells instead of the pixel cells required for this extent comparison`,
+              },
+            }
+          }
+          const invalid = captures.find(
+            (frame) => frameDigests(frame).cells === undefined || frame.regionRectangle === undefined,
+          )
+          if (!invalid) return null
+          const target = captures.findLast((frame) => frame.role === "target")
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target?.ref ?? invalid.ref,
+              ...(target ? { frames: captures.slice(-3) } : {}),
+              note: `editing.decsace: ${invalid.label} is pixels without the required pixel cells digest and rectangle`,
+            },
+          }
+        }
         try {
           // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
           // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
@@ -658,7 +703,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           // compared-cell digest.
           beginCaptureLifecycle(ctx)
           ctx.write(DECSACE_PAINT)
-          const stabilityFrames: import("./types.ts").ObservationFrame[] = []
+          const stabilityFrames: ObservationFrame[] = []
           const stabilityRead = async (label: string) => {
             const frame = await capture({ role: "control", label, cells, pixelGeometry: reported.geometry })
             stabilityFrames.push(frame)
@@ -671,24 +716,49 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             () => stabilityRead("editing.decsace: seed stability 1"),
             () => stabilityRead("editing.decsace: seed stability 2"),
           )
+          const seedRefusal = captureEligibilityRefusal(stabilityFrames)
+          if (seedRefusal) return seedRefusal
           if (instability) return instability
           const seed = seedCapture.frame
           ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
-          const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame", cells, pixelGeometry: reported.geometry })
+          const rectangle = await capture({
+            role: "target",
+            label: "editing.decsace: DECSACE 2 rectangle frame",
+            cells,
+            pixelGeometry: reported.geometry,
+          })
           ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
           // The stream frame is the control: the same DECCARA under the other extent. Equal frames mean
           // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
-          const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame", cells, pixelGeometry: reported.geometry })
+          const stream = await capture({
+            role: "target",
+            label: "editing.decsace: DECSACE 0 stream frame",
+            cells,
+            pixelGeometry: reported.geometry,
+          })
           const allFrames = [...stabilityFrames, rectangle, stream]
           const frames = [seed, rectangle, stream]
           const kind = "cells"
           const measured = frames.map((frame) => frameDigests(frame).cells)
-          const observed = JSON.stringify({ kind, seed: seed.ref, rectangle: rectangle.ref, stream: stream.ref, digests: measured })
-          const invalid = allFrames.find((frame) => frame.kind === "text-cells" || frameDigests(frame).cells === undefined || frame.regionRectangle === undefined)
-          if (invalid) {
-            return { pass: false, response: observed, observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "pixels", screenshotRef: stream.ref, frames: frames.filter((frame) => frame.kind !== "text-cells"), note: `editing.decsace: ${invalid.label} is ${invalid.kind ?? "pixels"} without the required pixel cells digest and rectangle` } }
-          }
-          const cropRefusal = cropPositionRefusal({ id: "editing.decsace", response: observed, frames, screenshotRef: stream.ref, compared: allFrames.map((frame) => ({ role: frame.label, rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle })) })
+          const observed = JSON.stringify({
+            kind,
+            seed: seed.ref,
+            rectangle: rectangle.ref,
+            stream: stream.ref,
+            digests: measured,
+          })
+          const frameRefusal = captureEligibilityRefusal(allFrames)
+          if (frameRefusal) return frameRefusal
+          const cropRefusal = cropPositionRefusal({
+            id: "editing.decsace",
+            response: observed,
+            frames,
+            screenshotRef: stream.ref,
+            compared: allFrames.map((frame) => ({
+              role: frame.label,
+              rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+            })),
+          })
           if (cropRefusal) return cropRefusal
           if (measured[1] === measured[2]) {
             return {
