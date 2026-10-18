@@ -123,7 +123,12 @@ const reasonExplanation = computed(() => (props.cell?.reason ? reasonExplanation
 const textExplanation = computed(() =>
   textEvidenceExplanation(
     props.cell && props.version
-      ? { evidence: props.cell.evidence, conclusive: props.cell.conclusive, os: props.version.target.os }
+      ? {
+          evidence: props.cell.evidence,
+          conclusive: props.cell.conclusive,
+          os: props.version.target.os,
+          host: props.cell.host,
+        }
       : undefined,
   ),
 )

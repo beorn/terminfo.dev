@@ -10,6 +10,7 @@ import {
   ALL_PROBES as PROBE_DEFS,
   type CaptureCells,
   type CapturePixelGeometry,
+  type ConsoleBufferOwner,
   type InputFixture,
   type NotTestedCoverage,
   type Observation,
@@ -192,6 +193,23 @@ function selectAppProbes(ids?: string[]): { expected: ProbeDefinition[]; selecte
       ...requested.filter((probe) => probe.id.startsWith("extensions.osc52-")),
     ],
   }
+}
+
+/**
+ * The console host a text capture recorded, in the shape the observation publishes: image, the
+ * executable this run opened, and that executable's digest. `pid` and `ppid` stay in the trace,
+ * because they name one process instance rather than a host a reader can check (30055 AC4; @cto
+ * ruling 6255e75d). A malformed owner is loud here rather than dropped.
+ */
+function capturedConsoleHost(trace: Record<string, unknown>): ConsoleBufferOwner | undefined {
+  const owner = trace.bufferOwner
+  if (owner === undefined) return undefined
+  if (typeof owner !== "object" || owner === null) throw new Error("capture trace bufferOwner is not an object")
+  const { image, executablePath, executableSha256 } = owner as Record<string, unknown>
+  if (typeof image !== "string" || typeof executablePath !== "string" || typeof executableSha256 !== "string") {
+    throw new Error("capture trace bufferOwner is missing image, executablePath or executableSha256")
+  }
+  return { image, executablePath, executableSha256 }
 }
 
 /**
@@ -643,9 +661,13 @@ export async function runProbeBatch(
         const resized =
           preGeometry?.status === "measured" &&
           (post?.status !== "measured" || post.rows !== preGeometry.rows || post.cols !== preGeometry.cols)
+        // The capture trace is where a text read records whose buffer it returned; the observation
+        // carries that host so no consumer parses it out of a caption (30055 AC4).
+        const host = captures.map((capture) => capturedConsoleHost(capture.trace)).find((value) => value !== undefined)
         batch.observations.push({
           featureId: probe.id,
           ...result.observation,
+          ...(host === undefined ? {} : { host }),
           ...(result.note && !result.observation.note ? { note: result.note } : {}),
           ...(resized
             ? {

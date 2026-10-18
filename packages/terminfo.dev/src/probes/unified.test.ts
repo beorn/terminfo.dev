@@ -1273,6 +1273,60 @@ it("keeps a text frame's ref out of screenshotRefs on the row whose verdict read
   expect(batch.textSnapshotRefs).toEqual([...new Set(refs)])
 })
 
+// 30055 AC4: the host a text capture actually recorded reaches the observation as image, path and
+// digest. `pid` and `ppid` stay in the artifact trace, because they name one process instance rather
+// than a host a reader can check (@cto ruling 6255e75d conditions 1 and 5).
+it("carries the console host a text capture recorded onto the observation, without its pids", async () => {
+  verifiedBatchFixture()
+  let reads = 0
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  const owner = {
+    image: "OpenConsole.exe",
+    pid: 7216,
+    ppid: 4684,
+    executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+    executableSha256: `sha256:${"c".repeat(64)}`,
+  }
+  const batch = await runProbeBatch({
+    ids: ["erase.el-with-attrs"],
+    captureKind: "text-cells",
+    captureGeometryRefusal: "the app answers no cell geometry",
+    capture: async ({ role, label }) => {
+      reads += 1
+      const ref = `sha256:${String(reads).padStart(64, "0")}`
+      return {
+        frame: {
+          kind: "text-cells" as const,
+          role,
+          label,
+          capturedAt: reads,
+          ref,
+          cellDigest: ref,
+          frameDigest: ref,
+          cellRectangle: { top: 1, left: 1, bottom: 24, right: 80 },
+        },
+        trace: {
+          kind: "text-cells",
+          retained: "snapshot.txt",
+          source: "the console host's buffer",
+          bufferOwner: owner,
+        },
+      }
+    },
+    ownedTerminal: geometryOwner(measured(24, 80)),
+  })
+  const observation = batch.observations.find((item) => item.featureId === "erase.el-with-attrs")
+  expect(observation).toMatchObject({ evidence: "text" })
+  expect(observation?.host).toEqual({
+    image: "OpenConsole.exe",
+    executablePath: owner.executablePath,
+    executableSha256: owner.executableSha256,
+  })
+  // The artifact still carries the pids; the observation never does.
+  expect(batch.rawReplies["erase.el-with-attrs"]).toContain('"pid":7216')
+  expect(JSON.stringify(observation)).not.toContain("7216")
+})
+
 // Only the region readback can decide a row from cells. Every other consumer reads pixels, so a text
 // run hands it no adapter at all and it takes its own named no-capture branch instead of recording a
 // pixel claim over a text frame.

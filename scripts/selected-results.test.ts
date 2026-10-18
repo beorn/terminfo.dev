@@ -1915,6 +1915,82 @@ describe("selected results", () => {
     expect(cell?.conclusive).toBe(false)
   })
 
+  // 30055 AC4: the public cell carries the host the observation recorded, and a pixels row carries
+  // none — the site reads one structured field, never a caption parsed out of a raw reply.
+  it("carries the console host onto the public text cell, and a pixels cell has none", () => {
+    const content = temporaryContent()
+    const snapshot = Buffer.from("ab \ncd \n", "utf8")
+    const snapshotDigest = createHash("sha256").update(snapshot).digest("hex")
+    const snapshotRef = `sha256:${snapshotDigest}`
+    writeFileSync(join(content, "artifacts", `${snapshotDigest}.txt`), snapshot)
+    const textFrame = (role: "control" | "target", at: number) => ({
+      kind: "text-cells" as const,
+      role,
+      ref: snapshotRef,
+      capturedAt: at,
+      label: `${role} text`,
+      cellDigest: snapshotRef,
+      frameDigest: snapshotRef,
+      cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
+    })
+    const frames: [ObservationFrame, ObservationFrame] = [textFrame("control", 1), textFrame("target", 2)]
+    const host = {
+      image: "OpenConsole.exe",
+      executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+      executableSha256: `sha256:${"c".repeat(64)}`,
+    }
+    const textRun = run("windows-text-host", {
+      probeHash: "pixels",
+      assertions: [],
+      screenshotRefs: [],
+      textSnapshotRefs: [snapshotRef],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "text",
+          frames,
+          host,
+        },
+      ],
+    })
+    const measuredText = parseRun("windows-text-host.json", JSON.stringify(textRun), catalog)
+    const textProjection = projectResults([measuredText], [], catalog, { currentProbeHash: "current" })
+    const textCell = publicResults(textProjection, new Map()).projection.history["app:kitty"]?.[0]?.cells[
+      "extensions.graphics"
+    ]
+    expect(textCell?.host).toEqual(host)
+
+    const controlRef = `sha256:${createHash("sha256").update("control-png").digest("hex")}`
+    const targetRef = `sha256:${createHash("sha256").update("target-png").digest("hex")}`
+    const pixelsRun = run("windows-pixels", {
+      probeHash: "pixels",
+      assertions: [],
+      screenshotRefs: [controlRef, targetRef],
+      observations: [
+        {
+          featureId: "extensions.graphics",
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: targetRef,
+          frames: [
+            { role: "control", ref: controlRef, capturedAt: 1, label: "before" },
+            { role: "target", ref: targetRef, capturedAt: 2, label: "after" },
+          ],
+        },
+      ],
+    })
+    const measuredPixels = parseRun("windows-pixels.json", JSON.stringify(pixelsRun), catalog)
+    const pixelsProjection = projectResults([measuredPixels], [], catalog, { currentProbeHash: "current" })
+    const pixelsCell = publicResults(pixelsProjection, new Map()).projection.history["app:kitty"]?.[0]?.cells[
+      "extensions.graphics"
+    ]
+    expect(pixelsCell).toBeDefined()
+    expect(pixelsCell?.host).toBeUndefined()
+  })
+
   it("binds a text interpretation to the run's own frames, and keeps it non-conclusive", () => {
     const content = temporaryContent()
     const snapshot = Buffer.from("ab \ncd \n", "utf8")

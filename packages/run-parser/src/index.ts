@@ -1,11 +1,13 @@
 /** Canonical parser and decoder for immutable terminal runs. */
 import { createHash } from "node:crypto"
+import { isAbsolute, win32 } from "node:path"
 import {
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
   frameDigests,
   isNonMeasuringEvidence,
+  type ConsoleBufferOwner,
   type NotTestedCoverage,
   type Observation,
   type ObservationFrame,
@@ -410,6 +412,25 @@ export function parseObservationFrames(
   return frames
 }
 
+/** The console host a text read returned: its image, the executable this run opened, and that
+ * executable's digest. The digest keeps the `sha256:` prefix the 30042 source emits, and the path
+ * must be absolute as either platform writes it — the collector runs on Windows, the parser may not
+ * (30055 AC4; @cto ruling 6255e75d conditions 1 and 5). */
+function consoleBufferOwner(value: unknown, path: string, featureId: string): ConsoleBufferOwner {
+  if (!object(value)) fail(path, `host for ${featureId} is not an object`)
+  const image = asString(value.image, path, `host.image for ${featureId}`)
+  if (image.length === 0) fail(path, `host.image for ${featureId} is empty`)
+  const executablePath = asString(value.executablePath, path, `host.executablePath for ${featureId}`)
+  if (!isAbsolute(executablePath) && !win32.isAbsolute(executablePath)) {
+    fail(path, `host.executablePath for ${featureId} is not an absolute path`)
+  }
+  const executableSha256 = asString(value.executableSha256, path, `host.executableSha256 for ${featureId}`)
+  if (!/^sha256:[0-9a-f]{64}$/u.test(executableSha256)) {
+    fail(path, `host.executableSha256 for ${featureId} is not a sha256: digest`)
+  }
+  return { image, executablePath, executableSha256 }
+}
+
 function parseObservation(
   value: unknown,
   path: string,
@@ -423,6 +444,12 @@ function parseObservation(
   const featureId = asString(value.featureId, path, "observation.featureId")
   if (!catalog.has(featureId)) fail(path, `unknown feature ${featureId}`)
   validateObservationOutcome(value, path, featureId)
+  // A console host belongs to a text read alone: it names the program whose buffer the read
+  // returned, and a pixels row has no such program. Refused by name, like the frame stray fields,
+  // so no run can carry a host that nothing reads (30055 AC4; @cto ruling 6255e75d condition 2).
+  if (value.host !== undefined && value.evidence !== "text") {
+    fail(path, `${String(value.evidence)} observation for ${featureId} carries host, which only a text read records`)
+  }
   if (value.evidence === "none" && value.screenshotRef !== undefined) {
     fail(path, `none evidence for ${featureId} cannot carry screenshotRef`)
   }
@@ -480,6 +507,7 @@ function parseObservation(
   if (rawReplyRef) observation.rawReplyRef = rawReplyRef
   if (screenshotRef) observation.screenshotRef = screenshotRef
   if (frames) observation.frames = frames
+  if (value.host !== undefined) observation.host = consoleBufferOwner(value.host, path, featureId)
   if (value.note !== undefined) observation.note = asString(value.note, path, `note for ${featureId}`)
   validateObservation(observation, path, rawReplies, assertions)
   // A pixels verdict the collector decided in-run is a measurement, so the run alone must be able

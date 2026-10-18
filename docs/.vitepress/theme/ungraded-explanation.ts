@@ -1,3 +1,5 @@
+import type { ConsoleBufferOwner } from "@terminfo/probe-defs"
+
 /**
  * Why a text-evidence row is shown but not counted.
  *
@@ -11,11 +13,18 @@ export interface TextEvidenceRead {
   readonly evidence: string
   readonly conclusive: boolean
   readonly os: string
+  /** The console host the cited run recorded, when it has one. */
+  readonly host?: ConsoleBufferOwner
 }
 
 export function textEvidenceExplanation(read: TextEvidenceRead | undefined): string | undefined {
   if (read === undefined || read.evidence !== "text" || read.conclusive) return undefined
   if (read.os === "windows") {
+    // When the run recorded the host, the page names it and prints the digest in full, so a reader
+    // can check it rather than being told it exists somewhere (@cto ruling 6255e75d condition 3).
+    if (read.host !== undefined) {
+      return `Read as text from the console host’s buffer (${read.host.image}, ${read.host.executablePath}, ${read.host.executableSha256}), not from the cells the terminal drew — shown, not counted.`
+    }
     return "Read as text from the console host that owns the window’s buffer, not from the cells the terminal drew — shown, not counted. The host is recorded in the run artifact."
   }
   if (read.os === "macos") {

@@ -22,6 +22,25 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
     expect(text).toContain("recorded in the run artifact")
   })
 
+  // 30055 AC4: when the run records the host, the site names it — image, executable path and the
+  // FULL digest — so a reader can check the host rather than being told it exists somewhere
+  // (@cto ruling 6255e75d condition 3).
+  it("names the recorded console host, with its full digest, when the run carries one", () => {
+    const host = {
+      image: "OpenConsole.exe",
+      executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+      executableSha256: `sha256:${"b".repeat(64)}`,
+    }
+    const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "windows", host })
+    expect(text).toContain("OpenConsole.exe")
+    expect(text).toContain(host.executablePath)
+    expect(text).toContain(host.executableSha256)
+    expect(text).toContain("not counted")
+    // The digest is checkable on the page: no abbreviating ellipsis, and no deferral to the artifact.
+    expect(text).not.toContain("…")
+    expect(text).not.toContain("recorded in the run artifact")
+  })
+
   it("names the app's own text snapshot and the five readback shapes on macOS", () => {
     const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "macos" })
     expect(text).toContain("text snapshot")
