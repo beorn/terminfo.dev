@@ -29,7 +29,7 @@ import {
   writeSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { describe, expect, it, vi } from "vitest"
+import { afterAll, describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import * as catalog from "@terminfo/catalog"
 import { parseSuiteManifest } from "@terminfo/run-parser"
@@ -48,6 +48,39 @@ import {
   type LinuxLedger,
   type ProducedRun,
 } from "./release1-collection.ts"
+
+// Standalone checkouts have no superproject inputs; retain real hashing over private fixture bytes.
+const fingerprintFixture = await vi.hoisted(async () => {
+  const fs = await import("node:fs")
+  const { join, resolve, dirname } = await import("node:path")
+  const { tmpdir } = await import("node:os")
+  const { fileURLToPath } = await import("node:url")
+  const directory = fs.mkdtempSync(join(tmpdir(), "collection-fingerprint-"))
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+  const files = Object.fromEntries(
+    ["bun.lock", "flake.lock", "flake.nix"].map((name) => {
+      const fixture = join(directory, name)
+      fs.writeFileSync(fixture, `private collection fingerprint fixture: ${name}\n`)
+      return [resolve(root, "../..", name), fixture]
+    }),
+  )
+  return { directory, files }
+})
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>()
+  return {
+    ...actual,
+    readFileSync: ((
+      path: Parameters<typeof actual.readFileSync>[0],
+      options?: Parameters<typeof actual.readFileSync>[1],
+    ) =>
+      actual.readFileSync(
+        typeof path === "string" ? (fingerprintFixture.files[path] ?? path) : path,
+        options,
+      )) as typeof actual.readFileSync,
+  }
+})
+afterAll(() => rmSync(fingerprintFixture.directory, { recursive: true, force: true }))
 
 // Replace only the external terminal process owner; parsing and classification remain real.
 vi.mock("../packages/probes/collect-headless.ts", () => ({ collectHeadlessRuns: vi.fn() }))
@@ -705,6 +738,10 @@ it("fails collection by name and exit 1 for a required null route without admiss
     `
 import { mock } from "bun:test";
 import { writeFileSync } from "node:fs";
+const fs = await import("node:fs");
+const readFingerprintFile = fs.readFileSync;
+const fingerprintFiles = ${JSON.stringify(fingerprintFixture.files)};
+mock.module("node:fs", () => ({...fs, readFileSync: (path, ...args) => readFingerprintFile(typeof path === "string" ? fingerprintFiles[path] ?? path : path, ...args)}));
 const processes = await import("node:child_process");
 mock.module("node:child_process", () => ({...processes, spawnSync: () => ({ status: 1, stdout: "", stderr: "fixture external dispatch refused", signal: null })}));
 mock.module(${JSON.stringify(join(dirname(CONTENT), "packages/probes/collect-headless.ts"))}, () => ({collectHeadlessRuns: async (_selectors, directory) => ({directory, runs: [], failures: []})}));
