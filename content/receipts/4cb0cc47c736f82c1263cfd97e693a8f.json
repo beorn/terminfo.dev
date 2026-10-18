@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-18T16:11:47Z",
+  "runId": "360e246385e41c12b6c444ff96b8f9ef",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-29",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-u1cB9tKZ0nVmV8UHi6zq0esnSFX4flh3K0JjIQh5CE8=",
+    "revision": "cab25161054c50fd6c705db4ceefef0f1e5a9575"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev/luna3/29816/ac5-4f6fcc8c/wezterm4/360e246385e41c12b6c444ff96b8f9ef/prep/runner-bundle.tar",
+    "sha256": "8a722a07335d966429bfb1cb3cfacbfa0aa08dcf9a56b7435bc3ae5bdbbe12c0",
+    "narSha256": "sha256-A/pUplt1ebVCV+wmnGHQ874EtoN4bOAL4zzGBYR6YpU=",
+    "frozenRunnerSha256": "61f101fd4cc5ea59f83a7dd5efd9afc2fa59003fc3f34f869e0bf82f18ad40a5",
+    "buildReceiptSha256": "7cc36ab9bad8d8ce4d2aff4159db1e68b8482821e93cac9a6751f0abb1cc2f32",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "4f6fcc8c3ff7",
+      "collectorRevision": "62e8097f7d34f62e36edc0a45def4acb545ec329",
+      "bundleSha256": "b16b9c0470ca00dcc51e94a7e4a24f8bf863b6a55218ce21a6985b1b306297c3"
+    },
+    "rootBunLockSha256": "67afded5271bee86f48f32f6090cb95bb3dad8974176cf98d6965e7cda6a3749"
+  },
+  "runtime": {
+    "imageId": "sha256:54c21c158270af31b2bdd9222628fa1e44e417ea255241d56b52ef8bee213f6e",
+    "imageTarSha256": "c9c6c8aed41f8e440ff7e3093845e4af50df402eee7aaa05f6522e9f95290404",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "62e8097f7d34f62e36edc0a45def4acb545ec329",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "999edea741f1d8a8670f05333192b39bea000b96",
+    "suiteHash": "4f6fcc8c3ff7"
+  },
+  "status": "raw-unreviewed-history"
+}
