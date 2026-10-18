@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { PLACEHOLDER, parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
@@ -101,6 +102,89 @@ export const HOSTED_IDENTITY_SOURCES = {
     nonReuse: ["machineIdSha256", "productUuidSha256"],
   },
 } as const
+
+/** What a ratified source entry must carry for the hosted producer to measure it. Declared here so
+ * the sampler reads typed fields instead of widening the ratified table to `any`. */
+interface HostedSource {
+  readonly source: string
+  readonly scope: string
+  readonly command?: string
+  readonly args?: readonly string[]
+  readonly pattern?: string
+}
+
+/** The one identity sampler. The hosted producer runs pre-checkout with Node's type
+ * stripping, so this module keeps to Node built-ins and the parser it already imports. The caller
+ * supplies the environment reader: which variables exist is the producer's policy, never this
+ * module's, and no value is ever invented when a ratified source returns nothing. */
+export function sampleHostedIdentity(required: (key: string) => string): Record<string, string> {
+  const os = required("RUNNER_OS")
+  if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
+    throw new Error(
+      `Hosted receipt has no producer for RUNNER_OS=${JSON.stringify(os)}; ratified entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
+    )
+  }
+  return sampleIdentity(os as keyof typeof HOSTED_IDENTITY_SOURCES, "Hosted receipt", true)
+}
+
+/** The same sources, sampled on a host the caller owns. The os is the caller's explicit argument,
+ * never a hosted-runner variable, and nothing it prints claims a hosted runner or the hosted
+ * scopes (vm, image): those describe disposable runners, not an owned machine. */
+export function sampleOwnedHostIdentity(os: string): Record<string, string> {
+  if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
+    throw new Error(
+      `Owned host identity has no source table for os ${JSON.stringify(os)}; known entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
+    )
+  }
+  return sampleIdentity(os as keyof typeof HOSTED_IDENTITY_SOURCES, "Owned host identity", false)
+}
+
+function sampleIdentity(
+  os: keyof typeof HOSTED_IDENTITY_SOURCES,
+  subject: string,
+  hosted: boolean,
+): Record<string, string> {
+  const ratified = HOSTED_IDENTITY_SOURCES[os] as {
+    sources: Record<string, HostedSource>
+  }
+  return Object.fromEntries(
+    Object.entries(ratified.sources).map(([field, source]) => {
+      const { command, args, pattern } = source
+      if (command === undefined || args === undefined || pattern === undefined) {
+        throw new Error(
+          `${subject} ${field}: source ${source.source} ${hosted ? "is not produced by the hosted producer" : "has no command to measure it"}`,
+        )
+      }
+      const result = spawnSync(command, [...args], { encoding: "utf8" })
+      if (result.error || result.status !== 0) {
+        throw new Error(
+          `${subject} ${field}: ${command} failed with exit ${result.status}, signal ${result.signal}; cannot measure ${source.source}`,
+        )
+      }
+      const value = new RegExp(pattern).exec(result.stdout)?.[1]
+      if (!value) {
+        throw new Error(`${subject} ${field}: ${source.source} returned no value; no identity is substituted`)
+      }
+      if (/^(0{8}-0{4}-0{4}-0{4}-0{12}|[fF]{8}-[fF]{4}-[fF]{4}-[fF]{4}-[fF]{12})$/.test(value)) {
+        throw new Error(
+          `${subject} ${field}: ${source.source} returned degenerate UUID (all-zero or all-F); refusing by name`,
+        )
+      }
+      if (/^00[:-]00[:-]00[:-]00[:-]00[:-]00$/.test(value)) {
+        throw new Error(`${subject} ${field}: ${source.source} returned degenerate all-zero MAC; refusing by name`)
+      }
+      const hash = createHash("sha256").update(value).digest("hex")
+      const label = `${command} ${args.join(" ")}`
+      const scope = hosted ? ` · ${source.scope}` : ""
+      process.stderr.write(`${field}: ${label}${scope} · ${Buffer.byteLength(value)} bytes · sha256:${hash}\n`)
+      return [field, hash]
+    }),
+  )
+}
+
+/** The transport receipt's kind. It records where a run started and what bytes it moved; it grants
+ * nothing, so parsing it as disposable authority is refused by name rather than as an unknown kind. */
+export const TRANSPORT_RECEIPT_KIND = "owned-app-transport"
 
 export interface ReceiptTarget {
   kind: string
@@ -305,6 +389,12 @@ export function parseDisposableReceipt(bytes: string): DisposableReceipt {
   if (!isRecord(value)) fail("envelope", "must be a JSON object")
   if (value.schemaVersion !== 1) fail("envelope", "schemaVersion must be 1")
   const kind = text(value, "kind", "envelope")
+  if (kind === TRANSPORT_RECEIPT_KIND) {
+    fail(
+      "envelope",
+      "kind owned-app-transport records where a run started and grants nothing; it never authorizes mutate+readback",
+    )
+  }
   if (kind !== "linux-xvfb-container" && kind !== "github-hosted-runner") {
     fail("envelope", `unknown kind ${JSON.stringify(kind)}; only a named disposable kind may authorize a write`)
   }

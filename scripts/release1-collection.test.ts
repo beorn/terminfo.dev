@@ -32,19 +32,24 @@ import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import * as catalog from "@terminfo/catalog"
-import { parseSuiteManifest } from "@terminfo/run-parser"
+import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
+import { classifyDevelopmentRun } from "../docs/data/selected-results.ts"
 import { buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,
   collectPass,
   clipboardProfileFor,
   linuxLedger,
+  ownedAppCommand,
+  ownedAppRunsDirectory,
   presetFor,
+  readOwnedAppTransportProof,
   release1Census,
   uncoveredContexts,
+  type CollectionContext,
   type LinuxLedger,
   type ProducedRun,
 } from "./release1-collection.ts"
@@ -793,3 +798,267 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     rmSync(directory, { recursive: true, force: true })
   }
 }, 30_000)
+
+const ownedAppContext: CollectionContext = {
+  id: "kitty",
+  os: "macos",
+  kind: "app",
+  route: "local-owned-app",
+  command: "bun packages/admin/src/index.ts probe app kitty --output <private-output>",
+  requires: null,
+  sourceRun: null,
+  uncollectable: null,
+}
+const ownedAppRevision = "c".repeat(40)
+
+// The local route must stay byte-identical to the argv it always ran; the ssh route hands the
+// SAME probe arguments to the transport driver after its own transport flags, never a second probe.
+it("starts an owned-app row locally with the probe argv it always ran", () => {
+  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  expect(command.label).toBe("kitty/macos owned-app collection")
+  expect(command.argv).toEqual([
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+    "--output",
+    "/private/kitty",
+  ])
+})
+
+it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    {
+      runner: "ssh:fixture@fixture.invalid",
+      stage: "/remote/stage",
+      knownHosts: "/home/fixture/.ssh/known_hosts",
+      removeStage: true,
+    },
+    ownedAppRevision,
+  )
+  expect(command.label).toBe("kitty/macos owned-app transport")
+  expect(command.argv.slice(0, 13)).toEqual([
+    "bun",
+    "scripts/owned-app-remote-run.ts",
+    "--transport",
+    "ssh:fixture@fixture.invalid",
+    "--stage",
+    "/remote/stage",
+    "--output",
+    "/private/kitty",
+    "--source-revision",
+    ownedAppRevision,
+    "--context",
+    "kitty",
+    "--known-hosts",
+  ])
+  expect(command.argv).toContain("--remove-stage")
+  expect(command.argv.slice(command.argv.indexOf("--"))).toEqual([
+    "--",
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+  ])
+})
+
+it("refuses an ssh transport with no stage rather than inventing one", () => {
+  expect(() =>
+    ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "ssh:fixture@fixture.invalid" }, ownedAppRevision),
+  ).toThrow(/requires --owned-app-stage/)
+})
+
+it("refuses an ssh transport with no known-hosts file rather than inventing trust", () => {
+  expect(() =>
+    ownedAppCommand(
+      ownedAppContext,
+      "/private/kitty",
+      { runner: "ssh:fixture@fixture.invalid", stage: "/remote/stage" },
+      ownedAppRevision,
+    ),
+  ).toThrow(/requires --owned-app-known-hosts/)
+})
+
+// The collector's own argv builder, through the real driver, to the files the collector reads next:
+// one run JSON in <output>/transport and a receipt bound to the collected revision. The run JSON is
+// an existing producer fixture with its own trusted suite manifest, and it is parsed and classified
+// here exactly as the collector classifies a run after transport.
+it("runs the collector's ssh route through the driver and reads the run JSON it wrote", () => {
+  const directory = mkdtempSync(join(tmpdir(), "transport-route-"))
+  const code = join(directory, "code")
+  const source = join(code, "vendor", "terminfo.dev")
+  const shims = join(directory, "shims")
+  const stage = join(directory, "remote", "stage")
+  const knownHosts = join(directory, "known_hosts")
+  const output = join(directory, "owned-app", "kitty")
+  const git = (cwd: string, ...args: string[]): string => {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" })
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`)
+    return result.stdout.trim()
+  }
+  const shim = (name: string, body: string): void => {
+    writeFileSync(join(shims, name), body, { mode: 0o755 })
+  }
+  for (const path of [
+    source,
+    shims,
+    output,
+    join(code, "vendor", "silvery"),
+    join(code, "vendor", "termless"),
+    join(code, "node_modules"),
+  ]) {
+    mkdirSync(path, { recursive: true })
+  }
+  writeFileSync(join(source, "package.json"), '{"name":"terminfo.dev","private":true}\n')
+  mkdirSync(join(source, "packages", "admin", "src"), { recursive: true })
+  writeFileSync(join(source, "packages", "admin", "src", "index.ts"), "export const probe = 'fixture'\n")
+  git(source, "init", "-q", "-b", "main")
+  git(source, "config", "user.email", "fixture@example.invalid")
+  git(source, "config", "user.name", "fixture")
+  git(source, "add", "-A")
+  git(source, "commit", "-q", "-m", "fixture source")
+  const revision = git(source, "rev-parse", "HEAD")
+  for (const entry of ["package.json", "bun.lock", "tsconfig.json"]) {
+    writeFileSync(join(code, entry), `fixture ${entry}\n`)
+  }
+  writeFileSync(join(code, "vendor", "silvery", "index.ts"), "export const silvery = 'fixture'\n")
+  writeFileSync(join(code, "vendor", "termless", "index.ts"), "export const termless = 'fixture'\n")
+  writeFileSync(knownHosts, "fixture.invalid ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGZpeHR1cmVrZXk=\n")
+  shim(
+    "ssh",
+    [
+      "#!/bin/sh",
+      "verbose=0",
+      'for a in "$@"; do [ "$a" = "-v" ] && verbose=1; done',
+      'while [ "$1" = "-o" ] || [ "$1" = "-F" ] || [ "$1" = "-l" ]; do shift 2; done',
+      'while [ "$1" = "-v" ]; do shift; done',
+      '[ "$1" = "--" ] && shift',
+      "shift",
+      "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureRoute' >&2",
+      'exec /bin/sh -c "$*"',
+    ].join("\n"),
+  )
+  shim(
+    "rsync",
+    [
+      "#!/bin/sh",
+      'REAL_RSYNC="${REAL_RSYNC:-/usr/bin/rsync}"',
+      'if [ "$1" = "--server" ]; then exec "$REAL_RSYNC" "$@"; fi',
+      '"$REAL_RSYNC" "$@"',
+    ].join("\n"),
+  )
+  shim(
+    "bun",
+    [
+      "#!/bin/sh",
+      'case "$*" in',
+      "  *identity.ts*) printf '%s' '{\"machineIdSha256\":\"aaaa\"}' ;;",
+      "  --version) echo '1.2.3' ;;",
+      "  *) out=''",
+      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
+      '     cp "$PRODUCER_RUN" "$out/kitty-0.48.2-macos.json" ;;',
+      "esac",
+    ].join("\n"),
+  )
+  shim("kitty", "#!/bin/sh\necho 'kitty 0.49.1'\n")
+  const producerRun = join(CONTENT, "probes-apps", "kitty-0.48.2-macos.json")
+  const producerBytes = readFileSync(producerRun)
+  try {
+    const command = ownedAppCommand(
+      ownedAppContext,
+      output,
+      { runner: "ssh:fixture@fixture.invalid", stage, knownHosts },
+      revision,
+    )
+    // argv[0] is the `bun` token the collector resolves from PATH; here the runner is this process,
+    // so only the driver path and its arguments are passed.
+    const result = spawnSync(process.execPath, command.argv.slice(1), {
+      encoding: "utf8",
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env: {
+        ...process.env,
+        PATH: `${shims}:/usr/bin:/bin`,
+        OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
+        OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+        OWNED_APP_TRANSPORT_KITTY_PATH: join(shims, "kitty"),
+        PRODUCER_RUN: producerRun,
+        REAL_RSYNC: "/usr/bin/rsync",
+      },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    // The collector's own selector names the directory, exactly where the real driver wrote.
+    const transport = ownedAppRunsDirectory(output, "ssh:fixture@fixture.invalid")
+    expect(ownedAppRunsDirectory(output, "local")).toBe(output)
+    // Exactly what the collector's own read does: the receipt beside one run JSON.
+    const proof = readOwnedAppTransportProof(join(transport, "transport-receipt.json"), revision)
+    expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
+    const runs = readdirSync(transport).filter((name) => name.endsWith(".json") && name !== "transport-receipt.json")
+    expect(runs).toEqual(["kitty-0.48.2-macos.json"])
+
+    // The transported bytes are the producer's bytes, and they parse and classify the way the
+    // collector classifies a run after transport.
+    const runPath = join(transport, "kitty-0.48.2-macos.json")
+    const runBytes = readFileSync(runPath)
+    expect(createHash("sha256").update(runBytes).digest("hex")).toBe(
+      createHash("sha256").update(producerBytes).digest("hex"),
+    )
+    const raw = runBytes.toString("utf8")
+    const probeHash = (JSON.parse(raw) as { probeHash: string }).probeHash
+    const suitePath = join(CONTENT, "suites", `${probeHash.slice(0, 12)}.json`)
+    const manifest = parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8"))
+    const catalogIds = Object.keys(catalog.loadFeatures(CONTENT))
+    const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
+    expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "macos" })
+    expect(run.suiteComplete).toBe(true)
+    const classification = classifyDevelopmentRun(run, [])
+    expect(classification.mode).toBe("development")
+    expect(classification.runId).toBe(run.runId)
+    expect(Object.keys(classification.states).length).toBeGreaterThan(0)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 60_000)
+
+it("records the host-written transport receipt as evidence and refuses anything else", () => {
+  const directory = mkdtempSync(join(tmpdir(), "transport-proof-"))
+  const path = join(directory, "transport-receipt.json")
+  const receipt = {
+    schemaVersion: 1,
+    kind: "owned-app-transport",
+    grants: "nothing",
+    sourceRevision: ownedAppRevision,
+    transport: "ssh:fixture@fixture.invalid",
+    hostKeyFingerprint: "SHA256:fixture",
+    resourceManifestSha256: "d".repeat(64),
+    resourceFiles: 42,
+    output: { directory: "/remote/stage/runs/cccccccccccc-kitty" },
+  }
+  const bytes = `${JSON.stringify(receipt, null, 2)}\n`
+  writeFileSync(path, bytes)
+  try {
+    expect(readOwnedAppTransportProof(path, ownedAppRevision)).toEqual({
+      runner: "ssh:fixture@fixture.invalid",
+      hostKeyFingerprint: "SHA256:fixture",
+      resourceManifestSha256: "d".repeat(64),
+      resourceFiles: 42,
+      receiptSha256: createHash("sha256").update(bytes).digest("hex"),
+      remoteOutput: "/remote/stage/runs/cccccccccccc-kitty",
+    })
+    writeFileSync(path, JSON.stringify({ ...receipt, kind: "linux-xvfb-container" }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(
+      /not a schemaVersion 1 owned-app-transport record/,
+    )
+    // A receipt that claims authority is refused: this kind records, it never grants.
+    writeFileSync(path, JSON.stringify({ ...receipt, grants: "mutate+readback" }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/this kind grants nothing/)
+    // A receipt for another revision cannot stand in for the bytes this pass measured.
+    writeFileSync(path, JSON.stringify({ ...receipt, sourceRevision: "e".repeat(40) }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/names source/)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
