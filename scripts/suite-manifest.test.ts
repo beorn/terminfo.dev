@@ -776,3 +776,73 @@ test("the derived in-development declaration is not uncommitted collector dirt (
   writeFileSync(join(directory, "scripts", "build-cli.ts"), "// collector input, developed\n")
   expect(uncommittedCollectorDirt(directory, snapshot)).toContain("scripts/build-cli.ts")
 })
+
+/**
+ * 28018: the writer could only ever freeze the suite the collector builds NOW, so a ruling that names an
+ * older suite the registry still carries had no expressible write. These rows pin the explicit target.
+ */
+const EXPLICIT_AT = "2026-10-18T21:00:00.000Z"
+
+test("an explicit --suite freezes a suite the collector no longer builds, and the reader resolves it", () => {
+  const directory = authoringRepo("terminfo-suite-explicit-freeze-")
+  const live = snapshotOf("c".repeat(12))
+  const older = snapshotOf("d".repeat(12))
+  declareCurrentSuiteManifest(directory, live)
+  declareCurrentSuiteManifest(directory, older)
+  // The live snapshot is neither supplied nor consulted: the named suite IS the target.
+  const frozen = freezeCurrentSuiteManifest(directory, "candidate2", { suite: older.probeHash, at: EXPLICIT_AT })
+  expect(frozen.status).toBe("frozen")
+  expect(frozen.suiteId).toBe(older.probeHash)
+  expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(older.probeHash)
+  expect(parseSuiteManifest(frozen.path, readFileSync(frozen.path, "utf8")).freeze).toEqual({
+    release: "candidate2",
+    at: EXPLICIT_AT,
+  })
+})
+
+test("an explicit --suite refuses an unknown id, a malformed id and a record misfiled under another id", () => {
+  const directory = authoringRepo("terminfo-suite-explicit-refuse-")
+  const known = snapshotOf("e".repeat(12))
+  declareCurrentSuiteManifest(directory, known)
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate2", { suite: "f".repeat(12) })).toThrow(
+    /no suite manifest carries that id/,
+  )
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate2", { suite: "not-a-suite" })).toThrow(
+    /twelve lowercase hex/,
+  )
+  writeFileSync(
+    join(directory, "content", "suites", `${known.probeHash}.json`),
+    JSON.stringify({ probeHash: "1".repeat(12), adapterVersion: "1.0.0", probes: { app: [], headless: [], mux: [] } }),
+  )
+  expect(() => freezeCurrentSuiteManifest(directory, "candidate2", { suite: known.probeHash })).toThrow(
+    /declares suite 111111111111, not eeeeeeeeeeee/,
+  )
+})
+
+test("a move onto an explicitly named suite lands the pointer and releases the old claim", () => {
+  const directory = authoringRepo("terminfo-suite-explicit-move-")
+  const from = snapshotOf("2".repeat(12))
+  const to = snapshotOf("3".repeat(12))
+  declareCurrentSuiteManifest(directory, from)
+  declareCurrentSuiteManifest(directory, to)
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: from, at: EXPLICIT_AT })
+  const moved = moveReleasePointer(directory, "candidate2", { suite: to.probeHash, at: EXPLICIT_AT })
+  expect(moved).toMatchObject({ status: "moved", from: from.probeHash, to: to.probeHash })
+  expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(to.probeHash)
+  const old = JSON.parse(readFileSync(join(directory, "content", "suites", `${from.probeHash}.json`), "utf8")) as Record<
+    string,
+    unknown
+  >
+  expect(old.freeze).toBeUndefined()
+  expect(parseSuiteManifest(moved.path, readFileSync(moved.path, "utf8")).freeze?.previous).toEqual([
+    { suite: from.probeHash, from: EXPLICIT_AT, until: EXPLICIT_AT },
+  ])
+})
+
+test("the mode parser accepts --suite only on a write verb and always requires its value", () => {
+  expect(suiteManifestMode(["--freeze", "candidate2", "--suite", "a".repeat(12)])).toBe("freeze")
+  expect(suiteManifestMode(["--move", "candidate2", "--suite", "a".repeat(12)])).toBe("move")
+  expect(suiteManifestMode(["--freeze", "candidate2", "--suite"])).toBe("usage")
+  expect(suiteManifestMode(["--check", "--suite", "a".repeat(12)])).toBe("usage")
+  expect(suiteManifestMode(["--freeze", "candidate2", "--apply"])).toBe("usage")
+})
