@@ -6,13 +6,17 @@
  *   the frozen one, or never admitted at all — so a row would land on the bar from a collection that
  *   does not count, and the census would read complete while it is not. Admission rejection must
  *   propagate from the single owner before the caller credits coverage.
+ *   Collector output failures must retain the pass ledger and raw files already collected.
  * @level l2
- * @consumer Release 1 final re-collection runner (scripts/release1-collection.ts)
- * @reach fs-walk <fixture-only: read-only content projection in a temporary directory>
+ * @consumer Full catalog/backend collection census and existing admission owner (scripts/release1-collection.ts)
+ * @reach fs-walk vendor/terminfo.dev/content/** vendor/terminfo.dev/.github/workflows/**
  * @testonly none
  */
-import { dirname, join } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
+import { execFileSync, spawnSync } from "node:child_process"
+import * as childProcesses from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   existsSync,
   mkdirSync,
@@ -22,15 +26,18 @@ import {
   rmSync,
   symlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
-import { buildReport, RELEASE_1_CONTEXTS } from "./decisive-share.ts"
+import * as headless from "../packages/probes/collect-headless.ts"
+import { buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,
+  collectPass,
   clipboardProfileFor,
   linuxLedger,
   presetFor,
@@ -39,6 +46,13 @@ import {
   type LinuxLedger,
   type ProducedRun,
 } from "./release1-collection.ts"
+
+// Replace only the external terminal process owner; parsing and classification remain real.
+vi.mock("../packages/probes/collect-headless.ts", () => ({ collectHeadlessRuns: vi.fn() }))
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>()
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) }
+})
 
 /** One fixture Linux row: a committed run the census reads the launcher flags back from. */
 const ledgerRow = (id: string, overrides: Partial<LinuxLedger[string]> = {}): LinuxLedger[string] => ({
@@ -101,20 +115,258 @@ const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
   ...overrides,
 })
 
-describe("release 1 collection census", () => {
-  it("covers exactly the bar's desktop contexts plus the engine family", () => {
-    const all = census()
-    const apps = all.filter((entry) => entry.kind === "app")
-    expect(apps.map((entry) => `${entry.id}/${entry.os}`).sort()).toEqual(
-      RELEASE_1_CONTEXTS.map((context) => `${context.terminalId}/${context.os}`).sort(),
-    )
-    expect(all.filter((entry) => entry.kind === "headless")).toHaveLength(11)
-    expect(all).toHaveLength(22)
+// The dispatch boundary must use the CURRENT in-memory suite, even when the corpus already
+// declares the returned run's old suite. Projection parity does not cover this collection seam.
+it.each([
+  ["different", "none"],
+  ["matching", "none"],
+  ["matching", "rewrite"],
+  ["matching", "remove"],
+  ["matching", "blocked-hosted"],
+  ["matching", "blocked-macos"],
+] as const)("retains a private %s-suite pass after %s without admission", async (suite, inputChange) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
+  const input = join(directory, "suite-input.ts")
+  writeFileSync(input, "original private suite input")
+  const original = join(CONTENT, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json")
+  const originalBytes = readFileSync(original, "utf8")
+  const raw = JSON.parse(originalBytes) as { probeHash: string; sourceRevision: string }
+  raw.sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim()
+  const bytes = JSON.stringify(raw)
+  const manifestPath = join(CONTENT, "suites", `${raw.probeHash}.json`)
+  const snapshot =
+    suite === "matching"
+      ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
+          ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
+          sourcePaths: [relative(dirname(CONTENT), input)],
+        })
+      : undefined
+  const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
+    throw new Error("Development must not plan admission")
   })
+  const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
+    throw new Error("Development must not write admission")
+  })
+  const collector = vi.spyOn(headless, "collectHeadlessRuns").mockImplementation(async (_selectors, output) => {
+    if (!output) throw new Error("collection requires a private output directory")
+    mkdirSync(output, { recursive: true })
+    const raw = join(output, "xtermjs.json")
+    writeFileSync(raw, bytes)
+    // Use a private source canary: the failure must not delete or rewrite a real checkout input.
+    if (inputChange === "remove") rmSync(input)
+    if (inputChange === "rewrite") writeFileSync(input, "changed private suite input")
+    if (inputChange === "blocked-hosted") writeFileSync(join(dirname(output), "hosted"), "private obstruction")
+    if (inputChange === "blocked-macos") {
+      mkdirSync(join(dirname(output), "hosted"))
+      writeFileSync(join(dirname(output), "hosted", "macos"), "private obstruction")
+    }
+    return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
+  })
+  // The real launcher owns containers and receipts. Its process boundary is replaced here;
+  // a failed Kitty launch and other malformed raw outputs must remain separate, retained failures.
+  const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
+    if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
+    const stdio = options?.stdio
+    const respond = (stdout: string, status = 0) => {
+      if (Array.isArray(stdio) && typeof stdio[1] === "number") writeSync(stdio[1], stdout)
+      return { pid: 1, output: [], stdout: "", stderr: "", status, signal: null }
+    }
+    if (command === "git") {
+      if (args[0] === "symbolic-ref") return respond("fixture-collection\n")
+      if (args[0] === "ls-remote") return respond(`${raw.sourceRevision}\trefs/heads/fixture-collection\n`)
+      throw new Error(`unexpected Git command ${args.join(" ")}`)
+    }
+    if (command === "gh") {
+      if (args[0] === "workflow") {
+        return respond(
+          `https://github.com/beorn/terminfo.dev/actions/runs/${args[2] === "macos-measurement.yml" ? "9001" : "9002"}\n`,
+        )
+      }
+      const mac = args[2] === "9001"
+      if (args[1] === "view") {
+        return respond(
+          JSON.stringify({
+            headSha: suite === "different" ? "0".repeat(40) : raw.sourceRevision,
+            headBranch: "fixture-collection",
+            event: "workflow_dispatch",
+            workflowName: mac ? "macos-measurement" : "windows-measurement",
+          }),
+        )
+      }
+      if (args[1] === "watch") return respond("workflow fixture result", mac ? 0 : 1)
+      if (args[1] === "download") {
+        const artifacts = args[args.indexOf("--dir") + 1]
+        if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
+        for (const id of mac ? ["terminal-app", "iterm2", "ghostty", "alacritty"] : ["windows-terminal"]) {
+          const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
+          mkdirSync(folder, { recursive: true })
+          writeFileSync(join(folder, "run.json"), "{}")
+          writeFileSync(
+            join(folder, "collector-bun.lock"),
+            id === "terminal-app" ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+          )
+          writeFileSync(
+            join(folder, "collector-build.json"),
+            JSON.stringify({
+              collectorRevision: raw.sourceRevision,
+              probeHash: raw.probeHash,
+              bundleSha256: createHash("sha256").update("fixture collector bundle").digest("hex"),
+            }),
+          )
+          writeFileSync(join(folder, "collector-bundle.mjs"), "fixture collector bundle")
+        }
+        return respond("downloaded fixture artifacts")
+      }
+      throw new Error(`unexpected GitHub command ${args.join(" ")}`)
+    }
+    const output = args.at(-1)
+    if (typeof output !== "string") throw new Error("expected private Linux output directory")
+    const isKitty = args.includes("kitty")
+    if (!isKitty) {
+      const raw = join(output, "fixture-run", "raw")
+      mkdirSync(raw, { recursive: true })
+      writeFileSync(join(raw, "v2-run.json"), "{}")
+    }
+    if (Array.isArray(stdio) && typeof stdio[2] === "number") writeSync(stdio[2], "launcher fixture diagnostic")
+    return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
+  })
+  try {
+    const pass = await collectPass(directory)
+    expect(pass.mode).toBe("development")
+    expect(pass.contexts).toHaveLength(33)
+    const engine = pass.contexts.find((row) => row.context.kind === "headless" && row.context.id === "xtermjs")
+    if (suite === "different") {
+      expect(engine?.status).toBe("failed")
+      expect(engine?.error).toMatch(/xtermjs.*unknown suite 267a5d166f08; missing trusted manifest/)
+    } else {
+      expect(engine?.status, engine?.error).toBe("classified")
+      expect(engine?.classification?.mode).toBe("development")
+      expect(engine?.classification?.states["extensions.osc2-title"]).toBe("supported")
+    }
+    expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
+    expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
+    if (inputChange === "rewrite" || inputChange === "remove") {
+      expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
+    }
+    expect(collector).toHaveBeenCalledTimes(1)
+    expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(5)
+    for (const id of Object.keys(LEDGER)) {
+      const row = pass.contexts.find(
+        (entry) => entry.context.kind === "app" && entry.context.id === id && entry.context.os === "linux",
+      )
+      const output = join(pass.directory, "linux", id)
+      expect(launcher).toHaveBeenCalledWith(
+        "bash",
+        [
+          "scripts/linux-container-run.sh",
+          "--target",
+          id,
+          "--preset",
+          id === "kitty" ? "current" : "default",
+          "--clipboard-profile",
+          "default",
+          output,
+        ],
+        expect.anything(),
+      )
+      expect(row?.status).toBe("failed")
+      expect(row?.error).toContain(`${id}/linux`)
+      expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
+      if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
+      else expect(row?.rawRun && readFileSync(row.rawRun, "utf8")).toBe("{}")
+    }
+    expect(planner).not.toHaveBeenCalled()
+    expect(writer).not.toHaveBeenCalled()
+    expect(readFileSync(original, "utf8")).toBe(originalBytes)
+    if (inputChange === "blocked-hosted" || inputChange === "blocked-macos") {
+      const affected = pass.contexts.filter(
+        (row) =>
+          row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
+      )
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 5 : 4)
+      expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
+      expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
+        inputChange === "blocked-hosted" ? 0 : 1,
+      )
+      return
+    }
+    for (const os of ["macos", "windows"]) {
+      expect(launcher).toHaveBeenCalledWith(
+        "gh",
+        ["workflow", "run", `${os}-measurement.yml`, "--repo", "beorn/terminfo.dev", "--ref", "fixture-collection"],
+        expect.anything(),
+      )
+      const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
+      expect(hosted).toHaveLength(os === "macos" ? 4 : 1)
+      if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
+    }
+    expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
+    if (suite === "matching") {
+      // Remote platforms must start independently before either wait can block the other dispatch.
+      const dispatch = launcher.mock.calls.findLastIndex(
+        ([command, args]) => command === "gh" && Array.isArray(args) && args[0] === "workflow",
+      )
+      const wait = launcher.mock.calls.findIndex(
+        ([command, args]) => command === "gh" && Array.isArray(args) && args[1] === "watch",
+      )
+      expect(wait, "both platform workflows dispatch before waiting").toBeGreaterThan(dispatch)
+      expect(launcher).toHaveBeenCalledWith(
+        "gh",
+        [
+          "run",
+          "download",
+          "9002",
+          "--repo",
+          "beorn/terminfo.dev",
+          "--dir",
+          join(pass.directory, "hosted", "windows", "artifacts"),
+        ],
+        expect.anything(),
+      )
+      expect(pass.errors.some((error) => error.includes("windows-measurement") && error.includes("exited 1"))).toBe(
+        true,
+      )
+      const mac = pass.contexts.find((row) => row.context.id === "terminal-app")
+      expect(mac?.error).toMatch(/dependency lock/)
+      const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
+      expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
+      expect(windows?.error).toContain("run.json: missing backend/terminal")
+    }
+  } finally {
+    collector.mockRestore()
+    launcher.mockRestore()
+    planner.mockRestore()
+    writer.mockRestore()
+    snapshot?.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+describe("release 1 collection census", () => {
+  it("covers every catalog app/mux platform plus the engine family, with no missing or duplicate context", () => {
+    const all = census()
+    // full-census.test.ts owns membership. This boundary owns route coverage and the actual CLI.
+    const contexts = all.map((entry) => `${entry.kind}:${entry.id}/${entry.os}`)
+    expect(new Set(contexts).size).toBe(33)
+    expect(all.filter((entry) => entry.kind === "app")).toHaveLength(18)
+    expect(all.filter((entry) => entry.kind === "mux")).toHaveLength(4)
+    expect(all.filter((entry) => entry.kind === "headless")).toHaveLength(11)
+    expect(all).toHaveLength(33)
+    // The CLI ledger must name the mux population as well; this is the real stdout boundary.
+    const command = spawnSync(process.execPath, ["scripts/release1-collection.ts", "--plan"], {
+      cwd: dirname(CONTENT),
+      encoding: "utf8",
+    })
+    expect(command.status, command.stderr).toBe(0)
+    expect(command.stdout.split("\n")[0]).toContain("18 app, 4 mux, 11 headless")
+  }, 30_000)
 
   it("refuses a manifest that is not the eleven engines the collector asserts", () => {
     expect(() => census(ENGINE_BACKENDS.slice(0, 10))).toThrow(/Expected 11 headless engines/)
     expect(() => census([...ENGINE_BACKENDS, "extra"])).toThrow(/Expected 11 headless engines/)
+    expect(() => census([...ENGINE_BACKENDS.slice(0, -1), "not-in-catalog"])).toThrow(
+      /engine membership differs.*not-in-catalog/s,
+    )
   })
 
   it("names every context that has no route instead of dropping it", () => {
@@ -124,7 +376,9 @@ describe("release 1 collection census", () => {
     // admissible row at db5558cf8d6c (run 38074622083), so the old "no owner and no hosted
     // workflow yet" gap is gone and the row carries a route and its dispatch command.
     expect(windows?.route).toBe("hosted-workflow")
-    expect(windows?.command).toMatch(/gh workflow run windows-measurement\.yml --repo beorn\/terminfo\.dev --ref main/)
+    expect(windows?.command).toMatch(
+      /gh workflow run windows-measurement\.yml --repo beorn\/terminfo\.dev --ref <exact-source-ref>/,
+    )
     expect(windows?.uncollectable).toBeNull()
     for (const entry of all) {
       if (entry.route === null) expect(entry.uncollectable).not.toBeNull()
@@ -132,14 +386,16 @@ describe("release 1 collection census", () => {
     }
   })
 
-  it("names kitty/macos uncollectable (ships as measured, 27928), never a workflow dispatch", () => {
+  it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
     // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty only — there is no kitty job — and
-    // hosted runners open no Kitty (no GPU, 27834). 27928 ruled it ships as measured at 31/52, so the
-    // census must NAME that, not print a command that silently produces no run.
+    // Chief bbf8eff9 retains all eight unresolved routes as expected work; no old ship-as-measured cut applies.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
     expect(kitty?.route).toBeNull()
     expect(kitty?.command).toBeNull()
-    expect(kitty?.uncollectable).toMatch(/ships as measured \(27928\)/)
+    expect(kitty?.uncollectable).toMatch(/required route work/)
+    const missing = census().filter((entry) => entry.route === null)
+    expect(missing).toHaveLength(8)
+    expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
@@ -148,11 +404,13 @@ describe("release 1 collection census", () => {
   it("names each context that produced no run, with its own reason", () => {
     const all = census()
     const uncovered = uncoveredContexts(all, [cleanRun()])
-    expect(uncovered).toHaveLength(21)
+    expect(uncovered).toHaveLength(32)
     expect(uncovered.find((entry) => entry.context.id === "windows-terminal")?.reason).toMatch(
       /no run produced by the hosted-workflow route/,
     )
-    expect(uncovered.find((entry) => entry.context.id === "kitty")?.reason).toMatch(/linux-container/)
+    expect(uncovered.find((entry) => entry.context.id === "kitty" && entry.context.os === "linux")?.reason).toMatch(
+      /linux-container/,
+    )
     // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
     const measured = all.map((entry) =>
       cleanRun({ target: { kind: entry.kind, id: entry.id, os: entry.kind === "headless" ? "linux" : entry.os } }),
@@ -169,12 +427,12 @@ describe("release 1 collection census", () => {
     const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
     expect(uncovered).not.toContain("headless:xtermjs")
     expect(uncovered).toContain("app:xterm")
-    expect(uncovered).toHaveLength(21)
+    expect(uncovered).toHaveLength(32)
   })
 
   it("leaves a Linux row uncollectable, named, when no committed run can be read", () => {
     const all = release1Census(ENGINE_BACKENDS, { ...LEDGER, kitty: undefined as never })
-    const kitty = all.find((entry) => entry.id === "kitty")
+    const kitty = all.find((entry) => entry.id === "kitty" && entry.os === "linux")
     expect(kitty?.route).toBe("linux-container")
     expect(kitty?.command).toBeNull()
     expect(kitty?.uncollectable).toMatch(/no committed run to read the launcher flags from/)
@@ -307,29 +565,47 @@ describe("release collection hands every produced run to the admission owner", (
       }
     },
   )
-  it.each(["planning", "placement"])(
-    "propagates owner %s rejection before any coverage credit or later input",
-    (phase) => {
+  it.each([
+    ["planning", 1],
+    ["planning", 2],
+    ["placement", 1],
+    ["placement", 2],
+  ] as const)(
+    "plans every input before placement, retaining partial progress for %s failure at %s",
+    (phase, failureAt) => {
       const rejection = new Error("Owner refused xterm/linux: required receipt is absent")
+      let planned = 0
+      let placed = 0
       const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
-        if (phase === "planning") throw rejection
+        planned += 1
+        if (phase === "planning" && planned === failureAt) throw rejection
         return plan
       })
       const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
-        throw rejection
+        placed += 1
+        if (phase === "placement" && placed === failureAt) throw rejection
+        return {
+          manifest: "existing",
+          run: "created",
+          screenshots: { created: 0, existing: 0 },
+          textSnapshots: { created: 0, existing: 0 },
+          receipt: { placed: "none", detail: "fixture" },
+        }
       })
+      const progress = vi.fn()
       try {
         let produced: ProducedRun[] | undefined
         let failure: unknown
         try {
-          produced = admitProducedRuns([source, "/private/later.json"], frozenSuiteId)
+          produced = admitProducedRuns([source, "/private/later.json"], frozenSuiteId, "candidate2", progress)
         } catch (error) {
           failure = error
         }
         expect(failure).toBe(rejection)
         expect(produced).toBeUndefined()
-        expect(planner).toHaveBeenCalledTimes(1)
-        expect(writer).toHaveBeenCalledTimes(phase === "planning" ? 0 : 1)
+        expect(planner).toHaveBeenCalledTimes(phase === "planning" ? failureAt : 2)
+        expect(writer).toHaveBeenCalledTimes(phase === "planning" ? 0 : failureAt)
+        expect(progress).toHaveBeenCalledTimes(phase === "placement" ? failureAt - 1 : 0)
       } finally {
         planner.mockRestore()
         writer.mockRestore()
@@ -337,3 +613,27 @@ describe("release collection hands every produced run to the admission owner", (
     },
   )
 })
+
+it("requires an existing declared freeze before final collection dispatch", () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-final-missing-freeze-"))
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "scripts/release1-collection.ts",
+        "--collect",
+        "--admit",
+        "--frozen-suite",
+        "000000000000",
+        "--output",
+        directory,
+      ],
+      { cwd: dirname(CONTENT), encoding: "utf8" },
+    )
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain("declared frozen suite 000000000000")
+    expect(readdirSync(directory)).toEqual([])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 30_000)
