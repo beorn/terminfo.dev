@@ -18,13 +18,16 @@ const SENTINEL = { row: 1, col: 1 } as const
 const CURSOR_ROW = 4
 
 /**
- * The published reason for the three rows whose reset clears two or more attributes. It names the
- * cause the reader actually saw rather than only the missing reference: the DECRQSS report this row
- * depends on did not come back (wezterm answers with a malformed DCS echo, alacritty with the DA1
- * sentinel alone), so the row rests on a capture reference that would share the reset's own failure.
+ * The published reason for the three rows whose reset clears two or more attributes. It says only
+ * what holds on EVERY path that publishes it: the row has no reference independent of the reset
+ * under test, and this run has no usable DECRQSS report to decide it. The same text is published
+ * when the measured geometry is not a usable integer pair and no query byte was ever sent, so it
+ * must not claim a reply arrived or name its shape. wezterm (a malformed DCS echo) and alacritty
+ * (the DA1 sentinel alone) are EXAMPLES of how that report goes missing, never claims about every
+ * run.
  */
 const NO_INDEPENDENT_REFERENCE =
-  "no independent reference exists for a multi-attribute reset: no usable SGR DECRQSS report came back (a malformed DCS echo, or the DA1 sentinel alone), and a capture reference would share the reset's own failure"
+  "no independent reference exists for a multi-attribute reset: a capture reference would share the reset's own failure, and this run has no usable SGR DECRQSS report to decide it"
 
 /**
  * One frame of the fixture. XX carries the setup attribute in EVERY frame, so the comparison is
