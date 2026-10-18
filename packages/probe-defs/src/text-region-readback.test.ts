@@ -76,6 +76,9 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     // No image to point at, and a text digest in screenshotRef would be refused at admission.
     expect(result?.observation?.screenshotRef).toBeUndefined()
     expect(result?.observation?.frames?.every((frame) => frame.kind === "text-cells")).toBe(true)
+    // The row says what was read, and it must not claim the terminal's own text: on Windows this
+    // arm reads a console host's buffer. The host itself is named per read in the frame trace.
+    expect(String(result?.response)).toContain("cells read from a text source, not from pixels")
   })
 
   it("keeps the pixel path untouched when the run's adapter reads pixels", async () => {
