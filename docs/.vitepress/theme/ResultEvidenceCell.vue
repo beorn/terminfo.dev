@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationEvidence, ObservationReason } from "@terminfo/probe-defs"
 import type { EvidenceDocument, PublicCell, PublicVersion } from "../../data/public-results"
+import { textEvidenceExplanation } from "./ungraded-explanation"
 
 const props = withDefaults(
   defineProps<{
@@ -117,6 +118,15 @@ const selectionExplanation = computed(() => {
   return undefined
 })
 const reasonExplanation = computed(() => (props.cell?.reason ? reasonExplanations[props.cell.reason] : undefined))
+// Why a text row is shown but not counted (30033 ruling f1f3c64b). The sentence lives in
+// ungraded-explanation.ts so the two arms' reasons are pinned by their own test.
+const textExplanation = computed(() =>
+  textEvidenceExplanation(
+    props.cell && props.version
+      ? { evidence: props.cell.evidence, conclusive: props.cell.conclusive, os: props.version.target.os }
+      : undefined,
+  ),
+)
 
 const probeGuidanceText = computed(() => props.probeGuidance?.replace(/<\/?code>/g, ""))
 const presentation = computed(() => props.cell?.presentation)
@@ -399,6 +409,7 @@ onBeforeUnmount(() => {
         <a :href="withBase('/how-it-works/')">How we test</a>
         <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
         <span v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</span>
+        <span v-if="textExplanation">{{ textExplanation }}</span>
         <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
         <span v-if="cell?.note">{{ cell.note }}</span>
         <img
