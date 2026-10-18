@@ -9,6 +9,7 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
+import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ObservationFrame, ProbeDefinition, TermContext } from "./types.ts"
 
 const CAPTURE_IDS = [
@@ -554,94 +555,44 @@ test("an attribute row on a text-only adapter is inconclusive by name", async ()
 })
 
 /**
- * @cto round-2 R4 and @dev/review2 round-3 R4: the expected frame must be pinned PER ROW and per
- * CELL, not by finding `\x1b[7m` anywhere in the writes — the DECRARA seed already carries `7m`, so
- * a global search proved nothing about the expected phase, and DECRARA's claim is the opposite one:
- * its expected cells must CLEAR inverse.
- *
- * The check is semantic: render every write into its screen cells (CUP + SGR), then require a write
- * whose cells equal the row's own `after` grid in BOTH the character and the inverse flag. A
- * missing painting leaves every cell non-inverse; an always-inverse painting turns DECRARA's
- * flanks on. Either way no write matches, per row.
+ * The expected frame must carry the row's actual cell attributes: DECCARA sets inverse inside
+ * the rectangle and DECRARA clears it. Read only the expected phase through the existing semantic
+ * surface, so a seed or target frame cannot satisfy this pin. Keep one surface across all writes
+ * to preserve the terminal's SGR state between phases.
  */
-/**
- * The screen each write leaves, in order. SGR state PERSISTS across writes, exactly as a terminal
- * keeps it: an expected frame that never resets would inherit the seed's reverse video, which is the
- * very failure DECRARA's after grid exists to catch.
- */
-function paintedScreens(writes: readonly string[]): Array<Map<string, { char: string; inverse: boolean }>> {
-  let row = 1
-  let col = 1
-  let inverse = false
-  return writes.map((write) => {
-    const cells = new Map<string, { char: string; inverse: boolean }>()
-    let index = 0
-    while (index < write.length) {
-      if (write[index] !== "\x1b") {
-        cells.set(`${row},${col}`, { char: write[index] ?? "", inverse })
-        col += 1
-        index += 1
-        continue
-      }
-      const match = /^\x1b\[([0-9;]*)([A-Za-z])/.exec(write.slice(index))
-      if (!match) {
-        index += 1
-        continue
-      }
-      const params = (match[1] ?? "")
-        .split(";")
-        .filter((entry) => entry !== "")
-        .map(Number)
-      if (match[2] === "H") {
-        row = params[0] ?? 1
-        col = params[1] ?? 1
-      } else if (match[2] === "m") {
-        for (const code of params.length === 0 ? [0] : params) {
-          if (code === 0) inverse = false
-          else if (code === 7) inverse = true
-        }
-      }
-      index += match[0].length
-    }
-    return new Map(cells)
+test.each(["editing.deccara", "editing.decrara"])("%s paints its expected cells and inverse flags", async (id) => {
+  const row = editingReadbackRows.find((entry) => entry.id === id)
+  if (!row?.sentinel) throw new Error(`missing sentinel for ${id}`)
+  const { context } = readbackCaptureContext(24, 80, {
+    row: row.sentinel.row,
+    col: row.sentinel.col ?? 1,
   })
-}
-
-test("each attribute row's expected frame carries its own cells and inverse flags", async () => {
-  const failures: string[] = []
-  for (const id of ["editing.deccara", "editing.decrara"]) {
-    const row = editingReadbackRows.find((entry) => entry.id === id)
-    if (!row?.sentinel) throw new Error(`missing sentinel for ${id}`)
-    const { context, writes } = readbackCaptureContext(24, 80, {
-      row: row.sentinel.row,
-      col: row.sentinel.col ?? 1,
-    })
-    await find(id).term!(context)
-    const top = row.region?.top ?? 1
-    const left = row.region?.left ?? 1
-    const screens = paintedScreens(writes)
-    const matched = writes.findIndex((_write, index) => {
-      const painted = screens[index]
-      if (painted === undefined) return false
-      return row.after.every((cells, cellRow) =>
-        cells.every((cell, cellCol) => {
-          if (typeof cell === "string") return true
-          const got = painted.get(`${top + cellRow},${left + cellCol}`)
-          return got?.char === cell.char && got.inverse === (cell.attributes.inverse === true)
-        }),
-      )
-    })
-    // DECRARA's claim is the CLEAR: its expected frame must contain no reverse video at all, while
-    // DECCARA's must set it. A frame that merely inherits the seed's state is not the same frame.
-    const expectedWrite = matched === -1 ? "" : (writes[matched] ?? "")
-    const paintedAsClaimed = matched !== -1
-    const clearsAsClaimed = id === "editing.deccara" || !expectedWrite.includes("\x1b[7m")
-    const setsAsClaimed = id !== "editing.deccara" || expectedWrite.includes("\x1b[7m")
-    if (!paintedAsClaimed || !clearsAsClaimed || !setsAsClaimed) {
-      failures.push(
-        `${id} (matched=${String(paintedAsClaimed)}, clears=${String(clearsAsClaimed)}, sets=${String(setsAsClaimed)})`,
+  const surface = createSemanticSurface({ rows: 24, cols: 80 })
+  const write = context.write
+  context.write = (bytes) => {
+    write(bytes)
+    surface.feed(bytes)
+  }
+  const capture = context.capture!
+  const expectedFrames: { char: string; inverse: boolean }[][][] = []
+  context.capture = async (request) => {
+    if (request.label === `${id}: expected frame`) {
+      expect(request.cells).toEqual({ top: 1, left: 1, bottom: 3, right: 6 })
+      expectedFrames.push(
+        Array.from({ length: 3 }, (_, cellRow) =>
+          Array.from({ length: 6 }, (_, cellCol) => {
+            const cell = surface.getCell(cellRow, cellCol)
+            return { char: cell.char, inverse: cell.inverse }
+          }),
+        ),
       )
     }
+    return capture(request)
   }
-  expect(failures).toEqual([])
+  await find(id).term!(context)
+  expect(expectedFrames).toEqual([
+    ["aaaaaZ", "bbbbbY", "cccccX"].map((characters) =>
+      [...characters].map((char, col) => ({ char, inverse: id === "editing.deccara" && col < 5 })),
+    ),
+  ])
 })
