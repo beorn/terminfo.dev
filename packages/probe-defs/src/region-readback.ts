@@ -757,9 +757,7 @@ export async function captureRegionReadbackDecision(
   const cropRectangles: Array<CaptureRectangle | undefined> = []
   try {
     beginCaptureLifecycle(ctx)
-    // Stability belongs to this run's cleared canvas, not the preceding probe's glyphs.
     // Each declared frame still gets its own seed writes and paint witness below.
-    ctx.write("\x1b[2J\x1b[H")
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
     // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
     const { refusal: instability } = await captureStabilityPair(
