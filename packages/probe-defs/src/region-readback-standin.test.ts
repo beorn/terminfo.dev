@@ -59,7 +59,13 @@ function poisonedContext(): { ctx: TermContext; writes: string[]; requests: Capt
           text: rows,
           attributes: rows.map((row) => Array.from(row, () => 7)),
         },
-        bufferOwner: { image: "OpenConsole.exe" as const, pid: 4242, ppid: 100 },
+        bufferOwner: {
+          image: "OpenConsole.exe" as const,
+          pid: 4242,
+          ppid: 100,
+          executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+          executableSha256: `sha256:${"a".repeat(64)}`,
+        },
         standIns: [{ row: 1, column: 1, standIn: "U+FFFD" as const }],
       }
       return textCellsFrame(request, read, Date.now()).frame
