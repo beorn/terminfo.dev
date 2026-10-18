@@ -976,22 +976,44 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
 })
 
 test("app cursor hide grades the cursor cell's raw-pixel digests across shown, hidden and restored", async () => {
-  const captureFrames = async (values: readonly string[]) => {
+  const captureFrames = async (values: readonly string[], metadata = "same") => {
     const context = app(null)
     context.captureGeometry = {
       geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
       source: "measured by complete raster calibration",
     }
     let index = 0
-    context.capture = async ({ role, label }) => ({
-      role,
-      label,
-      capturedAt: ++index,
-      ref: `frame-${index}`,
-      regionDigest: values[index - 1],
-      pixelsDigest: `whole-${index}`,
-      regionRectangle: { x: 16, y: 16, width: 8, height: 16 },
-    })
+    context.capture = async ({ role, label }) => {
+      const hidden = ++index === 2
+      const base = { role, label, capturedAt: index, ref: `frame-${index}` }
+      if (metadata.startsWith("text") || (metadata === "mixed" && hidden)) {
+        return {
+          ...base,
+          kind: "text-cells",
+          cellDigest: values[index - 1]!,
+          frameDigest: `whole-${index}`,
+          cellRectangle: {
+            top: metadata === "text-moved" && hidden ? 3 : 2,
+            left: 3,
+            bottom: metadata === "text-moved" && hidden ? 3 : 2,
+            right: 3,
+          },
+        }
+      }
+      return {
+        ...base,
+        regionDigest: metadata === "missing-digest" && hidden ? undefined : values[index - 1],
+        pixelsDigest: `whole-${index}`,
+        ...(metadata === "absent" || (metadata === "partial" && hidden)
+          ? {}
+          : {
+              regionRectangle:
+                metadata === "key-order" && hidden
+                  ? { height: 16, width: 8, y: 16, x: 16 }
+                  : { x: metadata === "moved" && hidden ? 24 : 16, y: 16, width: 8, height: 16 },
+            }),
+      }
+    }
     return await byId("cursor.hide").term!(context)
   }
   const supported = await captureFrames(["sha256:shown", "sha256:hidden", "sha256:shown"])
@@ -1004,6 +1026,22 @@ test("app cursor hide grades the cursor cell's raw-pixel digests across shown, h
   ])
   const unstable = await captureFrames(["sha256:a", "sha256:b", "sha256:c"])
   expect(unstable.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  // Coordinate equality ignores object-key order; caller metadata rules stay stricter than the shared pixel check.
+  for (const [metadata, outcome] of [
+    ["same", "supported"],
+    ["moved", "inconclusive"],
+    ["partial", "inconclusive"],
+    ["absent", "supported"],
+    ["key-order", "supported"],
+    ["text-same", "supported"],
+    ["text-moved", "inconclusive"],
+    ["mixed", "inconclusive"],
+    ["missing-digest", "inconclusive"],
+  ] as const) {
+    const result = await captureFrames(["sha256:shown", "sha256:hidden", "sha256:shown"], metadata)
+    expect(result.observation, metadata).toMatchObject({ outcome, evidence: "pixels", screenshotRef: "frame-2" })
+    if (metadata === "moved") expect(result.observation?.note).toContain("cropped from different screen positions")
+  }
 })
 
 test.each([1, 2])("app cursor hide cleans its disposable fixture when capture %i fails", async (failedCapture) => {

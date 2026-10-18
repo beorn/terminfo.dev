@@ -6,7 +6,7 @@ import {
   type TermlessContext,
 } from "./types.ts"
 import { cursorProbe, cursorStyleReadbackDecision, parserStateResult, probe } from "./helpers.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import { captureRegionVerdict, cropPositionRefusal, type RegionReadback } from "./region-readback.ts"
 
 /**
  * CUP inside a DECSTBM region with DECOM on is region-relative, so the marker must land on the
@@ -246,10 +246,13 @@ export const cursorProbes: ProbeDefinition[] = [
               frame.kind === "text-cells" ? frame.cellRectangle : frame.regionRectangle
             const rectangles = frames.map(rectangle)
             const observed = JSON.stringify({ rows, cols, cursor: { row: 2, col: 3 }, digests, rectangles })
-            if (
-              digests.some((entry) => entry.cells === undefined) ||
+            // Presence and text-cell metadata remain this caller's rules; pixel coordinates have one shared owner.
+            const partialRectangles =
+              rectangles.some((entry) => entry === undefined) && rectangles.some((entry) => entry !== undefined)
+            const textRectanglesChanged =
+              frames.some((frame) => frame.kind === "text-cells") &&
               new Set(rectangles.map((entry) => JSON.stringify(entry))).size !== 1
-            ) {
+            if (digests.some((entry) => entry.cells === undefined) || partialRectangles || textRectanglesChanged) {
               const note =
                 "Cursor pixel proof needs one cell-aligned raw-pixel digest per frame at the same rectangle; this capture supplied neither"
               return {
@@ -266,6 +269,14 @@ export const cursorProbes: ProbeDefinition[] = [
                 assertions: [{ kind: "positive", expected: note, observed }],
               }
             }
+            const cropRefusal = cropPositionRefusal({
+              id: "cursor.hide",
+              compared: frames.map((frame) => ({ role: frame.label, rectangle: frame.regionRectangle })),
+              response: observed,
+              frames,
+              screenshotRef: hidden.ref,
+            })
+            if (cropRefusal) return cropRefusal
             const shownDigest = digests[0]?.cells
             const hiddenDigest = digests[1]?.cells
             const restoredDigest = digests[2]?.cells
