@@ -9,10 +9,14 @@
  * cannot drift into grading two different fixtures (which is how the first revision of this kind
  * shipped an edit that rewrote its own control).
  *
- * The compared cells are a GRID — one `string[]` per screen ROW (@cto b29d9b69: "the cells become a
+ * The compared cells are a GRID — one row per screen ROW (@cto b29d9b69: "the cells become a
  * grid (one string[] per row). Extend the kind once, with that family"). One row of cells is the
  * one-row grid, so a family that needs a scroll region, a multi-line erase or an insert/delete line
  * declares it instead of adding a second factory.
+ *
+ * A cell is a character, or a character carrying the attributes its row ASSERTS (@cto 2026-10-18,
+ * shape A): the third attribute-rectangle probe converted the kind once, so DECCARA, DECRARA and the
+ * EL background row grade attribute changes on both arms instead of being hand-written beside it.
  */
 import type { ProbeDefinition, TermlessContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
@@ -41,6 +45,51 @@ export interface RegionReadbackRegion {
   left: number
 }
 
+/**
+ * A color the row can assert WITHOUT pinning a backend's palette: `"present"` asserts the cell has
+ * a background at all, and `"same-as-before"` asserts the cell kept the one the seed painted at the
+ * same grid position. A named SGR resolves through each terminal's own palette, so an absolute RGB
+ * here would be a backend's value, not the claim (@cto 2026-10-18 decsace ruling, shape A).
+ */
+export type RegionReadbackColor = "present" | "same-as-before"
+
+/**
+ * The attributes a compared cell asserts. A cell declares ONLY what its row claims, so a terminal
+ * that sets anything else is never graded on it. Only the forms a row actually uses live here: an
+ * unused spelling is a claim nothing measures (@cto round-2 R3).
+ */
+export interface RegionReadbackAttributes {
+  /** True asserts the attribute is set; false asserts the sequence CLEARED it. */
+  inverse?: boolean
+  bg?: RegionReadbackColor
+}
+
+/** The SGR bytes the expected frame paints for a relative background claim. Required with one. */
+export interface RegionReadbackPaint {
+  bg?: string
+}
+
+/**
+ * The terminal's OWN default-background fixture, measured before the row paints anything. A relative
+ * colour claim (`present`, `same-as-before`) is only established when the painted seed DIFFERS from
+ * this measurement at the same cell: a backend that reports one concrete RGB as its default and
+ * ignores the row's SGR would otherwise satisfy both sides of the claim (@dev/review2 source audit
+ * 97414a37, P2 1).
+ */
+export interface RegionReadbackBaseline {
+  /** The write that paints the default-background fixture, before the row's own seed. */
+  seed: string
+  /** The cells that write must show. Read char-only: only their MEASURED colours qualify the seed. */
+  cells: readonly (readonly RegionReadbackCell[])[]
+}
+
+/**
+ * One compared cell: a plain character, or a character carrying the attributes its row asserts.
+ * Character-only rows keep the string spelling, so their grids, test doubles and verdicts are
+ * unchanged.
+ */
+export type RegionReadbackCell = string | { char: string; attributes: RegionReadbackAttributes }
+
 export interface RegionReadbackRow {
   id: string
   /** The claim in words: the termless arm's `expected`, and the kind table test's row label. */
@@ -51,7 +100,7 @@ export interface RegionReadbackRow {
    * The cells the seed frame must show: one `string[]` per compared ROW, one entry per compared
    * COLUMN, in screen order. A wide follower is `""`.
    */
-  before: readonly (readonly string[])[]
+  before: readonly (readonly RegionReadbackCell[])[]
   /** The writes between the seed and the final read, in order. */
   steps: readonly RegionReadbackStep[]
   /**
@@ -60,7 +109,7 @@ export interface RegionReadbackRow {
    * `" "` on either side are the same blank (see `sameCell`), so a correct terminal is never graded
    * unsupported for choosing the backend's own spelling.
    */
-  after: readonly (readonly string[])[]
+  after: readonly (readonly RegionReadbackCell[])[]
   /**
    * Cells whose position the sequence must preserve. A control is a real control only when the
    * sequence does not write it. Only when every one holds is `after` a verdict; a moved control means
@@ -74,7 +123,21 @@ export interface RegionReadbackRow {
   /** The normalizing write the termless arm makes whether or not it decided, and the pixel prelude. */
   reset: string
   /** The grid the sequence would leave if it IGNORED the one attribute it claims. */
-  ignored?: readonly (readonly string[])[]
+  ignored?: readonly (readonly RegionReadbackCell[])[]
+  /**
+   * The terminal's own default-background fixture, measured first. REQUIRED when any compared cell
+   * makes a relative colour claim, because the claim is "the seed painted something the default does
+   * not show" and only a baseline measurement can establish that.
+   */
+  baseline?: RegionReadbackBaseline
+  /** The note when the baseline fixture itself was not measured. */
+  baselineNote?: string
+  /**
+   * The SGR the expected frame paints for a cell whose fg/bg assertion is `"present"` or
+   * `"same-as-before"`. Loading refuses a row that declares one without its bytes: an unpainted
+   * expected frame would read equal to the seed and go inconclusive on every adapter.
+   */
+  paint?: RegionReadbackPaint
   /**
    * The compared region's top-left corner. Its bottom and right DERIVE from the grid's own shape, so
    * a region can no longer disagree with the cells it compares. Default `{ top: 1, left: 1 }`.
@@ -150,13 +213,144 @@ interface RegionReadbackGeometry {
  * sequence must never grade unsupported for choosing the other spelling (@cto 28450 must-fix 1,
  * 2026-10-12).
  */
-function sameCell(measured: string, expected: string): boolean {
-  return isBlank(expected) ? isBlank(measured) : measured === expected
+type MeasuredCell = ReturnType<TermlessContext["getCell"]>
+
+/**
+ * One cell compared against its declared expectation. The character keeps the blank rule; an
+ * attribute-carrying cell adds ONLY the fields it declares, so absent attributes are unread (never
+ * equal, never unequal) and a terminal is not graded on state the row never claimed.
+ */
+function sameCell(measured: MeasuredCell, expected: RegionReadbackCell, reference?: MeasuredCell): boolean {
+  const character = cellChar(expected)
+  const characterMatches = isBlank(character) ? isBlank(measured.char) : measured.char === character
+  if (!characterMatches) return false
+  if (typeof expected === "string") return true
+  const attributes = expected.attributes
+  if (attributes.inverse !== undefined && measured.inverse !== attributes.inverse) return false
+  if (attributes.bg !== undefined && !sameColorClaim(measured.bg, attributes.bg, reference?.bg)) return false
+  return true
 }
 
-/** A wide follower paints nothing of its own: its lead glyph already claimed the column. */
-function paintRow(cells: readonly string[]): string {
-  return cells.filter((cell) => cell !== "").join("")
+function cellChar(cell: RegionReadbackCell): string {
+  return typeof cell === "string" ? cell : cell.char
+}
+
+type Rgb = { r: number; g: number; b: number }
+type MeasuredColor = Rgb | null
+
+function sameColorClaim(measured: MeasuredColor, claim: RegionReadbackColor, reference: MeasuredColor | undefined) {
+  if (measured === null) return false
+  if (claim === "present") return true
+  if (reference === undefined) {
+    throw new Error("a same-as-before color claim reached the comparison without its seed cell")
+  }
+  return reference !== null && reference.r === measured.r && reference.g === measured.g && reference.b === measured.b
+}
+
+/**
+ * The first declared attribute the measured cell does not report AT ALL, or null. Sparse test doubles
+ * can omit a field the real contract requires; an unread value is never equal and never unequal, so
+ * the row refuses by name instead of grading a negative or throwing on absent metadata.
+ */
+function unreadAttribute(
+  measured: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+  row: number,
+): string | null {
+  for (const [col, want] of (declared[row] ?? []).entries()) {
+    if (typeof want === "string") continue
+    const cell = measured[row]?.[col]
+    if (cell === undefined) return `cell ${row},${col} was not measured`
+    for (const field of ["inverse", "bg"] as const) {
+      if (want.attributes[field] === undefined) continue
+      if (cell[field] === undefined) return `cell ${row},${col} ${field}`
+    }
+  }
+  return null
+}
+
+/** Every unread declared attribute in a grid, as the note a refusal names. */
+function unreadAttributes(
+  measured: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+): string | null {
+  for (let row = 0; row < declared.length; row++) {
+    const unread = unreadAttribute(measured, declared, row)
+    if (unread !== null) return unread
+  }
+  return null
+}
+
+/**
+ * Why the painted seed is not qualified by the default-background fixture, or null when it is. Two
+ * failures: a colour equal to the default at the same cell (`present` and `same-as-before` both hold
+ * vacuously there), and a baseline channel the backend never reported — an unread value is never
+ * equal and never unequal, so treating it as "different" would qualify the seed on nothing
+ * (@dev/review2 97414a37 P2 1; @cto round-2 B3).
+ */
+function unpaintedColor(
+  painted: readonly (readonly MeasuredCell[])[],
+  baseline: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+): string | null {
+  for (const [row, cells] of declared.entries()) {
+    for (const [col, want] of cells.entries()) {
+      if (typeof want === "string") continue
+      for (const channel of ["bg"] as const) {
+        const claim = want.attributes[channel]
+        if (claim === undefined) continue
+        const seed = painted[row]?.[col]?.[channel]
+        const plain = baseline[row]?.[col]?.[channel]
+        if (plain === undefined) {
+          return `the default-background seed does not report ${channel} at cell ${row},${col}, so the painted colour cannot be qualified`
+        }
+        if (seed === undefined || seed === null) {
+          // An unread painted seed cannot qualify a relative claim: continuing here would let a
+          // cell whose colour nothing measured satisfy the check.
+          return `the painted seed reports no ${channel} at cell ${row},${col}, so the colour claim cannot be qualified`
+        }
+        if (plain !== null && plain.r === seed.r && plain.g === seed.g && plain.b === seed.b) {
+          return `the painted seed reports the same colour as the default-background seed at cell ${row},${col} ${channel}, so the colour fixture was not established`
+        }
+      }
+    }
+  }
+  return null
+}
+
+/** The SGR the expected frame paints for a declared attribute cell. */
+function attributeSgr(attributes: RegionReadbackAttributes, paint: RegionReadbackPaint | undefined): string {
+  const codes: string[] = []
+  if (attributes.inverse === true) codes.push("7")
+  const bg = attributes.bg
+  // assertRelativeClaimsPainted proved at LOAD that every relative bg claim carries its bytes, so
+  // this narrowing is that proof and the painter carries no second refusal of its own.
+  if (bg !== undefined) codes.push(paintBytes(paint?.bg as string))
+  return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`
+}
+
+/** The SGR parameters inside a row's paint bytes; loading proved they exist for every claim. */
+function paintBytes(paint: string): string {
+  return paint.replace(/^\x1b\[/u, "").replace(/m$/u, "")
+}
+
+/**
+ * A wide follower paints nothing of its own: its lead glyph already claimed the column. An
+ * attribute cell paints its declared SGR around its character, so the expected frame differs from
+ * the seed exactly where an adapter that reads attributes can see the difference.
+ */
+function paintRow(cells: readonly RegionReadbackCell[], paint: RegionReadbackPaint | undefined): string {
+  let painted = ""
+  for (const cell of cells) {
+    const character = cellChar(cell)
+    if (character === "") continue
+    if (typeof cell === "string") {
+      painted += character
+      continue
+    }
+    painted += `\x1b[0m${attributeSgr(cell.attributes, paint)}${character}\x1b[0m`
+  }
+  return painted
 }
 
 /**
@@ -164,30 +358,53 @@ function paintRow(cells: readonly string[]): string {
  * shape that slipped past the load check fails CLOSED here rather than being read against a blank and
  * accepted.
  */
-function cellsMatch(measured: readonly string[], expected: readonly string[]): boolean {
+function cellsMatch(
+  measured: readonly MeasuredCell[],
+  expected: readonly RegionReadbackCell[],
+  reference: readonly MeasuredCell[] | undefined,
+): boolean {
   if (measured.length !== expected.length) return false
   return measured.every((cell, col) => {
     const want = expected[col]
-    return want !== undefined && sameCell(cell, want)
+    return want !== undefined && sameCell(cell, want, reference?.[col])
   })
 }
 
 /** Row-by-row equality: a grid with the wrong number of rows can never match. */
-function gridMatch(measured: readonly (readonly string[])[], expected: readonly (readonly string[])[]): boolean {
+function gridMatch(
+  measured: readonly (readonly MeasuredCell[])[],
+  expected: readonly (readonly RegionReadbackCell[])[],
+  reference?: readonly (readonly MeasuredCell[])[],
+): boolean {
   if (measured.length !== expected.length) return false
   return measured.every((cells, row) => {
     const want = expected[row]
-    return want !== undefined && cellsMatch(cells, want)
+    return want !== undefined && cellsMatch(cells, want, reference?.[row])
   })
 }
 
 /** The compared region's cells, read from the parser at their own screen positions. */
-function readGrid(ctx: TermlessContext, geometry: RegionReadbackGeometry): string[][] {
+function readGrid(ctx: TermlessContext, geometry: RegionReadbackGeometry): MeasuredCell[][] {
   return Array.from({ length: geometry.rows }, (_, row) =>
-    Array.from(
-      { length: geometry.columns },
-      (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col).char,
-    ),
+    Array.from({ length: geometry.columns }, (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col)),
+  )
+}
+
+/**
+ * The measured grid as the row's RAW REPLY. A character-only row keeps the character spelling it has
+ * always carried, so stored run payloads and the real-parser tests read exactly as before; a cell the
+ * row declares with attributes reports the measured cell, so the evidence names the attribute it
+ * asserted instead of dropping it.
+ */
+function responseGrid(
+  measured: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+): readonly (readonly (MeasuredCell | string)[])[] {
+  return measured.map((cells, row) =>
+    cells.map((cell, col) => {
+      const want = declared[row]?.[col]
+      return want === undefined || typeof want === "string" ? cell.char : cell
+    }),
   )
 }
 
@@ -196,8 +413,54 @@ function cup(row: number, col: number): string {
 }
 
 /** The frame a grid paints: each compared row at its own screen row and left column. */
-function paintFrame(grid: readonly (readonly string[])[], geometry: RegionReadbackGeometry): string {
-  return grid.map((cells, row) => cup(geometry.top + row, geometry.left) + paintRow(cells)).join("")
+function paintFrame(
+  grid: readonly (readonly RegionReadbackCell[])[],
+  geometry: RegionReadbackGeometry,
+  paint: RegionReadbackPaint | undefined,
+): string {
+  return grid.map((cells, row) => cup(geometry.top + row, geometry.left) + paintRow(cells, paint)).join("")
+}
+
+/**
+ * A relative colour claim (`present`, `same-as-before`) is only established against a measured
+ * default: without a baseline the claim would hold vacuously on a backend that ignores the row's SGR
+ * (P2 1, review2 97414a37). Loaded rows cannot make one without the fixture.
+ */
+function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
+  if (row.baseline !== undefined) return
+  for (const cells of [...row.before, ...row.after]) {
+    for (const cell of cells) {
+      if (typeof cell === "string") continue
+      if (cell.attributes.bg !== undefined) {
+        throw new Error(`${row.id}: a relative bg claim needs a baseline fixture to qualify the seed`)
+      }
+    }
+  }
+}
+
+/**
+ * A relative colour claim paints the expected frame with the row's own SGR. Without those bytes the
+ * expected frame would read equal to the seed on every adapter and the row could only ever be
+ * inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide (@cto
+ * round-2 R2, which asks for a test of exactly this refusal).
+ */
+function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
+  // EVERY frame the row builds, not only `after`: `ignored` is painted by the same paintFrame call,
+  // so a relative claim there needs the same bytes. The message names the row, so a test that
+  // deletes this check cannot be satisfied by paintBytes' row-less fallback.
+  for (const cells of [row.after, ...(row.ignored === undefined ? [] : [row.ignored])]) {
+    for (const [rowIndex, line] of cells.entries()) {
+      for (const [col, cell] of line.entries()) {
+        if (typeof cell === "string") continue
+        if (cell.attributes.bg === undefined) continue
+        // Falsy, not only undefined: an empty string would paint no background and ship a claim no
+        // adapter can decide, so it refuses here with the row id.
+        if (!row.paint?.bg) {
+          throw new Error(`${row.id}: cell ${rowIndex},${col} asserts a relative bg with no paint bytes`)
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -260,6 +523,8 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
       throw new Error(`${row.id}: control column ${control.col} is outside the compared 0..${columns - 1}`)
     }
   }
+  assertRelativeClaimsQualified(row)
+  assertRelativeClaimsPainted(row)
   // The geometry this row really addresses (@cto 2026-10-12, must-fix 2). The parked cursor AND the
   // sentinel are screen rows, so the need is the larger of the two: deriving it from the sentinel alone
   // let a row declare a minimum that parked its own cursor off-screen (reverse-index: cursor 6,
@@ -306,10 +571,12 @@ function regionReadbackSpec(
     region: { top: geometry.top, left: geometry.left, bottom: geometry.bottom, right: geometry.right },
     sentinel: { row: geometry.sentinelRow, col: geometry.sentinelCol },
     cursorRow: geometry.cursorRow,
-    seed: prelude + row.seed + geometry.park,
+    seed: prelude + (row.baseline?.seed ?? "") + row.seed + geometry.park,
     edit: row.steps.map((step) => step.write).join("") + geometry.park,
-    expected: prelude + paintFrame(row.after, geometry) + geometry.park,
-    ...(row.ignored === undefined ? {} : { ignored: prelude + paintFrame(row.ignored, geometry) + geometry.park }),
+    expected: prelude + paintFrame(row.after, geometry, row.paint) + geometry.park,
+    ...(row.ignored === undefined
+      ? {}
+      : { ignored: prelude + paintFrame(row.ignored, geometry, row.paint) + geometry.park }),
     ...(row.cleanup === undefined ? {} : { cleanup: row.cleanup }),
     ...(row.requiresUtf8 === true ? { requiresUtf8: true as const } : {}),
     timeoutMs: TIMEOUT_MS,
@@ -345,10 +612,47 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
         )
       }
       try {
+        const baselineRow = row.baseline
+        let baseline: MeasuredCell[][] | undefined
+        if (baselineRow !== undefined) {
+          ctx.feed(baselineRow.seed)
+          baseline = readGrid(ctx, geometry)
+          if (!gridMatch(baseline, baselineRow.cells)) {
+            return parserStateResult(
+              null,
+              row.expected,
+              { baseline: responseGrid(baseline, baselineRow.cells) },
+              row.baselineNote ?? `${row.id}: the default-background fixture was not measured`,
+            )
+          }
+        }
         ctx.feed(row.seed)
         const before = readGrid(ctx, geometry)
+        // BEFORE the grid comparison: an unread exact claim inside sameColorClaim throws, and an
+        // unread bold or inverse would otherwise be reported as "seed not established" instead of
+        // named (@cto round-2 R1).
+        const unreadSeed = unreadAttributes(before, row.before)
+        if (unreadSeed !== null) {
+          return parserStateResult(
+            null,
+            row.expected,
+            { before: responseGrid(before, row.before) },
+            `${row.id}: the backend does not report ${unreadSeed} on the seed, so the claim cannot be read`,
+          )
+        }
         if (!gridMatch(before, row.before)) {
-          return parserStateResult(null, row.expected, { before }, row.seedNote)
+          return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
+        }
+        if (baseline !== undefined) {
+          const unpainted = unpaintedColor(before, baseline, row.before)
+          if (unpainted !== null) {
+            return parserStateResult(
+              null,
+              row.expected,
+              { before: responseGrid(before, row.before), baseline: responseGrid(baseline, baselineRow?.cells ?? []) },
+              `${row.id}: ${unpainted}`,
+            )
+          }
         }
         const setup: { x: number; y: number }[] = []
         for (const step of row.steps) {
@@ -357,21 +661,39 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           const cursor = ctx.getCursor()
           setup.push({ x: cursor.x, y: cursor.y })
           if (cursor.x !== step.cursor.x || cursor.y !== step.cursor.y) {
-            return parserStateResult(null, row.expected, { before, setup }, step.cursor.note)
+            return parserStateResult(
+              null,
+              row.expected,
+              { before: responseGrid(before, row.before), setup },
+              step.cursor.note,
+            )
           }
         }
         const after = readGrid(ctx, geometry)
+        const unreadAfter = unreadAttributes(after, row.after)
+        if (unreadAfter !== null) {
+          return parserStateResult(
+            null,
+            row.expected,
+            { before: responseGrid(before, row.before), after: responseGrid(after, row.after) },
+            `${row.id}: the backend does not report ${unreadAfter} after the sequence, so the claim cannot be read`,
+          )
+        }
         const controlsValid = row.controls.every((control) => {
           const cell = after[control.row]?.[control.col]
           return cell !== undefined && sameCell(cell, control.char)
         })
         return parserStateResult(
-          controlsValid ? gridMatch(after, row.after) : null,
+          controlsValid ? gridMatch(after, row.after, before) : null,
           row.expected,
-          { before, setup, after },
+          { before: responseGrid(before, row.before), setup, after: responseGrid(after, row.after) },
           controlsValid ? undefined : row.controlNote,
         )
       } finally {
+        // The parser arm sets the same extent mode the app arm does (`2*x` inside the row's step), and
+        // 2J does not reset it, so the row's own cleanup lands here too on every exit: decided,
+        // refused or thrown.
+        if (row.cleanup !== undefined) ctx.feed(row.cleanup)
         ctx.feed(row.reset)
       }
     },

@@ -76,13 +76,27 @@ const KIND_TABLES: readonly (readonly [string, readonly RegionReadbackRow[]])[] 
 const KIND_ROWS: readonly RegionReadbackRow[] = KIND_TABLES.flatMap(([, table]) => [...table])
 
 /**
- * The four sequences xterm.js does NOT implement. Every other kind row names a sequence xterm.js DOES
+ * The six sequences xterm.js does NOT implement. Every other kind row names a sequence xterm.js DOES
  * implement, so such a row that reads unsupported is the FIXTURE failing, not the terminal — which is
  * the shape must-fix 1 shipped: a blank spelled `" "` on one side only graded 17 of these rows
  * unsupported against the four real backends @cto measured (@cto 28450 must-fix 1, 2026-10-12).
  * The declaring family is named in each id, so a future absent sequence says which family it is in.
+ *
+ * `editing.deccara`/`editing.decrara` stay on this list after converting to the kind (@cto 2026-10-18,
+ * corrected in round 3): xterm.js has no `$r`/`$t` handler at all (measured on @xterm/headless 6: the
+ * attributes stay clear through both sequences), so their real-parser reading is a measured
+ * UNSUPPORTED. This is NOT a verdict change: the hand-written pair already read unsupported at base
+ * 120ecf3a, which the retained run content/probes-libs/xtermjs-6.0.0-linux-c08837a5-*.json and a
+ * re-measure through collectBatch both show (@cto round-2 B4).
  */
-const XTERM_ABSENT = ["editing.decfra", "editing.decera", "editing.decsera", "editing.deccra"]
+const XTERM_ABSENT = [
+  "editing.decfra",
+  "editing.decera",
+  "editing.decsera",
+  "editing.deccra",
+  "editing.deccara",
+  "editing.decrara",
+]
 
 async function collectOrigin(origin: probeDefs.ProbeDefinition) {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
@@ -163,6 +177,11 @@ test("every region-readback kind row grades its real xterm.js outcome", async ()
       KIND_ROWS.map((row) => row.id).toSorted(),
     )
     expect(KIND_ROWS.map((row) => row.id).filter((id) => outcome(id) !== "supported")).toEqual(XTERM_ABSENT)
+    // ...and the converted attribute pair is UNSUPPORTED, not merely "not supported": an inconclusive
+    // here would mean the fixture never read the parser at all (@cto round-2 B4).
+    for (const id of ["editing.deccara", "editing.decrara"]) {
+      expect(outcome(id), id).toBe("unsupported")
+    }
   } finally {
     progress.mockRestore()
   }

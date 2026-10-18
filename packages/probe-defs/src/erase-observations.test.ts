@@ -9,7 +9,7 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
 import { ALL_PROBES } from "./index.ts"
-import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
@@ -19,10 +19,9 @@ import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
  * definition - or a probe that stops being built from its row - fails here rather than as a silently
  * smaller count in a census taken later.
  *
- * `erase.el-with-attrs` and `erase.screen.scrollback` are deliberately absent: the first is an
- * attribute claim and the second a history claim, and the region kind compares CHARACTERS on a CELL
- * WINDOW (their one-line coverage records live in erase.ts). `erase-contract.test.ts` binds all eleven
- * rows beside these nine.
+ * `erase.screen.scrollback` is deliberately absent: it is a history claim, and the region kind compares
+ * a CELL WINDOW (its one-line coverage record lives in erase.ts). `erase-contract.test.ts` binds all
+ * eleven rows beside these ten.
  */
 const KIND_TABLE_ROWS = eraseReadbackRows.map((row) => ({
   id: row.id,
@@ -123,19 +122,47 @@ function appWithEvents(rows: number, cols: number, events: string[]): TermContex
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+  if (cell === undefined || typeof cell === "string") {
+    // A plain cell is a cell the row claims NO attributes for, not a cell whose backend reports no
+    // field: a real `getCell` always says what the background is (null = none). Leaving `bg`
+    // undefined here would model an unread backend, which the kind now refuses by name (@cto B3).
+    return {
+      char: cell ?? " ",
+      bold: false,
+      inverse: false,
+      fg: null,
+      bg: null,
+    } as ReturnType<TermlessContext["getCell"]>
+  }
+  const attributes = cell.attributes
+  return {
+    char: cell.char,
+    bold: false,
+    inverse: attributes.inverse === true,
+    fg: null,
+    bg: attributes.bg ?? null,
+  } as ReturnType<TermlessContext["getCell"]>
+}
+
 function declaredScreen(
-  screens: Record<string, readonly (readonly string[])[]>,
+  screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
   cols: number,
   cursor: { x: number; y: number } = { x: 0, y: 0 },
+  baseline?: { seed: string; cells: readonly (readonly RegionReadbackCell[])[] },
 ): TermlessContext {
-  let cells: readonly (readonly string[])[] = []
+  let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
     feed: (sequence) => {
+      if (baseline !== undefined && sequence === baseline.seed) {
+        cells = baseline.cells
+        return
+      }
       const next = screens[sequence]
       if (next !== undefined) cells = next
     },
-    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+    getCell: (row, col) => declaredCell(cells[row]?.[col]),
     getCursor: () => ({ x: cursor.x, y: cursor.y, visible: true, style: null }),
   })
 }
@@ -155,8 +182,13 @@ function stepCursor(id: string): { x: number; y: number } {
 }
 
 /** The kind reads a blank as `""` or `" "` alike, so a compare normalizes BOTH grids to spaces. */
-const toSpaces = (grid: readonly (readonly string[])[]) =>
-  grid.map((cells) => cells.map((cell) => (cell === "" ? " " : cell)))
+const toSpaces = (grid: readonly (readonly (string | RegionReadbackCell)[])[]) =>
+  grid.map((cells) =>
+    cells.map((cell) => {
+      if (typeof cell === "string") return cell === "" ? " " : cell
+      return cell.char === "" ? " " : cell.char
+    }),
+  )
 
 const firstStep = (id: string): string => {
   const row = eraseReadbackRows.find((entry) => entry.id === id)
@@ -233,11 +265,13 @@ for (const row of eraseReadbackRows) {
     const cursor = stepCursor(row.id)
     const right = (row.region?.left ?? 1) + (row.before[0]?.length ?? 0) - 1
 
-    const supported = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols, cursor))
+    const supported = probe.termless(
+      declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols, cursor, row.baseline),
+    )
     expect(supported.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
     expect(supported.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
 
-    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols, cursor))
+    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols, cursor, row.baseline))
     expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     expect(ignored.assertions?.[0], row.id).toMatchObject({ kind: "negative" })
 
@@ -297,6 +331,24 @@ test.each(eraseReadbackRows.map((row) => row.id))("%s reads an ignored CUP incon
   )
   expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions, id).toBeUndefined()
+})
+
+/**
+ * erase.el-with-attrs parks on row 2 and CUPs back to row 1 to erase, so an ignored CUP would erase
+ * the WRONG row. Its declared cursor is (0,0), which the generic loop above skips because a static
+ * double cannot express "the parked row was never left" — this test states that case explicitly, with
+ * the surface still sitting on the park (0,1).
+ */
+test("erase.el-with-attrs reads an ignored CUP inconclusive before grading cells", () => {
+  const row = rowById("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const result = probe.termless(
+    declaredScreen({ [row.seed]: row.before, [firstStep(row.id)]: row.after }, 24, { x: 0, y: 1 }, row.baseline),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("CUP to the seeded row was ignored")
+  expect(result.assertions).toBeUndefined()
 })
 
 /**
@@ -698,48 +750,241 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
   expect(clicks).toEqual([4, 5, 4, 5])
 })
 
-test("background erase measures a blank target with its calibrated background", () => {
-  const black = { r: 0, g: 0, b: 0 }
-  const color = { r: 130, g: 20, b: 70 }
-  // Constant RGB metadata cannot establish that SGR changed the default background. The erased
-  // cell's background is judged on its own (@chief 2026-10-11T22:58Z): the current colour is
-  // supported, the default (or none) is a measured negative, and only an unread background is
-  // unmeasured.
-  for (const [baseline, colored, char, afterBg, seed, expected, target] of [
-    [black, black, " ", black, "X", "inconclusive", false],
-    [null, null, " ", null, "X", "inconclusive", false],
-    [undefined, color, " ", color, "X", "inconclusive", false],
-    [null, color, " ", color, "?", "inconclusive", false],
-    [null, color, " ", color, "X", "supported", true],
-    [black, color, " ", color, "X", "supported", true],
-    [null, color, "X", color, "X", "unsupported", true],
-    [null, color, " ", null, "X", "unsupported", true],
-    [null, color, " ", undefined, "X", "inconclusive", true],
-  ] as const) {
-    const base = eraseCellsHeadless("ABCDE")
-    let erased = false
-    let coloring = false
-    const writes: string[] = []
-    const result = byId("erase.el-with-attrs").termless({
-      ...base,
-      feed(bytes) {
-        writes.push(bytes)
-        if (bytes.includes("\x1b[42m")) coloring = true
-        if (bytes === "\x1b[K") erased = true
-      },
-      getCell(row, col) {
-        return {
-          ...base.getCell(row, col),
-          char: erased ? char : coloring ? "X" : seed,
-          bg: (erased ? afterBg : coloring ? colored : baseline) as ReturnType<TermlessContext["getCell"]>["bg"],
-        }
-      },
-    })
-    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
-    expect(writes.includes("\x1b[K")).toBe(target)
-    if (expected === "inconclusive") expect(result.assertions).toBeUndefined()
-    expect(writes.at(-1)).toBe("\x1b[0m")
+/**
+ * The attribute claim is RELATIVE, and this table measures exactly that: the seed must report SOME
+ * background, the erased cells must keep the one the seed painted at that position, and a terminal
+ * that drops to the default (or keeps the characters) is a measured negative. An unread background is
+ * not expressible here — `getCell` reports `null` for "no colour", never "unknown" — so every row of
+ * the table is a decided or refused reading, never an unmeasured one graded by accident.
+ */
+test("background erase measures a blank target that carries the seeded background", () => {
+  const row = rowById("erase.el-with-attrs")
+  const step = firstStep("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const background = { r: 130, g: 20, b: 70 }
+  const other = { r: 1, g: 2, b: 3 }
+  const baselineSeed = row.baseline?.seed
+  if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
+  const run = (
+    seedBg: { r: number; g: number; b: number } | null,
+    afterBg: { r: number; g: number; b: number } | null,
+    char = " ",
+    seedChar = "X",
+  ) => {
+    // Three measured phases: the terminal's own default, the seed the row paints, then the erase.
+    let phase: "default" | "seed" | "after" = "default"
+    return probe.termless!(
+      headless({
+        feed: (sequence) => {
+          if (sequence === baselineSeed) phase = "default"
+          else if (sequence === step) phase = "after"
+          else if (sequence === row.seed) phase = "seed"
+        },
+        getCell: (_cellRow, col) => ({
+          char: phase === "after" ? char : phase === "seed" ? seedChar : "X",
+          bold: false,
+          dim: false,
+          italic: false,
+          underline: false,
+          strikethrough: false,
+          inverse: false,
+          hidden: false,
+          blink: false,
+          fg: null,
+          bg: (phase === "after" ? afterBg : phase === "seed" ? seedBg : null) ?? null,
+          wide: false,
+        }),
+      }),
+    )
   }
+  // The claim, measured: a blank cell keeping the seed's own background is the ONLY supported frame.
+  expect(run(background, background).observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(run(background, background).assertions?.[0]).toMatchObject({ kind: "positive" })
+  // The measured negative: the erased cells fall back to the default background, or keep the
+  // character that EL should have removed.
+  expect(run(background, null).observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(run(background, background, "X").observation).toMatchObject({ outcome: "unsupported" })
+  // A different colour is not the seeded one: the relative claim is exact on this adapter.
+  expect(run(background, other).observation).toMatchObject({ outcome: "unsupported" })
+  // The seed itself was not measured, so no verdict may be read from it.
+  const unseeded = run(null, background)
+  expect(unseeded.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(unseeded.observation?.note)).toBe(row.seedNote)
+  expect(unseeded.assertions).toBeUndefined()
+  // Restored from the deleted nine-case table (@cto round-2 B5): a seed whose measured character is
+  // not the row's own means the fixture never landed, so nothing may be graded from it.
+  const wrongSeed = run(background, background, " ", "?")
+  expect(wrongSeed.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(wrongSeed.observation?.note)).toBe(row.seedNote)
+  expect(wrongSeed.assertions).toBeUndefined()
+})
+
+/**
+ * @cto round-2 B3: an unread (undefined) baseline colour is not "different" from the painted seed.
+ * `unpaintedColor` used to skip its refusal on an undefined channel, which let the seed be qualified
+ * by a measurement that never happened — the same vacuous-pass class P2 1 closed. Refuse by name.
+ */
+test("an unread default-background colour cannot qualify the painted seed", () => {
+  const row = rowById("erase.el-with-attrs")
+  const step = firstStep("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const baselineSeed = row.baseline?.seed
+  if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
+  let phase: "default" | "seed" | "after" = "default"
+  const result = probe.termless(
+    headless({
+      feed: (sequence) => {
+        if (sequence === baselineSeed) phase = "default"
+        else if (sequence === step) phase = "after"
+        else if (sequence === row.seed) phase = "seed"
+      },
+      getCell: () =>
+        ({
+          char: phase === "after" ? " " : "X",
+          bold: false,
+          dim: false,
+          italic: false,
+          underline: false,
+          strikethrough: false,
+          inverse: false,
+          hidden: false,
+          blink: false,
+          fg: null,
+          // The default-background seed never reports its colour; the painted seed does.
+          bg: phase === "default" ? undefined : { r: 130, g: 20, b: 70 },
+          wide: false,
+        }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("does not report bg")
+  expect(result.assertions).toBeUndefined()
+})
+
+/**
+ * Restored from the deleted test "restores its changed fixture after a write error" (@cto round-2
+ * B5): the row's SGR 42 is still set when a step throws, so the arm's `finally` must feed the row's
+ * own reset — otherwise the next probe on this terminal inherits a background nobody measured.
+ */
+test("a step that throws still feeds the row's reset", () => {
+  const row = rowById("erase.el-with-attrs")
+  const step = firstStep("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const writes: string[] = []
+  const baselineSeed = row.baseline?.seed
+  if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
+  let phase: "default" | "seed" = "default"
+  expect(() =>
+    probe.termless!(
+      headless({
+        feed: (sequence) => {
+          writes.push(sequence)
+          if (sequence === baselineSeed) phase = "default"
+          else if (sequence === row.seed) phase = "seed"
+          if (sequence === step) throw new Error("step write failed")
+        },
+        getCell: () =>
+          ({
+            char: "X",
+            bold: false,
+            dim: false,
+            italic: false,
+            underline: false,
+            strikethrough: false,
+            inverse: false,
+            hidden: false,
+            blink: false,
+            fg: null,
+            bg: phase === "seed" ? { r: 130, g: 20, b: 70 } : null,
+            wide: false,
+          }) as ReturnType<TermlessContext["getCell"]>,
+      }),
+    ),
+  ).toThrow(/step write failed/)
+  expect(writes.includes(step)).toBe(true)
+  expect(writes.at(-1)).toBe(row.reset)
+})
+
+/**
+ * P2 from review2 source audit 97414a37: a backend that reports ONE concrete RGB as its default and
+ * ignores SGR 42 satisfies both `present` on the seed and `same-as-before` on the erased cells, so
+ * the colour fixture was never established. The default-versus-painted qualification must catch it
+ * and refuse BY NAME — never grade the erase supported.
+ */
+test("a constant default background cannot establish the painted seed", () => {
+  const step = firstStep("erase.el-with-attrs")
+  const constant = { r: 0, g: 0, b: 0 }
+  let erased = false
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const result = probe.termless(
+    headless({
+      feed: (sequence) => {
+        if (sequence === step) erased = true
+      },
+      getCell: () => ({
+        char: erased ? " " : "X",
+        bold: false,
+        dim: false,
+        italic: false,
+        underline: false,
+        strikethrough: false,
+        inverse: false,
+        hidden: false,
+        blink: false,
+        fg: null,
+        bg: constant,
+        wide: false,
+      }),
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("default")
+  expect(result.assertions).toBeUndefined()
+})
+
+/**
+ * An attribute cell whose colour the backend does not report at all is UNREAD, never equal: the row
+ * must refuse by name instead of grading a negative (or throwing) on metadata the adapter lacked.
+ */
+test("an unread background on the erased cells is named inconclusive", () => {
+  const row = rowById("erase.el-with-attrs")
+  const step = firstStep("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const baselineSeed = row.baseline?.seed
+  if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
+  let phase: "default" | "seed" | "after" = "default"
+  const result = probe.termless(
+    headless({
+      feed: (sequence) => {
+        if (sequence === baselineSeed) phase = "default"
+        else if (sequence === step) phase = "after"
+        else if (sequence === row.seed) phase = "seed"
+      },
+      getCell: () =>
+        ({
+          char: phase === "after" ? " " : "X",
+          bold: false,
+          dim: false,
+          italic: false,
+          underline: false,
+          strikethrough: false,
+          inverse: false,
+          hidden: false,
+          blink: false,
+          fg: null,
+          bg: phase === "after" ? undefined : phase === "seed" ? { r: 1, g: 2, b: 3 } : null,
+          wide: false,
+        }) as ReturnType<TermlessContext["getCell"]>,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("does not report")
+  expect(result.assertions).toBeUndefined()
 })
 
 /**
@@ -814,23 +1059,48 @@ test("the EL-with-attrs row names an erase that drops the current background uns
   expect(noBackground.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
 })
 
-test("erase.el-with-attrs restores its changed fixture after a write error", async () => {
-  const writes: string[] = []
-  let changed = false
-  let failed = false
-  const failure = new Error("fixture write failed")
-  await expect(
-    byId("erase.el-with-attrs").term({
-      ...app({ row: 1, col: 1 }),
-      write(sequence) {
-        writes.push(sequence)
-        if (changed && !failed) {
-          failed = true
-          throw failure
-        }
-        if (sequence === "\x1b[42m") changed = true
-      },
-    }),
-  ).rejects.toBe(failure)
-  expect(writes.at(-1)).toBe("\x1b[0m")
+/**
+ * @cto round-2 R2: both load-time refusals that protect the relative claim had no test. A row that
+ * claims a background it never paints, or paints one it never calibrates against a baseline, is a
+ * fixture bug and must fail at LOAD rather than ship a claim no adapter can decide.
+ */
+test("a relative background claim refuses to load without its paint bytes", () => {
+  const row = rowById("erase.el-with-attrs")
+  // The ROW ID is the discriminator (@cto round-3c B6): paintBytes also throws, without it, at frame
+  // build, so a regex that matches only the shared tail stays green when the load check is deleted.
+  expect(() => regionReadbackProbe({ ...row, paint: undefined })).toThrow(
+    new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
+  )
+})
+
+test("a relative background claim in the ignored frame refuses to load by row id", () => {
+  const row = rowById("erase.el-with-attrs")
+  const ignored = row.after.map((cells) =>
+    cells.map((cell) =>
+      typeof cell === "string" ? cell : { char: cell.char, attributes: { bg: cell.attributes.bg } },
+    ),
+  )
+  const claimed = ignored.flat().some((cell) => typeof cell !== "string" && cell.attributes.bg !== undefined)
+  expect(claimed, "the fixture needs at least one relative bg claim").toBe(true)
+  // The after frame keeps the same geometry as PLAIN characters, so the ignored frame is the only
+  // place a relative bg claim survives; a fixture whose after frame carried the claims too would
+  // stay green with the ignored scan deleted.
+  const after = row.after.map((cells) => cells.map((cell) => (typeof cell === "string" ? cell : cell.char)))
+  expect(() => regionReadbackProbe({ ...row, after, ignored, paint: undefined })).toThrow(
+    new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
+  )
+})
+
+test("an empty paint string refuses at load by row id, not in the painter", () => {
+  const row = rowById("erase.el-with-attrs")
+  // Falsy, not only undefined: an empty string paints nothing, so it must not slip past the load
+  // check and reach the frame builder as a claim no adapter can decide.
+  expect(() => regionReadbackProbe({ ...row, paint: { bg: "" } })).toThrow(
+    new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
+  )
+})
+
+test("a relative background claim refuses to load without a baseline fixture", () => {
+  const row = rowById("erase.el-with-attrs")
+  expect(() => regionReadbackProbe({ ...row, baseline: undefined })).toThrow(/needs a baseline fixture/)
 })
