@@ -95,14 +95,18 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
  */
 function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
   if (cell === undefined || typeof cell === "string") {
-    return { char: cell ?? " " } as ReturnType<TermlessContext["getCell"]>
+    // A plain cell is a cell the row claims NO attributes for, not one whose backend reports no
+    // field: a real `getCell` always says what the background is (null = none).
+    return { char: cell ?? " ", bold: false, inverse: false, fg: null, bg: null } as ReturnType<
+      TermlessContext["getCell"]
+    >
   }
   const attributes = cell.attributes
   return {
     char: cell.char,
-    bold: attributes.bold === true,
+    bold: false,
     inverse: attributes.inverse === true,
-    fg: attributes.fg ?? null,
+    fg: null,
     bg: attributes.bg ?? null,
   } as ReturnType<TermlessContext["getCell"]>
 }

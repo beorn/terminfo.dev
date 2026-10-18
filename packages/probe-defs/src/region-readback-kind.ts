@@ -46,30 +46,26 @@ export interface RegionReadbackRegion {
 }
 
 /**
- * The attributes a compared cell asserts. A cell declares ONLY what its row claims, so a terminal
- * that sets anything else is never graded on it: the kind has compared characters since A2, and
- * attribute rectangles (DECCARA/DECRARA, EL carrying the current background) need the same one
- * path (@cto 2026-10-18 decsace ruling, shape A, 218ec7fe conversion trigger).
- */
-/**
  * A color the row can assert WITHOUT pinning a backend's palette: `"present"` asserts the cell has
- * a background/foreground at all, and `"same-as-before"` asserts the cell kept the one the seed
- * painted at the same grid position. A named SGR resolves through each terminal's own palette, so
- * an absolute RGB here would be a backend's value, not the claim.
+ * a background at all, and `"same-as-before"` asserts the cell kept the one the seed painted at the
+ * same grid position. A named SGR resolves through each terminal's own palette, so an absolute RGB
+ * here would be a backend's value, not the claim (@cto 2026-10-18 decsace ruling, shape A).
  */
-export type RegionReadbackColor = { r: number; g: number; b: number } | "present" | "same-as-before"
+export type RegionReadbackColor = "present" | "same-as-before"
 
+/**
+ * The attributes a compared cell asserts. A cell declares ONLY what its row claims, so a terminal
+ * that sets anything else is never graded on it. Only the forms a row actually uses live here: an
+ * unused spelling is a claim nothing measures (@cto round-2 R3).
+ */
 export interface RegionReadbackAttributes {
   /** True asserts the attribute is set; false asserts the sequence CLEARED it. */
-  bold?: boolean
   inverse?: boolean
-  fg?: RegionReadbackColor
   bg?: RegionReadbackColor
 }
 
-/** The SGR bytes the expected frame paints for a relative color claim. Required with one. */
+/** The SGR bytes the expected frame paints for a relative background claim. Required with one. */
 export interface RegionReadbackPaint {
-  fg?: string
   bg?: string
 }
 
@@ -230,9 +226,7 @@ function sameCell(measured: MeasuredCell, expected: RegionReadbackCell, referenc
   if (!characterMatches) return false
   if (typeof expected === "string") return true
   const attributes = expected.attributes
-  if (attributes.bold !== undefined && measured.bold !== attributes.bold) return false
   if (attributes.inverse !== undefined && measured.inverse !== attributes.inverse) return false
-  if (attributes.fg !== undefined && !sameColorClaim(measured.fg, attributes.fg, reference?.fg)) return false
   if (attributes.bg !== undefined && !sameColorClaim(measured.bg, attributes.bg, reference?.bg)) return false
   return true
 }
@@ -247,13 +241,10 @@ type MeasuredColor = Rgb | null
 function sameColorClaim(measured: MeasuredColor, claim: RegionReadbackColor, reference: MeasuredColor | undefined) {
   if (measured === null) return false
   if (claim === "present") return true
-  if (claim === "same-as-before") {
-    if (reference === undefined) {
-      throw new Error("a same-as-before color claim reached the comparison without its seed cell")
-    }
-    return reference !== null && reference.r === measured.r && reference.g === measured.g && reference.b === measured.b
+  if (reference === undefined) {
+    throw new Error("a same-as-before color claim reached the comparison without its seed cell")
   }
-  return measured.r === claim.r && measured.g === claim.g && measured.b === claim.b
+  return reference !== null && reference.r === measured.r && reference.g === measured.g && reference.b === measured.b
 }
 
 /**
@@ -270,7 +261,7 @@ function unreadAttribute(
     if (typeof want === "string") continue
     const cell = measured[row]?.[col]
     if (cell === undefined) return `cell ${row},${col} was not measured`
-    for (const field of ["bold", "inverse", "fg", "bg"] as const) {
+    for (const field of ["inverse", "bg"] as const) {
       if (want.attributes[field] === undefined) continue
       if (cell[field] === undefined) return `cell ${row},${col} ${field}`
     }
@@ -291,9 +282,11 @@ function unreadAttributes(
 }
 
 /**
- * The first painted colour that equals the terminal's own default at the same cell, or null. This is
- * the P2 1 qualification: `present` and `same-as-before` both hold vacuously on a backend whose
- * default colour is the one it reports for the painted cells.
+ * Why the painted seed is not qualified by the default-background fixture, or null when it is. Two
+ * failures: a colour equal to the default at the same cell (`present` and `same-as-before` both hold
+ * vacuously there), and a baseline channel the backend never reported — an unread value is never
+ * equal and never unequal, so treating it as "different" would qualify the seed on nothing
+ * (@dev/review2 97414a37 P2 1; @cto round-2 B3).
  */
 function unpaintedColor(
   painted: readonly (readonly MeasuredCell[])[],
@@ -303,14 +296,17 @@ function unpaintedColor(
   for (const [row, cells] of declared.entries()) {
     for (const [col, want] of cells.entries()) {
       if (typeof want === "string") continue
-      for (const channel of ["fg", "bg"] as const) {
+      for (const channel of ["bg"] as const) {
         const claim = want.attributes[channel]
-        if (claim === undefined || typeof claim === "object") continue
+        if (claim === undefined) continue
         const seed = painted[row]?.[col]?.[channel]
         const plain = baseline[row]?.[col]?.[channel]
+        if (plain === undefined) {
+          return `the default-background seed does not report ${channel} at cell ${row},${col}, so the painted colour cannot be qualified`
+        }
         if (seed === undefined || seed === null) continue
-        if (plain !== null && plain !== undefined && plain.r === seed.r && plain.g === seed.g && plain.b === seed.b) {
-          return `cell ${row},${col} ${channel}`
+        if (plain !== null && plain.r === seed.r && plain.g === seed.g && plain.b === seed.b) {
+          return `the painted seed reports the same colour as the default-background seed at cell ${row},${col} ${channel}, so the colour fixture was not established`
         }
       }
     }
@@ -325,20 +321,15 @@ function attributeSgr(
   position: { row: number; col: number },
 ): string {
   const codes: string[] = []
-  if (attributes.bold === true) codes.push("1")
   if (attributes.inverse === true) codes.push("7")
-  const fg = attributes.fg
-  if (typeof fg === "object" && fg !== null) codes.push(`38;2;${fg.r};${fg.g};${fg.b}`)
-  else if (fg !== undefined) codes.push(paintBytes(paint?.fg, "fg", position))
   const bg = attributes.bg
-  if (typeof bg === "object" && bg !== null) codes.push(`48;2;${bg.r};${bg.g};${bg.b}`)
-  else if (bg !== undefined) codes.push(paintBytes(paint?.bg, "bg", position))
+  if (bg !== undefined) codes.push(paintBytes(paint?.bg, position))
   return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`
 }
 
 /** A relative color claim paints the row's own SGR; loading proved the bytes exist. */
-function paintBytes(paint: string | undefined, channel: "fg" | "bg", position: { row: number; col: number }): string {
-  if (!paint) throw new Error(`cell ${position.row},${position.col} asserts a relative ${channel} with no paint bytes`)
+function paintBytes(paint: string | undefined, position: { row: number; col: number }): string {
+  if (!paint) throw new Error(`cell ${position.row},${position.col} asserts a relative bg with no paint bytes`)
   return paint.replace(/^\x1b\[/u, "").replace(/m$/u, "")
 }
 
@@ -430,6 +421,41 @@ function paintFrame(
 }
 
 /**
+ * A relative colour claim (`present`, `same-as-before`) is only established against a measured
+ * default: without a baseline the claim would hold vacuously on a backend that ignores the row's SGR
+ * (P2 1, review2 97414a37). Loaded rows cannot make one without the fixture.
+ */
+function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
+  if (row.baseline !== undefined) return
+  for (const cells of [...row.before, ...row.after]) {
+    for (const cell of cells) {
+      if (typeof cell === "string") continue
+      if (cell.attributes.bg !== undefined) {
+        throw new Error(`${row.id}: a relative bg claim needs a baseline fixture to qualify the seed`)
+      }
+    }
+  }
+}
+
+/**
+ * A relative colour claim paints the expected frame with the row's own SGR. Without those bytes the
+ * expected frame would read equal to the seed on every adapter and the row could only ever be
+ * inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide (@cto
+ * round-2 R2, which asks for a test of exactly this refusal).
+ */
+function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
+  for (const [rowIndex, cells] of row.after.entries()) {
+    for (const [col, cell] of cells.entries()) {
+      if (typeof cell === "string") continue
+      if (cell.attributes.bg === undefined) continue
+      if (row.paint?.bg === undefined) {
+        throw new Error(`${row.id}: cell ${rowIndex},${col} asserts a relative bg with no paint bytes`)
+      }
+    }
+  }
+}
+
+/**
  * A row whose own shape disagrees with itself cannot be right, so it refuses at LOAD instead of
  * comparing a short array's missing cell against a blank that `sameCell` would happily accept — a
  * typo must never read as a passing terminal (@cto 2026-10-12, NO SILENT ERRORS). Every index the
@@ -489,39 +515,8 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
       throw new Error(`${row.id}: control column ${control.col} is outside the compared 0..${columns - 1}`)
     }
   }
-  // A relative colour claim is only established against a measured default: without a baseline the
-  // claim would hold vacuously on a backend that ignores the row's SGR (P2 1, review2 97414a37).
-  if (row.baseline === undefined) {
-    for (const cells of [...row.before, ...row.after]) {
-      for (const cell of cells) {
-        if (typeof cell === "string") continue
-        if (cell.attributes.fg !== undefined && typeof cell.attributes.fg !== "object") {
-          throw new Error(`${row.id}: a relative fg claim needs a baseline fixture to qualify the seed`)
-        }
-        if (cell.attributes.bg !== undefined && typeof cell.attributes.bg !== "object") {
-          throw new Error(`${row.id}: a relative bg claim needs a baseline fixture to qualify the seed`)
-        }
-      }
-    }
-  }
-  // A relative color claim paints the expected frame with the row's own SGR. Without those bytes the
-  // expected frame would read equal to the seed on every adapter and the row could only ever be
-  // inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide.
-  for (const cells of row.after) {
-    for (const cell of cells) {
-      if (typeof cell === "string") continue
-      for (const channel of ["fg", "bg"] as const) {
-        const claim = cell.attributes[channel]
-        if (claim === undefined || typeof claim === "object") continue
-        const painted = row.paint?.[channel]
-        if (painted === undefined) {
-          throw new Error(
-            `${row.id}: cell ${row.after.indexOf(cells)},${cells.indexOf(cell)} asserts a relative ${channel} with no paint bytes`,
-          )
-        }
-      }
-    }
-  }
+  assertRelativeClaimsQualified(row)
+  assertRelativeClaimsPainted(row)
   // The geometry this row really addresses (@cto 2026-10-12, must-fix 2). The parked cursor AND the
   // sentinel are screen rows, so the need is the larger of the two: deriving it from the sentinel alone
   // let a row declare a minimum that parked its own cursor off-screen (reverse-index: cursor 6,
@@ -625,9 +620,9 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
         }
         ctx.feed(row.seed)
         const before = readGrid(ctx, geometry)
-        if (!gridMatch(before, row.before)) {
-          return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
-        }
+        // BEFORE the grid comparison: an unread exact claim inside sameColorClaim throws, and an
+        // unread bold or inverse would otherwise be reported as "seed not established" instead of
+        // named (@cto round-2 R1).
         const unreadSeed = unreadAttributes(before, row.before)
         if (unreadSeed !== null) {
           return parserStateResult(
@@ -637,6 +632,9 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
             `${row.id}: the backend does not report ${unreadSeed} on the seed, so the claim cannot be read`,
           )
         }
+        if (!gridMatch(before, row.before)) {
+          return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
+        }
         if (baseline !== undefined) {
           const unpainted = unpaintedColor(before, baseline, row.before)
           if (unpainted !== null) {
@@ -644,7 +642,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
               null,
               row.expected,
               { before: responseGrid(before, row.before), baseline: responseGrid(baseline, baselineRow?.cells ?? []) },
-              `${row.id}: the painted seed reports the same colour as the default-background seed at ${unpainted}, so the colour fixture was not established`,
+              `${row.id}: ${unpainted}`,
             )
           }
         }

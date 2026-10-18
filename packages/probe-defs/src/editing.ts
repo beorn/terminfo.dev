@@ -629,8 +629,14 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
       }
       try {
+        // The capture-region oracle's two controls, reused rather than reimplemented (region-readback.ts
+        // `captureRegionReadbackDecision`): the cursor stays hidden for every read, and two captures of
+        // ONE static frame must agree before any extent is compared. On a terminal that ignores
+        // DECSACE, a blinking cursor alone moves the whole-window digest (@cto round-2 B1b).
+        ctx.write("\x1b[?25l")
         ctx.write(DECSACE_PAINT)
         const seed = await capture({ role: "control", label: "editing.decsace: seed before DECSACE" })
+        const stable = await capture({ role: "control", label: "editing.decsace: capture stability" })
         ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
         const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
         ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
@@ -639,13 +645,31 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
         // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
         // cannot establish an extent difference (review2 97414a37 P2 3). Compare the measured digest
-        // the frame kind actually carries; a frame with none leaves the row inconclusive BY NAME.
-        const digests = [seed, rectangle, stream].map((frame) => {
-          const { cells, whole } = frameDigests(frame)
-          return whole ?? cells
+        // the frame kind actually carries — ONE kind for all three frames. A per-frame `whole ?? cells`
+        // compares one frame's whole-window digest with another's region digest, and the mismatch then
+        // reads as a measured difference (@cto round-2 B1a).
+        const frames = [seed, rectangle, stream]
+        const digests = frames.map(frameDigests)
+        const kind = digests.every((entry) => entry.whole !== undefined)
+          ? "whole"
+          : digests.every((entry) => entry.cells !== undefined)
+            ? "cells"
+            : null
+        const described = frames
+          .map((frame, index) => {
+            const entry = digests[index]
+            const carried = entry?.whole !== undefined ? "whole" : entry?.cells !== undefined ? "cells" : "none"
+            return `${frame.label}: ${carried}`
+          })
+          .join("; ")
+        const observed = JSON.stringify({
+          kind,
+          seed: seed.ref,
+          rectangle: rectangle.ref,
+          stream: stream.ref,
+          digests: digests.map((entry) => entry.whole ?? entry.cells),
         })
-        const observed = JSON.stringify({ seed: seed.ref, rectangle: rectangle.ref, stream: stream.ref, digests })
-        if (digests.some((digest) => digest === undefined)) {
+        if (kind === null) {
           return {
             pass: false,
             response: observed,
@@ -653,12 +677,15 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
-              frames: [seed, rectangle, stream],
-              note: "This adapter returned a frame with no measured digest, so the two DECSACE extents cannot be compared",
+              frames,
+              note: `These frames do not all report one measured digest kind (${described}), so the two DECSACE extents cannot be compared`,
             },
           }
         }
-        if (digests[1] === digests[2]) {
+        const measured = digests.map((entry) => (kind === "whole" ? entry.whole : entry.cells)) as string[]
+        const stableEntry = frameDigests(stable)
+        const stableDigest = kind === "whole" ? stableEntry.whole : stableEntry.cells
+        if (stableDigest === undefined) {
           return {
             pass: false,
             response: observed,
@@ -666,29 +693,71 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
-              frames: [seed, rectangle, stream],
+              frames,
+              note: `The stability capture reports no ${kind} digest, so the two DECSACE extents cannot be compared`,
+            },
+          }
+        }
+        if (stableDigest !== measured[0]) {
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              frames,
+              note: `Two captures of one static frame were not byte-stable (${measured[0]} then ${stableDigest}), so no extent can be read`,
+            },
+          }
+        }
+        if (measured[1] === measured[2]) {
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              frames,
               note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
             },
           }
         }
+        // A frame that did not move from the seed has measured no change at all, so an ignored DECCARA
+        // and a digest that cannot see attributes are the same evidence (@cto round-2 B2, mutant 2).
+        if (measured[1] === measured[0] || measured[2] === measured[0]) {
+          const still = measured[1] === measured[0] ? "rectangle" : "stream"
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              frames,
+              note: `The ${still} frame did not differ from the seed, so DECCARA left no measurable change and an ignored DECCARA cannot be separated from a digest that cannot see attributes`,
+            },
+          }
+        }
         // Separable extents are the claim this arm can establish: the same DECCARA produced two
-        // different frames under DECSACE 2 and DECSACE 0. It does NOT grade the exact cells (the
-        // parser arm does), and an all-equal run stays inconclusive above rather than a negative:
-        // a text-only digest and a DECCARA that changed nothing are the same three refs.
+        // different frames under DECSACE 2 and DECSACE 0, each different from the seed. It does NOT
+        // grade the exact cells (the parser arm does), and every ambiguous frame stays inconclusive
+        // above rather than a negative.
         return {
           pass: true,
           response: observed,
           observation: {
             outcome: "supported",
             evidence: "pixels",
-            frames: [seed, rectangle, stream],
-            note: "The rectangle and stream frames differ; exact extents are graded by the parser arm",
+            frames,
+            note: "The rectangle and stream frames differ from the seed and from each other; exact extents are graded by the parser arm",
           },
           assertions: [
             {
               kind: "positive",
               expected: DECSACE_EXPECTED,
-              observed: JSON.stringify({ rectangle: rectangle.ref, stream: stream.ref, seed: seed.ref }),
+              observed: JSON.stringify({ kind, seed: measured[0], rectangle: measured[1], stream: measured[2] }),
             },
           ],
         }

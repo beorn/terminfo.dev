@@ -1147,13 +1147,16 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
       capture: async ({ role, label }) => {
         reads += 1
         labels.push(label)
+        // A digit per MEASURED screen, not per read: the seed and the stability read see the same
+        // static frame, and only the two DECSACE extents differ (@cto round-2 B1b).
+        const measured = label.includes("rectangle") ? "b" : label.includes("stream") ? "c" : "a"
         return {
           frame: {
             role,
             label,
             capturedAt: reads,
-            ref: `sha256:${String(reads).repeat(64)}`,
-            pixelsDigest: `sha256:${String(reads).repeat(64)}`,
+            ref: `sha256:${measured.repeat(64)}`,
+            pixelsDigest: `sha256:${measured.repeat(64)}`,
           },
           trace: {},
         }
@@ -1166,6 +1169,7 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
     ])
     expect(labels).toEqual([
       "editing.decsace: seed before DECSACE",
+      "editing.decsace: capture stability",
       "editing.decsace: DECSACE 2 rectangle frame",
       "editing.decsace: DECSACE 0 stream frame",
     ])
