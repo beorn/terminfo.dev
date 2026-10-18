@@ -185,5 +185,5 @@ test("reset.sgr stays inconclusive and never negative when the terminal never an
   // evidence is truthful "query" — never the zero-byte "none" shape a trace with no writes, queries
   // or events reserves.
   expect(result.observation).toMatchObject({ evidence: "query" })
-  expect(result.observation?.note ?? "").toContain("no reference independent of a full reset")
+  expect(result.observation?.note ?? "").toContain("no independent reference exists for a multi-attribute reset")
 })

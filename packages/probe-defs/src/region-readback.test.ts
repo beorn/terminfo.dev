@@ -936,7 +936,7 @@ test("every reset-family probe hands its capture arm to the region oracle, on th
     // capture fixture stays silent: the refusal is truthful QUERY evidence, never the zero-byte "none"
     // shape run-parser reserves for a trace with no writes, queries or events.
     expect(result.observation?.evidence, id).toBe("query")
-    expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
+    expect(result.observation?.note ?? "", id).toContain("no independent reference exists for a multi-attribute reset")
   }
 })
 
@@ -957,7 +957,7 @@ test("a silent DECRQSS readback is truthful query evidence, and an answering one
     expect(result.observation?.evidence, id).toBe("query")
     expect(terminal.writes.length, `${id}: the readback wrote before declining`).toBeGreaterThan(0)
     expect(terminal.queries, `${id}: the DECRQSS query was sent`).toContain("\x1bP$qm\x1b\\")
-    expect(result.observation?.note ?? "", id).toContain("no reference independent of a full reset")
+    expect(result.observation?.note ?? "", id).toContain("no independent reference exists for a multi-attribute reset")
     expect(result.observation?.note ?? "", id).toContain("the caller wrote before this refusal")
   }
   const reported: Record<(typeof NO_REFERENCE_ROWS)[number], string> = {
@@ -1172,7 +1172,9 @@ test("the three no-reference rows are inconclusive by name on the pixel path, wh
     const result = await captureRegionVerdict(terminal.ctx, entry.id, familyRow(entry.id))
     expect(result?.observation?.outcome, entry.id).toBe("inconclusive")
     expect(result?.observation?.evidence, entry.id).toBe("none")
-    expect(result?.observation?.note ?? "", entry.id).toContain("no reference independent of a full reset")
+    expect(result?.observation?.note ?? "", entry.id).toContain(
+      "no independent reference exists for a multi-attribute reset",
+    )
     // "none" promises run-parser a trace with no writes, queries or events; the direct path is
     // refused before a byte, so the terminal saw neither a write nor a query.
     expect(terminal.writes, `${entry.id}: the direct refusal wrote nothing`).toEqual([])
@@ -1230,7 +1232,7 @@ test("the bold row's faint case is the third no-reference row", async () => {
     familyRow("sgr.selective-reset.bold"),
   )
   expect(result?.observation?.outcome).toBe("inconclusive")
-  expect(result?.observation?.note ?? "").toContain("no reference independent of a full reset")
+  expect(result?.observation?.note ?? "").toContain("no independent reference exists for a multi-attribute reset")
 })
 
 test("no combination of a missed cleared attribute and a retained reference attribute is supported unless the reset cleared everything it claims", async () => {
