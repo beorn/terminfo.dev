@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-18T16:36:02Z",
+  "runId": "ddf59e5e26820a3a95a42a307f89ee01",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-29",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-u1cB9tKZ0nVmV8UHi6zq0esnSFX4flh3K0JjIQh5CE8=",
+    "revision": "cab25161054c50fd6c705db4ceefef0f1e5a9575"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev/luna3/29816/ac5-67ad/wezterm2/ddf59e5e26820a3a95a42a307f89ee01/prep/runner-bundle.tar",
+    "sha256": "3e5f780fb18e43b4ae5b8d48fda6a0c5ae6dd2697b964ef72d4cf46009dc2746",
+    "narSha256": "sha256-/4ITNctpR1Zj7KDwfzyRxdozqq5zd086BUjGncSpiso=",
+    "frozenRunnerSha256": "f983b6fcd34503d061bd31037fb68cd48688ae47414af2a8f4e56c7a9f61ed9c",
+    "buildReceiptSha256": "9b16c6d42666ab01d2ef953c0a01616dd686929eb557b37256adefc042f26690",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "67ad1f1d1580",
+      "collectorRevision": "d5e8061b356a670aee02ba5ead0c55d231af84d8",
+      "bundleSha256": "c7f9771275b2238b563f39d58884b75022e40027479b505af061e591dab9b109"
+    },
+    "rootBunLockSha256": "67afded5271bee86f48f32f6090cb95bb3dad8974176cf98d6965e7cda6a3749"
+  },
+  "runtime": {
+    "imageId": "sha256:b82fbd3f40e93db754c2b59cc9a0e38487efd274d063f6eb3753e8a57f031298",
+    "imageTarSha256": "f6e69934a98886d9749dac340fcff3467b43cb626efca7c7bc7130a4b741488f",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "d5e8061b356a670aee02ba5ead0c55d231af84d8",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "999edea741f1d8a8670f05333192b39bea000b96",
+    "suiteHash": "67ad1f1d1580"
+  },
+  "status": "raw-unreviewed-history"
+}
