@@ -459,7 +459,7 @@ test("one uniform-alpha line outside the grid is admitted and recorded", async (
   })
   const measured = await run.promise
   expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
-  expect(measured.basis).toMatch(/edge blend top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).toMatch(/edge blend solid top y=1 alpha 0\.851 \(8 px\)/)
 })
 
 test("a line outside the grid in another colour refuses", async () => {
@@ -507,7 +507,28 @@ test("corner fillets and the blend line together still calibrate", async () => {
   const measured = await run.promise
   expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
   expect(measured.basis).toMatch(/corner fillets 4 px/)
-  expect(measured.basis).toMatch(/edge blend top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).toMatch(/edge blend solid top y=1 alpha 0\.851 \(8 px\)/)
+})
+
+test("a blend whose alpha byte changes outside the grid refuses", async () => {
+  // The model explains a colour, never opacity: the alpha byte stays exactly as the baseline had it.
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([0], (1 * 12 + 5) * 4 + 3)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a blend admitted only in the columns stage is recorded", async () => {
+  // Every stage that admits a line names it; the solid stage alone is not the record.
+  const run = calibration({
+    frames: {
+      "column edge paint": [blendTop(rasterFrame("columns")), blendTop(rasterFrame("columns"))],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 } })
+  expect(measured.basis).toMatch(/edge blend columns top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).not.toMatch(/edge blend solid/)
 })
 
 test("a clipped last stripe calibrates and records its clip", async () => {

@@ -548,28 +548,30 @@ export async function calibrateCaptureOrigin({
     const { grid, fillets } = rectangle(solid, (offset) => rgbAt(solid, offset, WITNESS))
     const filletMask = new Set<number>()
     for (const fillet of fillets) for (const key of fillet.holes) filletMask.add(key)
-    const outsideUnchanged = (frame: CapturedFrame) => {
+    const outsideUnchanged = (frame: CapturedFrame): EdgeBlend[] => {
       validateFrame(frame)
       if (frame.width !== before.width || frame.height !== before.height) {
         throw new Error("Capture calibration window dimensions changed")
       }
+      const blends = edgeBlends(grid, before, frame)
       const explained = new Set<number>()
-      for (const blend of edgeBlends(grid, before, frame)) for (const key of blend.pixels) explained.add(key)
+      for (const blend of blends) for (const key of blend.pixels) explained.add(key)
       for (let y = 0; y < frame.height; y++) {
         for (let x = 0; x < frame.width; x++) {
           if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) continue
-          if (explained.has(y * frame.width + x)) continue
           const offset = (y * frame.width + x) * 4
-          for (let channel = 0; channel < 4; channel++) {
+          // The blend model covers colour only: it says nothing about the alpha byte, which stays
+          // exactly as the baseline frame had it even on an explained pixel.
+          for (let channel = explained.has(y * frame.width + x) ? 3 : 0; channel < 4; channel++) {
             if (frame.rgba[offset + channel] !== before.rgba[offset + channel]) {
               throw new Error("Capture calibration paint changed pixels outside the witnessed grid")
             }
           }
         }
       }
+      return blends
     }
-    outsideUnchanged(solid)
-    const solidBlends = edgeBlends(grid, before, solid)
+    const solidBlends = outsideUnchanged(solid)
     paintGrid("columns")
     // The column paint must be present somewhere in the grid, not at its top-left pixel: a rounded
     // window's corner fillets sit exactly there, so that pixel stays black in every stage.
@@ -583,11 +585,11 @@ export async function calibrateCaptureOrigin({
       return false
     }
     const columns = await confirmedFrame("column edge paint", showsCalibrationPaint, solid)
-    outsideUnchanged(columns)
+    const columnBlends = outsideUnchanged(columns)
     const { pitch: cellWidth, clip: columnClip } = stripeSize(columns, baseline, grid, "columns", ctx.cols, filletMask)
     paintGrid("rows")
     const rows = await confirmedFrame("row edge paint", showsCalibrationPaint, columns)
-    outsideUnchanged(rows)
+    const rowBlends = outsideUnchanged(rows)
     const { pitch: cellHeight, clip: rowClip } = stripeSize(rows, baseline, grid, "rows", ctx.rows, filletMask)
     // The reported text area is the pitch times the count, not the visible length: a clipped last
     // stripe is shorter than a cell on screen but still occupies a whole cell of the text area.
@@ -609,13 +611,18 @@ export async function calibrateCaptureOrigin({
     const clipTrace = `${columnClip > 0 ? `; columns clipped ${columnClip} px at the far edge` : ""}${
       rowClip > 0 ? `; rows clipped ${rowClip} px at the far edge` : ""
     }`
+    const admittedBlends = [
+      ...solidBlends.map((blend) => ({ stage: "solid", blend })),
+      ...columnBlends.map((blend) => ({ stage: "columns", blend })),
+      ...rowBlends.map((blend) => ({ stage: "rows", blend })),
+    ]
     const blendTrace =
-      solidBlends.length === 0
+      admittedBlends.length === 0
         ? ""
-        : `; edge blend ${solidBlends
+        : `; edge blend ${admittedBlends
             .map(
-              ({ edge, coordinate, alpha, pixels }) =>
-                `${edge} ${edge === "top" || edge === "bottom" ? "y" : "x"}=${coordinate} alpha ${alpha.toFixed(3)} (${pixels.size} px)`,
+              ({ stage, blend: { edge, coordinate, alpha, pixels } }) =>
+                `${stage} ${edge} ${edge === "top" || edge === "bottom" ? "y" : "x"}=${coordinate} alpha ${alpha.toFixed(3)} (${pixels.size} px)`,
             )
             .join(", ")}`
     return {
