@@ -2,7 +2,6 @@
  * @failure A Character Sets probe stops being derived from its kind row - a hand-written callback returns, or a row's measured cells are edited without the probe moving - so the family's declared table and the frozen suite disagree.
  * @level l2
  * @consumer 28450 slice B: the region-readback kind table (@cto A2), one converted family at a time.
- * @reach fs-walk packages/probe-defs/src/charsets-kind.test.ts packages/probe-defs/src/charsets.ts packages/probe-defs/src/region-readback-kind.ts
  * @testonly none
  */
 import { expect, test } from "vitest"
