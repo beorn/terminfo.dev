@@ -1,17 +1,23 @@
 /**
  * @failure A kitty run is reported as owned when the recorded pid is stale, reused, another binary, or
- * not an ancestor of the daemon; or an unknown window provider silently falls through an assertion.
+ * not an ancestor of the daemon; an unknown provider falls through; or an executable lookup loses its cause.
  * @level l1
  * @consumer The one owned-window authority the admin asserts before every app probe.
  * @testonly none
  */
-import { describe, expect, test } from "vitest"
+import { spawnSync } from "node:child_process"
+import { realpathSync } from "node:fs"
+import { describe, expect, test, vi } from "vitest"
 import {
   assertOwnedTerminalWindow,
+  closeOwnedTerminalWindow,
   descendToOwner,
   parseKittyIdentity,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
+
+vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }))
+vi.mock("node:fs", () => ({ realpathSync: vi.fn() }))
 
 describe("kitty owner identity", () => {
   test("parses the four fields the serve script records", () => {
@@ -70,16 +76,55 @@ describe("descendant walk", () => {
 })
 
 describe("provider dispatch", () => {
+  const window: OwnedTerminalWindow = {
+    provider: "kitty",
+    windowId: 1,
+    tty: "/dev/ttys004",
+    kittyPid: 4321,
+    executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+    instanceGroup: "terminfo-run",
+  }
+
   test("refuses a kitty window whose recorded pid is the daemon itself", () => {
-    const window: OwnedTerminalWindow = {
-      provider: "kitty",
-      windowId: 1,
-      tty: "/dev/ttys004",
-      kittyPid: 4321,
-      executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
-      instanceGroup: "terminfo-run",
-    }
     expect(() => assertOwnedTerminalWindow(window, 4321)).toThrow(/same pid/)
+  })
+
+  test.each(["assert", "close"] as const)("%s retains an unreadable executable's identity and cause", (operation) => {
+    const cause = new Error("executable lookup denied")
+    const result = { status: 0, stdout: `${window.executablePath}\n`, stderr: "" } as ReturnType<typeof spawnSync>
+    vi.mocked(spawnSync).mockReturnValue(result)
+    if (operation === "assert") vi.mocked(spawnSync).mockReturnValueOnce({ ...result, stdout: "ttys004\n" })
+    vi.mocked(realpathSync).mockImplementation(() => {
+      throw cause
+    })
+    const kill = vi.spyOn(process, "kill").mockReturnValue(true)
+    try {
+      const act = () =>
+        operation === "assert" ? assertOwnedTerminalWindow(window, 5432) : closeOwnedTerminalWindow(window)
+      let failure: unknown
+      try {
+        act()
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({
+        message: expect.stringContaining(`pid ${window.kittyPid}`),
+        cause,
+      })
+      expect(failure).toHaveProperty("message", expect.stringContaining(window.executablePath))
+      expect(kill).not.toHaveBeenCalledWith(window.kittyPid, "SIGTERM")
+      if (operation === "close") {
+        vi.mocked(spawnSync).mockReturnValue({ ...result, status: 1, stdout: "" })
+        kill.mockImplementation(() => {
+          throw Object.assign(new Error("gone"), { code: "ESRCH" })
+        })
+        expect(() => closeOwnedTerminalWindow(window)).not.toThrow()
+      }
+    } finally {
+      kill.mockRestore()
+      vi.mocked(spawnSync).mockReset()
+      vi.mocked(realpathSync).mockReset()
+    }
   })
 
   test("an unknown provider fails loudly instead of falling through", () => {
