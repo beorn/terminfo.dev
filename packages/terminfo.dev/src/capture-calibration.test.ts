@@ -69,10 +69,10 @@ test.each([
   expect(write).not.toHaveBeenCalled()
   expect(captureRaw).not.toHaveBeenCalled()
 })
-function frame(): CapturedFrame {
-  const rgba = new Uint8Array(12 * 12 * 4)
+function frame(size = 12): CapturedFrame {
+  const rgba = new Uint8Array(size * size * 4)
   for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
-  return { width: 12, height: 12, rgba }
+  return { width: size, height: size, rgba }
 }
 const blank = frame()
 
@@ -90,6 +90,29 @@ function rasterFrame(stage: "solid" | "columns" | "rows", uneven = false): Captu
     }
   }
   return result
+}
+
+/** A square frame whose grid is defined by absolute column and row edges, for stripe-shape rows. */
+function gridFrame(
+  size: number,
+  columnEdges: readonly number[],
+  rowEdges: readonly number[],
+  stage: "solid" | "columns" | "rows",
+): CapturedFrame {
+  const rgba = new Uint8Array(size * size * 4)
+  for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
+  for (let row = 0; row < rowEdges.length - 1; row++) {
+    for (let column = 0; column < columnEdges.length - 1; column++) {
+      const rgb =
+        stage === "solid" ? [255, 0, 255] : (stage === "columns" ? column : row) % 2 === 0 ? [255, 0, 0] : [0, 0, 0]
+      for (let y = rowEdges[row]!; y < rowEdges[row + 1]!; y++) {
+        for (let x = columnEdges[column]!; x < columnEdges[column + 1]!; x++) {
+          rgba.set([...rgb, 255], (y * size + x) * 4)
+        }
+      }
+    }
+  }
+  return { width: size, height: size, rgba }
 }
 
 type Stage = "before grid paint" | "solid grid paint" | "column edge paint" | "row edge paint" | "restore grid paint"
@@ -196,15 +219,17 @@ test.each([
     ...(fault === "reply disagreement" ? { geometry: { ...geometry, cellWidth: 3 } } : {}),
   })
   await expect(run.promise).rejects.toThrow(
-    fault === "late uneven column" || fault.includes("scanline") || fault === "uneven rows"
-      ? /nonuniform/
-      : fault === "reply disagreement"
-        ? /disagree/
-        : fault === "missing column edge"
-          ? /missing or extra grid edge/
-          : fault === "changed outside grid"
-            ? /outside/
-            : /non-solid/,
+    fault === "late uneven column" || fault === "uneven rows"
+      ? /fractional pitch/
+      : fault.includes("scanline")
+        ? /nonuniform/
+        : fault === "reply disagreement"
+          ? /disagree/
+          : fault === "missing column edge"
+            ? /missing or extra grid edge/
+            : fault === "changed outside grid"
+              ? /outside/
+              : /non-solid/,
   )
   expect(run.reads.get("restore grid paint")).toBe(2)
 })
@@ -353,7 +378,7 @@ test("a failed restore retains the original grid error and the restoration error
   })
   await expect(run.promise).rejects.toMatchObject({
     name: "CaptureRestoreFailed",
-    cause: expect.objectContaining({ message: expect.stringMatching(/nonuniform/) }),
+    cause: expect.objectContaining({ message: expect.stringMatching(/fractional pitch/) }),
     errors: expect.arrayContaining([
       expect.objectContaining({ message: expect.stringMatching(/restore grid paint.*timeout/) }),
     ]),
@@ -361,7 +386,7 @@ test("a failed restore retains the original grid error and the restoration error
 })
 
 // The compositor paints a window's rounded corners black in EVERY stage, independent of what the
-// probe drew. #30027: the c240 macOS specimen refused with `non-solid grid: 476392 pixels in
+// probe drew. The retained macOS specimen refused with `non-solid grid: 476392 pixels in
 // 798x597`, whose 14 holes were exactly that mask (11 bottom-left, 3 bottom-right). A window-shaped
 // grid must therefore calibrate, while an interior hole must still refuse.
 function filletCorners(
@@ -386,7 +411,9 @@ test("window corner fillets do not defeat calibration of an exact raster", async
       "row edge paint": [filletCorners(rasterFrame("rows")), filletCorners(rasterFrame("rows"))],
     },
   })
-  await expect(run.promise).resolves.toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  expect(measured.basis).toMatch(/corner fillets 4 px/)
 })
 
 test("an interior hole is still refused once corner fillets are tolerated", async () => {
@@ -396,14 +423,59 @@ test("an interior hole is still refused once corner fillets are tolerated", asyn
   await expect(run.promise).rejects.toThrow(/non-solid grid/)
 })
 
-// The retained c240 frame, rebuilt from its recorded numbers rather than transported as a binary:
+test("a hole on an edge but away from a corner still refuses", async () => {
+  const solid = filletCorners(rasterFrame("solid"))
+  solid.rgba.set([0, 0, 0, 255], (2 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/non-solid grid/)
+})
+
+test("a clipped last stripe calibrates and records its clip", async () => {
+  // 4 columns of 2 px and 4 rows of 2,2,2,1: the far edge clips the last row by 1 px, which is a
+  // clip rather than a fractional pitch, so the grid still calibrates on a 2 x 2 cell pitch.
+  const columns = [2, 4, 6, 8, 10]
+  const rows = [2, 4, 6, 8, 9]
+  const run = calibration({
+    frames: {
+      "solid grid paint": [gridFrame(12, columns, rows, "solid"), gridFrame(12, columns, rows, "solid")],
+      "column edge paint": [gridFrame(12, columns, rows, "columns"), gridFrame(12, columns, rows, "columns")],
+      "row edge paint": [gridFrame(12, columns, rows, "rows"), gridFrame(12, columns, rows, "rows")],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({
+    origin: { x: 2, y: 2 },
+    pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+  })
+  expect(measured.basis).toMatch(/rows clipped 1 px at the far edge/)
+})
+
+test("mixed stripe widths refuse as a fractional pitch", async () => {
+  // 12 px, 13 px and 1 px columns on a 26 px grid: the middle stripe differs, so this is not a clip.
+  const columns = [2, 14, 27, 28]
+  const rows = [2, 15, 28]
+  const empty = frame(30)
+  const run = calibration({
+    rows: 2,
+    cols: 3,
+    frames: {
+      "before grid paint": [empty, empty],
+      "solid grid paint": [gridFrame(30, columns, rows, "solid"), gridFrame(30, columns, rows, "solid")],
+      "column edge paint": [gridFrame(30, columns, rows, "columns"), gridFrame(30, columns, rows, "columns")],
+      "restore grid paint": [empty, empty],
+    },
+  })
+  await expect(run.promise).rejects.toThrow(/fractional pitch: stripes of 12 and 13 px/)
+})
+
+// The retained macOS alacritty frame, rebuilt from its recorded numbers rather than transported as a binary:
 // 800x628, a 798x597 magenta grid at y=29 for a 133x46 terminal, plus the documented corner
 // staircase. FIXTURE MODEL, not measurement: the 6.00 px columns are the frame's own arithmetic,
 // while the 13 px rows are a model of the clip reading (46 x 13 = 598, clipped to 597) and NOT a
 // measured pitch — the retained frame fixes only the 597 px total. The requirement this pins is
 // narrow: the corner mask must stop being the reason calibration refuses. What the geometry then
 // measures is a separate question this test does not answer.
-function c240Specimen(stage: "solid" | "columns" | "rows"): CapturedFrame {
+function roundedWindowSpecimen(stage: "solid" | "columns" | "rows"): CapturedFrame {
   const width = 800,
     height = 628
   const rgba = new Uint8Array(width * height * 4)
@@ -437,13 +509,13 @@ function c240Specimen(stage: "solid" | "columns" | "rows"): CapturedFrame {
   return { width, height, rgba }
 }
 
-test("the c240 window specimen no longer refuses for its corner fillets", async () => {
+test("the macOS alacritty window specimen no longer refuses for its corner fillets", async () => {
   // Opaque baseline. The retained frame's outside-grid pixels are black WITH alpha 255, so a
   // transparent baseline would make outsideUnchanged() throw "paint changed pixels outside the
   // witnessed grid" and this test would pass on that unrelated refusal.
   const empty = { width: 800, height: 628, rgba: new Uint8Array(800 * 628 * 4) }
   for (let offset = 3; offset < empty.rgba.length; offset += 4) empty.rgba[offset] = 255
-  const solid = c240Specimen("solid")
+  const solid = roundedWindowSpecimen("solid")
   // Fixture invariant for that trap: outside the 798x597 grid the specimen must equal the opaque
   // blank, alpha included. Checked here because outsideUnchanged() cannot reach it until the
   // corner mask stops refusing.
@@ -466,8 +538,8 @@ test("the c240 window specimen no longer refuses for its corner fillets", async 
     frames: {
       "before grid paint": [empty, empty],
       "solid grid paint": [solid, solid],
-      "column edge paint": [c240Specimen("columns"), c240Specimen("columns")],
-      "row edge paint": [c240Specimen("rows"), c240Specimen("rows")],
+      "column edge paint": [roundedWindowSpecimen("columns"), roundedWindowSpecimen("columns")],
+      "row edge paint": [roundedWindowSpecimen("rows"), roundedWindowSpecimen("rows")],
       "restore grid paint": [empty, empty],
     },
   })
@@ -475,10 +547,12 @@ test("the c240 window specimen no longer refuses for its corner fillets", async 
     () => ({ ok: true as const, message: "" }),
     (error: unknown) => ({ ok: false as const, message: error instanceof Error ? error.message : String(error) }),
   )
-  // A cure may resolve this frame, or refuse it on the row geometry that a corner cure cannot fix
-  // (597 px for 46 rows). Both are acceptable here; any other refusal means the corner class still
-  // wins, or that an unrelated failure is masquerading as progress.
-  if (!settled.ok) expect(settled.message).toMatch(/nonuniform rows|grid boundary disagrees/)
+  // A cure may resolve this frame, or refuse it at the stripe stage. Both are acceptable here; a
+  // refusal at the corner stage, a fractional-pitch reading of a clipped row, or an unrelated
+  // failure is not.
+  if (!settled.ok) {
+    expect(settled.message).toMatch(/nonuniform rows|measured \d+ cells, expected 46|last stripe is \d+ px, longer/)
+  }
   // Proven stage: column stripes are only captured after the solid grid is accepted, so this is
   // what distinguishes "past the corners" from "refused somewhere else".
   expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
