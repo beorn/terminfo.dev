@@ -21,18 +21,19 @@
  * evidence label can record it.
  *
  * Refusal is a sentinel with a reason, and it is used wherever the snapshot cannot be mapped to
- * cells EXACTLY: a row the terminal wrapped, a character outside printable ASCII — whose cell width
- * the snapshot cannot name, which covers combining marks, wide characters, East Asian ambiguous
- * characters and tabs — a row count that is not the screen's row count, an app grid that disagrees
+ * cells EXACTLY: a row the terminal wrapped, a character outside printable ASCII and the named
+ * single-cell glyphs below — whose cell width the snapshot cannot name, which covers combining
+ * marks, wide characters, East Asian ambiguous characters and tabs — a row count that is not the
+ * screen's row count, an app grid that disagrees
  * with the measured one, a session that is not the owned one or that changed TTY while it was read,
  * a terminal that is not frontmost, a read that runs past its timeout or is killed, and an
  * Automation (TCC) denial, which is named as a denial whether the app raises it inside the script or
  * osascript reports it on stderr.
  *
- * Padding depends on that allowlist and on nothing else: a printable ASCII code point fills exactly
- * one cell, so a row shorter than `cols` that passed every check is a row whose trailing blanks the
- * terminal trimmed, and padding them back restores its exact characters. Every padded row is named
- * in `paddedRows` so the evidence label can say so.
+ * Padding depends on that allowlist and on nothing else: a printable ASCII code point or one of
+ * the named glyphs fills exactly one cell, so a row shorter than `cols` that passed every check is
+ * a row whose trailing blanks the terminal trimmed, and padding them back restores its exact
+ * characters. Every padded row is named in `paddedRows` so the evidence label can say so.
  *
  * Empty text is a VALUE. A blank row and a blank screen are rows of spaces, never "could not read".
  */
@@ -209,11 +210,31 @@ export function classifyOsascriptFailure(reply: OsascriptReply, app: TerminalTex
   return `${label} refused the text read: ${detail.slice(0, 300)}`
 }
 
-/** True for the only code points this read maps to exactly one cell: printable ASCII. Anything
- * else — combining marks, wide characters, East Asian ambiguous characters, control characters —
- * has a cell width a text snapshot cannot name, and the mapping refuses rather than guesses. */
-export function isPrintableAsciiCell(codePoint: number): boolean {
-  return codePoint >= 0x20 && codePoint <= 0x7e
+/**
+ * The non-ASCII code points this read maps, one NAMED entry each: the glyphs the Character Sets rows
+ * actually paint, which the terminals return as drawn (30098, specimen run 39159788591). A code point
+ * joins this list only because a measured row expects it as one cell — never a Unicode width table,
+ * and never a range. The charset rows carry ASCII flank controls, so a glyph that filled two cells
+ * would shift its flank and fail the row loudly instead of passing.
+ */
+export const NAMED_SINGLE_CELL_GLYPHS = [
+  { codePoint: 0x00e9, name: "é, the UTF-8 sample cell" },
+  { codePoint: 0x2500, name: "─ horizontal line, DEC Special Graphics q" },
+  { codePoint: 0x2502, name: "│ vertical line, DEC Special Graphics x" },
+  { codePoint: 0x250c, name: "┌ upper-left corner, DEC Special Graphics l" },
+  { codePoint: 0x2510, name: "┐ upper-right corner, DEC Special Graphics k" },
+  { codePoint: 0x2514, name: "└ lower-left corner, DEC Special Graphics m" },
+  { codePoint: 0x2518, name: "┘ lower-right corner, DEC Special Graphics j" },
+] as const
+
+const NAMED_SINGLE_CELL_CODES: ReadonlySet<number> = new Set(NAMED_SINGLE_CELL_GLYPHS.map(({ codePoint }) => codePoint))
+
+/** True for the only code points this read maps to exactly one cell: printable ASCII and the named
+ * glyphs above. Anything else — combining marks, wide characters, East Asian ambiguous characters,
+ * control characters — has a cell width a text snapshot cannot name, and the mapping refuses rather
+ * than guesses. */
+export function isSingleCellCodePoint(codePoint: number): boolean {
+  return (codePoint >= 0x20 && codePoint <= 0x7e) || NAMED_SINGLE_CELL_CODES.has(codePoint)
 }
 
 const hex = (codePoint: number): string => `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`
@@ -247,8 +268,8 @@ export function mapSnapshotToCells(
     const points = [...line]
     for (const [position, character] of points.entries()) {
       const codePoint = character.codePointAt(0) ?? 0
-      if (!isPrintableAsciiCell(codePoint)) {
-        return `row ${String(row)} character ${String(position + 1)} is ${hex(codePoint)}, which is not printable ASCII, so the snapshot cannot say how many cells it fills`
+      if (!isSingleCellCodePoint(codePoint)) {
+        return `row ${String(row)} character ${String(position + 1)} is ${hex(codePoint)}, which is not printable ASCII or one of the named single-cell glyphs, so the snapshot cannot say how many cells it fills`
       }
     }
     if (points.length > cols) {

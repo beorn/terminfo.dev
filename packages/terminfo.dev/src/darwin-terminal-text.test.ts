@@ -13,8 +13,9 @@ import { describe, expect, it } from "vitest"
 import {
   automationDeniedReason,
   classifyOsascriptFailure,
-  isPrintableAsciiCell,
+  isSingleCellCodePoint,
   mapSnapshotToCells,
+  NAMED_SINGLE_CELL_GLYPHS,
   osascriptReply,
   readTerminalTextSnapshot,
   terminalTextScript,
@@ -262,17 +263,35 @@ describe("terminalTextScript — the walk each app's object model actually expos
   })
 })
 
-describe("isPrintableAsciiCell — one code point, one cell, or the mapping is refused", () => {
-  it("accepts printable ASCII and nothing else", () => {
-    expect(isPrintableAsciiCell(0x20)).toBe(true)
-    expect(isPrintableAsciiCell(0x41)).toBe(true)
-    expect(isPrintableAsciiCell(0x7e)).toBe(true)
-    expect(isPrintableAsciiCell(0x09)).toBe(false) // tab
-    expect(isPrintableAsciiCell(0x1f)).toBe(false)
-    expect(isPrintableAsciiCell(0x7f)).toBe(false)
-    expect(isPrintableAsciiCell(0x00e9)).toBe(false) // é
-    expect(isPrintableAsciiCell(0x3042)).toBe(false) // あ
-    expect(isPrintableAsciiCell(0x1f600)).toBe(false) // 😀
+describe("isSingleCellCodePoint — one code point, one cell, or the mapping is refused", () => {
+  it("accepts printable ASCII", () => {
+    expect(isSingleCellCodePoint(0x20)).toBe(true)
+    expect(isSingleCellCodePoint(0x41)).toBe(true)
+    expect(isSingleCellCodePoint(0x7e)).toBe(true)
+  })
+
+  // 30098: the macOS apps return the charset rows' glyphs as drawn, so each one this arm maps is a
+  // named entry with its own proof rather than a range.
+  it.each(
+    NAMED_SINGLE_CELL_GLYPHS.map((glyph) => ({
+      ...glyph,
+      hex: `U+${glyph.codePoint.toString(16).toUpperCase().padStart(4, "0")}`,
+    })),
+  )("accepts the named glyph $name ($hex)", ({ codePoint }) => {
+    expect(isSingleCellCodePoint(codePoint)).toBe(true)
+  })
+
+  it.each([
+    ["a tab", 0x09],
+    ["a C0 control", 0x1f],
+    ["a DEL control", 0x7f],
+    ["an East Asian ambiguous character", 0x00b1], // ±
+    ["a wide character the rows paint", 0x4e16], // 世
+    ["a wide kana", 0x3042], // あ
+    ["a wide emoji", 0x1f600], // 😀
+    ["an unmapped box drawing glyph", 0x2501], // ━ — plausible, not measured by any row
+  ])("refuses %s, which is not a named single-cell glyph", (_name, codePoint) => {
+    expect(isSingleCellCodePoint(Number(codePoint))).toBe(false)
   })
 })
 
@@ -314,7 +333,19 @@ describe("mapSnapshotToCells — exact, or padded-and-named, never guessed", () 
   ])("refuses %s by naming its code point", (_name, row, pattern) => {
     const mapped = mapSnapshotToCells([String(row)], 3, 1, 0)
     expect(mapped).toMatch(pattern)
-    expect(mapped).toMatch(/not printable ASCII/u)
+    expect(mapped).toMatch(/not printable ASCII or one of the named single-cell glyphs/u)
+  })
+
+  // 30098 specimen: Terminal.app and iTerm2 return DEC Special Graphics as drawn, so the charset
+  // rows' cells map exactly once those glyphs are named.
+  it("maps a charset row's drawn glyphs exactly, padding nothing", () => {
+    expect(mapSnapshotToCells(["q\u2500q"], 3, 1, 0)).toEqual({
+      cols: 3,
+      rows: 1,
+      text: ["q\u2500q"],
+      paddedRows: [],
+      droppedLines: 0,
+    })
   })
 
   it("pads a trimmed row back to the measured width and names it as padded", () => {
