@@ -58,15 +58,19 @@ jobs:
           node-version: "24"
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
 
       - name: Build and install the current collector
         run: |
           set -euo pipefail
-          bun install
+          bun install --frozen-lockfile
           bun scripts/build-cli.ts
           npm install -g ./packages/terminfo.dev
           terminfo --version
+          OUT="$RUNNER_TEMP/measurement-artifacts"
+          cp bun.lock "$OUT/collector-bun.lock"
+          cp packages/terminfo.dev/dist/terminfo.bundle.receipt.json "$OUT/collector-build.json"
+          cp packages/terminfo.dev/dist/terminfo.bundle.mjs "$OUT/collector-bundle.mjs"
 
       - name: Install this job's terminal
         env:

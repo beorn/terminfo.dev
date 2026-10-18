@@ -15,6 +15,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync, spawnSync } from "node:child_process"
 import * as childProcesses from "node:child_process"
+import { createHash } from "node:crypto"
 import {
   existsSync,
   mkdirSync,
@@ -146,8 +147,61 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
   })
   // The real launcher owns containers and receipts. Its process boundary is replaced here;
   // a failed Kitty launch and other malformed raw outputs must remain separate, retained failures.
-  const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((_command, args, options) => {
+  const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
     if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
+    const stdio = options?.stdio
+    const respond = (stdout: string, status = 0) => {
+      if (Array.isArray(stdio) && typeof stdio[1] === "number") writeSync(stdio[1], stdout)
+      return { pid: 1, output: [], stdout: "", stderr: "", status, signal: null }
+    }
+    if (command === "git") {
+      if (args[0] === "symbolic-ref") return respond("fixture-collection\n")
+      if (args[0] === "ls-remote") return respond(`${raw.sourceRevision}\trefs/heads/fixture-collection\n`)
+      throw new Error(`unexpected Git command ${args.join(" ")}`)
+    }
+    if (command === "gh") {
+      if (args[0] === "workflow") {
+        return respond(
+          `https://github.com/beorn/terminfo.dev/actions/runs/${args[2] === "macos-measurement.yml" ? "9001" : "9002"}\n`,
+        )
+      }
+      const mac = args[2] === "9001"
+      if (args[1] === "view") {
+        return respond(
+          JSON.stringify({
+            headSha: suite === "different" ? "0".repeat(40) : raw.sourceRevision,
+            headBranch: "fixture-collection",
+            event: "workflow_dispatch",
+            workflowName: mac ? "macos-measurement" : "windows-measurement",
+          }),
+        )
+      }
+      if (args[1] === "watch") return respond("workflow fixture result", mac ? 0 : 1)
+      if (args[1] === "download") {
+        const artifacts = args[args.indexOf("--dir") + 1]
+        if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
+        for (const id of mac ? ["terminal-app", "iterm2", "ghostty", "alacritty"] : ["windows-terminal"]) {
+          const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
+          mkdirSync(folder, { recursive: true })
+          writeFileSync(join(folder, "run.json"), "{}")
+          writeFileSync(
+            join(folder, "collector-bun.lock"),
+            id === "terminal-app" ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+          )
+          writeFileSync(
+            join(folder, "collector-build.json"),
+            JSON.stringify({
+              collectorRevision: raw.sourceRevision,
+              probeHash: raw.probeHash,
+              bundleSha256: createHash("sha256").update("fixture collector bundle").digest("hex"),
+            }),
+          )
+          writeFileSync(join(folder, "collector-bundle.mjs"), "fixture collector bundle")
+        }
+        return respond("downloaded fixture artifacts")
+      }
+      throw new Error(`unexpected GitHub command ${args.join(" ")}`)
+    }
     const output = args.at(-1)
     if (typeof output !== "string") throw new Error("expected private Linux output directory")
     const isKitty = args.includes("kitty")
@@ -156,7 +210,6 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
       mkdirSync(raw, { recursive: true })
       writeFileSync(join(raw, "v2-run.json"), "{}")
     }
-    const stdio = options?.stdio
     if (Array.isArray(stdio) && typeof stdio[2] === "number") writeSync(stdio[2], "launcher fixture diagnostic")
     return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
   })
@@ -176,7 +229,7 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
     expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
     expect(collector).toHaveBeenCalledTimes(1)
-    expect(launcher).toHaveBeenCalledTimes(5)
+    expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(5)
     for (const id of Object.keys(LEDGER)) {
       const row = pass.contexts.find(
         (entry) => entry.context.kind === "app" && entry.context.id === id && entry.context.os === "linux",
@@ -201,6 +254,40 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
       expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
       if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
       else expect(row?.rawRun && readFileSync(row.rawRun, "utf8")).toBe("{}")
+    }
+    for (const os of ["macos", "windows"]) {
+      expect(launcher).toHaveBeenCalledWith(
+        "gh",
+        ["workflow", "run", `${os}-measurement.yml`, "--repo", "beorn/terminfo.dev", "--ref", "fixture-collection"],
+        expect.anything(),
+      )
+      const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
+      expect(hosted).toHaveLength(os === "macos" ? 4 : 1)
+      if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
+    }
+    expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
+    if (suite === "matching") {
+      expect(launcher).toHaveBeenCalledWith(
+        "gh",
+        [
+          "run",
+          "download",
+          "9002",
+          "--repo",
+          "beorn/terminfo.dev",
+          "--dir",
+          join(pass.directory, "hosted", "windows", "artifacts"),
+        ],
+        expect.anything(),
+      )
+      expect(pass.errors.some((error) => error.includes("windows-measurement") && error.includes("exited 1"))).toBe(
+        true,
+      )
+      const mac = pass.contexts.find((row) => row.context.id === "terminal-app")
+      expect(mac?.error).toMatch(/dependency lock/)
+      const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
+      expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
+      expect(windows?.error).toContain("run.json: missing backend/terminal")
     }
     expect(planner).not.toHaveBeenCalled()
     expect(writer).not.toHaveBeenCalled()
