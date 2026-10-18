@@ -179,25 +179,26 @@ function observationRecord(run: LoadedRun, observation: Observation): SelectedCe
   }
 }
 
-function projectRun(
+function isConclusiveObservation(run: LoadedRun, observation: Observation): boolean {
+  return (
+    !run.legacy &&
+    observation.evidence !== "text" &&
+    !isNonMeasuringEvidence(observation.evidence) &&
+    (observation.outcome === "supported" || observation.outcome === "unsupported")
+  )
+}
+
+function prepareRunCells(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
-  catalogIds: readonly string[],
-  currentProbeHash: string,
-  releaseSuiteId: string | null,
-  identityAdmission: IdentityAdmission | null,
-): SelectedVersion {
+): { cells: Record<string, SelectedCell>; correctedFeatures: ReadonlySet<string> } {
   const cells: Record<string, SelectedCell> = {}
   const correctedFeatures = new Set<string>()
   for (const observation of run.observations) {
     cells[observation.featureId] = {
       ...observation,
       record: observationRecord(run, observation),
-      conclusive:
-        !run.legacy &&
-        observation.evidence !== "text" &&
-        !isNonMeasuringEvidence(observation.evidence) &&
-        (observation.outcome === "supported" || observation.outcome === "unsupported"),
+      conclusive: isConclusiveObservation(run, observation),
       chain: {
         origin: run.origin,
         method: observation.evidence,
@@ -284,11 +285,7 @@ function projectRun(
     cells[entry.featureId] = {
       ...observation,
       record: observationRecord(run, observation),
-      conclusive:
-        !run.legacy &&
-        observation.evidence !== "text" &&
-        !isNonMeasuringEvidence(observation.evidence) &&
-        (observation.outcome === "supported" || observation.outcome === "unsupported"),
+      conclusive: isConclusiveObservation(run, observation),
       chain: {
         origin: run.origin,
         method: observation.evidence,
@@ -301,6 +298,27 @@ function projectRun(
       },
     }
   }
+  return { cells, correctedFeatures }
+}
+
+/** Classify one parsed development run with the projection's active corrections, without admission or selection. */
+export function classifyDevelopmentRun(
+  run: LoadedRun,
+  interpretations: readonly Interpretation[],
+): { mode: "development"; runId: string; states: Record<string, CellState> } {
+  const { cells } = prepareRunCells(run, interpretations)
+  return { mode: "development", runId: run.runId, states: classifyCells(cells) }
+}
+
+function projectRun(
+  run: LoadedRun,
+  interpretations: readonly Interpretation[],
+  catalogIds: readonly string[],
+  currentProbeHash: string,
+  releaseSuiteId: string | null,
+  identityAdmission: IdentityAdmission | null,
+): SelectedVersion {
+  const { cells, correctedFeatures } = prepareRunCells(run, interpretations)
   for (const entry of interpretations) {
     if (!hasPresentationDecision(entry) || !applies(entry, run)) continue
     const featureId = entry.featureId
