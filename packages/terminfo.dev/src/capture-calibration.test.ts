@@ -397,10 +397,12 @@ test("an interior hole is still refused once corner fillets are tolerated", asyn
 })
 
 // The retained c240 frame, rebuilt from its recorded numbers rather than transported as a binary:
-// 800x628, a 798x597 magenta grid at y=29 for a 133x46 terminal (6.00 px columns; 46 rows of 13 px
-// clipped to 597), plus the documented corner staircase. The requirement this pins is narrow and
-// deliberate: the corner mask must stop being the reason calibration refuses. What the geometry
-// then measures is a separate question this test does not answer.
+// 800x628, a 798x597 magenta grid at y=29 for a 133x46 terminal, plus the documented corner
+// staircase. FIXTURE MODEL, not measurement: the 6.00 px columns are the frame's own arithmetic,
+// while the 13 px rows are a model of the clip reading (46 x 13 = 598, clipped to 597) and NOT a
+// measured pitch — the retained frame fixes only the 597 px total. The requirement this pins is
+// narrow: the corner mask must stop being the reason calibration refuses. What the geometry then
+// measures is a separate question this test does not answer.
 function c240Specimen(stage: "solid" | "columns" | "rows"): CapturedFrame {
   const width = 800,
     height = 628
@@ -436,17 +438,48 @@ function c240Specimen(stage: "solid" | "columns" | "rows"): CapturedFrame {
 }
 
 test("the c240 window specimen no longer refuses for its corner fillets", async () => {
-  const empty = { width: 800, height: 628, rgba: new Uint8Array(800 * 628 * 4).fill(0) }
+  // Opaque baseline. The retained frame's outside-grid pixels are black WITH alpha 255, so a
+  // transparent baseline would make outsideUnchanged() throw "paint changed pixels outside the
+  // witnessed grid" and this test would pass on that unrelated refusal.
+  const empty = { width: 800, height: 628, rgba: new Uint8Array(800 * 628 * 4) }
+  for (let offset = 3; offset < empty.rgba.length; offset += 4) empty.rgba[offset] = 255
+  const solid = c240Specimen("solid")
+  // Fixture invariant for that trap: outside the 798x597 grid the specimen must equal the opaque
+  // blank, alpha included. Checked here because outsideUnchanged() cannot reach it until the
+  // corner mask stops refusing.
+  const outsideMismatch: string[] = []
+  for (let y = 0; y < solid.height; y++) {
+    for (let x = 0; x < solid.width; x++) {
+      if (x < 798 && y >= 29 && y < 626) continue
+      const offset = (y * solid.width + x) * 4
+      for (let channel = 0; channel < 4; channel++) {
+        if (solid.rgba[offset + channel] !== empty.rgba[offset + channel]) {
+          outsideMismatch.push(`${x},${y}[${channel}]`)
+        }
+      }
+    }
+  }
+  expect(outsideMismatch).toEqual([])
   const run = calibration({
     rows: 46,
     cols: 133,
     frames: {
       "before grid paint": [empty, empty],
-      "solid grid paint": [c240Specimen("solid"), c240Specimen("solid")],
+      "solid grid paint": [solid, solid],
       "column edge paint": [c240Specimen("columns"), c240Specimen("columns")],
       "row edge paint": [c240Specimen("rows"), c240Specimen("rows")],
       "restore grid paint": [empty, empty],
     },
   })
-  await expect(run.promise).rejects.not.toThrow(/non-solid grid/)
+  const settled = await run.promise.then(
+    () => ({ ok: true as const, message: "" }),
+    (error: unknown) => ({ ok: false as const, message: error instanceof Error ? error.message : String(error) }),
+  )
+  // A cure may resolve this frame, or refuse it on the row geometry that a corner cure cannot fix
+  // (597 px for 46 rows). Both are acceptable here; any other refusal means the corner class still
+  // wins, or that an unrelated failure is masquerading as progress.
+  if (!settled.ok) expect(settled.message).toMatch(/nonuniform rows|grid boundary disagrees/)
+  // Proven stage: column stripes are only captured after the solid grid is accepted, so this is
+  // what distinguishes "past the corners" from "refused somewhere else".
+  expect(run.reads.get("column edge paint")).toBeGreaterThan(0)
 })
