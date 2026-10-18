@@ -484,6 +484,27 @@ test("mixed stripe widths refuse as a fractional pitch", async () => {
   await expect(run.promise).rejects.toThrow(/fractional pitch: stripes of 12 and 13 px/)
 })
 
+test("a last stripe longer than the pitch refuses by name", async () => {
+  // 12, 12 and 14 px columns on a 38 px grid: a clip can only shorten the far edge, so a longer
+  // last stripe is a wrong reading, not a clip. Callers report only clip > 0, so accepting it
+  // would leave a negative clip silently unreported.
+  const columns = [2, 14, 26, 40]
+  const rows = [2, 14, 26]
+  const blank = frame(40)
+  const run = calibration({
+    rows: 2,
+    cols: 3,
+    frames: {
+      "before grid paint": [blank, blank],
+      "solid grid paint": [gridFrame(40, columns, rows, "solid"), gridFrame(40, columns, rows, "solid")],
+      "column edge paint": [gridFrame(40, columns, rows, "columns"), gridFrame(40, columns, rows, "columns")],
+      "row edge paint": [gridFrame(40, columns, rows, "rows"), gridFrame(40, columns, rows, "rows")],
+      "restore grid paint": [blank, blank],
+    },
+  })
+  await expect(run.promise).rejects.toThrow(/last stripe is 14 px, longer than the 12 px pitch/)
+})
+
 // The retained macOS alacritty frame, rebuilt from its recorded numbers rather than transported as a binary:
 // 800x628, a 798x597 magenta grid at y=29 for a 133x46 terminal, plus the documented corner
 // staircase. FIXTURE MODEL, not measurement: the 6.00 px columns are the frame's own arithmetic,
