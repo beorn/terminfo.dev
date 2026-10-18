@@ -558,6 +558,20 @@ describe("release 1 Linux launcher flags", () => {
     expect(presetFor("xterm", "411")).toBe("default")
   })
 
+  it("reads the same kitty/linux run on the site bar and in the census, through one reviewed lookup", () => {
+    // One home per truth: the bar's per-context row and the census ledger both resolve the reviewed
+    // row through `reviewedContextFor`, so an os-qualified row (`app:kitty/linux`) cannot make the
+    // census re-measure a run the site refuses to select.
+    const bar = buildReport({ contentDir: CONTENT }).barRows.find(
+      (row) => row.context.terminalId === "kitty" && row.context.os === "linux",
+    )
+    if (!bar?.measured) throw new Error("kitty/linux must be measured on the bar")
+    const ledger = linuxLedger(CONTENT)
+    expect(bar.run.runId).toBe("da957298d115f98e520e8bc410845e33")
+    expect(ledger.kitty?.runId).toBe(bar.run.runId)
+    expect(ledger.kitty?.selection).toBe("site-selected")
+  })
+
   // linuxLedger reads the whole committed corpus, which grows with every admitted run, so this row carries the
   // budget the corpus-reading consumer-selection rows use (CI took 5054 ms against the 5000 ms default).
   it("reads the five Linux invocations back from the committed runs in the corpus", () => {

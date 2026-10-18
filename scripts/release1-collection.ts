@@ -30,7 +30,7 @@ import { fullContextCensus, type CensusContext } from "../docs/data/full-census.
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
-import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
+import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
@@ -971,7 +971,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
       (current.get(id) ?? []).map(({ key, selected }) =>
         candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
       ),
-      reviewed[`app:${id}`],
+      reviewedContextFor(reviewed, "app", id, "linux"),
     )
     if (picked !== undefined && "ambiguous" in picked) {
       throw new Error(

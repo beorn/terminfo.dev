@@ -54,6 +54,7 @@ import { loadFeatures, type FeatureCatalog, type Slice } from "@terminfo/catalog
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
+  reviewedContextFor,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
 import { statesFor } from "../docs/data/selected-results.ts"
@@ -431,9 +432,10 @@ export function candidate3Cohort(contentDir: string): CohortSpec {
 
 /**
  * Candidate 4's cohort: the extensions and input slices, read on the suite candidate 2's freeze
- * declares. Candidate 4 no longer freezes a suite of its own: the one-freeze-per-suite rule makes a
- * second pointer on the same suite impossible, and a suite with one run would empty this bar. The
- * suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
+ * declares. Candidate 4's own freeze RECORD STAYS — release-scope still pins it at 4f6fcc8c3ff7 — and
+ * no bar reads it: one suite carries one `freeze.release`, so candidate 4's pointer cannot also name
+ * the converged suite, and reading its one-run suite emptied this bar to a single measured context.
+ * The suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
  */
 export function candidate4Cohort(contentDir: string): CohortSpec {
   return {
@@ -602,7 +604,7 @@ export function buildReport(args: {
         (candidate) =>
           candidate.kind === "app" && candidate.terminalId === context.terminalId && candidate.os === context.os,
       ),
-      reviewed: reviewed[`app:${context.terminalId}`],
+      reviewed: reviewedContextFor(reviewed, "app", context.terminalId, context.os),
       tier62Ids,
       tier52Ids,
     }),

@@ -46,6 +46,7 @@ import {
   tierOneIds,
 } from "./decisive-share.ts"
 import { pickContextRun, type ContextCandidate } from "../docs/data/run-selection.ts"
+import { reviewedContextFor } from "../docs/data/current-results.ts"
 import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import { classifyCells, d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
@@ -523,6 +524,53 @@ describe("release 1 decisive-count reader", () => {
       selection: "default profile",
     })
     expect(pickContextRun([mac], macReview)).toEqual({ run: mac, selection: "reviewed default-context row" })
+  })
+
+  it("reads the os-qualified row for the linux group and leaves the macOS group on its id-level row", () => {
+    const mac = candidate({ key: "macos", os: "macos" })
+    const linuxOct4 = candidate({ key: "linux-oct4" })
+    const linuxAllow = candidate({ key: "linux-allow", permissions: "clipboard: read=allow,write=allow" })
+    const linuxOct18 = candidate({ key: "linux-oct18" })
+    const review = (key: string) => ({
+      contextKey: key,
+      reviewer: "@dev/11",
+      reason: `the reviewed row for ${key}`,
+      sources: ["content/default-contexts.json"],
+    })
+    // `app:kitty` names the macOS context and stays the only row for that os; `app:kitty/linux` is read
+    // for the linux os ONLY, so one review per group resolves the tie the id-level row cannot address.
+    const policy = { "app:kitty": review("macos"), "app:kitty/linux": review("linux-oct18") }
+    const linuxGroup = [linuxOct4, linuxAllow, linuxOct18]
+    expect(pickContextRun(linuxGroup, reviewedContextFor(policy, "app", "kitty", "linux"))).toEqual({
+      run: linuxOct18,
+      selection: "reviewed default-context row",
+    })
+    expect(pickContextRun([mac], reviewedContextFor(policy, "app", "kitty", "macos"))).toEqual({
+      run: mac,
+      selection: "reviewed default-context row",
+    })
+    // The mutant this covers is the lookup that ignores the os key: it hands the linux group the macOS
+    // row, and the tie comes back — RED, exactly as it was before the os-qualified row existed.
+    expect(pickContextRun(linuxGroup, policy["app:kitty"])).toEqual({
+      ambiguous: ["linux-oct4", "linux-allow", "linux-oct18"],
+    })
+  })
+
+  it("leaves a context with no os-qualified row resolving exactly as it did before", () => {
+    const only = candidate({ key: "macos", os: "macos" })
+    const review = {
+      contextKey: "macos",
+      reviewer: "@dev/11",
+      reason: "the id-level row",
+      sources: ["content/default-contexts.json"],
+    }
+    expect(reviewedContextFor({ "app:kitty": review }, "app", "kitty", "linux")).toBe(review)
+    expect(reviewedContextFor({ "app:kitty": review }, "app", "kitty", "macos")).toBe(review)
+    expect(reviewedContextFor({}, "app", "kitty", "linux")).toBeUndefined()
+    expect(pickContextRun([only], reviewedContextFor({ "app:kitty": review }, "app", "kitty", "macos"))).toEqual({
+      run: only,
+      selection: "reviewed default-context row",
+    })
   })
 
   it("prints the reviewed row it used, and names both failures, on a bar row", () => {
