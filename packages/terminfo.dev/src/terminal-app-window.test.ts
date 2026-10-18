@@ -54,8 +54,8 @@ describe("descendant walk", () => {
     expect(() => descendToOwner(300, 100, () => null)).toThrow(/not a descendant/)
   })
 
-  test("refuses a cycle after the hop ceiling", () => {
-    expect(() => descendToOwner(300, 100, (pid) => (pid === 200 ? 300 : 200))).toThrow(/not a descendant/)
+  test("refuses a cyclic chain by naming the cycle", () => {
+    expect(() => descendToOwner(300, 100, (pid) => (pid === 200 ? 300 : 200))).toThrow(/cycles at pid/)
   })
 
   test("refuses the owner pid itself as the daemon", () => {

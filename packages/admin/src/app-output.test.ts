@@ -181,15 +181,7 @@ describe("kitty owned launch", () => {
     await handleApp("kitty", { output: "/private/out" })
     expect(spawn).toHaveBeenCalledWith(
       "/Applications/kitty.app/Contents/MacOS/kitty",
-      [
-        "--detach",
-        "--instance-group",
-        "terminfo-private-run",
-        "-1",
-        "--",
-        "/bin/bash",
-        "/private/run/serve.sh",
-      ],
+      ["--detach", "--instance-group", "terminfo-private-run", "-1", "--", "/bin/bash", "/private/run/serve.sh"],
       expect.anything(),
     )
     expect(requestDaemonProbe).toHaveBeenCalledWith(expect.anything(), undefined)
@@ -204,7 +196,7 @@ describe("kitty owned launch", () => {
       },
       555,
     )
-    const saved = vi.mocked(retainCollectedRun).mock.calls[0]?.[0] as {
+    const saved = vi.mocked(retainCollectedRun).mock.calls[0]?.[0] as unknown as {
       rawReplies: Record<string, string>
       origin: Record<string, unknown>
     }
@@ -218,5 +210,18 @@ describe("kitty owned launch", () => {
     })
     expect(JSON.parse(saved.rawReplies["collector.kittyLauncher"]!)).toEqual({ exitStatus: 0, stderr: "" })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(expect.objectContaining({ provider: "kitty" }))
+  })
+})
+
+describe("unowned launch refusal", () => {
+  test("an app the probe launched without an owned window is refused by name before any probe", async () => {
+    const child = { unref: vi.fn(), kill: vi.fn() }
+    vi.mocked((await import("node:child_process")).spawn).mockReturnValueOnce(child as never)
+    await expect(handleApp("ghostty", {})).rejects.toThrow(
+      /Ghostty has no owned-window assertion; refusing to collect a run this probe cannot prove it launched/,
+    )
+    expect(findOwnedDaemon).not.toHaveBeenCalled()
+    expect(requestDaemonProbe).not.toHaveBeenCalled()
+    expect(retainCollectedRun).not.toHaveBeenCalled()
   })
 })

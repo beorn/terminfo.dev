@@ -132,8 +132,9 @@ function processAlive(pid: number): boolean {
 }
 
 /**
- * Walk `daemonPid`'s live parent chain until it reaches `ownerPid`. A chain that ends at pid 1, at a
- * vanished process, or after 64 hops is a refusal that prints the chain it did walk.
+ * Walk `daemonPid`'s live parent chain until it reaches `ownerPid`. There is no hop ceiling: a chain
+ * that ends at pid 1, at a vanished process, or that repeats a pid (a cycle the OS should not produce)
+ * is a refusal that prints the chain it did walk.
  */
 export function descendToOwner(daemonPid: number, ownerPid: number, parentOf: (pid: number) => number | null): void {
   if (!Number.isSafeInteger(daemonPid) || daemonPid < 1) {
@@ -144,12 +145,19 @@ export function descendToOwner(daemonPid: number, ownerPid: number, parentOf: (p
   }
   let pid = daemonPid
   const chain: number[] = [daemonPid]
-  for (let hop = 0; hop < 64; hop += 1) {
+  const seen = new Set<number>([daemonPid])
+  for (;;) {
     const parent = parentOf(pid)
     if (parent === null || parent < 1) break
     chain.push(parent)
     if (parent === ownerPid) return
     if (parent === 1) break
+    if (seen.has(parent)) {
+      throw new Error(
+        `kitty owner assertion: parent chain from daemon pid ${daemonPid} cycles at pid ${parent}; chain ${chain.join(" -> ")}`,
+      )
+    }
+    seen.add(parent)
     pid = parent
   }
   throw new Error(
