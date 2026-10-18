@@ -250,6 +250,12 @@ test("an edit that is a third distinct frame is inconclusive, stating the observ
   // (#28829, CTO).
   expect(result.observation.note).toContain("a third distinct frame")
   expect(result.observation.note).toContain("cannot tell an incorrect effect from a rendering difference")
+  // The note names the axis space a PIXEL digest cannot separate (29577, @cto plan GO option A):
+  // naming the axes is not naming a cause, so the verdict and its reason stay unchanged.
+  expect(result.observation.note).toContain("glyph edges")
+  expect(result.observation.note).toContain("background attributes")
+  expect(result.observation.note).toContain("layout")
+  expect(result.observation.note).not.toContain("the characters")
   expect(result.observation.note).toContain("compared frames: seed, expected")
   expect(result.observation.note).not.toContain("matched none of the compared frames")
   expect(result.observation.note).not.toContain("simply")

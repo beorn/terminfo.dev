@@ -897,7 +897,16 @@ export async function captureRegionReadbackDecision(
       // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
       // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
       // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
-      const note = `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; this exact-digest oracle cannot tell an incorrect effect from a rendering difference (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
+      // The axis space is named from THIS run's evidence kind: a pixel digest moves under any of
+      // three rendering axes, a text digest moves under characters or under the attributes the arm
+      // reports, and an attribute the arm does not report leaves no trace in the digest at all.
+      // Naming the axes is not naming a cause — which axis differed is exactly what this oracle
+      // cannot decide — so the verdict and its reason stay as they are.
+      const axes =
+        evidence === "pixels"
+          ? "this exact pixel-region digest cannot say which rendering axis differed — glyph edges, background attributes, and layout all change it — so it cannot tell an incorrect effect from a rendering difference"
+          : "this exact cell digest covers the characters and, only where this arm reports them, the attributes — so it cannot say which of the two differed, and an attribute-only difference this arm does not report is invisible to it"
+      const note = `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; ${axes} (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
       return {
         pass: false,
         response: observed,
