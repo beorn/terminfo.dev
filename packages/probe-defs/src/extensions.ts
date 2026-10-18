@@ -1469,8 +1469,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           ctx.write("\x1b[0m\x1b[2J\x1b[H")
         }
       },
+      "pixels",
     ),
     termNeedsGeometry: true,
+    termlessObservationEvidence: "none",
   },
 
   // Kitty keyboard protocol

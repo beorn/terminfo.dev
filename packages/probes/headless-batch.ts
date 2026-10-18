@@ -6,6 +6,7 @@ import { readHyperlinkMetadata } from "@terminfo/probe-defs"
 import type {
   NotTestedCoverage,
   Observation,
+  ObservationEvidence,
   ProbeAssertion,
   ProbeDefinition,
   ProbeResult,
@@ -15,6 +16,15 @@ import type {
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+
+/**
+ * A declared `none` says the arm does not measure, so a collector failure on it has no observation to
+ * carry: the canonical parser admits `none` only as an inconclusive refusal, and refuses an error
+ * that names it. Those failures stay named in `ungradedDiagnostics` instead of becoming an
+ * observation the parser would reject. Every other declared method still reports its own error.
+ */
+const carriesError = (evidence: ObservationEvidence | undefined): evidence is ObservationEvidence =>
+  evidence !== undefined && evidence !== "none"
 
 /** Capture one query, including adapters that parse pending input on state reads. */
 export function feedCapture(backend: TerminalBackend, text: string): string {
@@ -165,13 +175,18 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
     result.response === undefined &&
     !result.assertions?.length
   if (declared && !(explicit.evidence === "none" ? unmeasuredRefusal : explicit.evidence === declared)) {
-    batch.observations.push({
-      featureId: id,
-      outcome: "error",
-      reason: "collector-error",
-      evidence: explicit.evidence,
-      note: `Termless callback ${id} declares ${declared} evidence but returned ${explicit.evidence}${explicit.evidence === "none" ? " without an unmeasured refusal" : ""}`,
-    })
+    const message = `Termless callback ${id} declares ${declared} evidence but returned ${explicit.evidence}${explicit.evidence === "none" ? " without an unmeasured refusal" : ""}`
+    if (carriesError(explicit.evidence)) {
+      batch.observations.push({
+        featureId: id,
+        outcome: "error",
+        reason: "collector-error",
+        evidence: explicit.evidence,
+        note: message,
+      })
+    } else {
+      batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
+    }
     return
   }
   const conclusive = explicit.outcome === "supported" || explicit.outcome === "unsupported"
@@ -219,7 +234,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
   const assertions = result.assertions ?? []
   if (result.observation !== undefined || assertions.length > 0) {
     const mixedMessage = `Not-tested coverage for ${id} arrived beside ${refusedClaimEvidence(result)}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`
-    if (probe.termlessObservationEvidence) {
+    if (carriesError(probe.termlessObservationEvidence)) {
       batch.observations.push({
         featureId: id,
         outcome: "error",
@@ -243,7 +258,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeResu
     response === undefined ||
     !bound
   ) {
-    if (probe.termlessObservationEvidence) {
+    if (carriesError(probe.termlessObservationEvidence)) {
       batch.observations.push({
         featureId: id,
         outcome: "error",
@@ -289,7 +304,7 @@ export async function collectBatch(
       recordResult(batch, probe, probe.termless(ctx))
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
-      if (probe.termlessObservationEvidence) {
+      if (carriesError(probe.termlessObservationEvidence)) {
         batch.observations.push({
           featureId: probe.id,
           outcome: "error",

@@ -156,4 +156,23 @@ describe("the real catalog", () => {
     // arm; its old reviewed partial described a definition that measured neither.
     expect(probeStatusOf("editing.decsace", features)).toBe("automated")
   })
+
+  it("settles the rows whose terminal arm measures but whose headless arm declines", () => {
+    const features = loadFeatures(contentDir)
+    // Font ligatures are renderer glyph shaping: the terminal arm captures a spaced control and a
+    // contiguous sample as pixels, and the headless parser shapes no glyphs at all. Kitty click
+    // events are OS-level injection: the terminal arm reads the click report, while the headless
+    // arm refuses before measuring. Undeclared is the word for "nobody has said yet", not for
+    // "one arm declines by design", so both rows read partial and name the arm that cannot measure.
+    for (const id of ["extensions.font-ligatures", "input.kitty-click-events"]) {
+      const declaration = ALL_PROBES.find((entry) => entry.id === id)
+      expect(declaration, id).toBeDefined()
+      expect(declaration?.termlessObservationEvidence, id).toBe("none")
+      expect(probeStatusOf(id, features), id).toBe("partial")
+    }
+    expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termObservationEvidence).toBe("pixels")
+    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termObservationEvidence).toBe(
+      "interaction",
+    )
+  })
 })
