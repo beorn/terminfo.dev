@@ -1122,6 +1122,55 @@ it.each([
   }
 })
 
+/**
+ * editing.decsace measures WHOLE-WINDOW digests, so it must never read ctx.rows/ctx.cols: a run whose
+ * owned terminal reports no geometry still measures both extents and KEEPS suiteComplete (@cto
+ * 2026-10-18 condition 5). A geometry read here throws UndeclaredTerminalGeometry, which lands in
+ * ungradedDiagnostics and loses the run — the one outcome this test refuses.
+ *
+ * The expected set is narrowed to this probe (the pattern the collector-error tests above use) so the
+ * assertion is about the real completeness formula, `expected ⊆ observed ∪ notTested AND no
+ * diagnostics`, without running every app probe through its real query timeouts.
+ */
+it("grades editing.decsace on both extents with no geometry read and keeps suiteComplete", async () => {
+  verifiedBatchFixture()
+  const others = ALL_PROBES.filter((probe) => probe.id !== "editing.decsace" && probe.term !== null)
+  const originals = others.map((probe) => probe.term)
+  let reads = 0
+  const labels: string[] = []
+  const originalWrite = process.stdout.write
+  process.stdout.write = (() => true) as typeof process.stdout.write
+  try {
+    for (const probe of others) probe.term = null
+    const batch = await runProbeBatch({
+      ownedTerminal: geometryOwner(noGeometry),
+      capture: async ({ role, label }) => {
+        reads += 1
+        labels.push(label)
+        return {
+          frame: { role, label, capturedAt: reads, ref: `sha256:${String(reads).repeat(64)}` },
+          trace: {},
+        }
+      },
+    })
+    expect(batch.ungradedDiagnostics).toEqual({})
+    expect(batch.suiteComplete).toBe(true)
+    expect(batch.observations).toMatchObject([
+      { featureId: "editing.decsace", outcome: "supported", evidence: "pixels" },
+    ])
+    expect(labels).toEqual([
+      "editing.decsace: seed before DECSACE",
+      "editing.decsace: DECSACE 2 rectangle frame",
+      "editing.decsace: DECSACE 0 stream frame",
+    ])
+  } finally {
+    process.stdout.write = originalWrite
+    others.forEach((probe, index) => {
+      probe.term = originals[index] ?? null
+    })
+  }
+})
+
 // 27863: a feature whose app callback reads the measured grid must declare termNeedsGeometry; a
 // missing declaration is a collector error that silently costs the feature every run.
 it("grades cursor.shape and cursor.reverse-wrap when each declares its measured-grid read", async () => {

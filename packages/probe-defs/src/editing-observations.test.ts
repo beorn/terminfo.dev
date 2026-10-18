@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { ALL_PROBES } from "./index.ts"
-import { regionReadbackProbe } from "./region-readback-kind.ts"
+import { regionReadbackProbe, type RegionReadbackCell } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { TermlessContext } from "./types.ts"
@@ -17,10 +17,9 @@ import type { TermlessContext } from "./types.ts"
  * definition - or a probe that stops being built from its row - fails here rather than as a silently
  * smaller count in a census taken later.
  *
- * `editing.deccara` and `editing.decrara` are deliberately absent: they are attribute rectangles, and
- * the region kind compares characters (their one-line coverage record lives on `EDITING_CAPTURE_SPECS`
- * in editing.ts). `editing-contract.test.ts` binds all four hand-written rows -
- * deccara/decrara/decsace/decrqcra - beside these thirteen.
+ * `editing.decsace` and `editing.decrqcra` are deliberately absent: one measures whole-window extent
+ * frames and the other a DCS checksum reply, neither a cell window. `editing-contract.test.ts` binds
+ * both hand-written rows beside these fifteen.
  */
 const KIND_TABLE_ROWS = editingReadbackRows.map((row) => ({
   id: row.id,
@@ -94,21 +93,43 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredScreen(screens: Record<string, readonly (readonly string[])[]>, cols: number): TermlessContext {
-  let cells: readonly (readonly string[])[] = []
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+  if (cell === undefined || typeof cell === "string") {
+    return { char: cell ?? " " } as ReturnType<TermlessContext["getCell"]>
+  }
+  const attributes = cell.attributes
+  return {
+    char: cell.char,
+    bold: attributes.bold === true,
+    inverse: attributes.inverse === true,
+    fg: attributes.fg ?? null,
+    bg: attributes.bg ?? null,
+  } as ReturnType<TermlessContext["getCell"]>
+}
+
+function declaredScreen(
+  screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
+  cols: number,
+): TermlessContext {
+  let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
     feed: (sequence) => {
       const next = screens[sequence]
       if (next !== undefined) cells = next
     },
-    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+    getCell: (row, col) => declaredCell(cells[row]?.[col]),
   })
 }
 
 /** The kind reads a blank as `""` or `" "` alike, so a compare normalizes BOTH grids to spaces. */
-const toSpaces = (grid: readonly (readonly string[])[]) =>
-  grid.map((cells) => cells.map((cell) => (cell === "" ? " " : cell)))
+const toSpaces = (grid: readonly (readonly (string | RegionReadbackCell)[])[]) =>
+  grid.map((cells) =>
+    cells.map((cell) => {
+      if (typeof cell === "string") return cell === "" ? " " : cell
+      return cell.char === "" ? " " : cell.char
+    }),
+  )
 
 const firstStep = (id: string): string => {
   const row = editingReadbackRows.find((entry) => entry.id === id)
@@ -129,7 +150,7 @@ test("the kind table names every converted editing row, and every row reaches th
       `${row.id} is in the suite`,
     ).toBe(true)
   }
-  // Thirteen converted rows plus the four hand-written ones (deccara, decrara, decsace, decrqcra).
+  // Fifteen converted rows plus the two hand-written ones (decsace, decrqcra).
   expect(editingProbes).toHaveLength(17)
 })
 

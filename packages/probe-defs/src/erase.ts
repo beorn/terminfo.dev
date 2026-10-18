@@ -1,7 +1,6 @@
 import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { probe, isBlank, parserStateResult, unmeasuredCellResult, notTestedResult } from "./helpers.ts"
+import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 
 /**
  * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
@@ -9,13 +8,14 @@ import { probe, isBlank, parserStateResult, unmeasuredCellResult, notTestedResul
  * target cells against the parser, and the kind derives the capture-region oracle's frames from the
  * same fields, so the two arms cannot grade two fixtures.
  *
- * Two rows stay HAND-WRITTEN, each with its one-line coverage record:
- *  - erase.el-with-attrs: the claim is a BACKGROUND ATTRIBUTE on the erased cells. The kind's cell
- *    carries a character only, so before and after are identical by character; a row of it would read
- *    an ignoring surface supported on the termless arm and wrongly read a correct terminal
- *    unsupported on the pixel arm - the deccara/decrara case (@cto 218ec7fe).
+ * One row stays HAND-WRITTEN, with its one-line coverage record:
  *  - erase.screen.scrollback: the claim is HISTORY (ED3 removes measured scrollback while screen
  *    geometry stays), not a cell window.
+ *
+ * erase.el-with-attrs moved onto the table with the attribute-carrying cell (@cto 2026-10-18, the
+ * 218ec7fe conversion trigger): its background claim is now declared by the cells themselves, so an
+ * ignoring terminal reads unsupported on BOTH arms instead of being graded by one and guessed by the
+ * other.
  */
 /**
  * A control is a cell OUTSIDE the claim whose change means the FIXTURE failed; a cell whose
@@ -246,104 +246,54 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
     // though it compares three.
     minRows: 10,
   },
+  {
+    id: "erase.el-with-attrs",
+    expected: "EL carries the current background onto the erased cells",
+    region: { top: 1, left: 1 },
+    // A named SGR 42 resolves through each terminal's own palette, so the claim is relative: the
+    // seed cells must report SOME background, and the erased cells must keep it.
+    seed: "\x1b[1;1H\x1b[42mXXXXX\x1b[0m\x1b[2;1H",
+    before: [
+      [
+        { char: "X", attributes: { bg: "present" } },
+        { char: "X", attributes: { bg: "present" } },
+        { char: "X", attributes: { bg: "present" } },
+        { char: "X", attributes: { bg: "present" } },
+        { char: "X", attributes: { bg: "present" } },
+      ],
+    ],
+    // The step ends ON the CUP that positions the erase, so the cursor it declares is the witness
+    // that the erase target was measured at all: an ignored CUP leaves the parked row and reads
+    // inconclusive before any cell is graded. The kind appends the park itself.
+    steps: [
+      {
+        write: "\x1b[1;1H\x1b[42m\x1b[0K\x1b[0m",
+        cursor: {
+          x: 0,
+          y: 0,
+          note: "EL background: the CUP to the seeded row was ignored, so the erase target was not measured",
+        },
+      },
+    ],
+    after: [
+      [
+        { char: " ", attributes: { bg: "same-as-before" } },
+        { char: " ", attributes: { bg: "same-as-before" } },
+        { char: " ", attributes: { bg: "same-as-before" } },
+        { char: " ", attributes: { bg: "same-as-before" } },
+        { char: " ", attributes: { bg: "same-as-before" } },
+      ],
+    ],
+    paint: { bg: "\x1b[42m" },
+    // An EL that drops back to the default background is a measured negative: the claim IS the
+    // carried background, so that frame is exactly what "ignored" names.
+    ignored: [[" ", " ", " ", " ", " "]],
+    controls: [],
+    seedNote: "EL background seed was not measured",
+    controlNote: "EL names no control: the erased cells are the claim",
+    reset: "\x1b[0m",
+  },
 ]
-
-/**
- * erase.el-with-attrs stays HAND-WRITTEN. This is its one-line coverage record (@cto 218ec7fe,
- * 2026-10-12): "not a region-readback row: the kind compares characters, and this claim is an
- * attribute rectangle; it converts when the kind's cell carries attributes". The trigger to convert is
- * a third attribute-rectangle probe, or folding the SGR family's attribute readback (sgr.ts,
- * sgrReadbackDecision) into the region kind, whichever comes first - then both arms get an
- * attribute-carrying cell once, reviewed, and this row converts with it. Its byte-frame readback below
- * still carries the background through the oracle's pixel digest, so the pixel arm keeps its evidence.
- */
-const ERASE_EL_WITH_ATTRS_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 5 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[42mXXXXX\x1b[0m\x1b[2;1H",
-  edit: "\x1b[1;1H\x1b[42m\x1b[0K\x1b[0m\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[42m     \x1b[0m\x1b[2;1H",
-  // An EL that does not carry the current background onto the erased cells drops back to the
-  // default: the row's claim is the current background, so that frame is a measured negative.
-  ignored: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H     \x1b[0m\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 6,
-}
-
-const ERASE_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "erase.el-with-attrs": ERASE_EL_WITH_ATTRS_READBACK,
-}
-
-/**
- * Capture a seeded erase fixture without interpreting pixels. Returns null when no capture
- * adapter is installed so the caller can keep its legacy query path.
- */
-async function eraseSequenceCapture(
-  ctx: TermContext,
-  minRows: number,
-  minCols: number,
-  feature: string,
-  seed: readonly string[],
-  eraseAt: string,
-  sequence: string,
-  expected: string,
-  cleanup = "",
-): Promise<ProbeResult | null> {
-  if (!ctx.capture) return null
-  const { rows, cols } = ctx
-  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < minCols) {
-    return {
-      pass: false,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-        note: `${feature} capture needs at least ${minRows}x${minCols}, measured ${rows}x${cols}`,
-      },
-    }
-  }
-  try {
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
-    for (const step of seed) ctx.write(step)
-    ctx.write("\x1b[0m")
-    const before = await ctx.capture!({
-      role: "control",
-      label: `${feature}: seeded cells before ${JSON.stringify(sequence)}`,
-    })
-    ctx.write(eraseAt)
-    ctx.write(sequence)
-    const target = await ctx.capture!({
-      role: "target",
-      label: `${feature}: after ${JSON.stringify(sequence)}`,
-    })
-    const observed = JSON.stringify({
-      rows,
-      cols,
-      eraseAt: JSON.stringify(eraseAt),
-      sequence: JSON.stringify(sequence),
-      before: before.label,
-      target: target.label,
-    })
-    return {
-      pass: false,
-      response: observed,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "pixels",
-        screenshotRef: target.ref,
-        frames: [before, target],
-        note: `${feature} control and target pixels captured; the erase effect requires independent review. Visual expectation: ${expected}`,
-      },
-    }
-  } finally {
-    ctx.write(cleanup)
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
-  }
-}
 
 const SCROLLBACK_ED3_EXPECTED =
   "ED3 removes captured history: wheel-up after ED3 no longer shows the pre-ED3 history frame"
@@ -507,101 +457,5 @@ export const eraseProbes: ProbeDefinition[] = [
       scrollbackEraseApp,
     ),
     termNeedsGeometry: true,
-  },
-
-  // EL with background color — erased cells should inherit current bg
-  {
-    ...probe(
-      "erase.el-with-attrs",
-      (ctx) => {
-        const expected = "EL erases X while preserving its measured non-default background"
-        try {
-          ctx.feed("\x1b[0m\x1b[1;1HX\x1b[1;1H")
-          const baseline = ctx.getCell(0, 0)
-          if (baseline.char !== "X" || baseline.bg === undefined) {
-            return parserStateResult(null, expected, { baseline }, "Default-background X setup was not measured")
-          }
-          ctx.feed("\x1b[42m\x1b[1;1HXXXXX\x1b[1;1H")
-          const before = ctx.getCell(0, 0)
-          if (
-            before.char !== "X" ||
-            before.bg == null ||
-            (baseline.bg !== null &&
-              before.bg.r === baseline.bg.r &&
-              before.bg.g === baseline.bg.g &&
-              before.bg.b === baseline.bg.b)
-          ) {
-            return parserStateResult(
-              null,
-              expected,
-              { baseline, before },
-              "Non-default colored X setup was not measured",
-            )
-          }
-          ctx.feed("\x1b[K")
-          const after = ctx.getCell(0, 0)
-          // The claim is that the erased cells take the CURRENT background. A cell whose background
-          // is unavailable cannot be judged; one reporting any other value — the default, or none —
-          // has not carried it, and that is a measured negative (@chief 2026-10-11T22:58Z).
-          const measurable = typeof after.char === "string" && after.bg !== undefined
-          return parserStateResult(
-            measurable
-              ? isBlank(after.char) &&
-                  after.bg?.r === before.bg.r &&
-                  after.bg?.g === before.bg.g &&
-                  after.bg?.b === before.bg.b
-              : null,
-            expected,
-            { baseline, before, after },
-            measurable ? undefined : "Erased cell background metadata unavailable",
-          )
-        } finally {
-          ctx.feed("\x1b[0m")
-        }
-      },
-      async (ctx) => {
-        const readback = ERASE_READBACK_SPECS["erase.el-with-attrs"]
-        if (readback) {
-          const verdict = await captureRegionVerdict(ctx, "erase.el-with-attrs", readback)
-          if (verdict) return verdict
-        }
-        const viaCapture = await eraseSequenceCapture(
-          ctx,
-          1,
-          6,
-          "EL with background",
-          ["\x1b[1;1H\x1b[42mXXXXX"],
-          "\x1b[1;1H\x1b[42m",
-          "\x1b[K",
-          "row 1 erased to the end with the green background retained",
-          "\x1b[0m",
-        )
-        if (viaCapture) return viaCapture
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 6) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Erase fixture needs at least 1x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H\x1b[2K")
-        try {
-          ctx.write("\x1b[42m") // green bg
-          ctx.write("XXXXX")
-          ctx.write("\x1b[1;1H")
-          ctx.write("\x1b[K") // EL 0
-          const pos = await ctx.queryCursorPosition()
-          return unmeasuredCellResult(pos, "erased cells or scrollback")
-        } finally {
-          ctx.write("\x1b[0m")
-        }
-      },
-    ),
-    termNeedsGeometry: true,
-    cellReadback: true,
   },
 ]

@@ -9,7 +9,7 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
 import { ALL_PROBES } from "./index.ts"
-import { regionReadbackProbe, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
@@ -19,10 +19,9 @@ import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
  * definition - or a probe that stops being built from its row - fails here rather than as a silently
  * smaller count in a census taken later.
  *
- * `erase.el-with-attrs` and `erase.screen.scrollback` are deliberately absent: the first is an
- * attribute claim and the second a history claim, and the region kind compares CHARACTERS on a CELL
- * WINDOW (their one-line coverage records live in erase.ts). `erase-contract.test.ts` binds all eleven
- * rows beside these nine.
+ * `erase.screen.scrollback` is deliberately absent: it is a history claim, and the region kind compares
+ * a CELL WINDOW (its one-line coverage record lives in erase.ts). `erase-contract.test.ts` binds all
+ * eleven rows beside these ten.
  */
 const KIND_TABLE_ROWS = eraseReadbackRows.map((row) => ({
   id: row.id,
@@ -123,19 +122,33 @@ function appWithEvents(rows: number, cols: number, events: string[]): TermContex
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+  if (cell === undefined || typeof cell === "string") {
+    return { char: cell ?? " " } as ReturnType<TermlessContext["getCell"]>
+  }
+  const attributes = cell.attributes
+  return {
+    char: cell.char,
+    bold: attributes.bold === true,
+    inverse: attributes.inverse === true,
+    fg: attributes.fg ?? null,
+    bg: attributes.bg ?? null,
+  } as ReturnType<TermlessContext["getCell"]>
+}
+
 function declaredScreen(
-  screens: Record<string, readonly (readonly string[])[]>,
+  screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
   cols: number,
   cursor: { x: number; y: number } = { x: 0, y: 0 },
 ): TermlessContext {
-  let cells: readonly (readonly string[])[] = []
+  let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
     feed: (sequence) => {
       const next = screens[sequence]
       if (next !== undefined) cells = next
     },
-    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+    getCell: (row, col) => declaredCell(cells[row]?.[col]),
     getCursor: () => ({ x: cursor.x, y: cursor.y, visible: true, style: null }),
   })
 }
@@ -155,8 +168,13 @@ function stepCursor(id: string): { x: number; y: number } {
 }
 
 /** The kind reads a blank as `""` or `" "` alike, so a compare normalizes BOTH grids to spaces. */
-const toSpaces = (grid: readonly (readonly string[])[]) =>
-  grid.map((cells) => cells.map((cell) => (cell === "" ? " " : cell)))
+const toSpaces = (grid: readonly (readonly (string | RegionReadbackCell)[])[]) =>
+  grid.map((cells) =>
+    cells.map((cell) => {
+      if (typeof cell === "string") return cell === "" ? " " : cell
+      return cell.char === "" ? " " : cell.char
+    }),
+  )
 
 const firstStep = (id: string): string => {
   const row = eraseReadbackRows.find((entry) => entry.id === id)
@@ -297,6 +315,24 @@ test.each(eraseReadbackRows.map((row) => row.id))("%s reads an ignored CUP incon
   )
   expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions, id).toBeUndefined()
+})
+
+/**
+ * erase.el-with-attrs parks on row 2 and CUPs back to row 1 to erase, so an ignored CUP would erase
+ * the WRONG row. Its declared cursor is (0,0), which the generic loop above skips because a static
+ * double cannot express "the parked row was never left" — this test states that case explicitly, with
+ * the surface still sitting on the park (0,1).
+ */
+test("erase.el-with-attrs reads an ignored CUP inconclusive before grading cells", () => {
+  const row = rowById("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const result = probe.termless(
+    declaredScreen({ [row.seed]: row.before, [firstStep(row.id)]: row.after }, 24, { x: 0, y: 1 }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("CUP to the seeded row was ignored")
+  expect(result.assertions).toBeUndefined()
 })
 
 /**
@@ -698,48 +734,62 @@ test("erase.screen.scrollback surfaces a finally wheel-down failure", async () =
   expect(clicks).toEqual([4, 5, 4, 5])
 })
 
-test("background erase measures a blank target with its calibrated background", () => {
-  const black = { r: 0, g: 0, b: 0 }
-  const color = { r: 130, g: 20, b: 70 }
-  // Constant RGB metadata cannot establish that SGR changed the default background. The erased
-  // cell's background is judged on its own (@chief 2026-10-11T22:58Z): the current colour is
-  // supported, the default (or none) is a measured negative, and only an unread background is
-  // unmeasured.
-  for (const [baseline, colored, char, afterBg, seed, expected, target] of [
-    [black, black, " ", black, "X", "inconclusive", false],
-    [null, null, " ", null, "X", "inconclusive", false],
-    [undefined, color, " ", color, "X", "inconclusive", false],
-    [null, color, " ", color, "?", "inconclusive", false],
-    [null, color, " ", color, "X", "supported", true],
-    [black, color, " ", color, "X", "supported", true],
-    [null, color, "X", color, "X", "unsupported", true],
-    [null, color, " ", null, "X", "unsupported", true],
-    [null, color, " ", undefined, "X", "inconclusive", true],
-  ] as const) {
-    const base = eraseCellsHeadless("ABCDE")
+/**
+ * The attribute claim is RELATIVE, and this table measures exactly that: the seed must report SOME
+ * background, the erased cells must keep the one the seed painted at that position, and a terminal
+ * that drops to the default (or keeps the characters) is a measured negative. An unread background is
+ * not expressible here — `getCell` reports `null` for "no colour", never "unknown" — so every row of
+ * the table is a decided or refused reading, never an unmeasured one graded by accident.
+ */
+test("background erase measures a blank target that carries the seeded background", () => {
+  const row = rowById("erase.el-with-attrs")
+  const step = firstStep("erase.el-with-attrs")
+  const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
+  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  const background = { r: 130, g: 20, b: 70 }
+  const other = { r: 1, g: 2, b: 3 }
+  const run = (
+    seedBg: { r: number; g: number; b: number } | null,
+    afterBg: { r: number; g: number; b: number } | null,
+    char = " ",
+  ) => {
     let erased = false
-    let coloring = false
-    const writes: string[] = []
-    const result = byId("erase.el-with-attrs").termless({
-      ...base,
-      feed(bytes) {
-        writes.push(bytes)
-        if (bytes.includes("\x1b[42m")) coloring = true
-        if (bytes === "\x1b[K") erased = true
-      },
-      getCell(row, col) {
-        return {
-          ...base.getCell(row, col),
-          char: erased ? char : coloring ? "X" : seed,
-          bg: (erased ? afterBg : coloring ? colored : baseline) as ReturnType<TermlessContext["getCell"]>["bg"],
-        }
-      },
-    })
-    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
-    expect(writes.includes("\x1b[K")).toBe(target)
-    if (expected === "inconclusive") expect(result.assertions).toBeUndefined()
-    expect(writes.at(-1)).toBe("\x1b[0m")
+    return probe.termless!(
+      headless({
+        feed: (sequence) => {
+          if (sequence === step) erased = true
+        },
+        getCell: (_cellRow, col) => ({
+          char: erased ? char : "X",
+          bold: false,
+          dim: false,
+          italic: false,
+          underline: false,
+          strikethrough: false,
+          inverse: false,
+          hidden: false,
+          blink: false,
+          fg: null,
+          bg: (erased ? afterBg : seedBg) ?? null,
+          wide: false,
+        }),
+      }),
+    )
   }
+  // The claim, measured: a blank cell keeping the seed's own background is the ONLY supported frame.
+  expect(run(background, background).observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(run(background, background).assertions?.[0]).toMatchObject({ kind: "positive" })
+  // The measured negative: the erased cells fall back to the default background, or keep the
+  // character that EL should have removed.
+  expect(run(background, null).observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(run(background, background, "X").observation).toMatchObject({ outcome: "unsupported" })
+  // A different colour is not the seeded one: the relative claim is exact on this adapter.
+  expect(run(background, other).observation).toMatchObject({ outcome: "unsupported" })
+  // The seed itself was not measured, so no verdict may be read from it.
+  const unseeded = run(null, background)
+  expect(unseeded.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(unseeded.observation?.note)).toBe(row.seedNote)
+  expect(unseeded.assertions).toBeUndefined()
 })
 
 /**
@@ -812,25 +862,4 @@ test("the EL-with-attrs row names an erase that drops the current background uns
 
   const noBackground = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-default-bg"]).context)
   expect(noBackground.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
-})
-
-test("erase.el-with-attrs restores its changed fixture after a write error", async () => {
-  const writes: string[] = []
-  let changed = false
-  let failed = false
-  const failure = new Error("fixture write failed")
-  await expect(
-    byId("erase.el-with-attrs").term({
-      ...app({ row: 1, col: 1 }),
-      write(sequence) {
-        writes.push(sequence)
-        if (changed && !failed) {
-          failed = true
-          throw failure
-        }
-        if (sequence === "\x1b[42m") changed = true
-      },
-    }),
-  ).rejects.toBe(failure)
-  expect(writes.at(-1)).toBe("\x1b[0m")
 })

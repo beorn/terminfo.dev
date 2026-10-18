@@ -8,7 +8,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { editingProbes } from "./editing.ts"
+import { editingProbes, editingReadbackRows } from "./editing.ts"
 import type { ObservationFrame, ProbeDefinition, TermContext } from "./types.ts"
 
 const CAPTURE_IDS = [
@@ -91,12 +91,12 @@ test("every editing capture row asks the terminal's pixel report before painting
  * the witness cell shows the last glyph written, and the compared cells never move — so the row
  * reaches the decision and its spec, without claiming any capability.
  */
-function readbackCaptureContext(rows: number, cols: number) {
+function readbackCaptureContext(rows: number, cols: number, witness = { row: 3, col: 1 }) {
   const writes: string[] = []
   const requests: Array<{ region: { top: number; left: number; bottom: number; right: number }; label: string }> = []
   const frames: ObservationFrame[] = []
   let reads = 0
-  const sentinel = "3,1,3,1"
+  const sentinel = `${witness.row},${witness.col},${witness.row},${witness.col}`
   const key = (region: { top: number; left: number; bottom: number; right: number }) =>
     `${region.top},${region.left},${region.bottom},${region.right}`
   const context: TermContext = {
@@ -230,8 +230,9 @@ test("the capture set covers the cell-edit probes and leaves non-cell probes unt
 /**
  * 28450 slice C deleted the cursor-only fallback for the thirteen converted rows: a run with no owned
  * capture can only answer "inconclusive", so the row refuses BY NAME and writes nothing rather than
- * keeping an ungraded CPR fixture alive (@cto A2). `editing.decsace` and the two attribute rows keep
- * their own callbacks, covered by the test below and by `editing-geometry.test.ts`.
+ * keeping an ungraded CPR fixture alive (@cto A2). `editing.decsace` and `editing.decrqcra` keep their
+ * own callbacks; the two attribute-rectangle rows converted to the kind with decsace, so their extent
+ * refusals are the kind's own (`editing-geometry.test.ts`).
  */
 test("without a capture adapter a converted row refuses by name and writes nothing", async () => {
   const { context, writes, frames } = captureContext(24, 80, false)
@@ -246,9 +247,58 @@ test("without a capture adapter a converted row refuses by name and writes nothi
   expect(frames).toEqual([])
 })
 
-test("editing.decsace stays a non-capture probe even when a capture adapter exists", async () => {
+/**
+ * decsace converted with the attribute-cell kind (@cto 2026-10-18): on an adapter that reports
+ * frames it measures BOTH extents. The stream frame is the control, so the arm is supported only
+ * when DECSACE 2 and DECSACE 0 leave visibly different screens.
+ */
+test("editing.decsace measures both DECSACE extents when a capture adapter exists", async () => {
   const { context, frames } = captureContext(24, 80)
   const result = await find("editing.decsace").term!(context)
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(frames).toEqual([])
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(frames.map((frame) => frame.label)).toEqual([
+    "editing.decsace: seed before DECSACE",
+    "editing.decsace: DECSACE 2 rectangle frame",
+    "editing.decsace: DECSACE 0 stream frame",
+  ])
+})
+
+/**
+ * A text-only double is the macOS case: its digest cannot see an attribute, so both extents read the
+ * same frame. That must be inconclusive BY NAME — never a pass (nothing was separated) and never a
+ * negative (the attribute may well have been applied).
+ */
+test("editing.decsace reads equal extents inconclusive by name, never supported", async () => {
+  const { context, frames } = captureContext(24, 80)
+  context.capture = async ({ role, label }) => {
+    const frame = { role, label, capturedAt: 1, ref: `sha256:${"a".repeat(64)}` }
+    frames.push(frame)
+    return frame
+  }
+  const result = await find("editing.decsace").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
+  expect(result.assertions).toBeUndefined()
+  expect(frames).toHaveLength(3)
+})
+
+/**
+ * The two converted attribute rows on a TEXT-ONLY adapter: the seed and the expected frame read the
+ * same cells because only attributes changed, so the region oracle refuses by name. This is the macOS
+ * census row (@cto 2026-10-18 condition 3) in executable form.
+ */
+test("an attribute row on a text-only adapter is inconclusive by name", async () => {
+  for (const id of ["editing.deccara", "editing.decrara"]) {
+    const row = editingReadbackRows.find((entry) => entry.id === id)
+    if (!row?.sentinel) throw new Error(`missing sentinel for ${id}`)
+    const { context } = readbackCaptureContext(24, 80, { row: row.sentinel.row, col: row.sentinel.col ?? 1 })
+    const result = await find(id).term!(context)
+    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    expect(String(result.observation?.note), id).toContain("seed frame and the expected frame read the same cells")
+    expect(result.assertions, id).toBeUndefined()
+  }
 })

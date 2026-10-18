@@ -9,10 +9,14 @@
  * cannot drift into grading two different fixtures (which is how the first revision of this kind
  * shipped an edit that rewrote its own control).
  *
- * The compared cells are a GRID — one `string[]` per screen ROW (@cto b29d9b69: "the cells become a
+ * The compared cells are a GRID — one row per screen ROW (@cto b29d9b69: "the cells become a
  * grid (one string[] per row). Extend the kind once, with that family"). One row of cells is the
  * one-row grid, so a family that needs a scroll region, a multi-line erase or an insert/delete line
  * declares it instead of adding a second factory.
+ *
+ * A cell is a character, or a character carrying the attributes its row ASSERTS (@cto 2026-10-18,
+ * shape A): the third attribute-rectangle probe converted the kind once, so DECCARA, DECRARA and the
+ * EL background row grade attribute changes on both arms instead of being hand-written beside it.
  */
 import type { ProbeDefinition, TermlessContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
@@ -41,6 +45,41 @@ export interface RegionReadbackRegion {
   left: number
 }
 
+/**
+ * The attributes a compared cell asserts. A cell declares ONLY what its row claims, so a terminal
+ * that sets anything else is never graded on it: the kind has compared characters since A2, and
+ * attribute rectangles (DECCARA/DECRARA, EL carrying the current background) need the same one
+ * path (@cto 2026-10-18 decsace ruling, shape A, 218ec7fe conversion trigger).
+ */
+/**
+ * A color the row can assert WITHOUT pinning a backend's palette: `"present"` asserts the cell has
+ * a background/foreground at all, and `"same-as-before"` asserts the cell kept the one the seed
+ * painted at the same grid position. A named SGR resolves through each terminal's own palette, so
+ * an absolute RGB here would be a backend's value, not the claim.
+ */
+export type RegionReadbackColor = { r: number; g: number; b: number } | "present" | "same-as-before"
+
+export interface RegionReadbackAttributes {
+  /** True asserts the attribute is set; false asserts the sequence CLEARED it. */
+  bold?: boolean
+  inverse?: boolean
+  fg?: RegionReadbackColor
+  bg?: RegionReadbackColor
+}
+
+/** The SGR bytes the expected frame paints for a relative color claim. Required with one. */
+export interface RegionReadbackPaint {
+  fg?: string
+  bg?: string
+}
+
+/**
+ * One compared cell: a plain character, or a character carrying the attributes its row asserts.
+ * Character-only rows keep the string spelling, so their grids, test doubles and verdicts are
+ * unchanged.
+ */
+export type RegionReadbackCell = string | { char: string; attributes: RegionReadbackAttributes }
+
 export interface RegionReadbackRow {
   id: string
   /** The claim in words: the termless arm's `expected`, and the kind table test's row label. */
@@ -51,7 +90,7 @@ export interface RegionReadbackRow {
    * The cells the seed frame must show: one `string[]` per compared ROW, one entry per compared
    * COLUMN, in screen order. A wide follower is `""`.
    */
-  before: readonly (readonly string[])[]
+  before: readonly (readonly RegionReadbackCell[])[]
   /** The writes between the seed and the final read, in order. */
   steps: readonly RegionReadbackStep[]
   /**
@@ -60,7 +99,7 @@ export interface RegionReadbackRow {
    * `" "` on either side are the same blank (see `sameCell`), so a correct terminal is never graded
    * unsupported for choosing the backend's own spelling.
    */
-  after: readonly (readonly string[])[]
+  after: readonly (readonly RegionReadbackCell[])[]
   /**
    * Cells whose position the sequence must preserve. A control is a real control only when the
    * sequence does not write it. Only when every one holds is `after` a verdict; a moved control means
@@ -74,7 +113,13 @@ export interface RegionReadbackRow {
   /** The normalizing write the termless arm makes whether or not it decided, and the pixel prelude. */
   reset: string
   /** The grid the sequence would leave if it IGNORED the one attribute it claims. */
-  ignored?: readonly (readonly string[])[]
+  ignored?: readonly (readonly RegionReadbackCell[])[]
+  /**
+   * The SGR the expected frame paints for a cell whose fg/bg assertion is `"present"` or
+   * `"same-as-before"`. Loading refuses a row that declares one without its bytes: an unpainted
+   * expected frame would read equal to the seed and go inconclusive on every adapter.
+   */
+  paint?: RegionReadbackPaint
   /**
    * The compared region's top-left corner. Its bottom and right DERIVE from the grid's own shape, so
    * a region can no longer disagree with the cells it compares. Default `{ top: 1, left: 1 }`.
@@ -150,13 +195,86 @@ interface RegionReadbackGeometry {
  * sequence must never grade unsupported for choosing the other spelling (@cto 28450 must-fix 1,
  * 2026-10-12).
  */
-function sameCell(measured: string, expected: string): boolean {
-  return isBlank(expected) ? isBlank(measured) : measured === expected
+type MeasuredCell = ReturnType<TermlessContext["getCell"]>
+
+/**
+ * One cell compared against its declared expectation. The character keeps the blank rule; an
+ * attribute-carrying cell adds ONLY the fields it declares, so absent attributes are unread (never
+ * equal, never unequal) and a terminal is not graded on state the row never claimed.
+ */
+function sameCell(measured: MeasuredCell, expected: RegionReadbackCell, reference?: MeasuredCell): boolean {
+  const character = cellChar(expected)
+  const characterMatches = isBlank(character) ? isBlank(measured.char) : measured.char === character
+  if (!characterMatches) return false
+  if (typeof expected === "string") return true
+  const attributes = expected.attributes
+  if (attributes.bold !== undefined && measured.bold !== attributes.bold) return false
+  if (attributes.inverse !== undefined && measured.inverse !== attributes.inverse) return false
+  if (attributes.fg !== undefined && !sameColorClaim(measured.fg, attributes.fg, reference?.fg)) return false
+  if (attributes.bg !== undefined && !sameColorClaim(measured.bg, attributes.bg, reference?.bg)) return false
+  return true
 }
 
-/** A wide follower paints nothing of its own: its lead glyph already claimed the column. */
-function paintRow(cells: readonly string[]): string {
-  return cells.filter((cell) => cell !== "").join("")
+function cellChar(cell: RegionReadbackCell): string {
+  return typeof cell === "string" ? cell : cell.char
+}
+
+type Rgb = { r: number; g: number; b: number }
+type MeasuredColor = Rgb | null
+
+function sameColorClaim(measured: MeasuredColor, claim: RegionReadbackColor, reference: MeasuredColor | undefined) {
+  if (measured === null) return false
+  if (claim === "present") return true
+  if (claim === "same-as-before") {
+    if (reference === undefined) {
+      throw new Error("a same-as-before color claim reached the comparison without its seed cell")
+    }
+    return reference !== null && reference.r === measured.r && reference.g === measured.g && reference.b === measured.b
+  }
+  return measured.r === claim.r && measured.g === claim.g && measured.b === claim.b
+}
+
+/** The SGR the expected frame paints for a declared attribute cell. */
+function attributeSgr(
+  attributes: RegionReadbackAttributes,
+  paint: RegionReadbackPaint | undefined,
+  position: { row: number; col: number },
+): string {
+  const codes: string[] = []
+  if (attributes.bold === true) codes.push("1")
+  if (attributes.inverse === true) codes.push("7")
+  const fg = attributes.fg
+  if (typeof fg === "object" && fg !== null) codes.push(`38;2;${fg.r};${fg.g};${fg.b}`)
+  else if (fg !== undefined) codes.push(paintBytes(paint?.fg, "fg", position))
+  const bg = attributes.bg
+  if (typeof bg === "object" && bg !== null) codes.push(`48;2;${bg.r};${bg.g};${bg.b}`)
+  else if (bg !== undefined) codes.push(paintBytes(paint?.bg, "bg", position))
+  return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`
+}
+
+/** A relative color claim paints the row's own SGR; loading proved the bytes exist. */
+function paintBytes(paint: string | undefined, channel: "fg" | "bg", position: { row: number; col: number }): string {
+  if (!paint) throw new Error(`cell ${position.row},${position.col} asserts a relative ${channel} with no paint bytes`)
+  return paint.replace(/^\x1b\[/u, "").replace(/m$/u, "")
+}
+
+/**
+ * A wide follower paints nothing of its own: its lead glyph already claimed the column. An
+ * attribute cell paints its declared SGR around its character, so the expected frame differs from
+ * the seed exactly where an adapter that reads attributes can see the difference.
+ */
+function paintRow(cells: readonly RegionReadbackCell[], paint: RegionReadbackPaint | undefined, row: number): string {
+  let painted = ""
+  for (const [col, cell] of cells.entries()) {
+    const character = cellChar(cell)
+    if (character === "") continue
+    if (typeof cell === "string") {
+      painted += character
+      continue
+    }
+    painted += `\x1b[0m${attributeSgr(cell.attributes, paint, { row, col })}${character}\x1b[0m`
+  }
+  return painted
 }
 
 /**
@@ -164,30 +282,53 @@ function paintRow(cells: readonly string[]): string {
  * shape that slipped past the load check fails CLOSED here rather than being read against a blank and
  * accepted.
  */
-function cellsMatch(measured: readonly string[], expected: readonly string[]): boolean {
+function cellsMatch(
+  measured: readonly MeasuredCell[],
+  expected: readonly RegionReadbackCell[],
+  reference: readonly MeasuredCell[] | undefined,
+): boolean {
   if (measured.length !== expected.length) return false
   return measured.every((cell, col) => {
     const want = expected[col]
-    return want !== undefined && sameCell(cell, want)
+    return want !== undefined && sameCell(cell, want, reference?.[col])
   })
 }
 
 /** Row-by-row equality: a grid with the wrong number of rows can never match. */
-function gridMatch(measured: readonly (readonly string[])[], expected: readonly (readonly string[])[]): boolean {
+function gridMatch(
+  measured: readonly (readonly MeasuredCell[])[],
+  expected: readonly (readonly RegionReadbackCell[])[],
+  reference?: readonly (readonly MeasuredCell[])[],
+): boolean {
   if (measured.length !== expected.length) return false
   return measured.every((cells, row) => {
     const want = expected[row]
-    return want !== undefined && cellsMatch(cells, want)
+    return want !== undefined && cellsMatch(cells, want, reference?.[row])
   })
 }
 
 /** The compared region's cells, read from the parser at their own screen positions. */
-function readGrid(ctx: TermlessContext, geometry: RegionReadbackGeometry): string[][] {
+function readGrid(ctx: TermlessContext, geometry: RegionReadbackGeometry): MeasuredCell[][] {
   return Array.from({ length: geometry.rows }, (_, row) =>
-    Array.from(
-      { length: geometry.columns },
-      (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col).char,
-    ),
+    Array.from({ length: geometry.columns }, (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col)),
+  )
+}
+
+/**
+ * The measured grid as the row's RAW REPLY. A character-only row keeps the character spelling it has
+ * always carried, so stored run payloads and the real-parser tests read exactly as before; a cell the
+ * row declares with attributes reports the measured cell, so the evidence names the attribute it
+ * asserted instead of dropping it.
+ */
+function responseGrid(
+  measured: readonly (readonly MeasuredCell[])[],
+  declared: readonly (readonly RegionReadbackCell[])[],
+): readonly (readonly (MeasuredCell | string)[])[] {
+  return measured.map((cells, row) =>
+    cells.map((cell, col) => {
+      const want = declared[row]?.[col]
+      return want === undefined || typeof want === "string" ? cell.char : cell
+    }),
   )
 }
 
@@ -196,8 +337,12 @@ function cup(row: number, col: number): string {
 }
 
 /** The frame a grid paints: each compared row at its own screen row and left column. */
-function paintFrame(grid: readonly (readonly string[])[], geometry: RegionReadbackGeometry): string {
-  return grid.map((cells, row) => cup(geometry.top + row, geometry.left) + paintRow(cells)).join("")
+function paintFrame(
+  grid: readonly (readonly RegionReadbackCell[])[],
+  geometry: RegionReadbackGeometry,
+  paint: RegionReadbackPaint | undefined,
+): string {
+  return grid.map((cells, row) => cup(geometry.top + row, geometry.left) + paintRow(cells, paint, row)).join("")
 }
 
 /**
@@ -260,6 +405,24 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
       throw new Error(`${row.id}: control column ${control.col} is outside the compared 0..${columns - 1}`)
     }
   }
+  // A relative color claim paints the expected frame with the row's own SGR. Without those bytes the
+  // expected frame would read equal to the seed on every adapter and the row could only ever be
+  // inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide.
+  for (const cells of row.after) {
+    for (const cell of cells) {
+      if (typeof cell === "string") continue
+      for (const channel of ["fg", "bg"] as const) {
+        const claim = cell.attributes[channel]
+        if (claim === undefined || typeof claim === "object") continue
+        const painted = row.paint?.[channel]
+        if (painted === undefined) {
+          throw new Error(
+            `${row.id}: cell ${row.after.indexOf(cells)},${cells.indexOf(cell)} asserts a relative ${channel} with no paint bytes`,
+          )
+        }
+      }
+    }
+  }
   // The geometry this row really addresses (@cto 2026-10-12, must-fix 2). The parked cursor AND the
   // sentinel are screen rows, so the need is the larger of the two: deriving it from the sentinel alone
   // let a row declare a minimum that parked its own cursor off-screen (reverse-index: cursor 6,
@@ -308,8 +471,10 @@ function regionReadbackSpec(
     cursorRow: geometry.cursorRow,
     seed: prelude + row.seed + geometry.park,
     edit: row.steps.map((step) => step.write).join("") + geometry.park,
-    expected: prelude + paintFrame(row.after, geometry) + geometry.park,
-    ...(row.ignored === undefined ? {} : { ignored: prelude + paintFrame(row.ignored, geometry) + geometry.park }),
+    expected: prelude + paintFrame(row.after, geometry, row.paint) + geometry.park,
+    ...(row.ignored === undefined
+      ? {}
+      : { ignored: prelude + paintFrame(row.ignored, geometry, row.paint) + geometry.park }),
     ...(row.cleanup === undefined ? {} : { cleanup: row.cleanup }),
     ...(row.requiresUtf8 === true ? { requiresUtf8: true as const } : {}),
     timeoutMs: TIMEOUT_MS,
@@ -348,7 +513,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
         ctx.feed(row.seed)
         const before = readGrid(ctx, geometry)
         if (!gridMatch(before, row.before)) {
-          return parserStateResult(null, row.expected, { before }, row.seedNote)
+          return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
         }
         const setup: { x: number; y: number }[] = []
         for (const step of row.steps) {
@@ -357,7 +522,12 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           const cursor = ctx.getCursor()
           setup.push({ x: cursor.x, y: cursor.y })
           if (cursor.x !== step.cursor.x || cursor.y !== step.cursor.y) {
-            return parserStateResult(null, row.expected, { before, setup }, step.cursor.note)
+            return parserStateResult(
+              null,
+              row.expected,
+              { before: responseGrid(before, row.before), setup },
+              step.cursor.note,
+            )
           }
         }
         const after = readGrid(ctx, geometry)
@@ -366,9 +536,9 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           return cell !== undefined && sameCell(cell, control.char)
         })
         return parserStateResult(
-          controlsValid ? gridMatch(after, row.after) : null,
+          controlsValid ? gridMatch(after, row.after, before) : null,
           row.expected,
-          { before, setup, after },
+          { before: responseGrid(before, row.before), setup, after: responseGrid(after, row.after) },
           controlsValid ? undefined : row.controlNote,
         )
       } finally {

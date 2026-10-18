@@ -33,13 +33,25 @@ const KIND_TABLES: readonly (readonly [string, readonly RegionReadbackRow[]])[] 
 const KIND_ROWS: readonly RegionReadbackRow[] = KIND_TABLES.flatMap(([, table]) => [...table])
 
 /**
- * The four sequences xterm.js does NOT implement. Every other kind row names a sequence xterm.js DOES
+ * The six sequences xterm.js does NOT implement. Every other kind row names a sequence xterm.js DOES
  * implement, so such a row that reads unsupported is the FIXTURE failing, not the terminal — which is
  * the shape must-fix 1 shipped: a blank spelled `" "` on one side only graded 17 of these rows
  * unsupported against the four real backends @cto measured (@cto 28450 must-fix 1, 2026-10-12).
  * The declaring family is named in each id, so a future absent sequence says which family it is in.
+ *
+ * `editing.deccara`/`editing.decrara` joined this list when the attribute-rectangle pair converted to
+ * the kind (@cto 2026-10-18): xterm.js has no `$r`/`$t` handler at all (measured on @xterm/headless
+ * 6: the attributes stay clear through both sequences), so their real-parser reading is a measured
+ * UNSUPPORTED — the hand-written pair never met a real parser, so this is the first run to say so.
  */
-const XTERM_ABSENT = ["editing.decfra", "editing.decera", "editing.decsera", "editing.deccra"]
+const XTERM_ABSENT = [
+  "editing.decfra",
+  "editing.decera",
+  "editing.decsera",
+  "editing.deccra",
+  "editing.deccara",
+  "editing.decrara",
+]
 
 async function collectOrigin(origin: probeDefs.ProbeDefinition) {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
