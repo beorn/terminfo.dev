@@ -27,7 +27,7 @@ test("hosted measurement workflows export the launch run id inside the collector
   const windows = readFileSync(join(root, ".github/workflows/windows-measurement.yml"), "utf8")
   const winReadyAt = windows.indexOf("collector-ready")
   const winExportAt = windows.indexOf("\\$env:TERMINFO_RUN_ID = ")
-  const winCollectorAt = windows.indexOf("& terminfo test")
+  const winCollectorAt = windows.indexOf('& "$COLLECTOR_BUN" "$COLLECTOR" test')
   expect(winReadyAt, "Windows workflow waits for the receipt").toBeGreaterThan(-1)
   expect(winExportAt, "Windows workflow sets TERMINFO_RUN_ID").toBeGreaterThan(winReadyAt)
   expect(winCollectorAt, "Windows workflow invokes the collector").toBeGreaterThan(winExportAt)

@@ -58,16 +58,18 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: 1.4.3
 
-      - name: Build and install the current collector
+      - name: Build and retain the current collector
         run: |
           set -euo pipefail
-          git fetch origin main:refs/remotes/origin/main || true
-          bun install
+          bun install --frozen-lockfile
           bun scripts/build-cli.ts
-          npm install -g ./packages/terminfo.dev
-          terminfo --version
+          bun packages/terminfo.dev/bin/terminfo.mjs --version
+          OUT="$RUNNER_TEMP/measurement-artifacts"
+          cp bun.lock "$OUT/collector-bun.lock"
+          cp packages/terminfo.dev/dist/terminfo.bundle.receipt.json "$OUT/collector-build.json"
+          cp packages/terminfo.dev/dist/terminfo.bundle.mjs "$OUT/collector-bundle.mjs"
 
       - name: Install this job's terminal
         env:
@@ -107,14 +109,16 @@ jobs:
           WIN_OUT="$(cygpath -w "$OUT")"
           WIN_COMMAND="$(cygpath -w "$COMMAND_PATH")"
           NODE_DIR="$(cygpath -w "$(dirname "$(command -v node)")")"
-          TERMINFO_DIR="$(cygpath -w "$(dirname "$(command -v terminfo)")")"
+          BUN_DIR="$(cygpath -w "$(dirname "$(command -v bun)")")"
+          COLLECTOR_BUN="$(cygpath -w "$(command -v bun)")"
+          COLLECTOR="$(cygpath -w "$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs")"
           WT_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
           WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe")"
           WIN_ZIP="$(cygpath -w "$OUT/wt.zip")"
 
           cat > "$COMMAND_PATH" <<PS1
           \$ErrorActionPreference = "Continue"
-          \$env:PATH = "$WT_DIR;$NODE_DIR;$TERMINFO_DIR;" + \$env:PATH
+          \$env:PATH = "$WT_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
           \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
 
@@ -146,7 +150,7 @@ jobs:
             exit 1
           }
 
-          & terminfo test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
+          & "$COLLECTOR_BUN" "$COLLECTOR" test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
           \$exitCode = \$LASTEXITCODE
           if (\$null -eq \$exitCode) { \$exitCode = 0 }
           Set-Content -Path "$WIN_OUT\\collector-exit" -Value \$exitCode -Encoding ascii

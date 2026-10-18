@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  classifyDevelopmentRun,
   loadSelectedResults,
   parseInterpretations,
   projectResults,
@@ -916,6 +917,11 @@ describe("selected results", () => {
     const projection = projectResults([app, headless], [reviewFor(app), reviewFor(headless), correction], catalog, {
       currentProbeHash: "current",
     })
+    // CTO 716686ae: development must apply the same correction, not classify the raw cells again.
+    // No previous test could cover this production entry because it did not exist.
+    const development = classifyDevelopmentRun(app, [reviewFor(app), correction])
+    expect(development).toEqual({ mode: "development", runId: app.runId, states: projection.table[app.runId] })
+    expect(development.states["extensions.graphics"]).toBe("supported")
     expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("supported")
     expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.record.rawReply).toBe("NO")
     expect(projection.current["app:kitty"]?.reviews).toContainEqual(
