@@ -330,7 +330,12 @@ test("editing.decsace grades the frames its own writes produced", async () => {
   // The bytes each capture was taken after, in order: the seed paint, the pair's two reads of that
   // SEEDED screen, then DECSACE 2 + DECCARA, then DECSACE 0 + DECCARA. The seed frame is the pair's
   // second read, so a pair taken before the paint changes this.
-  expect(frameWrites).toEqual([`\x1b[0m\x1b[?25l${seed}`, "", `${seed}\x1b[2*x${cara}`, `${seed}\x1b[0*x${cara}`])
+  expect(frameWrites).toEqual([
+    `\x1b[0m\x1b[2J\x1b[H\x1b[?25l${seed}`,
+    "",
+    `${seed}\x1b[2*x${cara}`,
+    `${seed}\x1b[0*x${cara}`,
+  ])
   // The observation cites the seed — the pair's second read — and the two extent frames; the
   // pair's first read is evidence in the arm's own sequence, not a frame to grade.
   const frames = (result.observation?.frames ?? []) as ObservationFrame[]
@@ -645,7 +650,7 @@ test("editing.decsace refuses a seed that changes between the pair's two reads",
   expect(String(result.observation?.note)).toContain("not byte-stable")
   expect(result.assertions).toBeUndefined()
   // The first read already came after the seed paint, so the pair measured the seeded screen.
-  expect(frameWrites[0]).toBe(`\x1b[0m\x1b[?25l${seed}`)
+  expect(frameWrites[0]).toBe(`\x1b[0m\x1b[2J\x1b[H\x1b[?25l${seed}`)
   expect(frameWrites[1]).toBe("\x1b[1;1HX")
   const response = JSON.parse(String(result.response)) as { stability: { pixelsDigest: string[] } }
   expect(response.stability.pixelsDigest).toHaveLength(2)
