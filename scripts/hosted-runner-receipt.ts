@@ -6,7 +6,7 @@ import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { HOSTED_IDENTITY_SOURCES, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
-import { parseAppLaunchReceipt } from "../packages/run-parser/src/app-launch.ts"
+import { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt } from "../packages/run-parser/src/app-launch.ts"
 
 function required(key: string): string {
   const value = process.env[key]
@@ -197,32 +197,33 @@ function measureAppLaunch(): Record<string, unknown> {
   }
 }
 
-/** Measure Alacritty's version on Windows from the launched executable's own `--version` output (C5).
- * Refuses loudly on nonzero exit, timeout, empty output, or no regex match, and logs raw stdout to stderr. */
+/** Measure Alacritty's version on Windows from the launched executable's own `--version` output.
+ * Refuses loudly on nonzero exit, signal termination, timeout, empty output, or no regex match, and logs raw stdout to stderr. */
 function measureWindowsAlacrittyVersion(executablePath: string): string {
-  const result = spawnSync(executablePath, ["--version"], { encoding: "utf8", timeout: 5_000 })
+  const result = spawnSync(executablePath, ["--version"], { encoding: "utf8", timeout: 3_000, windowsHide: true })
   const rawStdout = result.stdout ?? ""
   const rawStderr = result.stderr ?? ""
   process.stderr.write(
     `alacritty --version stdout (${Buffer.byteLength(rawStdout)} bytes): ${JSON.stringify(rawStdout)}\n`,
   )
-  const timedOut =
-    (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" || result.signal === "SIGTERM"
-  if (timedOut) {
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") {
     throw new Error(`Hosted receipt appLaunch: alacritty --version timed out at ${executablePath}`)
+  }
+  if (result.signal) {
+    throw new Error(
+      `Hosted receipt appLaunch: alacritty --version terminated by signal ${result.signal} (${executablePath})`,
+    )
   }
   if (result.error || result.status !== 0) {
     const detail = result.error?.message ?? rawStderr.trim()
     throw new Error(
-      `Hosted receipt appLaunch: alacritty --version failed (${executablePath} exit ${String(result.status)}, signal ${String(result.signal)}): ${detail}`,
+      `Hosted receipt appLaunch: alacritty --version failed (${executablePath} exit ${String(result.status)}): ${detail}`,
     )
   }
   if (!rawStdout.trim()) {
     throw new Error(`Hosted receipt appLaunch: alacritty --version produced empty output (${executablePath})`)
   }
-  const match = /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i.exec(
-    rawStdout.trim(),
-  )
+  const match = ALACRITTY_VERSION_PATTERN.exec(rawStdout.trim())
   if (!match?.[1]) {
     throw new Error(
       `Hosted receipt appLaunch: alacritty --version output did not match version regex (${executablePath}): ${JSON.stringify(rawStdout)}`,

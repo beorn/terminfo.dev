@@ -419,14 +419,13 @@ if (cmd.includes('Get-NetAdapter')) {
   }
 })
 
-test("the hosted producer supports Windows Alacritty with Mesa3D receipt and refuses --version failures by name (C1, C5)", async () => {
+test("the hosted producer supports Windows Alacritty with Mesa3D receipt and refuses --version failures by name", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-win-alacritty-"))
   const raw = {
     mac: "00-15-5D-12-34-56",
     uuid: "12345678-ABCD-1234-ABCD-123456789ABC",
     boot: "2026-10-18T09:20:00.0000000Z",
   }
-  const alacrittyScript = join(dir, "alacritty.exe")
   const winExecutablePath = String.raw`D:\a\_temp\alacritty\alacritty.exe`
   const winSourcePath = String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.17.0-portable.exe`
   const winMesaArchivePath = String.raw`D:\a\_temp\measurement-artifacts\mesa-llvmpipe-x64-26.2.5.7z`
@@ -434,39 +433,12 @@ test("the hosted producer supports Windows Alacritty with Mesa3D receipt and ref
   const exeSha256 = "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
   const mesaArchiveSha256 = "d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d"
   const openglDllSha256 = "8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1"
-  const versionMode: "ok" | "nonzero" | "empty" | "bad-regex" | "timeout" = "ok"
   const server = createServer((_req, res) => {
     res.setHeader("content-type", "application/json")
     res.end(JSON.stringify({ jobs: [{ id: 8888, runner_name: "win-runner", status: "in_progress" }] }))
   })
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   try {
-    const writeAlacritty = () =>
-      writeFile(
-        alacrittyScript,
-        `#!${process.execPath}
-const mode = ${JSON.stringify(versionMode)};
-if (mode === "ok") {
-  process.stdout.write("alacritty 0.17.0 (94e7c88)\\r\\n");
-} else if (mode === "nonzero") {
-  process.stderr.write("alacritty failed\\n");
-  process.exit(2);
-} else if (mode === "empty") {
-  process.stdout.write("   \\r\\n");
-} else if (mode === "bad-regex") {
-  process.stdout.write("not-alacritty version output\\n");
-} else if (mode === "timeout") {
-  process.kill(process.pid, "SIGTERM");
-}
-`,
-        { mode: 0o755 },
-      )
-    await writeAlacritty()
-    // On POSIX test hosts, hosted-runner-receipt spawns measuredLaunch.executablePath directly for --version,
-    // while parseAppLaunchReceipt requires a win32 absolute path on Windows receipts. Wait: in hosted-runner-receipt.ts,
-    // measureWindowsAlacrittyVersion spawns measuredLaunch.executablePath! So on a POSIX test host, how can spawnSync(executablePath)
-    // run if executablePath is `D:\a\_temp\alacritty\alacritty.exe`?
-    // Look! If we create a file named `D:\a\_temp\alacritty\alacritty.exe` in `dir` and run with `cwd: dir`, on Linux `D:\a\_temp\alacritty\alacritty.exe` is a valid filename in `cwd` AND `win32.isAbsolute("D:\\a\\_temp\\alacritty\\alacritty.exe")` is true!
     const winNamedExecutableInDir = join(dir, winExecutablePath)
     await writeFile(
       winNamedExecutableInDir,
@@ -481,8 +453,10 @@ if (mode === "ok") {
   process.stdout.write("   \\r\\n");
 } else if (mode === "bad-regex") {
   process.stdout.write("not-alacritty version output\\n");
-} else if (mode === "timeout") {
+} else if (mode === "signal") {
   process.kill(process.pid, "SIGTERM");
+} else if (mode === "timeout") {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
 }
 `,
       { mode: 0o755 },
@@ -581,6 +555,9 @@ if (cmd.includes('Get-NetAdapter')) {
     )
     await expect(run("bad-regex", "emit", start, join(dir, "bad-regex.json"))).rejects.toThrow(
       /alacritty --version output did not match version regex/,
+    )
+    await expect(run("signal", "emit", start, join(dir, "signal.json"))).rejects.toThrow(
+      /alacritty --version terminated by signal SIGTERM/,
     )
     await expect(run("timeout", "emit", start, join(dir, "timeout.json"))).rejects.toThrow(
       /alacritty --version timed out/,

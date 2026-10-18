@@ -1,15 +1,15 @@
 /**
  * One kernel32 binding for every Windows read the hosted arm makes (29558, option A).
  *
- * Windows-only, behind a dynamic import: the route runs Bun, and `bun:ffi` is the only way to reach
- * the console and the process table from it (measured 2026-10-15, runs 38814184347 and 38829827).
+ * Loaded synchronously on demand through `process.getBuiltinModule("bun:ffi")`: importing this
+ * module makes no native call, so the CLI still starts under Node and every path that does not
+ * call `loadKernel32()` is unaffected.
  *
- * What the dynamic import buys, and what it does NOT (@dev/7 r2): nothing imports this statically, so
- * the launcher still STARTS under node and every path that is not this one is unaffected. It is not
- * end-to-end node support for the hosted Windows route. The `mode con` geometry fallback is
- * node-compatible on its own, but ownership there still needs the ffi ancestry and identity reads, so
- * a node process on Windows refuses LOUDLY at loadKernel32 ("bun:ffi is not available in this
- * runtime") instead of grading a console it could not verify. Say "node starts" only ever beside it.
+ * `hasWindowsKernel32Ffi()` is the one runtime availability check. `detectTerminal()` checks it
+ * before probing Windows process ancestry so a Node invocation on Windows skips the FFI probe and
+ * falls back to `$TERM` without throwing or catching, while `loadKernel32()` on the hosted Windows
+ * ownership route refuses loudly ("bun:ffi is not available in this runtime") when `bun:ffi` is
+ * absent instead of grading a console it could not verify.
  */
 
 /** A kernel32 entry point as `bun:ffi` hands it back: untyped and variadic, so every call site casts
@@ -57,6 +57,20 @@ interface FfiModule {
   ptr(data: Uint8Array): unknown
 }
 
+function resolveBunFfi(): FfiModule | null {
+  if (typeof process.getBuiltinModule !== "function") return null
+  const mod = process.getBuiltinModule("bun:ffi") as Partial<FfiModule> | undefined
+  if (!mod || typeof mod.dlopen !== "function" || typeof mod.ptr !== "function" || !mod.FFIType) {
+    return null
+  }
+  return mod as FfiModule
+}
+
+/** One availability check for `bun:ffi`: a check, never a catch. */
+export function hasWindowsKernel32Ffi(): boolean {
+  return resolveBunFfi() !== null
+}
+
 /**
  * The dlopen declaration, with `FFIType` injected so the ABI is assertable OFF Windows - which is the
  * only place it can be asserted until a run happens. Every HANDLE position is `u64` and every real
@@ -96,15 +110,9 @@ export function kernel32Declaration(types: {
 }
 
 export function loadKernel32(): Kernel32 {
-  let ffi: FfiModule
-  try {
-    const mod = process.getBuiltinModule("bun:ffi") as FfiModule | undefined
-    if (!mod) throw new Error("process.getBuiltinModule('bun:ffi') returned undefined")
-    ffi = mod
-  } catch (error) {
-    throw new Error(
-      `bun:ffi is not available in this runtime: ${error instanceof Error ? error.message : String(error)}`,
-    )
+  const ffi = resolveBunFfi()
+  if (!ffi) {
+    throw new Error("bun:ffi is not available in this runtime")
   }
   const binding = ffi.dlopen(
     "kernel32.dll",

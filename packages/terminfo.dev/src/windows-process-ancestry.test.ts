@@ -179,7 +179,7 @@ describe("windowsProcessAncestry", () => {
 })
 
 describe("hostedWindowsAppFromExecutablePath", () => {
-  it("maps only WindowsTerminal.exe and alacritty.exe and refuses wezterm-gui.exe or unknown binaries (C3)", () => {
+  it("maps only WindowsTerminal.exe and alacritty.exe and refuses wezterm-gui.exe or unknown binaries", () => {
     expect(
       hostedWindowsAppFromExecutablePath(
         "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\windows-terminal\\WindowsTerminal.exe",
@@ -365,7 +365,7 @@ describe("queryWindowsProcessExecutablePath and detectHostedWindowsAncestor", ()
     }
   }
 
-  it("queries the UTF-16LE process image path and always closes the process handle (C4)", () => {
+  it("queries the UTF-16LE process image path and always closes the process handle", () => {
     const closed: Array<number | bigint> = []
     const kernel = fakeKernel(
       MEASURED_ALACRITTY_CHAIN,
@@ -379,7 +379,7 @@ describe("queryWindowsProcessExecutablePath and detectHostedWindowsAncestor", ()
     expect(queryWindowsProcessExecutablePath(9999, kernel)).toBeNull()
   })
 
-  it("detects alacritty.exe synchronously from the process table and returns its executablePath (C2, C4)", () => {
+  it("detects alacritty.exe synchronously from the process table and returns its executablePath", () => {
     const closed: Array<number | bigint> = []
     const kernel = fakeKernel(MEASURED_ALACRITTY_CHAIN, { 4684: "D:\\a\\_temp\\alacritty\\alacritty.exe" }, closed)
     expect(detectHostedWindowsAncestor(8972, { arch: "x64" }, kernel)).toEqual({

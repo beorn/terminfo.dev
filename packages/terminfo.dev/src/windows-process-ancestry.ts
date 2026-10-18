@@ -222,7 +222,7 @@ export function windowsCommBase(comm: string): string {
 export type HostedWindowsAppId = "windows-terminal" | "alacritty"
 export type HostedWindowsApp = { id: HostedWindowsAppId; comm: string }
 
-/** The one Windows terminal executable table shared by owned-terminal and detect.ts (C2, C3). */
+/** The one Windows terminal executable table shared by owned-terminal and detect.ts. */
 export const HOSTED_WINDOWS_EXECUTABLE: Readonly<Record<string, HostedWindowsApp>> = {
   "windowsterminal.exe": { id: "windows-terminal", comm: "WindowsTerminal.exe" },
   "alacritty.exe": { id: "alacritty", comm: "alacritty.exe" },
@@ -286,7 +286,7 @@ const MAX_IMAGE_NAME_CHARS = 4096
 
 /**
  * Read the full Win32 executable path of `pid` via OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) and
- * QueryFullProcessImageNameW (measured on windows-latest in C1b run 39114986301). Returns null when
+ * QueryFullProcessImageNameW (measured on windows-latest in run 39114986301). Returns null when
  * the OS refuses the handle or image-name query; always closes an opened handle.
  */
 export function queryWindowsProcessExecutablePath(pid: number, kernel?: Kernel32): string | null {

@@ -516,7 +516,23 @@ test("Windows admission requires its measured executable version to match exactl
       },
     },
   })
-  // Windows Alacritty without mesaRenderer or with WindowsTerminal.exe path is refused at identityMatch.
+  // Windows Alacritty without mesaRenderer, with Unix ?6c DA1, or with WindowsTerminal.exe path is refused at identityMatch.
+  expect
+    .soft(
+      assessRunAdmission(
+        {
+          ...alacrittyMeasured,
+          rawReplies: {
+            ...alacrittyMeasured.rawReplies,
+            "collector.xtversion": "\x1b[?6c",
+            "device.primary-da": "\x1b[?6c",
+          },
+        },
+        [],
+        alacrittyEvidence,
+      ),
+    )
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
   const withoutMesa = { ...alacrittyReceipt }
   delete (withoutMesa as { mesaRenderer?: unknown }).mesaRenderer
   expect

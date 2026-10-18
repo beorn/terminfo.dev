@@ -6,6 +6,8 @@
 
 import { release } from "node:os"
 import { execFileSync, spawnSync } from "node:child_process"
+import { ALACRITTY_VERSION_PATTERN } from "@terminfo/run-parser"
+import { hasWindowsKernel32Ffi } from "./windows-kernel32.ts"
 import { detectHostedWindowsAncestor } from "./windows-process-ancestry.ts"
 
 export interface TerminalInfo {
@@ -109,7 +111,7 @@ export function detectTerminal(): TerminalInfo {
   if (name === "unknown" && os === "windows") {
     if (process.env.WT_SESSION) {
       name = "windows-terminal"
-    } else {
+    } else if (hasWindowsKernel32Ffi()) {
       const ancestor = detectHostedWindowsAncestor()
       if (ancestor) {
         name = ancestor.app.id
@@ -164,11 +166,7 @@ export function getWindowsAppVersion(terminalName: string, ancestorExecutablePat
         windowsHide: true,
       })
       if (result.error || result.status !== 0) return ""
-      return (
-        /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i.exec(
-          (result.stdout ?? "").trim(),
-        )?.[1] ?? ""
-      )
+      return ALACRITTY_VERSION_PATTERN.exec((result.stdout ?? "").trim())?.[1] ?? ""
     }
     return ""
   } catch {

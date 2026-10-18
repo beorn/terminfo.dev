@@ -445,7 +445,7 @@ describe("release 1 collection census", () => {
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
     // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty on macos and windows-terminal/alacritty on windows.
-    // Chief bbf8eff9 retains all remaining unresolved routes as expected work; no old ship-as-measured cut applies.
+    // All remaining unresolved routes stay recorded as expected route work; no old ship-as-measured cut applies.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
     expect(kitty?.route).toBeNull()
     expect(kitty?.command).toBeNull()

@@ -95,11 +95,14 @@ jobs:
               test -f "$WT_DIR/WindowsTerminal.exe" || { echo "Windows Terminal binary missing at $WT_DIR/WindowsTerminal.exe" >&2; exit 1; }
               ;;
             alacritty)
+              sha256_file() {
+                sha256sum "$1" | awk '{sub(/^\\/, "", $1); print tolower($1)}'
+              }
               ALACRITTY_DIR="$RUNNER_TEMP/alacritty"
               ALACRITTY_ARTIFACT="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.17.0-portable.exe"
               ALACRITTY_EXPECTED_SHA256="5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
               # Pinned Mesa3D Windows x64 llvmpipe software OpenGL 3.3+ rasterizer (mmozeiko/build-mesa 26.2.5)
-              # for headless windows-latest runners where Microsoft GDI Generic reports OpenGL 1.1.0 (C1 ruling 272cf5fc).
+              # for headless windows-latest runners where Microsoft GDI Generic reports OpenGL 1.1.0.
               MESA_UPSTREAM="https://github.com/mmozeiko/build-mesa"
               MESA_VERSION="26.2.5"
               MESA_ARCHIVE="$RUNNER_TEMP/measurement-artifacts/mesa-llvmpipe-x64-26.2.5.7z"
@@ -110,14 +113,14 @@ jobs:
                 exit 1
               fi
               curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0-portable.exe" -o "$ALACRITTY_ARTIFACT"
-              ALACRITTY_ACTUAL_SHA256="$(sha256sum "$ALACRITTY_ARTIFACT" | awk '{print $1}')"
+              ALACRITTY_ACTUAL_SHA256="$(sha256_file "$ALACRITTY_ARTIFACT")"
               echo "alacritty portable exe sha256: $ALACRITTY_ACTUAL_SHA256 ($ALACRITTY_ARTIFACT)"
               test "$ALACRITTY_ACTUAL_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
                 echo "Alacritty portable exe sha256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ALACRITTY_ACTUAL_SHA256" >&2
                 exit 1
               }
               curl -L -s -f "$MESA_UPSTREAM/releases/download/$MESA_VERSION/mesa-llvmpipe-x64-$MESA_VERSION.7z" -o "$MESA_ARCHIVE"
-              MESA_ACTUAL_ARCHIVE_SHA256="$(sha256sum "$MESA_ARCHIVE" | awk '{print $1}')"
+              MESA_ACTUAL_ARCHIVE_SHA256="$(sha256_file "$MESA_ARCHIVE")"
               echo "Mesa3D archive ($MESA_UPSTREAM $MESA_VERSION) sha256: $MESA_ACTUAL_ARCHIVE_SHA256 ($MESA_ARCHIVE)"
               test "$MESA_ACTUAL_ARCHIVE_SHA256" = "$MESA_EXPECTED_ARCHIVE_SHA256" || {
                 echo "Mesa3D archive sha256 mismatch: expected $MESA_EXPECTED_ARCHIVE_SHA256, got $MESA_ACTUAL_ARCHIVE_SHA256" >&2
@@ -126,12 +129,15 @@ jobs:
               mkdir -p "$ALACRITTY_DIR" "$RUNNER_TEMP/mesa_unpacked"
               7z x "$MESA_ARCHIVE" -o"$RUNNER_TEMP/mesa_unpacked" -y >/dev/null
               cp "$ALACRITTY_ARTIFACT" "$ALACRITTY_DIR/alacritty.exe"
-              cp "$RUNNER_TEMP"/mesa_unpacked/*.dll "$ALACRITTY_DIR/"
-              for dll in "$ALACRITTY_DIR"/*.dll; do
-                dll_sha="$(sha256sum "$dll" | awk '{print $1}')"
-                echo "Mesa3D DLL $(basename "$dll") sha256: $dll_sha ($dll)"
-              done
-              OPENGL32_ACTUAL_SHA256="$(sha256sum "$ALACRITTY_DIR/opengl32.dll" | awk '{print $1}')"
+              cp "$RUNNER_TEMP/mesa_unpacked/opengl32.dll" "$ALACRITTY_DIR/opengl32.dll"
+              ALACRITTY_PLACED_SHA256="$(sha256_file "$ALACRITTY_DIR/alacritty.exe")"
+              OPENGL32_ACTUAL_SHA256="$(sha256_file "$ALACRITTY_DIR/opengl32.dll")"
+              echo "placed alacritty.exe sha256: $ALACRITTY_PLACED_SHA256 ($ALACRITTY_DIR/alacritty.exe)"
+              echo "placed Mesa3D opengl32.dll ($MESA_UPSTREAM $MESA_VERSION) sha256: $OPENGL32_ACTUAL_SHA256 ($ALACRITTY_DIR/opengl32.dll)"
+              test "$ALACRITTY_PLACED_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
+                echo "Placed alacritty.exe sha256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ALACRITTY_PLACED_SHA256" >&2
+                exit 1
+              }
               test "$OPENGL32_ACTUAL_SHA256" = "$MESA_EXPECTED_OPENGL32_SHA256" || {
                 echo "Mesa3D opengl32.dll sha256 mismatch: expected $MESA_EXPECTED_OPENGL32_SHA256, got $OPENGL32_ACTUAL_SHA256" >&2
                 exit 1

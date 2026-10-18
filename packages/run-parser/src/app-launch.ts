@@ -19,6 +19,7 @@ import type {
   DerivedSourceTreeArtifact,
   ProbeTarget,
   RunOrigin,
+  WindowsMesaRendererReceipt,
 } from "@terminfo/probe-defs"
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -34,6 +35,10 @@ const asString = (value: unknown, path: string, name: string): string =>
  * derives a digest from real bytes, so a placeholder is refused BY NAME: admitting one is admitting a
  * receipt nothing derived (27874). */
 export const PLACEHOLDER = /^(.)\1*$/
+
+/** Matches `alacritty <semver> (<rev>)` from `alacritty --version` stdout. */
+export const ALACRITTY_VERSION_PATTERN =
+  /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i
 
 /** A digest the apparatus derived from bytes: present, a sha256, and carrying real entropy. */
 function measuredDigest(value: unknown, path: string, field: string): string {
@@ -124,15 +129,7 @@ export function parseAppLaunchReceipt(
     if (sourceKind === "portable-zip" && value.mesaRenderer !== undefined) {
       fail(path, "win32 portable-zip appLaunch cannot carry mesaRenderer")
     }
-    let mesaRenderer:
-      | {
-          upstream: string
-          version: string
-          archivePath: string
-          archiveSha256: string
-          dlls: Array<{ name: string; path: string; sha256: string }>
-        }
-      | undefined
+    let mesaRenderer: WindowsMesaRendererReceipt | undefined
     if (value.mesaRenderer !== undefined) {
       if (!object(value.mesaRenderer)) fail(path, "invalid win32 appLaunch.mesaRenderer")
       if (Object.keys(value.mesaRenderer).sort().join(",") !== "archivePath,archiveSha256,dlls,upstream,version") {

@@ -19,14 +19,20 @@ vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   release: kernelRelease,
 }))
-vi.mock("./windows-process-ancestry.ts", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./windows-process-ancestry.ts")>()),
-  detectHostedWindowsAncestor: detectWindowsAncestor,
-}))
+vi.mock("./windows-process-ancestry.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./windows-process-ancestry.ts")>()
+  return {
+    ...actual,
+    detectHostedWindowsAncestor: (...args: Parameters<typeof actual.detectHostedWindowsAncestor>) =>
+      detectWindowsAncestor(...args),
+  }
+})
 
 import { detectTerminal, getWindowsAppVersion } from "./detect.ts"
+import * as windowsProcessAncestry from "./windows-process-ancestry.ts"
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")
+const originalGetBuiltinModule = process.getBuiltinModule
 
 beforeEach(() => {
   vi.stubEnv("TERM_PROGRAM", "Apple_Terminal")
@@ -39,6 +45,7 @@ beforeEach(() => {
 
 afterEach(() => {
   if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform)
+  process.getBuiltinModule = originalGetBuiltinModule
   vi.unstubAllEnvs()
   vi.clearAllMocks()
 })
@@ -112,7 +119,7 @@ test("Windows Terminal handles PowerShell error gracefully with empty version", 
   })
 })
 
-test("Windows Alacritty detects from proven process ancestor and queries --version only on its executablePath (C4)", () => {
+test("Windows Alacritty detects from proven process ancestor and queries --version only on its executablePath", () => {
   Object.defineProperty(process, "platform", { value: "win32", configurable: true })
   kernelRelease.mockReturnValue("10.0.26100")
   vi.stubEnv("TERM_PROGRAM", "")
@@ -140,8 +147,29 @@ test("Windows Alacritty detects from proven process ancestor and queries --versi
   expect(execFile).not.toHaveBeenCalled()
 })
 
-test("Windows Alacritty returns unknown empty version without PATH or Get-Command fallback when ancestor executablePath is absent (C4)", () => {
+test("Windows Alacritty returns unknown empty version without PATH or Get-Command fallback when ancestor executablePath is absent", () => {
   expect(getWindowsAppVersion("alacritty", null)).toBe("")
   expect(spawn).not.toHaveBeenCalled()
   expect(execFile).not.toHaveBeenCalled()
+})
+
+test("detectTerminal on Windows without bun:ffi skips the process-table probe and does not throw", async () => {
+  const actualAncestry = await vi.importActual<typeof windowsProcessAncestry>("./windows-process-ancestry.ts")
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "")
+  vi.stubEnv("ALACRITTY_WINDOW_ID", "")
+  vi.stubEnv("TERM", "xterm-256color")
+  process.getBuiltinModule = ((id: string) =>
+    id === "bun:ffi" ? undefined : originalGetBuiltinModule(id)) as typeof process.getBuiltinModule
+  detectWindowsAncestor.mockImplementation(() => actualAncestry.detectHostedWindowsAncestor())
+  expect(detectTerminal()).toEqual({
+    name: "xterm-256color",
+    version: "",
+    os: "windows",
+    osVersion: "10.0.26100",
+  })
+  expect(detectWindowsAncestor).not.toHaveBeenCalled()
 })

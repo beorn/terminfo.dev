@@ -143,9 +143,9 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
   const identity = deriveIdentity(run.rawReplies)
   if (!nonempty(identity.da1)) return null
   const os = (run.target.os ?? "").toLowerCase()
-  // On Windows, Alacritty spawns its child inside a ConPTY session (`conhost.exe --headless`),
-  // which answers DA1 with `\x1b[?61;...c` rather than Unix PTY's `\x1b[?6c` (run 39114986301).
-  const da1Pattern = run.target.id === "alacritty" && os.startsWith("win") ? /\?(?:6c|61;)/ : rule.da1Pattern
+  // On Windows, ?61; is conhost's own reply (Alacritty runs its child inside a ConPTY session),
+  // so DA1 identifies nothing there and identity rests on the measured launch receipt.
+  const da1Pattern = run.target.id === "alacritty" && os.startsWith("win") ? /\?61;/ : rule.da1Pattern
   if (da1Pattern && !da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
     // Windows Terminal and Alacritty on Windows do not report XTVERSION. The hosted apparatus
