@@ -349,7 +349,7 @@
     "baseline": "core",
     "sequence": "ESC [ ? 25 l",
     "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probeStatusReason": "partial: parser visibility state is measured on both arms, but pixels are never captured, so the hidden cursor itself is not observed"
   },
   "cursor.shape": {
     "name": "Cursor shape (DECSCUSR)",
@@ -880,7 +880,7 @@
     "probe": "Request a checksum and check for a complete DCS reply with request ID 1 and four hexadecimal digits. The headless request covers five cells; the app request covers one. A positive result establishes reply capability only; checksum arithmetic is not verified.",
     "sequence": "CSI Pid ; Ppid ; Pt ; Pl ; Pb ; Pr * y",
     "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probeStatusReason": "partial: both arms measure a complete checksum reply, but checksum arithmetic and the cells outside the request are not verified"
   },
   "input.modify-other-keys": {
     "name": "modifyOtherKeys",
