@@ -1,7 +1,13 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeResult, TermlessContext, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { beginCaptureLifecycle, captureStabilityPair, endCaptureLifecycle } from "./region-readback.ts"
+import {
+  beginCaptureLifecycle,
+  captureStabilityPair,
+  endCaptureLifecycle,
+  captureRegionGeometry,
+  cropPositionRefusal,
+} from "./region-readback.ts"
 import {
   parserStateResult,
   probe,
@@ -631,10 +637,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         )
       },
       async (ctx) => {
-        // Deliberately no geometry read: when the owned terminal's geometry is unavailable, touching
-        // ctx.rows/ctx.cols throws UndeclaredTerminalGeometry and the whole run loses suiteComplete.
-        // Whole-window digests need no geometry, so both extent frames are still measurable, and a
-        // run with no adapter falls back to the named unmeasured path below.
+        // This arm declares termNeedsGeometry because its evidence compares the painted 2x8 cells.
+        // The collector establishes the grid; the shared route maps it to the owned pixel capture.
         const capture = ctx.capture
         if (!capture) {
           // The extent is a terminal MODE, not a cell write: leaving DECSACE 2 set would change what the
@@ -642,6 +646,51 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA + "\x1b[0*x")
           const pos = await ctx.queryCursorPosition()
           return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
+        }
+        if (ctx.captureKind === "text-cells") {
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "none",
+              note: "editing.decsace: text-cells captures cannot establish this pixel-cell extent comparison",
+            },
+          }
+        }
+        const cells = { top: 1, left: 1, bottom: 2, right: 8 }
+        const reported = await captureRegionGeometry(ctx, "editing.decsace", { region: cells, minRows: 2, minCols: 8 })
+        if ("pass" in reported) return reported
+        const captureEligibilityRefusal = (captures: ObservationFrame[]): ProbeResult | null => {
+          const text = captures.find((frame) => frame.kind === "text-cells")
+          if (text) {
+            return {
+              pass: false,
+              response: JSON.stringify({ frame: text.ref, kind: text.kind }),
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "text",
+                note: `editing.decsace: ${text.label} returned text-cells instead of the pixel cells required for this extent comparison`,
+              },
+            }
+          }
+          const invalid = captures.find(
+            (frame) => frameDigests(frame).cells === undefined || frame.regionRectangle === undefined,
+          )
+          if (!invalid) return null
+          const target = captures.findLast((frame) => frame.role === "target")
+          return {
+            pass: false,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: target?.ref ?? invalid.ref,
+              ...(target ? { frames: captures.slice(-3) } : {}),
+              note: `editing.decsace: ${invalid.label} is pixels without the required pixel cells digest and rectangle`,
+            },
+          }
         }
         try {
           // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
@@ -651,13 +700,15 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           // seed frame every extent is compared against, so a seed that is still settling is refused
           // rather than measured, and a frame that only looks stable after the measurement cannot
           // qualify it. On a terminal that ignores DECSACE, a blinking cursor alone moves the
-          // whole-window digest.
+          // compared-cell digest.
           beginCaptureLifecycle(ctx)
           ctx.write(DECSACE_PAINT)
+          const stabilityFrames: ObservationFrame[] = []
           const stabilityRead = async (label: string) => {
-            const frame = await capture({ role: "control", label })
+            const frame = await capture({ role: "control", label, cells, pixelGeometry: reported.geometry })
+            stabilityFrames.push(frame)
             const digests = frameDigests(frame)
-            return { regionDigest: digests.cells, pixelsDigest: digests.whole, frame }
+            return { regionDigest: digests.cells, frame }
           }
           const { refusal: instability, second: seedCapture } = await captureStabilityPair(
             "editing.decsace",
@@ -665,55 +716,50 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             () => stabilityRead("editing.decsace: seed stability 1"),
             () => stabilityRead("editing.decsace: seed stability 2"),
           )
+          const seedRefusal = captureEligibilityRefusal(stabilityFrames)
+          if (seedRefusal) return seedRefusal
           if (instability) return instability
           const seed = seedCapture.frame
           ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
-          const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
+          const rectangle = await capture({
+            role: "target",
+            label: "editing.decsace: DECSACE 2 rectangle frame",
+            cells,
+            pixelGeometry: reported.geometry,
+          })
           ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
           // The stream frame is the control: the same DECCARA under the other extent. Equal frames mean
           // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
-          const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
-          // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
-          // cannot establish an extent difference. Compare the measured digest the frame kind
-          // actually carries — ONE kind for all three frames. A per-frame `whole ?? cells` compares
-          // one frame's whole-window digest with another's region digest, and that mismatch then
-          // reads as a measured difference.
+          const stream = await capture({
+            role: "target",
+            label: "editing.decsace: DECSACE 0 stream frame",
+            cells,
+            pixelGeometry: reported.geometry,
+          })
+          const allFrames = [...stabilityFrames, rectangle, stream]
           const frames = [seed, rectangle, stream]
-          const digests = frames.map(frameDigests)
-          const kind = digests.every((entry) => entry.whole !== undefined)
-            ? "whole"
-            : digests.every((entry) => entry.cells !== undefined)
-              ? "cells"
-              : null
-          const described = frames
-            .map((frame, index) => {
-              const entry = digests[index]
-              const carried = entry?.whole !== undefined ? "whole" : entry?.cells !== undefined ? "cells" : "none"
-              return `${frame.label}: ${carried}`
-            })
-            .join("; ")
+          const kind = "cells"
+          const measured = frames.map((frame) => frameDigests(frame).cells)
           const observed = JSON.stringify({
             kind,
             seed: seed.ref,
             rectangle: rectangle.ref,
             stream: stream.ref,
-            digests: digests.map((entry) => entry.whole ?? entry.cells),
+            digests: measured,
           })
-          if (kind === null) {
-            return {
-              pass: false,
-              response: observed,
-              observation: {
-                outcome: "inconclusive",
-                reason: "insufficient-evidence",
-                evidence: "pixels",
-                screenshotRef: stream.ref,
-                frames,
-                note: `These frames do not all report one measured digest kind (${described}), so the two DECSACE extents cannot be compared`,
-              },
-            }
-          }
-          const measured = digests.map((entry) => (kind === "whole" ? entry.whole : entry.cells)) as string[]
+          const frameRefusal = captureEligibilityRefusal(allFrames)
+          if (frameRefusal) return frameRefusal
+          const cropRefusal = cropPositionRefusal({
+            id: "editing.decsace",
+            response: observed,
+            frames,
+            screenshotRef: stream.ref,
+            compared: allFrames.map((frame) => ({
+              role: frame.label,
+              rectangle: frame.kind === "text-cells" ? undefined : frame.regionRectangle,
+            })),
+          })
+          if (cropRefusal) return cropRefusal
           if (measured[1] === measured[2]) {
             return {
               pass: false,
@@ -775,6 +821,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     // Both arms measure the claim: the parser grades the exact attribute cells and the terminal
     // separates the two extents by its frames. probeStatus derives from these two declarations, so
     // leaving them off keeps the row on a reviewed partial however complete the measurement becomes.
+    termNeedsGeometry: true,
     termObservationEvidence: "pixels",
     termlessObservationEvidence: "parser-state",
   },
