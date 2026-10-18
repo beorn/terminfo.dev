@@ -22,7 +22,7 @@ const BLOCK_LEFT = 3
 /** A sixel band is six pixels tall; a tile height that is not a whole number of bands is cut off. */
 const BAND_PIXELS = 6
 /** Colour 0 at 100% red, 0% green, 0% blue — exact in both encodings as 255,0,0. */
-const SIXEL_RED = "#0;2;100;0;0"
+const SIXEL_RED = "#0;2;0;100;0"
 const SGR_RED = "\x1b[48;2;255;0;0m"
 const CLEAR = "\x1b[0m\x1b[2J\x1b[H"
 /** The cursor parks below the block, outside every compared region. */
