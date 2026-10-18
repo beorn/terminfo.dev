@@ -202,8 +202,8 @@ function catalogContexts(ledger: LinuxLedger): CollectionContext[] {
           os,
           kind: "mux",
           route: "mux",
-          command: `bun packages/admin/src/index.ts probe mux ${id}`,
-          requires: "qualify the named outer terminal, genuine mux identity and private unadmitted output on this host",
+          command: `bun packages/admin/src/index.ts probe mux ${id} --output <private-output>`,
+          requires: "launch and qualify the named outer terminal and genuine mux identity on this host",
           sourceRun: null,
           uncollectable: null,
         })
@@ -417,7 +417,7 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
           context.route === null
             ? (context.uncollectable ?? "required route work")
             : context.kind === "mux"
-              ? "required route work: separate private raw mux output from automatic admission"
+              ? "required route work: launch and prove the named outer terminal and genuine mux identity"
               : `required automation work: ${context.route} dispatch is not wired yet`,
         )
       }

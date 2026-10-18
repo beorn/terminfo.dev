@@ -2,7 +2,7 @@
  * Mux probe mechanism — test feature pass-through of terminal multiplexers.
  *
  * Launches tmux/screen in detached mode with a serve daemon inside,
- * probes via HTTP, saves results to content/probes-mux/, then kills the session.
+ * probes via HTTP, retains raw output or admits results, then kills the session.
  *
  * This reveals how features degrade through an intermediary — the same probes
  * that run directly on a terminal now run through the multiplexer's PTY layer.
@@ -26,7 +26,7 @@ import {
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { sourceSuiteEnvironment } from "../versions.ts"
-import { admitCollectedRun } from "./admit-collected-run.ts"
+import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -124,6 +124,7 @@ async function probeDaemon(
   daemon: DaemonRegistration,
   muxId: string,
   version: string,
+  outputDirectory?: string,
 ): Promise<{ total: number; observed: number }> {
   try {
     const res = await requestDaemonProbe(daemon)
@@ -131,7 +132,9 @@ async function probeDaemon(
     const retained = await readRetainedDaemonProbeResponse(res)
     console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
     const data = retained.run
-    admitCollectedRun(data, retained.path, { kind: "mux", id: muxId, version })
+    const intended = { kind: "mux" as const, id: muxId, version }
+    if (outputDirectory !== undefined) retainCollectedRun(data, retained.path, intended, outputDirectory)
+    else admitCollectedRun(data, retained.path, intended)
     const observed = data.observations.length
     const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
     return { total, observed }
@@ -145,7 +148,7 @@ async function probeDaemon(
 
 async function runMux(
   mux: MuxDef,
-  _opts: { force?: boolean },
+  opts: { force?: boolean; output?: string },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!whichBinary(mux.binary)) return { success: false, error: "not installed" }
   const version = mux.version()
@@ -164,8 +167,10 @@ async function runMux(
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     console.log(`  Probing on port ${daemon.registration.port}...`)
-    const result = await probeDaemon(daemon.registration, mux.id, version)
-    console.log(`  ${result.observed}/${result.total} explicit observations (admitted)`)
+    const result = await probeDaemon(daemon.registration, mux.id, version, opts.output)
+    console.log(
+      `  ${result.observed}/${result.total} explicit observations (${opts.output !== undefined ? "private, unadmitted" : "admitted"})`,
+    )
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -202,7 +207,10 @@ async function runMux(
 
 // ── Main handler ──
 
-export async function handleMux(muxName: string | undefined, opts: { all?: boolean; force?: boolean }): Promise<void> {
+export async function handleMux(
+  muxName: string | undefined,
+  opts: { all?: boolean; force?: boolean; output?: string },
+): Promise<void> {
   if (!muxName && !opts.all) {
     console.log("\nAvailable multiplexers:\n")
     for (const mux of MUXES) {
@@ -236,7 +244,7 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
 
   for (const mux of muxesToRun) {
     console.log(`--- ${mux.name} ---`)
-    const result = await runMux(mux, { force: opts.force })
+    const result = await runMux(mux, { force: opts.force, output: opts.output })
     outcomes.push({ mux, result })
 
     if (result.skipped) {
@@ -265,5 +273,9 @@ export async function handleMux(muxName: string | undefined, opts: { all?: boole
       `Mux collection failed: ${failures.map(({ mux, result }) => `${mux.id}: ${result.error}`).join("; ")}`,
     )
   }
-  console.log(`\nResults admitted to content/probes-mux/`)
+  console.log(
+    opts.output !== undefined
+      ? `\nRaw results retained privately in ${opts.output}; nothing admitted`
+      : `\nResults admitted to content/probes-mux/`,
+  )
 }

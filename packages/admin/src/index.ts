@@ -101,9 +101,10 @@ probe
   .command("mux")
   .description("Probe through terminal multiplexers (tmux, screen)")
   .argument("[multiplexer]", "Multiplexer to probe (tmux, screen)")
+  .option("--output <directory>", "Retain raw runs and original HTTP responses privately, without admission")
   .option("--all", "Probe through all installed multiplexers")
   .option("-f, --force", "Re-run even if cached")
-  .actionMerged(async (opts: { multiplexer?: string; all?: boolean; force?: boolean }) => {
+  .actionMerged(async (opts: { multiplexer?: string; all?: boolean; force?: boolean; output?: string }) => {
     ensureSourceSuiteEnvironment()
     const { handleMux } = await import("./mux.ts")
     await handleMux(opts.multiplexer, opts)
