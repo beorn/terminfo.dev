@@ -634,6 +634,12 @@ export async function captureRegionVerdict(
  */
 export function beginCaptureLifecycle(ctx: TermContext): void {
   ctx.write("\x1b[0m")
+  // A previous probe can leave a cell this arm cannot decode — measured 2026-10-18 on the hosted
+  // Windows arm, where `text.wide.emoji-zwj` left a non-BMP glyph at row 1, column 1 and the text
+  // reader refused the WHOLE window at that cell, turning the next 25 region rows into collector
+  // errors (28638). The pair must read a screen this row knows, so the lifecycle clears before
+  // anything is written or read; endCaptureLifecycle already clears on the way out.
+  ctx.write("\x1b[2J\x1b[H")
   ctx.write("\x1b[?25l")
 }
 
