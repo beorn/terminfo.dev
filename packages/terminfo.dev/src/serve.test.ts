@@ -675,14 +675,14 @@ describe("private finite daemon startup", () => {
       }
       terminal={name:"alacritty",version:"",os:"windows",osVersion:"fixture"}
       launch=parseAppLaunchReceipt({platform:"win32",executablePath:"D:/a/_temp/alacritty/alacritty.exe",
-        productVersion:"0.15.1",executableSha256:"c3".repeat(32),
-        sourceArtifact:{kind:"portable-exe",path:"D:/a/_temp/Alacritty-v0.15.1-portable.exe",sha256:"c3".repeat(32)},
+        productVersion:"0.17.0",executableSha256:"c3".repeat(32),
+        sourceArtifact:{kind:"portable-exe",path:"D:/a/_temp/Alacritty-v0.17.0-portable.exe",sha256:"c3".repeat(32)},
         mesaRenderer:{upstream:"https://github.com/mmozeiko/build-mesa",version:"26.2.5",
           archivePath:"D:/a/_temp/mesa.7z",archiveSha256:"d4".repeat(32),
           dlls:[{name:"opengl32.dll",path:"D:/a/_temp/alacritty/opengl32.dll",sha256:"e5".repeat(32)}]}},"collector","app","fixture")
       process.env.TERMINFO_TARGET_VERSION=""
       const winAlacritty=await collectProbeRun({ids:["device.xtversion"]})
-      assert.equal(winAlacritty.target.version,"0.15.1")
+      assert.equal(winAlacritty.target.version,"0.17.0")
       assert.deepEqual(winAlacritty.origin.appLaunch,launch)
     `,
       ],

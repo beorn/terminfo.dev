@@ -137,12 +137,12 @@ describe("a measured Windows launch uses the same parser", () => {
   const alacrittyWindows = {
     platform: "win32",
     executablePath: String.raw`D:\a\_temp\alacritty\alacritty.exe`,
-    productVersion: "0.15.1",
-    executableSha256: "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c",
+    productVersion: "0.17.0",
+    executableSha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
     sourceArtifact: {
       kind: "portable-exe",
-      path: String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.15.1-portable.exe`,
-      sha256: "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c",
+      path: String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.17.0-portable.exe`,
+      sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
     },
     mesaRenderer: {
       upstream: "https://github.com/mmozeiko/build-mesa",

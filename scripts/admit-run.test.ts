@@ -465,12 +465,12 @@ test("Windows admission requires its measured executable version to match exactl
   const alacrittyReceipt = {
     platform: "win32" as const,
     executablePath: String.raw`D:\a\_temp\alacritty\alacritty.exe`,
-    productVersion: "0.15.1",
-    executableSha256: "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c",
+    productVersion: "0.17.0",
+    executableSha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
     sourceArtifact: {
       kind: "portable-exe" as const,
-      path: String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.15.1-portable.exe`,
-      sha256: "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c",
+      path: String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.17.0-portable.exe`,
+      sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
     },
     mesaRenderer: {
       upstream: "https://github.com/mmozeiko/build-mesa",
@@ -491,7 +491,7 @@ test("Windows admission requires its measured executable version to match exactl
   const alacrittyOwnership = ownershipBesideRun(join(alacrittyDir, "run.json"), alacrittyHost)
   const alacrittyMeasured = {
     ...run,
-    target: { ...run.target, id: "alacritty", version: "0.15.1", os: "windows" },
+    target: { ...run.target, id: "alacritty", version: "0.17.0", os: "windows" },
     origin: { ...run.origin, appLaunch: alacrittyReceipt },
     rawReplies: {
       ...run.rawReplies,
@@ -511,8 +511,8 @@ test("Windows admission requires its measured executable version to match exactl
       rule: "alacritty",
       da1: "\x1b[?61;6;7;21;22;23;24;28;32;42c",
       executable: {
-        version: "0.15.1",
-        sha256: "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c",
+        version: "0.17.0",
+        sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
       },
     },
   })

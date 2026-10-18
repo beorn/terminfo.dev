@@ -125,10 +125,10 @@ test("Windows Alacritty detects from proven process ancestor and queries --versi
     row: { pid: 4684, ppid: 9644, comm: "alacritty.exe" },
     executablePath: "D:\\a\\_temp\\alacritty\\alacritty.exe",
   })
-  spawn.mockReturnValue({ status: 0, stdout: "alacritty 0.15.1 (0c405d53)\r\n", stderr: "" })
+  spawn.mockReturnValue({ status: 0, stdout: "alacritty 0.17.0 (94e7c88)\r\n", stderr: "" })
   expect(detectTerminal()).toEqual({
     name: "alacritty",
-    version: "0.15.1",
+    version: "0.17.0",
     os: "windows",
     osVersion: "10.0.26100",
   })

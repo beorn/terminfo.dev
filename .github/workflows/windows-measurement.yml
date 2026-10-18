@@ -96,8 +96,8 @@ jobs:
               ;;
             alacritty)
               ALACRITTY_DIR="$RUNNER_TEMP/alacritty"
-              ALACRITTY_ARTIFACT="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.15.1-portable.exe"
-              ALACRITTY_EXPECTED_SHA256="65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c"
+              ALACRITTY_ARTIFACT="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.17.0-portable.exe"
+              ALACRITTY_EXPECTED_SHA256="5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
               # Pinned Mesa3D Windows x64 llvmpipe software OpenGL 3.3+ rasterizer (mmozeiko/build-mesa 26.2.5)
               # for headless windows-latest runners where Microsoft GDI Generic reports OpenGL 1.1.0 (C1 ruling 272cf5fc).
               MESA_UPSTREAM="https://github.com/mmozeiko/build-mesa"
@@ -109,7 +109,7 @@ jobs:
                 echo "Target directory $ALACRITTY_DIR already exists; refusing reuse" >&2
                 exit 1
               fi
-              curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.15.1/Alacritty-v0.15.1-portable.exe" -o "$ALACRITTY_ARTIFACT"
+              curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0-portable.exe" -o "$ALACRITTY_ARTIFACT"
               ALACRITTY_ACTUAL_SHA256="$(sha256sum "$ALACRITTY_ARTIFACT" | awk '{print $1}')"
               echo "alacritty portable exe sha256: $ALACRITTY_ACTUAL_SHA256 ($ALACRITTY_ARTIFACT)"
               test "$ALACRITTY_ACTUAL_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
@@ -170,7 +170,7 @@ jobs:
             alacritty)
               APP_DIR="$(cygpath -w "$RUNNER_TEMP/alacritty")"
               WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.exe")"
-              WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/Alacritty-v0.15.1-portable.exe")"
+              WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/Alacritty-v0.17.0-portable.exe")"
               export MESA_UPSTREAM="https://github.com/mmozeiko/build-mesa"
               export MESA_VERSION="26.2.5"
               export MESA_ARCHIVE_PATH="$(cygpath -w "$OUT/mesa-llvmpipe-x64-26.2.5.7z")"

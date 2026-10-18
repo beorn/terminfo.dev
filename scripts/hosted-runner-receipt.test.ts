@@ -428,10 +428,10 @@ test("the hosted producer supports Windows Alacritty with Mesa3D receipt and ref
   }
   const alacrittyScript = join(dir, "alacritty.exe")
   const winExecutablePath = String.raw`D:\a\_temp\alacritty\alacritty.exe`
-  const winSourcePath = String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.15.1-portable.exe`
+  const winSourcePath = String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.17.0-portable.exe`
   const winMesaArchivePath = String.raw`D:\a\_temp\measurement-artifacts\mesa-llvmpipe-x64-26.2.5.7z`
   const winOpenglDllPath = String.raw`D:\a\_temp\alacritty\opengl32.dll`
-  const exeSha256 = "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c"
+  const exeSha256 = "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
   const mesaArchiveSha256 = "d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d"
   const openglDllSha256 = "8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1"
   const versionMode: "ok" | "nonzero" | "empty" | "bad-regex" | "timeout" = "ok"
@@ -447,7 +447,7 @@ test("the hosted producer supports Windows Alacritty with Mesa3D receipt and ref
         `#!${process.execPath}
 const mode = ${JSON.stringify(versionMode)};
 if (mode === "ok") {
-  process.stdout.write("alacritty 0.15.1 (0c405d53)\\r\\n");
+  process.stdout.write("alacritty 0.17.0 (94e7c88)\\r\\n");
 } else if (mode === "nonzero") {
   process.stderr.write("alacritty failed\\n");
   process.exit(2);
@@ -473,7 +473,7 @@ if (mode === "ok") {
       `#!/usr/bin/env node
 const mode = process.env.ALACRITTY_VERSION_MODE || "ok";
 if (mode === "ok") {
-  process.stdout.write("alacritty 0.15.1 (0c405d53)\\r\\n");
+  process.stdout.write("alacritty 0.17.0 (94e7c88)\\r\\n");
 } else if (mode === "nonzero") {
   process.stderr.write("alacritty failed\\n");
   process.exit(2);
@@ -552,12 +552,12 @@ if (cmd.includes('Get-NetAdapter')) {
     const receipt = join(dir, "host-measured.json")
     await run("ok", "start", start)
     const emitted = await run("ok", "emit", start, receipt)
-    expect(emitted.stderr).toContain('alacritty --version stdout (29 bytes): "alacritty 0.15.1 (0c405d53)\\r\\n"')
+    expect(emitted.stderr).toContain('alacritty --version stdout (28 bytes): "alacritty 0.17.0 (94e7c88)\\r\\n"')
     const parsed = parseDisposableReceipt(await readFile(receipt, "utf8"))
     expect(parsed.appLaunch).toEqual({
       platform: "win32",
       executablePath: winExecutablePath,
-      productVersion: "0.15.1",
+      productVersion: "0.17.0",
       executableSha256: exeSha256,
       sourceArtifact: {
         kind: "portable-exe",
