@@ -159,7 +159,7 @@ test("the kind table names every converted editing row, and every row reaches th
 })
 
 /**
- * P2 from review2 source audit 97414a37: DECCARA/DECRARA claim a 3x5 rectangle whose RIGHT FLANK must
+ * DECCARA/DECRARA claim a 3x5 rectangle whose RIGHT FLANK must
  * stay plain. A stream-extent implementation inverts the flank as well. With the flank declared as a
  * plain string the character still matches, so this used to read supported; the flank is a cell of the
  * claim and its attribute must be compared.
@@ -380,7 +380,7 @@ test("a row whose shape disagrees with itself refuses at load", () => {
 })
 
 /**
- * NO SILENT ERRORS, at load (@cto 2026-10-12, must-fix 2): the minimum geometry DERIVES from the row.
+ * NO SILENT ERRORS, at load (must-fix 2): the minimum geometry DERIVES from the row.
  * An explicit minimum below that need refuses at LOAD and names both numbers; a larger one is for the
  * row to justify in a line.
  */

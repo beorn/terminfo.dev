@@ -1,5 +1,5 @@
 /**
- * The region-readback OBSERVATION KIND (@cto A2, 2026-10-12): one factory, one row per probe, BOTH
+ * The region-readback OBSERVATION KIND (28450 A2): one factory, one row per probe, BOTH
  * arms derived from that row. A family repairs its hand-written probes by declaring rows; a probe
  * that needs something this kind cannot express adds a KIND — once, reviewed — never another
  * hand-written callback of its own.
@@ -9,13 +9,13 @@
  * cannot drift into grading two different fixtures (which is how the first revision of this kind
  * shipped an edit that rewrote its own control).
  *
- * The compared cells are a GRID — one row per screen ROW (@cto b29d9b69: "the cells become a
- * grid (one string[] per row). Extend the kind once, with that family"). One row of cells is the
+ * The compared cells are a GRID — one row per screen ROW: "the cells become a
+ * grid (one string[] per row). Extend the kind once, with that family". One row of cells is the
  * one-row grid, so a family that needs a scroll region, a multi-line erase or an insert/delete line
  * declares it instead of adding a second factory.
  *
- * A cell is a character, or a character carrying the attributes its row ASSERTS (@cto 2026-10-18,
- * shape A): the third attribute-rectangle probe converted the kind once, so DECCARA, DECRARA and the
+ * A cell is a character, or a character carrying the attributes its row ASSERTS (the DECSACE
+ * ruling): the third attribute-rectangle probe converted the kind once, so DECCARA, DECRARA and the
  * EL background row grade attribute changes on both arms instead of being hand-written beside it.
  */
 import type { ProbeDefinition, TermlessContext } from "./types.ts"
@@ -49,14 +49,14 @@ export interface RegionReadbackRegion {
  * A color the row can assert WITHOUT pinning a backend's palette: `"present"` asserts the cell has
  * a background at all, and `"same-as-before"` asserts the cell kept the one the seed painted at the
  * same grid position. A named SGR resolves through each terminal's own palette, so an absolute RGB
- * here would be a backend's value, not the claim (@cto 2026-10-18 decsace ruling, shape A).
+ * here would be a backend's value, not the claim.
  */
 export type RegionReadbackColor = "present" | "same-as-before"
 
 /**
  * The attributes a compared cell asserts. A cell declares ONLY what its row claims, so a terminal
  * that sets anything else is never graded on it. Only the forms a row actually uses live here: an
- * unused spelling is a claim nothing measures (@cto round-2 R3).
+ * unused spelling is a claim nothing measures.
  */
 export interface RegionReadbackAttributes {
   /** True asserts the attribute is set; false asserts the sequence CLEARED it. */
@@ -73,8 +73,7 @@ export interface RegionReadbackPaint {
  * The terminal's OWN default-background fixture, measured before the row paints anything. A relative
  * colour claim (`present`, `same-as-before`) is only established when the painted seed DIFFERS from
  * this measurement at the same cell: a backend that reports one concrete RGB as its default and
- * ignores the row's SGR would otherwise satisfy both sides of the claim (@dev/review2 source audit
- * 97414a37, P2 1).
+ * ignores the row's SGR would otherwise satisfy both sides of the claim.
  */
 export interface RegionReadbackBaseline {
   /** The write that paints the default-background fixture, before the row's own seed. */
@@ -155,7 +154,7 @@ export interface RegionReadbackRow {
    * leaves set, which a later probe sharing this terminal must not inherit. The oracle issues it from
    * its own `finally`, so it lands exactly when the oracle wrote bytes and never on a pre-write
    * refusal: a `none` observation has to leave a zero-byte trace (run-parser's zero-byte rule). Named
-   * for the JOB, not the moment it runs (@cto 2026-10-12): `afterVerdict` named a time, and this is the
+   * for the JOB, not the moment it runs: `afterVerdict` named a time, and this is the
    * write that clears the mode the last frame left set.
    */
   cleanup?: string
@@ -210,8 +209,7 @@ interface RegionReadbackGeometry {
  * every real backend (xterm.js, Ghostty WASM, vt100.js and vterm all measured) while the fixture
  * spells it `" "`, and a wide glyph's follower is the reserved-empty `""`. Either spelling, on
  * either side, is the same blank (the shared `isBlank` helper) — a terminal that implements a
- * sequence must never grade unsupported for choosing the other spelling (@cto 28450 must-fix 1,
- * 2026-10-12).
+ * sequence must never grade unsupported for choosing the other spelling (28450 must-fix 1).
  */
 type MeasuredCell = ReturnType<TermlessContext["getCell"]>
 
@@ -285,8 +283,7 @@ function unreadAttributes(
  * Why the painted seed is not qualified by the default-background fixture, or null when it is. Two
  * failures: a colour equal to the default at the same cell (`present` and `same-as-before` both hold
  * vacuously there), and a baseline channel the backend never reported — an unread value is never
- * equal and never unequal, so treating it as "different" would qualify the seed on nothing
- * (@dev/review2 97414a37 P2 1; @cto round-2 B3).
+ * equal and never unequal, so treating it as "different" would qualify the seed on nothing.
  */
 function unpaintedColor(
   painted: readonly (readonly MeasuredCell[])[],
@@ -424,7 +421,7 @@ function paintFrame(
 /**
  * A relative colour claim (`present`, `same-as-before`) is only established against a measured
  * default: without a baseline the claim would hold vacuously on a backend that ignores the row's SGR
- * (P2 1, review2 97414a37). Loaded rows cannot make one without the fixture.
+ * Loaded rows cannot make one without the fixture.
  */
 function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
   if (row.baseline !== undefined) return
@@ -441,8 +438,8 @@ function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
 /**
  * A relative colour claim paints the expected frame with the row's own SGR. Without those bytes the
  * expected frame would read equal to the seed on every adapter and the row could only ever be
- * inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide (@cto
- * round-2 R2, which asks for a test of exactly this refusal).
+ * inconclusive, so the row refuses at LOAD instead of shipping a claim nothing can decide, and a
+ * load-time test pins exactly that refusal.
  */
 function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
   // EVERY frame the row builds, not only `after`: `ignored` is painted by the same paintFrame call,
@@ -466,7 +463,7 @@ function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
 /**
  * A row whose own shape disagrees with itself cannot be right, so it refuses at LOAD instead of
  * comparing a short array's missing cell against a blank that `sameCell` would happily accept — a
- * typo must never read as a passing terminal (@cto 2026-10-12, NO SILENT ERRORS). Every index the
+ * typo must never read as a passing terminal (NO SILENT ERRORS). Every index the
  * arms use below is proven in range here, which is why nothing below needs a fallback.
  */
 function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeometry {
@@ -525,7 +522,7 @@ function assertRegionReadbackShape(row: RegionReadbackRow): RegionReadbackGeomet
   }
   assertRelativeClaimsQualified(row)
   assertRelativeClaimsPainted(row)
-  // The geometry this row really addresses (@cto 2026-10-12, must-fix 2). The parked cursor AND the
+  // The geometry this row really addresses (must-fix 2). The parked cursor AND the
   // sentinel are screen rows, so the need is the larger of the two: deriving it from the sentinel alone
   // let a row declare a minimum that parked its own cursor off-screen (reverse-index: cursor 6,
   // sentinel 5, so the old rule derived 5 and only an explicit 7 hid it). The column need is the
@@ -630,7 +627,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
         const before = readGrid(ctx, geometry)
         // BEFORE the grid comparison: an unread exact claim inside sameColorClaim throws, and an
         // unread bold or inverse would otherwise be reported as "seed not established" instead of
-        // named (@cto round-2 R1).
+        // named.
         const unreadSeed = unreadAttributes(before, row.before)
         if (unreadSeed !== null) {
           return parserStateResult(
@@ -703,7 +700,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
       // No adapter and a REFUSED calibration both leave `ctx.capture` absent, so the row tells them
       // apart by the one fact the collector recorded: the refusal is named here, in the note that
       // already exists, so a refused run says why instead of only that no adapter is installed
-      // (28785, @cto REVISE must 1).
+      // (28785 must 1).
       return {
         pass: false,
         observation: {
