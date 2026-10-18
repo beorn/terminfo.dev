@@ -112,6 +112,12 @@ const MODES_CONTRACT: GroupContract = [
     expected: "inconclusive",
     claim: "XTPOPCOLORS roundtrip needs independent pixel review",
   },
+  {
+    id: "modes.decsscls",
+    expected: "decided",
+    claim:
+      "DECSSCLS: a 40-line burst under CSI 0 SP p is still painting after 300 ms while the jump control settled; an instant settle is unsupported",
+  },
 ]
 
 const MODES_CONTRACT_SPEC: GroupContractSpec = {
@@ -152,6 +158,16 @@ function modesTermContext(id: string) {
       },
     })
   }
+  if (id === "modes.decsscls") {
+    let calls = 0
+    return replayContext(new Map(), {
+      capture: async ({ role, label }) => {
+        calls += 1
+        const ref = label.includes("jump") ? "jump-settled" : label.endsWith("t0") ? "slow-t0" : "slow-t1"
+        return { role, label, capturedAt: calls, ref }
+      },
+    })
+  }
   return modeQueryContext("set")
 }
 
@@ -160,8 +176,8 @@ test("the Modes contract covers every Modes capability and names none unknown", 
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(modesProbes).toHaveLength(29)
-  expect(MODES_CONTRACT).toHaveLength(29)
+  expect(modesProbes).toHaveLength(30)
+  expect(MODES_CONTRACT).toHaveLength(30)
 })
 
 test("the Modes contract names its focused tests, and every named file exists", () => {

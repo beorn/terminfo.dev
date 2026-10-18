@@ -49,7 +49,7 @@ describe("the full-273 preview", () => {
     expect(data.designExclusions).toEqual([...DESIGN_EXCLUSION_IDS])
     expect(data.designExclusions).toHaveLength(13)
     expect(data.missingDefinitions).toEqual([...MISSING_DEFINITION_IDS])
-    expect(data.missingDefinitions).toHaveLength(1)
+    expect(data.missingDefinitions).toHaveLength(0)
     for (const row of data.contexts) {
       if (!row.collected) continue
       expect(row.result.denominator).toBe(data.catalogRows - row.result.excluded.length)
