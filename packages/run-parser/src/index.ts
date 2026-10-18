@@ -661,7 +661,16 @@ export function validateObservationOutcome(value: Record<string, unknown>, path:
  */
 export interface ParsedSuiteManifest extends ProbeSuiteManifest {
   /** Written only by a freeze act: the release whose current suite this manifest is. */
-  freeze?: { release: string; at: string }
+  freeze?: {
+    release: string
+    at: string
+    /**
+     * The suites this release published on before the pointer reached this one, oldest first. The
+     * move carries the list forward and appends the suite it leaves, so the history survives every
+     * later move; nothing walks another manifest to recover it.
+     */
+    previous?: { suite: string; from: string; until: string }[]
+  }
 }
 
 export function parseSuiteManifest(path: string, source: string): ParsedSuiteManifest {
@@ -718,14 +727,49 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   let freeze: ParsedSuiteManifest["freeze"]
   if ("freeze" in value) {
     const raw = value.freeze
-    if (!object(raw) || Object.keys(raw).sort().join(",") !== "at,release") {
-      fail(path, "invalid suite freeze pointer")
-    }
+    if (!object(raw)) fail(path, "invalid suite freeze pointer")
+    const rawKeys = Object.keys(raw).sort().join(",")
+    if (rawKeys !== "at,release" && rawKeys !== "at,previous,release") fail(path, "invalid suite freeze pointer")
     if (typeof raw.release !== "string" || !raw.release.trim()) fail(path, "invalid suite freeze release")
     if (typeof raw.at !== "string" || !date(raw.at) || new Date(raw.at).toISOString() !== raw.at) {
       fail(path, "invalid suite freeze at")
     }
-    freeze = { release: raw.release, at: raw.at }
+    let previous: { suite: string; from: string; until: string }[] | undefined
+    if ("previous" in raw) {
+      const rawPrevious = raw.previous
+      if (!Array.isArray(rawPrevious)) fail(path, "invalid suite freeze previous lineage")
+      const lineage: { suite: string; from: string; until: string }[] = []
+      for (const entry of rawPrevious) {
+        if (!object(entry) || Object.keys(entry).sort().join(",") !== "from,suite,until") {
+          fail(path, "invalid suite freeze previous entry")
+        }
+        if (typeof entry.suite !== "string" || !entry.suite.trim()) fail(path, "invalid suite freeze previous suite")
+        for (const key of ["from", "until"] as const) {
+          const value = entry[key]
+          if (typeof value !== "string" || !date(value) || new Date(value).toISOString() !== value) {
+            fail(path, `invalid suite freeze previous ${key}`)
+          }
+        }
+        if (lineage.some((seen) => seen.suite === entry.suite) || entry.suite === probeHash) {
+          fail(path, `suite freeze previous lineage repeats suite ${entry.suite}`)
+        }
+        // Oldest first, each window starting where the one before it ended: the move writes exactly
+        // this, so another order or a gap is a hand edit the lineage reader would misread.
+        const from = entry.from as string
+        const until = entry.until as string
+        const before = lineage[lineage.length - 1]
+        if (until < from || (before !== undefined && before.until !== from)) {
+          fail(path, `invalid suite freeze previous window for suite ${entry.suite}`)
+        }
+        lineage.push({ suite: entry.suite, from, until })
+      }
+      const last = lineage[lineage.length - 1]
+      if (last !== undefined && last.until !== raw.at) {
+        fail(path, `suite freeze previous lineage ends at ${last.until}, not at this freeze (${raw.at})`)
+      }
+      previous = lineage
+    }
+    freeze = { release: raw.release, at: raw.at, ...(previous === undefined ? {} : { previous }) }
   }
   return {
     probeHash,

@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import * as reader from "./decisive-share.ts"
-import { loadCandidate2Data } from "../docs/data/candidate-2.data.ts"
+import { darkSuitesForLineage, loadCandidate2Data } from "../docs/data/candidate-2.data.ts"
 import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import { inconclusiveRows } from "./decisive-share.ts"
 import type { Candidate2GroupShare } from "../docs/data/candidate-2.data.ts"
@@ -417,6 +417,97 @@ describe("candidate-2 page: wiring", () => {
       expect(text.included).toBe(false)
       expect(text.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos"])
       expect(text.darkHeldBy[0]).toMatchObject({ decisive: 17, denominator: 20 })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it("holds a dark context from a predecessor-suite run, not from the suite it reads", () => {
+    const real = join(import.meta.dirname, "..", "content")
+    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const cohort = baseReport.cohort
+    if (!cohort) throw new Error("candidate2 cohort absent")
+    const darkRun = cohort.admittedRuns.find(
+      (entry) => entry.run.suiteId === "5753741410a9" && entry.run.terminalId === "wezterm" && entry.run.os === "linux",
+    )
+    if (!darkRun) throw new Error("predecessor-suite wezterm/linux admitted run absent")
+    // The pointer suite's run for this context is not in the window, so the only history wezterm/linux
+    // has is the predecessor suite's. A dark set read back from the current pointer would find no run
+    // and silently drop this hold, which is exactly how the page would understate a dark group.
+    const barRows = cohort.barRows.map((row) =>
+      row.context.terminalId === "wezterm" && row.context.os === "linux"
+        ? {
+            context: row.context,
+            measured: false as const,
+            reason: "ineligible: selected run on suite 45d6fda67445, required c24025ea22fc",
+          }
+        : row,
+    )
+    const admittedRuns = cohort.admittedRuns.filter(
+      (entry) =>
+        !(entry.run.suiteId === "68847e4d5355" && entry.run.terminalId === "wezterm" && entry.run.os === "linux"),
+    )
+    const spy = vi
+      .spyOn(reader, "buildReport")
+      .mockReturnValue({ ...baseReport, cohort: { ...cohort, barRows, admittedRuns } })
+    try {
+      const scrollback = loadCandidate2Data().groups.find((group) => group.key === "scrollback")
+      if (!scrollback) throw new Error("scrollback group missing")
+      const ids = scrollback.capabilities.map((capability) => capability.id)
+      const expected = reader.decisiveShare(darkRun.run.states, [
+        ...ids,
+        ...scrollback.libraryOnly.map((capability) => capability.id),
+      ])
+      const held = scrollback.darkHeldBy.find((row) => row.context === "wezterm/linux")
+      if (!held) throw new Error("wezterm/linux is not held by its predecessor-suite run")
+      expect(held).toMatchObject({ decisive: expected.decisive, denominator: expected.denominator })
+      expect(held.decisivePct).toBeLessThan(85)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it("a lineage never makes the suite the cohort reads dark", () => {
+    // The reading suite can appear in the lineage itself after a pointer move onto it. Counting it as
+    // history would let a claim rest on a run the same page also counts as measurement, so the filter
+    // is the invariant, not an incidental subtraction.
+    expect([...darkSuitesForLineage(["68847e4d5355", "c24025ea22fc", "5753741410a9"], "c24025ea22fc")]).toEqual([
+      "68847e4d5355",
+      "5753741410a9",
+    ])
+  })
+
+  it("a run on the suite the cohort reads never holds a dark context, even when that suite is in the lineage", () => {
+    // The cohort reads a lineage suite, as after a pointer move onto it: runs there are measurement,
+    // so a context whose only history is there is not held from it. The page must subtract the suite
+    // it reads, not only the helper.
+    const real = join(import.meta.dirname, "..", "content")
+    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const cohort = baseReport.cohort
+    if (!cohort) throw new Error("candidate2 cohort absent")
+    const isWezterm = (run: { terminalId: string; os: string }) => run.terminalId === "wezterm" && run.os === "linux"
+    const below = cohort.admittedRuns.find((entry) => entry.run.suiteId === "5753741410a9" && isWezterm(entry.run))
+    if (!below) throw new Error("predecessor-suite wezterm/linux admitted run absent")
+    // The same below-bar states, on the suite the mocked cohort reads, and no other history.
+    const onReadingSuite = { ...below, run: { ...below.run, suiteId: "68847e4d5355", runId: "reading-suite-run" } }
+    const admittedRuns = [onReadingSuite, ...cohort.admittedRuns.filter((entry) => !isWezterm(entry.run))]
+    const barRows = cohort.barRows.map((row) =>
+      isWezterm(row.context)
+        ? {
+            context: row.context,
+            measured: false as const,
+            reason: "ineligible: selected run on suite 45d6fda67445, required 68847e4d5355",
+          }
+        : row,
+    )
+    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+      ...baseReport,
+      cohort: { ...cohort, frozenSuiteId: "68847e4d5355", barRows, admittedRuns },
+    })
+    try {
+      const scrollback = loadCandidate2Data().groups.find((group) => group.key === "scrollback")
+      if (!scrollback) throw new Error("scrollback group missing")
+      expect(scrollback.darkHeldBy.map((row) => row.context)).not.toContain("wezterm/linux")
     } finally {
       spy.mockRestore()
     }
