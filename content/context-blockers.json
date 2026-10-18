@@ -1,9 +1,3 @@
 {
-  "blockers": [
-    {
-      "terminalId": "kitty",
-      "os": "macos",
-      "reason": "no hosted kitty route: hosted runners open no Kitty (no GPU 27834) and no hosted workflow runs kitty, so there is no run on the required suite (27928)"
-    }
-  ]
+  "blockers": []
 }
