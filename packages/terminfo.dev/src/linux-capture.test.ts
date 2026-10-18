@@ -712,3 +712,38 @@ test.each(["xwd", "png"] as const)("shared %s capture digests decoded pixels at 
   })
   expect(plain.trace).toEqual({ fixture: "plain" })
 })
+
+// 30092: a whole-frame scrollback capture names no cells, so the old path computed no
+// pixelsDigest at all and sameFrame could only compare the encoded container's ref.
+test.each(["xwd", "png"] as const)(
+  "a whole-frame capture carries a pixels digest and needs no text-area origin (30092)",
+  async (format) => {
+    const { directory, png } = fixture()
+    const source = {
+      bytes: format === "png" ? readFileSync(png) : Buffer.from("fixture-xwd"),
+      format,
+      width: 640,
+      height: 480,
+      capturedAt: 123,
+    }
+    const result = await finishCapture({
+      directory,
+      checkpoint: {
+        featureId: "erase.screen.scrollback",
+        role: "control",
+        label: "Bottom of seeded buffer",
+      },
+      source,
+      png: readFileSync(png),
+      origin: () => {
+        throw new Error("a whole-frame digest names no text area, so no origin may be resolved")
+      },
+      trace: {},
+    })
+    expect(result.frame.pixelsDigest).toBe(
+      `sha256:${createHash("sha256").update(Buffer.alloc(640 * 480 * 4)).digest("hex")}`,
+    )
+    expect(result.frame.regionDigest).toBeUndefined()
+    expect(result.frame.regionRectangle).toBeUndefined()
+  },
+)
