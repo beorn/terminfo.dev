@@ -35,11 +35,15 @@ function stepContent(label: string): string {
   return "seed"
 }
 
-function textFrame(label: string, role: ObservationFrame["role"]): ObservationFrame {
+function textFrame(
+  label: string,
+  role: ObservationFrame["role"],
+  applied: "expected" | "other" = "expected",
+): ObservationFrame {
   const content = label.includes("capture stability") ? "stable" : stepContent(label)
   const phase = label.endsWith("— baseline") ? "base" : label.includes("paint witness") ? "witness" : "measured"
   // The sequence under test leaves the screen equal to the expected frame: the supported case.
-  const screen = content === "edited" && phase === "measured" ? "expected" : content
+  const screen = content === "edited" && phase === "measured" ? applied : content
   const cells = digest(`${screen}:${phase}`)
   return {
     kind: "text-cells",
@@ -86,5 +90,27 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
     expect(result?.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  })
+
+  // 29577 option A: a text arm holds one exact cell digest, so it can name only the axes that
+  // digest carries — the characters, and the attributes this arm reports. Naming a pixel axis here
+  // would claim evidence the arm never read; and naming the axes is not naming a cause, so the
+  // verdict and its reason stay exactly as they were.
+  it("names the cell axis space on a third distinct frame and keeps the verdict inconclusive", async () => {
+    const ctx: TermContext = {
+      ...textContext(),
+      capture: async (request) => textFrame(request.label, request.role, "other"),
+    }
+    const result = await captureRegionVerdict(ctx, "erase.el", spec)
+    expect(result?.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "text",
+    })
+    expect(result?.observation?.note).toContain("a third distinct frame")
+    expect(result?.observation?.note).toContain("the characters")
+    expect(result?.observation?.note).toContain("attributes")
+    expect(result?.observation?.note).not.toContain("glyph edges")
+    expect(result?.observation?.note).not.toContain("background attributes")
   })
 })
