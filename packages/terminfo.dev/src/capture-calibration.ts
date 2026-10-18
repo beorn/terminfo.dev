@@ -159,7 +159,9 @@ interface EdgeBlend {
  * A window's cell boundary can fall inside a device pixel, so the paint covers part of the one line
  * directly outside the grid. Every pixel on that line is then the paint colour of the cell beside it
  * at ONE alpha over its own pre-paint value. A second line, a partial span, a second alpha or any
- * other colour is not this effect and stays unexplained.
+ * other colour is not this effect and stays unexplained. Only a leading-edge line (top for rows, left
+ * for columns) is the grid's own first pixel line and counts in cell 1; a trailing-edge line stays
+ * outside coverage.
  */
 function edgeBlend(edge: Edge, grid: CaptureRectangle, before: CapturedFrame, after: CapturedFrame): EdgeBlend | null {
   const horizontal = edge === "top" || edge === "bottom"
@@ -379,6 +381,7 @@ function validatePaint(
   count: number,
   pitch: number,
   mask: ReadonlySet<number>,
+  lead: 0 | 1,
 ): void {
   for (let line = 0; line < scan.across; line++) {
     for (let position = 0; position < scan.length; position++) {
@@ -387,7 +390,9 @@ function validatePaint(
       const key = y * frame.width + x
       if (mask.has(key)) continue
       const offset = key * 4
-      const cell = Math.min(count - 1, Math.floor(position / pitch))
+      // A leading-edge line is outside the scanned interior but counts in cell 1, so every cell
+      // boundary is offset by its one pixel.
+      const cell = Math.min(count - 1, Math.floor((position + lead) / pitch))
       const expectsCalibration = cell % 2 === 0
       const calibration = rgbAt(frame, offset, CALIBRATION)
       const blank = rgbAt(frame, offset, BLANK)
@@ -412,6 +417,7 @@ function stripeSize(
   axis: "columns" | "rows",
   count: number,
   filletMask: ReadonlySet<number>,
+  lead: 0 | 1,
 ): { pitch: number; clip: number } {
   validateFrame(frame)
   validateFrame(baseline)
@@ -440,8 +446,11 @@ function stripeSize(
       `Capture calibration ${axis}: every scanline is touched by a corner fillet; the pitch cannot be measured`,
     )
   }
-  const { pitch, clip } = acceptPitch(reference, axis)
-  validatePaint(frame, grid, scan, axis, count, pitch, filletMask)
+  // The interior scan is unchanged; the admitted leading line is added to the first stripe only, so
+  // a line beside an already-full first stripe still refuses as a fractional pitch.
+  const sizes = reference.map((size, index) => (index === 0 ? size + lead : size))
+  const { pitch, clip } = acceptPitch(sizes, axis)
+  validatePaint(frame, grid, scan, axis, count, pitch, filletMask, lead)
   return { pitch, clip }
 }
 
@@ -572,6 +581,13 @@ export async function calibrateCaptureOrigin({
       return blends
     }
     const solidBlends = outsideUnchanged(solid)
+    // One axis-generic rule: an axis's leading edge is the grid's own first pixel line only when that
+    // line was admitted on the solid frame and on the axis's own frame. Lead is 1 or 0, never a width.
+    const leadingLine = (axis: "columns" | "rows", own: readonly EdgeBlend[]): EdgeBlend | null => {
+      const edge: Edge = axis === "columns" ? "left" : "top"
+      const admitted = solidBlends.some((blend) => blend.edge === edge) && own.some((blend) => blend.edge === edge)
+      return admitted ? (own.find((blend) => blend.edge === edge) ?? null) : null
+    }
     paintGrid("columns")
     // The column paint must be present somewhere in the grid, not at its top-left pixel: a rounded
     // window's corner fillets sit exactly there, so that pixel stays black in every stage.
@@ -586,11 +602,23 @@ export async function calibrateCaptureOrigin({
     }
     const columns = await confirmedFrame("column edge paint", showsCalibrationPaint, solid)
     const columnBlends = outsideUnchanged(columns)
-    const { pitch: cellWidth, clip: columnClip } = stripeSize(columns, baseline, grid, "columns", ctx.cols, filletMask)
+    const columnLine = leadingLine("columns", columnBlends)
+    const columnLead: 0 | 1 = columnLine === null ? 0 : 1
+    const { pitch: cellWidth, clip: columnClip } = stripeSize(
+      columns,
+      baseline,
+      grid,
+      "columns",
+      ctx.cols,
+      filletMask,
+      columnLead,
+    )
     paintGrid("rows")
     const rows = await confirmedFrame("row edge paint", showsCalibrationPaint, columns)
     const rowBlends = outsideUnchanged(rows)
-    const { pitch: cellHeight, clip: rowClip } = stripeSize(rows, baseline, grid, "rows", ctx.rows, filletMask)
+    const rowLine = leadingLine("rows", rowBlends)
+    const rowLead: 0 | 1 = rowLine === null ? 0 : 1
+    const { pitch: cellHeight, clip: rowClip } = stripeSize(rows, baseline, grid, "rows", ctx.rows, filletMask, rowLead)
     // The reported text area is the pitch times the count, not the visible length: a clipped last
     // stripe is shorter than a cell on screen but still occupies a whole cell of the text area.
     const measured = { cellWidth, cellHeight, textWidth: cellWidth * ctx.cols, textHeight: cellHeight * ctx.rows }
@@ -611,6 +639,21 @@ export async function calibrateCaptureOrigin({
     const clipTrace = `${columnClip > 0 ? `; columns clipped ${columnClip} px at the far edge` : ""}${
       rowClip > 0 ? `; rows clipped ${rowClip} px at the far edge` : ""
     }`
+    // The authored extent is the interior extended by the admitted leading line, so crops, the text
+    // origin and the reported-geometry comparison all use the grid the terminal actually painted.
+    const authored = {
+      x: grid.x - columnLead,
+      y: grid.y - rowLead,
+      width: grid.width + columnLead,
+      height: grid.height + rowLead,
+    }
+    const leadTrace = [columnLine, rowLine]
+      .filter((line): line is EdgeBlend => line !== null)
+      .map(
+        (line) =>
+          `; leading line counted in cell 1: ${line.edge} ${line.edge === "left" ? "x" : "y"}=${line.coordinate} alpha ${line.alpha.toFixed(3)}`,
+      )
+      .join("")
     const admittedBlends = [
       ...solidBlends.map((blend) => ({ stage: "solid", blend })),
       ...columnBlends.map((blend) => ({ stage: "columns", blend })),
@@ -626,10 +669,10 @@ export async function calibrateCaptureOrigin({
             )
             .join(", ")}`
     return {
-      origin: { x: grid.x, y: grid.y },
+      origin: { x: authored.x, y: authored.y },
       pixelGeometry: measured,
-      ...(columnClip > 0 || rowClip > 0 ? { visible: { width: grid.width, height: grid.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${grid.width}x${grid.height} grid at ${grid.x},${grid.y}${filletTrace}${blendTrace}${clipTrace}; current paints and identical restore confirmed`,
+      ...(columnClip > 0 || rowClip > 0 ? { visible: { width: authored.width, height: authored.height } } : {}),
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${authored.width}x${authored.height} grid at ${authored.x},${authored.y}${filletTrace}${blendTrace}${leadTrace}${clipTrace}; current paints and identical restore confirmed`,
     }
   } catch (cause) {
     failure = cause
