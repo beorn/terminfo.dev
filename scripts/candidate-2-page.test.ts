@@ -338,9 +338,7 @@ describe("candidate-2 page: wiring", () => {
     const dark = ["iterm2/macos", "kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
-    expect(page).toContain(
-      "ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}",
-    )
+    expect(page).toContain("ruled for {{ group.ruledTotal }}, measurable on {{ group.includedOn.length }}")
     expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
@@ -390,22 +388,28 @@ describe("candidate-2 page: wiring", () => {
     expect(page).toContain(
       "held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (30033)",
     )
-    expect(page).toContain(
-      "ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}",
-    )
+    expect(page).toContain("ruled for {{ group.ruledTotal }}, measurable on {{ group.includedOn.length }}")
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
     // Both ruled groups keep the ruling's six contexts: four measurable on c240 and the two macOS
     // contexts the ruling names. Since the 2026-10-18 hosted collection those two macOS contexts are
     // measured on c240 and held below the bar rather than dark, so the dark-ruled row is empty and
-    // the hold is named in heldBy above.
+    // the hold is named in heldBy above. ruledTotal carries the six either way, so the page still
+    // reads "ruled for six, measurable on four" instead of quietly shrinking to four (30033).
     const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)
       expect(group.includedOn).toEqual(four)
       expect(group.darkRuled).toEqual([])
-      expect(group.includedOn.length + group.darkRuled.length).toBe(4)
+      // The ruled basis is six whether those two contexts are dark or measured below the bar: the
+      // count may not shrink to the contexts that clear it.
+      expect(group.ruledTotal).toBe(6)
+      // Both ruled macOS contexts stay visible as held once measured below the bar; neither drops
+      // out of the page just because it stopped being dark.
+      expect(group.heldBy.map((row) => row.context)).toEqual(
+        expect.arrayContaining(["ghostty/macos", "alacritty/macos"]),
+      )
     }
     // A new below-bar measurement can lower the global claim; it cannot be hidden as a dark context.
     const unicode = data.groups.find((group) => group.key === "unicode")

@@ -78,6 +78,12 @@ export interface Candidate2Group {
    * the ruled basis when a context's newest history run stops clearing the bar.
    */
   darkRuled: string[]
+  /**
+   * How many contexts the per-context ruling names, measured or dark. The ruled basis is a RULING, so
+   * it stays at six when one of its contexts becomes measured below the bar: rendering only
+   * includedOn + darkRuled would drop that context and shrink the public claim (30033).
+   */
+  ruledTotal: number
   /** Contexts with no published run: neither included nor held, named with the row's own reason. */
   unmeasured: Candidate2Unmeasured[]
   /** Every included capability of this group (the ratified base). */
@@ -247,7 +253,7 @@ export function loadCandidate2Data(): Candidate2Data {
 
   const groups: Omit<
     Candidate2Group,
-    "included" | "includedOn" | "heldBy" | "darkHeldBy" | "darkRuled" | "unmeasured"
+    "included" | "includedOn" | "heldBy" | "darkHeldBy" | "darkRuled" | "ruledTotal" | "unmeasured"
   >[] = included.map((category) => {
     const scored = decidableByKey.get(category.key)
     if (!scored) {
@@ -375,6 +381,10 @@ export function loadCandidate2Data(): Candidate2Data {
     "ghostty/macos",
     "alacritty/macos",
   ])
+  // The ruling's named contexts that this cohort actually carries, measured or dark. The count is
+  // the ruled basis, so it is independent of publication: a ruled context that becomes measured
+  // below the bar stays in it rather than shrinking the claim to the contexts that clear the bar.
+  const ruledContextsPresent = contexts.filter((row) => RULED_CONTEXTS.has(row.context)).length
   const groupsWithState: Candidate2Group[] = groups.map((group) => {
     const includedOn: string[] = []
     const heldBy: Candidate2HeldContext[] = []
@@ -461,6 +471,7 @@ export function loadCandidate2Data(): Candidate2Data {
       heldBy,
       darkHeldBy,
       darkRuled,
+      ruledTotal: PER_CONTEXT_INCLUDED.has(group.key) ? ruledContextsPresent : 0,
       unmeasured,
     }
   })
