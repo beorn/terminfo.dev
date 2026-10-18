@@ -662,8 +662,12 @@ export interface ParsedSuiteManifest extends ProbeSuiteManifest {
   freeze?: {
     release: string
     at: string
-    /** The suite the pointer moved off; the move writes it, and the lineage chain walks it. */
-    previous?: { suite: string }
+    /**
+     * The suites this release published on before the pointer reached this one, oldest first. The
+     * move carries the list forward and appends the suite it leaves, so the history survives every
+     * later move; nothing walks another manifest to recover it.
+     */
+    previous?: { suite: string; from: string; until: string }[]
   }
 }
 
@@ -728,16 +732,28 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     if (typeof raw.at !== "string" || !date(raw.at) || new Date(raw.at).toISOString() !== raw.at) {
       fail(path, "invalid suite freeze at")
     }
-    let previous: { suite: string } | undefined
+    let previous: { suite: string; from: string; until: string }[] | undefined
     if ("previous" in raw) {
       const rawPrevious = raw.previous
-      if (!object(rawPrevious) || Object.keys(rawPrevious).join(",") !== "suite") {
-        fail(path, "invalid suite freeze previous pointer")
+      if (!Array.isArray(rawPrevious)) fail(path, "invalid suite freeze previous lineage")
+      const lineage: { suite: string; from: string; until: string }[] = []
+      for (const entry of rawPrevious) {
+        if (!object(entry) || Object.keys(entry).sort().join(",") !== "from,suite,until") {
+          fail(path, "invalid suite freeze previous entry")
+        }
+        if (typeof entry.suite !== "string" || !entry.suite.trim()) fail(path, "invalid suite freeze previous suite")
+        for (const key of ["from", "until"] as const) {
+          const value = entry[key]
+          if (typeof value !== "string" || !date(value) || new Date(value).toISOString() !== value) {
+            fail(path, `invalid suite freeze previous ${key}`)
+          }
+        }
+        if (lineage.some((seen) => seen.suite === entry.suite)) {
+          fail(path, `suite freeze previous lineage repeats suite ${entry.suite}`)
+        }
+        lineage.push({ suite: entry.suite, from: entry.from as string, until: entry.until as string })
       }
-      if (typeof rawPrevious.suite !== "string" || !rawPrevious.suite.trim()) {
-        fail(path, "invalid suite freeze previous suite")
-      }
-      previous = { suite: rawPrevious.suite }
+      previous = lineage
     }
     freeze = { release: raw.release, at: raw.at, ...(previous === undefined ? {} : { previous }) }
   }

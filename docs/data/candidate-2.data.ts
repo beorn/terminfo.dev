@@ -203,6 +203,15 @@ function groupKey(id: string, known: ReadonlySet<string>): string {
   return key
 }
 
+/**
+ * The suites a release published on that this cohort does not read: a run there went dark. The suite
+ * the cohort reads is never dark, even when a pointer move put the release on it — its runs are the
+ * data the page measures, so counting them as history would let a claim rest on a run it also counts.
+ */
+export function darkSuitesForLineage(lineage: readonly string[], readingSuiteId: string): Set<string> {
+  return new Set(lineage.filter((suiteId) => suiteId !== readingSuiteId))
+}
+
 export function loadCandidate2Data(): Candidate2Data {
   const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
   const cohort = report.cohort
@@ -224,9 +233,7 @@ export function loadCandidate2Data(): Candidate2Data {
   // WENT DARK, not missing data. The set is the lineage the pointer moves recorded, never the current
   // pointer read back as history; runs on any suite outside the lineage were never published and
   // cannot hold a claim.
-  const darkSuites = new Set(
-    frozenSuiteLineage(contentDir, "candidate2").filter((suiteId) => suiteId !== cohort.suiteId),
-  )
+  const darkSuites = darkSuitesForLineage(frozenSuiteLineage(contentDir, "candidate2"), cohort.frozenSuiteId)
   // A hold may be read from history, a claim may not: the newest admitted run per context on a dark
   // suite is what a dark context held the group with. The report's admitted runs are already newest
   // first, so the first per context is the one to use.

@@ -7,7 +7,16 @@
  * @testonly none
  */
 import { execFileSync } from "node:child_process"
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -311,42 +320,165 @@ test("a move that would leave the old release with two claimants is refused befo
   expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(b.probeHash)
 })
 
-test("a pointer move records the suite it left, and the lineage reader walks the chain", () => {
+const declareFixture = (directory: string, probeHash: string): ProbeSuiteSnapshot => {
+  const snapshot = snapshotOf(probeHash)
+  if (!existsSync(join(directory, "content", "suites", `${probeHash}.json`))) {
+    persistSuiteManifest(
+      join(directory, "content", "suites", `${probeHash}.json`),
+      derivedSuiteManifest(snapshot),
+      snapshot,
+    )
+  }
+  return snapshot
+}
+
+test("a pointer move records the suite it left, and each later move carries the whole lineage", () => {
   const directory = authoringRepo("terminfo-suite-pointer-lineage-")
   const contentDir = join(directory, "content")
-  const from = snapshotOf("a".repeat(12))
-  const to = snapshotOf("b".repeat(12))
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  const third = declareFixture(directory, "c".repeat(12))
   const firstAt = "2026-10-16T09:30:22.506Z"
-  const movedAt = "2026-10-18T02:27:38.228Z"
-  expect(freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: from, at: firstAt }).suiteId).toBe(
-    from.probeHash,
+  const secondAt = "2026-10-18T02:27:38.228Z"
+  const thirdAt = "2026-10-18T03:00:00.000Z"
+  expect(freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: firstAt }).suiteId).toBe(
+    first.probeHash,
   )
-  persistSuiteManifest(join(contentDir, "suites", `${to.probeHash}.json`), derivedSuiteManifest(to), to)
-  const moved = moveReleasePointer(directory, "candidate2", { snapshot: to, at: movedAt })
+  const moved = moveReleasePointer(directory, "candidate2", { snapshot: second, at: secondAt })
   expect(moved).toEqual({
     status: "moved",
-    from: from.probeHash,
-    to: to.probeHash,
-    path: join(contentDir, "suites", `${to.probeHash}.json`),
+    from: first.probeHash,
+    to: second.probeHash,
+    path: join(contentDir, "suites", `${second.probeHash}.json`),
   })
-  // The new record names its predecessor in the same write, the old suite keeps no claim, and the
-  // reader walks the chain. Dark attribution can no longer be inferred from the live pointer: after
-  // this move the lineage names BOTH suites, which is what a reader needs to hold a group that was
-  // published on either one.
+  // The new record names its predecessor in the same write: the window it held the pointer, not just
+  // its id, so the history is recorded rather than inferred from a pointer that can move again.
   expect(parseSuiteManifest(moved.path, readFileSync(moved.path, "utf8")).freeze).toEqual({
     release: "candidate2",
-    at: movedAt,
-    previous: { suite: from.probeHash },
+    at: secondAt,
+    previous: [{ suite: first.probeHash, from: firstAt, until: secondAt }],
   })
-  const fromPath = join(contentDir, "suites", `${from.probeHash}.json`)
-  expect(parseSuiteManifest(fromPath, readFileSync(fromPath, "utf8")).freeze).toBeUndefined()
-  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(to.probeHash)
-  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([to.probeHash, from.probeHash])
+  // A second move carries that list forward and appends the suite it leaves. Nothing walks another
+  // manifest: the move deletes the old record, so a walk would lose the first suite here.
+  moveReleasePointer(directory, "candidate2", { snapshot: third, at: thirdAt })
+  const thirdPath = join(contentDir, "suites", `${third.probeHash}.json`)
+  expect(parseSuiteManifest(thirdPath, readFileSync(thirdPath, "utf8")).freeze).toEqual({
+    release: "candidate2",
+    at: thirdAt,
+    previous: [
+      { suite: first.probeHash, from: firstAt, until: secondAt },
+      { suite: second.probeHash, from: secondAt, until: thirdAt },
+    ],
+  })
+  for (const left of [first, second]) {
+    const path = join(contentDir, "suites", `${left.probeHash}.json`)
+    expect(parseSuiteManifest(path, readFileSync(path, "utf8")).freeze).toBeUndefined()
+  }
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(third.probeHash)
+  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([third.probeHash, second.probeHash, first.probeHash])
+})
+
+test("a same-release freeze after a move is a no-op and keeps the move-written lineage", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-refreeze-")
+  const contentDir = join(directory, "content")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  const firstAt = "2026-10-16T09:30:22.506Z"
+  const movedAt = "2026-10-18T02:27:38.228Z"
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: firstAt })
+  moveReleasePointer(directory, "candidate2", { snapshot: second, at: movedAt })
+  const path = join(contentDir, "suites", `${second.probeHash}.json`)
+  const movedBytes = readFileSync(path, "utf8")
+  // Re-running the ordinary freeze on the suite the pointer already names must return "existing": a
+  // rewrite would drop `previous` and reset `at`, silently erasing the move that was just recorded.
+  const again = freezeCurrentSuiteManifest(directory, "candidate2", {
+    snapshot: second,
+    at: "2026-10-18T04:00:00.000Z",
+  })
+  expect(again.status).toBe("existing")
+  expect(readFileSync(path, "utf8")).toBe(movedBytes)
+  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([second.probeHash, first.probeHash])
+})
+
+test("a move onto a suite another release claims is refused before either claim changes", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-claimed-")
+  const contentDir = join(directory, "content")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-16T09:30:22.506Z" })
+  freezeCurrentSuiteManifest(directory, "candidate4", { snapshot: second, at: "2026-10-17T09:00:00.000Z" })
+  // One manifest carries one freeze: taking candidate4's suite would leave candidate4 with no suite.
+  expect(() =>
+    moveReleasePointer(directory, "candidate2", { snapshot: second, at: "2026-10-18T02:27:38.228Z" }),
+  ).toThrow(/already declares freeze\.release "candidate4".*leave "candidate4" with no suite/)
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(first.probeHash)
+  expect(frozenSuiteIdFor(contentDir, "candidate4")).toBe(second.probeHash)
+})
+
+test("a move back onto a suite already in the lineage is refused before the write", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-cycle-")
+  const contentDir = join(directory, "content")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  const third = declareFixture(directory, "c".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-16T09:30:22.506Z" })
+  moveReleasePointer(directory, "candidate2", { snapshot: second, at: "2026-10-18T02:27:38.228Z" })
+  moveReleasePointer(directory, "candidate2", { snapshot: third, at: "2026-10-18T03:00:00.000Z" })
+  const thirdPath = join(contentDir, "suites", `${third.probeHash}.json`)
+  const before = readFileSync(thirdPath, "utf8")
+  // A repeat would leave a lineage the parser refuses, so it is refused before any byte moves.
+  expect(() =>
+    moveReleasePointer(directory, "candidate2", { snapshot: second, at: "2026-10-18T04:00:00.000Z" }),
+  ).toThrow(/would repeat suite/)
+  expect(readFileSync(thirdPath, "utf8")).toBe(before)
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(third.probeHash)
+  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([third.probeHash, second.probeHash, first.probeHash])
+})
+
+test("a move writes the new claim before it clears the old one, so a failed write strands no release", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-write-order-")
+  const contentDir = join(directory, "content")
+  const first = snapshotOf("a".repeat(12))
+  const second = declareFixture(directory, "b".repeat(12))
+  freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: first, at: "2026-10-16T09:30:22.506Z" })
+  const secondPath = join(contentDir, "suites", `${second.probeHash}.json`)
+  // The new record's write is the crash boundary. Make it fail for real (the suite is not writable),
+  // leaving the old claim as the only thing that could have changed: clearing it first would leave
+  // the release with no suite at all, which every reader refuses.
+  chmodSync(secondPath, 0o444)
+  try {
+    expect(() =>
+      moveReleasePointer(directory, "candidate2", { snapshot: second, at: "2026-10-18T02:27:38.228Z" }),
+    ).toThrow()
+  } finally {
+    chmodSync(secondPath, 0o644)
+  }
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(first.probeHash)
+  expect(parseSuiteManifest(secondPath, readFileSync(secondPath, "utf8")).freeze).toBeUndefined()
+})
+
+test("the parser refuses a freeze lineage that is not the carried list", () => {
+  const base = { probeHash: "a".repeat(12), adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const entry = {
+    suite: "b".repeat(12),
+    from: "2026-10-16T09:30:22.506Z",
+    until: "2026-10-18T02:27:38.228Z",
+  }
+  const withPrevious = (previous: unknown): string =>
+    JSON.stringify({ ...base, freeze: { release: "candidate2", at: "2026-10-18T02:27:38.228Z", previous } })
+  // The shape is one list of windows, so the old single pointer, an extra key, a bad instant and a
+  // repeat all refuse by name rather than being coerced into a list.
+  expect(() => parseSuiteManifest("x.json", withPrevious({ suite: entry.suite }))).toThrow(/previous lineage/)
+  expect(() => parseSuiteManifest("x.json", withPrevious([{ ...entry, extra: true }]))).toThrow(/previous entry/)
+  expect(() => parseSuiteManifest("x.json", withPrevious([{ ...entry, until: "yesterday" }]))).toThrow(/previous until/)
+  expect(() => parseSuiteManifest("x.json", withPrevious([entry, { ...entry }]))).toThrow(/repeats suite/)
+  expect(parseSuiteManifest("x.json", withPrevious([entry])).freeze?.previous).toEqual([entry])
 })
 
 test("the live registry records the candidate2 pointer move it already made", () => {
-  // The seed for the move 29952 made by hand (3a0e12f7, 2026-10-18T02:27:38.228Z): the current
-  // suite names the one it left, so the lineage is recoverable from content and not only from git.
+  // The live registry carries the move that put candidate2 on 68847: the current record names the
+  // suite it left and the window that suite held the pointer, so the lineage is recoverable from
+  // content alone rather than only from the Git history of the hand edit.
   expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual(["68847e4d5355", "5753741410a9"])
 })
 
