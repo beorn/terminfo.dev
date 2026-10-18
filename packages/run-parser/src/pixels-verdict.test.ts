@@ -12,7 +12,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { cursorProbes, type ObservationFrame, type ProbeSuiteManifest, type TermContext } from "@terminfo/probe-defs"
 import { parseRun } from "./index.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
@@ -46,7 +46,7 @@ const frame = (
   ref: string,
   regionDigest?: string,
   pixelsDigest?: string,
-): ObservationFrame => ({
+): Extract<ObservationFrame, { kind?: "pixels" }> => ({
   role,
   label,
   capturedAt,
@@ -170,6 +170,58 @@ const scrollbackRun = () => ({
 const parse = (run: Record<string, unknown>) => parseRun("pixels-verdict.json", JSON.stringify(run), catalog, suites)
 
 describe("in-run pixels verdicts", () => {
+  it("parses the real cursor-cell verdict when PNG, whole-frame and cell digests differ", async () => {
+    const id = "cursor.hide"
+    const probe = cursorProbes.find((entry) => entry.id === id)
+    if (!probe?.term) throw new Error("Missing cursor.hide terminal callback")
+    let captureIndex = 0
+    const context: TermContext = {
+      rows: 24,
+      cols: 80,
+      write() {},
+      queryCursorPosition: async () => null,
+      measureRenderedWidth: async () => null,
+      query: async () => null,
+      queryWithSentinel: async () => null,
+      queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+      queryMode: async () => null,
+      captureGeometry: {
+        geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+        source: "measured by complete raster calibration",
+      },
+      capture: async ({ role, label }) => {
+        captureIndex++
+        return {
+          ...frame(
+            role,
+            label,
+            captureIndex,
+            digest(`png-${captureIndex}`),
+            digest(captureIndex === 2 ? "hidden-cell" : "shown-cell"),
+            digest(`whole-${captureIndex}`),
+          ),
+          regionRectangle: { x: 16, y: 16, width: 8, height: 16 },
+        }
+      },
+    }
+    // Native captures carry real SHA256s for all three representations. Placeholder whole-1
+    // values never reached the parser's citation scan and hid the Ghostty collector refusal.
+    const result = await probe.term(context)
+    expect(result.observation?.outcome).toBe("supported")
+    const frames = result.observation?.frames ?? []
+    const run = kittyRun({
+      rawReplies: { [id]: result.response ?? "" },
+      assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id })),
+      observations: [{ ...result.observation, featureId: id, rawReplyRef: id }],
+      screenshotRefs: frames.map((entry) => entry.ref),
+    })
+    const cursorManifest: ProbeSuiteManifest = { ...manifest, probes: { app: [id], headless: [], mux: [] } }
+    const loaded = parseRun("cursor-hide.json", JSON.stringify(run), [id], new Map([[SUITE, cursorManifest]]))
+    expect(loaded.observations[0]?.outcome).toBe("supported")
+    expect(loaded.observations[0]?.frames).toHaveLength(3)
+  })
+
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
     const loaded = parse(kittyRun())
     const observation = loaded.observations[0]!

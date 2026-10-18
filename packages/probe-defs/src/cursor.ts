@@ -239,7 +239,9 @@ export const cursorProbes: ProbeDefinition[] = [
               pixelGeometry: geometry,
             })
             const frames = [control, hidden, restored]
-            const digests = frames.map(frameDigests)
+            // The assertion cites only the cursor-cell digests it decides on. Whole-raster
+            // digests remain in the retained frames, but are not cell-level decision evidence.
+            const digests = frames.map((frame) => ({ cells: frameDigests(frame).cells }))
             const rectangle = (frame: (typeof frames)[number]) =>
               frame.kind === "text-cells" ? frame.cellRectangle : frame.regionRectangle
             const rectangles = frames.map(rectangle)
