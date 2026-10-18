@@ -9,26 +9,39 @@ import {
   unmeasuredCellResult,
 } from "./helpers.ts"
 
-// DECRQCRA is a reply capability probe, not a checksum-correctness oracle.
+// DECRQCRA is checked against arithmetic the probe can compute: five seeded cells, whose 16-bit
+// character-code sum is a known constant, requested as one rectangle. A framed reply with a
+// different value is a measured negative, not a capability.
+const DECRQCRA_SEED = "ABCDE"
+const DECRQCRA_SEED_SUM = 0x014f
+const DECRQCRA_REQUEST = "\x1b[1;1;1;1;1;5*y"
+const DECRQCRA_EXPECTED = "0x014F, the 16-bit sum of the seeded cells A-E in the requested 1x5 rectangle"
+
 function checksumResult(response: string, lateNote?: string): ProbeResult {
-  const supported = /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/.test(response)
+  const framed = /\x1bP1!~([0-9A-Fa-f]{4})\x1b\\/.exec(response)
+  const observedValue = framed?.[1]?.toUpperCase()
+  const matches = observedValue !== undefined && Number.parseInt(observedValue, 16) === DECRQCRA_SEED_SUM
   // F1 (27832): a reply that lands after the DA1 sentinel is graded by its own bytes and recorded
   // as a late reply, exactly as device.ts:25-30 does for a device query.
-  const note = lateNote
-    ? `Checks framed reply and request id; checksum arithmetic is not verified; ${lateNote}`
-    : "Checks framed reply and request id; checksum arithmetic is not verified"
-  const assertions: NonNullable<ProbeResult["assertions"]> | undefined = supported
-    ? [{ kind: "positive", expected: "Complete four-digit checksum reply for request 1", observed: response }]
-    : undefined
+  const late = lateNote ? ` ${lateNote}` : ""
+  const note = matches
+    ? `Checks the framed reply, request id and the rectangle's 16-bit character sum.${late}`
+    : observedValue !== undefined
+      ? `Checksum reply ${observedValue} is not the seeded sum ${DECRQCRA_EXPECTED}.${late}`
+      : `No complete checksum reply for request 1; expected ${DECRQCRA_EXPECTED}.${late}`
+  const assertions: NonNullable<ProbeResult["assertions"]> | undefined =
+    observedValue !== undefined
+      ? [{ kind: matches ? "positive" : "negative", expected: `Request 1 returns ${DECRQCRA_EXPECTED}`, observed: response }]
+      : undefined
   return {
-    pass: supported,
+    pass: matches,
     response,
     note,
     observation: {
-      outcome: supported ? "supported" : "inconclusive",
+      outcome: matches ? "supported" : observedValue !== undefined ? "unsupported" : "inconclusive",
       evidence: "query",
       ...(lateNote && { note }),
-      ...(!supported && { reason: response ? ("invalid-reply" as const) : ("no-response" as const) }),
+      ...(!matches && observedValue === undefined && { reason: response ? ("invalid-reply" as const) : ("no-response" as const) }),
     },
     ...(assertions && { assertions }),
   }
@@ -716,15 +729,17 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     (ctx) => {
       // DECRQCRA sends a checksum request; the terminal should respond with
       // DCS Pid ! ~ D...D ST where D...D is the hex checksum.
-      // Write known content so the checksum is non-trivial.
-      ctx.feed("ABCDE\x1b[1;1H")
-      return checksumResult(ctx.feedCapture("\x1b[1;1;1;1;1;5*y")) // id, page, top, left, bottom, right
+      // The seeded cells fix the expected 16-bit sum, so the reply is checked as arithmetic.
+      ctx.feed(`${DECRQCRA_SEED}\x1b[1;1H`)
+      return checksumResult(ctx.feedCapture(DECRQCRA_REQUEST)) // id, page, top, left, bottom, right
     },
     async (ctx) => {
       // The DA1 follow-up ends the read on a channel the terminal has already
       // answered, so a terminal that never answers is disproved instead of
       // being waited out on a bare timeout. id, page, top, left, bottom, right.
-      const reply = await ctx.queryWithSentinelOutcome("\x1b[1;1;1;1;1;1*y", /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
+      // The same five seeded cells as the headless arm, so both arms check the same arithmetic.
+      ctx.write(`\x1b[0m\x1b[2J\x1b[H${DECRQCRA_SEED}\x1b[1;1H`)
+      const reply = await ctx.queryWithSentinelOutcome(DECRQCRA_REQUEST, /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/)
       if (reply.match) {
         // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the frame
         // and recorded with the ordering note — device.ts:25-30 applies the same rule. Only a
@@ -758,7 +773,11 @@ const editingProbeDefinitions: ProbeDefinition[] = [
       }
     },
   ),
-]
+].map((definition) =>
+  definition.id === "editing.decrqcra"
+    ? { ...definition, termObservationEvidence: "query" as const, termlessObservationEvidence: "query" as const }
+    : definition,
+)
 
 export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map((definition) => {
   const original = definition.term

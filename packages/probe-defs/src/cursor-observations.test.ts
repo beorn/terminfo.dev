@@ -975,6 +975,35 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
   expect(writes.at(-1)).toContain("\x1b[0 q")
 })
 
+test("app cursor hide grades the cursor cell's raw-pixel digests across shown, hidden and restored", async () => {
+  const captureFrames = async (values: readonly string[]) => {
+    const context = app(null)
+    context.captureGeometry = {
+      geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
+      source: "measured by complete raster calibration",
+    }
+    let index = 0
+    context.capture = async ({ role, label }) => ({
+      role,
+      label,
+      capturedAt: ++index,
+      ref: `frame-${index}`,
+      regionDigest: values[index - 1],
+      pixelsDigest: `whole-${index}`,
+      regionRectangle: { x: 16, y: 16, width: 8, height: 16 },
+    })
+    return await byId("cursor.hide").term!(context)
+  }
+  const supported = await captureFrames(["sha256:shown", "sha256:hidden", "sha256:shown"])
+  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(supported.assertions).toMatchObject([{ kind: "positive", expected: expect.stringContaining("pixel digest") }])
+  const unchanged = await captureFrames(["sha256:same", "sha256:same", "sha256:same"])
+  expect(unchanged.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(unchanged.assertions).toMatchObject([{ kind: "negative" }])
+  const unstable = await captureFrames(["sha256:a", "sha256:b", "sha256:c"])
+  expect(unstable.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+})
+
 test.each([1, 2])("app cursor hide cleans its disposable fixture when capture %i fails", async (failedCapture) => {
   const context = app(null)
   const writes: string[] = []

@@ -284,3 +284,16 @@ test("an explicit minimum geometry below what a row uses refuses at load", () =>
     /explicit minRows 5 is below the 6 rows this row uses \(cursor row 6, sentinel row 5\)/,
   )
 })
+
+test("decrqcra checks the seeded rectangle's 16-bit character sum", () => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "editing.decrqcra")
+  if (!probe?.termless) throw new Error("decrqcra termless callback missing")
+  expect(probe.termObservationEvidence).toBe("query")
+  expect(probe.termlessObservationEvidence).toBe("query")
+  const right = headless({ feedCapture: () => "\x1bP1!~014F\x1b\\" })
+  expect(probe.termless(right)).toMatchObject({ pass: true, observation: { outcome: "supported", evidence: "query" } })
+  const wrong = headless({ feedCapture: () => "\x1bP1!~014E\x1b\\" })
+  expect(probe.termless(wrong)).toMatchObject({ pass: false, observation: { outcome: "unsupported", evidence: "query" } })
+  const none = headless({ feedCapture: () => "" })
+  expect(probe.termless(none)).toMatchObject({ pass: false, observation: { outcome: "inconclusive" } })
+})
