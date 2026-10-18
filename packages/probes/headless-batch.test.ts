@@ -141,7 +141,7 @@ test("retains Bun's missing artifact cause and path beside the failed worker std
       const collection = await collectHeadlessRuns(["libvterm"], ${JSON.stringify(directory)})
       console.log(JSON.stringify(collection))
     `
-    const child = spawnSync(process.execPath, ["-e", code], { encoding: "utf8" })
+    const child = spawnSync("bun", ["-e", code], { encoding: "utf8" })
     if (child.status !== 0) throw new Error(`Collector subprocess failed: ${child.stderr}`)
     const collection = JSON.parse(child.stdout) as {
       runs: string[]
