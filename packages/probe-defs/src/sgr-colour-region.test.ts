@@ -2,10 +2,16 @@
  * @failure The 11 sgr.* colour rows on an owned-capture run all return the generic
  *   "Control and target pixels captured; visual interpretation requires review" and stay
  *   inconclusive on every context, although each row's own catalogue probe already names a
- *   discriminator that needs no absolute palette: the styled cells must differ from the neutral
- *   baseline AND from a second, different colour in the same family. A capture arm that keeps the
- *   generic review note for a row it can decide, or that grades "the frames differ" as support
- *   without that second colour, is the bug this test pins.
+ *   discriminator that needs no absolute palette: the styled sample must differ from the neutral
+ *   sample AND from a named sibling that a terminal lacking exactly the claimed capability would
+ *   paint identically. A capture arm that keeps the generic review note for a row it can decide,
+ *   that grades "the frames differ" as support, that accepts a sibling it cannot separate (a
+ *   terminal quantising truecolour to 256, 256 to 16, or bright to normal), or that decides colour
+ *   unsupported, is the bug this test pins.
+ *   The quantisation fixtures model a terminal, so the model itself is proved: every palette entry
+ *   is distinct, and each sibling pair collapses identically on BOTH modelled palettes. A pair that
+ *   collapses only because two different entries share one placeholder colour is an alias, not a
+ *   measurement, and the fixture must not credit it.
  * @level l1
  * @consumer The capture arms of the 11 sgr.* colour rows on owned Linux app contexts.
  * @testonly none
@@ -69,48 +75,78 @@ const PALETTES: readonly Palette[] = [
 ]
 
 function kindOf(theme: string, kind: "standard" | "bright"): readonly string[] {
+  // Every entry is distinct: the quantiser fixtures compare entries, so two names for one colour
+  // would let a pair collapse for the wrong reason. The reds and the default foreground are the
+  // colours the retained runs actually rendered; the rest are the fixture's own palette.
   const palette =
     theme === "wezterm"
       ? {
-          rest: "178,178,178",
-          red: "204,85,85",
-          green: "85,204,85",
-          blue: "85,85,204",
-          brightRed: "255,85,85",
-          brightGreen: "85,255,85",
-          brightBlue: "85,85,255",
+          standard: [
+            "0,0,0",
+            "204,85,85",
+            "85,204,85",
+            "204,204,85",
+            "85,85,204",
+            "204,85,204",
+            "85,204,204",
+            "178,178,178",
+          ],
+          bright: [
+            "102,102,102",
+            "255,85,85",
+            "85,255,85",
+            "255,255,85",
+            "85,85,255",
+            "255,85,255",
+            "85,255,255",
+            "255,255,255",
+          ],
         }
       : {
-          rest: "216,216,216",
-          red: "172,66,66",
-          green: "66,172,66",
-          blue: "66,66,172",
-          brightRed: "197,85,85",
-          brightGreen: "85,197,85",
-          brightBlue: "85,85,197",
+          standard: [
+            "0,0,0",
+            "172,66,66",
+            "66,172,66",
+            "172,172,66",
+            "66,66,172",
+            "170,117,159",
+            "66,172,172",
+            "216,216,216",
+          ],
+          bright: [
+            "127,127,127",
+            "197,85,85",
+            "85,197,85",
+            "197,197,85",
+            "85,85,197",
+            "197,85,197",
+            "85,197,197",
+            "255,255,255",
+          ],
         }
-  return kind === "standard"
-    ? [palette.rest, palette.red, palette.green, palette.rest, palette.blue, palette.rest, palette.rest, palette.rest]
-    : [
-        palette.rest,
-        palette.brightRed,
-        palette.brightGreen,
-        palette.rest,
-        palette.brightBlue,
-        palette.rest,
-        palette.rest,
-        palette.rest,
-      ]
+  return kind === "standard" ? palette.standard : palette.bright
 }
 
 function indexOf(theme: string, index: number): string {
   if (index === 67) return "95,135,175"
   if (index === 173) return "215,135,95"
+  if (index === 4) return theme === "wezterm" ? "85,85,204" : "66,66,172"
   if (index === 5) return theme === "wezterm" ? "204,85,204" : "170,117,159"
+  if (index === 164) return "215,0,215"
   return `index-${index}`
 }
 
-type Mode = "render" | "ignore" | "collapse"
+/**
+ * How the fake terminal renders colour. The last three model the terminals a row's sibling must
+ * exclude, so a rule that cannot separate them refuses instead of passing.
+ */
+type Mode = "render" | "ignore" | "collapse" | "quantize-truecolor" | "quantize-256" | "collapse-bright"
+
+interface ColourRequest {
+  family: "standard" | "bright" | "index" | "rgb"
+  index?: number
+  rgb?: readonly [number, number, number]
+}
 
 interface Ink {
   fg: string
@@ -123,10 +159,99 @@ interface Cell extends Ink {
   char: string
 }
 
-function paintColour(mode: Mode, kind: "fg" | "bg" | "underline", colour: string): string {
+/** The xterm 16-colour palette the quantisation modes measure against. */
+const XTERM16: readonly (readonly [number, number, number])[] = [
+  [0, 0, 0],
+  [205, 0, 0],
+  [0, 205, 0],
+  [205, 205, 0],
+  [0, 0, 238],
+  [205, 0, 205],
+  [0, 205, 205],
+  [229, 229, 229],
+  [127, 127, 127],
+  [255, 0, 0],
+  [0, 255, 0],
+  [255, 255, 0],
+  [92, 92, 255],
+  [255, 0, 255],
+  [0, 255, 255],
+  [255, 255, 255],
+]
+
+const CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
+
+function nearestCubeLevel(value: number): number {
+  return CUBE_LEVELS.reduce((best, level) => (Math.abs(level - value) < Math.abs(best - value) ? level : best), 0)
+}
+
+function distance(a: readonly [number, number, number], b: readonly [number, number, number]): number {
+  return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+}
+
+/** The entry a terminal that quantises truecolour to the xterm-256 palette would paint. */
+function nearest256(rgb: readonly [number, number, number]): string {
+  const cube: readonly [number, number, number] = [
+    nearestCubeLevel(rgb[0]),
+    nearestCubeLevel(rgb[1]),
+    nearestCubeLevel(rgb[2]),
+  ]
+  const average = (rgb[0] + rgb[1] + rgb[2]) / 3
+  const greyStep = Math.max(0, Math.min(23, Math.round((average - 8) / 10)))
+  const greyValue = 8 + 10 * greyStep
+  const grey: readonly [number, number, number] = [greyValue, greyValue, greyValue]
+  const chosen = distance(rgb, cube) <= distance(rgb, grey) ? cube : grey
+  return `${chosen[0]},${chosen[1]},${chosen[2]}`
+}
+
+/** The canonical xterm-256 RGB of an index: what a quantiser measures, never its theme skin. */
+function canonical256(index: number): readonly [number, number, number] {
+  if (index < 16) return XTERM16[index] ?? [0, 0, 0]
+  if (index >= 232) {
+    const level = 8 + 10 * (index - 232)
+    return [level, level, level]
+  }
+  const n = index - 16
+  const level = (position: number): number => CUBE_LEVELS[position] ?? 0
+  return [level(Math.floor(n / 36)), level(Math.floor((n % 36) / 6)), level(n % 6)]
+}
+
+/** The 16-colour entry a terminal that quantises 256 colours would paint, as the palette's own RGB. */
+function nearest16(palette: Palette, index: number): string {
+  const requested = canonical256(index)
+  let best = 0
+  for (let candidate = 1; candidate < XTERM16.length; candidate += 1) {
+    if (distance(requested, XTERM16[candidate] ?? [0, 0, 0]) < distance(requested, XTERM16[best] ?? [0, 0, 0])) {
+      best = candidate
+    }
+  }
+  return best < 8 ? (palette.standard[best] ?? "outside") : (palette.bright[best - 8] ?? "outside")
+}
+
+function resolve(mode: Mode, palette: Palette, channel: "fg" | "bg" | "underline", request: ColourRequest): string {
   if (mode === "ignore") return "default"
   if (mode === "collapse") return "one-colour"
-  return `${kind}:${colour}`
+  let rendered: string
+  switch (request.family) {
+    case "standard":
+      rendered = palette.standard[request.index ?? 0] ?? "outside"
+      break
+    case "bright":
+      rendered =
+        mode === "collapse-bright"
+          ? (palette.standard[request.index ?? 0] ?? "outside")
+          : (palette.bright[request.index ?? 0] ?? "outside")
+      break
+    case "index":
+      rendered = mode === "quantize-256" ? nearest16(palette, request.index ?? 0) : palette.indexed(request.index ?? 0)
+      break
+    case "rgb": {
+      const rgb = request.rgb ?? [0, 0, 0]
+      rendered = mode === "quantize-truecolor" ? nearest256(rgb) : `${rgb[0]},${rgb[1]},${rgb[2]}`
+      break
+    }
+  }
+  return `${channel}:${rendered}`
 }
 
 function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Palette): Ink {
@@ -168,42 +293,43 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       continue
     }
     if (param >= 30 && param <= 37) {
-      next.fg = paintColour(mode, "fg", `standard-${param - 30}@${palette.standard[param - 30]}`)
+      next.fg = resolve(mode, palette, "fg", { family: "standard", index: param - 30 })
       index += 1
       continue
     }
     if (param >= 40 && param <= 47) {
-      next.bg = paintColour(mode, "bg", `standard-${param - 40}@${palette.standard[param - 40]}`)
+      next.bg = resolve(mode, palette, "bg", { family: "standard", index: param - 40 })
       index += 1
       continue
     }
     if (param >= 90 && param <= 97) {
-      next.fg = paintColour(mode, "fg", `bright-${param - 90}@${palette.bright[param - 90]}`)
+      next.fg = resolve(mode, palette, "fg", { family: "bright", index: param - 90 })
       index += 1
       continue
     }
     if (param >= 100 && param <= 107) {
-      next.bg = paintColour(mode, "bg", `bright-${param - 100}@${palette.bright[param - 100]}`)
+      next.bg = resolve(mode, palette, "bg", { family: "bright", index: param - 100 })
       index += 1
       continue
     }
     if (param === 38 || param === 48 || param === 58) {
-      const slot = param === 38 ? "fg" : param === 48 ? "bg" : "underline"
+      const channel = param === 38 ? "fg" : param === 48 ? "bg" : "underline"
       const modeParam = params[index + 1]
       if (modeParam === 5) {
-        const entry = palette.indexed(params[index + 2] ?? 0)
-        const colour = paintColour(mode, slot, `index-${params[index + 2]}@${entry}`)
-        if (slot === "fg") next.fg = colour
-        else if (slot === "bg") next.bg = colour
+        const colour = resolve(mode, palette, channel, { family: "index", index: params[index + 2] ?? 0 })
+        if (channel === "fg") next.fg = colour
+        else if (channel === "bg") next.bg = colour
         else next.underlineColour = colour
         index += 3
         continue
       }
       if (modeParam === 2) {
-        const rgb = `${params[index + 2]},${params[index + 3]},${params[index + 4]}`
-        const colour = paintColour(mode, slot, `rgb-${rgb}`)
-        if (slot === "fg") next.fg = colour
-        else if (slot === "bg") next.bg = colour
+        const colour = resolve(mode, palette, channel, {
+          family: "rgb",
+          rgb: [params[index + 2] ?? 0, params[index + 3] ?? 0, params[index + 4] ?? 0],
+        })
+        if (channel === "fg") next.fg = colour
+        else if (channel === "bg") next.bg = colour
         else next.underlineColour = colour
         index += 5
         continue
@@ -221,10 +347,13 @@ interface Screen {
   ink: Ink
 }
 
+function blankCell(): Cell {
+  return { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false }
+}
+
 function blankScreen(): Screen {
-  const cell: Cell = { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false }
   return {
-    grid: Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => ({ ...cell }))),
+    grid: Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => blankCell())),
     row: 0,
     col: 0,
     ink: { fg: "default", bg: "default", underlineColour: "default", underline: false },
@@ -233,8 +362,8 @@ function blankScreen(): Screen {
 
 const CONTROL = /^\x1b\[([0-9;:?]*)([@-~])/
 
-/** Paint one write onto the fake screen. The probe only ever writes CUP, ED and SGR, so everything
- * else is ignored rather than guessed at. */
+/** Paint one write onto the fake screen. The probe only writes CUP, ED and SGR, so everything else
+ * is ignored rather than guessed at. */
 function paint(screen: Screen, write: string, mode: Mode, palette: Palette): void {
   let rest = write
   while (rest.length > 0) {
@@ -249,8 +378,7 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette): voi
         screen.row = Math.max(0, (params[0] ?? 1) - 1)
         screen.col = Math.max(0, (params[1] ?? 1) - 1)
       } else if (final === "J" && (params[0] ?? 0) === 2) {
-        const blank: Cell = { char: " ", fg: "default", bg: "default", underlineColour: "default", underline: false }
-        for (const row of screen.grid) row.fill(blank)
+        for (const row of screen.grid) row.fill(blankCell())
         screen.ink = { fg: "default", bg: "default", underlineColour: "default", underline: false }
         screen.row = 0
         screen.col = 0
@@ -301,9 +429,9 @@ interface ColourTerminal {
 }
 
 /**
- * A terminal that renders SGR colour into the screen so a capture can read it back: `render`
- * honours every colour, `ignore` leaves the ink at its default, and `collapse` paints every colour
- * with one and the same value — the fixture a rule that only compares "the frames differ" passes.
+ * A terminal that renders SGR colour into the screen so a capture can read it back. `render`
+ * honours every colour; `ignore` leaves the ink at its default; `collapse` paints every colour with
+ * one value; the three quantisation modes model the terminals a row's sibling must exclude.
  */
 function colourTerminal(mode: Mode, palette: Palette): ColourTerminal {
   const screen = blankScreen()
@@ -356,31 +484,69 @@ for (const id of COLOUR_IDS) {
     test(`${id} is decided from pixels on ${palette.name}`, async () => {
       const { ctx } = colourTerminal("render", palette)
       const result = await run(id, ctx)
-      expect(result.observation?.note ?? "").not.toContain("visual interpretation requires review")
+      const note = result.observation?.note ?? ""
+      expect(note).not.toContain("visual interpretation requires review")
       expect(result.observation?.outcome).toBe("supported")
       expect(result.observation?.evidence).toBe("pixels")
       expect(result.pass).toBe(true)
       expect(result.observation?.frames?.length ?? 0).toBeGreaterThanOrEqual(2)
+      expect(note).toContain("neutral sample")
+      expect(note).toContain("sibling")
+      expect(note).toContain("not interpreted")
     })
   }
 }
 
 for (const id of COLOUR_IDS) {
-  test(`${id} is never supported by a terminal that ignores colour`, async () => {
+  test(`${id} is inconclusive by name on a terminal that ignores colour`, async () => {
     const { ctx } = colourTerminal("ignore", PALETTES[0] as Palette)
     const result = await run(id, ctx)
-    expect(result.observation?.outcome).not.toBe("supported")
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.observation?.note ?? "").not.toBe("")
     expect(result.pass).toBe(false)
   })
 }
 
 for (const id of COLOUR_IDS) {
-  test(`${id} is never supported when two colours render the same`, async () => {
+  test(`${id} is inconclusive by name when two colours render the same`, async () => {
     const { ctx } = colourTerminal("collapse", PALETTES[0] as Palette)
     const result = await run(id, ctx)
-    expect(result.observation?.outcome).not.toBe("supported")
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.observation?.note ?? "").not.toBe("")
     expect(result.pass).toBe(false)
   })
+}
+
+const QUANTISATION: ReadonlyArray<{ ids: readonly string[]; mode: Mode; cause: string }> = [
+  {
+    ids: ["sgr.fg.truecolor", "sgr.bg.truecolor", "sgr.underline-color-rgb"],
+    mode: "quantize-truecolor",
+    cause: "quantises truecolour to the xterm-256 palette",
+  },
+  {
+    ids: ["sgr.fg.256", "sgr.bg.256", "sgr.underline-color-indexed"],
+    mode: "quantize-256",
+    cause: "quantises 256 colours to the 16-colour palette",
+  },
+  {
+    ids: ["sgr.fg.bright", "sgr.bg.bright"],
+    mode: "collapse-bright",
+    cause: "paints bright as its normal counterpart",
+  },
+]
+
+for (const { ids, mode, cause } of QUANTISATION) {
+  for (const id of ids) {
+    for (const palette of PALETTES) {
+      test(`${id} cannot be separated on ${palette.name} by a terminal that ${cause}`, async () => {
+        const { ctx } = colourTerminal(mode, palette)
+        const result = await run(id, ctx)
+        expect(result.observation?.outcome).toBe("inconclusive")
+        expect(result.observation?.note ?? "").toMatch(/cannot separate|read the same cells/i)
+        expect(result.pass).toBe(false)
+      })
+    }
+  }
 }
 
 for (const id of REVIEW_IDS) {
@@ -393,23 +559,45 @@ for (const id of REVIEW_IDS) {
   })
 }
 
-/** The fixture is the whole test's evidence: prove it separates two colours, and that each negative
- * mode collapses exactly what it claims to. */
-test("the colour fixture renders red and blue apart, and collapses them when it should", async () => {
+/** The fixture is the whole test's evidence: prove it separates the pairs it claims to, and that
+ * each negative mode collapses exactly the pair its row's sibling is meant to exclude. */
+test("the colour fixture separates colours, and collapses the sibling pairs it should", async () => {
   const cells: CaptureCells = { top: 3, left: 3, bottom: 3, right: 3 }
-  const read = async (mode: Mode, sequence: string): Promise<string> => {
-    const { ctx } = colourTerminal(mode, PALETTES[0] as Palette)
+  const read = async (mode: Mode, sequence: string, palette: Palette): Promise<string> => {
+    const { ctx } = colourTerminal(mode, palette)
     ctx.write("\x1b[0m\x1b[2J\x1b[3;3H")
     ctx.write(sequence)
     const frame = await ctx.capture?.({ role: "target", label: mode, cells, pixelGeometry: GEOMETRY })
     return frame?.regionDigest ?? "missing"
   }
-  const red = await read("render", "\x1b[31mX")
-  const blue = await read("render", "\x1b[34mX")
-  const neutral = await read("render", "X")
-  expect(red).not.toBe(blue)
-  expect(red).not.toBe(neutral)
-  expect(blue).not.toBe(neutral)
-  expect(await read("ignore", "\x1b[31mX")).toBe(await read("ignore", "\x1b[34mX"))
-  expect(await read("collapse", "\x1b[31mX")).toBe(await read("collapse", "\x1b[34mX"))
+  for (const palette of PALETTES) {
+    // No two entries may share a colour: a collapse caused by two names for one colour proves nothing.
+    expect(new Set([...palette.standard, ...palette.bright]).size).toBe(16)
+    const red = await read("render", "\x1b[31mX", palette)
+    const blue = await read("render", "\x1b[34mX", palette)
+    const neutral = await read("render", "X", palette)
+    expect(red).not.toBe(blue)
+    expect(red).not.toBe(neutral)
+    expect(blue).not.toBe(neutral)
+    expect(await read("render", "\x1b[91mX", palette)).not.toBe(red)
+    expect(await read("render", "\x1b[90mX", palette)).not.toBe(await read("render", "\x1b[38;5;67mX", palette))
+    expect(await read("render", "\x1b[38;2;255;135;0mX", palette)).not.toBe(
+      await read("render", "\x1b[38;2;255;128;0mX", palette),
+    )
+    expect(await read("ignore", "\x1b[31mX", palette)).toBe(await read("ignore", "\x1b[34mX", palette))
+    expect(await read("collapse", "\x1b[31mX", palette)).toBe(await read("collapse", "\x1b[34mX", palette))
+    expect(await read("collapse-bright", "\x1b[91mX", palette)).toBe(
+      await read("collapse-bright", "\x1b[31mX", palette),
+    )
+    expect(await read("quantize-256", "\x1b[38;5;67mX", palette)).toBe(await read("quantize-256", "\x1b[90mX", palette))
+    expect(await read("quantize-256", "\x1b[58;5;5mX", palette)).toBe(
+      await read("quantize-256", "\x1b[58;5;164mX", palette),
+    )
+    expect(await read("quantize-truecolor", "\x1b[38;2;255;128;0mX", palette)).toBe(
+      await read("quantize-truecolor", "\x1b[38;2;255;135;0mX", palette),
+    )
+    expect(await read("quantize-truecolor", "\x1b[58;2;255;0;128mX", palette)).toBe(
+      await read("quantize-truecolor", "\x1b[58;2;255;0;135mX", palette),
+    )
+  }
 })
