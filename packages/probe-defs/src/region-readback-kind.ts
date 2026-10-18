@@ -319,21 +319,20 @@ function unpaintedColor(
 }
 
 /** The SGR the expected frame paints for a declared attribute cell. */
-function attributeSgr(
-  attributes: RegionReadbackAttributes,
-  paint: RegionReadbackPaint | undefined,
-  position: { row: number; col: number },
-): string {
+function attributeSgr(attributes: RegionReadbackAttributes, paint: RegionReadbackPaint | undefined): string {
   const codes: string[] = []
   if (attributes.inverse === true) codes.push("7")
   const bg = attributes.bg
-  if (bg !== undefined) codes.push(paintBytes(paint?.bg, position))
+  // assertRelativeClaimsPainted proved at LOAD that every relative bg claim carries its bytes, so the
+  // painter reads them and carries no second refusal of its own (@cto round-3e B6).
+  // assertRelativeClaimsPainted proved at LOAD that every relative bg claim carries its bytes, so this
+  // narrowing is that proof, not a second refusal.
+  if (bg !== undefined) codes.push(paintBytes(paint?.bg as string))
   return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`
 }
 
-/** A relative color claim paints the row's own SGR; loading proved the bytes exist. */
-function paintBytes(paint: string | undefined, position: { row: number; col: number }): string {
-  if (!paint) throw new Error(`cell ${position.row},${position.col} asserts a relative bg with no paint bytes`)
+/** The SGR parameters inside a row's paint bytes; loading proved they exist for every claim. */
+function paintBytes(paint: string): string {
   return paint.replace(/^\x1b\[/u, "").replace(/m$/u, "")
 }
 
@@ -342,16 +341,16 @@ function paintBytes(paint: string | undefined, position: { row: number; col: num
  * attribute cell paints its declared SGR around its character, so the expected frame differs from
  * the seed exactly where an adapter that reads attributes can see the difference.
  */
-function paintRow(cells: readonly RegionReadbackCell[], paint: RegionReadbackPaint | undefined, row: number): string {
+function paintRow(cells: readonly RegionReadbackCell[], paint: RegionReadbackPaint | undefined): string {
   let painted = ""
-  for (const [col, cell] of cells.entries()) {
+  for (const cell of cells) {
     const character = cellChar(cell)
     if (character === "") continue
     if (typeof cell === "string") {
       painted += character
       continue
     }
-    painted += `\x1b[0m${attributeSgr(cell.attributes, paint, { row, col })}${character}\x1b[0m`
+    painted += `\x1b[0m${attributeSgr(cell.attributes, paint)}${character}\x1b[0m`
   }
   return painted
 }
@@ -421,7 +420,7 @@ function paintFrame(
   geometry: RegionReadbackGeometry,
   paint: RegionReadbackPaint | undefined,
 ): string {
-  return grid.map((cells, row) => cup(geometry.top + row, geometry.left) + paintRow(cells, paint, row)).join("")
+  return grid.map((cells, row) => cup(geometry.top + row, geometry.left) + paintRow(cells, paint)).join("")
 }
 
 /**
@@ -456,7 +455,9 @@ function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
       for (const [col, cell] of line.entries()) {
         if (typeof cell === "string") continue
         if (cell.attributes.bg === undefined) continue
-        if (row.paint?.bg === undefined) {
+        // Falsy, not only undefined: an empty string would paint no background and ship a claim no
+        // adapter can decide, so it refuses here with the row id (@cto round-3e B6).
+        if (!row.paint?.bg) {
           throw new Error(`${row.id}: cell ${rowIndex},${col} asserts a relative bg with no paint bytes`)
         }
       }
@@ -691,6 +692,10 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           controlsValid ? undefined : row.controlNote,
         )
       } finally {
+        // The parser arm sets the same extent mode the app arm does (`2*x` inside the row's step), and
+        // 2J does not reset it, so the row's own cleanup lands here too on every exit: decided,
+        // refused or thrown (@cto round-3e B4).
+        if (row.cleanup !== undefined) ctx.feed(row.cleanup)
         ctx.feed(row.reset)
       }
     },

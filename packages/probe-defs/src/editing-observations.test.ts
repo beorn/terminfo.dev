@@ -292,6 +292,51 @@ for (const row of editingReadbackRows) {
 }
 
 /**
+ * @cto round-3e B4: the parser arm sets the same DECSACE extent mode the app arm does - `2*x` is part
+ * of the row's step and 2J does not reset it - so its finally must run the row's own cleanup before
+ * the SGR reset on every exit: decided, refused, or thrown by the reader.
+ */
+for (const id of ["editing.deccara", "editing.decrara"]) {
+  test(`${id} clears its extent mode on the parser arm on every exit`, () => {
+    const row = editingReadbackRows.find((entry) => entry.id === id)
+    if (!row) throw new Error(`missing ${id}`)
+    const probe = editingProbes.find((entry) => entry.id === id)
+    if (!probe?.termless) throw new Error(`missing headless ${id}`)
+    const termless = probe.termless
+    const step = firstStep(id)
+
+    const watch = (ctx: TermlessContext) => {
+      const fed: string[] = []
+      const watched = {
+        ...ctx,
+        feed: (sequence: string) => {
+          fed.push(sequence)
+          ctx.feed(sequence)
+        },
+      }
+      return { fed, run: () => termless(watched) }
+    }
+
+    const supported = watch(declaredScreen({ [row.seed]: row.before, [step]: row.after }, 24))
+    expect(supported.run().observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.fed.slice(-2), `${id} cleanup on success`).toEqual(["\x1b[0*x", "\x1b[0m"])
+
+    const ignored = watch(declaredScreen({ [row.seed]: row.before }, 24))
+    expect(ignored.run().observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored.fed.slice(-2), `${id} cleanup on refusal`).toEqual(["\x1b[0*x", "\x1b[0m"])
+
+    const throwing = watch({
+      ...declaredScreen({ [row.seed]: row.before, [step]: row.after }, 24),
+      getCell: () => {
+        throw new Error("reader exploded")
+      },
+    })
+    expect(() => throwing.run(), `${id} reader throw`).toThrow("reader exploded")
+    expect(throwing.fed.slice(-2), `${id} cleanup on throw`).toEqual(["\x1b[0*x", "\x1b[0m"])
+  })
+}
+
+/**
  * Controls are what stops a fixture failure being read as a capability verdict, so each must be a REAL
  * control: a column the row's own sequence never writes. This is the shape that let a first revision of
  * the kind ship a step that rewrote its own control with every test passing, because nothing measured
