@@ -142,6 +142,80 @@ function assertCornerStaircase(
   }
 }
 
+type Edge = "top" | "bottom" | "left" | "right"
+const EDGES: readonly Edge[] = ["top", "bottom", "left", "right"]
+
+interface EdgeBlend {
+  edge: Edge
+  /** Row for top/bottom, column for left/right. */
+  coordinate: number
+  /** The one fraction of the paint colour every pixel on the line carries. */
+  alpha: number
+  /** Line pixels keyed by `y * frame.width + x` in the painted frame. */
+  pixels: Set<number>
+}
+
+/**
+ * A window's cell boundary can fall inside a device pixel, so the paint covers part of the one line
+ * directly outside the grid. Every pixel on that line is then the paint colour of the cell beside it
+ * at ONE alpha over its own pre-paint value. A second line, a partial span, a second alpha or any
+ * other colour is not this effect and stays unexplained.
+ */
+function edgeBlend(edge: Edge, grid: CaptureRectangle, before: CapturedFrame, after: CapturedFrame): EdgeBlend | null {
+  const horizontal = edge === "top" || edge === "bottom"
+  const length = horizontal ? grid.width : grid.height
+  const coordinate =
+    edge === "top"
+      ? grid.y - 1
+      : edge === "bottom"
+        ? grid.y + grid.height
+        : edge === "left"
+          ? grid.x - 1
+          : grid.x + grid.width
+  if (coordinate < 0 || (horizontal ? coordinate >= after.height : coordinate >= after.width)) return null
+  const positions = (position: number): { line: number; paint: number } => {
+    const x = horizontal ? grid.x + position : coordinate
+    const y = horizontal ? coordinate : grid.y + position
+    const paintX = horizontal ? x : edge === "left" ? grid.x : grid.x + grid.width - 1
+    const paintY = horizontal ? (edge === "top" ? grid.y : grid.y + grid.height - 1) : y
+    return { line: (y * after.width + x) * 4, paint: (paintY * after.width + paintX) * 4 }
+  }
+  let alpha: number | undefined
+  const pixels = new Set<number>()
+  for (let position = 0; position < length; position++) {
+    const { line, paint } = positions(position)
+    for (let channel = 0; channel < 3; channel++) {
+      const from = before.rgba[line + channel]
+      const to = after.rgba[line + channel]
+      const paintChannel = after.rgba[paint + channel]
+      if (from === undefined || to === undefined || paintChannel === undefined) {
+        throw new Error(`Capture calibration frame is missing byte ${line + channel}`)
+      }
+      if (paintChannel === from) {
+        if (to !== from) return null
+        continue
+      }
+      const candidate = (to - from) / (paintChannel - from)
+      if (!(candidate > 0 && candidate < 1)) return null
+      if (alpha === undefined) alpha = candidate
+      else if (Math.abs(candidate - alpha) > 0.01) return null
+      if (Math.abs(to - (from + alpha * (paintChannel - from))) > 1) return null
+    }
+    pixels.add((line / 4) | 0)
+  }
+  if (alpha === undefined) return null
+  return { edge, coordinate, alpha, pixels }
+}
+
+function edgeBlends(grid: CaptureRectangle, before: CapturedFrame, after: CapturedFrame): EdgeBlend[] {
+  const blends: EdgeBlend[] = []
+  for (const edge of EDGES) {
+    const blend = edgeBlend(edge, grid, before, after)
+    if (blend) blends.push(blend)
+  }
+  return blends
+}
+
 /** Count every selected pixel; holes are accepted only as the window's rounded-corner fillets. */
 function rectangle(frame: CapturedFrame, selected: (offset: number) => boolean): GridRaster {
   let left = frame.width,
@@ -479,9 +553,12 @@ export async function calibrateCaptureOrigin({
       if (frame.width !== before.width || frame.height !== before.height) {
         throw new Error("Capture calibration window dimensions changed")
       }
+      const explained = new Set<number>()
+      for (const blend of edgeBlends(grid, before, frame)) for (const key of blend.pixels) explained.add(key)
       for (let y = 0; y < frame.height; y++) {
         for (let x = 0; x < frame.width; x++) {
           if (x >= grid.x && x < grid.x + grid.width && y >= grid.y && y < grid.y + grid.height) continue
+          if (explained.has(y * frame.width + x)) continue
           const offset = (y * frame.width + x) * 4
           for (let channel = 0; channel < 4; channel++) {
             if (frame.rgba[offset + channel] !== before.rgba[offset + channel]) {
@@ -492,6 +569,7 @@ export async function calibrateCaptureOrigin({
       }
     }
     outsideUnchanged(solid)
+    const solidBlends = edgeBlends(grid, before, solid)
     paintGrid("columns")
     // The column paint must be present somewhere in the grid, not at its top-left pixel: a rounded
     // window's corner fillets sit exactly there, so that pixel stays black in every stage.
@@ -531,11 +609,20 @@ export async function calibrateCaptureOrigin({
     const clipTrace = `${columnClip > 0 ? `; columns clipped ${columnClip} px at the far edge` : ""}${
       rowClip > 0 ? `; rows clipped ${rowClip} px at the far edge` : ""
     }`
+    const blendTrace =
+      solidBlends.length === 0
+        ? ""
+        : `; edge blend ${solidBlends
+            .map(
+              ({ edge, coordinate, alpha, pixels }) =>
+                `${edge} ${edge === "top" || edge === "bottom" ? "y" : "x"}=${coordinate} alpha ${alpha.toFixed(3)} (${pixels.size} px)`,
+            )
+            .join(", ")}`
     return {
       origin: { x: grid.x, y: grid.y },
       pixelGeometry: measured,
       ...(columnClip > 0 || rowClip > 0 ? { visible: { width: grid.width, height: grid.height } } : {}),
-      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${grid.width}x${grid.height} grid at ${grid.x},${grid.y}${filletTrace}${clipTrace}; current paints and identical restore confirmed`,
+      basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${grid.width}x${grid.height} grid at ${grid.x},${grid.y}${filletTrace}${blendTrace}${clipTrace}; current paints and identical restore confirmed`,
     }
   } catch (cause) {
     failure = cause

@@ -412,7 +412,11 @@ function blendTop(source: CapturedFrame, alpha = 217 / 255): CapturedFrame {
   for (let x = 2; x < 10; x++) {
     const line = (1 * result.width + x) * 4
     const paint = (2 * result.width + x) * 4
-    const blended = [0, 1, 2].map((channel) => Math.round(alpha * source.rgba[paint + channel]!))
+    const blended = [0, 1, 2].map((channel) => {
+      const value = source.rgba[paint + channel]
+      if (value === undefined) throw new Error(`fixture is missing byte ${paint + channel}`)
+      return Math.round(alpha * value)
+    })
     result.rgba.set([...blended, 255], line)
   }
   return result
