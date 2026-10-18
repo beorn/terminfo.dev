@@ -56,7 +56,11 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install this job's terminal
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
+      - name: Install this job's terminal and pinned Mesa3D llvmpipe WGL renderer
         env:
           APP_ID: ${{ matrix.id }}
         run: |
@@ -66,25 +70,63 @@ jobs:
               ALACRITTY_DIR="$RUNNER_TEMP/alacritty"
               ALACRITTY_EXE="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.17.0-portable.exe"
               ALACRITTY_EXPECTED_SHA256="5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
+              # Pinned Mesa3D Windows x64 llvmpipe release (upstream: mmozeiko/build-mesa, version: 26.2.5, LLVM 23.1.3)
+              MESA_UPSTREAM="mmozeiko/build-mesa"
+              MESA_VERSION="26.2.5"
+              MESA_URL="https://github.com/mmozeiko/build-mesa/releases/download/26.2.5/mesa-llvmpipe-x64-26.2.5.7z"
+              MESA_ARCHIVE="$RUNNER_TEMP/measurement-artifacts/mesa-llvmpipe-x64-26.2.5.7z"
+              MESA_ARCHIVE_EXPECTED_SHA256="d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d"
+              MESA_OPENGL32_EXPECTED_SHA256="8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1"
               if [ -e "$ALACRITTY_DIR" ]; then
                 echo "Target directory $ALACRITTY_DIR already exists; refusing reuse" >&2
                 exit 1
               fi
-              curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0-portable.exe" -o "$ALACRITTY_EXE"
+              curl -L -s -f "$MESA_URL" -o "$MESA_ARCHIVE" || {
+                echo "Failed to download Mesa3D archive from $MESA_URL ($MESA_UPSTREAM $MESA_VERSION)" >&2
+                exit 1
+              }
+              MESA_ARCHIVE_ACTUAL_SHA256="$(sha256sum "$MESA_ARCHIVE" | awk '{sub(/^\\/, "", $1); print tolower($1)}')"
+              echo "mesa archive ($MESA_UPSTREAM $MESA_VERSION): sha256=$MESA_ARCHIVE_ACTUAL_SHA256 path=$MESA_ARCHIVE"
+              test "$MESA_ARCHIVE_ACTUAL_SHA256" = "$MESA_ARCHIVE_EXPECTED_SHA256" || {
+                echo "Mesa3D archive SHA256 mismatch: expected $MESA_ARCHIVE_EXPECTED_SHA256, got $MESA_ARCHIVE_ACTUAL_SHA256" >&2
+                exit 1
+              }
+              curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0-portable.exe" -o "$ALACRITTY_EXE" || {
+                echo "Failed to download Alacritty v0.17.0 portable exe" >&2
+                exit 1
+              }
               ACTUAL_SHA256="$(sha256sum "$ALACRITTY_EXE" | awk '{sub(/^\\/, "", $1); print tolower($1)}')"
+              echo "alacritty portable exe: sha256=$ACTUAL_SHA256 path=$ALACRITTY_EXE"
               test "$ACTUAL_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
                 echo "Alacritty SHA256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ACTUAL_SHA256" >&2
                 exit 1
               }
-              mkdir -p "$ALACRITTY_DIR"
+              mkdir -p "$ALACRITTY_DIR" "$RUNNER_TEMP/mesa_unpacked"
+              7z x -y "$MESA_ARCHIVE" "-o$RUNNER_TEMP/mesa_unpacked" >/dev/null || {
+                echo "Failed to extract Mesa3D archive $MESA_ARCHIVE" >&2
+                exit 1
+              }
               cp "$ALACRITTY_EXE" "$ALACRITTY_DIR/alacritty.exe"
+              # opengl32.dll in mmozeiko/build-mesa 26.2.5 is statically linked against LLVM/gallium and imports only Windows OS DLLs.
+              cp "$RUNNER_TEMP/mesa_unpacked/opengl32.dll" "$ALACRITTY_DIR/opengl32.dll"
+              ALACRITTY_PLACED_SHA256="$(sha256sum "$ALACRITTY_DIR/alacritty.exe" | awk '{sub(/^\\/, "", $1); print tolower($1)}')"
+              MESA_OPENGL32_ACTUAL_SHA256="$(sha256sum "$ALACRITTY_DIR/opengl32.dll" | awk '{sub(/^\\/, "", $1); print tolower($1)}')"
+              echo "placed alacritty.exe: sha256=$ALACRITTY_PLACED_SHA256 path=$ALACRITTY_DIR/alacritty.exe"
+              echo "placed opengl32.dll ($MESA_UPSTREAM $MESA_VERSION): sha256=$MESA_OPENGL32_ACTUAL_SHA256 path=$ALACRITTY_DIR/opengl32.dll"
+              test "$ALACRITTY_PLACED_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
+                echo "Placed alacritty.exe SHA256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ALACRITTY_PLACED_SHA256" >&2
+                exit 1
+              }
+              test "$MESA_OPENGL32_ACTUAL_SHA256" = "$MESA_OPENGL32_EXPECTED_SHA256" || {
+                echo "Mesa3D opengl32.dll SHA256 mismatch: expected $MESA_OPENGL32_EXPECTED_SHA256, got $MESA_OPENGL32_ACTUAL_SHA256" >&2
+                exit 1
+              }
               : > "$ALACRITTY_DIR/alacritty.toml"
-              test -f "$ALACRITTY_DIR/alacritty.exe" || { echo "Alacritty binary missing at $ALACRITTY_DIR/alacritty.exe" >&2; exit 1; }
               ;;
             *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
           esac
 
-      - name: C1 measure alacritty --version pipe, OpenGL context, and ConPTY process ancestry
+      - name: C1b measure Mesa3D llvmpipe GL >= 3.3, ConPTY ancestor chain + exe paths, and VT reply round trip
         id: collect
         env:
           APP_ID: ${{ matrix.id }}
@@ -93,28 +135,143 @@ jobs:
           OUT="$RUNNER_TEMP/measurement-artifacts"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.ps1"
+          CONPTY_PROBE_PATH="$GITHUB_WORKSPACE/packages/terminfo.dev/src/c1b-conpty-probe.ts"
+
+          cat > "$CONPTY_PROBE_PATH" <<'TS'
+          import { writeFileSync } from "node:fs"
+          import { createRequire } from "node:module"
+          import { readWindowsProcessTable, windowsProcessAncestry } from "./windows-process-ancestry.ts"
+          import { queryOutcome } from "./tty.ts"
+
+          const require = createRequire(import.meta.url)
+          const ffi = require("bun:ffi") as {
+            dlopen(
+              path: string,
+              symbols: Record<string, { args: readonly unknown[]; returns: unknown }>,
+            ): {
+              symbols: {
+                OpenProcess: (access: number, inherit: number, pid: number) => bigint
+                QueryFullProcessImageNameW: (handle: bigint, flags: number, buf: unknown, sizePtr: unknown) => number
+                CloseHandle: (handle: bigint) => number
+                GetLastError: () => number
+              }
+            }
+            FFIType: Record<string, unknown>
+            ptr(data: Uint8Array): unknown
+          }
+
+          const k32 = ffi.dlopen("kernel32.dll", {
+            OpenProcess: { args: [ffi.FFIType.u32, ffi.FFIType.i32, ffi.FFIType.u32], returns: ffi.FFIType.u64 },
+            QueryFullProcessImageNameW: {
+              args: [ffi.FFIType.u64, ffi.FFIType.u32, ffi.FFIType.ptr, ffi.FFIType.ptr],
+              returns: ffi.FFIType.i32,
+            },
+            CloseHandle: { args: [ffi.FFIType.u64], returns: ffi.FFIType.i32 },
+            GetLastError: { args: [], returns: ffi.FFIType.u32 },
+          })
+
+          const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+          function queryExecutablePathByPid(pid: number): { executablePath: string | null; errorCode?: number } {
+            const handle = k32.symbols.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+            if (handle === 0n) {
+              return { executablePath: null, errorCode: k32.symbols.GetLastError() }
+            }
+            try {
+              const maxChars = 4096
+              const buf = Buffer.alloc(maxChars * 2)
+              const sizeBuf = Buffer.alloc(4)
+              sizeBuf.writeUInt32LE(maxChars, 0)
+              const ok = k32.symbols.QueryFullProcessImageNameW(handle, 0, ffi.ptr(buf), ffi.ptr(sizeBuf))
+              if (ok === 0) {
+                return { executablePath: null, errorCode: k32.symbols.GetLastError() }
+              }
+              const charsWritten = sizeBuf.readUInt32LE(0)
+              const executablePath = new TextDecoder("utf-16le").decode(buf.subarray(0, charsWritten * 2))
+              return { executablePath }
+            } finally {
+              k32.symbols.CloseHandle(handle)
+            }
+          }
+
+          async function main() {
+            const outPath = process.argv[2]
+            if (!outPath) throw new Error("Missing output JSON path")
+            const table = await readWindowsProcessTable()
+            const chain = windowsProcessAncestry(table, process.pid).map((row) => ({
+              pid: row.pid,
+              parentPid: row.ppid,
+              comm: row.comm,
+              ...queryExecutablePathByPid(row.pid),
+            }))
+            const alacrittyRow = chain.find((row) => row.comm.toLowerCase() === "alacritty.exe")
+            const alacrittyChildren = alacrittyRow
+              ? table
+                  .filter((row) => row.ppid === alacrittyRow.pid)
+                  .map((row) => ({
+                    pid: row.pid,
+                    parentPid: row.ppid,
+                    comm: row.comm,
+                    ...queryExecutablePathByPid(row.pid),
+                  }))
+              : []
+
+            const startMs = performance.now()
+            const da1 = await queryOutcome("\x1b[c", /\x1b\[\?([0-9;]+)c/, 2000)
+            const elapsedMs = Math.round((performance.now() - startMs) * 100) / 100
+
+            const report = {
+              probePid: process.pid,
+              parentPid: process.ppid,
+              stdinIsTTY: Boolean(process.stdin.isTTY),
+              stdoutIsTTY: Boolean(process.stdout.isTTY),
+              env: {
+                TERM: process.env.TERM ?? null,
+                TERM_PROGRAM: process.env.TERM_PROGRAM ?? null,
+                ALACRITTY_WINDOW_ID: process.env.ALACRITTY_WINDOW_ID ?? null,
+                WT_SESSION: process.env.WT_SESSION ?? null,
+                COLORTERM: process.env.COLORTERM ?? null,
+              },
+              ancestryChain: chain,
+              alacrittyChildren,
+              vtReply: {
+                sequence: "\\x1b[c",
+                reason: da1.reason,
+                match: da1.match,
+                rawBase64: da1.rawBase64,
+                rawText: Buffer.from(da1.rawBase64, "base64").toString("utf8"),
+                elapsedMs,
+              },
+            }
+            writeFileSync(outPath, JSON.stringify(report, null, 2) + "\n")
+            if (da1.reason !== "reply" || !da1.match?.[0]) {
+              throw new Error(`VT DA1 query failed inside Alacritty ConPTY: reason=${da1.reason}`)
+            }
+          }
+
+          await main()
+          TS
 
           WIN_OUT="$(cygpath -w "$OUT")"
           WIN_COMMAND="$(cygpath -w "$COMMAND_PATH")"
+          WIN_CONPTY_PROBE="$(cygpath -w "$CONPTY_PROBE_PATH")"
+          WIN_CONPTY_JSON="$(cygpath -w "$OUT/c1b-conpty-probe.json")"
+          COLLECTOR_BUN="$(cygpath -w "$(command -v bun)")"
           WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.exe")"
           WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/Alacritty-v0.17.0-portable.exe")"
+          WIN_MESA_ARCHIVE="$(cygpath -w "$OUT/mesa-llvmpipe-x64-26.2.5.7z")"
+          WIN_MESA_OPENGL32="$(cygpath -w "$RUNNER_TEMP/alacritty/opengl32.dll")"
           WIN_ALACRITTY_CONFIG="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.toml")"
 
           cat > "$COMMAND_PATH" <<PS1
           \$ErrorActionPreference = "Stop"
-          \$marker = [ordered]@{
-            pid = \$PID
-            timestamp = (Get-Date).ToString("o")
-            env = [ordered]@{
-              TERM = \$env:TERM
-              TERM_PROGRAM = \$env:TERM_PROGRAM
-              ALACRITTY_WINDOW_ID = \$env:ALACRITTY_WINDOW_ID
-              WT_SESSION = \$env:WT_SESSION
-              COLORTERM = \$env:COLORTERM
-            }
+          try {
+            & "$COLLECTOR_BUN" "$WIN_CONPTY_PROBE" "$WIN_CONPTY_JSON" 2> "$WIN_OUT\\c1b-conpty-probe.stderr.log"
+            \$probeExit = \$LASTEXITCODE
+          } catch {
+            \$_ | Out-String | Set-Content -Path "$WIN_OUT\\c1b-conpty-probe.ps1-error.log" -Encoding utf8
+            \$probeExit = 1
           }
-          \$marker | ConvertTo-Json -Depth 4 | Set-Content -Path "$WIN_OUT\\c1-marker.json" -Encoding utf8
-
           \$rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine)
           \$byPid = @{}
           foreach (\$r in \$rows) { \$byPid[[int]\$r.ProcessId] = \$r }
@@ -127,19 +284,21 @@ jobs:
             \$chain += \$row
             \$cur = [int]\$row.ParentProcessId
           }
-          \$related = @(\$rows | Where-Object { \$_.Name -match 'alacritty|conhost|openconsole|powershell' })
+          \$related = @(\$rows | Where-Object { \$_.Name -match 'alacritty|conhost|openconsole|powershell|bun' })
           [ordered]@{
             selfPid = \$PID
+            bunProbeExit = \$probeExit
             ancestryChain = \$chain
             relatedProcesses = \$related
           } | ConvertTo-Json -Depth 6 | Set-Content -Path "$WIN_OUT\\c1-ancestry.json" -Encoding utf8
+          Set-Content -Path "$WIN_OUT\\c1-marker.json" -Value (\$probeExit.ToString()) -Encoding ascii
 
           for (\$i = 0; \$i -lt 60; \$i++) {
             if (Test-Path "$WIN_OUT\\collector-ready") { break }
             Start-Sleep -Milliseconds 500
           }
           Set-Content -Path "$WIN_OUT\\collector-exit" -Value "0" -Encoding ascii
-          exit 0
+          exit \$probeExit
           PS1
 
           "$RUNNER_TEMP/alacritty/alacritty.exe" -v -v --config-file "$WIN_ALACRITTY_CONFIG" --working-directory "$WIN_OUT" -e powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
@@ -156,11 +315,17 @@ jobs:
             sleep 1
           done
 
-          export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_SOURCE_ARTIFACT"
+          export APP_EXECUTABLE="$WIN_EXECUTABLE"
+          export APP_SOURCE_ARTIFACT="$WIN_SOURCE_ARTIFACT"
+          export MESA_UPSTREAM="mmozeiko/build-mesa"
+          export MESA_VERSION="26.2.5"
+          export MESA_ARCHIVE_PATH="$WIN_MESA_ARCHIVE"
+          export MESA_OPENGL32_PATH="$WIN_MESA_OPENGL32"
           WIN_PROBE_JSON="$(cygpath -w "$OUT/c1-receipt-probe.json")"
-          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" c1-probe "$WIN_PROBE_JSON" > "$OUT/c1-receipt-probe.stdout.log" 2> "$OUT/c1-receipt-probe.stderr.log" || true
+          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" c1-probe "$WIN_PROBE_JSON" > "$OUT/c1-receipt-probe.stdout.log" 2> "$OUT/c1-receipt-probe.stderr.log"
           touch "$OUT/collector-ready"
           wait "$ALACRITTY_BG_PID" || true
+          rm -f "$CONPTY_PROBE_PATH"
 
           echo "=== launcher.log ==="
           cat "$OUT/launcher.log" || true
@@ -168,10 +333,29 @@ jobs:
           cat "$OUT/c1-receipt-probe.stderr.log" || true
           echo "=== c1-receipt-probe.json ==="
           cat "$OUT/c1-receipt-probe.json" || true
-          echo "=== c1-marker.json ==="
-          cat "$OUT/c1-marker.json" || true
+          echo "=== c1b-conpty-probe.stderr.log ==="
+          cat "$OUT/c1b-conpty-probe.stderr.log" || true
+          echo "=== c1b-conpty-probe.json ==="
+          cat "$OUT/c1b-conpty-probe.json" || true
           echo "=== c1-ancestry.json ==="
           cat "$OUT/c1-ancestry.json" || true
+
+          grep -E "Running on .*llvmpipe" "$OUT/launcher.log" || {
+            echo "launcher.log did not show llvmpipe renderer" >&2
+            exit 1
+          }
+          grep -E "OpenGL version [3-9]\.[0-9]|Using OpenGL 3\.3 renderer" "$OUT/launcher.log" || {
+            echo "launcher.log did not show OpenGL >= 3.3 context" >&2
+            exit 1
+          }
+          test -f "$OUT/c1b-conpty-probe.json" || {
+            echo "c1b-conpty-probe.json was not written by ConPTY child" >&2
+            exit 1
+          }
+          test "$(tr -d '\r\n' < "$OUT/c1-marker.json")" = "0" || {
+            echo "c1b-conpty-probe.ts exited non-zero ($(tr -d '\r\n' < "$OUT/c1-marker.json"))" >&2
+            exit 1
+          }
 
       - name: Upload the receipt beside the exact collected run
         if: always()

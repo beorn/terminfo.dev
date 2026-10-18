@@ -264,6 +264,10 @@ if ([string]::IsNullOrWhiteSpace($productVersion)) { throw "No measured ProductV
   }
   if (appId === "alacritty") {
     const productVersion = measureWindowsAlacrittyVersion(required("APP_EXECUTABLE"))
+    const mesaUpstream = required("MESA_UPSTREAM")
+    const mesaVersion = required("MESA_VERSION")
+    required("MESA_ARCHIVE_PATH")
+    required("MESA_OPENGL32_PATH")
     const script = `$ErrorActionPreference = 'Stop'
 $expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
 if ($expected.PSIsContainer -or $expected.Name -cne 'alacritty.exe') { throw 'APP_EXECUTABLE must name alacritty.exe' }
@@ -275,24 +279,53 @@ if ($exeArtifact.PSIsContainer -or $exeArtifact.Extension -ine '.exe' -or $exeAr
 $exeHash = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 $artifactHash = (Get-FileHash -LiteralPath $exeArtifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($exeHash -cne $artifactHash) { throw "Launched alacritty.exe sha256 ($exeHash) does not match retained portable EXE sha256 ($artifactHash)" }
+$mesaArchive = Get-Item -LiteralPath $env:MESA_ARCHIVE_PATH
+$mesaDll = Get-Item -LiteralPath $env:MESA_OPENGL32_PATH
+if ($mesaArchive.PSIsContainer -or $mesaArchive.Length -eq 0 -or $mesaDll.PSIsContainer -or $mesaDll.Name -cne 'opengl32.dll' -or $mesaDll.Length -eq 0) { throw 'Mesa archive and opengl32.dll must be nonempty files' }
+if ($mesaDll.DirectoryName -ine $executable.DirectoryName) { throw "Mesa opengl32.dll ($($mesaDll.FullName)) is not beside launched alacritty.exe ($($executable.FullName))" }
+$mesaArchiveHash = (Get-FileHash -LiteralPath $mesaArchive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+$mesaDllHash = (Get-FileHash -LiteralPath $mesaDll.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
 [ordered]@{
   executablePath = $executable.FullName
   executableSha256 = $exeHash
   sourceArtifact = @{ kind = 'portable-exe'; path = $exeArtifact.FullName; sha256 = $artifactHash }
-} | ConvertTo-Json -Compress -Depth 4`
+  mesaRenderer = [ordered]@{
+    upstream = $env:MESA_UPSTREAM
+    version = $env:MESA_VERSION
+    archivePath = $mesaArchive.FullName
+    archiveSha256 = $mesaArchiveHash
+    dlls = @(
+      [ordered]@{
+        name = 'opengl32.dll'
+        path = $mesaDll.FullName
+        sha256 = $mesaDllHash
+      }
+    )
+  }
+} | ConvertTo-Json -Compress -Depth 6`
     const measuredProcess = JSON.parse(
-      measured("launched alacritty.exe process and retained portable EXE bytes", "powershell.exe", [
+      measured("launched alacritty.exe process, retained portable EXE bytes, and Mesa opengl32.dll bytes", "powershell.exe", [
         "-NoProfile",
         "-Command",
         script,
       ]),
-    ) as { executablePath: string; executableSha256: string; sourceArtifact: Record<string, unknown> }
+    ) as {
+      executablePath: string
+      executableSha256: string
+      sourceArtifact: Record<string, unknown>
+      mesaRenderer: Record<string, unknown>
+    }
     return {
       platform: "win32",
       executablePath: measuredProcess.executablePath,
       productVersion,
       executableSha256: measuredProcess.executableSha256,
       sourceArtifact: measuredProcess.sourceArtifact,
+      mesaRenderer: {
+        ...measuredProcess.mesaRenderer,
+        upstream: mesaUpstream,
+        version: mesaVersion,
+      },
     }
   }
   throw new Error(`Hosted Windows receipt requires APP_ID=windows-terminal or alacritty; got ${JSON.stringify(appId)}`)
