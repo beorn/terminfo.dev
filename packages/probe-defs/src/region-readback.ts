@@ -673,7 +673,9 @@ export async function captureRegionReadbackDecision(
   // only when their rectangles match (29580).
   const cropRectangles: Array<CaptureRectangle | undefined> = []
   try {
-    ctx.write("\x1b[0m")
+    // Stability belongs to this run's cleared canvas, not the preceding probe's glyphs.
+    // Each declared frame still gets its own seed writes and paint witness below.
+    ctx.write("\x1b[0m\x1b[2J\x1b[H")
     // DECTCEM off before the first read, so every capture shares one cursor state.
     ctx.write("\x1b[?25l")
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.

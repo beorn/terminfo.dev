@@ -16,6 +16,49 @@ import * as probeDefs from "@terminfo/probe-defs"
 import type { RegionReadbackRow } from "@terminfo/probe-defs"
 import { expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
+import { mapSnapshotToCells } from "../terminfo.dev/src/darwin-terminal-text.ts"
+import { textCellsFrame } from "../terminfo.dev/src/serve.ts"
+
+// App callbacks share a screen; the fresh headless backends below cannot expose this failure.
+// Use the real parser and strict mapper so a previous Unicode probe cannot become an ASCII read.
+test("an ASCII region fixture prepares its screen before reading a preceding Unicode probe", async () => {
+  const backend = createXtermBackend()
+  backend.init({ rows: 24, cols: 80 })
+  const encode = (text: string) => new TextEncoder().encode(text)
+  backend.feed(encode("\x1b[H👨‍👩‍👧"))
+  const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === "erase.character")
+  if (!probe?.term) throw new Error("Missing erase.character app callback")
+  const context: probeDefs.TermContext = {
+    rows: 24,
+    cols: 80,
+    captureKind: "text-cells",
+    write: (bytes) => backend.feed(encode(bytes)),
+    cells: async (checkpoint) => {
+      const lines = backend.getLines().map((row) => row.map((cell) => cell.char || " ").join(""))
+      const mapped = mapSnapshotToCells(lines, 80, 24, 0)
+      const read =
+        typeof mapped === "string"
+          ? { status: "refused" as const, reason: mapped }
+          : { status: "read" as const, app: "iterm2" as const, cells: mapped }
+      return textCellsFrame(checkpoint, read, Date.now()).frame
+    },
+    queryCursorPosition: async () => null,
+    measureRenderedWidth: async () => null,
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    queryMode: async () => null,
+    readInput: async () => null,
+  }
+  try {
+    await expect(probe.term(context)).resolves.toMatchObject({
+      observation: { outcome: "supported", evidence: "text" },
+    })
+  } finally {
+    backend.destroy()
+  }
+})
 
 /**
  * Every kind table the package EXPORTS, discovered rather than hand-typed. The list used to be
