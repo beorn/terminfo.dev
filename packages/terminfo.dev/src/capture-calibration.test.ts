@@ -98,6 +98,7 @@ function gridFrame(
   columnEdges: readonly number[],
   rowEdges: readonly number[],
   stage: "solid" | "columns" | "rows",
+  leading?: "top" | "left",
 ): CapturedFrame {
   const rgba = new Uint8Array(size * size * 4)
   for (let offset = 0; offset < rgba.length; offset += 4) rgba.set([0, 0, 0, 255], offset)
@@ -109,6 +110,23 @@ function gridFrame(
         for (let x = columnEdges[column]!; x < columnEdges[column + 1]!; x++) {
           rgba.set([...rgb, 255], (y * size + x) * 4)
         }
+      }
+    }
+  }
+  // The leading line is the grid's own first pixel line: the adjacent cell's paint at 217/255 over
+  // black, exactly the line retained macOS frame measured at y=28.
+  if (leading === "top") {
+    for (let x = columnEdges[0]!; x < columnEdges[columnEdges.length - 1]!; x++) {
+      const paint = (rowEdges[0]! * size + x) * 4
+      for (let channel = 0; channel < 3; channel++) {
+        rgba[paint + channel] = Math.round((217 / 255) * rgba[paint + channel]!)
+      }
+    }
+  } else if (leading === "left") {
+    for (let y = rowEdges[0]!; y < rowEdges[rowEdges.length - 1]!; y++) {
+      const paint = (y * size + columnEdges[0]!) * 4
+      for (let channel = 0; channel < 3; channel++) {
+        rgba[paint + channel] = Math.round((217 / 255) * rgba[paint + channel]!)
       }
     }
   }
@@ -470,7 +488,8 @@ test("a hole on an edge but away from a corner still refuses", async () => {
   await expect(run.promise).rejects.toThrow(/non-solid grid/)
 })
 
-test("one uniform-alpha line outside the grid is admitted and recorded", async () => {
+test("a leading line beside an already-full first stripe refuses as a fractional pitch", async () => {
+  // The line counts in cell 1, so a full first stripe beside it would be one pixel too long.
   const run = calibration({
     frames: {
       "solid grid paint": [blendTop(rasterFrame("solid")), blendTop(rasterFrame("solid"))],
@@ -478,9 +497,111 @@ test("one uniform-alpha line outside the grid is admitted and recorded", async (
       "row edge paint": [blendTop(rasterFrame("rows")), blendTop(rasterFrame("rows"))],
     },
   })
+  await expect(run.promise).rejects.toThrow(/fractional pitch: stripes of 3 and 2 px on the rows axis/)
+})
+
+test("a leading line is the grid's own first pixel line", async () => {
+  // 46 rows of 13 px whose first pixel row is the 85% line: the authored text area is 598 px, not 597.
+  const size = 640
+  const rowEdges = Array.from({ length: 47 }, (_, index) => 28 + index * 13)
+  const columnEdges = [10, 20, 30]
+  const frames = (stage: "solid" | "columns" | "rows") => [
+    gridFrame(size, columnEdges, rowEdges, stage, "top"),
+    gridFrame(size, columnEdges, rowEdges, stage, "top"),
+  ]
+  const run = calibration({
+    rows: 46,
+    cols: 2,
+    frames: {
+      "before grid paint": [frame(size), frame(size)],
+      "solid grid paint": frames("solid"),
+      "column edge paint": frames("columns"),
+      "row edge paint": frames("rows"),
+      "restore grid paint": [frame(size), frame(size)],
+    },
+  })
   const measured = await run.promise
-  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
-  expect(measured.basis).toMatch(/edge blend solid top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.origin).toEqual({ x: 10, y: 28 })
+  expect(measured.pixelGeometry).toMatchObject({ cellWidth: 10, cellHeight: 13, textHeight: 598 })
+  expect(measured.basis).toMatch(/leading line counted in cell 1: top y=28 alpha 0\.851/)
+  expect(measured.basis).toMatch(/edge blend solid top y=28 alpha 0\.851 \(20 px\)/)
+})
+
+test("the reported text height is the authored extent, so 597 refuses where 598 passes", async () => {
+  const size = 640
+  const rowEdges = Array.from({ length: 47 }, (_, index) => 28 + index * 13)
+  const columnEdges = [10, 20, 30]
+  const frames = (stage: "solid" | "columns" | "rows") => [
+    gridFrame(size, columnEdges, rowEdges, stage, "top"),
+    gridFrame(size, columnEdges, rowEdges, stage, "top"),
+  ]
+  const stages = {
+    "before grid paint": [frame(size), frame(size)],
+    "solid grid paint": frames("solid"),
+    "column edge paint": frames("columns"),
+    "row edge paint": frames("rows"),
+    "restore grid paint": [frame(size), frame(size)],
+  }
+  const authored = { cellWidth: 10, cellHeight: 13, textWidth: 20, textHeight: 598 }
+  const passing = await calibration({ rows: 46, cols: 2, geometry: authored, frames: stages }).promise
+  expect(passing.pixelGeometry).toMatchObject({ textHeight: 598 })
+  const refusing = calibration({
+    rows: 46,
+    cols: 2,
+    geometry: { ...authored, textHeight: 597 },
+    frames: stages,
+  })
+  await expect(refusing.promise).rejects.toThrow(/reported geometry .* disagrees with witnessed grid/)
+})
+
+test("a leading column line is the grid's own first pixel column", async () => {
+  const size = 20
+  const columnEdges = [2, 4, 6, 8, 10]
+  const rowEdges = [2, 5, 8, 11]
+  const frames = (stage: "solid" | "columns" | "rows") => [
+    gridFrame(size, columnEdges, rowEdges, stage, "left"),
+    gridFrame(size, columnEdges, rowEdges, stage, "left"),
+  ]
+  const run = calibration({
+    rows: 3,
+    cols: 4,
+    frames: {
+      "before grid paint": [frame(size), frame(size)],
+      "solid grid paint": frames("solid"),
+      "column edge paint": frames("columns"),
+      "row edge paint": frames("rows"),
+      "restore grid paint": [frame(size), frame(size)],
+    },
+  })
+  const measured = await run.promise
+  expect(measured.origin).toEqual({ x: 2, y: 2 })
+  expect(measured.pixelGeometry).toMatchObject({ cellWidth: 2, cellHeight: 3 })
+  expect(measured.basis).toMatch(/leading line counted in cell 1: left x=2 alpha 0\.851/)
+})
+
+test("a grid with no leading line keeps its origin and pitch", async () => {
+  const size = 20
+  const columnEdges = [2, 4, 6, 8, 10]
+  const rowEdges = [2, 5, 8, 11]
+  const frames = (stage: "solid" | "columns" | "rows") => [
+    gridFrame(size, columnEdges, rowEdges, stage),
+    gridFrame(size, columnEdges, rowEdges, stage),
+  ]
+  const run = calibration({
+    rows: 3,
+    cols: 4,
+    frames: {
+      "before grid paint": [frame(size), frame(size)],
+      "solid grid paint": frames("solid"),
+      "column edge paint": frames("columns"),
+      "row edge paint": frames("rows"),
+      "restore grid paint": [frame(size), frame(size)],
+    },
+  })
+  const measured = await run.promise
+  expect(measured.origin).toEqual({ x: 2, y: 2 })
+  expect(measured.pixelGeometry).toMatchObject({ cellWidth: 2, cellHeight: 3 })
+  expect(measured.basis).not.toMatch(/leading line counted/)
 })
 
 test("a line outside the grid in another colour refuses", async () => {
@@ -512,23 +633,28 @@ test("a second line outside the same edge refuses", async () => {
 })
 
 test("corner fillets and the blend line together still calibrate", async () => {
+  // The trailing edge stays outside coverage, so it cannot shorten the first stripe beside a fillet.
   const run = calibration({
     frames: {
       "solid grid paint": [
-        blendTop(filletCorners(rasterFrame("solid"))),
-        blendTop(filletCorners(rasterFrame("solid"))),
+        blendEdge(filletCorners(rasterFrame("solid")), "bottom"),
+        blendEdge(filletCorners(rasterFrame("solid")), "bottom"),
       ],
       "column edge paint": [
-        blendTop(filletCorners(rasterFrame("columns"))),
-        blendTop(filletCorners(rasterFrame("columns"))),
+        blendEdge(filletCorners(rasterFrame("columns")), "bottom"),
+        blendEdge(filletCorners(rasterFrame("columns")), "bottom"),
       ],
-      "row edge paint": [blendTop(filletCorners(rasterFrame("rows"))), blendTop(filletCorners(rasterFrame("rows")))],
+      "row edge paint": [
+        blendEdge(filletCorners(rasterFrame("rows")), "bottom"),
+        blendEdge(filletCorners(rasterFrame("rows")), "bottom"),
+      ],
     },
   })
   const measured = await run.promise
   expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
   expect(measured.basis).toMatch(/corner fillets 4 px/)
-  expect(measured.basis).toMatch(/edge blend solid top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).toMatch(/edge blend solid bottom y=10 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).not.toMatch(/leading line counted/)
 })
 
 test("a blend whose alpha byte changes outside the grid refuses", async () => {
