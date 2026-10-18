@@ -39,6 +39,7 @@ export interface Kernel32Symbols {
   Process32NextW: Kernel32Symbol
   OpenProcess: Kernel32HandleSymbol
   QueryFullProcessImageNameW: Kernel32Symbol
+  GetProcessTimes: Kernel32Symbol
   GetLastError: Kernel32Symbol
   CloseHandle: Kernel32Symbol
 }
@@ -104,6 +105,13 @@ export function kernel32Declaration(types: {
     OpenProcess: { args: [types.u32, types.i32, types.u32], returns: types.u64 },
     // hProcess HANDLE (u64), dwFlags u32, lpExeName ptr, lpdwSize ptr -> BOOL (i32).
     QueryFullProcessImageNameW: { args: [types.u64, types.u32, types.ptr, types.ptr], returns: types.i32 },
+    // hProcess HANDLE (u64) and four FILETIME pointers (creation, exit, kernel, user) -> BOOL
+    // (i32). GetProcessTimes refuses a NULL pointer for any of them, so all four are allocated
+    // even though only the creation time is read (30042).
+    GetProcessTimes: {
+      args: [types.u64, types.ptr, types.ptr, types.ptr, types.ptr],
+      returns: types.i32,
+    },
     GetLastError: { args: [], returns: types.u32 },
     CloseHandle: { args: [types.u64], returns: types.i32 },
   }

@@ -29,7 +29,12 @@
  */
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { CSBI_BYTES, decodeConsoleWindowRect, readProcessImagePath, withConsoleOutputHandle } from "./windows-console-ffi.ts"
+import {
+  CSBI_BYTES,
+  decodeConsoleWindowRect,
+  readProcessImagePath,
+  withConsoleOutputHandle,
+} from "./windows-console-ffi.ts"
 import { loadKernel32, type Kernel32 } from "./windows-kernel32.ts"
 import { windowsCommBase, type WindowsProcessRow } from "./windows-process-ancestry.ts"
 
@@ -176,7 +181,11 @@ export function resolveConsoleHostIdentity(
 ): ConsoleHostIdentityLookup {
   const resolved = readProcessImagePath(process.pid, options.kernel)
   if (resolved.status === "refused") return resolved
-  const key = `${String(process.pid)}\u0000${resolved.path}`
+  // The key names the INCARNATION, not the pid: Windows reuses pids, and a reused pid running
+  // different bytes at the same path would otherwise publish the former process's digest for the
+  // new one's frames. Creation time changes with the process, so one live host still hashes once
+  // and a new process hashes again (30042, CTO ruling 910846c7).
+  const key = `${String(process.pid)}\u0000${resolved.createdAt}\u0000${resolved.path}`
   let digest = options.cache.get(key)
   if (digest === undefined) {
     try {

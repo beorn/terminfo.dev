@@ -78,16 +78,25 @@ export const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 /** One long-path buffer, in UTF-16 code units: MAX_PATH is not the ceiling on Windows, and a
  * truncated path would name a file this run never hashed. */
 export const EXECUTABLE_PATH_CHARS = 32_768
+/** One FILETIME: two little-endian DWORDs of 100-ns ticks since 1601. */
+const FILETIME_BYTES = 8
 
-/** The executable a pid is running, or the named reason it could not be read. */
+/**
+ * The executable a pid is running and the incarnation that runs it, or the named reason either
+ * could not be read. `createdAt` is GetProcessTimes' creation FILETIME in 100-ns ticks since 1601:
+ * a reused PID has a new one, so it separates two processes that share a pid and an image path
+ * (30042, CTO ruling 910846c7).
+ */
 export type ExecutablePathLookup =
-  | { readonly status: "named"; readonly path: string }
+  | { readonly status: "named"; readonly path: string; readonly createdAt: string }
   | { readonly status: "refused"; readonly reason: string }
 
 /**
- * Resolve a process's image path with QueryFullProcessImageNameW. Every failure reads GetLastError
- * FIRST and becomes a named refusal: the caller attributes a buffer to this program, so an empty or
- * guessed path would be worse than no read at all (30042).
+ * Resolve a process's image path with QueryFullProcessImageNameW and its creation time with
+ * GetProcessTimes, on ONE handle: PROCESS_QUERY_LIMITED_INFORMATION serves both calls, so the
+ * identity is read from a single incarnation and no second open can see a different process. Every
+ * failure reads GetLastError FIRST and becomes a named refusal: the caller attributes a buffer to
+ * this program, so an empty or guessed path would be worse than no read at all (30042).
  */
 export function readProcessImagePath(pid: number, kernel?: Kernel32): ExecutablePathLookup {
   const { symbols, ptr } = kernel ?? loadKernel32()
@@ -118,7 +127,21 @@ export function readProcessImagePath(pid: number, kernel?: Kernel32): Executable
         reason: `console host pid ${String(pid)} reported ${String(characters)} executable-path characters`,
       }
     }
-    return { status: "named", path: name.toString("utf16le", 0, characters * 2) }
+    // GetProcessTimes refuses a NULL pointer for any of its four FILETIMEs, so one 32-byte block
+    // carries all four and only the first is read.
+    const times = Buffer.alloc(FILETIME_BYTES * 4)
+    const at = (index: number) => ptr(times.subarray(index * FILETIME_BYTES, (index + 1) * FILETIME_BYTES)) as never
+    if (symbols.GetProcessTimes(handle as never, at(0), at(1), at(2), at(3)) === 0) {
+      const code = symbols.GetLastError()
+      return {
+        status: "refused",
+        reason: `cannot read the creation time of console host pid ${String(pid)}: error ${String(code)}`,
+      }
+    }
+    // FILETIME is two little-endian DWORDs; combining them in one BigInt keeps every tick the
+    // kernel reported, where a Number would round the low bits away.
+    const ticks = (BigInt(times.readUInt32LE(FILETIME_BYTES)) << 32n) | BigInt(times.readUInt32LE(0))
+    return { status: "named", path: name.toString("utf16le", 0, characters * 2), createdAt: String(ticks) }
   } finally {
     symbols.CloseHandle(handle as never)
   }

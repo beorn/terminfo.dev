@@ -543,7 +543,17 @@ describe("resolveConsoleHostIdentity — the executable is a path plus a hash (3
 
   const fakeKernel = (
     seen: Seen,
-    options: { handle?: bigint; path?: string; query?: number; error?: number } = {},
+    options: {
+      handle?: bigint
+      path?: string
+      query?: number
+      error?: number
+      /** The creation FILETIME this process reports. A different value is a different incarnation
+       * at the same pid and path (30042, CTO ruling 910846c7). */
+      createdAt?: bigint
+      /** GetProcessTimes returning 0, so the identity read must refuse by name. */
+      timesFails?: boolean
+    } = {},
   ): Kernel32 =>
     ({
       ptr: (data: Uint8Array) => data,
@@ -557,6 +567,11 @@ describe("resolveConsoleHostIdentity — the executable is a path plus a hash (3
           const text = options.path ?? executable
           ;(name as unknown as Buffer).write(text, 0, "utf16le")
           ;(size as unknown as Buffer).writeUInt32LE(text.length, 0)
+          return 1
+        },
+        GetProcessTimes: (_handle: never, created: never, _exited: never, _kernel: never, _user: never) => {
+          if (options.timesFails === true) return 0
+          ;(created as unknown as Buffer).writeBigUInt64LE(options.createdAt ?? 132_000_000_000_000_000n, 0)
           return 1
         },
         GetLastError: () => options.error ?? 0,
@@ -580,7 +595,11 @@ describe("resolveConsoleHostIdentity — the executable is a path plus a hash (3
     })
     expect(resolved).toEqual({
       status: "named",
-      host: { ...host, executablePath: "C:\\Windows\\System32\\conhost.exe", executableSha256: `sha256:${"b".repeat(64)}` },
+      host: {
+        ...host,
+        executablePath: "C:\\Windows\\System32\\conhost.exe",
+        executableSha256: `sha256:${"b".repeat(64)}`,
+      },
     })
     expect(seen.opened).toEqual([[0x1000, 0, 4242]])
     expect(seen.closed).toBe(1)
@@ -612,7 +631,7 @@ describe("resolveConsoleHostIdentity — the executable is a path plus a hash (3
     expect(seen.closed).toBe(1)
   })
 
-  it("hashes one executable once per pid and path, and hashes a different pid again", () => {
+  it("hashes one executable once per incarnation, and hashes a different pid again", () => {
     const cache = new Map<string, string>()
     const hashed: string[] = []
     const hash = (path: string) => {
@@ -623,9 +642,49 @@ describe("resolveConsoleHostIdentity — the executable is a path plus a hash (3
     const kernel = fakeKernel(seen)
     expect(resolveConsoleHostIdentity(host, { kernel, cache, hash }).status).toBe("named")
     expect(resolveConsoleHostIdentity(host, { kernel, cache, hash }).status).toBe("named")
-    expect(hashed, "one hash for two reads of one pid").toHaveLength(1)
+    expect(hashed, "one hash for two reads of one incarnation").toHaveLength(1)
     expect(resolveConsoleHostIdentity({ ...host, pid: 4243 }, { kernel, cache, hash }).status).toBe("named")
     expect(hashed, "a different pid hashes again").toHaveLength(2)
+  })
+
+  it("hashes the same pid and path again when the creation time names a new incarnation", () => {
+    // A reused PID at the same path publishes the former process's digest unless the key carries
+    // the incarnation. The two calls differ ONLY in creation time.
+    const cache = new Map<string, string>()
+    const hashed: string[] = []
+    const hash = (path: string) => {
+      hashed.push(path)
+      return `sha256:${String(hashed.length).repeat(64)}`
+    }
+    const seen: Seen = { opened: [], closed: 0 }
+    const first = fakeKernel(seen, { createdAt: 132_000_000_000_000_000n })
+    const second = fakeKernel(seen, { createdAt: 133_000_000_000_000_000n })
+    expect(resolveConsoleHostIdentity(host, { kernel: first, cache, hash }).status).toBe("named")
+    expect(hashed).toHaveLength(1)
+    const reused = resolveConsoleHostIdentity(host, { kernel: second, cache, hash })
+    expect(reused.status).toBe("named")
+    expect(hashed, "a new incarnation at the same pid and path hashes again").toHaveLength(2)
+  })
+
+  it("refuses by name when the creation time cannot be read, and never hashes on a pid alone", () => {
+    const cache = new Map<string, string>()
+    const hashed: string[] = []
+    const seen: Seen = { opened: [], closed: 0 }
+    const resolved = resolveConsoleHostIdentity(host, {
+      kernel: fakeKernel(seen, { timesFails: true, error: 87 }),
+      cache,
+      hash: (path) => {
+        hashed.push(path)
+        return `sha256:${"e".repeat(64)}`
+      },
+    })
+    expect(resolved).toEqual({
+      status: "refused",
+      reason: "cannot read the creation time of console host pid 4242: error 87",
+    })
+    expect(hashed, "no digest is published without an incarnation").toEqual([])
+    expect(cache.size).toBe(0)
+    expect(seen.closed, "the handle is closed on the refusal too").toBe(1)
   })
 
   it("refuses a hash failure for that read without caching the rejection", () => {
