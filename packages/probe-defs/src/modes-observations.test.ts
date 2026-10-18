@@ -4,7 +4,7 @@
  * @consumer Owned app mode observations and reviewed support cells.
  * @testonly none
  */
-import { expect, test } from "vitest"
+import { expect, test, vi } from "vitest"
 import { modesProbes } from "./modes.ts"
 import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
 
@@ -608,8 +608,13 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
   }
 })
 
-function decssclsContext(refs: readonly string[], writes: string[], frames: ObservationFrame[]): TermContext {
-  const context = captureContext(24, 80, writes, frames)
+function decssclsContext(
+  refs: readonly string[],
+  writes: string[],
+  frames: ObservationFrame[],
+  rows = 24,
+): TermContext {
+  const context = captureContext(rows, 80, writes, frames)
   let index = 0
   context.capture = async ({ role, label }) => {
     const frame = { role, label, capturedAt: index + 1, ref: refs[index] ?? "sha256:missing" }
@@ -635,8 +640,34 @@ test("modes.decsscls supports a throttled burst while the jump control settles",
   expect(frames).toHaveLength(4)
   expect(writes.some((write) => write.includes("\x1b[9 p"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
-  expect(writes.some((write) => write.includes("line 40"))).toBe(true)
+  expect(writes.some((write) => write.includes("line 32"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
+})
+
+test("modes.decsscls overruns whatever height the context measured", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow-t0", "slow-t1"], writes, frames, 50))
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(writes.some((write) => write.includes("line 58"))).toBe(true)
+})
+
+test("modes.decsscls stays inconclusive when the first target frame arrives after a throttled burst could finish", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const now = vi.spyOn(Date, "now")
+  now.mockReturnValueOnce(0).mockReturnValueOnce(2).mockReturnValueOnce(1000).mockReturnValueOnce(6000)
+  try {
+    const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow", "slow"], writes, frames))
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "pixels",
+    })
+    expect(result.assertions).toBeUndefined()
+  } finally {
+    now.mockRestore()
+  }
 })
 
 test("modes.decsscls reports unsupported when the slow setting paints exactly like jump", async () => {

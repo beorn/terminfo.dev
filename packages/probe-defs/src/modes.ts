@@ -1,4 +1,5 @@
 import type { ObservationFrame, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import { frameDigests } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -352,19 +353,36 @@ function alt1049ReadbackInconclusive(expected: string, note: string, error: unkn
   return parserStateResult(null, expected, { readbackError: message }, note)
 }
 
-/** A 40-line burst overruns a 24-row screen, so the setting has to throttle a real scroll. */
-const DECSSCLS_BURST = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\r\n") + "\r\n"
 const DECSSCLS_JUMP = "\x1b[9 p"
 const DECSSCLS_SLOW = "\x1b[0 p"
 const DECSSCLS_SETTLE_MS = 300
+const DECSSCLS_LINES_PER_SECOND = 9
+/** Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry. */
+const DECSSCLS_OVERFLOW_ROWS = 8
+
+/** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
+function decssclsBurst(rows: number): { text: string; lines: number } {
+  const lines = rows + DECSSCLS_OVERFLOW_ROWS
+  return { text: Array.from({ length: lines }, (_, index) => `line ${index + 1}`).join("\r\n") + "\r\n", lines }
+}
+
+/** Whole-screen digest when the frame carries one, else the frame ref: the comparison the capture returned. */
+function decssclsFrameDigest(frame: ObservationFrame): string {
+  return frameDigests(frame).whole ?? frame.ref
+}
 
 /**
  * DECSSCLS (CSI Ps SP p) sets presentation speed and has no query. The same-run control sets jump
  * scrolling; the target sets the documented 9-lines-per-second rate. Each phase takes two frames of
- * the same region: the first as soon as the collector can after the burst, the second after the
- * settle delay. An instant paint settles before the first frame; a throttled paint is still
- * changing at the second. The jump control must settle, otherwise capture timing cannot be
- * separated from the setting and the row is inconclusive rather than decided.
+ * the same screen: the first as soon as the collector can after the burst, the second after the
+ * settle delay. The burst overruns the MEASURED row count, so every context has to scroll and the
+ * only writer between two frames is that burst. A whole-screen difference is therefore attributable
+ * to the burst, not to an unrelated repaint.
+ *
+ * The jump control must settle, otherwise capture timing cannot be separated from the setting and
+ * the row is inconclusive rather than decided. A settled target is a negative only when the first
+ * frame arrived well inside the time a 9-lines-per-second burst needs; a first capture later than
+ * that could have missed a genuinely throttled burst and is inconclusive by name.
  */
 async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const captureCallback = ctx.capture
@@ -374,28 +392,51 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     })
   }
   const frames: ObservationFrame[] = []
+  const rows = ctx.rows
+  if (!Number.isSafeInteger(rows) || rows < 1) {
+    return notTestedResult("DECSSCLS needs a measured screen height to force a real scroll", {
+      rows,
+    })
+  }
+  const burst = decssclsBurst(rows)
+  const throttledDurationMs = Math.ceil((burst.lines / DECSSCLS_LINES_PER_SECOND) * 1000)
   const capture = async (role: ObservationFrame["role"], label: string): Promise<ObservationFrame> => {
     const frame = await captureCallback({ role, label })
     frames.push(frame)
     return frame
   }
-  const phase = async (role: ObservationFrame["role"], setting: string, label: string): Promise<boolean> => {
-    ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + DECSSCLS_BURST)
+  const phase = async (
+    role: ObservationFrame["role"],
+    setting: string,
+    label: string,
+  ): Promise<{ changed: boolean; firstElapsedMs: number }> => {
+    const startedAt = Date.now()
+    ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
+    const firstElapsedMs = Date.now() - startedAt
     await new Promise<void>((resolve) => {
       setTimeout(resolve, DECSSCLS_SETTLE_MS)
     })
     const second = await capture(role, `${label} t1`)
-    return first.ref !== second.ref
+    return { changed: decssclsFrameDigest(first) !== decssclsFrameDigest(second), firstElapsedMs }
   }
-  const expected =
-    "CSI 0 SP p presents a 40-line burst at 9 lines per second; the jump control settles by its first frame"
+  const expected = `CSI 0 SP p presents a ${burst.lines}-line burst over a measured ${rows}-row screen at 9 lines per second; the jump control settles by its first frame`
   const restored = "CSI 0 SP p (documented default; the prior setting is not queryable)"
   try {
-    const controlChanged = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
-    const targetChanged = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
-    const observed = { controlChanged, targetChanged, settleMs: DECSSCLS_SETTLE_MS, lines: 40, restored }
-    if (controlChanged) {
+    const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
+    const target = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
+    const observed = {
+      controlChanged: control.changed,
+      targetChanged: target.changed,
+      controlFirstElapsedMs: control.firstElapsedMs,
+      targetFirstElapsedMs: target.firstElapsedMs,
+      settleMs: DECSSCLS_SETTLE_MS,
+      lines: burst.lines,
+      rows,
+      throttledDurationMs,
+      restored,
+    }
+    if (control.changed) {
       return {
         pass: false,
         response: JSON.stringify(observed),
@@ -408,7 +449,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         },
       }
     }
-    if (targetChanged) {
+    if (target.changed) {
       return {
         pass: true,
         response: JSON.stringify(observed),
@@ -419,6 +460,19 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
           note: "The burst was still being presented after the settle delay while the jump control had settled",
         },
         assertions: [{ kind: "positive", expected, observed: JSON.stringify(observed), action: "decsscls:0" }],
+      }
+    }
+    if (target.firstElapsedMs >= throttledDurationMs) {
+      return {
+        pass: false,
+        response: JSON.stringify(observed),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          frames,
+          note: "The first target frame arrived after a 9-lines-per-second burst could have finished, so a settled screen cannot be separated from a missed observation",
+        },
       }
     }
     return {
