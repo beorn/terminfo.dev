@@ -1,6 +1,7 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
-import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
+import type { ObservationFrame, ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
+import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { beginCaptureLifecycle, captureStabilityPair, endCaptureLifecycle } from "./region-readback.ts"
 import {
   parserStateResult,
   probe,
@@ -68,91 +69,7 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
 }
 
 /**
- * Editing capture fixtures, kept ONLY for the two attribute-rectangle rows the region kind cannot
- * carry. An editing probe's application callback proves the sequence was consumed (cursor advance);
- * that collector has no cell readback, so the capture path records a pre-edit control and a
- * post-edit target for a reviewer to judge the claimed effect on pixels.
- */
-interface EditingCaptureSpec {
-  /** Rows the seed draws on. */
-  minRows: number
-  /** Widest seed line. Capture adds a one-row/two-column margin so the seed cannot wrap or scroll. */
-  minCols: number
-  seed: string
-  edit: string
-  region: { row: number; col: number; rows: number; cols: number }
-  note: string
-}
-
-/**
- * DECCARA and DECRARA stay HAND-WRITTEN. This is their one-line coverage record (@cto 218ec7fe,
- * 2026-10-12): "not a region-readback row: the kind compares characters, and this claim is an
- * attribute rectangle; it converts when the kind's cell carries attributes". Both arms CAN observe
- * attributes; the kind just does not carry them, so a row of it would read the characters unchanged
- * and grade an ignoring surface supported on the termless arm, while its pixel arm would wrongly
- * read a correct terminal unsupported. The trigger to convert is a third attribute-rectangle probe,
- * or folding the SGR family's attribute readback (sgr.ts, sgrReadbackDecision) into the region kind,
- * whichever comes first - then both arms get an attribute-carrying cell once, reviewed, and these two
- * convert with it.
- *
- * Both rows select their DECSACE extent explicitly (29817): DECSACE 2 is the rectangle they measure,
- * and the surface starts at the spec's power-on default of stream, so neither row relies on a
- * default it does not state.
- */
-const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
-  "editing.deccara": {
-    minRows: 1,
-    minCols: 6,
-    seed: "\x1b[1;1HaaaaaZ",
-    edit: "\x1b[1;1H\x1b[2*x\x1b[1;1;1;5;7$r",
-    region: { row: 1, col: 1, rows: 1, cols: 5 },
-    note: "DECCARA (stream and rectangle extent agree on one row) should set inverse on the five measured cells and leave the sixth-column flank plain",
-  },
-  "editing.decrara": {
-    minRows: 1,
-    minCols: 6,
-    seed: "\x1b[1;1H\x1b[7maaaaa\x1b[0mZ",
-    edit: "\x1b[1;1H\x1b[2*x\x1b[1;1;1;5;7$t",
-    region: { row: 1, col: 1, rows: 1, cols: 5 },
-    note: "DECRARA (one row) should clear inverse on the five measured cells and leave the sixth-column flank already-plain",
-  },
-}
-
-/** The attribute-rectangle readbacks: the two rows the character-grid kind cannot express. */
-const DECCARA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 5 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1H",
-  edit: "\x1b[1;1H\x1b[1;1;1;5;7$r\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 7,
-}
-
-const DECRARA_READBACK: Omit<RegionReadback, "pixelGeometry"> = {
-  region: { top: 1, left: 1, bottom: 1, right: 5 },
-  sentinel: { row: 3, col: 1 },
-  cursorRow: 2,
-  seed: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H",
-  edit: "\x1b[1;1H\x1b[1;1;1;5;7$t\x1b[2;1H",
-  expected: "\x1b[0m\x1b[2J\x1b[H\x1b[1;1HaaaaaZ\x1b[2;1H",
-  timeoutMs: 5000,
-  pollMs: 250,
-  minRows: 3,
-  minCols: 7,
-}
-
-/** Rows whose collector path can decide from the owned window's cells, with the same helper. */
-const EDITING_READBACK_SPECS: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
-  "editing.deccara": DECCARA_READBACK,
-  "editing.decrara": DECRARA_READBACK,
-}
-
-/**
- * The 13 measured editing rows, as one region-readback kind table (@cto A2; 28450 slice C). Each row
+ * The 15 measured editing rows, as one region-readback kind table (@cto A2; 28450 slice C). Each row
  * holds its claim ONCE: the termless arm reads its seed, its steps and its target cells against the
  * parser, and the kind derives the capture-region oracle's seed / edit / expected frames from the
  * same fields, so the two arms cannot grade two different fixtures.
@@ -508,55 +425,152 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
     controlNote: "DECDC unchanged-prefix control changed",
     reset: "",
   },
+  {
+    id: "editing.deccara",
+    expected: "DECCARA sets inverse on the measured 3x5 rectangle, preserving text and the right flank",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX",
+    before: [
+      [
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "Z", attributes: { inverse: false } },
+      ],
+      [
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "Y", attributes: { inverse: false } },
+      ],
+      [
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "X", attributes: { inverse: false } },
+      ],
+    ],
+    // DECSACE 2 selects the rectangle extent this row measures (29817): the surface default is stream.
+    steps: [{ write: "\x1b[1;1H\x1b[2*x\x1b[1;1;3;5;7$r" }],
+    after: [
+      [
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "Z", attributes: { inverse: false } },
+      ],
+      [
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "Y", attributes: { inverse: false } },
+      ],
+      [
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "X", attributes: { inverse: false } },
+      ],
+    ],
+    controls: [
+      { row: 0, col: 5, char: "Z" },
+      { row: 1, col: 5, char: "Y" },
+      { row: 2, col: 5, char: "X" },
+    ],
+    cursorRow: 4,
+    sentinel: { row: 5, col: 1 },
+    seedNote: "DECCARA character or attribute seed was not measured",
+    controlNote: "DECCARA changed the text or the right flank outside its rectangle",
+    // DECSACE 2 is a terminal MODE the row sets to measure the rectangle extent; the shared lifecycle
+    // clears it on every exit so the next probe reads the power-on stream default.
+    cleanup: "\x1b[0*x",
+    reset: "\x1b[0m",
+  },
+  {
+    id: "editing.decrara",
+    expected: "DECRARA clears inverse on the measured 3x5 rectangle, preserving text and the right flank",
+    region: { top: 1, left: 1 },
+    seed: "\x1b[0m\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H\x1b[7mbbbbb\x1b[0mY\x1b[3;1H\x1b[7mccccc\x1b[0mX",
+    before: [
+      [
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "a", attributes: { inverse: true } },
+        { char: "Z", attributes: { inverse: false } },
+      ],
+      [
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "b", attributes: { inverse: true } },
+        { char: "Y", attributes: { inverse: false } },
+      ],
+      [
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "c", attributes: { inverse: true } },
+        { char: "X", attributes: { inverse: false } },
+      ],
+    ],
+    steps: [{ write: "\x1b[1;1H\x1b[2*x\x1b[1;1;3;5;7$t" }],
+    after: [
+      [
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "a", attributes: { inverse: false } },
+        { char: "Z", attributes: { inverse: false } },
+      ],
+      [
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "b", attributes: { inverse: false } },
+        { char: "Y", attributes: { inverse: false } },
+      ],
+      [
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "c", attributes: { inverse: false } },
+        { char: "X", attributes: { inverse: false } },
+      ],
+    ],
+    controls: [
+      { row: 0, col: 5, char: "Z" },
+      { row: 1, col: 5, char: "Y" },
+      { row: 2, col: 5, char: "X" },
+    ],
+    cursorRow: 4,
+    sentinel: { row: 5, col: 1 },
+    seedNote: "DECRARA inverse seed was not measured",
+    controlNote: "DECRARA changed the text or the right flank outside its rectangle",
+    // DECSACE 2 is a terminal MODE the row sets to measure the rectangle extent; the shared lifecycle
+    // clears it on every exit so the next probe reads the power-on stream default.
+    cleanup: "\x1b[0*x",
+    reset: "\x1b[0m",
+  },
 ]
-
-async function editCapture(ctx: TermContext, id: string): Promise<ProbeResult> {
-  const spec = EDITING_CAPTURE_SPECS[id]
-  if (!spec) throw new Error(`no editing capture spec for ${id}`)
-  const needRows = spec.minRows + 1
-  const needCols = spec.minCols + 2
-  const { rows, cols } = ctx
-  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < needRows || cols < needCols) {
-    return {
-      pass: false,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-        note: `Editing capture needs at least ${needRows}x${needCols}, measured ${rows}x${cols}`,
-      },
-    }
-  }
-  const readback = EDITING_READBACK_SPECS[id]
-  if (readback) {
-    // The verdict path owns this row wherever the run can map cells onto its own window; a context
-    // that cannot report its geometry gets a named refusal, not the ungraded pixel path.
-    const verdict = await captureRegionVerdict(ctx, id, readback)
-    if (verdict) return verdict
-  }
-  ctx.write("\x1b[0m\x1b[2J")
-  try {
-    ctx.write(spec.seed)
-    const control = await ctx.capture!({ role: "control", label: `${id}: pre-edit seed` })
-    ctx.write(spec.edit)
-    const target = await ctx.capture!({ role: "target", label: id })
-    return {
-      pass: false,
-      response: JSON.stringify({ region: spec.region, control: control.label, target: target.label }),
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "pixels",
-        screenshotRef: target.ref,
-        frames: [control, target],
-        note: spec.note,
-      },
-    }
-  } finally {
-    // A capture failure can leave the seed or the edit behind; always reset SGR, clear and home.
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
-  }
-}
 
 const DECSACE_EXPECTED =
   "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span"
@@ -571,130 +585,6 @@ const decsaceExtentPattern = (frame: ReturnType<typeof decsaceFrame>): string =>
 
 const editingProbeDefinitions: ProbeDefinition[] = [
   ...regionReadbackProbes(editingReadbackRows),
-
-  {
-    ...probe(
-      "editing.deccara",
-      (ctx) => {
-        const expected = "DECCARA sets inverse on measured 3x5 cells, preserving text and right flank"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < 3) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x6 fixture")
-        }
-        ctx.feed("\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX")
-        const before = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
-        )
-        if (
-          before.map((line) => line.map((cell) => cell.char).join("")).join("|") !== "aaaaaZ|bbbbbY|cccccX" ||
-          before.some((line) => line.some((cell) => cell.inverse))
-        ) {
-          return parserStateResult(null, expected, { before }, "DECCARA character and attribute seed was not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "DECCARA cursor setup failed")
-        }
-        // DECSACE 2 selects the rectangle extent this row measures; the surface default is stream (29817).
-        ctx.feed("\x1b[2*x\x1b[1;1;3;5;7$r")
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
-        )
-        const controlsValid = after.every(
-          (line, row) => line.every((cell, col) => cell.char === before[row]?.[col]?.char) && !line[5]?.inverse,
-        )
-        return parserStateResult(
-          controlsValid ? after.every((line) => line.slice(0, 5).every((cell) => cell.inverse)) : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECCARA character or outside attribute control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[2*x\x1b[1;1;3;5;7$r") // DECSACE 2 (rectangle), then DECCARA
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
-
-  {
-    ...probe(
-      "editing.decrara",
-      (ctx) => {
-        const expected = "DECRARA clears inverse on measured 3x5 inverse cells, preserving text and right flank"
-        const rows = ctx.getScrollback().screenLines
-        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6 || !Number.isSafeInteger(rows) || rows < 3) {
-          return parserStateResult(null, expected, { cols: ctx.cols, rows }, "Need a measured 3x6 fixture")
-        }
-        ctx.feed("\x1b[1;1H\x1b[7maaaaa\x1b[0mZ\x1b[2;1H\x1b[7mbbbbb\x1b[0mY\x1b[3;1H\x1b[7mccccc\x1b[0mX")
-        const before = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
-        )
-        if (
-          before.map((line) => line.map((cell) => cell.char).join("")).join("|") !== "aaaaaZ|bbbbbY|cccccX" ||
-          before.some((line) => !line.slice(0, 5).every((cell) => cell.inverse) || line[5]?.inverse)
-        ) {
-          return parserStateResult(null, expected, { before }, "DECRARA inverse seed was not measured")
-        }
-        ctx.feed("\x1b[1;1H")
-        const setup = ctx.getCursor()
-        if (setup.x !== 0 || setup.y !== 0) {
-          return parserStateResult(null, expected, { before, setup }, "DECRARA cursor setup failed")
-        }
-        // DECSACE 2 selects the rectangle extent this row measures; the surface default is stream (29817).
-        ctx.feed("\x1b[2*x\x1b[1;1;3;5;7$t")
-        const after = Array.from({ length: 3 }, (_, row) =>
-          Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
-        )
-        const controlsValid = after.every(
-          (line, row) => line.every((cell, col) => cell.char === before[row]?.[col]?.char) && !line[5]?.inverse,
-        )
-        return parserStateResult(
-          controlsValid ? after.every((line) => line.slice(0, 5).every((cell) => !cell.inverse)) : null,
-          expected,
-          { before, setup, after },
-          controlsValid ? undefined : "DECRARA character or outside attribute control changed",
-        )
-      },
-      async (ctx) => {
-        if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 5) {
-          return {
-            pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Editing fixture needs at least 3x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
-          }
-        }
-        ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[2*x\x1b[1;1;3;5;7$t") // DECSACE 2 (rectangle), then DECRARA
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "edited cells or attributes")
-      },
-    ),
-    termNeedsGeometry: true,
-
-    termlessObservationEvidence: "parser-state",
-  },
 
   // DECSACE selects the extent DECCARA/DECRARA apply over: stream (0 or 1) or rectangle (2). The claim is
   // measurable without pixels because the effect is an ATTRIBUTE on cells the parser already holds:
@@ -737,10 +627,145 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     async (ctx) => {
       // Deliberately no geometry read: when the owned terminal's geometry is unavailable, touching
       // ctx.rows/ctx.cols throws UndeclaredTerminalGeometry and the whole run loses suiteComplete.
-      // The setting can still be attempted; without a cell readback the row stays unmeasured by name.
-      ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
-      const pos = await ctx.queryCursorPosition()
-      return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
+      // Whole-window digests need no geometry, so both extent frames are still measurable, and a
+      // run with no adapter falls back to the named unmeasured path below.
+      const capture = ctx.capture
+      if (!capture) {
+        // The extent is a terminal MODE, not a cell write: leaving DECSACE 2 set would change what the
+        // next probe's DECCARA/DECRARA reach, and no lifecycle runs on this branch to clear it.
+        ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA + "\x1b[0*x")
+        const pos = await ctx.queryCursorPosition()
+        return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
+      }
+      try {
+        // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
+        // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
+        // captureStabilityPair (region-readback.ts). The cursor stays hidden for every read and is
+        // restored on every exit. The pair reads the SEEDED screen and its second read is the seed
+        // frame every extent is compared against, so a seed that is still settling is refused
+        // rather than measured, and a frame that only looks stable after the measurement cannot
+        // qualify it. On a terminal that ignores DECSACE, a blinking cursor alone moves the
+        // whole-window digest.
+        beginCaptureLifecycle(ctx)
+        ctx.write(DECSACE_PAINT)
+        let seed: ObservationFrame | undefined
+        const stabilityRead = async (label: string) => {
+          const frame = await capture({ role: "control", label })
+          seed = frame
+          const digests = frameDigests(frame)
+          return { regionDigest: digests.cells, pixelsDigest: digests.whole, frame }
+        }
+        const { refusal: instability } = await captureStabilityPair(
+          "editing.decsace",
+          "pixels",
+          () => stabilityRead("editing.decsace: seed stability 1"),
+          () => stabilityRead("editing.decsace: seed stability 2"),
+        )
+        if (instability) return instability
+        if (seed === undefined) throw new Error("editing.decsace: the stability pair read no seed frame")
+        ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
+        const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
+        ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
+        // The stream frame is the control: the same DECCARA under the other extent. Equal frames mean
+        // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
+        const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
+        // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
+        // cannot establish an extent difference. Compare the measured digest the frame kind
+        // actually carries — ONE kind for all three frames. A per-frame `whole ?? cells` compares
+        // one frame's whole-window digest with another's region digest, and that mismatch then
+        // reads as a measured difference.
+        const frames = [seed, rectangle, stream]
+        const digests = frames.map(frameDigests)
+        const kind = digests.every((entry) => entry.whole !== undefined)
+          ? "whole"
+          : digests.every((entry) => entry.cells !== undefined)
+            ? "cells"
+            : null
+        const described = frames
+          .map((frame, index) => {
+            const entry = digests[index]
+            const carried = entry?.whole !== undefined ? "whole" : entry?.cells !== undefined ? "cells" : "none"
+            return `${frame.label}: ${carried}`
+          })
+          .join("; ")
+        const observed = JSON.stringify({
+          kind,
+          seed: seed.ref,
+          rectangle: rectangle.ref,
+          stream: stream.ref,
+          digests: digests.map((entry) => entry.whole ?? entry.cells),
+        })
+        if (kind === null) {
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: stream.ref,
+              frames,
+              note: `These frames do not all report one measured digest kind (${described}), so the two DECSACE extents cannot be compared`,
+            },
+          }
+        }
+        const measured = digests.map((entry) => (kind === "whole" ? entry.whole : entry.cells)) as string[]
+        if (measured[1] === measured[2]) {
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: stream.ref,
+              frames,
+              note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
+            },
+          }
+        }
+        // A frame that did not move from the seed has measured no change at all, so an ignored
+        // DECCARA and a digest that cannot see attributes are the same evidence.
+        if (measured[1] === measured[0] || measured[2] === measured[0]) {
+          const still = measured[1] === measured[0] ? "rectangle" : "stream"
+          return {
+            pass: false,
+            response: observed,
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              evidence: "pixels",
+              screenshotRef: stream.ref,
+              frames,
+              note: `The ${still} frame did not differ from the seed, so DECCARA left no measurable change and an ignored DECCARA cannot be separated from a digest that cannot see attributes`,
+            },
+          }
+        }
+        // Separable extents are the claim this arm can establish: the same DECCARA produced two
+        // different frames under DECSACE 2 and DECSACE 0, each different from the seed. It does NOT
+        // grade the exact cells (the parser arm does), and every ambiguous frame stays inconclusive
+        // above rather than a negative.
+        return {
+          pass: true,
+          response: observed,
+          observation: {
+            outcome: "supported",
+            evidence: "pixels",
+            screenshotRef: stream.ref,
+            frames,
+            note: "The rectangle and stream frames differ from the seed and from each other; exact extents are graded by the parser arm",
+          },
+          assertions: [
+            {
+              kind: "positive",
+              expected: DECSACE_EXPECTED,
+              observed: JSON.stringify({ kind, seed: measured[0], rectangle: measured[1], stream: measured[2] }),
+            },
+          ],
+        }
+      } finally {
+        endCaptureLifecycle(ctx, "\x1b[0*x")
+      }
     },
   ),
 
@@ -805,18 +830,4 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   },
 ]
 
-export const editingProbes: ProbeDefinition[] = editingProbeDefinitions.map((definition) => {
-  const original = definition.term
-  if (!original || !(definition.id in EDITING_CAPTURE_SPECS)) return definition
-  // A row with its own readback spec is decided from the region oracle, which reads the terminal's
-  // cells on a text arm; every other editing row reads pixels and needs the pixel adapter.
-  const readback = definition.id in EDITING_READBACK_SPECS
-  return {
-    ...definition,
-    ...(readback ? { cellReadback: true as const } : {}),
-    term: async (ctx) =>
-      ctx.capture !== undefined || (readback && ctx.cells !== undefined)
-        ? editCapture(ctx, definition.id)
-        : original(ctx),
-  }
-})
+export const editingProbes: ProbeDefinition[] = editingProbeDefinitions
