@@ -138,9 +138,11 @@ export function readProcessImagePath(pid: number, kernel?: Kernel32): Executable
         reason: `cannot read the creation time of console host pid ${String(pid)}: error ${String(code)}`,
       }
     }
-    // FILETIME is two little-endian DWORDs; combining them in one BigInt keeps every tick the
-    // kernel reported, where a Number would round the low bits away.
-    const ticks = (BigInt(times.readUInt32LE(FILETIME_BYTES)) << 32n) | BigInt(times.readUInt32LE(0))
+    // The creation FILETIME is the FIRST 8-byte slot and nothing else: its high DWORD is at byte 4,
+    // and byte 8 is the start of the exit FILETIME. Reading the whole u64 keeps every tick the
+    // kernel reported — a Number would round the low bits away — and stops a second FILETIME being
+    // mixed into the key at all.
+    const ticks = times.readBigUInt64LE(0)
     return { status: "named", path: name.toString("utf16le", 0, characters * 2), createdAt: String(ticks) }
   } finally {
     symbols.CloseHandle(handle as never)
