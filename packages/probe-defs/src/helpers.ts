@@ -697,15 +697,8 @@ export function probe(
   termless: ((ctx: TermlessContext) => ProbeResult) | null,
   term: ((ctx: TermContext) => Promise<ProbeResult>) | null,
   termObservationEvidence?: ObservationEvidence,
-  termlessObservationEvidence?: ObservationEvidence,
 ): ProbeDefinition {
-  return {
-    id,
-    termless,
-    term,
-    ...(termObservationEvidence && { termObservationEvidence }),
-    ...(termlessObservationEvidence && { termlessObservationEvidence }),
-  }
+  return { id, termless, term, ...(termObservationEvidence && { termObservationEvidence }) }
 }
 
 /** Feature support is independent of whether an observer can inspect link metadata. */

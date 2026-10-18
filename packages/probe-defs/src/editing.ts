@@ -592,187 +592,194 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   // the reading-order span from its top-left to its bottom-right under DECSACE 0. The stream frame is
   // the control that proves the setting was honoured rather than ignored; when the two frames agree
   // the extent modes are indistinguishable here and the row is inconclusive BY NAME, never a pass.
-  probe(
-    "editing.decsace",
-    (ctx) => {
-      const rows = ctx.getScrollback().screenLines
-      if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 2) {
-        return parserStateResult(null, DECSACE_EXPECTED, { cols: ctx.cols, rows }, "Need a measured 2x8 fixture")
-      }
-      ctx.feed(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
-      const rect = decsaceFrame(ctx)
-      ctx.feed(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
-      const stream = decsaceFrame(ctx)
-      const charsKept = (frame: typeof rect) =>
-        frame.map((line) => line.map((cell) => cell.char).join("")).join("|") === "abcdefgh|ijklmnop"
-      const rectPattern = decsaceExtentPattern(rect)
-      const streamPattern = decsaceExtentPattern(stream)
-      if (!charsKept(rect) || !charsKept(stream)) {
-        return parserStateResult(null, DECSACE_EXPECTED, { rect, stream }, "DECSACE frames changed the seed characters")
-      }
-      if (rectPattern === streamPattern) {
+  {
+    ...probe(
+      "editing.decsace",
+      (ctx) => {
+        const rows = ctx.getScrollback().screenLines
+        if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 8 || !Number.isSafeInteger(rows) || rows < 2) {
+          return parserStateResult(null, DECSACE_EXPECTED, { cols: ctx.cols, rows }, "Need a measured 2x8 fixture")
+        }
+        ctx.feed(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
+        const rect = decsaceFrame(ctx)
+        ctx.feed(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
+        const stream = decsaceFrame(ctx)
+        const charsKept = (frame: typeof rect) =>
+          frame.map((line) => line.map((cell) => cell.char).join("")).join("|") === "abcdefgh|ijklmnop"
+        const rectPattern = decsaceExtentPattern(rect)
+        const streamPattern = decsaceExtentPattern(stream)
+        if (!charsKept(rect) || !charsKept(stream)) {
+          return parserStateResult(
+            null,
+            DECSACE_EXPECTED,
+            { rect, stream },
+            "DECSACE frames changed the seed characters",
+          )
+        }
+        if (rectPattern === streamPattern) {
+          return parserStateResult(
+            null,
+            DECSACE_EXPECTED,
+            { rect, stream },
+            "Both DECSACE extent modes left the same frame; the setting is not measurable on this parser",
+          )
+        }
         return parserStateResult(
-          null,
+          rectPattern === DECSACE_RECTANGLE_PATTERN && streamPattern === DECSACE_STREAM_PATTERN,
           DECSACE_EXPECTED,
-          { rect, stream },
-          "Both DECSACE extent modes left the same frame; the setting is not measurable on this parser",
+          { rect: rectPattern, stream: streamPattern },
         )
-      }
-      return parserStateResult(
-        rectPattern === DECSACE_RECTANGLE_PATTERN && streamPattern === DECSACE_STREAM_PATTERN,
-        DECSACE_EXPECTED,
-        { rect: rectPattern, stream: streamPattern },
-      )
-    },
-    async (ctx) => {
-      // Deliberately no geometry read: when the owned terminal's geometry is unavailable, touching
-      // ctx.rows/ctx.cols throws UndeclaredTerminalGeometry and the whole run loses suiteComplete.
-      // Whole-window digests need no geometry, so both extent frames are still measurable, and a
-      // run with no adapter falls back to the named unmeasured path below.
-      const capture = ctx.capture
-      if (!capture) {
-        // The extent is a terminal MODE, not a cell write: leaving DECSACE 2 set would change what the
-        // next probe's DECCARA/DECRARA reach, and no lifecycle runs on this branch to clear it.
-        ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA + "\x1b[0*x")
-        const pos = await ctx.queryCursorPosition()
-        return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
-      }
-      try {
-        // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
-        // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
-        // captureStabilityPair (region-readback.ts). The cursor stays hidden for every read and is
-        // restored on every exit. The pair reads the SEEDED screen and its second read is the seed
-        // frame every extent is compared against, so a seed that is still settling is refused
-        // rather than measured, and a frame that only looks stable after the measurement cannot
-        // qualify it. On a terminal that ignores DECSACE, a blinking cursor alone moves the
-        // whole-window digest.
-        beginCaptureLifecycle(ctx)
-        ctx.write(DECSACE_PAINT)
-        let seed: ObservationFrame | undefined
-        const stabilityRead = async (label: string) => {
-          const frame = await capture({ role: "control", label })
-          seed = frame
-          const digests = frameDigests(frame)
-          return { regionDigest: digests.cells, pixelsDigest: digests.whole, frame }
+      },
+      async (ctx) => {
+        // Deliberately no geometry read: when the owned terminal's geometry is unavailable, touching
+        // ctx.rows/ctx.cols throws UndeclaredTerminalGeometry and the whole run loses suiteComplete.
+        // Whole-window digests need no geometry, so both extent frames are still measurable, and a
+        // run with no adapter falls back to the named unmeasured path below.
+        const capture = ctx.capture
+        if (!capture) {
+          // The extent is a terminal MODE, not a cell write: leaving DECSACE 2 set would change what the
+          // next probe's DECCARA/DECRARA reach, and no lifecycle runs on this branch to clear it.
+          ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA + "\x1b[0*x")
+          const pos = await ctx.queryCursorPosition()
+          return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
         }
-        const { refusal: instability } = await captureStabilityPair(
-          "editing.decsace",
-          "pixels",
-          () => stabilityRead("editing.decsace: seed stability 1"),
-          () => stabilityRead("editing.decsace: seed stability 2"),
-        )
-        if (instability) return instability
-        if (seed === undefined) throw new Error("editing.decsace: the stability pair read no seed frame")
-        ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
-        const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
-        ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
-        // The stream frame is the control: the same DECCARA under the other extent. Equal frames mean
-        // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
-        const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
-        // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
-        // cannot establish an extent difference. Compare the measured digest the frame kind
-        // actually carries — ONE kind for all three frames. A per-frame `whole ?? cells` compares
-        // one frame's whole-window digest with another's region digest, and that mismatch then
-        // reads as a measured difference.
-        const frames = [seed, rectangle, stream]
-        const digests = frames.map(frameDigests)
-        const kind = digests.every((entry) => entry.whole !== undefined)
-          ? "whole"
-          : digests.every((entry) => entry.cells !== undefined)
-            ? "cells"
-            : null
-        const described = frames
-          .map((frame, index) => {
-            const entry = digests[index]
-            const carried = entry?.whole !== undefined ? "whole" : entry?.cells !== undefined ? "cells" : "none"
-            return `${frame.label}: ${carried}`
+        try {
+          // The capture-region oracle's OWN controls, called rather than copied: the lifecycle from
+          // beginCaptureLifecycle/endCaptureLifecycle and the ONE stability rule from
+          // captureStabilityPair (region-readback.ts). The cursor stays hidden for every read and is
+          // restored on every exit. The pair reads the SEEDED screen and its second read is the seed
+          // frame every extent is compared against, so a seed that is still settling is refused
+          // rather than measured, and a frame that only looks stable after the measurement cannot
+          // qualify it. On a terminal that ignores DECSACE, a blinking cursor alone moves the
+          // whole-window digest.
+          beginCaptureLifecycle(ctx)
+          ctx.write(DECSACE_PAINT)
+          let seed: ObservationFrame | undefined
+          const stabilityRead = async (label: string) => {
+            const frame = await capture({ role: "control", label })
+            seed = frame
+            const digests = frameDigests(frame)
+            return { regionDigest: digests.cells, pixelsDigest: digests.whole, frame }
+          }
+          const { refusal: instability } = await captureStabilityPair(
+            "editing.decsace",
+            "pixels",
+            () => stabilityRead("editing.decsace: seed stability 1"),
+            () => stabilityRead("editing.decsace: seed stability 2"),
+          )
+          if (instability) return instability
+          if (seed === undefined) throw new Error("editing.decsace: the stability pair read no seed frame")
+          ctx.write(DECSACE_PAINT + "\x1b[2*x" + DECSACE_DEC_CARA)
+          const rectangle = await capture({ role: "target", label: "editing.decsace: DECSACE 2 rectangle frame" })
+          ctx.write(DECSACE_PAINT + "\x1b[0*x" + DECSACE_DEC_CARA)
+          // The stream frame is the control: the same DECCARA under the other extent. Equal frames mean
+          // this adapter cannot separate the extents, so the row is inconclusive BY NAME, never a pass.
+          const stream = await capture({ role: "target", label: "editing.decsace: DECSACE 0 stream frame" })
+          // `ref` is the RETAINED ARTIFACT, and identical images can encode to different bytes, so it
+          // cannot establish an extent difference. Compare the measured digest the frame kind
+          // actually carries — ONE kind for all three frames. A per-frame `whole ?? cells` compares
+          // one frame's whole-window digest with another's region digest, and that mismatch then
+          // reads as a measured difference.
+          const frames = [seed, rectangle, stream]
+          const digests = frames.map(frameDigests)
+          const kind = digests.every((entry) => entry.whole !== undefined)
+            ? "whole"
+            : digests.every((entry) => entry.cells !== undefined)
+              ? "cells"
+              : null
+          const described = frames
+            .map((frame, index) => {
+              const entry = digests[index]
+              const carried = entry?.whole !== undefined ? "whole" : entry?.cells !== undefined ? "cells" : "none"
+              return `${frame.label}: ${carried}`
+            })
+            .join("; ")
+          const observed = JSON.stringify({
+            kind,
+            seed: seed.ref,
+            rectangle: rectangle.ref,
+            stream: stream.ref,
+            digests: digests.map((entry) => entry.whole ?? entry.cells),
           })
-          .join("; ")
-        const observed = JSON.stringify({
-          kind,
-          seed: seed.ref,
-          rectangle: rectangle.ref,
-          stream: stream.ref,
-          digests: digests.map((entry) => entry.whole ?? entry.cells),
-        })
-        if (kind === null) {
+          if (kind === null) {
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: stream.ref,
+                frames,
+                note: `These frames do not all report one measured digest kind (${described}), so the two DECSACE extents cannot be compared`,
+              },
+            }
+          }
+          const measured = digests.map((entry) => (kind === "whole" ? entry.whole : entry.cells)) as string[]
+          if (measured[1] === measured[2]) {
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: stream.ref,
+                frames,
+                note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
+              },
+            }
+          }
+          // A frame that did not move from the seed has measured no change at all, so an ignored
+          // DECCARA and a digest that cannot see attributes are the same evidence.
+          if (measured[1] === measured[0] || measured[2] === measured[0]) {
+            const still = measured[1] === measured[0] ? "rectangle" : "stream"
+            return {
+              pass: false,
+              response: observed,
+              observation: {
+                outcome: "inconclusive",
+                reason: "insufficient-evidence",
+                evidence: "pixels",
+                screenshotRef: stream.ref,
+                frames,
+                note: `The ${still} frame did not differ from the seed, so DECCARA left no measurable change and an ignored DECCARA cannot be separated from a digest that cannot see attributes`,
+              },
+            }
+          }
+          // Separable extents are the claim this arm can establish: the same DECCARA produced two
+          // different frames under DECSACE 2 and DECSACE 0, each different from the seed. It does NOT
+          // grade the exact cells (the parser arm does), and every ambiguous frame stays inconclusive
+          // above rather than a negative.
           return {
-            pass: false,
+            pass: true,
             response: observed,
             observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
+              outcome: "supported",
               evidence: "pixels",
               screenshotRef: stream.ref,
               frames,
-              note: `These frames do not all report one measured digest kind (${described}), so the two DECSACE extents cannot be compared`,
+              note: "The rectangle and stream frames differ from the seed and from each other; exact extents are graded by the parser arm",
             },
+            assertions: [
+              {
+                kind: "positive",
+                expected: DECSACE_EXPECTED,
+                observed: JSON.stringify({ kind, seed: measured[0], rectangle: measured[1], stream: measured[2] }),
+              },
+            ],
           }
+        } finally {
+          endCaptureLifecycle(ctx, "\x1b[0*x")
         }
-        const measured = digests.map((entry) => (kind === "whole" ? entry.whole : entry.cells)) as string[]
-        if (measured[1] === measured[2]) {
-          return {
-            pass: false,
-            response: observed,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "pixels",
-              screenshotRef: stream.ref,
-              frames,
-              note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
-            },
-          }
-        }
-        // A frame that did not move from the seed has measured no change at all, so an ignored
-        // DECCARA and a digest that cannot see attributes are the same evidence.
-        if (measured[1] === measured[0] || measured[2] === measured[0]) {
-          const still = measured[1] === measured[0] ? "rectangle" : "stream"
-          return {
-            pass: false,
-            response: observed,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "pixels",
-              screenshotRef: stream.ref,
-              frames,
-              note: `The ${still} frame did not differ from the seed, so DECCARA left no measurable change and an ignored DECCARA cannot be separated from a digest that cannot see attributes`,
-            },
-          }
-        }
-        // Separable extents are the claim this arm can establish: the same DECCARA produced two
-        // different frames under DECSACE 2 and DECSACE 0, each different from the seed. It does NOT
-        // grade the exact cells (the parser arm does), and every ambiguous frame stays inconclusive
-        // above rather than a negative.
-        return {
-          pass: true,
-          response: observed,
-          observation: {
-            outcome: "supported",
-            evidence: "pixels",
-            screenshotRef: stream.ref,
-            frames,
-            note: "The rectangle and stream frames differ from the seed and from each other; exact extents are graded by the parser arm",
-          },
-          assertions: [
-            {
-              kind: "positive",
-              expected: DECSACE_EXPECTED,
-              observed: JSON.stringify({ kind, seed: measured[0], rectangle: measured[1], stream: measured[2] }),
-            },
-          ],
-        }
-      } finally {
-        endCaptureLifecycle(ctx, "\x1b[0*x")
-      }
-    },
+      },
+    ),
     // Both arms measure the claim: the parser grades the exact attribute cells and the terminal
     // separates the two extents by its frames. probeStatus derives from these two declarations, so
     // leaving them off keeps the row on a reviewed partial however complete the measurement becomes.
-    "pixels",
-    "parser-state",
-  ),
+    termObservationEvidence: "pixels",
+    termlessObservationEvidence: "parser-state",
+  },
 
   {
     ...probe(
