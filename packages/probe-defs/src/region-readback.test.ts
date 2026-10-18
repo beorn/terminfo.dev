@@ -405,6 +405,7 @@ test.each(["outside", "inside", "crop", "missing-first", "missing-second"] as co
     fake.read = async (request) => {
       const captured = await read(request)
       if (!request.label.includes("capture stability")) return captured
+    if (captured.frame.kind === "text-cells") throw new Error("ownedWindow stability fixture requires pixels")
       const second = request.label.endsWith("2")
       if (second) secondRef = captured.frame.ref
       const crop =
@@ -434,7 +435,7 @@ test.each(["outside", "inside", "crop", "missing-first", "missing-second"] as co
       expect(result.observation.frames ?? []).toEqual([])
     }
     if (movement === "outside") {
-      expect(JSON.parse(String(result.response)).stability).toMatchObject({
+    expect(JSON.parse(String(result.response))).toMatchObject({ stability: {
         regionDigest: ["1,1,1,8|seed", "1,1,1,8|seed"],
         pixelsDigest: ["frame|seed|", "frame|seed|:changed"],
         wholeWindowChanged: true,
@@ -738,7 +739,7 @@ test("region rows consume the same calibrated run geometry without re-dividing w
       label: request.label,
       region: request.cells,
       pixelGeometry: request.pixelGeometry,
-    })
+    } })
     // The real adapter always carries the crop rectangle beside the digest; a stub that dropped it
     // would model a capture the collector cannot produce.
     return {

@@ -84,10 +84,12 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
-    expect(JSON.parse(String(result?.response)).stability).toMatchObject({
-      regionDigest: [digest("stable:measured"), digest("stable:measured")],
-      pixelsDigest: [digest("stable:measured:whole"), digest("outside-cell motion")],
-      wholeWindowChanged: true,
+    expect(JSON.parse(String(result?.response))).toMatchObject({
+      stability: {
+        regionDigest: [digest("stable:measured"), digest("stable:measured")],
+        pixelsDigest: [digest("stable:measured:whole"), digest("outside-cell motion")],
+        wholeWindowChanged: true,
+      },
     })
   })
 
