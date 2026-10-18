@@ -74,8 +74,12 @@ export function sixelPayload(size: SixelTileSize): string {
   if (size.height % BAND_PIXELS !== 0) {
     throw new Error(`sixel payload height ${size.height} is not a whole number of ${BAND_PIXELS}-pixel bands`)
   }
-  const bands = Array.from({ length: size.height / BAND_PIXELS }, () => `#0${"~".repeat(size.width)}`)
-  return `\x1bP0;1;0q"1;1;${size.width};${size.height}${SIXEL_RED}${bands.join("-")}\x1b\\`
+  // 30052 RED-matrix mutant (experiment branch, never shipped): paint half the block in both axes
+  // so the compared interior cell is partly covered. A correctly placed full tile is the baseline.
+  const mutantWidth = Math.max(1, Math.floor(size.width / 2))
+  const mutantBands = Math.max(1, Math.floor(size.height / BAND_PIXELS / 2))
+  const bands = Array.from({ length: mutantBands }, () => `#0${"~".repeat(mutantWidth)}`)
+  return `\x1bP0;1;0q"1;1;${mutantWidth};${mutantBands * BAND_PIXELS}${SIXEL_RED}${bands.join("-")}\x1b\\`
 }
 
 /** The same block painted plainly: three rows of spaces on the exact truecolor background. */
