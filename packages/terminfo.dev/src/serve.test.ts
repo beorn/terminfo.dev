@@ -805,7 +805,8 @@ describe("private finite daemon startup", () => {
           readCells: async () => ({
             status: "read",
             grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
-            bufferOwner: { image: "OpenConsole.exe", pid: 1, ppid: 2 }
+            bufferOwner: { image: "OpenConsole.exe", pid: 1, ppid: 2 },
+            standIns: []
           }),
           dispose: async () => {}
         })

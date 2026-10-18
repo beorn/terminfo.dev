@@ -25,10 +25,15 @@ const textRead = (text: readonly string[], droppedLines = 2) => ({
   },
 })
 
-const consoleRead = (text: readonly string[], attributes: readonly (readonly number[])[]) => ({
+const consoleRead = (
+  text: readonly string[],
+  attributes: readonly (readonly number[])[],
+  standIns: readonly { row: number; column: number; standIn: "U+FFFD" }[] = [],
+) => ({
   status: "read" as const,
   grid: { cols: Math.max(...text.map((row) => row.length), 1), rows: text.length, text, attributes },
   bufferOwner: { image: "OpenConsole.exe" as const, pid: 4242, ppid: 100 },
+  standIns,
 })
 
 describe("textCellsFrame — one screen, one rectangle, one set of bytes", () => {
@@ -103,6 +108,90 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
         [7, 7],
         [7, 7],
       ]).frame.frameDigest,
+    )
+  })
+
+  it("measures its own rectangle past a stand-in outside it, and names that cell in the trace", () => {
+    // The specimen from the 2026-10-18 Windows run: text.wide.emoji-zwj left the host's stand-in at
+    // row 1, column 1, and the next 25 rows refused the whole window before cropping to their own
+    // cells. The stand-in is still exactly what the host held, so it stays in the whole digest; it
+    // is the READING that the rectangle withholds.
+    const withStandIn = consoleRead(
+      ["\ufffd ", "ab"],
+      [
+        [7, 7],
+        [7, 7],
+      ],
+      [{ row: 1, column: 1, standIn: "U+FFFD" }],
+    )
+    const other = consoleRead(
+      ["x ", "ab"],
+      [
+        [7, 7],
+        [7, 7],
+      ],
+    )
+    const cells = { top: 2, left: 1, bottom: 2, right: 2 }
+    const measured = textCellsFrame({ ...checkpoint, cells }, withStandIn, 1)
+    const replaced = textCellsFrame({ ...checkpoint, cells }, other, 1)
+    expect(measured.frame.cellDigest).toBe(replaced.frame.cellDigest)
+    // Nothing was dropped from the frame: the stand-in is in the whole digest as the host wrote it.
+    expect(measured.frame.frameDigest).not.toBe(replaced.frame.frameDigest)
+    expect(measured.frame.frameDigest).toBe(measured.frame.ref)
+    // Compare against the digest of these exact bytes, not against another live read: a frame that
+    // blanked or dropped the stand-in would still differ from the "x" read above, and only the
+    // literal expectation below fails when the cell stops being U+FFFD.
+    expect(measured.retained.toString("utf8")).toBe("\ufffd \nab\n#attributes\n7,7\n7,7")
+    expect(measured.frame.frameDigest).toBe(sha(Buffer.from("\ufffd \nab\n#attributes\n7,7\n7,7")))
+    expect(measured.trace.standIns).toEqual([{ row: 1, column: 1, standIn: "U+FFFD" }])
+    expect(replaced.trace).not.toHaveProperty("standIns")
+  })
+
+  it("refuses a stand-in on the rectangle's last column, and names one a column past it", () => {
+    // The inside row above still passes if the right edge is exclusive, because its stand-in sits at
+    // the rectangle's first cell. These two cells pin the edge itself: column 4 of a rectangle that
+    // ends at 4 is compared and refuses; column 4 of one that ends at 3 is named in the trace.
+    const read = consoleRead(
+      ["abc\ufffd", "efgh"],
+      [
+        [7, 7, 7, 7],
+        [7, 7, 7, 7],
+      ],
+      [{ row: 1, column: 4, standIn: "U+FFFD" }],
+    )
+    expect(() => textCellsFrame({ ...checkpoint, cells: { top: 1, left: 2, bottom: 1, right: 4 } }, read, 1)).toThrow(
+      /row 1, column 4 holds U\+FFFD/u,
+    )
+    const past = textCellsFrame({ ...checkpoint, cells: { top: 1, left: 2, bottom: 1, right: 3 } }, read, 1)
+    expect(past.trace.standIns).toEqual([{ row: 1, column: 4, standIn: "U+FFFD" }])
+  })
+
+  it("refuses a stand-in inside the cells it compares, by name and position", () => {
+    const read = consoleRead(
+      ["\ufffd ", "ab"],
+      [
+        [7, 7],
+        [7, 7],
+      ],
+      [{ row: 1, column: 1, standIn: "U+FFFD" }],
+    )
+    expect(() => textCellsFrame({ ...checkpoint, cells: { top: 1, left: 1, bottom: 1, right: 2 } }, read, 1)).toThrow(
+      /after erase: the terminal refused the text snapshot — row 1, column 1 holds U\+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit, and this checkpoint compares that cell/u,
+    )
+    // No named rectangle means the whole window is compared, so the same stand-in refuses there too.
+    expect(() => textCellsFrame(checkpoint, read, 1)).toThrow(/row 1, column 1 holds U\+FFFD/u)
+  })
+
+  it("keeps an integrity refusal unscoped: bytes the host never wrote are not a stand-in", () => {
+    // A NUL with no attribute is not content the host wrote; it is a clipped or stale read, and no
+    // checkpoint rectangle moves that refusal off the read.
+    const read = {
+      status: "refused" as const,
+      reason:
+        "row 1, column 1 decodes as NUL with no attribute; the console writes a blank cell as U+0020 with the fill attribute, so this cell was never written",
+    }
+    expect(() => textCellsFrame({ ...checkpoint, cells: { top: 2, left: 1, bottom: 2, right: 1 } }, read, 1)).toThrow(
+      /the terminal refused the text snapshot — row 1, column 1 decodes as NUL with no attribute/u,
     )
   })
 

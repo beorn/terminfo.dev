@@ -104,6 +104,13 @@ export interface TextFrameCheckpoint {
  * checkpoint's rectangle, attributes included, so a sub-rectangle's cell digest differs from its
  * frame digest exactly when the rectangle is smaller than the screen. `retained` is the byte-for-byte
  * content of `<digest>.txt`: the caller writes those bytes and nothing re-encodes them.
+ *
+ * A cell the console host wrote as U+FFFD — its stand-in for a glyph longer than one UTF-16 unit —
+ * is content the host held, so it stays in the whole digest exactly as written. Its READING is what
+ * the rectangle withholds: inside the compared cells it refuses by name, because digest equality
+ * over stand-ins cannot tell two glyphs apart; outside them the trace names the cell and the
+ * rectangle measures what it owns. Integrity failures (bytes the host never wrote, inconsistent
+ * wide-glyph markers) refuse the read wherever the cell is: only interpretation can be scoped.
  */
 export function textCellsFrame(
   checkpoint: TextFrameCheckpoint,
@@ -121,11 +128,24 @@ export function textCellsFrame(
   // A macOS text read says what it had to leave behind and fill in; the trace carries both so an
   // evidence reader sees them without re-deriving them from the artifact.
   const textGrid = "grid" in read ? undefined : read.cells
+  const standIns = "grid" in read ? read.standIns : []
   const retained = Buffer.from(encodeTextCells(rows, attributes), "utf8")
   const hex = createHash("sha256").update(retained).digest("hex")
   const ref = `sha256:${hex}`
   const region = textCellRegion(rows, gridRows, gridCols, checkpoint.cells)
   const cells = region.cells
+  const inside = standIns.find(
+    (cell) =>
+      cell.row >= cells.top && cell.row <= cells.bottom && cell.column >= cells.left && cell.column <= cells.right,
+  )
+  if (inside !== undefined) {
+    throw new Error(
+      `${checkpoint.label}: the terminal refused the text snapshot — row ${String(inside.row)}, column ${String(inside.column)} holds U+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit, and this checkpoint compares that cell`,
+    )
+  }
+  const outside = standIns.filter(
+    (cell) => cell.row < cells.top || cell.row > cells.bottom || cell.column < cells.left || cell.column > cells.right,
+  )
   const regionAttributes = attributes
     ?.slice(cells.top - 1, cells.bottom)
     .map((row) => row.slice(cells.left - 1, cells.right))
@@ -144,6 +164,7 @@ export function textCellsFrame(
       kind: "text-cells",
       retained: `${hex}.txt`,
       source: "the terminal's own text snapshot",
+      ...(outside.length === 0 ? {} : { standIns: outside }),
       ...(textGrid === undefined ? {} : { droppedLines: textGrid.droppedLines, paddedRows: textGrid.paddedRows }),
       ...(bufferOwner === undefined ? {} : { bufferOwner }),
     },
