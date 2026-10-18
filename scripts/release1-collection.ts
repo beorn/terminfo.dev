@@ -1,34 +1,36 @@
 #!/usr/bin/env bun
 /**
- * The ONE entry point for the Release 1 final corpus-wide re-collection (#27917): run once, on the
- * frozen probe suite, after the Thu 2026-10-08 12:00 PDT probe freeze (#27920, #27921).
- *
- * It collects nothing itself. Every row names the entry point that row IS measured with, so each
- * context keeps the one collection path it already has; a second collection path is the bug this
- * exists to prevent. What the runner adds:
- *
- *   1. the census — every Release 1 context, with a NAMED reason for any context that has no route,
- *      so a context can never be silently missing. Each Linux row's launcher invocation is READ BACK
- *      from the committed run that row re-measures (`target.version` / `target.config` /
- *      `target.permissions` in `content/probes-apps/`), the run the SITE selects via
- *      `docs/data/current-results.ts` — never a preset/profile handed to this file by hand. Kitty
- *      takes `--preset baseline|current` and would refuse the launcher's own default;
- *   2. the frozen suite — the owner reads candidate2's manifest freeze; a CLI id only asserts it;
- *   3. admission — hand each produced run to `scripts/admit-run.ts`, propagating its refusal before
- *      crediting the admitted target to collection coverage;
- *   4. the ending — `bun run decisive-share` (#27909), so the collection's result is the bar's own
- *      instrument.
- *
- * Read-only over `content/terminals.json`, the feature catalog's tier-1 labels, the committed runs, the
- * site's own selection (`docs/data/current-results.ts` + `scripts/decisive-share.ts`), probe-defs,
- * the receipt producer and `scripts/admit-run.ts`'s admission rules; no deploy.
+ * The existing collection entry point, extended toward the full 273-capability, 33-context pass.
+ * Bare/--plan prints a read-only census and historical Linux launcher recipes.
+ * --collect --development invokes existing raw collectors, validates the current suite in memory,
+ * and retains private classifications. WIP: headless, Linux and hosted dispatch are wired; other contexts
+ * stays visible as unfinished work. No development admission, suite declaration or inclusion.
+ * Supplied-run --admit retains its existing admission-owner path and decisive-share report.
+ * Full platform dispatch and the frozen final collection mode remain unfinished. No deploy.
  */
-import { spawnSync } from "node:child_process"
-import { readFileSync, readdirSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { execFileSync, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs"
+import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
+import { parse } from "yaml"
+import { loadFeatures, loadTerminals } from "@terminfo/catalog"
+import { parseRun } from "@terminfo/run-parser"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
-import { statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { classifyDevelopmentRun, statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 
@@ -41,13 +43,13 @@ const CONTENT = join(ROOT, "content")
  * collects — macOS and Windows share it because the route names the collection METHOD, and the
  * row's own `command` names which workflow runs: the platform belongs to the row, not the route.
  */
-export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless"
+export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless" | "mux"
 
 export interface CollectionContext {
   /** The context id, as the published row is keyed by. */
   readonly id: string
   readonly os: string
-  readonly kind: "app" | "headless"
+  readonly kind: "app" | "headless" | "mux"
   readonly route: CollectionRoute | null
   /** The entry point that measures this row — the same one the row was measured with. */
   readonly command: string | null
@@ -152,7 +154,7 @@ const macRow = (id: string): CollectionContext => ({
   // "macos-terminal-measurement-artifacts" upload never existed — the matrix uploads four
   // per-app artifacts named macos-<app>-<run-id>-<attempt>, macos-measurement.yml:289).
   command:
-    "gh workflow run macos-measurement.yml --repo beorn/terminfo.dev --ref main, then " +
+    "gh workflow run macos-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
     "gh run download <run-id> --repo beorn/terminfo.dev for the four macos-<app>-<run-id>-<attempt> artifacts",
   requires: null,
   sourceRun: null,
@@ -170,49 +172,71 @@ const engineRow = (id: string): CollectionContext => ({
   uncollectable: null,
 })
 
-/**
- * The 11 desktop contexts the bar reads (#27909 `RELEASE_1_CONTEXTS`), plus the Windows row the
- * hosted workflow now measures. The five Linux rows carry the invocation read back from the
- * committed run the ledger names.
- */
-export function release1DesktopContexts(ledger: LinuxLedger): readonly CollectionContext[] {
-  return [
-    ...LINUX_TARGET_IDS.map((id) => linuxRow(id, ledger[id])),
-    macRow("terminal-app"),
-    macRow("iterm2"),
-    macRow("ghostty"),
-    macRow("alacritty"),
-    {
-      // kitty/darwin ships AS MEASURED (27928): no hosted kitty job exists and hosted runners open no
-      // Kitty (no GPU, 27834), so it has no collection route and is named uncollectable, never a run
-      // that silently never arrives (27929 D4).
-      id: "kitty",
-      os: "macos",
-      kind: "app",
-      route: null,
-      command: null,
-      requires: null,
-      sourceRun: null,
-      uncollectable: "ships as measured (27928): no hosted kitty job, and hosted runners open no Kitty (no GPU, 27834)",
-    },
-    {
-      id: "windows-terminal",
-      os: "windows",
-      kind: "app",
-      route: "hosted-workflow",
-      // Same shape as the macOS rows and read back from the workflow for the same reason:
-      // windows-measurement.yml declares `on: workflow_dispatch:` with no inputs, and it archives
-      // ONE artifact named win32-<app>-<run-id>-<attempt> (windows-measurement.yml:173).
-      command:
-        "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref main, then " +
-        "gh run download <run-id> --repo beorn/terminfo.dev for the win32-windows-terminal-<run-id>-<attempt> artifact",
-      requires: null,
-      sourceRun: null,
-      // No longer a gap: run 38074622083 collected windows-terminal 1.23.20211.0 at
-      // db5558cf8d6c through this workflow, admitted by scripts/admit-run.ts.
-      uncollectable: null,
-    },
-  ]
+/** Route membership comes from the existing workflow matrix, not a second list of app IDs. */
+function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
+  const path = join(ROOT, ".github", "workflows", `${os}-measurement.yml`)
+  const workflow = parse(readFileSync(path, "utf8")) as {
+    jobs?: Record<string, { strategy?: { matrix?: { include?: Array<{ id?: unknown }> } } }>
+  }
+  const rows = workflow?.jobs?.[`measure-${os}`]?.strategy?.matrix?.include
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${path}: expected nonempty measure-${os} app matrix`)
+  const ids = new Set<string>()
+  for (const row of rows) {
+    if (typeof row?.id !== "string" || row.id.length === 0) throw new Error(`${path}: matrix app is missing its id`)
+    ids.add(row.id)
+  }
+  return ids
+}
+
+/** The catalog owns expected app/mux contexts; missing routes remain required work, never a scope cut. */
+function catalogContexts(ledger: LinuxLedger): CollectionContext[] {
+  const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
+  const contexts: CollectionContext[] = []
+  for (const [id, terminal] of Object.entries(loadTerminals(CONTENT))) {
+    if (terminal.historical || (terminal.kind !== "app" && terminal.kind !== "mux")) continue
+    if (!terminal.platforms?.length) throw new Error(`${CONTENT}/terminals.json: ${id} requires app/mux platforms`)
+    for (const os of terminal.platforms) {
+      if (terminal.kind === "mux") {
+        contexts.push({
+          id,
+          os,
+          kind: "mux",
+          route: "mux",
+          command: `bun packages/admin/src/index.ts probe mux ${id} --output <private-output>`,
+          requires: "launch and qualify the named outer terminal and genuine mux identity on this host",
+          sourceRun: null,
+          uncollectable: null,
+        })
+      } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
+      else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
+      else if (os === "windows" && hosted.windows.has(id)) {
+        contexts.push({
+          id,
+          os,
+          kind: "app",
+          route: "hosted-workflow",
+          command:
+            "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
+            `gh run download <run-id> --repo beorn/terminfo.dev for the win32-${id}-<run-id>-<attempt> artifact`,
+          requires: null,
+          sourceRun: null,
+          uncollectable: null,
+        })
+      } else {
+        contexts.push({
+          id,
+          os,
+          kind: "app",
+          route: null,
+          command: null,
+          requires: null,
+          sourceRun: null,
+          uncollectable: `required route work: ${id}/${os} has no qualified automatic owned launch/capture recipe in the current collection routes`,
+        })
+      }
+    }
+  }
+  return contexts
 }
 
 /**
@@ -224,7 +248,7 @@ export function release1Census(engineBackends: readonly string[], ledger: LinuxL
   if (engineBackends.length !== 11) {
     throw new Error(`Expected 11 headless engines in the Termless manifest; found ${engineBackends.length}`)
   }
-  return [...release1DesktopContexts(ledger), ...engineBackends.map(engineRow)]
+  return [...catalogContexts(ledger), ...engineBackends.map(engineRow)]
 }
 
 /** The engine backend names the collector would run, from the Termless manifest. */
@@ -232,6 +256,362 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
   const { manifest } = await import("@termless/core")
   const backends = manifest().backends
   return Object.keys(backends).filter((name) => backends[name]?.type !== "os")
+}
+
+export interface DevelopmentCollection {
+  mode: "development"
+  directory: string
+  probeHash: string
+  sourceRevision: string
+  inputSha256: Record<string, string>
+  catalogIds: string[]
+  contexts: Array<{
+    context: CollectionContext
+    status: "classified" | "failed"
+    rawRun?: string
+    directory?: string
+    classification?: ReturnType<typeof classifyDevelopmentRun>
+    error?: string
+  }>
+  errors: string[]
+}
+
+/** Private collection uses live suite bytes only; it never enters admission or product selection. */
+export async function collectDevelopmentPass(outputDirectory: string): Promise<DevelopmentCollection> {
+  mkdirSync(outputDirectory, { recursive: true })
+  const output = realpathSync(outputDirectory)
+  if (output === ROOT || output.startsWith(`${ROOT}${sep}`)) {
+    throw new Error(`Development output must be private, outside the source repository: ${output}`)
+  }
+  const directory = mkdtempSync(join(output, "pass-"))
+  const snapshot = probeSuiteSnapshot()
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
+  const catalogIds = Object.keys(loadFeatures(CONTENT))
+  const interpretationsPath = join(CONTENT, "interpretations.json")
+  const interpretations = activeInterpretations(
+    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds),
+  )
+  const inputSha256: Record<string, string> = {}
+  for (const path of new Set([
+    ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
+    interpretationsPath,
+    join(ROOT, "scripts/release1-collection.ts"),
+    join(ROOT, "scripts/interpretations.ts"),
+    join(ROOT, "docs/data/selected-results.ts"),
+    join(ROOT, "docs/data/release-scope.ts"),
+    resolve(ROOT, "../../bun.lock"),
+    resolve(ROOT, "../../flake.lock"),
+    join(ROOT, "bun.lock"),
+    join(ROOT, ".github/workflows/macos-measurement.yml"),
+    join(ROOT, ".github/workflows/windows-measurement.yml"),
+  ])) {
+    inputSha256[path] = createHash("sha256").update(readFileSync(path)).digest("hex")
+  }
+  // The live pass must not obtain its target configuration from product-selected historical runs.
+  const census = release1Census(await engineBackendsFromManifest(), {}).map((context) =>
+    context.route === "linux-container"
+      ? {
+          ...context,
+          uncollectable: null,
+          requires: null,
+          command: `bash scripts/linux-container-run.sh --target ${context.id} --preset ${context.id === "kitty" ? "current" : "default"} --clipboard-profile default <private-output>`,
+        }
+      : context,
+  )
+  const pass: DevelopmentCollection = {
+    mode: "development",
+    directory,
+    probeHash: snapshot.probeHash,
+    sourceRevision,
+    inputSha256,
+    catalogIds,
+    contexts: [],
+    errors: [],
+  }
+  const suites = new Map([[snapshot.probeHash, derivedSuiteManifest(snapshot)]])
+  const files = new Map<string, string[]>()
+  const failures = new Map<string, string>()
+  try {
+    const collected = await collectHeadlessRuns([], join(directory, "headless"))
+    for (const failure of collected.failures) failures.set(failure.backend, failure.error)
+    for (const path of collected.runs) {
+      try {
+        const file = realpathSync(path)
+        if (!file.startsWith(`${directory}${sep}`)) {
+          throw new Error(`collector returned raw output outside this private pass: ${file}`)
+        }
+        // This header only routes the file to its context; canonical parseRun validates every byte below.
+        const header = JSON.parse(readFileSync(file, "utf8")) as { target?: { id?: unknown } }
+        const id = header?.target?.id
+        if (typeof id !== "string" || !census.some((row) => row.kind === "headless" && row.id === id)) {
+          throw new Error(`headless collector returned an unexpected target in ${file}`)
+        }
+        files.set(id, [...(files.get(id) ?? []), file])
+      } catch (error) {
+        pass.errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  } catch (error) {
+    pass.errors.push(`headless collection: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  const hosted = collectHostedArtifacts(
+    census,
+    directory,
+    sourceRevision,
+    snapshot.probeHash,
+    inputSha256[join(ROOT, "bun.lock")] as string,
+    pass.errors,
+  )
+  for (const context of census) {
+    const row: DevelopmentCollection["contexts"][number] = { context, status: "failed" }
+    pass.contexts.push(row)
+    try {
+      let path: string
+      if (context.route === "linux-container") {
+        const output = join(directory, "linux", context.id)
+        row.directory = output
+        mkdirSync(output, { recursive: true })
+        runChild(
+          [
+            "bash",
+            "scripts/linux-container-run.sh",
+            "--target",
+            context.id,
+            "--preset",
+            context.id === "kitty" ? "current" : "default",
+            "--clipboard-profile",
+            "default",
+            output,
+          ],
+          `${labelOf(context)} Linux collection`,
+          {
+            stdout: join(output, "launcher.stdout.log"),
+            stderr: join(output, "launcher.stderr.log"),
+          },
+        )
+        const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
+        if (runs.length !== 1 || !runs[0]) {
+          throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
+        }
+        path = realpathSync(join(output, runs[0].name, "raw", "v2-run.json"))
+        if (!path.startsWith(`${output}${sep}`)) {
+          throw new Error(`Linux raw output escaped its private context: ${path}`)
+        }
+      } else if (context.route === "hosted-workflow") {
+        const artifact = hosted.get(coverageKey(context.kind, context.id, context.os))
+        if (!artifact) throw new Error("hosted dispatch lost its expected context result")
+        row.directory = artifact.directory
+        if (artifact.path) row.rawRun = artifact.path
+        if (artifact.error) throw new Error(artifact.error)
+        if (!artifact.path) throw new Error(`hosted artifact has no raw run in ${artifact.directory}`)
+        path = artifact.path
+      } else if (context.kind === "headless") {
+        const paths = files.get(context.id) ?? []
+        if (failures.has(context.id)) throw new Error(failures.get(context.id))
+        if (paths.length !== 1 || !paths[0]) {
+          throw new Error(`headless collector produced ${paths.length} raw runs; expected exactly one`)
+        }
+        path = paths[0]
+      } else {
+        throw new Error(
+          context.route === null
+            ? (context.uncollectable ?? "required route work")
+            : context.kind === "mux"
+              ? "required route work: launch and prove the named outer terminal and genuine mux identity"
+              : `required automation work: ${context.route} dispatch is not wired yet`,
+        )
+      }
+      row.rawRun = path
+      const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
+      if (
+        run.schemaVersion !== 2 ||
+        run.target.kind !== context.kind ||
+        run.target.id !== context.id ||
+        (context.kind !== "headless" && run.target.os !== context.os)
+      ) {
+        throw new Error(`raw run does not identify the expected v2 ${context.kind}:${context.id} context`)
+      }
+      if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
+      if (run.sourceRevision !== sourceRevision) {
+        throw new Error(`raw source ${run.sourceRevision} differs from pass source ${sourceRevision}`)
+      }
+      row.classification = classifyDevelopmentRun(run, interpretations)
+      row.status = "classified"
+    } catch (error) {
+      row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+  for (const [path, hash] of Object.entries(inputSha256)) {
+    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
+      pass.errors.push(`Pass input changed during collection: ${path}`)
+    }
+  }
+  writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
+  return pass
+}
+
+/** Dispatch each existing hosted matrix once and retain every job's companion artifacts. */
+function collectHostedArtifacts(
+  census: readonly CollectionContext[],
+  directory: string,
+  sourceRevision: string,
+  probeHash: string,
+  lockSha256: string,
+  errors: string[],
+): Map<string, { directory: string; path?: string; error?: string }> {
+  const results = new Map<string, { directory: string; path?: string; error?: string }>()
+  const root = join(directory, "hosted")
+  mkdirSync(root, { recursive: true })
+  const logs = (directory: string, step: string) => ({
+    stdout: join(directory, `${step}.stdout.log`),
+    stderr: join(directory, `${step}.stderr.log`),
+  })
+  let branch: string
+  try {
+    branch = runChild(["git", "symbolic-ref", "--short", "HEAD"], "hosted source branch", logs(root, "branch")).trim()
+    const remote = runChild(
+      ["git", "ls-remote", "--exit-code", "origin", `refs/heads/${branch}`],
+      "hosted source revision",
+      logs(root, "remote"),
+    ).trim()
+    if (!branch || remote !== `${sourceRevision}\trefs/heads/${branch}`) {
+      throw new Error(
+        `hosted source revision ${sourceRevision} is not the published branch ${branch}; publish that exact component branch before dispatch`,
+      )
+    }
+  } catch (error) {
+    for (const context of census.filter((row) => row.route === "hosted-workflow")) {
+      results.set(coverageKey(context.kind, context.id, context.os), {
+        directory: root,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    return results
+  }
+  for (const os of ["macos", "windows"]) {
+    const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
+    const output = join(root, os)
+    mkdirSync(output, { recursive: true })
+    try {
+      const workflow = `${os}-measurement`
+      const dispatchLogs = logs(output, "dispatch")
+      const response =
+        runChild(
+          ["gh", "workflow", "run", `${workflow}.yml`, "--repo", "beorn/terminfo.dev", "--ref", branch],
+          workflow,
+          dispatchLogs,
+        ) + readFileSync(dispatchLogs.stderr, "utf8")
+      const ids = new Set(
+        [...response.matchAll(/https:\/\/github\.com\/beorn\/terminfo\.dev\/actions\/runs\/(\d+)/g)].map(
+          (match) => match[1],
+        ),
+      )
+      const runId = [...ids][0]
+      if (ids.size !== 1 || !runId) {
+        throw new Error(
+          `${workflow}: dispatch returned no unique run URL; inspect ${dispatchLogs.stdout} before any redispatch`,
+        )
+      }
+      const run = JSON.parse(
+        runChild(
+          [
+            "gh",
+            "run",
+            "view",
+            runId,
+            "--repo",
+            "beorn/terminfo.dev",
+            "--json",
+            "headSha,headBranch,event,workflowName",
+          ],
+          `${workflow} source verification`,
+          logs(output, "verify"),
+        ),
+      ) as {
+        headSha?: unknown
+        headBranch?: unknown
+        event?: unknown
+        workflowName?: unknown
+      }
+      if (
+        run?.headSha !== sourceRevision ||
+        run.headBranch !== branch ||
+        run.event !== "workflow_dispatch" ||
+        run.workflowName !== workflow
+      ) {
+        throw new Error(
+          `${workflow}: source revision or workflow identity differs from ${branch}@${sourceRevision}; run ${runId}`,
+        )
+      }
+      writeFileSync(join(output, "workflow.json"), `${JSON.stringify({ runId, ...run }, null, 2)}\n`, { flag: "wx" })
+      try {
+        runChild(
+          ["gh", "run", "watch", runId, "--repo", "beorn/terminfo.dev", "--exit-status"],
+          workflow,
+          logs(output, "watch"),
+        )
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : String(error))
+      }
+      const artifacts = join(output, "artifacts")
+      mkdirSync(artifacts)
+      // Download ALL artifacts, keeping the CLI's per-artifact directories even for one Windows job.
+      runChild(
+        ["gh", "run", "download", runId, "--repo", "beorn/terminfo.dev", "--dir", artifacts],
+        `${workflow} artifacts`,
+        logs(output, "download"),
+      )
+      const entries = readdirSync(artifacts, { withFileTypes: true })
+      for (const context of contexts) {
+        const result: { directory: string; path?: string; error?: string } = { directory: artifacts }
+        results.set(coverageKey(context.kind, context.id, context.os), result)
+        try {
+          const prefix = `${os === "macos" ? "macos" : "win32"}-${context.id}-${runId}-`
+          const matches = entries.filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix))
+          if (matches.length !== 1 || !matches[0]) {
+            throw new Error(`expected one ${prefix} artifact in ${artifacts}; found ${matches.length}`)
+          }
+          result.directory = realpathSync(join(artifacts, matches[0].name))
+          if (!result.directory.startsWith(`${artifacts}${sep}`)) {
+            throw new Error(`artifact escaped private directory: ${result.directory}`)
+          }
+          const raw = join(result.directory, "run.json")
+          if (existsSync(raw)) result.path = raw
+          const lock = join(result.directory, "collector-bun.lock")
+          if (createHash("sha256").update(readFileSync(lock)).digest("hex") !== lockSha256) {
+            throw new Error(`hosted dependency lock differs from pass lock: ${lock}`)
+          }
+          const receipt = JSON.parse(readFileSync(join(result.directory, "collector-build.json"), "utf8")) as {
+            collectorRevision?: unknown
+            probeHash?: unknown
+            bundleSha256?: unknown
+          }
+          if (
+            receipt?.collectorRevision !== sourceRevision ||
+            receipt.probeHash !== probeHash ||
+            typeof receipt.bundleSha256 !== "string" ||
+            !/^[a-f0-9]{64}$/.test(receipt.bundleSha256) ||
+            receipt.bundleSha256 !==
+              createHash("sha256")
+                .update(readFileSync(join(result.directory, "collector-bundle.mjs")))
+                .digest("hex")
+          ) {
+            throw new Error(`hosted collector build differs from pass source/suite: ${result.directory}`)
+          }
+        } catch (error) {
+          result.error = error instanceof Error ? error.message : String(error)
+        }
+      }
+    } catch (error) {
+      for (const context of contexts) {
+        results.set(coverageKey(context.kind, context.id, context.os), {
+          directory: output,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+  return results
 }
 
 /** The newest admitted Linux app run for a context the site does not currently select. */
@@ -411,9 +791,10 @@ function planLines(census: readonly CollectionContext[]): string[] {
   const uncollectable = census.filter((entry) => entry.uncollectable !== null).length
   const pending = census.filter((entry) => entry.requires !== null).length
   return [
-    `Release 1 final re-collection census — ${census.length} contexts` +
-      ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
-    `Routes: every row names the entry point it was measured with; ${uncollectable} uncollectable, ${pending} pending a prerequisite.`,
+    `Collection census — ${census.length} contexts` +
+      ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "mux").length} mux, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
+    `Scope: catalog app/mux platforms plus the Termless engine manifest; historical and other catalog kinds are excluded from the app/mux projection.`,
+    `Routes are source recipes, not runtime qualification: ${uncollectable} have no qualified automatic route, ${pending} require a prerequisite.`,
     `Linux rows: preset, clipboard profile and ids are read back from the committed run named under each row.`,
     ...lines,
   ]
@@ -422,26 +803,41 @@ function planLines(census: readonly CollectionContext[]): string[] {
 const labelOf = (entry: CollectionContext): string =>
   entry.kind === "headless" ? `${entry.id} [headless]` : `${entry.id}/${entry.os}`
 
-function runChild(argv: readonly string[], label: string): void {
+function runChild(argv: readonly string[], label: string, logs?: { stdout: string; stderr: string }): string {
   const [command, ...rest] = argv
   if (command === undefined) throw new Error(`${label}: no command to run`)
-  const result = spawnSync(command, rest, { cwd: ROOT, stdio: "inherit" })
-  if (result.error) throw new Error(`${label}: ${result.error.message}`, { cause: result.error })
-  if (result.status !== 0) throw new Error(`${label} exited ${String(result.status)}`)
+  const stdout = logs ? openSync(logs.stdout, "wx") : undefined
+  let stderr: number | undefined
+  try {
+    stderr = logs ? openSync(logs.stderr, "wx") : undefined
+    const result = spawnSync(command, rest, {
+      cwd: ROOT,
+      stdio: stdout === undefined || stderr === undefined ? "inherit" : ["ignore", stdout, stderr],
+    })
+    const retained = logs ? `; logs retained at ${dirname(logs.stderr)}` : ""
+    if (result.error) throw new Error(`${label}: ${result.error.message}${retained}`, { cause: result.error })
+    if (result.status !== 0) throw new Error(`${label} exited ${String(result.status)}${retained}`)
+    return logs ? readFileSync(logs.stdout, "utf8") : ""
+  } finally {
+    if (stdout !== undefined) closeSync(stdout)
+    if (stderr !== undefined) closeSync(stderr)
+  }
 }
 
 function usage(): never {
   console.error(
     "Usage: bun run release1-collection [--plan]\n" +
+      "       bun run release1-collection --collect --development --output <private-directory>\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
+      "  --collect --development  collect private headless/Linux/hosted runs against the live suite.\n" +
+      "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
       "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +
-      "           --frozen-suite optionally asserts that id. Nothing is collected\n" +
-      "           without this flag (or the per-row commands above), so a bare run never starts a\n" +
-      "           multi-row collection by accident.",
+      "           --frozen-suite optionally asserts that id. Collection requires --collect;\n" +
+      "           a bare run stays read-only.",
   )
   process.exit(2)
 }
@@ -450,12 +846,20 @@ if (import.meta.main) {
   const argv = process.argv.slice(2)
   let plan = false
   let admit = false
+  let collect = false
+  let development = false
+  let outputDirectory: string | undefined
   let frozenSuite: string | undefined
   const runs: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--plan") plan = true
     else if (argv[index] === "--admit") admit = true
-    else if (argv[index] === "--frozen-suite") {
+    else if (argv[index] === "--collect") collect = true
+    else if (argv[index] === "--development") development = true
+    else if (argv[index] === "--output") {
+      outputDirectory = argv[++index]
+      if (!outputDirectory || outputDirectory.startsWith("--")) usage()
+    } else if (argv[index] === "--frozen-suite") {
       frozenSuite = argv[++index]
       if (frozenSuite === undefined || frozenSuite.startsWith("--")) usage()
     } else {
@@ -464,32 +868,49 @@ if (import.meta.main) {
       runs.push(value)
     }
   }
-  if (!admit) {
-    if (runs.length > 0) usage()
-    plan = true
-  }
+  if (collect) {
+    if (plan || admit || !development || !outputDirectory || frozenSuite || runs.length) usage()
+    try {
+      const pass = await collectDevelopmentPass(resolve(outputDirectory))
+      console.log(`Private development pass: ${pass.directory}`)
+      for (const row of pass.contexts) {
+        console.log(`${labelOf(row.context)}: ${row.status}${row.error ? ` — ${row.error}` : ""}`)
+      }
+      for (const error of pass.errors) console.error(error)
+      if (pass.errors.length || pass.contexts.some((row) => row.status === "failed")) process.exitCode = 1
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
+    }
+  } else {
+    if (development || outputDirectory) usage()
+    if (!admit) {
+      if (runs.length > 0) usage()
+      plan = true
+    }
 
-  try {
-    const census = release1Census(await engineBackendsFromManifest(), linuxLedger(CONTENT))
-    if (plan) {
-      for (const line of planLines(census)) console.log(line)
+    try {
+      const census = release1Census(await engineBackendsFromManifest(), linuxLedger(CONTENT))
+      if (plan) {
+        for (const line of planLines(census)) console.log(line)
+        if (!admit) process.exit(0)
+      }
       if (!admit) process.exit(0)
+      if (runs.length === 0) {
+        throw new Error("--admit needs at least one produced run; nothing was admitted")
+      }
+      const produced = admitProducedRuns(runs, frozenSuite)
+      const gaps = uncoveredContexts(census, produced)
+      console.log(
+        gaps.length === 0
+          ? `Every one of the ${census.length} Release 1 contexts produced a run.`
+          : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
+      )
+      for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
+      runChild(["bun", "run", "decisive-share"], "decisive-share")
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
     }
-    if (!admit) process.exit(0)
-    if (runs.length === 0) {
-      throw new Error("--admit needs at least one produced run; nothing was admitted")
-    }
-    const produced = admitProducedRuns(runs, frozenSuite)
-    const gaps = uncoveredContexts(census, produced)
-    console.log(
-      gaps.length === 0
-        ? `Every one of the ${census.length} Release 1 contexts produced a run.`
-        : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
-    )
-    for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
-    runChild(["bun", "run", "decisive-share"], "decisive-share")
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
   }
 }
