@@ -440,8 +440,9 @@ test("the hosted producer supports Windows Alacritty with Mesa3D receipt and ref
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
   try {
     const winNamedExecutableInDir = join(dir, winExecutablePath)
+    const versionFixture = join(dir, "alacritty-version.cjs")
     await writeFile(
-      winNamedExecutableInDir,
+      versionFixture,
       `#!/usr/bin/env node
 const mode = process.env.ALACRITTY_VERSION_MODE || "ok";
 if (mode === "ok") {
@@ -459,6 +460,12 @@ if (mode === "ok") {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
 }
 `,
+      { mode: 0o755 },
+    )
+    // Keep the Windows receipt path while the POSIX launcher gives Bun a host-native script path.
+    await writeFile(
+      winNamedExecutableInDir,
+      '#!/bin/sh\nexec "$ALACRITTY_VERSION_RUNTIME" "$ALACRITTY_VERSION_FIXTURE"\n',
       { mode: 0o755 },
     )
     const fakePs = `#!/usr/bin/env node
@@ -500,6 +507,8 @@ if (cmd.includes('Get-NetAdapter')) {
       MESA_VERSION: "26.2.5",
       MESA_ARCHIVE_PATH: winMesaArchivePath,
       ALACRITTY_VERSION_MODE: "ok",
+      ALACRITTY_VERSION_RUNTIME: process.execPath,
+      ALACRITTY_VERSION_FIXTURE: versionFixture,
       RUNNER_ENVIRONMENT: "github-hosted",
       RUNNER_NAME: "win-runner",
       RUNNER_OS: "Windows",
