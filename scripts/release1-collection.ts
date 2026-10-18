@@ -548,6 +548,7 @@ function collectHostedArtifacts(
     }
     return results
   }
+  const dispatched: Array<{ os: string; contexts: CollectionContext[]; output: string; runId: string }> = []
   for (const os of ["macos", "windows"]) {
     const contexts = census.filter((row) => row.route === "hosted-workflow" && row.os === os)
     const output = join(root, os)
@@ -604,6 +605,20 @@ function collectHostedArtifacts(
         )
       }
       writeFileSync(join(output, "workflow.json"), `${JSON.stringify({ runId, ...run }, null, 2)}\n`, { flag: "wx" })
+      dispatched.push({ os, contexts, output, runId })
+    } catch (error) {
+      for (const context of contexts) {
+        results.set(coverageKey(context.kind, context.id, context.os), {
+          directory: output,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+  // Both independent hosted platforms start before a blocking watch; local processes stay serial.
+  for (const { os, contexts, output, runId } of dispatched) {
+    const workflow = `${os}-measurement`
+    try {
       try {
         runChild(
           ["gh", "run", "watch", runId, "--repo", "beorn/terminfo.dev", "--exit-status"],

@@ -279,6 +279,14 @@ it.each([
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
     if (suite === "matching") {
+      // Remote platforms must start independently before either wait can block the other dispatch.
+      const dispatch = launcher.mock.calls.findLastIndex(
+        ([command, args]) => command === "gh" && Array.isArray(args) && args[0] === "workflow",
+      )
+      const wait = launcher.mock.calls.findIndex(
+        ([command, args]) => command === "gh" && Array.isArray(args) && args[1] === "watch",
+      )
+      expect(wait, "both platform workflows dispatch before waiting").toBeGreaterThan(dispatch)
       expect(launcher).toHaveBeenCalledWith(
         "gh",
         [
