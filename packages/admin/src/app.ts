@@ -8,7 +8,7 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -28,7 +28,8 @@ import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { admitCollectedRun } from "./admit-collected-run.ts"
+import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { assertKittyOwner, parseKittyIdentity } from "./kitty-owner.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -120,21 +121,32 @@ interface AppLaunch {
   proc: ChildProcess | null
   windowId?: number
   terminalWindow?: OwnedTerminalWindow
+  identityPath?: string
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
   const suite = sourceSuiteEnvironment()
   const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
-  writeFileSync(run.scriptPath, `#!/bin/bash\n${serveCmd}\n`, { flag: "wx", mode: 0o700 })
+  const identityPath = app.id === "kitty" ? join(run.directory, "owner-identity.txt") : undefined
+  const identityWrite =
+    identityPath === undefined
+      ? ""
+      : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
+  writeFileSync(run.scriptPath, `#!/bin/bash\n${identityWrite}${serveCmd}\n`, { flag: "wx", mode: 0o700 })
 
   if (app.binaryPath && existsSync(app.binaryPath)) {
-    const child = spawn(app.binaryPath, app.launchArgs(run.scriptPath), {
+    // kitty: a run-unique instance group and no single-instance reuse, so this launch owns its window only.
+    const args =
+      app.id === "kitty"
+        ? ["--hold", "--instance-group", `terminfo-${run.id}`, "-1", "--", "/bin/bash", run.scriptPath]
+        : app.launchArgs(run.scriptPath)
+    const child = spawn(app.binaryPath, args, {
       detached: true,
       stdio: "ignore",
       env: { ...process.env },
     })
     child.unref()
-    return { proc: child }
+    return { proc: child, ...(identityPath === undefined ? {} : { identityPath }) }
   }
 
   if (app.id === "iterm2") {
@@ -186,6 +198,8 @@ async function probeDaemon(
   appId: string,
   version: string,
   terminalWindow?: OwnedTerminalWindow,
+  kittyOwner?: Record<string, string | number>,
+  outputDirectory?: string,
 ): Promise<{ total: number; observed: number }> {
   const appLaunch = terminalWindow ? captureTerminalAppReceipt(terminalWindow, daemon.pid, version) : null
   if (terminalWindow) assertOwnedTerminalWindow(terminalWindow)
@@ -213,9 +227,15 @@ async function probeDaemon(
       ...data.rawReplies,
       "collector.identityCheck": JSON.stringify(identityCheck),
       ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
+      ...(kittyOwner && { "collector.kittyOwner": JSON.stringify(kittyOwner) }),
     },
   }
-  admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
+  if (outputDirectory !== undefined) {
+    const source = retainCollectedRun(run, retained.path, { kind: "app", id: appId, version }, outputDirectory)
+    console.log(`  Retained private development run ${source}`)
+  } else {
+    admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
+  }
   const observed = run.observations.length
   const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
   return { total, observed }
@@ -223,9 +243,24 @@ async function probeDaemon(
 
 // ── Run one app ──
 
+/** Read the identity the kitty serve script recorded and require the daemon to descend from that instance. */
+function assertOwnedKittyLaunch(launch: AppLaunch, daemonPid: number): Record<string, string | number> {
+  if (launch.identityPath === undefined) throw new Error("kitty launch recorded no owner identity path")
+  const identity = parseKittyIdentity(readFileSync(launch.identityPath, "utf8"))
+  assertKittyOwner(identity, daemonPid, (pid) => {
+    const raw = execFileSync("/bin/ps", ["-p", String(pid), "-o", "ppid="], {
+      encoding: "utf8",
+      timeout: 5000,
+    }).trim()
+    const parent = Number(raw)
+    return Number.isSafeInteger(parent) && parent > 0 ? parent : null
+  })
+  return { windowId: identity.windowId, kittyPid: identity.kittyPid, tty: identity.tty, term: identity.term }
+}
+
 async function runApp(
   app: AppDef,
-  _opts: { force?: boolean },
+  opts: { force?: boolean; output?: string },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
   if (!existsSync(app.appPath)) return { success: false, error: "not installed" }
   const version = getAppVersion(app)
@@ -244,7 +279,15 @@ async function runApp(
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     console.log(`  Probing on port ${daemon.registration.port}...`)
-    const result = await probeDaemon(daemon.registration, app.id, version, launch.terminalWindow)
+    const kittyOwner = app.id === "kitty" ? assertOwnedKittyLaunch(launch, daemon.registration.pid) : undefined
+    const result = await probeDaemon(
+      daemon.registration,
+      app.id,
+      version,
+      launch.terminalWindow,
+      kittyOwner,
+      opts.output,
+    )
     console.log(`  ${result.observed}/${result.total} explicit observations (admitted)`)
     outcome = { success: true }
   } catch (err) {
@@ -282,7 +325,10 @@ async function runApp(
 
 // ── Main ──
 
-export async function handleApp(terminal: string | undefined, opts: { all?: boolean; force?: boolean }): Promise<void> {
+export async function handleApp(
+  terminal: string | undefined,
+  opts: { all?: boolean; force?: boolean; output?: string },
+): Promise<void> {
   if (!terminal && !opts.all) {
     console.log("\nAvailable terminal apps:\n")
     for (const app of APPS) {
@@ -317,7 +363,7 @@ export async function handleApp(terminal: string | undefined, opts: { all?: bool
 
   for (const app of appsToRun) {
     console.log(`--- ${app.name} ---`)
-    const result = await runApp(app, { force: opts.force })
+    const result = await runApp(app, { force: opts.force, output: opts.output })
     results.push({ app, result })
 
     if (result.skipped) {
