@@ -123,7 +123,7 @@ export interface RegionReadback {
   pixelGeometry?: PixelGeometry
   /**
    * WHERE that report came from, in words, so a reader can tell a geometry problem from a slow paint
-   * (@cto 2026-10-12, 28763 fix 1): a terminal that answers CSI 16 t is `reported by CSI 16 t`, and one
+   * (28763 fix 1): a terminal that answers CSI 16 t is `reported by CSI 16 t`, and one
    * that answers only 14 t and 18 t is `derived from CSI 14 t / CSI 18 t`. Every number then names its
    * basis instead of leaving a derived cell size looking like a reported one.
    */
@@ -133,7 +133,7 @@ export interface RegionReadback {
    * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
    * so it lands exactly when this oracle wrote bytes: a refusal that wrote none leaves a zero-byte
    * trace, which run-parser's zero-byte rule requires of every `none` observation. Named for the JOB
-   * (@cto 2026-10-12): `afterVerdict` named the moment it runs, and this is the write that clears the
+   * Named for the JOB: `afterVerdict` named the moment it runs, and this is the write that clears the
    * mode the last frame left set.
    */
   cleanup?: string
@@ -308,7 +308,7 @@ function regionRefusal(
  * the frame moving while the witness cell stands still means the paint landed outside the sentinel
  * region (the geometry is wrong), and nothing moving at all means no paint witness within the bound.
  * BOTH shapes name the basis the rectangle was measured with, so a timeout never leaves a reader
- * unable to tell a reported geometry from a derived one (@dev/review2 on 28763: the ordinary branch
+ * unable to tell a reported geometry from a derived one (28763: the ordinary branch
  * returned before the payload carrying the source was built).
  */
 async function awaitPaintWitness(options: {
@@ -421,12 +421,12 @@ const GEOMETRY_REPORTED = "reported by CSI 16 t"
 const GEOMETRY_DERIVED = "derived from CSI 14 t / CSI 18 t"
 
 /**
- * The two bases named above, as a literal union (@dev/3's review note, @cto's call 2026-10-12): the
+ * The two bases named above, as a literal union: the
  * bare `string` this field carried let a THIRD spelling reach the payload without a type error, so a
  * reader could no longer tell a reported geometry from a derived one. Nothing else changes — the
  * constants are the only values ever assigned, so this is a type-only tightening.
  *
- * Named PixelGeometrySource and not GeometrySource (@cto, 28785 REVISE must 4): `GeometrySource` in
+ * Named PixelGeometrySource and not GeometrySource (28785 must 4): `GeometrySource` in
  * owned-terminal.ts names where the workflow's own CELL geometry came from — a different concept
  * answering a different question — and one name must not carry two.
  */
@@ -439,7 +439,7 @@ export type PixelGeometrySource =
 
 /**
  * Why a cell-to-pixel geometry could not be measured, and whether the cause is the terminal or this
- * run (@cto, 28785 REVISE rounds 1 and 2). A `timeout` — nothing answered at all, DA1 included — is
+ * run (28785 rounds 1 and 2). A `timeout` — nothing answered at all, DA1 included — is
  * TRANSIENT: the same terminal may answer on the next run, so a collector that owns the terminal
  * must fail that run loudly and have it repeated, never publish the terminal as one that cannot be
  * mapped. Everything else is INTRINSIC and is the only refusal a run may complete under — the
@@ -626,7 +626,7 @@ export async function captureRegionVerdict(
 
 /**
  * The ONE capture lifecycle both pixel arms share, so no arm reimplements it and none forgets a half
- * (@cto round-2 B1b, @dev/review2 round-3 B1). Opening: SGR reset and DECTCEM off, so every capture of
+ * Opening: SGR reset and DECTCEM off, so every capture of
  * the run sees the same cursor state. Closing, on every exit — decided, refused or thrown: the row's
  * own cleanup first (it clears the mode the last frame left set, which the prelude cannot reach),
  * then DECTCEM restored and the screen reset, so a run never leaves a hidden cursor or an inherited

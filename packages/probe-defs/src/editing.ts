@@ -69,12 +69,12 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
 }
 
 /**
- * The 15 measured editing rows, as one region-readback kind table (@cto A2; 28450 slice C). Each row
+ * The 15 measured editing rows, as one region-readback kind table (28450 slice C). Each row
  * holds its claim ONCE: the termless arm reads its seed, its steps and its target cells against the
  * parser, and the kind derives the capture-region oracle's seed / edit / expected frames from the
  * same fields, so the two arms cannot grade two different fixtures.
  *
- * Two notes this table carries to @cto, both named in the diff:
+ * Two notes this table carries, both named in the diff:
  *  - DECERA's two hand-written copies of the fixture disagreed: the capture spec seeded the third
  *    row's flank "W", while the readback seeded "X" AND expected that flank preserved. One row ends
  *    the disagreement, and the readback's "X" - the flank the termless arm also used - is what it
@@ -399,7 +399,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
     // Ten compared columns, not eight: the seed writes ten, and the two incoming columns the delete
     // pulls left into the compared span (row 1 I,J; row 2 Q,R; row 3 a,b) are part of the claim. At
     // eight the ninth and tenth seed cells were stored but never verified, so a seed that wrote blanks
-    // there could only fail later with an unattributable note (@cto 28450 should-fix).
+    // there could only fail later with an unattributable note (28450 should-fix).
     before: [
       ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
       ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"],
