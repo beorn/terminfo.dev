@@ -117,4 +117,11 @@ describe("the real catalog", () => {
     ]
     for (const id of movers) expect(probeStatusOf(id, features), id).toBe("partial")
   })
+
+  it("derives automated for a row whose arms both declare measuring evidence and carries no reviewed value", () => {
+    const features = loadFeatures(contentDir)
+    // DECSACE measures exact attribute cells on the parser arm and extent separation on the terminal
+    // arm; its old reviewed partial described a definition that measured neither.
+    expect(probeStatusOf("editing.decsace", features)).toBe("automated")
+  })
 })
