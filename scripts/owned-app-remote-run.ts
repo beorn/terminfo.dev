@@ -59,7 +59,9 @@ function rootOverride(name: string, fallback: string): string {
   const value = process.env[name]
   if (value === undefined || value === "") return fallback
   if (process.env.VITEST !== "true") {
-    throw new Error(`${name} is a test-only override; a real transport run takes its trees and its kitty from fixed positions`)
+    throw new Error(
+      `${name} is a test-only override; a real transport run takes its trees and its kitty from fixed positions`,
+    )
   }
   return value
 }
@@ -669,9 +671,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     const closureLines: string[] = []
     let targets = scan.linkTargets
     for (let pass = 0; ; pass += 1) {
-      const added = extraRootsFor(targets, [...declared, ...extras]).filter(
-        (root) => !extras.includes(root),
-      )
+      const added = extraRootsFor(targets, [...declared, ...extras]).filter((root) => !extras.includes(root))
       if (added.length === 0) break
       if (pass === CLOSURE_PASSES) {
         fail(

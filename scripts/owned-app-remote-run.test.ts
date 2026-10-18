@@ -131,7 +131,7 @@ function fixture(): void {
       'if [ "${SHIM_STAGE_CHECKOUT_FAIL:-}" = 1 ]; then',
       '  case "$command" in *"checkout --detach"*) echo "fatal: reference is not a tree: deadbeef" >&2; exit 128 ;; esac',
       "fi",
-      "[ \"$verbose\" = 1 ] && [ \"${SHIM_SSH_TWO_KEYS:-}\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureJumpHost' >&2",
+      '[ "$verbose" = 1 ] && [ "${SHIM_SSH_TWO_KEYS:-}" = 1 ] && echo \'debug1: Server host key: ssh-ed25519 SHA256:fixtureJumpHost\' >&2',
       "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureNegotiated' >&2",
       'exec /bin/sh -c "$command"',
     ].join("\n"),
@@ -732,9 +732,9 @@ describe("owned-app ssh transport", () => {
     expect(result.stderr).toContain("resource manifest mismatch")
     expect(existsSync(stage)).toBe(false)
     expect(readdirSync(join(root, "remote"))).toEqual([])
-    expect(lines(sshLog).some((spawn) => /mv -- '[^']*\/stage' '[^']*\/stage\.removing-[0-9a-f]{12}'/.test(spawn))).toBe(
-      true,
-    )
+    expect(
+      lines(sshLog).some((spawn) => /mv -- '[^']*\/stage' '[^']*\/stage\.removing-[0-9a-f]{12}'/.test(spawn)),
+    ).toBe(true)
   }, 60_000)
 
   it("leaves only the renamed aside when a removal is interrupted, so the stage path is free again", () => {
