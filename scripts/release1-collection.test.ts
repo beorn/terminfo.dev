@@ -13,7 +13,7 @@
  */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import {
   existsSync,
   mkdirSync,
@@ -29,10 +29,12 @@ import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
+import * as headless from "../packages/probes/collect-headless.ts"
 import { buildReport } from "./decisive-share.ts"
 import { loadTerminals } from "@terminfo/catalog"
 import {
   admitProducedRuns,
+  collectDevelopmentPass,
   clipboardProfileFor,
   linuxLedger,
   presetFor,
@@ -41,6 +43,9 @@ import {
   type LinuxLedger,
   type ProducedRun,
 } from "./release1-collection.ts"
+
+// Replace only the external terminal process owner; parsing and classification remain real.
+vi.mock("../packages/probes/collect-headless.ts", () => ({ collectHeadlessRuns: vi.fn() }))
 
 /** One fixture Linux row: a committed run the census reads the launcher flags back from. */
 const ledgerRow = (id: string, overrides: Partial<LinuxLedger[string]> = {}): LinuxLedger[string] => ({
@@ -103,6 +108,64 @@ const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
   ...overrides,
 })
 
+// The dispatch boundary must use the CURRENT in-memory suite, even when the corpus already
+// declares the returned run's old suite. Projection parity does not cover this collection seam.
+it.each(["different", "matching"])("retains a private %s-suite pass without admission", async (suite) => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
+  const original = join(CONTENT, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json")
+  const originalBytes = readFileSync(original, "utf8")
+  const raw = JSON.parse(originalBytes) as { probeHash: string; sourceRevision: string }
+  raw.sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim()
+  const bytes = JSON.stringify(raw)
+  const manifestPath = join(CONTENT, "suites", `${raw.probeHash}.json`)
+  const snapshot =
+    suite === "matching"
+      ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
+          ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
+          sourcePaths: [],
+        })
+      : undefined
+  const planner = vi.spyOn(admission, "planAdmission").mockImplementation(() => {
+    throw new Error("Development must not plan admission")
+  })
+  const writer = vi.spyOn(admission, "admitRun").mockImplementation(() => {
+    throw new Error("Development must not write admission")
+  })
+  const collector = vi.spyOn(headless, "collectHeadlessRuns").mockImplementation(async (_selectors, output) => {
+    if (!output) throw new Error("collection requires a private output directory")
+    mkdirSync(output, { recursive: true })
+    const raw = join(output, "xtermjs.json")
+    writeFileSync(raw, bytes)
+    return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
+  })
+  try {
+    const pass = await collectDevelopmentPass(directory)
+    expect(pass.mode).toBe("development")
+    expect(pass.contexts).toHaveLength(33)
+    const engine = pass.contexts.find((row) => row.context.kind === "headless" && row.context.id === "xtermjs")
+    if (suite === "different") {
+      expect(engine?.status).toBe("failed")
+      expect(engine?.error).toMatch(/xtermjs.*unknown suite 267a5d166f08; missing trusted manifest/)
+    } else {
+      expect(engine?.status, engine?.error).toBe("classified")
+      expect(engine?.classification?.mode).toBe("development")
+      expect(engine?.classification?.states["extensions.osc2-title"]).toBe("supported")
+    }
+    expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
+    expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
+    expect(collector).toHaveBeenCalledTimes(1)
+    expect(planner).not.toHaveBeenCalled()
+    expect(writer).not.toHaveBeenCalled()
+    expect(readFileSync(original, "utf8")).toBe(originalBytes)
+  } finally {
+    collector.mockRestore()
+    planner.mockRestore()
+    writer.mockRestore()
+    snapshot?.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 describe("release 1 collection census", () => {
   it("covers every catalog app/mux platform plus the engine family, with no missing or duplicate context", () => {
     const all = census()
@@ -126,7 +189,7 @@ describe("release 1 collection census", () => {
     })
     expect(command.status, command.stderr).toBe(0)
     expect(command.stdout.split("\n")[0]).toContain("18 app, 4 mux, 11 headless")
-  })
+  }, 30_000)
 
   it("refuses a manifest that is not the eleven engines the collector asserts", () => {
     expect(() => census(ENGINE_BACKENDS.slice(0, 10))).toThrow(/Expected 11 headless engines/)

@@ -1,36 +1,26 @@
 #!/usr/bin/env bun
 /**
- * The ONE entry point for the Release 1 final corpus-wide re-collection (#27917): run once, on the
- * frozen probe suite, after the Thu 2026-10-08 12:00 PDT probe freeze (#27920, #27921).
- *
- * It collects nothing itself. Every row names the entry point that row IS measured with, so each
- * context keeps the one collection path it already has; a second collection path is the bug this
- * exists to prevent. What the runner adds:
- *
- *   1. the census — every Release 1 context, with a NAMED reason for any context that has no route,
- *      so a context can never be silently missing. Each Linux row's launcher invocation is READ BACK
- *      from the committed run that row re-measures (`target.version` / `target.config` /
- *      `target.permissions` in `content/probes-apps/`), the run the SITE selects via
- *      `docs/data/current-results.ts` — never a preset/profile handed to this file by hand. Kitty
- *      takes `--preset baseline|current` and would refuse the launcher's own default;
- *   2. the frozen suite — the owner reads candidate2's manifest freeze; a CLI id only asserts it;
- *   3. admission — hand each produced run to `scripts/admit-run.ts`, propagating its refusal before
- *      crediting the admitted target to collection coverage;
- *   4. the ending — `bun run decisive-share` (#27909), so the collection's result is the bar's own
- *      instrument.
- *
- * Read-only over `content/terminals.json`, the feature catalog's tier-1 labels, the committed runs, the
- * site's own selection (`docs/data/current-results.ts` + `scripts/decisive-share.ts`), probe-defs,
- * the receipt producer and `scripts/admit-run.ts`'s admission rules; no deploy.
+ * The existing collection entry point, extended toward the full 273-capability, 33-context pass.
+ * Bare/--plan prints a read-only census and historical Linux launcher recipes.
+ * --collect --development invokes existing raw collectors, validates the current suite in memory,
+ * and retains private classifications. WIP: only headless dispatch is wired; every other context
+ * stays visible as unfinished work. No development admission, suite declaration or inclusion.
+ * Supplied-run --admit retains its existing admission-owner path and decisive-share report.
+ * Full platform dispatch and the frozen final collection mode remain unfinished. No deploy.
  */
-import { spawnSync } from "node:child_process"
-import { readFileSync, readdirSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { execFileSync, spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
+import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
-import { loadTerminals } from "@terminfo/catalog"
+import { loadFeatures, loadTerminals } from "@terminfo/catalog"
+import { parseRun } from "@terminfo/run-parser"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
-import { statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { classifyDevelopmentRun, statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
 
@@ -258,6 +248,141 @@ export async function engineBackendsFromManifest(): Promise<string[]> {
   return Object.keys(backends).filter((name) => backends[name]?.type !== "os")
 }
 
+export interface DevelopmentCollection {
+  mode: "development"
+  directory: string
+  probeHash: string
+  sourceRevision: string
+  inputSha256: Record<string, string>
+  catalogIds: string[]
+  contexts: Array<{
+    context: CollectionContext
+    status: "classified" | "failed"
+    rawRun?: string
+    classification?: ReturnType<typeof classifyDevelopmentRun>
+    error?: string
+  }>
+  errors: string[]
+}
+
+/** Private collection uses live suite bytes only; it never enters admission or product selection. */
+export async function collectDevelopmentPass(outputDirectory: string): Promise<DevelopmentCollection> {
+  mkdirSync(outputDirectory, { recursive: true })
+  const output = realpathSync(outputDirectory)
+  if (output === ROOT || output.startsWith(`${ROOT}${sep}`)) {
+    throw new Error(`Development output must be private, outside the source repository: ${output}`)
+  }
+  const directory = mkdtempSync(join(output, "pass-"))
+  const snapshot = probeSuiteSnapshot()
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
+  const catalogIds = Object.keys(loadFeatures(CONTENT))
+  const interpretationsPath = join(CONTENT, "interpretations.json")
+  const interpretations = activeInterpretations(
+    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds),
+  )
+  const inputSha256: Record<string, string> = {}
+  for (const path of new Set([
+    ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
+    interpretationsPath,
+    join(ROOT, "scripts/release1-collection.ts"),
+    join(ROOT, "scripts/interpretations.ts"),
+    join(ROOT, "docs/data/selected-results.ts"),
+    join(ROOT, "docs/data/release-scope.ts"),
+    resolve(ROOT, "../../bun.lock"),
+    resolve(ROOT, "../../flake.lock"),
+  ])) {
+    inputSha256[path] = createHash("sha256").update(readFileSync(path)).digest("hex")
+  }
+  // The live pass must not obtain its target configuration from product-selected historical runs.
+  const census = release1Census(await engineBackendsFromManifest(), {}).map((context) =>
+    context.route === "linux-container"
+      ? {
+          ...context,
+          uncollectable: null,
+          requires: "wire the existing full-suite launcher with explicit version/config pins",
+        }
+      : context,
+  )
+  const pass: DevelopmentCollection = {
+    mode: "development",
+    directory,
+    probeHash: snapshot.probeHash,
+    sourceRevision,
+    inputSha256,
+    catalogIds,
+    contexts: [],
+    errors: [],
+  }
+  const suites = new Map([[snapshot.probeHash, derivedSuiteManifest(snapshot)]])
+  const files = new Map<string, string[]>()
+  const failures = new Map<string, string>()
+  try {
+    const collected = await collectHeadlessRuns([], join(directory, "headless"))
+    for (const failure of collected.failures) failures.set(failure.backend, failure.error)
+    for (const path of collected.runs) {
+      try {
+        const file = realpathSync(path)
+        if (!file.startsWith(`${directory}${sep}`)) {
+          throw new Error(`collector returned raw output outside this private pass: ${file}`)
+        }
+        // This header only routes the file to its context; canonical parseRun validates every byte below.
+        const header = JSON.parse(readFileSync(file, "utf8")) as { target?: { id?: unknown } }
+        const id = header?.target?.id
+        if (typeof id !== "string" || !census.some((row) => row.kind === "headless" && row.id === id)) {
+          throw new Error(`headless collector returned an unexpected target in ${file}`)
+        }
+        files.set(id, [...(files.get(id) ?? []), file])
+      } catch (error) {
+        pass.errors.push(`${path}: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+  } catch (error) {
+    pass.errors.push(`headless collection: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  for (const context of census) {
+    const row: DevelopmentCollection["contexts"][number] = { context, status: "failed" }
+    pass.contexts.push(row)
+    try {
+      if (context.kind !== "headless") {
+        throw new Error(
+          context.route === null
+            ? (context.uncollectable ?? "required route work")
+            : context.kind === "mux"
+              ? "required route work: separate private raw mux output from automatic admission"
+              : `required automation work: ${context.route} dispatch is not wired yet`,
+        )
+      }
+      const paths = files.get(context.id) ?? []
+      if (failures.has(context.id)) throw new Error(failures.get(context.id))
+      if (paths.length !== 1) {
+        throw new Error(`headless collector produced ${paths.length} raw runs; expected exactly one`)
+      }
+      const path = paths[0]
+      if (!path) throw new Error("headless collector lost its raw run path")
+      row.rawRun = path
+      const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
+      if (run.schemaVersion !== 2 || run.target.kind !== context.kind || run.target.id !== context.id) {
+        throw new Error(`raw run does not identify the expected v2 ${context.kind}:${context.id} context`)
+      }
+      if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
+      if (run.sourceRevision !== sourceRevision) {
+        throw new Error(`raw source ${run.sourceRevision} differs from pass source ${sourceRevision}`)
+      }
+      row.classification = classifyDevelopmentRun(run, interpretations)
+      row.status = "classified"
+    } catch (error) {
+      row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
+  for (const [path, hash] of Object.entries(inputSha256)) {
+    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
+      pass.errors.push(`Pass input changed during collection: ${path}`)
+    }
+  }
+  writeFileSync(join(directory, "pass.json"), `${JSON.stringify(pass, null, 2)}\n`, { flag: "wx" })
+  return pass
+}
+
 /** The newest admitted Linux app run for a context the site does not currently select. */
 function newestAdmittedLinuxRun(
   history: Readonly<Record<string, readonly SelectedVersion[]>>,
@@ -458,15 +583,17 @@ function runChild(argv: readonly string[], label: string): void {
 function usage(): never {
   console.error(
     "Usage: bun run release1-collection [--plan]\n" +
+      "       bun run release1-collection --collect --development --output <private-directory>\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
+      "  --collect --development  collect private headless runs and classify against the live suite.\n" +
+      "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
       "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +
-      "           --frozen-suite optionally asserts that id. Nothing is collected\n" +
-      "           without this flag (or the per-row commands above), so a bare run never starts a\n" +
-      "           multi-row collection by accident.",
+      "           --frozen-suite optionally asserts that id. Collection requires --collect;\n" +
+      "           a bare run stays read-only.",
   )
   process.exit(2)
 }
@@ -475,12 +602,20 @@ if (import.meta.main) {
   const argv = process.argv.slice(2)
   let plan = false
   let admit = false
+  let collect = false
+  let development = false
+  let outputDirectory: string | undefined
   let frozenSuite: string | undefined
   const runs: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--plan") plan = true
     else if (argv[index] === "--admit") admit = true
-    else if (argv[index] === "--frozen-suite") {
+    else if (argv[index] === "--collect") collect = true
+    else if (argv[index] === "--development") development = true
+    else if (argv[index] === "--output") {
+      outputDirectory = argv[++index]
+      if (!outputDirectory || outputDirectory.startsWith("--")) usage()
+    } else if (argv[index] === "--frozen-suite") {
       frozenSuite = argv[++index]
       if (frozenSuite === undefined || frozenSuite.startsWith("--")) usage()
     } else {
@@ -489,32 +624,49 @@ if (import.meta.main) {
       runs.push(value)
     }
   }
-  if (!admit) {
-    if (runs.length > 0) usage()
-    plan = true
-  }
+  if (collect) {
+    if (plan || admit || !development || !outputDirectory || frozenSuite || runs.length) usage()
+    try {
+      const pass = await collectDevelopmentPass(resolve(outputDirectory))
+      console.log(`Private development pass: ${pass.directory}`)
+      for (const row of pass.contexts) {
+        console.log(`${labelOf(row.context)}: ${row.status}${row.error ? ` — ${row.error}` : ""}`)
+      }
+      for (const error of pass.errors) console.error(error)
+      if (pass.errors.length || pass.contexts.some((row) => row.status === "failed")) process.exitCode = 1
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
+    }
+  } else {
+    if (development || outputDirectory) usage()
+    if (!admit) {
+      if (runs.length > 0) usage()
+      plan = true
+    }
 
-  try {
-    const census = release1Census(await engineBackendsFromManifest(), linuxLedger(CONTENT))
-    if (plan) {
-      for (const line of planLines(census)) console.log(line)
+    try {
+      const census = release1Census(await engineBackendsFromManifest(), linuxLedger(CONTENT))
+      if (plan) {
+        for (const line of planLines(census)) console.log(line)
+        if (!admit) process.exit(0)
+      }
       if (!admit) process.exit(0)
+      if (runs.length === 0) {
+        throw new Error("--admit needs at least one produced run; nothing was admitted")
+      }
+      const produced = admitProducedRuns(runs, frozenSuite)
+      const gaps = uncoveredContexts(census, produced)
+      console.log(
+        gaps.length === 0
+          ? `Every one of the ${census.length} Release 1 contexts produced a run.`
+          : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
+      )
+      for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
+      runChild(["bun", "run", "decisive-share"], "decisive-share")
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error))
+      process.exitCode = 1
     }
-    if (!admit) process.exit(0)
-    if (runs.length === 0) {
-      throw new Error("--admit needs at least one produced run; nothing was admitted")
-    }
-    const produced = admitProducedRuns(runs, frozenSuite)
-    const gaps = uncoveredContexts(census, produced)
-    console.log(
-      gaps.length === 0
-        ? `Every one of the ${census.length} Release 1 contexts produced a run.`
-        : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
-    )
-    for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
-    runChild(["bun", "run", "decisive-share"], "decisive-share")
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
-    process.exitCode = 1
   }
 }
