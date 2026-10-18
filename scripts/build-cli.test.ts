@@ -114,6 +114,7 @@ function createComposedFixture(root: string): { fixture: string; git: (...args: 
   return { fixture, git }
 }
 
+// This case also clones the full content tree; allow the same cold-fixture budget as the composed build below.
 it("refuses dirty collector sources before building a CLI bundle", () => {
   const root = mkdtempSync(join(tmpdir(), "terminfo-dirty-tree-"))
   try {
@@ -125,7 +126,7 @@ it("refuses dirty collector sources before building a CLI bundle", () => {
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
-})
+}, 30_000)
 
 /**
  * On a composed tree whose HEAD is on origin/main and whose suite has no committed declaration file,
