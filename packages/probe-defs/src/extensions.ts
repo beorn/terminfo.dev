@@ -1307,6 +1307,57 @@ async function clipboardPaste(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
+// OSC 0 sets the icon name and the window title together. Set ONE known payload, then ask the
+// terminal for both values: CSI 20 t answers with the icon label as OSC L, CSI 21 t with the title
+// as OSC l. Support requires BOTH replies to return the exact payload. A missing reply is
+// inconclusive, never a negative: a terminal that does not answer these queries has not shown that
+// the set was ignored, and an unqualified title change cannot stand in for the icon label.
+const OSC0_PAYLOAD = "osc0-icon-title"
+const OSC0_ICON_QUERY = "\x1b[20t"
+const OSC0_TITLE_QUERY = "\x1b[21t"
+const OSC0_ICON_REPLY = /\x1b\]L([^\x07\x1b]*)(?:\x07|\x1b\\)/
+const OSC0_TITLE_REPLY = /\x1b\]l([^\x07\x1b]*)(?:\x07|\x1b\\)/
+
+function osc0IconTitleResult(
+  iconLabel: string | null,
+  windowTitle: string | null,
+  raw: { icon: string; title: string },
+): ProbeResult {
+  const response = JSON.stringify({ ...raw, iconLabel, windowTitle })
+  if (iconLabel === null || windowTitle === null) {
+    const missing = iconLabel === null ? "icon label (CSI 20 t)" : "window title (CSI 21 t)"
+    const note = `no complete ${missing} reply`
+    return {
+      pass: false,
+      response,
+      note,
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+    }
+  }
+  const iconMatches = iconLabel === OSC0_PAYLOAD
+  const titleMatches = windowTitle === OSC0_PAYLOAD
+  const pass = iconMatches && titleMatches
+  const note = pass ? undefined : `both replies must return the OSC 0 payload ${OSC0_PAYLOAD}`
+  return {
+    pass,
+    response,
+    ...(note && { note }),
+    observation: { outcome: pass ? "supported" : "unsupported", evidence: "query", ...(note && { note }) },
+    assertions: [
+      {
+        kind: iconMatches ? "positive" : "negative",
+        expected: `CSI 20 t returns ${OSC0_PAYLOAD}`,
+        observed: iconLabel,
+      },
+      {
+        kind: titleMatches ? "positive" : "negative",
+        expected: `CSI 21 t returns ${OSC0_PAYLOAD}`,
+        observed: windowTitle,
+      },
+    ],
+  }
+}
+
 export const extensionsProbes: ProbeDefinition[] = [
   // Truecolor — capability flag (termless) or SGR parse check (term)
   {
@@ -1702,21 +1753,25 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...probe(
       "extensions.osc0-icon-title",
       (ctx) => {
-        const before = ctx.getTitle()
-        ctx.feed("\x1b]0;My Title\x07")
-        const after = ctx.getTitle()
-        return notTestedResult("icon-name state", { before, after })
+        ctx.feed(`\x1b]0;${OSC0_PAYLOAD}\x07`)
+        const icon = ctx.feedCapture(OSC0_ICON_QUERY)
+        const title = ctx.feedCapture(OSC0_TITLE_QUERY)
+        const iconLabel = OSC0_ICON_REPLY.exec(icon)?.[1] ?? null
+        const windowTitle = OSC0_TITLE_REPLY.exec(title)?.[1] ?? null
+        return osc0IconTitleResult(iconLabel, windowTitle, { icon, title })
       },
-      () => {
-        const note = "No icon-name and window-title readback for OSC 0"
-        return Promise.resolve<ProbeResult>({
-          pass: false,
-          note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+      async (ctx) => {
+        ctx.write(`\x1b]0;${OSC0_PAYLOAD}\x07`)
+        const icon = await ctx.queryWithSentinelOutcome(OSC0_ICON_QUERY, OSC0_ICON_REPLY)
+        const title = await ctx.queryWithSentinelOutcome(OSC0_TITLE_QUERY, OSC0_TITLE_REPLY)
+        return osc0IconTitleResult(icon.match?.[1] ?? null, title.match?.[1] ?? null, {
+          icon: icon.raw,
+          title: title.raw,
         })
       },
+      "query",
     ),
-    termlessObservationEvidence: "parser-state",
+    termlessObservationEvidence: "query",
   },
 
   // OSC 52 — clipboard

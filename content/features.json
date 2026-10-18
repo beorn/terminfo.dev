@@ -1299,11 +1299,9 @@
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["osc", "xterm-extensions"],
     "body": "OSC 0 sets both the icon name and window title simultaneously. The sequence is <code>ESC ] 0 ; title ST</code>. In practice, the \"icon name\" is a legacy concept from X11 window managers — most modern terminals treat OSC 0 identically to OSC 2 (window title only).",
-    "probe": "Headless title changes are retained as partial diagnostic evidence. Icon-name behavior is not read back, so the combined feature remains inconclusive.",
+    "probe": "Send <code>\\x1b]0;osc0-icon-title\\x07</code>, then query <code>\\x1b[20t</code> for the icon label and <code>\\x1b[21t</code> for the window title; both replies must return the exact payload.",
     "baseline": "modern",
-    "sequence": "ESC ] 0 ; title BEL",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC ] 0 ; title BEL"
   },
   "extensions.osc52-clipboard": {
     "tier1": "excluded",

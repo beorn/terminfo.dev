@@ -1014,7 +1014,6 @@ describe("extensions without a complete behavior oracle", () => {
     "extensions.osc7-cwd",
     "extensions.notifications",
     "extensions.iterm2-images",
-    "extensions.osc0-icon-title",
     "extensions.osc1-icon",
   ] as const
 
@@ -1045,7 +1044,7 @@ describe("extensions without a complete behavior oracle", () => {
   })
 
   test("a title change cannot establish icon-name support", () => {
-    for (const id of ["extensions.osc0-icon-title", "extensions.osc1-icon"]) {
+    for (const id of ["extensions.osc1-icon"]) {
       const callback = probe(id).termless
       if (!callback) throw new Error(`${id} needs a headless callback`)
       for (const after of ["original", "test-icon My Title"]) {

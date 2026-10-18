@@ -24,7 +24,7 @@ import {
 
 /**
  * The 79 extension capabilities (78 defined in extensions.ts + 1 catalog-only in features.json).
- * 41 protocol queries are decided in real terminal runs; 37 unasserted/state probes evaluate to
+ * 42 protocol queries are decided in real terminal runs; 36 unasserted/state probes evaluate to
  * inconclusive pending external apparatus or capture; 1 catalog capability lacks a probe definition.
  */
 const EXTENSIONS_CONTRACT: GroupContract = [
@@ -69,7 +69,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     claim: "Semantic prompts (OSC 133): ESC ] 133 ; A BEL",
   },
   { id: "extensions.osc2-title", expected: "inconclusive", claim: "Window title (OSC 2): ESC ] 2 ; title BEL" },
-  { id: "extensions.osc0-icon-title", expected: "inconclusive", claim: "Icon and title (OSC 0): ESC ] 0 ; title BEL" },
+  { id: "extensions.osc0-icon-title", expected: "decided", claim: "Icon and title (OSC 0): ESC ] 0 ; title BEL" },
   {
     id: "extensions.osc52-clipboard",
     expected: "decided",
@@ -267,6 +267,7 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/extensions-capture-observations.test.ts",
     "packages/probe-defs/src/extensions-geometry.test.ts",
     "packages/probe-defs/src/extensions-qualification.test.ts",
+    "packages/probe-defs/src/extensions-osc0-observations.test.ts",
   ],
 }
 
@@ -432,6 +433,19 @@ function decidedSatisfactionContext(id: string) {
       }),
     }
   }
+  if (id === "extensions.osc0-icon-title") {
+    const payload = "osc0-icon-title"
+    return {
+      headless: headlessContext({
+        ...inertModel(),
+        feedCapture: (text) => {
+          if (text === "\x1b[20t") return `\x1b]L${payload}\x07`
+          if (text === "\x1b[21t") return `\x1b]l${payload}\x07`
+          return ""
+        },
+      }),
+    }
+  }
   if (id === "extensions.osc99-kitty-notify") {
     return {
       term: replayContext(new Map(), {
@@ -514,7 +528,7 @@ test("the harness replays every extension capability deterministically", async (
 
 test("every decided extension contract row is satisfied by its required protocol response", async () => {
   const decidedRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "decided")
-  expect(decidedRows).toHaveLength(41)
+  expect(decidedRows).toHaveLength(42)
 
   for (const row of decidedRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)
@@ -529,7 +543,7 @@ test("every decided extension contract row is satisfied by its required protocol
 
 test("every inconclusive extension contract row evaluates to inconclusive under unasserted harness context", async () => {
   const inconclusiveRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "inconclusive")
-  expect(inconclusiveRows).toHaveLength(37)
+  expect(inconclusiveRows).toHaveLength(36)
 
   const term = replayContext(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
@@ -564,7 +578,6 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
   const omittedProbes = [
-    "extensions.osc0-icon-title",
     "extensions.osc1-icon",
     "extensions.osc117-reset-highlight-bg",
     "extensions.osc119-reset-highlight-fg",

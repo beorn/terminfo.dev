@@ -9,9 +9,8 @@ import { expect, test } from "vitest"
 import { ALL_PROBES } from "./index.ts"
 import type { TermlessContext } from "./types.ts"
 
-// The 15 scheduled headless features whose raw state is measurable but whose claim is not.
+// The 14 scheduled headless features whose raw state is measurable but whose claim is not.
 const notTestedFeatures = [
-  "extensions.osc0-icon-title",
   "extensions.osc1-icon",
   "extensions.osc117-reset-highlight-bg",
   "extensions.osc119-reset-highlight-fg",
@@ -43,8 +42,8 @@ const context = (): TermlessContext =>
     reset: () => {},
   }) as unknown as TermlessContext
 
-test("the 15 headless not-tested features emit named coverage from measured state", () => {
-  expect(notTestedFeatures).toHaveLength(15)
+test("the 14 headless not-tested features emit named coverage from measured state", () => {
+  expect(notTestedFeatures).toHaveLength(14)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
     if (!definition?.termless) throw new Error(`missing headless ${id}`)
