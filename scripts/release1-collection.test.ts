@@ -34,7 +34,6 @@ import { parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { buildReport } from "./decisive-share.ts"
-import { loadTerminals } from "@terminfo/catalog"
 import {
   admitProducedRuns,
   collectPass,
@@ -305,14 +304,8 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
 describe("release 1 collection census", () => {
   it("covers every catalog app/mux platform plus the engine family, with no missing or duplicate context", () => {
     const all = census()
-    // Accepted full-project scope replaces the old 22-context release bar; the catalog owns membership.
-    const catalogContexts = Object.entries(loadTerminals(CONTENT)).flatMap(([id, terminal]) =>
-      !terminal.historical && (terminal.kind === "app" || terminal.kind === "mux")
-        ? (terminal.platforms ?? []).map((os) => `${terminal.kind}:${id}/${os}`)
-        : [],
-    )
+    // full-census.test.ts owns membership. This boundary owns route coverage and the actual CLI.
     const contexts = all.map((entry) => `${entry.kind}:${entry.id}/${entry.os}`)
-    expect(contexts.filter((key) => !key.startsWith("headless:")).sort()).toEqual(catalogContexts.sort())
     expect(new Set(contexts).size).toBe(33)
     expect(all.filter((entry) => entry.kind === "app")).toHaveLength(18)
     expect(all.filter((entry) => entry.kind === "mux")).toHaveLength(4)
@@ -330,6 +323,9 @@ describe("release 1 collection census", () => {
   it("refuses a manifest that is not the eleven engines the collector asserts", () => {
     expect(() => census(ENGINE_BACKENDS.slice(0, 10))).toThrow(/Expected 11 headless engines/)
     expect(() => census([...ENGINE_BACKENDS, "extra"])).toThrow(/Expected 11 headless engines/)
+    expect(() => census([...ENGINE_BACKENDS.slice(0, -1), "not-in-catalog"])).toThrow(
+      /engine membership differs.*not-in-catalog/s,
+    )
   })
 
   it("names every context that has no route instead of dropping it", () => {

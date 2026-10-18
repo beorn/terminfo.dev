@@ -25,7 +25,8 @@ import {
 import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
-import { loadFeatures, loadTerminals } from "@terminfo/catalog"
+import { loadFeatures } from "@terminfo/catalog"
+import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
@@ -163,6 +164,7 @@ const macRow = (id: string): CollectionContext => ({
   uncollectable: null,
 })
 
+// The register's headless OS sentinel maps to collection's historical unknown only here.
 const engineRow = (id: string): CollectionContext => ({
   id,
   os: "unknown",
@@ -190,67 +192,66 @@ function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
   return ids
 }
 
-/** The catalog owns expected app/mux contexts; missing routes remain required work, never a scope cut. */
-function catalogContexts(ledger: LinuxLedger): CollectionContext[] {
+function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[]): CollectionContext[] {
   const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
   const contexts: CollectionContext[] = []
-  for (const [id, terminal] of Object.entries(loadTerminals(CONTENT))) {
-    if (terminal.historical || (terminal.kind !== "app" && terminal.kind !== "mux")) continue
-    if (!terminal.platforms?.length) throw new Error(`${CONTENT}/terminals.json: ${id} requires app/mux platforms`)
-    for (const os of terminal.platforms) {
-      if (terminal.kind === "mux") {
-        contexts.push({
-          id,
-          os,
-          kind: "mux",
-          route: "mux",
-          command: `bun packages/admin/src/index.ts probe mux ${id} --output <private-output>`,
-          requires: "launch and qualify the named outer terminal and genuine mux identity on this host",
-          sourceRun: null,
-          uncollectable: null,
-        })
-      } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
-      else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
-      else if (os === "windows" && hosted.windows.has(id)) {
-        contexts.push({
-          id,
-          os,
-          kind: "app",
-          route: "hosted-workflow",
-          command:
-            "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
-            `gh run download <run-id> --repo beorn/terminfo.dev for the win32-${id}-<run-id>-<attempt> artifact`,
-          requires: null,
-          sourceRun: null,
-          uncollectable: null,
-        })
-      } else {
-        contexts.push({
-          id,
-          os,
-          kind: "app",
-          route: null,
-          command: null,
-          requires: null,
-          sourceRun: null,
-          uncollectable: `required route work: ${id}/${os} has no qualified automatic owned launch/capture recipe in the current collection routes`,
-        })
-      }
+  for (const { terminalId: id, os, kind } of expected) {
+    if (kind === "headless") continue
+    if (kind === "mux") {
+      contexts.push({
+        id,
+        os,
+        kind: "mux",
+        route: "mux",
+        command: `bun packages/admin/src/index.ts probe mux ${id} --output <private-output>`,
+        requires: "launch and qualify the named outer terminal and genuine mux identity on this host",
+        sourceRun: null,
+        uncollectable: null,
+      })
+    } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
+    else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
+    else if (os === "windows" && hosted.windows.has(id)) {
+      contexts.push({
+        id,
+        os,
+        kind: "app",
+        route: "hosted-workflow",
+        command:
+          "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
+          `gh run download <run-id> --repo beorn/terminfo.dev for the win32-${id}-<run-id>-<attempt> artifact`,
+        requires: null,
+        sourceRun: null,
+        uncollectable: null,
+      })
+    } else {
+      contexts.push({
+        id,
+        os,
+        kind: "app",
+        route: null,
+        command: null,
+        requires: null,
+        sourceRun: null,
+        uncollectable: `required route work: ${id}/${os} has no qualified automatic owned launch/capture recipe in the current collection routes`,
+      })
     }
   }
   return contexts
 }
 
-/**
- * The whole census. The engine list is passed in rather than hard-coded so it comes from the SAME
- * source `collectHeadlessRuns` uses (the Termless manifest) and can never drift from the collector;
- * the count is asserted here exactly as the collector asserts it.
- */
+/** Route the shared register after checking the collector's runtime engine resources. */
 export function release1Census(engineBackends: readonly string[], ledger: LinuxLedger): readonly CollectionContext[] {
   if (engineBackends.length !== 11) {
     throw new Error(`Expected 11 headless engines in the Termless manifest; found ${engineBackends.length}`)
   }
-  return [...catalogContexts(ledger), ...engineBackends.map(engineRow)]
+  const census = fullContextCensus(CONTENT)
+  const runtime = [...engineBackends].sort()
+  if (runtime.join("\n") !== census.engines.join("\n")) {
+    throw new Error(
+      `Catalog/Termless engine membership differs: catalog [${census.engines.join(", ")}], runtime [${runtime.join(", ")}]`,
+    )
+  }
+  return [...collectionRoutes(ledger, census.contexts), ...census.engines.map(engineRow)]
 }
 
 /** The engine backend names the collector would run, from the Termless manifest. */
@@ -301,6 +302,8 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
     ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
     interpretationsPath,
     join(ROOT, "scripts/release1-collection.ts"),
+    join(ROOT, "docs/data/full-census.ts"),
+    join(ROOT, "content/terminals.json"),
     join(ROOT, "scripts/interpretations.ts"),
     join(ROOT, "docs/data/selected-results.ts"),
     join(ROOT, "docs/data/release-scope.ts"),
