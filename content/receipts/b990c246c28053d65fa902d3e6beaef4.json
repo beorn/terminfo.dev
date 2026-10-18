@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-18T12:04:51Z",
+  "runId": "d4e2a159afad621cc41b1801081a7bfb",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-29",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-u1cB9tKZ0nVmV8UHi6zq0esnSFX4flh3K0JjIQh5CE8=",
+    "revision": "cab25161054c50fd6c705db4ceefef0f1e5a9575"
+  },
+  "runnerArtifact": {
+    "url": "file:///hh/var/@dev3/29926/collect-wezterm/d4e2a159afad621cc41b1801081a7bfb/prep/runner-bundle.tar",
+    "sha256": "88f4d3e498496151ba4559e6cf9e88428845df28e82ed893c14536216a063f17",
+    "narSha256": "sha256-azZhP/6kQYlvZxkGFihWO37HmJQvKxj36yd9tvWuZms=",
+    "frozenRunnerSha256": "4558cbaf6d8bfa5c70a70394f6542924fbbab91cdbe6af3a123fd05880899ffc",
+    "buildReceiptSha256": "a1c80dacb7bbcc94f09f6db7182aca5a6c124c296156d9417b85ff82b8d9e3ba",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "b46bd3a84fcf",
+      "collectorRevision": "dcdddab06fe07c6a0d4b67383352bbe6b3fdc6fd",
+      "bundleSha256": "ea8d8a52a922eebb57af8d227bc9e63b9eae1eab6191fcfb9f1c3095f5c8c6de"
+    },
+    "rootBunLockSha256": "67afded5271bee86f48f32f6090cb95bb3dad8974176cf98d6965e7cda6a3749"
+  },
+  "runtime": {
+    "imageId": "sha256:99b1179031a2c865e1521f867cb01e4a3b85ac72fdddfba8a9bb44d712f1d4b2",
+    "imageTarSha256": "f98bb77bbda7cd16554159cb9bf50040b05f264ed5321d3886cd6b486a335bb6",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "dcdddab06fe07c6a0d4b67383352bbe6b3fdc6fd",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "131f3b565372ad43d050cb0774f37afe3818464a",
+    "suiteHash": "b46bd3a84fcf"
+  },
+  "status": "raw-unreviewed-history"
+}
