@@ -53,9 +53,10 @@ vi.mock("./terminal-app-receipt.ts", () => ({
 vi.mock("../../terminfo.dev/src/terminal-app-window.ts", () => ({
   assertOwnedTerminalWindow: vi.fn(),
   closeOwnedTerminalWindow: vi.fn(),
+  parseKittyIdentity: vi.fn(),
 }))
 
-const window = { windowId: 14, tty: "/dev/ttys003" }
+const window = { provider: "terminal-app" as const, windowId: 14, tty: "/dev/ttys003" }
 const registration = {
   pid: 555,
   port: 1234,
@@ -138,7 +139,7 @@ describe("Terminal.app app collection", () => {
     await handleApp("terminal-app", {})
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "terminal-app")
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(window, 555, "2.15")
-    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window)
+    expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
     expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
       asserter: "terminfo-admin",
       launchRunId: "private-run",

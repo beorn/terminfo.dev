@@ -47,7 +47,7 @@ const CONTENT = join(ROOT, "content")
  * collects — macOS and Windows share it because the route names the collection METHOD, and the
  * row's own `command` names which workflow runs: the platform belongs to the row, not the route.
  */
-export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless" | "mux"
+export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless" | "mux" | "local-owned-app"
 
 export interface CollectionContext {
   /** The context id, as the published row is keyed by. */
@@ -177,6 +177,24 @@ const engineRow = (id: string): CollectionContext => ({
   uncollectable: null,
 })
 
+/**
+ * macOS apps the admin launches and owns on this host. kitty is the first one (15323): the launch
+ * proves ownership through kitty's own exported identity plus live TTY and process descent, so the
+ * pass runs the same admin entry point the local development route uses and classifies its output.
+ */
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set(["kitty"])
+
+const localOwnedAppRow = (id: string): CollectionContext => ({
+  id,
+  os: "macos",
+  kind: "app",
+  route: "local-owned-app",
+  command: `bun packages/admin/src/index.ts probe app ${id} --output <private-directory>`,
+  requires: "an owned app window launched by the admin on this host (run-scoped instance group, recorded pid)",
+  sourceRun: null,
+  uncollectable: null,
+})
+
 /** Route membership comes from the existing workflow matrix, not a second list of app IDs. */
 function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
   const path = join(ROOT, ".github", "workflows", `${os}-measurement.yml`)
@@ -211,6 +229,7 @@ function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[
       })
     } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
     else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
+    else if (os === "macos" && LOCAL_OWNED_MAC_APPS.has(id)) contexts.push(localOwnedAppRow(id))
     else if (os === "windows" && hosted.windows.has(id)) {
       contexts.push({
         id,
@@ -407,6 +426,26 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
         path = realpathSync(join(output, runs[0].name, "raw", "v2-run.json"))
         if (!path.startsWith(`${output}${sep}`)) {
           throw new Error(`Linux raw output escaped its private context: ${path}`)
+        }
+      } else if (context.route === "local-owned-app") {
+        const output = join(directory, "owned-app", context.id)
+        row.directory = output
+        mkdirSync(output, { recursive: true })
+        runChild(
+          ["bun", "packages/admin/src/index.ts", "probe", "app", context.id, "--output", output],
+          `${labelOf(context)} owned-app collection`,
+          {
+            stdout: join(output, "launcher.stdout.log"),
+            stderr: join(output, "launcher.stderr.log"),
+          },
+        )
+        const runs = readdirSync(output).filter((entry) => entry.endsWith(".json"))
+        if (runs.length !== 1 || !runs[0]) {
+          throw new Error(`owned-app probe produced ${runs.length} run JSON files in ${output}; expected exactly one`)
+        }
+        path = realpathSync(join(output, runs[0]))
+        if (!path.startsWith(`${output}${sep}`)) {
+          throw new Error(`owned-app raw output escaped its private context: ${path}`)
         }
       } else if (context.route === "hosted-workflow") {
         const artifact = hosted.get(coverageKey(context.kind, context.id, context.os))

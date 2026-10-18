@@ -441,13 +441,16 @@ describe("release 1 collection census", () => {
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
     // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty only — there is no kitty job — and
-    // Chief bbf8eff9 retains all eight unresolved routes as expected work; no old ship-as-measured cut applies.
+    // Chief bbf8eff9 retains the unresolved routes as expected work. kitty/macos is no longer one of
+    // them: 15323 gives it an owned local launch on the host the pass runs on, and the run is still
+    // parsed and classified by this pass rather than by a second dispatcher.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
-    expect(kitty?.route).toBeNull()
-    expect(kitty?.command).toBeNull()
-    expect(kitty?.uncollectable).toMatch(/required route work/)
+    expect(kitty?.route).toBe("local-owned-app")
+    expect(kitty?.command).toMatch(/probe app kitty --output/)
+    expect(kitty?.uncollectable).toBeNull()
+    expect(kitty?.requires).toMatch(/owned app window launched by the admin/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(8)
+    expect(missing).toHaveLength(7)
     expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
@@ -724,7 +727,10 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
       { cwd: root, encoding: "utf8" },
     )
     expect(result.status, result.stderr).toBe(1)
-    expect(result.stdout).toMatch(/kitty\/macos: failed.*required route work/)
+    // kitty/macos now runs the owned local route, so it fails by name through that route; a row that
+    // still has no route (warp) keeps the required-route-work refusal this test was written for.
+    expect(result.stdout).toMatch(/kitty\/macos: failed.*owned-app collection exited 1/)
+    expect(result.stdout).toMatch(/warp\/macos: failed.*required route work/)
     const passName = readdirSync(join(directory, "output"))[0]!
     const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8")) as Awaited<
       ReturnType<typeof collectPass>
@@ -732,6 +738,11 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     expect(
       pass.contexts.find(
         (row: { context: { id: string; os: string } }) => row.context.id === "kitty" && row.context.os === "macos",
+      ),
+    ).toMatchObject({ status: "failed", error: expect.stringContaining("owned-app collection exited 1") })
+    expect(
+      pass.contexts.find(
+        (row: { context: { id: string; os: string } }) => row.context.id === "warp" && row.context.os === "macos",
       ),
     ).toMatchObject({ status: "failed", error: expect.stringContaining("required route work") })
     expect(existsSync(admitted)).toBe(false)

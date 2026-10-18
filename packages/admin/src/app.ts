@@ -9,7 +9,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { execFileSync, spawn, type ChildProcess } from "node:child_process"
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
@@ -29,11 +29,12 @@ import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
-import { assertKittyOwner, parseKittyIdentity } from "./kitty-owner.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
+  parseKittyIdentity,
   type OwnedTerminalWindow,
+  type KittyWindow,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -122,6 +123,9 @@ interface AppLaunch {
   windowId?: number
   terminalWindow?: OwnedTerminalWindow
   identityPath?: string
+  /** The run-scoped kitty instance group, and the detached launcher's retained stderr. */
+  instanceGroup?: string
+  launcherStderr?: string
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
@@ -135,18 +139,30 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
   writeFileSync(run.scriptPath, `#!/bin/bash\n${identityWrite}${serveCmd}\n`, { flag: "wx", mode: 0o700 })
 
   if (app.binaryPath && existsSync(app.binaryPath)) {
-    // kitty: a run-unique instance group and no single-instance reuse, so this launch owns its window only.
-    const args =
-      app.id === "kitty"
-        ? ["--hold", "--instance-group", `terminfo-${run.id}`, "-1", "--", "/bin/bash", run.scriptPath]
-        : app.launchArgs(run.scriptPath)
-    const child = spawn(app.binaryPath, args, {
+    if (app.id === "kitty") {
+      // A run-unique instance group, no single-instance reuse, and a detached launch: measured 0-byte
+      // stderr and a window that outlives the launcher, which the recorded kitty pid closes.
+      const instanceGroup = `terminfo-${run.id}`
+      const launched = spawnSync(
+        app.binaryPath,
+        ["--detach", "--instance-group", instanceGroup, "-1", "--", "/bin/bash", run.scriptPath],
+        { encoding: "utf8", timeout: 15_000 },
+      )
+      if (launched.error || launched.status !== 0) {
+        throw new Error(
+          `kitty launch failed: ${launched.error?.message ?? launched.stderr?.trim() ?? `exit ${String(launched.status)}`}`,
+        )
+      }
+      return { proc: null, identityPath, instanceGroup, launcherStderr: String(launched.stderr ?? "") }
+    }
+    // Any other runnable binary still spawns its own launcher and keeps the child handle for close.
+    const child = spawn(app.binaryPath, app.launchArgs(run.scriptPath), {
       detached: true,
       stdio: "ignore",
       env: { ...process.env },
     })
     child.unref()
-    return { proc: child, ...(identityPath === undefined ? {} : { identityPath }) }
+    return { proc: child }
   }
 
   if (app.id === "iterm2") {
@@ -193,29 +209,32 @@ function stopLaunchedApp(app: AppDef, launch: AppLaunch): void {
 
 // ── Probe a daemon ──
 
+interface ProbeOptions {
+  appId: string
+  version: string
+  /** The window this run launched and must still own. An app the probe launched never runs without one. */
+  ownedWindow: OwnedTerminalWindow
+  outputDirectory?: string
+  /** The detached kitty launcher's stderr, retained with the run whether or not it is empty. */
+  launcherStderr?: string
+}
+
 async function probeDaemon(
   daemon: DaemonRegistration,
-  appId: string,
-  version: string,
-  terminalWindow?: OwnedTerminalWindow,
-  kittyOwner?: Record<string, string | number>,
-  outputDirectory?: string,
-): Promise<{ total: number; observed: number }> {
-  const appLaunch = terminalWindow ? captureTerminalAppReceipt(terminalWindow, daemon.pid, version) : null
-  if (terminalWindow) assertOwnedTerminalWindow(terminalWindow)
-  const res = await requestDaemonProbe(
-    daemon,
-    terminalWindow
-      ? {
-          asserter: "terminfo-admin",
-          launchRunId: daemon.runId,
-          workerPid: daemon.pid,
-          windowId: terminalWindow.windowId,
-          tabTty: terminalWindow.tty,
-          intendedVersion: version,
-        }
-      : undefined,
-  )
+  options: ProbeOptions,
+): Promise<{ total: number; observed: number; mode: "retained" | "admitted" }> {
+  const { appId, version, ownedWindow, outputDirectory, launcherStderr } = options
+  const appLaunch =
+    ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
+  assertOwnedTerminalWindow(ownedWindow, daemon.pid)
+  const res = await requestDaemonProbe(daemon, {
+    asserter: "terminfo-admin",
+    launchRunId: daemon.runId,
+    workerPid: daemon.pid,
+    windowId: ownedWindow.windowId,
+    tabTty: ownedWindow.tty,
+    intendedVersion: version,
+  })
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
   const data = retained.run
@@ -227,9 +246,21 @@ async function probeDaemon(
       ...data.rawReplies,
       "collector.identityCheck": JSON.stringify(identityCheck),
       ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
-      ...(kittyOwner && { "collector.kittyOwner": JSON.stringify(kittyOwner) }),
+      ...(launcherStderr !== undefined && {
+        "collector.kittyLauncher": JSON.stringify({ exitStatus: 0, stderr: launcherStderr }),
+      }),
+      ...(ownedWindow.provider === "kitty" && {
+        "collector.kittyOwner": JSON.stringify({
+          windowId: ownedWindow.windowId,
+          kittyPid: ownedWindow.kittyPid,
+          tty: ownedWindow.tty,
+          executablePath: ownedWindow.executablePath,
+          instanceGroup: ownedWindow.instanceGroup,
+        }),
+      }),
     },
   }
+  const mode = outputDirectory === undefined ? "admitted" : "retained"
   if (outputDirectory !== undefined) {
     const source = retainCollectedRun(run, retained.path, { kind: "app", id: appId, version }, outputDirectory)
     console.log(`  Retained private development run ${source}`)
@@ -238,24 +269,27 @@ async function probeDaemon(
   }
   const observed = run.observations.length
   const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
-  return { total, observed }
+  return { total, observed, mode }
 }
 
 // ── Run one app ──
 
-/** Read the identity the kitty serve script recorded and require the daemon to descend from that instance. */
-function assertOwnedKittyLaunch(launch: AppLaunch, daemonPid: number): Record<string, string | number> {
+/** Build the kitty owner from the record the serve script wrote; the assertions live in the owner authority. */
+function ownedKittyWindow(app: AppDef, launch: AppLaunch): KittyWindow {
   if (launch.identityPath === undefined) throw new Error("kitty launch recorded no owner identity path")
+  if (launch.instanceGroup === undefined) throw new Error("kitty launch recorded no instance group")
+  if (app.binaryPath === undefined || app.binaryPath.length === 0) {
+    throw new Error("kitty launch has no binary path to compare the live process against")
+  }
   const identity = parseKittyIdentity(readFileSync(launch.identityPath, "utf8"))
-  assertKittyOwner(identity, daemonPid, (pid) => {
-    const raw = execFileSync("/bin/ps", ["-p", String(pid), "-o", "ppid="], {
-      encoding: "utf8",
-      timeout: 5000,
-    }).trim()
-    const parent = Number(raw)
-    return Number.isSafeInteger(parent) && parent > 0 ? parent : null
-  })
-  return { windowId: identity.windowId, kittyPid: identity.kittyPid, tty: identity.tty, term: identity.term }
+  return {
+    provider: "kitty",
+    windowId: identity.windowId,
+    tty: identity.tty,
+    kittyPid: identity.kittyPid,
+    executablePath: app.binaryPath,
+    instanceGroup: launch.instanceGroup,
+  }
 }
 
 async function runApp(
@@ -275,20 +309,26 @@ async function runApp(
   try {
     console.log(`  Launching ${app.name} v${version}...`)
     launch = launchWithServe(app, run)
+    if (launch.terminalWindow === undefined && app.id !== "kitty") {
+      throw new Error(
+        `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
+      )
+    }
     console.log(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
+    const ownedWindow = app.id === "kitty" ? ownedKittyWindow(app, launch) : launch.terminalWindow
+    if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
+    launch.terminalWindow = ownedWindow
     console.log(`  Probing on port ${daemon.registration.port}...`)
-    const kittyOwner = app.id === "kitty" ? assertOwnedKittyLaunch(launch, daemon.registration.pid) : undefined
-    const result = await probeDaemon(
-      daemon.registration,
-      app.id,
+    const result = await probeDaemon(daemon.registration, {
+      appId: app.id,
       version,
-      launch.terminalWindow,
-      kittyOwner,
-      opts.output,
-    )
-    console.log(`  ${result.observed}/${result.total} explicit observations (admitted)`)
+      ownedWindow,
+      outputDirectory: opts.output,
+      launcherStderr: launch.launcherStderr,
+    })
+    console.log(`  ${result.observed}/${result.total} explicit observations (${result.mode})`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -302,6 +342,16 @@ async function runApp(
       }
     }
     if (launch) {
+      if (app.id === "kitty" && launch.terminalWindow === undefined) {
+        try {
+          if (launch.identityPath === undefined || !existsSync(launch.identityPath)) {
+            throw new Error("the launch recorded no identity file")
+          }
+          launch.terminalWindow = ownedKittyWindow(app, launch)
+        } catch (err) {
+          cleanupErrors.push(`window: could not adopt the launched kitty window for close: ${String(err)}`)
+        }
+      }
       try {
         stopLaunchedApp(app, launch)
       } catch (err) {

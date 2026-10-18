@@ -87,7 +87,11 @@ describe("owned Terminal.app receipt", () => {
       stdout: "12,13\n/dev/ttys003\n14|1|/dev/ttys003\n15|1|/dev/ttys004\n",
       stderr: "",
     } as ReturnType<typeof spawnSync>)
-    expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({ windowId: 14, tty: "/dev/ttys003" })
+    expect(launchTerminalWindow("/private/run/serve.sh")).toEqual({
+      provider: "terminal-app",
+      windowId: 14,
+      tty: "/dev/ttys003",
+    })
   })
 
   test.each([
@@ -110,7 +114,7 @@ describe("owned Terminal.app receipt", () => {
 
   test("cleanup addresses only the launched window and its unchanged sole tab", () => {
     vi.mocked(spawnSync).mockReturnValueOnce({ status: 0, stdout: "", stderr: "" } as ReturnType<typeof spawnSync>)
-    closeOwnedTerminalWindow({ windowId: 14, tty: "/dev/ttys003" })
+    closeOwnedTerminalWindow({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" })
     const script = vi.mocked(spawnSync).mock.calls[0]?.[1]?.[1]
     expect(script).toContain("every window whose id is 14")
     expect(script).toContain("count of tabs of w) is not 1")
@@ -119,7 +123,11 @@ describe("owned Terminal.app receipt", () => {
 
   test("binds daemon TTY to one live signed process and a sealed OS snapshot", () => {
     mockCommands()
-    const capture = captureTerminalAppReceipt({ windowId: 14, tty: "/dev/ttys003" }, 555, "2.15")
+    const capture = captureTerminalAppReceipt(
+      { provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" },
+      555,
+      "2.15",
+    )
     expect(capture.receipt).toMatchObject({
       bundlePath,
       executablePath,
@@ -156,7 +164,9 @@ describe("owned Terminal.app receipt", () => {
       vi.mocked(realpathSync).mockImplementation((path) => String(path))
       vi.mocked(readFileSync).mockImplementation(() => executableBytes)
       mockCommands(options)
-      expect(() => captureTerminalAppReceipt({ windowId: 14, tty: "/dev/ttys003" }, 555, version)).toThrow(diagnostic)
+      expect(() =>
+        captureTerminalAppReceipt({ provider: "terminal-app", windowId: 14, tty: "/dev/ttys003" }, 555, version),
+      ).toThrow(diagnostic)
     }
   })
 })
