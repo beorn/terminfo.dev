@@ -379,10 +379,12 @@ function decssclsFrameDigest(frame: ObservationFrame): string {
  * only writer between two frames is that burst. A whole-screen difference is therefore attributable
  * to the burst, not to an unrelated repaint.
  *
- * The jump control must settle, otherwise capture timing cannot be separated from the setting and
- * the row is inconclusive rather than decided. A settled target is a negative only when the first
- * frame arrived well inside the time a 9-lines-per-second burst needs; a first capture later than
- * that could have missed a genuinely throttled burst and is inconclusive by name.
+ * The frames are RETAINED, NOT ASSERTED. The normal capture route returns an opaque encoded-frame
+ * ref rather than a raw whole-screen digest, and a repaint (cursor blink, window damage) during the
+ * target pair can change that frame without any scrolling. Until an existing qualified observable
+ * separates scroll movement from repaint, every result here is inconclusive by name; the control
+ * timing and the first-frame elapsed time are recorded to qualify a future decision, never to
+ * decide this one.
  */
 async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const captureCallback = ctx.capture
@@ -420,7 +422,6 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     const second = await capture(role, `${label} t1`)
     return { changed: decssclsFrameDigest(first) !== decssclsFrameDigest(second), firstElapsedMs }
   }
-  const expected = `CSI 0 SP p presents a ${burst.lines}-line burst over a measured ${rows}-row screen at 9 lines per second; the jump control settles by its first frame`
   const restored = "CSI 0 SP p (documented default; the prior setting is not queryable)"
   try {
     const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
@@ -436,55 +437,16 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       throttledDurationMs,
       restored,
     }
-    if (control.changed) {
-      return {
-        pass: false,
-        response: JSON.stringify(observed),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "pixels",
-          frames,
-          note: "Jump scrolling was still painting at its second frame; capture timing cannot be separated from the setting here",
-        },
-      }
-    }
-    if (target.changed) {
-      return {
-        pass: true,
-        response: JSON.stringify(observed),
-        observation: {
-          outcome: "supported",
-          evidence: "pixels",
-          frames,
-          note: "The burst was still being presented after the settle delay while the jump control had settled",
-        },
-        assertions: [{ kind: "positive", expected, observed: JSON.stringify(observed), action: "decsscls:0" }],
-      }
-    }
-    if (target.firstElapsedMs >= throttledDurationMs) {
-      return {
-        pass: false,
-        response: JSON.stringify(observed),
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "pixels",
-          frames,
-          note: "The first target frame arrived after a 9-lines-per-second burst could have finished, so a settled screen cannot be separated from a missed observation",
-        },
-      }
-    }
     return {
       pass: false,
       response: JSON.stringify(observed),
       observation: {
-        outcome: "unsupported",
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
         evidence: "pixels",
         frames,
-        note: "The burst had settled by its first frame while the same burst under jump scrolling settled identically, so the 9-lines-per-second setting changed no presentation",
+        note: "Frames retained without an assertion: the capture route returns an opaque encoded-frame ref, not a raw whole-screen digest, and a repaint during the target pair changes it without proving scroll movement",
       },
-      assertions: [{ kind: "negative", expected, observed: JSON.stringify(observed), action: "decsscls:0" }],
     }
   } finally {
     ctx.write(DECSSCLS_SLOW + "\x1b[?1049l\x1b[0m")

@@ -114,9 +114,9 @@ const MODES_CONTRACT: GroupContract = [
   },
   {
     id: "modes.decsscls",
-    expected: "decided",
+    expected: "inconclusive",
     claim:
-      "DECSSCLS: a 40-line burst under CSI 0 SP p is still painting after 300 ms while the jump control settled; an instant settle is unsupported",
+      "DECSSCLS: the geometry-derived burst and both frame pairs are retained with their timing, but no assertion is made because an encoded frame ref cannot separate scrolling from repaint",
   },
 ]
 

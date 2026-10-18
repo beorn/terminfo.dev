@@ -631,12 +631,16 @@ function decsscls() {
   return definition
 }
 
-test("modes.decsscls supports a throttled burst while the jump control settles", async () => {
+test("modes.decsscls retains a changing target pair without asserting scrolling", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow-t0", "slow-t1"], writes, frames))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "decsscls:0" })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.assertions).toBeUndefined()
   expect(frames).toHaveLength(4)
   expect(writes.some((write) => write.includes("\x1b[9 p"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
@@ -648,7 +652,7 @@ test("modes.decsscls overruns whatever height the context measured", async () =>
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow-t0", "slow-t1"], writes, frames, 50))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
   expect(writes.some((write) => write.includes("line 58"))).toBe(true)
 })
 
@@ -670,12 +674,16 @@ test("modes.decsscls stays inconclusive when the first target frame arrives afte
   }
 })
 
-test("modes.decsscls reports unsupported when the slow setting paints exactly like jump", async () => {
+test("modes.decsscls keeps an identical target pair unasserted too", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow", "slow"], writes, frames))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
-  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "decsscls:0" })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.assertions).toBeUndefined()
 })
 
 test("modes.decsscls stays inconclusive when the jump control is still painting", async () => {
