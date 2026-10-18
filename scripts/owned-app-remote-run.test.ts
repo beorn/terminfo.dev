@@ -138,7 +138,7 @@ function fixture(): void {
       "fi",
       '[ "$verbose" = 1 ] && [ "${SHIM_SSH_TWO_KEYS:-}" = 1 ] && echo \'debug1: Server host key: ssh-ed25519 SHA256:fixtureJumpHost\' >&2',
       "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureNegotiated' >&2",
-      'exec /bin/sh -c "$command"',
+      'HOME="${SHIM_SSH_HOME:-$HOME}" exec /bin/sh -c "$command"',
     ].join("\n"),
   )
   executable(
@@ -816,7 +816,8 @@ describe("owned-app ssh transport", () => {
 
   it("refuses a stage that is the remote home or holds it", () => {
     for (const home of [stage, join(stage, "home")]) {
-      const result = run({ HOME: home })
+      // Only the remote shell owns this HOME; local Bun may populate its own cache.
+      const result = run({ SHIM_SSH_HOME: home })
       expect(result.status, home).toBe(1)
       expect(result.stderr, home).toContain("is the remote home or contains it")
     }
