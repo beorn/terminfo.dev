@@ -235,7 +235,7 @@ test("the capture set covers the cell-edit probes and leaves non-cell probes unt
 /**
  * 28450 slice C deleted the cursor-only fallback for the thirteen converted rows: a run with no owned
  * capture can only answer "inconclusive", so the row refuses BY NAME and writes nothing rather than
- * keeping an ungraded CPR fixture alive (@cto A2). `editing.decsace` and `editing.decrqcra` keep their
+ * keeping an ungraded CPR fixture alive (28450 A2). `editing.decsace` and `editing.decrqcra` keep their
  * own callbacks; the two attribute-rectangle rows converted to the kind with decsace, so their extent
  * refusals are the kind's own (`editing-geometry.test.ts`).
  */
@@ -256,19 +256,18 @@ test("without a capture adapter a converted row refuses by name and writes nothi
  * A capture adapter that MODELS DECSACE and DECCARA instead of handing every capture its own
  * digest: the digest is a function of the cells the writes actually left on screen. A double that
  * invents a distinct digest per capture cannot fail on the arm's writes — a mutant that sets the
- * wrong extent, omits DECCARA, or grades the seed still earns three different digests and passes
- * (@cto round-2 B2, which reproduced exactly those three mutants at 7a364cac).
+ * wrong extent, omits DECCARA, or grades the seed still earns three different digests and passes.
  *
  * Each frame carries a DISTINCT ref, so the run parser's citation rule can fail on this double: a
- * pixel return that cites a control frame, or a frame absent from the run's screenshotRefs, is
- * refused. A comparison that regressed to `ref` is caught by the digest-versus-ref row below,
- * which gives one measured screen three different refs.
+ * pixel return that cites a control frame, or drops its citation, is refused. A comparison that
+ * regressed to `ref` is caught by the digest-versus-ref row below, which gives one measured screen
+ * three different refs.
  */
 function decsaceCaptureContext() {
   const DECSACE_SEED_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
   const DECSACE_CARA = "\x1b[1;2;2;3;7$r"
   // The screen is the EXISTING semantic surface, not a private CUP/ED/DECSACE/DECCARA interpreter:
-  // createSemanticSurface already models every one of those sequences (@cto round-3c B5), so this
+  // createSemanticSurface already models every one of those sequences, so this
   // double cannot drift from the terminal the probe says it models.
   const surface = createSemanticSurface({ rows: 2, cols: 8 })
   const frameWrites: string[] = []
@@ -282,7 +281,7 @@ function decsaceCaptureContext() {
       }).join(""),
     ).join("|")
     // A real digest spelling, so the observation this double produces can also be fed to the run
-    // parser (@cto round-3c B1): a synthetic prefix would be refused at parse time.
+    // parser: a synthetic prefix would be refused at parse time.
     return `sha256:${createHash("sha256").update(painted).digest("hex")}`
   }
 
@@ -350,7 +349,7 @@ test("editing.decsace grades the frames its own writes produced", async () => {
   expect(observed.seed).not.toBe(observed.stream)
   expect(observed.rectangle).not.toBe(observed.stream)
   // The shared lifecycle closes as well as opens: DECTCEM restored and the screen reset on the way
-  // out, so the next probe on this terminal does not inherit a hidden cursor (@dev/review2 R3 B1).
+  // out, so the next probe on this terminal does not inherit a hidden cursor.
   expect(writes).toContain("\x1b[?25h")
   expect(writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
@@ -374,7 +373,7 @@ test("editing.decsace clears its DECSACE extent before restoring the cursor", as
   }
   await expect(find("editing.decsace").term!(context)).rejects.toThrow(/rectangle capture failed/)
   // DECSACE 2 is a terminal MODE: the next probe would read it if the throw path skipped the reset,
-  // and 2J does not clear it (@cto round-3c B4). The cleanup must land BEFORE DECTCEM is restored.
+  // and 2J does not clear it. The cleanup must land BEFORE DECTCEM is restored.
   const cleanup = writes.indexOf("\x1b[0*x")
   const restored = writes.indexOf("\x1b[?25h")
   expect(cleanup).toBeGreaterThanOrEqual(0)
@@ -414,8 +413,9 @@ test("editing.decsace without a capture adapter still clears its DECSACE extent"
 /**
  * The arm returns pixels on four paths — supported, equal extents, no measured digest, and a target
  * that did not move from the seed. Every one of them is fed through the run parser's own rules with
- * a DISTINCT ref per frame, so a return that cites a control frame, drops its citation, or names a
- * frame absent from the run's screenshotRefs fails here rather than shipping.
+ * a DISTINCT ref per frame, so a return that cites a control frame or drops its citation fails here
+ * rather than shipping. The refs handed to the parser are the frames' own, so the parser's
+ * absent-ref clause cannot fire on this arm; the two failures above are the ones it can produce.
  */
 test("every DECSACE pixel return carries a target citation the run parser accepts", async () => {
   const counted = (digestOf: (reads: number) => string | undefined) => () => {
@@ -513,7 +513,7 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
 })
 
 /**
- * P2 from review2 source audit 97414a37: `ref` is the RETAINED ARTIFACT, and the shared type says
+ * `ref` is the RETAINED ARTIFACT, and the shared type says
  * encoded container chunks can differ between identical images. Comparing refs alone therefore lets
  * unchanged pixels read as a measured extent difference. The arm must compare the frame kind measured
  * digest (pixelsDigest for pixels, cellDigest for text cells) and name the gap when one is absent.
@@ -566,7 +566,7 @@ test("editing.decsace names an adapter that reports no measured digest", async (
 })
 
 /**
- * @cto round-2 B1a: a per-frame `whole ?? cells` can compare one frame's whole-window digest with
+ * A per-frame `whole ?? cells` can compare one frame's whole-window digest with
  * another frame's region digest — those never match, so the mismatch reads as a measured extent
  * difference. One kind must be present on ALL three frames, or the row is inconclusive.
  */
@@ -591,7 +591,7 @@ test("editing.decsace refuses frames whose measured digests are of different kin
 })
 
 /**
- * @cto round-2 B1b: the cursor is hidden and two captures of one static frame must agree, exactly as
+ * The cursor is hidden and two captures of one static frame must agree, exactly as
  * the capture-region oracle requires (region-readback.ts). A frame that moved between two reads of
  * the same static screen cannot decide anything.
  */
@@ -614,7 +614,7 @@ test("editing.decsace refuses a capture that is not byte-stable", async () => {
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(String(result.observation?.note)).toContain("not byte-stable")
   expect(result.assertions).toBeUndefined()
-  // The same ONE shape the region oracle emits (@cto round-3c B3): the two reads in the response,
+  // The same ONE shape the region oracle emits: the two reads in the response,
   // the second capture cited, and no fabricated frame on a path that never reached a target.
   const response = JSON.parse(String(result.response)) as {
     stability: { regionDigest: string[]; pixelsDigest: string[] }
@@ -660,7 +660,7 @@ test("editing.decsace refuses a seed that changes between the pair's two reads",
 })
 
 /**
- * @cto round-2 B2 mutant 2: a frame that did not move from the seed has measured no change at all,
+ * A frame that did not move from the seed has measured no change at all,
  * so an ignored DECCARA cannot be separated from a digest that cannot see attributes.
  */
 test("editing.decsace refuses a target frame that did not move from the seed", async () => {
@@ -682,7 +682,7 @@ test("editing.decsace refuses a target frame that did not move from the seed", a
 /**
  * The two converted attribute rows on a TEXT-ONLY adapter: the seed and the expected frame read the
  * same cells because only attributes changed, so the region oracle refuses by name. This is the macOS
- * census row (@cto 2026-10-18 condition 3) in executable form.
+ * census row in executable form.
  */
 test("an attribute row on a text-only adapter is inconclusive by name", async () => {
   for (const id of ["editing.deccara", "editing.decrara"]) {
@@ -733,7 +733,7 @@ test.each(["editing.deccara", "editing.decrara"])("%s paints its expected cells 
   }
   await find(id).term!(context)
   // The row sets DECSACE 2 to measure the rectangle extent, so the shared lifecycle must clear the
-  // MODE before DECTCEM comes back: 2J does not reset it (@cto round-3c B4).
+  // MODE before DECTCEM comes back: 2J does not reset it.
   expect(writes).toContain("\x1b[0*x")
   expect(writes.indexOf("\x1b[?25h")).toBeGreaterThan(writes.indexOf("\x1b[0*x"))
   expect(expectedFrames).toEqual([

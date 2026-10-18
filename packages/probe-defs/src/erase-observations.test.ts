@@ -126,7 +126,7 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
   if (cell === undefined || typeof cell === "string") {
     // A plain cell is a cell the row claims NO attributes for, not a cell whose backend reports no
     // field: a real `getCell` always says what the background is (null = none). Leaving `bg`
-    // undefined here would model an unread backend, which the kind now refuses by name (@cto B3).
+    // undefined here would model an unread backend, which the kind now refuses by name.
     return {
       char: cell ?? " ",
       bold: false,
@@ -294,7 +294,7 @@ for (const row of eraseReadbackRows) {
 }
 
 /**
- * The base's named erase failure tests, ported to the kind table (@cto 28450 must-fix 2). A terminal
+ * The base's named erase failure tests, ported to the kind table (28450 must-fix 2). A terminal
  * that erases too much — EL2 its neighbour row, ED the wrong side, ED everything — must read
  * UNSUPPORTED, because every preserved erase cell is a claim cell now and a grid mismatch is the
  * capability's, not the fixture's. Before must-fix 2 these read inconclusive behind a moved control.
@@ -317,8 +317,8 @@ test.each([
 /**
  * The setup's own witness, at kind-table scale: every erase row's single step declares the CUP cursor
  * it must reach, and a terminal whose CUP never moved the cursor reads inconclusive — the base's
- * "does not blame erasure when CHA setup is ignored", now the kind's step check (@cto 28450 must-fix
- * 2). erase.selective's CUP reaches column 1 already, so its cursor is not a deviation and is skipped.
+ * "does not blame erasure when CHA setup is ignored", now the kind's step check (28450 must-fix 2).
+ * erase.selective's CUP reaches column 1 already, so its cursor is not a deviation and is skipped.
  */
 test.each(eraseReadbackRows.map((row) => row.id))("%s reads an ignored CUP inconclusive, not a bad erase", (id) => {
   const row = rowById(id)
@@ -353,7 +353,7 @@ test("erase.el-with-attrs reads an ignored CUP inconclusive before grading cells
 
 /**
  * The nine converted rows are decided by the region verdict, so a run with no owned capture can only
- * answer "inconclusive". A fixture that can only answer that is deleted rather than kept (@cto A2), so
+ * answer "inconclusive". A fixture that can only answer that is deleted rather than kept (28450 A2), so
  * every one of them refuses BY NAME and writes nothing - on the smallest grid, on a grid at the row's
  * own derived need and on a large one alike. With a capture adapter that answers no CSI 16 t the same
  * rows refuse through the pixel-geometry path instead.
@@ -427,7 +427,7 @@ test("a row whose shape disagrees with itself refuses at load", () => {
 })
 
 /**
- * NO SILENT ERRORS, at load (@cto 2026-10-12, must-fix 2): the minimum geometry DERIVES from the row.
+ * NO SILENT ERRORS, at load (must-fix 2): the minimum geometry DERIVES from the row.
  * An explicit minimum below that need refuses at LOAD and names both numbers; a larger one is for the
  * row to justify in a line - erase.ed-scroll-region's ten rows are exactly that, for a scroll region
  * whose bottom is row 10.
@@ -812,8 +812,8 @@ test("background erase measures a blank target that carries the seeded backgroun
   expect(unseeded.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(String(unseeded.observation?.note)).toBe(row.seedNote)
   expect(unseeded.assertions).toBeUndefined()
-  // Restored from the deleted nine-case table (@cto round-2 B5): a seed whose measured character is
-  // not the row's own means the fixture never landed, so nothing may be graded from it.
+  // A seed whose measured character is not the row's own means the fixture never landed, so nothing
+  // may be graded from it.
   const wrongSeed = run(background, background, " ", "?")
   expect(wrongSeed.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(String(wrongSeed.observation?.note)).toBe(row.seedNote)
@@ -821,7 +821,7 @@ test("background erase measures a blank target that carries the seeded backgroun
 })
 
 /**
- * @cto round-2 B3: an unread (undefined) baseline colour is not "different" from the painted seed.
+ * An unread (undefined) baseline colour is not "different" from the painted seed.
  * `unpaintedColor` used to skip its refusal on an undefined channel, which let the seed be qualified
  * by a measurement that never happened — the same vacuous-pass class P2 1 closed. Refuse by name.
  */
@@ -864,9 +864,8 @@ test("an unread default-background colour cannot qualify the painted seed", () =
 })
 
 /**
- * Restored from the deleted test "restores its changed fixture after a write error" (@cto round-2
- * B5): the row's SGR 42 is still set when a step throws, so the arm's `finally` must feed the row's
- * own reset — otherwise the next probe on this terminal inherits a background nobody measured.
+ * The row's SGR 42 is still set when a step throws, so the arm's `finally` must feed the row's own
+ * reset — otherwise the next probe on this terminal inherits a background nobody measured.
  */
 test("a step that throws still feeds the row's reset", () => {
   const row = rowById("erase.el-with-attrs")
@@ -909,7 +908,7 @@ test("a step that throws still feeds the row's reset", () => {
 })
 
 /**
- * P2 from review2 source audit 97414a37: a backend that reports ONE concrete RGB as its default and
+ * A backend that reports ONE concrete RGB as its default and
  * ignores SGR 42 satisfies both `present` on the seed and `same-as-before` on the erased cells, so
  * the colour fixture was never established. The default-versus-painted qualification must catch it
  * and refuse BY NAME — never grade the erase supported.
@@ -1060,14 +1059,14 @@ test("the EL-with-attrs row names an erase that drops the current background uns
 })
 
 /**
- * @cto round-2 R2: both load-time refusals that protect the relative claim had no test. A row that
+ * Both load-time refusals that protect the relative claim are pinned here. A row that
  * claims a background it never paints, or paints one it never calibrates against a baseline, is a
  * fixture bug and must fail at LOAD rather than ship a claim no adapter can decide.
  */
 test("a relative background claim refuses to load without its paint bytes", () => {
   const row = rowById("erase.el-with-attrs")
-  // The ROW ID is the discriminator (@cto round-3c B6): paintBytes also throws, without it, at frame
-  // build, so a regex that matches only the shared tail stays green when the load check is deleted.
+  // The ROW ID makes the assertion name this row's load refusal rather than any later failure:
+  // paintBytes only strips the SGR wrapper, so no row-less fallback can satisfy this pattern.
   expect(() => regionReadbackProbe({ ...row, paint: undefined })).toThrow(
     new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
   )
