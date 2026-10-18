@@ -197,14 +197,47 @@ function measureAppLaunch(): Record<string, unknown> {
   }
 }
 
-/** Measure the portable app process and the ZIP this job retained, through the existing apparatus. */
-function measureWindowsAppLaunch() {
-  if (required("APP_ID") !== "windows-terminal") {
-    throw new Error("Hosted Windows receipt requires APP_ID=windows-terminal")
+function measureWindowsAlacrittyVersion(executablePath: string): string {
+  const result = spawnSync(executablePath, ["--version"], {
+    encoding: "utf8",
+    timeout: 5_000,
+    windowsHide: true,
+  })
+  const rawStdout = result.stdout ?? ""
+  const rawStderr = result.stderr ?? ""
+  process.stderr.write(`alacritty --version raw stdout: ${JSON.stringify(rawStdout)}\n`)
+  if (rawStderr.trim()) {
+    process.stderr.write(`alacritty --version raw stderr: ${JSON.stringify(rawStderr)}\n`)
   }
+  if (result.error) {
+    throw new Error(
+      `Hosted receipt appLaunch: alacritty --version failed at ${executablePath}: ${result.error.message}`,
+    )
+  }
+  if (result.signal !== null || result.status !== 0) {
+    throw new Error(
+      `Hosted receipt appLaunch: alacritty --version exited ${String(result.status)} (signal ${String(result.signal)}) at ${executablePath}: ${rawStderr.trim() || rawStdout.trim()}`,
+    )
+  }
+  const trimmed = rawStdout.trim()
+  if (!trimmed) {
+    throw new Error(`Hosted receipt appLaunch: alacritty --version produced empty stdout at ${executablePath}`)
+  }
+  const match = /^alacritty\s+([^\s]+)(?:\s+\([^\s]+\))?$/.exec(trimmed)
+  if (!match?.[1]) {
+    throw new Error(
+      `Hosted receipt appLaunch: alacritty --version stdout ${JSON.stringify(trimmed)} did not match /^alacritty\\s+([^\\s]+)(?:\\s+\\([^\\s]+\\))?$/`,
+    )
+  }
+  return match[1]
+}
+
+function measureWindowsAppLaunchRaw(): Record<string, unknown> {
+  const appId = required("APP_ID")
   required("APP_EXECUTABLE")
   required("APP_SOURCE_ARTIFACT")
-  const script = `$ErrorActionPreference = 'Stop'
+  if (appId === "windows-terminal") {
+    const script = `$ErrorActionPreference = 'Stop'
 $expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
 if ($expected.PSIsContainer -or $expected.Name -cne 'WindowsTerminal.exe') { throw 'APP_EXECUTABLE must name WindowsTerminal.exe, not its wt.exe launcher' }
 $processes = @(Get-CimInstance Win32_Process -Filter "Name='WindowsTerminal.exe'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
@@ -221,13 +254,53 @@ if ([string]::IsNullOrWhiteSpace($productVersion)) { throw "No measured ProductV
   executableSha256 = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   sourceArtifact = @{ kind = 'portable-zip'; path = $zip.FullName; sha256 = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 } | ConvertTo-Json -Compress -Depth 4`
-  const value: unknown = JSON.parse(
-    measured("launched WindowsTerminal.exe version and retained ZIP bytes", "powershell.exe", [
-      "-NoProfile",
-      "-Command",
-      script,
-    ]),
-  )
+    return JSON.parse(
+      measured("launched WindowsTerminal.exe version and retained ZIP bytes", "powershell.exe", [
+        "-NoProfile",
+        "-Command",
+        script,
+      ]),
+    ) as Record<string, unknown>
+  }
+  if (appId === "alacritty") {
+    const productVersion = measureWindowsAlacrittyVersion(required("APP_EXECUTABLE"))
+    const script = `$ErrorActionPreference = 'Stop'
+$expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
+if ($expected.PSIsContainer -or $expected.Name -cne 'alacritty.exe') { throw 'APP_EXECUTABLE must name alacritty.exe' }
+$processes = @(Get-CimInstance Win32_Process -Filter "Name='alacritty.exe'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
+if ($processes.Count -ne 1) { throw "Expected exactly one launched alacritty.exe at $($expected.FullName); found $($processes.Count)" }
+$executable = Get-Item -LiteralPath $processes[0].ExecutablePath
+$exeArtifact = Get-Item -LiteralPath $env:APP_SOURCE_ARTIFACT
+if ($exeArtifact.PSIsContainer -or $exeArtifact.Extension -ine '.exe' -or $exeArtifact.Length -eq 0 -or $executable.Length -eq 0) { throw 'Windows alacritty executable and retained portable EXE must be nonempty files' }
+$exeHash = (Get-FileHash -LiteralPath $executable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+$artifactHash = (Get-FileHash -LiteralPath $exeArtifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($exeHash -cne $artifactHash) { throw "Launched alacritty.exe sha256 ($exeHash) does not match retained portable EXE sha256 ($artifactHash)" }
+[ordered]@{
+  executablePath = $executable.FullName
+  executableSha256 = $exeHash
+  sourceArtifact = @{ kind = 'portable-exe'; path = $exeArtifact.FullName; sha256 = $artifactHash }
+} | ConvertTo-Json -Compress -Depth 4`
+    const measuredProcess = JSON.parse(
+      measured("launched alacritty.exe process and retained portable EXE bytes", "powershell.exe", [
+        "-NoProfile",
+        "-Command",
+        script,
+      ]),
+    ) as { executablePath: string; executableSha256: string; sourceArtifact: Record<string, unknown> }
+    return {
+      platform: "win32",
+      executablePath: measuredProcess.executablePath,
+      productVersion,
+      executableSha256: measuredProcess.executableSha256,
+      sourceArtifact: measuredProcess.sourceArtifact,
+    }
+  }
+  throw new Error(`Hosted Windows receipt requires APP_ID=windows-terminal or alacritty; got ${JSON.stringify(appId)}`)
+}
+
+/** Measure the portable app process and the artifact this job retained, through the existing apparatus. */
+function measureWindowsAppLaunch() {
+  const value: unknown = measureWindowsAppLaunchRaw()
   const receipt = parseAppLaunchReceipt(value, "collector", "app", "Hosted Windows launch measurement")
   if (receipt?.platform !== "win32") throw new Error("Hosted Windows launch measurement has no win32 receipt")
   return receipt
@@ -294,6 +367,13 @@ async function context() {
 
 async function main(): Promise<void> {
   const [mode, startPath, receiptPath, extra] = process.argv.slice(2)
+  if (mode === "c1-probe" && startPath && !receiptPath && !extra) {
+    if (!isAbsolute(startPath)) throw new Error("Hosted receipt output paths must be absolute")
+    const raw = measureWindowsAppLaunchRaw()
+    mkdirSync(dirname(startPath), { recursive: true })
+    writeFileSync(startPath, JSON.stringify(raw, null, 2) + "\n")
+    return
+  }
   if ((mode !== "start" && mode !== "emit") || !startPath || (mode === "emit" ? !receiptPath : receiptPath) || extra) {
     throw new Error(
       "Usage: hosted-runner-receipt.ts start <absolute-start.json> | emit <absolute-start.json> <absolute-host-measured.json>",

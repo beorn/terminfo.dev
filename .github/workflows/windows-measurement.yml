@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - id: windows-terminal
+          - id: alacritty
     defaults:
       run:
         shell: bash
@@ -56,47 +56,35 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.3
-
-      - name: Build and retain the current collector
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile
-          bun scripts/build-cli.ts
-          bun packages/terminfo.dev/bin/terminfo.mjs --version
-          OUT="$RUNNER_TEMP/measurement-artifacts"
-          cp bun.lock "$OUT/collector-bun.lock"
-          cp packages/terminfo.dev/dist/terminfo.bundle.receipt.json "$OUT/collector-build.json"
-          cp packages/terminfo.dev/dist/terminfo.bundle.mjs "$OUT/collector-bundle.mjs"
-
       - name: Install this job's terminal
         env:
           APP_ID: ${{ matrix.id }}
         run: |
           set -euo pipefail
           case "$APP_ID" in
-            windows-terminal)
-              WT_DIR="$RUNNER_TEMP/windows-terminal"
-              WT_ZIP="$RUNNER_TEMP/measurement-artifacts/wt.zip"
-              if [ -e "$WT_DIR" ]; then
-                echo "Target directory $WT_DIR already exists; refusing reuse" >&2
+            alacritty)
+              ALACRITTY_DIR="$RUNNER_TEMP/alacritty"
+              ALACRITTY_EXE="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.17.0-portable.exe"
+              ALACRITTY_EXPECTED_SHA256="5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
+              if [ -e "$ALACRITTY_DIR" ]; then
+                echo "Target directory $ALACRITTY_DIR already exists; refusing reuse" >&2
                 exit 1
               fi
-              curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$WT_ZIP"
-              powershell -NoProfile -Command "Expand-Archive -Path '$WT_ZIP' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
-              mkdir -p "$WT_DIR"
-              cp -r "$RUNNER_TEMP"/wt_unpacked/terminal-*/* "$WT_DIR/"
-              touch "$WT_DIR/.portable"
-              mkdir -p "$WT_DIR/settings"
-              printf '%s\n' '{"$schema":"https://aka.ms/terminal-profiles-schema","profiles":{"defaults":{"closeOnExit":"always"}}}' > "$WT_DIR/settings/settings.json"
-              test -f "$WT_DIR/WindowsTerminal.exe" || { echo "Windows Terminal binary missing at $WT_DIR/WindowsTerminal.exe" >&2; exit 1; }
+              curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0-portable.exe" -o "$ALACRITTY_EXE"
+              ACTUAL_SHA256="$(sha256sum "$ALACRITTY_EXE" | awk '{print tolower($1)}')"
+              test "$ACTUAL_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
+                echo "Alacritty SHA256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ACTUAL_SHA256" >&2
+                exit 1
+              }
+              mkdir -p "$ALACRITTY_DIR"
+              cp "$ALACRITTY_EXE" "$ALACRITTY_DIR/alacritty.exe"
+              : > "$ALACRITTY_DIR/alacritty.toml"
+              test -f "$ALACRITTY_DIR/alacritty.exe" || { echo "Alacritty binary missing at $ALACRITTY_DIR/alacritty.exe" >&2; exit 1; }
               ;;
             *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
           esac
 
-      - name: Launch, emit the receipt, and collect as the last mutating step
+      - name: C1 measure alacritty --version pipe, OpenGL context, and ConPTY process ancestry
         id: collect
         env:
           APP_ID: ${{ matrix.id }}
@@ -108,78 +96,82 @@ jobs:
 
           WIN_OUT="$(cygpath -w "$OUT")"
           WIN_COMMAND="$(cygpath -w "$COMMAND_PATH")"
-          NODE_DIR="$(cygpath -w "$(dirname "$(command -v node)")")"
-          BUN_DIR="$(cygpath -w "$(dirname "$(command -v bun)")")"
-          COLLECTOR_BUN="$(cygpath -w "$(command -v bun)")"
-          COLLECTOR="$(cygpath -w "$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs")"
-          WT_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
-          WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe")"
-          WIN_ZIP="$(cygpath -w "$OUT/wt.zip")"
+          WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.exe")"
+          WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/Alacritty-v0.17.0-portable.exe")"
+          WIN_ALACRITTY_CONFIG="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.toml")"
 
           cat > "$COMMAND_PATH" <<PS1
-          \$ErrorActionPreference = "Continue"
-          \$env:PATH = "$WT_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
-          \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
-          \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
-
-          \$attempts = 0
-          while (-not (Test-Path "$WIN_OUT\\collector-ready")) {
-            \$attempts++
-            if (\$attempts -ge 180) {
-              Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt self-parse never succeeded; collection refused"
-              Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
-              exit 1
+          \$ErrorActionPreference = "Stop"
+          \$marker = [ordered]@{
+            pid = \$PID
+            timestamp = (Get-Date).ToString("o")
+            env = [ordered]@{
+              TERM = \$env:TERM
+              TERM_PROGRAM = \$env:TERM_PROGRAM
+              ALACRITTY_WINDOW_ID = \$env:ALACRITTY_WINDOW_ID
+              WT_SESSION = \$env:WT_SESSION
+              COLORTERM = \$env:COLORTERM
             }
-            Start-Sleep -Seconds 1
           }
+          \$marker | ConvertTo-Json -Depth 4 | Set-Content -Path "$WIN_OUT\\c1-marker.json" -Encoding utf8
 
-          # The owned terminal reads TERMINFO_RUN_ID and refuses an empty launch id (owned-terminal.ts).
-          # The id only exists once the launched step emitted the receipt, so it is read here, after the
-          # readiness wait and before the collector (27917: hosted runs never set it).
-          \$receipt = Get-Content -Raw "$WIN_OUT\\host-measured.json" | ConvertFrom-Json
-          if (\$receipt.appLaunch.platform -cne "win32" -or [string]::IsNullOrWhiteSpace(\$receipt.appLaunch.productVersion) -or \$receipt.appLaunch.executablePath -ine "$WIN_EXECUTABLE") {
-            Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt lacks the measured launched WindowsTerminal.exe path or ProductVersion; collection refused"
-            Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
-            exit 1
+          \$rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, ExecutablePath, CommandLine)
+          \$byPid = @{}
+          foreach (\$r in \$rows) { \$byPid[[int]\$r.ProcessId] = \$r }
+          \$chain = @()
+          \$cur = [int]\$PID
+          \$visited = @{}
+          while (\$cur -gt 0 -and -not \$visited.ContainsKey(\$cur) -and \$byPid.ContainsKey(\$cur)) {
+            \$visited[\$cur] = \$true
+            \$row = \$byPid[\$cur]
+            \$chain += \$row
+            \$cur = [int]\$row.ParentProcessId
           }
-          \$env:TERMINFO_TARGET_VERSION = \$receipt.appLaunch.productVersion
-          \$env:TERMINFO_RUN_ID = \$receipt.runId
-          if ([string]::IsNullOrWhiteSpace(\$env:TERMINFO_RUN_ID)) {
-            Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt has no launch run ID; collection refused"
-            Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
-            exit 1
-          }
+          \$related = @(\$rows | Where-Object { \$_.Name -match 'alacritty|conhost|openconsole|powershell' })
+          [ordered]@{
+            selfPid = \$PID
+            ancestryChain = \$chain
+            relatedProcesses = \$related
+          } | ConvertTo-Json -Depth 6 | Set-Content -Path "$WIN_OUT\\c1-ancestry.json" -Encoding utf8
 
-          & "$COLLECTOR_BUN" "$COLLECTOR" test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
-          \$exitCode = \$LASTEXITCODE
-          if (\$null -eq \$exitCode) { \$exitCode = 0 }
-          Set-Content -Path "$WIN_OUT\\collector-exit" -Value \$exitCode -Encoding ascii
-          exit \$exitCode
+          for (\$i = 0; \$i -lt 60; \$i++) {
+            if (Test-Path "$WIN_OUT\\collector-ready") { break }
+            Start-Sleep -Milliseconds 500
+          }
+          Set-Content -Path "$WIN_OUT\\collector-exit" -Value "0" -Encoding ascii
+          exit 0
           PS1
 
-          case "$APP_ID" in
-            windows-terminal)
-              "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe" -d "$WIN_OUT" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
-              ;;
-            *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
-          esac
+          "$RUNNER_TEMP/alacritty/alacritty.exe" -v -v --config-file "$WIN_ALACRITTY_CONFIG" --working-directory "$WIN_OUT" -e powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
+          ALACRITTY_BG_PID=$!
 
-          sleep 3
-          export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_ZIP"
-          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
-          touch "$OUT/collector-ready"
-
-          for attempt in {1..300}; do
-            if [ -f "$OUT/collector-exit" ]; then
-              status="$(cat "$OUT/collector-exit" | tr -d '\r\n ')"
-              test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
-              test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
-              exit 0
+          for attempt in {1..40}; do
+            if [ -f "$OUT/c1-marker.json" ] && [ -f "$OUT/c1-ancestry.json" ]; then
+              break
+            fi
+            if ! kill -0 "$ALACRITTY_BG_PID" 2>/dev/null; then
+              echo "alacritty.exe exited early before writing c1-marker.json" >&2
+              break
             fi
             sleep 1
           done
-          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
-          exit 1
+
+          export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_SOURCE_ARTIFACT"
+          WIN_PROBE_JSON="$(cygpath -w "$OUT/c1-receipt-probe.json")"
+          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" c1-probe "$WIN_PROBE_JSON" > "$OUT/c1-receipt-probe.stdout.log" 2> "$OUT/c1-receipt-probe.stderr.log" || true
+          touch "$OUT/collector-ready"
+          wait "$ALACRITTY_BG_PID" || true
+
+          echo "=== launcher.log ==="
+          cat "$OUT/launcher.log" || true
+          echo "=== c1-receipt-probe.stderr.log ==="
+          cat "$OUT/c1-receipt-probe.stderr.log" || true
+          echo "=== c1-receipt-probe.json ==="
+          cat "$OUT/c1-receipt-probe.json" || true
+          echo "=== c1-marker.json ==="
+          cat "$OUT/c1-marker.json" || true
+          echo "=== c1-ancestry.json ==="
+          cat "$OUT/c1-ancestry.json" || true
 
       - name: Upload the receipt beside the exact collected run
         if: always()
