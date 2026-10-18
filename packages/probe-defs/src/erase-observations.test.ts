@@ -712,15 +712,18 @@ test("erase.screen.scrollback is not tested when wheel-up does not change the ca
   expect(result.observation).toBeUndefined()
 })
 
-test("erase.screen.scrollback is not tested when wheel-down does not restore the bottom", async () => {
+test("erase.screen.scrollback is inconclusive, naming the cause, when wheel-down does not restore the bottom", async () => {
   const { ctx, clicks } = scrollbackApp({ restore: false })
   const result = await byId("erase.screen.scrollback").term(ctx)
   expect(clicks).toEqual([4, 5, 5])
-  expect(result.notTested).toEqual({
-    reason: "no-semantic-observable",
-    noObservable: expect.stringMatching(/wheel-down|restore|bottom/i),
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+    screenshotRef: HISTORY_REF,
   })
-  expect(result.observation).toBeUndefined()
+  expect(result.observation?.note).toMatch(/captured pixels differ/i)
 })
 
 test("erase.screen.scrollback grades when the refs differ but the pixels agree", async () => {
@@ -732,11 +735,12 @@ test("erase.screen.scrollback grades when the refs differ but the pixels agree",
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
 })
 
-test("erase.screen.scrollback names moving pixels when the return never settles", async () => {
+test("erase.screen.scrollback names moving pixels as inconclusive when the return never settles", async () => {
   const { ctx } = scrollbackApp({ restore: false, divergentPixels: true })
   const result = await byId("erase.screen.scrollback").term(ctx)
-  expect(result.observation).toBeUndefined()
-  expect(result.notTested?.noObservable).toMatch(/captured pixels differ/i)
+  expect(result.notTested).toBeUndefined()
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(result.observation?.note).toMatch(/captured pixels differ/i)
 })
 
 test("erase.screen.scrollback records unsupported when history remains after ED3", async () => {

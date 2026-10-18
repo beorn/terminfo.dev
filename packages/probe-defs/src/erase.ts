@@ -376,12 +376,22 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
     await input.injectClick(5)
     const restored = await capture({ role: "control", label: "After wheel-down before ED3" })
     if (!sameFrame(restored, bottom)) {
-      return notTestedResult(`wheel-down did not return to the bottom frame: ${frameDivergence(restored, bottom)}`, {
-        control,
-        bottom,
-        history,
-        restored,
-      })
+      return {
+        pass: false,
+        response: JSON.stringify({
+          control,
+          bottom: bottom.ref,
+          history: history.ref,
+          restored: restored.ref,
+        }),
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: restored.ref,
+          note: `wheel-down did not return to the bottom frame: ${frameDivergence(restored, bottom)}`,
+        },
+      }
     }
     ctx.write("\x1b[3J")
     const erased = await capture({ role: "control", label: "After ED3 at bottom" })
