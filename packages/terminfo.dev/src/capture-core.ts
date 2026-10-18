@@ -147,7 +147,8 @@ export function textAreaOrigin(input: {
  * text area's own measured origin (see textAreaOrigin), and from nothing else: a window width
  * divided by a column count is a guess, and this rectangle decides pixels. A rectangle that leaves
  * the window is a loud error, not a clipped crop, because a clipped crop would silently compare the
- * wrong cells.
+ * wrong cells. The one exception is a measured text area whose window cuts its last row or column:
+ * `visible` carries the pixels that exist, so the region keeps them instead of the padding beyond.
  */
 export function cellRectangle(input: {
   cells: { top: number; left: number; bottom: number; right: number }
@@ -155,8 +156,10 @@ export function cellRectangle(input: {
   textOrigin: { x: number; y: number }
   windowWidth: number
   windowHeight: number
+  /** The measured pixels of the text area, when a window edge clips its last row or column. */
+  visible?: { width: number; height: number }
 }): CaptureRectangle {
-  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight } = input
+  const { cells, pixelGeometry: geometry, textOrigin, windowWidth, windowHeight, visible } = input
   const numbers = [
     cells.top,
     cells.left,
@@ -187,6 +190,27 @@ export function cellRectangle(input: {
     y: textOrigin.y + (cells.top - 1) * geometry.cellHeight,
     width: (cells.right - cells.left + 1) * geometry.cellWidth,
     height: (cells.bottom - cells.top + 1) * geometry.cellHeight,
+  }
+  if (visible) {
+    if (![visible.width, visible.height].every((value) => Number.isSafeInteger(value) && value >= 1)) {
+      throw new Error(`Capture clipping needs integer visible pixels; got ${JSON.stringify(visible)}`)
+    }
+    const columns = geometry.textWidth / geometry.cellWidth
+    const rows = geometry.textHeight / geometry.cellHeight
+    if (!Number.isSafeInteger(columns) || !Number.isSafeInteger(rows) || cells.right > columns || cells.bottom > rows) {
+      throw new Error(
+        `Capture cells ${JSON.stringify(cells)} leave the ${columns}x${rows} text area at a ${geometry.cellWidth}x${geometry.cellHeight} pitch`,
+      )
+    }
+    const right = textOrigin.x + visible.width
+    const bottom = textOrigin.y + visible.height
+    if (rectangle.x >= right || rectangle.y >= bottom) {
+      throw new Error(
+        `Capture rectangle ${JSON.stringify(rectangle)} starts beyond the ${visible.width}x${visible.height} visible text area`,
+      )
+    }
+    rectangle.width = Math.min(rectangle.width, right - rectangle.x)
+    rectangle.height = Math.min(rectangle.height, bottom - rectangle.y)
   }
   if (
     rectangle.x < 0 ||
@@ -227,6 +251,8 @@ export interface NamedTextOrigin {
   origin: { x: number; y: number }
   basis: string
   surface?: CaptureRectangle
+  /** The measured text-area pixels when a window edge clips the last row or column. */
+  visible?: { width: number; height: number }
 }
 type Checkpoint = Parameters<ProbeCapture>[0]
 type OriginResolver = (input: {
@@ -307,6 +333,7 @@ export async function finishCapture(input: {
       textOrigin: placement.origin,
       windowWidth: width,
       windowHeight: height,
+      ...(placement.visible ? { visible: placement.visible } : {}),
     })
     const rawCommand = [`${format}:-`, "-depth", "8", "rgba:-"]
     const cropCommand = [
@@ -333,6 +360,7 @@ export async function finishCapture(input: {
       textArea: {
         origin: placement.origin,
         ...(placement.surface ? { surface: placement.surface } : {}),
+        ...(placement.visible ? { visible: placement.visible } : {}),
         basis: placement.basis,
       },
       rectangle,

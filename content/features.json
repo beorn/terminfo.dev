@@ -683,9 +683,7 @@
     "body": "ICH inserts N blank characters at the cursor position, shifting existing characters to the right. The sequence is <code>ESC [ N @</code> (default N=1). Characters pushed past the right margin are lost. Used by editors (vim, emacs) and terminal multiplexers (tmux, screen) for inline text insertion without redrawing the entire line.",
     "probe": "Headless: measure seeded cells and cursor position, insert one blank at column 3, and check the shifted text with an unchanged prefix. The app cursor reply does not establish edited cells or rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ N @",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N @"
   },
   "editing.delete-chars": {
     "name": "Delete characters (DCH)",
@@ -695,9 +693,7 @@
     "body": "DCH deletes N characters at the cursor position, shifting subsequent characters to the left. The sequence is <code>ESC [ N P</code> (default N=1). Blank characters are inserted at the right margin to fill the vacated space. The complement of ICH (insert characters).",
     "probe": "Headless: measure eight seeded cells and cursor position, delete at column 3, and check the known shifted span with an unchanged prefix. This does not check right-margin blank filling. The app cursor reply does not establish edited cells or rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ N P",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N P"
   },
   "editing.insert-lines": {
     "name": "Insert lines (IL)",
@@ -707,9 +703,7 @@
     "body": "IL inserts N blank lines at the cursor row, scrolling existing lines down within the scroll region. The sequence is <code>ESC [ N L</code> (default N=1). Lines scrolled past the bottom margin are lost. Used by full-screen applications to make room for new content without redrawing the entire screen.",
     "probe": "Headless: measure four seeded rows and cursor position, insert one blank row at row 2, then check the shifted known rows with row 1 unchanged. The app cursor reply does not establish edited cells or scrolling-region margins.",
     "baseline": "modern",
-    "sequence": "ESC [ N L",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N L"
   },
   "editing.delete-lines": {
     "name": "Delete lines (DL)",
@@ -719,9 +713,7 @@
     "body": "DL deletes N lines at the cursor row, scrolling lines below upward within the scroll region. The sequence is <code>ESC [ N M</code> (default N=1). Blank lines are inserted at the bottom margin. The complement of IL (insert lines).\n\nDL is part of the terminal editing toolbox that predates full-screen repainting. Instead of redrawing every row, an application can delete lines inside the scroll region and let the terminal shift the remaining content. It is still useful for efficient editors, but correctness depends on honoring margins and inserting blank rows at the far edge.",
     "probe": "Headless: measure four seeded rows and cursor position, delete row 2, then check the known rows shifted up with row 1 unchanged. This does not check bottom-margin blank filling; the app cursor reply does not establish edited cells or scrolling-region margins.",
     "baseline": "modern",
-    "sequence": "ESC [ N M",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N M"
   },
   "editing.repeat-char": {
     "name": "Repeat character (REP)",
@@ -731,9 +723,7 @@
     "body": "REP repeats the preceding graphic character N times. The sequence is <code>ESC [ N b</code> (default N=1). This is a bandwidth optimization — instead of sending the same character hundreds of times (e.g., filling a row with dashes), the application sends the character once followed by REP. Not all terminals implement this sequence.",
     "probe": "Headless: measure the preceding X and cursor position, repeat it three times, and check the repeated cells between unchanged controls. The app cursor reply does not establish edited cells or rendering.",
     "baseline": "modern",
-    "sequence": "ESC [ N b",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "ESC [ N b"
   },
   "editing.sl": {
     "name": "SL — shift left (CSI Ps SP @)",
@@ -743,9 +733,7 @@
     "body": "SL (Shift Left) horizontally scrolls the display contents left by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP @</code> — note the literal space character before <code>@</code>, which distinguishes SL from ICH (<code>ESC [ Ps @</code>). Default Ps=1.\n\nColumns shifted off the left edge are discarded; blank columns are inserted at the right edge. SL is the horizontal counterpart of SU (Scroll Up) and is rarely used in modern TUI applications — most full-screen apps redraw their content rather than rely on terminal-side horizontal scrolling. Some xterm-derived terminals implement it for compatibility with applications that drive horizontal panning displays. Originally specified in ECMA-48 alongside SU/SD but not implemented by all terminals.",
     "probe": "Headless: measure the first nine cells of two rows plus incoming source cells through column 11 when present, verify cursor setup, shift left by two, then compare each destination cell to its measured source; require blanks only beyond the screen edge. The app cursor reply does not establish shifted cells or margin behavior.",
     "baseline": "rich",
-    "sequence": "CSI Ps SP @",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Ps SP @"
   },
   "editing.sr": {
     "name": "SR — shift right (CSI Ps SP A)",
@@ -755,9 +743,7 @@
     "body": "SR (Shift Right) horizontally scrolls the display contents right by N columns within the current scroll region. The sequence is <code>ESC [ Ps SP A</code> — note the literal space character before <code>A</code>, which distinguishes SR from CUU (<code>ESC [ Ps A</code>). Default Ps=1.\n\nColumns shifted off the right edge are discarded; blank columns are inserted at the left edge. SR is the horizontal counterpart of SD (Scroll Down) and the inverse of SL (Shift Left). Like SL, it's rarely used in modern terminal applications and many emulators either don't implement it or treat it as a no-op. Specified in ECMA-48 alongside SU/SD/SL.",
     "probe": "Headless: measure the first nine cells of two rows and cursor setup, shift right by two, then compare each destination cell to its measured source and check the two inserted left blanks. The app cursor reply does not establish shifted cells or margin behavior.",
     "baseline": "rich",
-    "sequence": "CSI Ps SP A",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Ps SP A"
   },
   "editing.decic": {
     "name": "DECIC — insert columns (CSI Ps ' })",
@@ -767,9 +753,7 @@
     "body": "DECIC (DEC Insert Column) inserts N blank columns at the cursor's column position, shifting all content to the right of the cursor further right. The sequence is <code>ESC [ Ps ' }</code> — note the apostrophe (intermediate) before <code>}</code>. Default Ps=1.\n\nColumns shifted past the right margin are discarded. DECIC is the horizontal/column counterpart of IL (Insert Lines): IL inserts blank rows by shifting content down, DECIC inserts blank columns by shifting content right. It only operates on cells within the current scroll region (top/bottom margins) and the current left/right margin region if DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm and some other modern terminals but not universally implemented.",
     "probe": "Headless: measure the first eight cells of three rows and cursor setup, insert two columns at column 3, then check inserted blank cells, shifted cells against their measured sources, and unchanged prefixes. The app cursor reply does not establish column editing or margins.",
     "baseline": "rich",
-    "sequence": "CSI Ps ' }",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Ps ' }"
   },
   "editing.decdc": {
     "name": "DECDC — delete columns (CSI Ps ' ~)",
@@ -779,9 +763,7 @@
     "body": "DECDC (DEC Delete Column) deletes N columns at the cursor's column position, shifting all content to the right of the cursor further left. The sequence is <code>ESC [ Ps ' ~</code> — note the apostrophe (intermediate) before <code>~</code>. Default Ps=1.\n\nBlank columns are inserted at the right margin to fill the vacated space. DECDC is the horizontal counterpart of DL (Delete Lines) and the inverse of DECIC (Insert Column). It only operates within the current scroll region's vertical bounds, and within the left/right margin bounds when DECLRMM (mode 69) is enabled. Originally a VT420 feature, supported by xterm but rarely used in practice — most TUI applications redraw their content rather than use column-based editing.",
     "probe": "Headless: measure the first eight cells of three rows plus incoming source cells through column 10 when present, verify cursor setup, delete two columns at column 3, then compare destinations to measured sources and check unchanged prefixes; require right blanks only beyond the screen edge. The app cursor reply does not establish column editing or margins.",
     "baseline": "rich",
-    "sequence": "CSI Ps ' ~",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Ps ' ~"
   },
   "editing.decfra": {
     "name": "DECFRA — fill rectangular area",
@@ -791,9 +773,7 @@
     "baseline": "legacy",
     "body": "DECFRA (<code>CSI Pc ; Pt ; Pl ; Pb ; Pr $ x</code>) fills a rectangular area with character <code>Pc</code> from rows <code>Pt</code> through <code>Pb</code> and columns <code>Pl</code> through <code>Pr</code>. Introduced on the DEC VT420 in 1990 for form-fill applications and spreadsheets that needed to paint rectangular regions of the screen — drawing dividers, padding fields, or clearing a region with a fill character — without touching cells outside the rectangle. xterm and mintty implement DECFRA; nearly every other modern terminal skips it. The character must be in the printable ASCII range or DEC supplemental graphic range.",
     "probe": "Headless: measure a 3x5 seeded area and right-flank controls, fill with X, and read back all target cells. The app cursor reply does not establish filled cells.",
-    "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Pc ; Pt ; Pl ; Pb ; Pr $ x"
   },
   "editing.decera": {
     "name": "DECERA — erase rectangular area",
@@ -803,9 +783,7 @@
     "baseline": "legacy",
     "body": "DECERA (<code>CSI Pt ; Pl ; Pb ; Pr $ z</code>) erases characters and visual attributes in a rectangular region from rows <code>Pt</code>-<code>Pb</code>, columns <code>Pl</code>-<code>Pr</code>, replacing characters with spaces. It does not preserve characters protected by DECSCA; use DECSERA for selective erasure. Line attributes and the active cursor position are unchanged. Companion to DECFRA.",
     "probe": "Headless: measure a 3x5 nonblank seed and right-flank controls, erase the area, and read back all target cells. The app cursor reply does not establish erased cells.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ z"
   },
   "editing.decsera": {
     "name": "DECSERA — selective erase rectangular area",
@@ -815,9 +793,7 @@
     "baseline": "legacy",
     "body": "DECSERA (<code>CSI Pt ; Pl ; Pb ; Pr $ {</code>) is the selective-erase variant of DECERA: it erases unprotected characters within the rectangle but leaves any cell marked with the DECSCA character protection attribute intact. This is the rectangular companion to DECSED (selective erase in display). On VT420-era hardware, form designers used DECSCA to protect field labels and DECSERA to clear input fields between records without disturbing the form structure.",
     "probe": "Headless: seed one row with protected P, unprotected ABCD and an outside Z; verify that selective erasure clears ABCD and preserves both controls. Multi-row extent and visual attributes are not measured. The app cursor reply does not establish selective erasure.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr $ {"
   },
   "editing.deccra": {
     "name": "DECCRA — copy rectangular area",
@@ -827,9 +803,7 @@
     "baseline": "legacy",
     "body": "DECCRA (<code>CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v</code>) copies a rectangular area from one location to another. The source rectangle is <code>Pts</code>;<code>Pls</code>-<code>Pbs</code>;<code>Prs</code> on page <code>Pps</code>; the destination's top-left is <code>Ptd</code>;<code>Pld</code>. The most complex of the VT420 rectangle operations: cells are copied including their SGR attributes, source and destination may overlap (the result is as if the source were captured first), and the operation can cross page boundaries on terminals that implement multi-page memory. xterm implements all of this. Almost nothing else does.",
     "probe": "Headless: measure a 2x5 source at the top and destination at rows 5-6 column 10, copy, then read back both destination rows with source and outside controls. The app cursor reply does not establish copied cells.",
-    "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Pts ; Pls ; Pbs ; Prs ; Pps ; Ptd ; Pld $ v"
   },
   "editing.deccara": {
     "name": "DECCARA — change attrs in rectangle",
@@ -839,9 +813,7 @@
     "baseline": "legacy",
     "body": "DECCARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ r</code>) changes the SGR attributes of every cell in a rectangular region without touching the characters themselves. The <code>Ps</code> parameters are SGR codes (1=bold, 4=underline, 7=inverse, etc.), accumulated and applied to the rectangle. Whether DECCARA operates on a true rectangle or on the stream of cells between the corners depends on DECSACE. Used by VT420-era forms to highlight an entire input field, error message, or table cell without rewriting its contents.",
     "probe": "Headless: measure text and initially clear inverse attributes in a 3x5 rectangle, apply inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ r"
   },
   "editing.decrara": {
     "name": "DECRARA — reverse attrs in rectangle",
@@ -851,9 +823,7 @@
     "baseline": "legacy",
     "body": "DECRARA (<code>CSI Pt ; Pl ; Pb ; Pr ; Ps $ t</code>) toggles the listed SGR attributes within a rectangular region. Each cell flips the listed bits — bold cells become non-bold, non-bold cells become bold, and so on. Like DECCARA, it leaves the characters alone and obeys DECSACE to operate on a rectangle or a stream. VT420-era applications used DECRARA to flash highlight a field on validation errors or to invert a selected row in a list.",
     "probe": "Headless: measure text and initially set inverse attributes in a 3x5 rectangle, reverse inverse, then read back target attributes with unchanged characters and right-flank controls. The app cursor reply does not establish attributes or DECSACE extent variants.",
-    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "sequence": "CSI Pt ; Pl ; Pb ; Pr ; Ps $ t"
   },
   "editing.decsace": {
     "name": "DECSACE — select attribute-change extent",
@@ -1788,9 +1758,7 @@
     "tags": ["vt100"],
     "body": "The DEC Special Graphics character set provides box-drawing characters. Activate with <code>ESC ( 0</code> (designate G0 as Special Graphics), deactivate with <code>ESC ( B</code> (restore ASCII). When active, ASCII characters like <code>j k l m q x</code> render as box-drawing glyphs (corners, horizontal/vertical lines).\n\nUsed by legacy TUI applications (dialog, mc, ncurses programs) to draw borders and frames. Modern applications typically use Unicode box-drawing characters (U+2500 block) instead, but DEC Special Graphics remains relevant for environments where UTF-8 is not available.",
     "probe": "Headless: qualify ASCII controls and require exactly U+2500 after DEC Special Graphics designation. The app cursor reply does not establish glyph rendering.",
-    "baseline": "core",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "baseline": "core"
   },
   "charsets.utf8": {
     "name": "UTF-8 mode",
@@ -1799,9 +1767,7 @@
     "body": "Tests whether the terminal correctly handles UTF-8 encoded text. Virtually all modern terminals default to UTF-8 mode. UTF-8 encodes Unicode code points as 1-4 byte sequences, allowing the full range of Unicode characters (emoji, CJK, mathematical symbols, etc.) to be displayed in the terminal.",
     "probe": "Headless: retain measured ASCII controls and require the sampled characters é and 世 in their target cells. This samples Unicode cell handling; it does not cover all UTF-8 byte forms or app-rendered pixels.",
     "baseline": "core",
-    "url": "https://unicode.org/faq/utf_bom.html",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "url": "https://unicode.org/faq/utf_bom.html"
   },
   "charsets.g0-g1-switching": {
     "name": "G0/G1 character set switching",
@@ -1810,9 +1776,7 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "SI (Shift In, 0x0F) and SO (Shift Out, 0x0E) switch between G0 and G1 character sets. The G0 and G1 sets can be independently designated using <code>ESC ( X</code> (G0) and <code>ESC ) X</code> (G1), where X selects the character set (B=ASCII, 0=DEC Special Graphics). This mechanism allows applications to quickly toggle between text and line-drawing characters without re-designating the character set each time.",
-    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Headless: designate G0 as ASCII and G1 as DEC Special Graphics, then use SI/SO to require l, U+250C, l across three target cells with separate ASCII controls. The app callback does not verify G1 switching."
   },
   "charsets.dec-line-drawing": {
     "name": "DEC line drawing character set",
@@ -1821,9 +1785,7 @@
     "tags": ["vt100"],
     "baseline": "core",
     "body": "The DEC Special Graphics character set (activated via <code>ESC ( 0</code>) maps ASCII characters to box-drawing glyphs. Key mappings: j=\\u2518 (bottom-right corner), k=\\u2510 (top-right corner), l=\\u250C (top-left corner), m=\\u2514 (bottom-left corner), q=\\u2500 (horizontal line), x=\\u2502 (vertical line). These six characters form the basis for drawing boxes and borders in non-Unicode environments. Legacy applications like dialog, mc, and ncurses-based programs rely on this mapping.",
-    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured.",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Headless: qualify the ASCII seed and unchanged control, then require exactly ┘┐┌└─│ for jklmqx under DEC Special Graphics. Arbitrary non-ASCII or blank cells do not pass; app pixels remain unmeasured."
   },
   "device.primary-da": {
     "tier1": "included",

@@ -461,6 +461,158 @@ test("Windows admission requires its measured executable version to match exactl
   expect
     .soft(assessRunAdmission(run, [], evidence))
     .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+
+  const alacrittyReceipt = {
+    platform: "win32" as const,
+    executablePath: String.raw`D:\a\_temp\alacritty\alacritty.exe`,
+    productVersion: "0.17.0",
+    executableSha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+    sourceArtifact: {
+      kind: "portable-exe" as const,
+      path: String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.17.0-portable.exe`,
+      sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+    },
+    mesaRenderer: {
+      upstream: "https://github.com/mmozeiko/build-mesa",
+      version: "26.2.5",
+      archivePath: String.raw`D:\a\_temp\measurement-artifacts\mesa-llvmpipe-x64-26.2.5.7z`,
+      archiveSha256: "d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d",
+      dlls: [
+        {
+          name: "opengl32.dll",
+          path: String.raw`D:\a\_temp\alacritty\opengl32.dll`,
+          sha256: "8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1",
+        },
+      ],
+    },
+  }
+  const alacrittyDir = temp("terminfo-alacritty-win-launch-")
+  const alacrittyHost = { ...hostedReceipt("Windows", "1005"), appLaunch: alacrittyReceipt }
+  const alacrittyOwnership = ownershipBesideRun(join(alacrittyDir, "run.json"), alacrittyHost)
+  const alacrittyMeasured = {
+    ...run,
+    target: { ...run.target, id: "alacritty", version: "0.17.0", os: "windows" },
+    origin: { ...run.origin, appLaunch: alacrittyReceipt },
+    rawReplies: {
+      ...run.rawReplies,
+      "collector.xtversion": "\x1b[?61;6;7;21;22;23;24;28;32;42c",
+      "device.primary-da": "\x1b[?61;6;7;21;22;23;24;28;32;42c",
+      "collector.disposableOwnership": alacrittyOwnership,
+    },
+  }
+  const alacrittyEvidence = {
+    receiptPath: join(alacrittyDir, "host-measured.json"),
+    contentDir: alacrittyDir,
+    mode: "placement" as const,
+  }
+  expect.soft(assessRunAdmission(alacrittyMeasured, [], alacrittyEvidence)).toMatchObject({
+    accepted: true,
+    identityAdmission: {
+      rule: "alacritty",
+      da1: "\x1b[?61;6;7;21;22;23;24;28;32;42c",
+      executable: {
+        version: "0.17.0",
+        sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+      },
+    },
+  })
+  // Windows Alacritty without mesaRenderer, with Unix ?6c DA1, or with WindowsTerminal.exe path is refused at identityMatch.
+  expect
+    .soft(
+      assessRunAdmission(
+        {
+          ...alacrittyMeasured,
+          rawReplies: {
+            ...alacrittyMeasured.rawReplies,
+            "collector.xtversion": "\x1b[?6c",
+            "device.primary-da": "\x1b[?6c",
+          },
+        },
+        [],
+        alacrittyEvidence,
+      ),
+    )
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+  const withoutMesa = { ...alacrittyReceipt }
+  delete (withoutMesa as { mesaRenderer?: unknown }).mesaRenderer
+  expect
+    .soft(
+      assessRunAdmission(
+        { ...alacrittyMeasured, origin: { ...alacrittyMeasured.origin, appLaunch: withoutMesa } },
+        [],
+        alacrittyEvidence,
+      ),
+    )
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+  expect
+    .soft(
+      assessRunAdmission(
+        {
+          ...alacrittyMeasured,
+          origin: {
+            ...alacrittyMeasured.origin,
+            appLaunch: { ...alacrittyReceipt, executablePath: String.raw`C:\runner\WindowsTerminal.exe` },
+          },
+        },
+        [],
+        alacrittyEvidence,
+      ),
+    )
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
+  // A receipt that measured every archive DLL beside alacritty.exe, not only the pinned opengl32.dll,
+  // is refused by name even though opengl32.dll is present.
+  const threeDllReceipt = {
+    ...alacrittyReceipt,
+    mesaRenderer: {
+      ...alacrittyReceipt.mesaRenderer,
+      dlls: [
+        ...alacrittyReceipt.mesaRenderer.dlls,
+        {
+          name: "libgallium_wgl.dll",
+          path: String.raw`D:\a\_temp\alacritty\libgallium_wgl.dll`,
+          sha256: "e5".repeat(32),
+        },
+        { name: "libglapi.dll", path: String.raw`D:\a\_temp\alacritty\libglapi.dll`, sha256: "e6".repeat(32) },
+      ],
+    },
+  }
+  const threeDllDir = temp("terminfo-alacritty-win-three-dll-")
+  const threeDllOwnership = ownershipBesideRun(join(threeDllDir, "run.json"), {
+    ...hostedReceipt("Windows", "1005"),
+    appLaunch: threeDllReceipt,
+  })
+  expect
+    .soft(
+      assessRunAdmission(
+        {
+          ...alacrittyMeasured,
+          origin: { ...alacrittyMeasured.origin, appLaunch: threeDllReceipt },
+          rawReplies: { ...alacrittyMeasured.rawReplies, "collector.disposableOwnership": threeDllOwnership },
+        },
+        [],
+        { ...alacrittyEvidence, receiptPath: join(threeDllDir, "host-measured.json"), contentDir: threeDllDir },
+      ),
+    )
+    .toMatchObject({
+      accepted: false,
+      reason: "ownership-receipt-invalid",
+      detail: expect.stringContaining(
+        "appLaunch.mesaRenderer.dlls libgallium_wgl.dll, libglapi.dll, opengl32.dll is not exactly the Mesa3D set opengl32.dll",
+      ),
+    })
+  // Linux Alacritty still requires VT102 \x1b[?6c and refuses ConPTY \x1b[?61; DA1.
+  expect
+    .soft(
+      assessRunAdmission(
+        {
+          ...alacrittyMeasured,
+          target: { ...alacrittyMeasured.target, os: "linux" },
+        },
+        [],
+        alacrittyEvidence,
+      ),
+    )
+    .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
 })
 
 test("a run is named from its own target and run id", () => {

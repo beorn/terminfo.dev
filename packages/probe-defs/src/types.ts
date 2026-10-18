@@ -226,6 +226,20 @@ export interface RunOrigin {
   appLaunch?: AppLaunchReceipt
 }
 
+export interface WindowsMesaRendererDllReceipt {
+  name: string
+  path: string
+  sha256: string
+}
+
+export interface WindowsMesaRendererReceipt {
+  upstream: string
+  version: string
+  archivePath: string
+  archiveSha256: string
+  dlls: WindowsMesaRendererDllReceipt[]
+}
+
 export type AppLaunchReceipt =
   | {
       platform?: never
@@ -241,7 +255,8 @@ export type AppLaunchReceipt =
       executablePath: string
       productVersion: string
       executableSha256: string
-      sourceArtifact: { kind: "portable-zip"; path: string; sha256: string }
+      sourceArtifact: { kind: "portable-zip" | "portable-exe"; path: string; sha256: string }
+      mesaRenderer?: WindowsMesaRendererReceipt
     }
 
 /**

@@ -264,6 +264,52 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
   })
 })
 
+test.each(["factory", "init"] as const)(
+  "keeps a declared-none setup failure ungraded at %s instead of emitting an unparsable error",
+  async (stage) => {
+    const value = await backend()
+    const failure = new Error(`${stage} failed`)
+    if (stage === "init") {
+      vi.spyOn(value, "init").mockImplementation(() => {
+        throw failure
+      })
+    }
+    const callback = vi.fn(() => fakeProbeResult())
+    const batch = await collectBatch(
+      async () => {
+        if (stage === "factory") throw failure
+        return value
+      },
+      "xtermjs",
+      [definition("declines", callback, { termlessObservationEvidence: "none" })],
+    )
+    expect(callback).not.toHaveBeenCalled()
+    // The canonical parser admits none only as an inconclusive refusal, so a collector failure on a
+    // none arm stays a named ungraded diagnostic instead of becoming an error observation.
+    expect(batch.observations).toEqual([])
+    expect(batch.ungradedDiagnostics).toEqual({
+      declines: { kind: "collector-error", name: "Error", message: `headless xtermjs probe declines: ${stage} failed` },
+    })
+  },
+)
+
+test("a real none-declaring probe keeps its setup failure ungraded", async () => {
+  const ligatures = ALL_PROBES.find((probe) => probe.id === "extensions.font-ligatures")
+  expect(ligatures?.termlessObservationEvidence).toBe("none")
+  const batch = await collectBatch(
+    async () => {
+      throw new Error("engine unavailable")
+    },
+    "xtermjs",
+    [ligatures!],
+  )
+  expect(batch.observations).toEqual([])
+  expect(batch.ungradedDiagnostics["extensions.font-ligatures"]).toMatchObject({
+    kind: "collector-error",
+    message: "headless xtermjs probe extensions.font-ligatures: engine unavailable",
+  })
+})
+
 // AC3: cleanup failure cannot leave a worker collecting and sealing apparently valid data.
 test("aborts the batch on failed cleanup before invoking another probe", async () => {
   const value = await backend()
@@ -413,19 +459,20 @@ test.each(["supported", "error", "raw", "assertion"] as const)(
       ),
     ])
     expect(batch).toEqual({
-      observations: [
-        {
-          featureId: "invalid-none",
-          outcome: "error",
-          reason: "collector-error",
-          evidence: "none",
-          note: "Termless callback invalid-none declares parser-state evidence but returned none without an unmeasured refusal",
-        },
-      ],
+      observations: [],
       assertions: [],
       notTested: [],
       rawReplies: {},
-      ungradedDiagnostics: {},
+      // `none` cannot carry an error: the canonical parser admits it only as an inconclusive
+      // refusal, so this contradiction stays a named ungraded diagnostic.
+      ungradedDiagnostics: {
+        "invalid-none": {
+          kind: "collector-error",
+          name: "Error",
+          message:
+            "Termless callback invalid-none declares parser-state evidence but returned none without an unmeasured refusal",
+        },
+      },
     })
   },
 )

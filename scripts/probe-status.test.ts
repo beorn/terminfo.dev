@@ -9,7 +9,17 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { probe, type ProbeDefinition } from "@terminfo/probe-defs"
+import {
+  ALL_PROBES,
+  charsetReadbackRows,
+  editingReadbackRows,
+  eraseReadbackRows,
+  modesReadbackRows,
+  scrollbackReadbackRows,
+  textReadbackRows,
+  probe,
+  type ProbeDefinition,
+} from "@terminfo/probe-defs"
 import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
 import { derivedProbeStatus, probeStatusOf, probeStatusSummary } from "../docs/data/probe-status.ts"
 
@@ -91,6 +101,28 @@ describe("probeStatusSummary", () => {
 describe("the real catalog", () => {
   const contentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
 
+  it("derives the generated region readback methods without obsolete partial overrides", () => {
+    const features = loadFeatures(contentDir)
+    const definitions = new Map(ALL_PROBES.map((entry) => [entry.id, entry]))
+    const rows = [
+      ...charsetReadbackRows,
+      ...editingReadbackRows,
+      ...eraseReadbackRows,
+      ...modesReadbackRows,
+      ...scrollbackReadbackRows,
+      ...textReadbackRows,
+    ]
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const definition = definitions.get(row.id)
+      if (!definition) throw new Error(`Missing generated region definition ${row.id}`)
+      // The method is automated; whether this particular run can inspect the effect is recorded
+      // by its actual pixel/text/query observation, independently of this catalog projection.
+      expect(derivedProbeStatus(definition), row.id).toBe("automated")
+      expect(probeStatusOf(row.id, features), row.id).toBe("automated")
+    }
+  })
+
   it("settles, reviews or names every feature, leaving no row unaccounted for", () => {
     const features = loadFeatures(contentDir)
     const summary = probeStatusSummary(features)
@@ -123,5 +155,45 @@ describe("the real catalog", () => {
     // DECSACE measures exact attribute cells on the parser arm and extent separation on the terminal
     // arm; its old reviewed partial described a definition that measured neither.
     expect(probeStatusOf("editing.decsace", features)).toBe("automated")
+  })
+
+  it("settles the rows whose terminal arm measures but whose headless arm declines", () => {
+    const features = loadFeatures(contentDir)
+    // Font ligatures are renderer glyph shaping: the terminal arm captures a spaced control and a
+    // contiguous sample as pixels, and the headless parser shapes no glyphs at all. Kitty click
+    // events are OS-level injection: the terminal arm reads the click report, while the headless
+    // arm refuses before measuring. Undeclared is the word for "nobody has said yet", not for
+    // "one arm declines by design", so both rows read partial and name the arm that cannot measure.
+    for (const id of ["extensions.font-ligatures", "input.kitty-click-events"]) {
+      const declaration = ALL_PROBES.find((entry) => entry.id === id)
+      expect(declaration, id).toBeDefined()
+      expect(declaration?.termlessObservationEvidence, id).toBe("none")
+      expect(probeStatusOf(id, features), id).toBe("partial")
+    }
+    expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termObservationEvidence).toBe("pixels")
+    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termObservationEvidence).toBe(
+      "interaction",
+    )
+  })
+
+  it("derives decsscls partial from its two declared arms, with no catalog override", () => {
+    const features = loadFeatures(contentDir)
+    const declaration = ALL_PROBES.find((entry) => entry.id === "modes.decsscls")
+    expect(declaration, "modes.decsscls").toBeDefined()
+    // The terminal arm keeps timed frames and reads them as pixels; the headless arm paints no frames
+    // at all and refuses before measuring, so it declares the canonical refusal kind rather than a
+    // method it cannot run. Both removals fail at their own declaration assertion, and the underlying
+    // derivations differ: without "none" the row falls to null and would read undeclared, while
+    // without "pixels" the remaining "none" still derives partial.
+    expect(declaration?.termObservationEvidence).toBe("pixels")
+    expect(declaration?.termlessObservationEvidence).toBe("none")
+    expect(derivedProbeStatus(declaration as ProbeDefinition)).toBe("partial")
+    expect(probeStatusOf("modes.decsscls", features)).toBe("partial")
+    // One home per truth: the derivation settles the badge, so the catalog carries no reviewed value
+    // and no gate holds the row.
+    expect(features["modes.decsscls"]?.probeStatus).toBeUndefined()
+    const summary = probeStatusSummary(features)
+    expect(summary.gated).not.toContain("modes.decsscls")
+    expect(summary.undeclared).not.toContain("modes.decsscls")
   })
 })

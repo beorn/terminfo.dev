@@ -25,7 +25,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
-import { frozenSuiteIdFor } from "./load-release-scope.ts"
+import { frozenSuiteLineage } from "./load-release-scope.ts"
 import type { ContextCandidate } from "./run-selection.ts"
 import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
@@ -203,6 +203,15 @@ function groupKey(id: string, known: ReadonlySet<string>): string {
   return key
 }
 
+/**
+ * The suites a release published on that this cohort does not read: a run there went dark. The suite
+ * the cohort reads is never dark, even when a pointer move put the release on it — its runs are the
+ * data the page measures, so counting them as history would let a claim rest on a run it also counts.
+ */
+export function darkSuitesForLineage(lineage: readonly string[], readingSuiteId: string): Set<string> {
+  return new Set(lineage.filter((suiteId) => suiteId !== readingSuiteId))
+}
+
 export function loadCandidate2Data(): Candidate2Data {
   const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
   const cohort = report.cohort
@@ -220,16 +229,18 @@ export function loadCandidate2Data(): Candidate2Data {
   const includedByKey = new Map(included.map((category) => [category.key, category]))
   const libraryOnly = new Set(cohort.libraryOnlyIds)
   const unavailable = new Set(cohort.unavailableIds)
-  // The freeze candidate 2 published on before this cohort moved: a run there is data that WENT DARK,
-  // not missing data. Runs on any older suite were never published and cannot hold a claim.
-  const previousFreeze = frozenSuiteIdFor(contentDir, "candidate2")
-  // A hold may be read from history, a claim may not: the newest admitted run per context on the
-  // previous freeze is what a dark context held the group with. The report's admitted runs are
-  // already newest first, so the first per context is the one to use.
+  // Every suite candidate 2 published on that this cohort does not read: a run there is data that
+  // WENT DARK, not missing data. The set is the lineage the pointer moves recorded, never the current
+  // pointer read back as history; runs on any suite outside the lineage were never published and
+  // cannot hold a claim.
+  const darkSuites = darkSuitesForLineage(frozenSuiteLineage(contentDir, "candidate2"), cohort.frozenSuiteId)
+  // A hold may be read from history, a claim may not: the newest admitted run per context on a dark
+  // suite is what a dark context held the group with. The report's admitted runs are already newest
+  // first, so the first per context is the one to use.
   const previousRunsByContext = new Map<string, ContextCandidate>()
   for (const entry of cohort.admittedRuns) {
     const run = entry.run
-    if (run.suiteId !== previousFreeze) continue
+    if (!darkSuites.has(run.suiteId)) continue
     const key = `${run.terminalId}/${run.os}`
     if (!previousRunsByContext.has(key)) previousRunsByContext.set(key, run)
   }
@@ -377,9 +388,12 @@ export function loadCandidate2Data(): Candidate2Data {
         const bar = cohort.barRows[index]
         const selectedRun = bar && "run" in bar ? bar.run : undefined
         // History may HOLD a group, never CLAIM one. When a newer off-freeze run has taken selection,
-        // the hold is read from the previous freeze's admitted run rather than from the selected run;
+        // the hold is read from the dark lineage's admitted run rather than from the selected run;
         // the selected run itself is never replaced (the 28467 pin).
-        const run = selectedRun?.suiteId === previousFreeze ? selectedRun : previousRunsByContext.get(row.context)
+        const run =
+          selectedRun !== undefined && darkSuites.has(selectedRun.suiteId)
+            ? selectedRun
+            : previousRunsByContext.get(row.context)
         if (!run) continue
         if (!row.reason) {
           throw new Error(`unpublished context ${row.context} carries no reason; cannot name it as unmeasured`)

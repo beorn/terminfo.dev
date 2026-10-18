@@ -1,16 +1,17 @@
 /**
  * One kernel32 binding for every Windows read the hosted arm makes (29558, option A).
  *
- * Windows-only, behind a dynamic import: the route runs Bun, and `bun:ffi` is the only way to reach
- * the console and the process table from it (measured 2026-10-15, runs 38814184347 and 38829827).
+ * Loaded synchronously on demand through `process.getBuiltinModule("bun:ffi")`: importing this
+ * module makes no native call, so the CLI still starts under Node and every path that does not
+ * call `loadKernel32()` is unaffected.
  *
- * What the dynamic import buys, and what it does NOT (@dev/7 r2): nothing imports this statically, so
- * the launcher still STARTS under node and every path that is not this one is unaffected. It is not
- * end-to-end node support for the hosted Windows route. The `mode con` geometry fallback is
- * node-compatible on its own, but ownership there still needs the ffi ancestry and identity reads, so
- * a node process on Windows refuses LOUDLY at loadKernel32 ("bun:ffi is not available in this
- * runtime") instead of grading a console it could not verify. Say "node starts" only ever beside it.
+ * `hasWindowsKernel32Ffi()` is the one runtime availability check. `detectTerminal()` checks it
+ * before probing Windows process ancestry so a Node invocation on Windows skips the FFI probe and
+ * falls back to `$TERM` without throwing or catching, while `loadKernel32()` on the hosted Windows
+ * ownership route refuses loudly ("bun:ffi is not available in this runtime") when `bun:ffi` is
+ * absent instead of grading a console it could not verify.
  */
+
 /** A kernel32 entry point as `bun:ffi` hands it back: untyped and variadic, so every call site casts
  * each argument to the FFI type the dlopen below declared for that symbol. */
 export type Kernel32Symbol = (...args: never[]) => number
@@ -36,6 +37,8 @@ export interface Kernel32Symbols {
   CreateToolhelp32Snapshot: Kernel32HandleSymbol
   Process32FirstW: Kernel32Symbol
   Process32NextW: Kernel32Symbol
+  OpenProcess: Kernel32HandleSymbol
+  QueryFullProcessImageNameW: Kernel32Symbol
   GetLastError: Kernel32Symbol
   CloseHandle: Kernel32Symbol
 }
@@ -52,6 +55,20 @@ interface FfiModule {
   ): { symbols: Kernel32Symbols }
   FFIType: Record<string, unknown>
   ptr(data: Uint8Array): unknown
+}
+
+function resolveBunFfi(): FfiModule | null {
+  if (typeof process.getBuiltinModule !== "function") return null
+  const mod = process.getBuiltinModule("bun:ffi") as Partial<FfiModule> | undefined
+  if (!mod || typeof mod.dlopen !== "function" || typeof mod.ptr !== "function" || !mod.FFIType) {
+    return null
+  }
+  return mod as FfiModule
+}
+
+/** One availability check for `bun:ffi`: a check, never a catch. */
+export function hasWindowsKernel32Ffi(): boolean {
+  return resolveBunFfi() !== null
 }
 
 /**
@@ -83,19 +100,19 @@ export function kernel32Declaration(types: {
     CreateToolhelp32Snapshot: { args: [types.u32, types.u32], returns: types.u64 },
     Process32FirstW: { args: [types.u64, types.ptr], returns: types.i32 },
     Process32NextW: { args: [types.u64, types.ptr], returns: types.i32 },
+    // dwDesiredAccess u32, bInheritHandle BOOL (i32), dwProcessId u32 -> HANDLE (u64).
+    OpenProcess: { args: [types.u32, types.i32, types.u32], returns: types.u64 },
+    // hProcess HANDLE (u64), dwFlags u32, lpExeName ptr, lpdwSize ptr -> BOOL (i32).
+    QueryFullProcessImageNameW: { args: [types.u64, types.u32, types.ptr, types.ptr], returns: types.i32 },
     GetLastError: { args: [], returns: types.u32 },
     CloseHandle: { args: [types.u64], returns: types.i32 },
   }
 }
 
-export async function loadKernel32(): Promise<Kernel32> {
-  let ffi: FfiModule
-  try {
-    ffi = (await import("bun:ffi")) as unknown as FfiModule
-  } catch (error) {
-    throw new Error(
-      `bun:ffi is not available in this runtime: ${error instanceof Error ? error.message : String(error)}`,
-    )
+export function loadKernel32(): Kernel32 {
+  const ffi = resolveBunFfi()
+  if (!ffi) {
+    throw new Error("bun:ffi is not available in this runtime")
   }
   const binding = ffi.dlopen(
     "kernel32.dll",

@@ -1592,6 +1592,11 @@ export const modesProbes: ProbeDefinition[] = [
         }),
       decsscls,
     ),
+    // The terminal arm captures timed frames and reports evidence "pixels"; the headless arm paints
+    // no frames and refuses before it measures, so its method is none — the canonical declaration
+    // for a refusal before measurement, the same rule input.kitty-click-events follows.
+    termObservationEvidence: "pixels",
+    termlessObservationEvidence: "none",
     termNeedsGeometry: true,
   },
 ]

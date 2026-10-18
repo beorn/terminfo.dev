@@ -134,6 +134,33 @@ describe("a measured Windows launch uses the same parser", () => {
   it("preserves the measured Windows executable, version and ZIP without bundle fields", () => {
     expect(parse(windows)).toEqual(windows)
   })
+  const alacrittyWindows = {
+    platform: "win32",
+    executablePath: String.raw`D:\a\_temp\alacritty\alacritty.exe`,
+    productVersion: "0.17.0",
+    executableSha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+    sourceArtifact: {
+      kind: "portable-exe",
+      path: String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.17.0-portable.exe`,
+      sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+    },
+    mesaRenderer: {
+      upstream: "https://github.com/mmozeiko/build-mesa",
+      version: "26.2.5",
+      archivePath: String.raw`D:\a\_temp\measurement-artifacts\mesa-llvmpipe-x64-26.2.5.7z`,
+      archiveSha256: "d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d",
+      dlls: [
+        {
+          name: "opengl32.dll",
+          path: String.raw`D:\a\_temp\alacritty\opengl32.dll`,
+          sha256: "8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1",
+        },
+      ],
+    },
+  }
+  it("preserves a measured Windows portable-exe launch with pinned Mesa3D renderer receipt", () => {
+    expect(parse(alacrittyWindows)).toEqual(alacrittyWindows)
+  })
   it.each([
     [{ ...windows, platform: "darwin" }, /unknown appLaunch.platform/],
     [{ ...windows, bundlePath: "/Applications/Terminal.app" }, /fields/],
@@ -150,6 +177,50 @@ describe("a measured Windows launch uses the same parser", () => {
     [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, sha256: ZEROS } }, /placeholder/],
     [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, kind: "archive" } }, /portable-zip/],
     [{ ...windows, sourceArtifact: { ...windows.sourceArtifact, bundlePath: "/Applications/Terminal.app" } }, /fields/],
+    [
+      {
+        ...alacrittyWindows,
+        sourceArtifact: { ...alacrittyWindows.sourceArtifact, sha256: "e5".repeat(32) },
+      },
+      /portable-exe appLaunch\.executableSha256 must match sourceArtifact\.sha256/,
+    ],
+    [
+      {
+        ...windows,
+        mesaRenderer: alacrittyWindows.mesaRenderer,
+      },
+      /win32 portable-zip appLaunch cannot carry mesaRenderer/,
+    ],
+    [
+      {
+        ...alacrittyWindows,
+        mesaRenderer: {
+          ...alacrittyWindows.mesaRenderer,
+          dlls: [
+            {
+              name: "libgallium_wgl.dll",
+              path: String.raw`D:\a\_temp\alacritty\libgallium_wgl.dll`,
+              sha256: "e5".repeat(32),
+            },
+          ],
+        },
+      },
+      /must include opengl32\.dll/,
+    ],
+    [
+      {
+        ...alacrittyWindows,
+        mesaRenderer: { ...alacrittyWindows.mesaRenderer, archivePath: "mesa.7z" },
+      },
+      /archivePath must be absolute/,
+    ],
+    [
+      {
+        ...alacrittyWindows,
+        mesaRenderer: { ...alacrittyWindows.mesaRenderer, archiveSha256: ZEROS },
+      },
+      /placeholder/,
+    ],
   ])("refuses malformed or mixed Windows receipt %#", (receipt, diagnostic) => {
     expect(() => parse(receipt)).toThrow(diagnostic)
   })

@@ -63,6 +63,20 @@ export function frozenSuiteIdFor(contentDir: string, release: string): string {
   return suiteId
 }
 
+/**
+ * The release's lineage: the suite it is frozen at, then each suite it published on before, newest
+ * first. The whole list is carried on the current freeze record, so it survives every later move;
+ * nothing here walks another manifest, which would lose history the moment a move clears the old
+ * record, and nothing infers it from the current pointer.
+ */
+export function frozenSuiteLineage(contentDir: string, release: string): string[] {
+  const suiteId = frozenSuiteIdFor(contentDir, release)
+  const path = join(contentDir, "suites", `${suiteId}.json`)
+  const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+  // The record stores the list oldest first; the reader's lineage names the newest step first.
+  return [suiteId, ...(manifest.freeze?.previous ?? []).map((entry) => entry.suite).reverse()]
+}
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const RUN_DIRS = ["probes-apps", "probes-libs", "probes-mux"] as const
 const KINDS = ["app", "headless", "mux"] as const
@@ -188,13 +202,23 @@ export function declareCurrentSuiteManifest(
  */
 function applySuiteFreeze(
   path: string,
-  freeze: { release: string; at?: string },
+  freeze: { release: string; at?: string; previous?: { suite: string; from: string; until: string }[] },
 ): { status: "existing" | "frozen"; path: string } {
   const stored = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>
-  const current = stored.freeze as { release?: unknown; at?: unknown } | undefined
+  const current = stored.freeze as { release?: unknown; at?: unknown; previous?: unknown } | undefined
+  // A freeze that asks for the pointer this record already carries is a no-op: rewriting it would
+  // erase the lineage an earlier move appended and reset the instant the release was frozen.
   if (current?.release === freeze.release && typeof current.at === "string") return { status: "existing", path }
-  stored.freeze = { release: freeze.release, at: freeze.at ?? new Date().toISOString() }
-  writeFileSync(path, `${JSON.stringify(stored, null, 2)}\n`)
+  stored.freeze = {
+    release: freeze.release,
+    at: freeze.at ?? new Date().toISOString(),
+    ...(freeze.previous === undefined || freeze.previous.length === 0 ? {} : { previous: freeze.previous }),
+  }
+  // The one writer of the freeze key checks the exact bytes it is about to write with the reader's own
+  // parser, so neither a freeze nor a move can land a record every reader refuses.
+  const bytes = `${JSON.stringify(stored, null, 2)}\n`
+  parseSuiteManifest(path, bytes)
+  writeFileSync(path, bytes)
   return { status: "frozen", path }
 }
 
@@ -252,6 +276,81 @@ export function freezeCurrentSuiteManifest(
   verifySuiteManifest(path, snapshot)
   const applied = applySuiteFreeze(path, frozen)
   return { ...applied, suiteId: frozenSuiteIdFor(contentDir, release) }
+}
+
+/**
+ * Move a release pointer onto the current suite, recording the suite it left as `freeze.previous` in
+ * the same operation. A move is the one write allowed to leave the old suite with no claimant, so it
+ * is a named act and never a side effect of freezing a second suite.
+ */
+export function moveReleasePointer(
+  root: string,
+  release: string,
+  options: { snapshot?: ProbeSuiteSnapshot; at?: string } = {},
+): { status: "existing" | "moved"; from: string; to: string; path: string } {
+  const snapshot = options.snapshot ?? probeSuiteSnapshot(root)
+  assertDeclareIsAuthoring(root, snapshot.probeHash)
+  const contentDir = join(root, "content")
+  const { claims } = suiteClaimsFor(contentDir, release)
+  if (claims.length > 1) {
+    throw new Error(
+      `${join(contentDir, "suites")}: ${claims.length} suite manifests claim release "${release}": ${claims.join(", ")}`,
+    )
+  }
+  const from = claims[0]
+  if (from === undefined) {
+    throw new Error(
+      `${join(contentDir, "suites")}: no suite manifest declares freeze.release "${release}", so there is no ` +
+        `pointer to move; a release's first suite is frozen with --freeze ${release}`,
+    )
+  }
+  // The claim scan named this suite, so its own record must carry the release. Anything else means the
+  // scan and the record disagree: a no-op would report a claim the record does not hold, and a move
+  // would silently leave the suite out of the lineage. One check, before either.
+  const fromPath = join(contentDir, "suites", `${from}.json`)
+  const fromFreeze = parseSuiteManifest(fromPath, readFileSync(fromPath, "utf8")).freeze
+  if (fromFreeze?.release !== release) {
+    throw new Error(
+      `${fromPath}: the claim scan names suite ${from} for release "${release}", but its record carries ` +
+        `${fromFreeze === undefined ? "no freeze" : `freeze.release "${fromFreeze.release}"`}; the scan and the ` +
+        "record disagree, so the pointer is neither moved nor reported as held",
+    )
+  }
+  const to = snapshot.probeHash
+  const path = join(contentDir, "suites", `${to}.json`)
+  if (from === to) return { status: "existing", from, to, path }
+  if (!existsSync(path)) {
+    throw new Error(
+      `${path}: the suite moving release "${release}" has no manifest; admit a run on it before moving the pointer`,
+    )
+  }
+  verifySuiteManifest(path, snapshot)
+  const target = parseSuiteManifest(path, readFileSync(path, "utf8"))
+  // A manifest carries one freeze. Moving this release onto a suite another release already claims
+  // would take that claim away and leave it with no suite, so it is refused by name.
+  if (target.freeze !== undefined && target.freeze.release !== release) {
+    throw new Error(
+      `${path}: suite ${to} already declares freeze.release "${target.freeze.release}"; moving "${release}" ` +
+        `onto it would leave "${target.freeze.release}" with no suite`,
+    )
+  }
+  // New record first, old claim second: a crash between the two leaves two claimants, which every
+  // reader refuses loudly, never zero, which would relabel the old suite's runs as unpublishable.
+  const at = options.at ?? new Date().toISOString()
+  const carried = [...(fromFreeze.previous ?? []), { suite: from, from: fromFreeze.at, until: at }]
+  // A repeat would leave a lineage the parser refuses, after the write had already landed. Refuse
+  // before any byte moves: moving back onto a suite this release published on is a cycle, not a move.
+  if (carried.some((entry) => entry.suite === to)) {
+    throw new Error(
+      `${path}: moving release "${release}" to suite ${to} would repeat suite ${to} in its freeze lineage; ` +
+        "a release cannot return to a suite it already published on",
+    )
+  }
+  applySuiteFreeze(path, { release, at, previous: carried })
+  const stored = JSON.parse(readFileSync(fromPath, "utf8")) as Record<string, unknown>
+  delete stored.freeze
+  writeFileSync(fromPath, `${JSON.stringify(stored, null, 2)}\n`)
+  return { status: "moved", from, to, path }
 }
 
 /** Every committed run names the suite that produced it. */
@@ -318,11 +417,12 @@ export function checkCitedSuiteManifests(
   return { cited: cited.size, manifests: cited.size }
 }
 
-export type SuiteManifestMode = "check" | "freeze" | "usage"
+export type SuiteManifestMode = "check" | "freeze" | "move" | "usage"
 
 /** A bare invocation is never a declare: the write needs the explicit verb (27843 AC2). */
 export function suiteManifestMode(argv: string[]): SuiteManifestMode {
   if (argv.length === 1 && argv[0] === "--check") return "check"
   if (argv.length === 2 && argv[0] === "--freeze" && argv[1] !== undefined && argv[1].trim() !== "") return "freeze"
+  if (argv.length === 2 && argv[0] === "--move" && argv[1] !== undefined && argv[1].trim() !== "") return "move"
   return "usage"
 }

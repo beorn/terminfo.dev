@@ -7,19 +7,32 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 
 const execFile = vi.hoisted(() => vi.fn())
+const spawn = vi.hoisted(() => vi.fn())
 const kernelRelease = vi.hoisted(() => vi.fn())
+const detectWindowsAncestor = vi.hoisted(() => vi.fn())
 vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
   execFileSync: execFile,
+  spawnSync: spawn,
 }))
 vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   release: kernelRelease,
 }))
+vi.mock("./windows-process-ancestry.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./windows-process-ancestry.ts")>()
+  return {
+    ...actual,
+    detectHostedWindowsAncestor: (...args: Parameters<typeof actual.detectHostedWindowsAncestor>) =>
+      detectWindowsAncestor(...args),
+  }
+})
 
-import { detectTerminal } from "./detect.ts"
+import { detectTerminal, getWindowsAppVersion } from "./detect.ts"
+import * as windowsProcessAncestry from "./windows-process-ancestry.ts"
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")
+const originalGetBuiltinModule = process.getBuiltinModule
 
 beforeEach(() => {
   vi.stubEnv("TERM_PROGRAM", "Apple_Terminal")
@@ -27,10 +40,12 @@ beforeEach(() => {
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
   kernelRelease.mockReturnValue("25.6.0")
   execFile.mockReturnValue("26.6.2\n") // measured by /usr/bin/sw_vers on the owned Mac fixture
+  detectWindowsAncestor.mockReturnValue(null)
 })
 
 afterEach(() => {
   if (originalPlatform) Object.defineProperty(process, "platform", originalPlatform)
+  process.getBuiltinModule = originalGetBuiltinModule
   vi.unstubAllEnvs()
   vi.clearAllMocks()
 })
@@ -102,4 +117,73 @@ test("Windows Terminal handles PowerShell error gracefully with empty version", 
     os: "windows",
     osVersion: "10.0.26100",
   })
+})
+
+test("Windows Alacritty detects from proven process ancestor and queries --version only on its executablePath", () => {
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "")
+  vi.stubEnv("ALACRITTY_WINDOW_ID", "")
+  vi.stubEnv("TERM", "xterm-256color")
+  detectWindowsAncestor.mockReturnValue({
+    app: { id: "alacritty", comm: "alacritty.exe" },
+    row: { pid: 4684, ppid: 9644, comm: "alacritty.exe" },
+    executablePath: "D:\\a\\_temp\\alacritty\\alacritty.exe",
+  })
+  spawn.mockReturnValue({ status: 0, stdout: "alacritty 0.17.0 (94e7c88)\r\n", stderr: "" })
+  expect(detectTerminal()).toEqual({
+    name: "alacritty",
+    version: "0.17.0",
+    os: "windows",
+    osVersion: "10.0.26100",
+  })
+  expect(spawn).toHaveBeenCalledWith(
+    "D:\\a\\_temp\\alacritty\\alacritty.exe",
+    ["--version"],
+    expect.objectContaining({ encoding: "utf8", timeout: 3000, windowsHide: true }),
+  )
+  expect(execFile).not.toHaveBeenCalled()
+})
+
+test("Windows Alacritty returns unknown empty version without PATH or Get-Command fallback when ancestor executablePath is absent", () => {
+  expect(getWindowsAppVersion("alacritty", null)).toBe("")
+  expect(spawn).not.toHaveBeenCalled()
+  expect(execFile).not.toHaveBeenCalled()
+})
+
+test("detectTerminal on Windows without bun:ffi skips the process-table probe and does not throw", async () => {
+  const actualAncestry = await vi.importActual<typeof windowsProcessAncestry>("./windows-process-ancestry.ts")
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "")
+  vi.stubEnv("ALACRITTY_WINDOW_ID", "")
+  vi.stubEnv("TERM", "xterm-256color")
+  process.getBuiltinModule = ((id: string) =>
+    id === "bun:ffi" ? undefined : originalGetBuiltinModule(id)) as typeof process.getBuiltinModule
+  detectWindowsAncestor.mockImplementation(() => actualAncestry.detectHostedWindowsAncestor())
+  expect(detectTerminal()).toEqual({
+    name: "xterm-256color",
+    version: "",
+    os: "windows",
+    osVersion: "10.0.26100",
+  })
+  expect(detectWindowsAncestor).not.toHaveBeenCalled()
+})
+
+test("detectTerminal on Windows with bun:ffi propagates a Toolhelp process-table failure by name instead of falling back to $TERM", () => {
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "")
+  vi.stubEnv("ALACRITTY_WINDOW_ID", "")
+  vi.stubEnv("TERM", "xterm-256color")
+  detectWindowsAncestor.mockImplementation(() => {
+    throw new Error("CreateToolhelp32Snapshot read no process table: error 8")
+  })
+  expect(() => detectTerminal()).toThrow("CreateToolhelp32Snapshot read no process table: error 8")
 })

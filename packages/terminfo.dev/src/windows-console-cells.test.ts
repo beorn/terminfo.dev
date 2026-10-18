@@ -19,6 +19,7 @@ import {
 } from "./windows-console-cells.ts"
 import { INVALID_HANDLE_VALUE, type Kernel32 } from "./windows-kernel32.ts"
 import type { WindowsProcessRow } from "./windows-process-ancestry.ts"
+import { textCellsFrame } from "./serve.ts"
 
 const LEADING = 0x0100
 const TRAILING = 0x0200
@@ -280,8 +281,21 @@ describe("decodeCharInfo — exact cells in the host's own encoding", () => {
     ).toMatch(/the next cell is not its trailing half/u)
   })
 
-  it("refuses U+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit", () => {
-    expect(refuse(cellBytes([[0xfffd, 0x0007]]), 1, 1)).toMatch(/holds U\+FFFD/u)
+  it("reports U+FFFD as the host's stand-in, by row and column, instead of refusing the read", () => {
+    // The host wrote this cell: U+FFFD is its stand-in for a glyph longer than one UTF-16 unit, so
+    // the cell is named rather than decoded into a guess — and not refused as if it were unwritten.
+    // Scoping the stand-in to the cells a row compares belongs to the frame, which knows them.
+    const result = decodeCharInfo(
+      cellBytes([
+        [0x0041, 0x0007],
+        [0xfffd, 0x0007],
+      ]),
+      2,
+      1,
+    )
+    if (result.status !== "decoded") throw new Error(`expected a decoded grid, got a refusal: ${result.reason}`)
+    expect(result.grid.text).toEqual(["A\ufffd"])
+    expect(result.standIns).toEqual([{ row: 1, column: 2, standIn: "U+FFFD" }])
   })
 
   it("refuses a lone surrogate by name, with its row and column", () => {
@@ -391,6 +405,9 @@ describe("readWindowsConsoleCells — the window rect, read back and checked", (
     expect(read).toEqual({
       status: "read",
       bufferOwner: CONSOLE_HOST,
+      // Every read names its stand-ins, so an arm that saw none says so rather than omitting the
+      // field: absence would be indistinguishable from a reader that forgot to look.
+      standIns: [],
       grid: {
         cols: 3,
         rows: 2,
@@ -478,5 +495,36 @@ describe("readWindowsConsoleCells — the window rect, read back and checked", (
     // allocation instead of naming the SHORT, so the assertion below is what proves the order.
     const { kernel } = fakeKernel({ csbiBytes: csbi([40, 200], [-32768, -32768, 32767, 32767]) })
     await expect(readWindowsConsoleCells({ bufferOwner: CONSOLE_HOST, kernel })).rejects.toThrow(/SHORT/u)
+  })
+
+  it("hands a U+FFFD cell to textCellsFrame, which refuses it only inside the compared cells", async () => {
+    // A read that reported no stand-ins would still pass every frame-level test, and a stand-in
+    // inside the compared cells would be digested silently. This row follows the read all the way
+    // to the refusal, so dropping the report anywhere on that path fails here.
+    const { kernel } = fakeKernel({
+      csbiBytes: csbi([4, 2], [1, 1, 4, 2]),
+      filled: cellBytes([
+        [0xfffd, 0x0007],
+        [0x41, 0x0007],
+        [0x42, 0x0007],
+        [0x43, 0x0007],
+        [0x44, 0x0007],
+        [0x45, 0x0007],
+        [0x46, 0x0007],
+        [0x47, 0x0007],
+      ]),
+    })
+    const read = await readWindowsConsoleCells({ bufferOwner: CONSOLE_HOST, kernel })
+    if (read.status !== "read") throw new Error(`expected a read, got a refusal: ${read.reason}`)
+    expect(read.standIns).toEqual([{ row: 1, column: 1, standIn: "U+FFFD" }])
+    expect(() =>
+      textCellsFrame({ role: "target", label: "inside", cells: { top: 1, left: 1, bottom: 1, right: 2 } }, read, 1),
+    ).toThrow(/row 1, column 1 holds U\+FFFD, the host's stand-in/u)
+    const outside = textCellsFrame(
+      { role: "target", label: "outside", cells: { top: 2, left: 1, bottom: 2, right: 4 } },
+      read,
+      1,
+    )
+    expect(outside.trace.standIns).toEqual([{ row: 1, column: 1, standIn: "U+FFFD" }])
   })
 })

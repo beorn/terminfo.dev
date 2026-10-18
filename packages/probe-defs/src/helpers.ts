@@ -323,6 +323,26 @@ export async function sgrReadbackDecision(
 export const SGR_CAPTURE_MIN_ROWS = 3
 export const SGR_CAPTURE_MIN_COLS = 34
 
+/**
+ * The 1x2 floor the plain SGR fixture refuses BEFORE any bytes: the sequence plus the X sample need
+ * two cells, and a terminal below that cannot answer the cursor read the fixture grades. A caller
+ * whose arm writes before falling back (the DECRQSS readback) still calls this first, so the refusal
+ * is never preceded by bytes of its own.
+ */
+export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeResult | undefined {
+  const { rows, cols } = ctx
+  if (Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 1 && cols >= 2) return undefined
+  return {
+    pass: false,
+    observation: {
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+      evidence: "none",
+      note: `SGR fixture needs at least 1x2, measured ${rows}x${cols}`,
+    },
+  }
+}
+
 /** Refuse an SGR capture fixture before any bytes when the measured geometry is too small. */
 export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): ProbeResult | undefined {
   if (!ctx.capture) return undefined
@@ -406,19 +426,8 @@ export function sgrProbe(
       )
     },
     async term(ctx) {
-      const rows = ctx.rows
-      const cols = ctx.cols
-      if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 1 || cols < 2) {
-        return {
-          pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: `SGR fixture needs at least 1x2, measured ${rows}x${cols}`,
-          },
-        }
-      }
+      const refusal = sgrPlainFixtureTooSmall(ctx)
+      if (refusal) return refusal
       if (readback) {
         // The capture fixture guard refuses before any bytes on a measured small terminal, so the
         // readback must not emit its own sequences ahead of it.

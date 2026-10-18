@@ -7,10 +7,15 @@
  * conhost.exe) and the shell as two children of itself, so an ancestry walk from this process sees
  * the terminal and the shell and never the host. Selection is therefore a table lookup, below.
  *
- * Under ConPTY that buffer is the text the terminal renders, so a read yields exact cells and
- * legacy attributes and never pixels. A sequence the console host does not interpret is invisible
- * here whatever the terminal does with it, which is why every result names its buffer owner and why
- * a row whose claim the host cannot show stays named rather than decided.
+ * Under ConPTY the terminal draws its window FROM that buffer, but whether the cells it draws equal
+ * the buffer's cells is UNMEASURED: nothing here compares the two, and no measurement of this app's
+ * drawn cells against the host buffer exists on the row's shapes. A Windows text row cannot count
+ * until that measurement is made for its app — its own plan, not this read. The five readback shapes
+ * gate macOS text-to-cell claims only, never Windows host-versus-terminal risk. So a read yields the
+ * buffer's exact cells and legacy attributes and never pixels — it does not yield what the terminal
+ * drew. A sequence the console host does not interpret is invisible here whatever the terminal does
+ * with it, which is why every result names its buffer owner and why a row whose claim the host
+ * cannot show stays named rather than decided.
  *
  * The read is the WINDOW rectangle, never the buffer height: the buffer is scrollback-inclusive,
  * the window is what the classics compare (windows-console-ffi.ts).
@@ -51,6 +56,15 @@ export interface ConsoleCellGrid {
   readonly attributes: readonly (readonly number[])[]
 }
 
+/** A cell the console host wrote as U+FFFD — its stand-in for a glyph longer than one UTF-16 unit.
+ * Named by 1-based row and column, in the window's own coordinates, so a reader can say which cell
+ * it could not read as a character instead of inferring it from the text. */
+export interface ConsoleStandIn {
+  readonly row: number
+  readonly column: number
+  readonly standIn: "U+FFFD"
+}
+
 /** One cell-content read: exact cells, or the named reason there are none. */
 export type ConsoleCellRead =
   | {
@@ -58,6 +72,9 @@ export type ConsoleCellRead =
       readonly grid: ConsoleCellGrid
       /** The program whose buffer this is, named so the evidence says how it was seen. */
       readonly bufferOwner: ConsoleHostIdentity
+      /** Every cell the host wrote as its wide-glyph stand-in, by row and column. The caller
+       * decides whether the cells it compares can be read; the read itself names them all. */
+      readonly standIns: readonly ConsoleStandIn[]
     }
   | { readonly status: "refused"; readonly reason: string }
 
@@ -151,13 +168,17 @@ export function packCoord(x: number, y: number): number {
 
 /** A decode, or the named reason these bytes are not a grid of cells. */
 export type ConsoleCellDecode =
-  | { readonly status: "decoded"; readonly grid: ConsoleCellGrid }
+  | { readonly status: "decoded"; readonly grid: ConsoleCellGrid; readonly standIns: readonly ConsoleStandIn[] }
   | { readonly status: "refused"; readonly reason: string }
 
 /**
  * Decode a PCHAR_INFO buffer filled for `cols` x `rows`. Pure, so the layout and the host's own
  * wide-glyph encoding are testable where no console exists. A buffer of any other size is a bug in
  * the caller, not a partial read; content the host cannot have written is refused, not decoded.
+ *
+ * U+FFFD is not such content: the host wrote it as its stand-in for a glyph longer than one UTF-16
+ * unit, so it is reported in `standIns` and never guessed at. Only the caller that knows which cells
+ * it compares can decide whether a stand-in among them may be read as characters.
  */
 export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): ConsoleCellDecode {
   const expected = cols * rows * CHAR_INFO_BYTES
@@ -170,6 +191,7 @@ export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): C
   const at = (row: number, col: number) => (row * cols + col) * CHAR_INFO_BYTES
   const text: string[] = []
   const attributes: number[][] = []
+  const standIns: ConsoleStandIn[] = []
   for (let row = 0; row < rows; row += 1) {
     const units: number[] = []
     const rowAttributes: number[] = []
@@ -184,12 +206,9 @@ export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): C
           reason: `${where} decodes as NUL with no attribute; the console writes a blank cell as U+0020 with the fill attribute, so this cell was never written`,
         }
       }
-      if (unit === WIDE_GLYPH_UNKNOWN) {
-        return {
-          status: "refused",
-          reason: `${where} holds U+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit, so this region cannot be read as characters`,
-        }
-      }
+      // The host wrote this cell. Whether it can be READ is the frame's question, which knows the
+      // cells its row compares; refusing here decides a whole window on a cell nobody measures.
+      if (unit === WIDE_GLYPH_UNKNOWN) standIns.push({ row: row + 1, column: col + 1, standIn: "U+FFFD" })
       // One UTF-16 unit per cell: a surrogate is half a character, which the host never writes,
       // so it is refused rather than decoded into a string that is not text.
       if (unit >= 0xd800 && unit <= 0xdfff) {
@@ -234,7 +253,7 @@ export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): C
     text.push(units.map((unit) => String.fromCharCode(unit)).join(""))
     attributes.push(rowAttributes)
   }
-  return { status: "decoded", grid: { cols, rows, text, attributes } }
+  return { status: "decoded", grid: { cols, rows, text, attributes }, standIns }
 }
 
 export interface ConsoleCellReadOptions {
@@ -254,7 +273,7 @@ export async function readWindowsConsoleCells(options: ConsoleCellReadOptions): 
       reason: "no console buffer owner was named, so a cell read cannot say which program's buffer it saw",
     }
   }
-  const kernel = options.kernel ?? (await loadKernel32())
+  const kernel = options.kernel ?? loadKernel32()
   return withConsoleOutputHandle((handle, { symbols, ptr }) => {
     const info = Buffer.alloc(CSBI_BYTES)
     if (symbols.GetConsoleScreenBufferInfo(handle as never, ptr(info) as never) === 0) {
@@ -319,7 +338,12 @@ export async function readWindowsConsoleCells(options: ConsoleCellReadOptions): 
     }
     const decoded = decodeCharInfo(cells, cols, rows)
     if (decoded.status === "refused") return decoded
-    return { status: "read", grid: decoded.grid, bufferOwner: owner } satisfies ConsoleCellRead
+    return {
+      status: "read",
+      grid: decoded.grid,
+      bufferOwner: owner,
+      standIns: decoded.standIns,
+    } satisfies ConsoleCellRead
   }, kernel)
 }
 

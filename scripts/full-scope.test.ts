@@ -13,6 +13,7 @@ import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   DESIGN_EXCLUSION_IDS,
+  INSTRUMENT_LIMITS,
   MISSING_DEFINITION_IDS,
   notCollected,
   scopeAggregate,
@@ -205,5 +206,38 @@ describe("full-catalog scope arithmetic", () => {
     expect(result.ceiling).toBe("260/273")
     expect(result.decisive).toBe(0)
     expect(result.included).toBe(false)
+  })
+
+  it("names sixteen real catalog rows as instrument limits, each cause saying what would observe it", () => {
+    const catalog = loadFeatures(join(import.meta.dirname, "..", "content"))
+    const catalogIds = new Set(Object.keys(catalog))
+    const ids = INSTRUMENT_LIMITS.map((limit) => limit.id)
+    expect(ids).toHaveLength(16)
+    expect(new Set(ids).size).toBe(16)
+    for (const id of ids) expect(catalogIds.has(id), id).toBe(true)
+    for (const { id, cause } of INSTRUMENT_LIMITS) {
+      // "No query exists" alone is not a cause: a limit names what WOULD observe it, and that this
+      // release does not build it (2026-10-18 @cto ruling, correction 1).
+      expect(cause, id).toMatch(/adapter|fixture/)
+      expect(cause, id).toMatch(/this release does not build/)
+    }
+    // A row leaves a denominator for one reason only: the reviewed sets never overlap.
+    for (const id of ids) expect(DESIGN_EXCLUSION_IDS, id).not.toContain(id)
+  })
+
+  it("leaves a denominator only where the caller applies the limits, and names each one", () => {
+    const catalogIds = [...INSTRUMENT_LIMITS.slice(0, 2).map((limit) => limit.id), "sgr.bold"]
+    const result = scopeAggregate({
+      scope: "limit context",
+      catalogIds,
+      cells: cells({ "sgr.bold": "supported" }),
+      designExclusions: [],
+      instrumentLimits: INSTRUMENT_LIMITS.filter((limit) => catalogIds.includes(limit.id)),
+      missingDefinitions: [],
+    })
+    expect(result.denominator).toBe(1)
+    expect(result.excluded.map((entry) => entry.cause)).toEqual(["instrument", "instrument"])
+    expect(result.instrumentLimitCount).toBe(2)
+    expect(result.pct).toBe(100)
   })
 })

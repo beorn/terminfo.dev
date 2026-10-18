@@ -104,6 +104,13 @@ export interface TextFrameCheckpoint {
  * checkpoint's rectangle, attributes included, so a sub-rectangle's cell digest differs from its
  * frame digest exactly when the rectangle is smaller than the screen. `retained` is the byte-for-byte
  * content of `<digest>.txt`: the caller writes those bytes and nothing re-encodes them.
+ *
+ * A cell the console host wrote as U+FFFD — its stand-in for a glyph longer than one UTF-16 unit —
+ * is content the host held, so it stays in the whole digest exactly as written. Its READING is what
+ * the rectangle withholds: inside the compared cells it refuses by name, because digest equality
+ * over stand-ins cannot tell two glyphs apart; outside them the trace names the cell and the
+ * rectangle measures what it owns. Integrity failures (bytes the host never wrote, inconsistent
+ * wide-glyph markers) refuse the read wherever the cell is: only interpretation can be scoped.
  */
 export function textCellsFrame(
   checkpoint: TextFrameCheckpoint,
@@ -121,11 +128,24 @@ export function textCellsFrame(
   // A macOS text read says what it had to leave behind and fill in; the trace carries both so an
   // evidence reader sees them without re-deriving them from the artifact.
   const textGrid = "grid" in read ? undefined : read.cells
+  const standIns = "grid" in read ? read.standIns : []
   const retained = Buffer.from(encodeTextCells(rows, attributes), "utf8")
   const hex = createHash("sha256").update(retained).digest("hex")
   const ref = `sha256:${hex}`
   const region = textCellRegion(rows, gridRows, gridCols, checkpoint.cells)
   const cells = region.cells
+  const inside = standIns.find(
+    (cell) =>
+      cell.row >= cells.top && cell.row <= cells.bottom && cell.column >= cells.left && cell.column <= cells.right,
+  )
+  if (inside !== undefined) {
+    throw new Error(
+      `${checkpoint.label}: the terminal refused the text snapshot — row ${String(inside.row)}, column ${String(inside.column)} holds U+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit, and this checkpoint compares that cell`,
+    )
+  }
+  const outside = standIns.filter(
+    (cell) => cell.row < cells.top || cell.row > cells.bottom || cell.column < cells.left || cell.column > cells.right,
+  )
   const regionAttributes = attributes
     ?.slice(cells.top - 1, cells.bottom)
     .map((row) => row.slice(cells.left - 1, cells.right))
@@ -143,7 +163,14 @@ export function textCellsFrame(
     trace: {
       kind: "text-cells",
       retained: `${hex}.txt`,
-      source: "the terminal's own text snapshot",
+      // What was actually read. On Windows it is the console host's buffer, and this collector
+      // records that host's image name only — its path and digest are not captured — so the label
+      // says what is known and names what is missing (30033 ruling f1f3c64b).
+      source:
+        bufferOwner === undefined
+          ? "the terminal's own text snapshot"
+          : `the console host's buffer (${bufferOwner.image}); path and sha256 not recorded`,
+      ...(outside.length === 0 ? {} : { standIns: outside }),
       ...(textGrid === undefined ? {} : { droppedLines: textGrid.droppedLines, paddedRows: textGrid.paddedRows }),
       ...(bufferOwner === undefined ? {} : { bufferOwner }),
     },
@@ -549,14 +576,19 @@ export async function collectProbeRun(
   } else if (kind === "windowsHosted") {
     if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
     // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
-    // the receipt names the launched WindowsTerminal.exe, the collector proves it is an ancestor,
-    // and every geometry probe then reads the console it is actually writing to.
+    // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
+    // an ancestor, and every geometry probe then reads the console it is actually writing to.
     ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       windowsHosted: { receiptPath: hostedReceipt },
     })
+    if (ownedTerminal.hostedWindowsAppId && terminal.name !== ownedTerminal.hostedWindowsAppId) {
+      throw new Error(
+        `Hosted Windows terminal detected ${JSON.stringify(terminal.name)} while the receipt names ${ownedTerminal.hostedWindowsAppId}`,
+      )
+    }
     // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
     installTextCapture(ownedTerminal)
   }
@@ -640,7 +672,7 @@ export async function collectProbeRun(
   if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
   if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
   const measuredVersion =
-    terminal.name === "windows-terminal" && batch.appLaunch?.platform === "win32"
+    (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
       ? batch.appLaunch.productVersion
       : resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies)
   const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()

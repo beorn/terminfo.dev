@@ -18,6 +18,7 @@ import { statesFor } from "./selected-results.ts"
 import { DESIGN_EXCLUSION_CAUSES, DESIGN_EXCLUSION_IDS, MISSING_DEFINITION_IDS } from "./full-scope.ts"
 import { fullContextCensus } from "./full-census.ts"
 import { buildFullProjectRows, type FullContextRow } from "./full-project.ts"
+import { INSTRUMENT_LIMITS } from "./full-scope.ts"
 
 const contentDir = join(import.meta.dirname, "..", "..", "content")
 
@@ -31,7 +32,7 @@ export interface FullProjectData {
   /** The stated cause for each design exclusion, keyed by catalog id. */
   designExclusionCauses: Readonly<Record<string, string>>
   missingDefinitions: readonly string[]
-  /** Reviewed per-context instrument limits. None is recorded yet, so this is empty by fact. */
+  /** Reviewed per-context instrument limits. Recorded here; each context reports how many it applied. */
   instrumentLimits: readonly { id: string; cause: string }[]
   /**
    * The collected context -> its selected run as the site publishes it, so every row can render the
@@ -97,7 +98,7 @@ export function loadFullProjectData(): FullProjectData {
     designExclusions: DESIGN_EXCLUSION_IDS,
     designExclusionCauses: DESIGN_EXCLUSION_CAUSES,
     missingDefinitions: MISSING_DEFINITION_IDS,
-    instrumentLimits: [],
+    instrumentLimits: INSTRUMENT_LIMITS,
     evidenceVersions,
     contexts: rows.contexts,
     collected: rows.collected,
