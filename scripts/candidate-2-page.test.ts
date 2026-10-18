@@ -317,22 +317,15 @@ describe("candidate-2 page: wiring", () => {
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
-  it("includes Editing and Character Sets on the six measured contexts that clear the bar, and names the rest", () => {
+  it("includes Editing and Character Sets on the four measured contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
-    // context held, and every context with no run on the required suite named not measured. The
-    // All eleven contexts are now measured on the converged suite (67ad). Kitty/macOS is below
-    // the bar, so the six clearing contexts stay unchanged. A new collection that moves these numbers must
-    // change this table deliberately, never loosen it.
-    const clearing = [
-      "kitty/linux",
-      "wezterm/linux",
-      "alacritty/linux",
-      "xterm/linux",
-      "ghostty/macos",
-      "alacritty/macos",
-    ]
-    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "kitty/macos", "windows-terminal/windows"]
-    const dark: string[] = []
+    // context held, and every context with no run on the required suite named not measured. Six
+    // contexts are measured on the frozen suite c24025ea22fc; the five macOS contexts are dark
+    // because their admitted runs are on 67ad1f1d1580, so they are named, never counted. A new
+    // collection that moves these numbers must change this table deliberately, never loosen it.
+    const clearing = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
+    const below = ["ghostty/linux", "windows-terminal/windows"]
+    const dark = ["terminal-app/macos", "iterm2/macos", "ghostty/macos", "alacritty/macos", "kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -357,12 +350,13 @@ describe("candidate-2 page: wiring", () => {
   })
 
   it("never lets a public claim improve because a context went dark", () => {
-    // @chief 2026-10-17: a public claim must never improve because data went dark. Re-pinned again
-    // 2026-10-18, after the census landed: every context is measured on 67ad, so no
-    // group holds a claim back because a context WENT DARK on live data. The rule itself is pinned by
-    // the mocked history test below ("reads a dark context's hold from history..."); what is pinned
-    // here is the invariant that keeps the live page honest — no group may name a dark context that is
-    // actually published, and a group held by a below-bar context stays held and names it.
+    // @chief 2026-10-17: a public claim must never improve because data went dark. Re-pinned
+    // 2026-10-18 after candidate 2 moved to c24025ea22fc: the five macOS contexts are now dark
+    // (their runs are on 67ad1f1d1580), so each group names the dark holds it keeps from history and
+    // claims nothing on them. The rule itself is pinned by the mocked history test below ("reads a
+    // dark context's hold from history..."); what is pinned here is the invariant that keeps the live
+    // page honest — no group may name a dark context that is actually published, and a group held by
+    // a below-bar context stays held and names it.
     for (const group of data.groups) {
       for (const row of group.darkHeldBy) {
         const context = data.contexts.find((entry) => entry.context === row.context)
@@ -372,14 +366,8 @@ describe("candidate-2 page: wiring", () => {
     const editing = data.groups.find((group) => group.key === "editing")
     if (!editing) throw new Error("editing group missing from the page")
     expect(editing.included).toBe(false)
-    expect(editing.darkHeldBy).toEqual([])
-    expect(editing.heldBy.map((row) => row.context)).toEqual([
-      "ghostty/linux",
-      "terminal-app/macos",
-      "iterm2/macos",
-      "kitty/macos",
-      "windows-terminal/windows",
-    ])
+    expect(editing.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos", "iterm2/macos", "kitty/macos"])
+    expect(editing.heldBy.map((row) => row.context)).toEqual(["ghostty/linux", "windows-terminal/windows"])
 
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -390,20 +378,23 @@ describe("candidate-2 page: wiring", () => {
     )
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // Both ruled groups retain six clearing contexts, with no dark ruled context.
-    const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
+    // Both ruled groups keep the ruling's six contexts: four measurable on c240 and the two macOS
+    // contexts the ruling names, which are dark until they run on the frozen suite.
+    const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)
-      expect(group.includedOn).toEqual(six)
-      expect(group.darkRuled).toEqual([])
+      expect(group.includedOn).toEqual(four)
+      expect(group.darkRuled).toEqual(["ghostty/macos", "alacritty/macos"])
       expect(group.includedOn.length + group.darkRuled.length).toBe(6)
     }
     // A new below-bar measurement can lower the global claim; it cannot be hidden as a dark context.
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group missing")
     expect(unicode.included).toBe(false)
-    expect(unicode.heldBy.map((row) => row.context)).toEqual(["kitty/macos"])
+    expect(unicode.heldBy.map((row) => row.context)).toEqual([])
+    // The hold kitty/macos carried is kept in history and named as dark, never dropped.
+    expect(unicode.darkHeldBy.map((row) => row.context)).toEqual(["kitty/macos"])
   })
 
   it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
@@ -411,7 +402,9 @@ describe("candidate-2 page: wiring", () => {
     const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
     const cohort = baseReport.cohort
     if (!cohort) throw new Error("candidate2 cohort absent")
-    const previous = frozenSuiteIdFor(real, "candidate2")
+    // The predecessor the lineage names, not the frozen suite itself: candidate 2 reads c24025ea22fc
+    // and the terminal-app run that holds Text is the 67ad1f1d1580 one the move left behind.
+    const previous = "67ad1f1d1580"
     const hold = cohort.admittedRuns.find(
       (entry) => entry.run.suiteId === previous && entry.run.terminalId === "terminal-app" && entry.run.os === "macos",
     )
@@ -438,7 +431,7 @@ describe("candidate-2 page: wiring", () => {
       const text = dataAtSelection.groups.find((group) => group.key === "text")
       if (!text) throw new Error("text group missing")
       expect(text.included).toBe(false)
-      expect(text.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos"])
+      expect(text.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos", "kitty/macos"])
       expect(text.darkHeldBy[0]).toMatchObject({ decisive: 17, denominator: 20 })
     } finally {
       spy.mockRestore()
@@ -556,12 +549,13 @@ describe("candidate-2 page: wiring", () => {
     expect(page).not.toContain("every measured context ({{ group.includedOn.length }})")
     const measured = data.contexts.filter((row) => row.published).length
     expect(outside.filter((group) => group.heldBy.length < measured).length).toBeGreaterThan(0)
-    // Unicode is globally held by the new measurement, while the existing historical witness
-    // still exercises an included group without inventing a per-context claim for it.
+    // No measured context holds Unicode on the frozen suite c24025ea22fc: the one run that held it,
+    // kitty/macos on 67ad1f1d1580, is ineligible now that candidate 2 reads c24025ea22fc. The
+    // historical witness below still exercises an included group without a per-context claim.
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group is missing")
     expect(unicode.included).toBe(false)
-    expect(unicode.heldBy.map((row) => row.context)).toEqual(["kitty/macos"])
+    expect(unicode.heldBy.map((row) => row.context)).toEqual([])
     expect(unicode.includedOn).toEqual([])
     const historicalUnicode = historicalData.groups.find((group) => group.key === "unicode")
     expect(historicalUnicode?.included).toBe(true)

@@ -183,11 +183,15 @@ describe("release 1 decisive-count reader", () => {
         .digest("hex"),
     ).toBe("8169578733a75fabb8da1edf4e32fb37a35ea40de9287ea5c30851136b3a3ced")
     expect(cohort.scoredIds).toHaveLength(44)
-    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(30)
+    // 29, not 30, on the frozen suite c24025ea22fc: that suite carries 260 probe ids to 67ad1f1d1580's
+    // 263, and modes.decsscls is one of the three it does not carry (with input.kitty-click-events and
+    // extensions.font-ligatures). The row is named unavailable rather than quietly disappearing.
+    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(29)
     expect(cohort.decidableIds.filter((id) => id.startsWith("device."))).toHaveLength(5)
-    expect(cohort.unavailableIds).toHaveLength(9)
+    expect(cohort.unavailableIds).toHaveLength(10)
     expect(cohort.unavailableIds.filter((id) => id.startsWith("device.env-"))).toHaveLength(9)
-    expect(cohort.decidableIds).toContain("modes.decsscls")
+    expect(cohort.unavailableIds).toContain("modes.decsscls")
+    expect(cohort.decidableIds).not.toContain("modes.decsscls")
     expect(cohort.libraryOnlyIds).toEqual([])
     expect(cohortHeaderLine(cohort)).toContain("frozen for candidate2, read here for candidate3 ids")
     expect(() => frozenSuiteIdFor(contentDir, "candidate3")).toThrow(
@@ -1170,19 +1174,20 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     }
 
     // Exercise the blocker with the selected real run on a deliberately different required suite;
-    // the contract must survive even when no live context needs a blocker.
-    const mac = report.barRows.find((row) => row.context.terminalId === "kitty" && row.context.os === "macos")
-    if (!mac?.measured) throw new Error("kitty/macos is not a measured bar row")
+    // the contract must survive even when no live context needs a blocker. This uses a Linux row
+    // because the macOS ones are ineligible on c24025ea22fc until they are re-run there.
+    const subject = report.barRows.find((row) => row.context.terminalId === "ghostty" && row.context.os === "linux")
+    if (!subject?.measured) throw new Error("ghostty/linux is not a measured bar row")
     const reason = "no collection on the required suite (27928)"
-    const blocked = cohortRowForSelected(mac, { ...cohort, frozenSuiteId: "0fb194cf6cea" }, reason)
+    const blocked = cohortRowForSelected(subject, { ...cohort, frozenSuiteId: "0fb194cf6cea" }, reason)
     const printed = formatCohortRow(blocked, [], 20).join("\n")
     expect(printed).toContain(`not measured — ${reason}`)
     expect(printed).toContain("27928")
     expect(printed).not.toContain("ineligible: selected run on suite")
 
     // A measured context keeps its own verdict: the blocker never edits a row that has an eligible run.
-    const measured = report.barRows.find((row) => row.context.terminalId === "alacritty" && row.context.os === "macos")
-    if (!measured || !measured.measured) throw new Error("alacritty/macos is not a measured bar row")
+    const measured = report.barRows.find((row) => row.context.terminalId === "xterm" && row.context.os === "linux")
+    if (!measured || !measured.measured) throw new Error("xterm/linux is not a measured bar row")
     expect(cohortRowForSelected(measured, cohort, "must not appear").measured).toBe(true)
   }, 20_000)
 

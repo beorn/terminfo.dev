@@ -176,7 +176,8 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
-    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("67ad1f1d1580")
+    // candidate 2 moved 67ad1f1d1580 -> c24025ea22fc on 2026-10-18 through the supported writer (28018).
+    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("c24025ea22fc")
     // Candidate 4 keeps its own freeze, a different declaration from candidate 2's, while its COHORT
     // reads candidate 2's suite (@chief convergence ruling, 2026-10-18). The registry lookup and the
     // cohort spec answer two separate questions and must not be conflated.
