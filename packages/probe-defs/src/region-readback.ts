@@ -411,7 +411,7 @@ export function cropPositionRefusal(input: {
       reason: "insufficient-evidence",
       evidence: "pixels",
       screenshotRef,
-      frames,
+      ...(frames.length > 0 ? { frames } : {}),
       note: `${id}: the compared frames were cropped from different screen positions, so their region digests were not taken over the same cells: ${named}`,
     },
   }
