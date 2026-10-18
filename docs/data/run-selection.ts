@@ -15,7 +15,10 @@ import type { SelectedVersion } from "./selected-results.ts"
  * inconclusive row (the named cause, such as a terminal that never answers `CSI 16 t`) instead of
  * paraphrasing one of its own. Bars are cut over `states`; this raw view is only the run's own words.
  */
-export type ShareCells = Record<string, { outcome: string; conclusive?: boolean; reason?: string; note?: string }>
+export type ShareCells = Record<
+  string,
+  { outcome: string; conclusive?: boolean; reason?: string; note?: string; evidence?: string }
+>
 
 /** One candidate context the site currently selects, reduced to what the readers consume. */
 export interface ContextCandidate {
