@@ -197,11 +197,11 @@ describe("candidate-2 page: the two bases", () => {
     }
   })
 
-  it("reads the Scrollback group at its ruled 7/9 with gaps on the contexts that decide it", () => {
-    const kitty = data.contexts.find((row) => row.context === "kitty/linux")
-    if (!kitty?.published) throw new Error("kitty/linux is not published; nothing to read")
-    const scrollback = kitty.groups.find((share) => share.key === "scrollback")
-    if (!scrollback) throw new Error("kitty/linux carries no scrollback group")
+  it("reads the measured Scrollback witness at its ruled 7/9 with gaps", () => {
+    const context = data.contexts.find((row) => row.context === "alacritty/macos")
+    if (!context?.published) throw new Error("alacritty/macos is not published; nothing to read")
+    const scrollback = context.groups.find((share) => share.key === "scrollback")
+    if (!scrollback) throw new Error("alacritty/macos carries no scrollback group")
     expect(scrollback.decisive).toBe(7)
     expect(scrollback.denominator).toBe(7)
     expect(scrollback.acceptance).toMatchObject({
@@ -310,15 +310,26 @@ describe("candidate-2 page: wiring", () => {
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
-  it("includes Editing and Character Sets on the four measured contexts that clear the bar, and names the rest", () => {
+  it("includes Editing and Character Sets on the measured context that clears the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
     // context held, and every context with no run on the required suite named not measured. The
-    // lists moved with the c240 suite: the macOS contexts lost their runs, so no macOS context can
-    // carry a per-context inclusion claim and kitty/macos now names its blocker. A new suite or
+    // lists moved with the 4f6 suite: alacritty/macos has its admitted run, while the Linux contexts
+    // have no eligible selection on that suite. A new suite or
     // collection that moves these numbers must change this table deliberately, never loosen it.
-    const clearing = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
-    const below = ["ghostty/linux", "windows-terminal/windows"]
-    const dark = ["terminal-app/macos", "iterm2/macos", "ghostty/macos", "alacritty/macos", "kitty/macos"]
+    const clearing = ["alacritty/macos"]
+    const below: string[] = []
+    const dark = [
+      "kitty/linux",
+      "ghostty/linux",
+      "wezterm/linux",
+      "alacritty/linux",
+      "xterm/linux",
+      "terminal-app/macos",
+      "iterm2/macos",
+      "ghostty/macos",
+      "kitty/macos",
+      "windows-terminal/windows",
+    ]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -339,10 +350,12 @@ describe("candidate-2 page: wiring", () => {
         group.unmeasured.map((row) => row.context),
         key,
       ).toEqual(dark)
-      expect(group.unmeasured[0]?.reason, key).toContain("Screen Recording permission gate")
-      expect(group.unmeasured[0]?.reason, key).toContain("29918")
-      expect(group.unmeasured[4]?.reason, key).toContain("no hosted kitty route")
-      expect(group.unmeasured[4]?.reason, key).toContain("27928")
+      const reasons = new Map(group.unmeasured.map((row) => [row.context, row.reason]))
+      expect(reasons.get("terminal-app/macos"), key).toContain("Screen Recording permission gate")
+      expect(reasons.get("terminal-app/macos"), key).toContain("29918")
+      expect(reasons.get("kitty/macos"), key).toContain("no hosted kitty route")
+      expect(reasons.get("kitty/macos"), key).toContain("27928")
+      expect(reasons.get("kitty/linux"), key).toContain("ambiguous current selection")
     }
   })
 
@@ -366,14 +379,20 @@ describe("candidate-2 page: wiring", () => {
     )
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (29918)")
 
-    // The two ruled groups read "ruled for six, measurable on four", and the two dark ruled
+    // The two ruled groups read "ruled for six, measurable on one", and the five dark ruled
     // contexts are named rather than counted as included.
-    const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
+    const measurable = ["alacritty/macos"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)
-      expect(group.includedOn).toEqual(four)
-      expect(group.darkRuled).toEqual(["ghostty/macos", "alacritty/macos"])
+      expect(group.includedOn).toEqual(measurable)
+      expect(group.darkRuled).toEqual([
+        "kitty/linux",
+        "wezterm/linux",
+        "alacritty/linux",
+        "xterm/linux",
+        "ghostty/macos",
+      ])
       expect(group.includedOn.length + group.darkRuled.length).toBe(6)
     }
     // The rule pins the direction of the change, not a blanket demotion: Unicode clears its share on
