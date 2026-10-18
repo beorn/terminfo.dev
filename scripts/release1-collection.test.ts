@@ -42,9 +42,12 @@ import {
   collectPass,
   clipboardProfileFor,
   linuxLedger,
+  ownedAppCommand,
   presetFor,
+  readOwnedAppTransportProof,
   release1Census,
   uncoveredContexts,
+  type CollectionContext,
   type LinuxLedger,
   type ProducedRun,
 } from "./release1-collection.ts"
@@ -786,3 +789,106 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     rmSync(directory, { recursive: true, force: true })
   }
 }, 30_000)
+
+const ownedAppContext: CollectionContext = {
+  id: "kitty",
+  os: "macos",
+  kind: "app",
+  route: "local-owned-app",
+  command: "bun packages/admin/src/index.ts probe app kitty --output <private-output>",
+  requires: null,
+  sourceRun: null,
+  uncollectable: null,
+}
+const ownedAppRevision = "c".repeat(40)
+
+// 15323: the local route must stay byte-identical to the argv it always ran; the ssh route hands the
+// SAME probe arguments to the transport driver after its own transport flags, never a second probe.
+it("starts an owned-app row locally with the probe argv it always ran", () => {
+  const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
+  expect(command.label).toBe("kitty/macos owned-app collection")
+  expect(command.argv).toEqual([
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+    "--output",
+    "/private/kitty",
+  ])
+})
+
+it("hands the identical probe argv to the ssh transport with environment-owned configuration", () => {
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    {
+      runner: "ssh:fixture@fixture.invalid",
+      stage: "/remote/stage",
+      knownHosts: "/home/fixture/.ssh/known_hosts",
+      removeStage: true,
+    },
+    ownedAppRevision,
+  )
+  expect(command.label).toBe("kitty/macos owned-app transport")
+  expect(command.argv.slice(0, 13)).toEqual([
+    "bun",
+    "scripts/owned-app-remote-run.ts",
+    "--transport",
+    "ssh:fixture@fixture.invalid",
+    "--stage",
+    "/remote/stage",
+    "--output",
+    "/private/kitty",
+    "--source-revision",
+    ownedAppRevision,
+    "--context",
+    "kitty",
+    "--known-hosts",
+  ])
+  expect(command.argv).toContain("--remove-stage")
+  expect(command.argv.slice(command.argv.indexOf("--"))).toEqual([
+    "--",
+    "bun",
+    "packages/admin/src/index.ts",
+    "probe",
+    "app",
+    "kitty",
+  ])
+})
+
+it("refuses an ssh transport with no stage rather than inventing one", () => {
+  expect(() =>
+    ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "ssh:fixture@fixture.invalid" }, ownedAppRevision),
+  ).toThrow(/requires --owned-app-stage/)
+})
+
+it("records the host-written transport receipt as evidence and refuses anything else", () => {
+  const directory = mkdtempSync(join(tmpdir(), "transport-proof-"))
+  const path = join(directory, "transport-receipt.json")
+  const receipt = {
+    schemaVersion: 1,
+    kind: "owned-app-transport",
+    transport: "ssh:fixture@fixture.invalid",
+    hostKeyFingerprint: "SHA256:fixture",
+    resourceManifestSha256: "d".repeat(64),
+    resourceFiles: 42,
+    output: { directory: "/remote/stage/runs/cccccccccccc-kitty" },
+  }
+  const bytes = `${JSON.stringify(receipt, null, 2)}\n`
+  writeFileSync(path, bytes)
+  try {
+    expect(readOwnedAppTransportProof(path)).toEqual({
+      runner: "ssh:fixture@fixture.invalid",
+      hostKeyFingerprint: "SHA256:fixture",
+      resourceManifestSha256: "d".repeat(64),
+      resourceFiles: 42,
+      receiptSha256: createHash("sha256").update(bytes).digest("hex"),
+      remoteOutput: "/remote/stage/runs/cccccccccccc-kitty",
+    })
+    writeFileSync(path, JSON.stringify({ ...receipt, kind: "linux-xvfb-container" }))
+    expect(() => readOwnedAppTransportProof(path)).toThrow(/not a schemaVersion 1 owned-app-transport record/)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

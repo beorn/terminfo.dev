@@ -289,6 +289,14 @@ export interface CollectionPass {
   sourceRevision: string
   inputSha256: Record<string, string>
   catalogIds: string[]
+  transport?: {
+    runner: string
+    hostKeyFingerprint: string
+    resourceManifestSha256: string
+    resourceFiles: number
+    receiptSha256: string
+    remoteOutput: string
+  }
   contexts: Array<{
     context: CollectionContext
     status: "classified" | "admitted" | "failed"
@@ -296,13 +304,107 @@ export interface CollectionPass {
     directory?: string
     admittedPath?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
+    transport?: CollectionPass["transport"]
     error?: string
   }>
   errors: string[]
 }
 
+/**
+ * Where an owned-app row starts. `local` is the historical behaviour. Any other runner is an
+ * explicit ssh destination handed to the transport driver, which moves exact source to an existing
+ * host and runs the identical argv there; the host and its trust are environment configuration
+ * named on the command line, never product content.
+ */
+export interface OwnedAppTransportOptions {
+  readonly runner: string
+  readonly stage?: string
+  readonly knownHosts?: string
+  readonly removeStage?: boolean
+}
+
+/** The one owned-app argv both runners start from; the ssh runner hands the probe to the transport
+ * driver, which runs exactly these arguments on the host. */
+export function ownedAppCommand(
+  context: CollectionContext,
+  output: string,
+  transport: OwnedAppTransportOptions,
+  sourceRevision: string,
+): { argv: string[]; label: string } {
+  const probe = ["bun", "packages/admin/src/index.ts", "probe", "app", context.id]
+  if (transport.runner === "local") {
+    return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
+  }
+  if (!transport.stage) throw new Error(`${labelOf(context)}: an ssh owned-app transport requires --owned-app-stage`)
+  return {
+    argv: [
+      "bun",
+      "scripts/owned-app-remote-run.ts",
+      "--transport",
+      transport.runner,
+      "--stage",
+      transport.stage,
+      "--output",
+      output,
+      "--source-revision",
+      sourceRevision,
+      "--context",
+      context.id,
+      ...(transport.knownHosts === undefined ? [] : ["--known-hosts", transport.knownHosts]),
+      ...(transport.removeStage ? ["--remove-stage"] : []),
+      "--",
+      ...probe,
+    ],
+    label: `${labelOf(context)} owned-app transport`,
+  }
+}
+
+/** Read the host-written transport receipt as the pass's own evidence shape. It grants nothing:
+ * the receipt is a record of where a run started and what bytes it moved, never a permission. */
+export function readOwnedAppTransportProof(path: string): NonNullable<CollectionPass["transport"]> {
+  const bytes = readFileSync(path, "utf8")
+  let value: unknown
+  try {
+    value = JSON.parse(bytes) as unknown
+  } catch (cause) {
+    throw new Error(`owned-app transport receipt is not JSON at ${path}`, { cause })
+  }
+  const receipt = value as {
+    schemaVersion?: unknown
+    kind?: unknown
+    transport?: unknown
+    hostKeyFingerprint?: unknown
+    resourceManifestSha256?: unknown
+    resourceFiles?: unknown
+    output?: { directory?: unknown }
+  }
+  if (receipt.schemaVersion !== 1 || receipt.kind !== "owned-app-transport") {
+    throw new Error(`owned-app transport receipt at ${path} is not a schemaVersion 1 owned-app-transport record`)
+  }
+  for (const field of ["transport", "hostKeyFingerprint", "resourceManifestSha256", "resourceFiles"] as const) {
+    if (typeof receipt[field] !== "string" && typeof receipt[field] !== "number") {
+      throw new Error(`owned-app transport receipt at ${path} omits ${field}`)
+    }
+  }
+  if (typeof receipt.output?.directory !== "string") {
+    throw new Error(`owned-app transport receipt at ${path} omits the remote output directory`)
+  }
+  return {
+    runner: String(receipt.transport),
+    hostKeyFingerprint: String(receipt.hostKeyFingerprint),
+    resourceManifestSha256: String(receipt.resourceManifestSha256),
+    resourceFiles: Number(receipt.resourceFiles),
+    receiptSha256: createHash("sha256").update(bytes).digest("hex"),
+    remoteOutput: receipt.output.directory,
+  }
+}
+
 /** Collect privately against live suite bytes; only an explicit, declared freeze enables admission. */
-export async function collectPass(outputDirectory: string, frozenSuiteId?: string): Promise<CollectionPass> {
+export async function collectPass(
+  outputDirectory: string,
+  frozenSuiteId?: string,
+  ownedApp: OwnedAppTransportOptions = { runner: "local" },
+): Promise<CollectionPass> {
   const snapshot = probeSuiteSnapshot()
   const freeze = frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
   assertPrivateCollectionOutput(outputDirectory)
@@ -431,14 +533,16 @@ export async function collectPass(outputDirectory: string, frozenSuiteId?: strin
         const output = join(directory, "owned-app", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
-        runChild(
-          ["bun", "packages/admin/src/index.ts", "probe", "app", context.id, "--output", output],
-          `${labelOf(context)} owned-app collection`,
-          {
-            stdout: join(output, "launcher.stdout.log"),
-            stderr: join(output, "launcher.stderr.log"),
-          },
-        )
+        const command = ownedAppCommand(context, output, ownedApp, sourceRevision)
+        runChild(command.argv, command.label, {
+          stdout: join(output, "launcher.stdout.log"),
+          stderr: join(output, "launcher.stderr.log"),
+        })
+        if (ownedApp.runner !== "local") {
+          const proof = readOwnedAppTransportProof(join(output, "transport", "transport-receipt.json"))
+          row.transport = proof
+          pass.transport = proof
+        }
         const runs = readdirSync(output).filter((entry) => entry.endsWith(".json"))
         if (runs.length !== 1 || !runs[0]) {
           throw new Error(`owned-app probe produced ${runs.length} run JSON files in ${output}; expected exactly one`)
@@ -954,6 +1058,8 @@ function usage(): never {
     "Usage: bun run release1-collection [--plan]\n" +
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
       "       bun run release1-collection --collect --admit --frozen-suite <id> --output <private-directory>\n" +
+      "       [--owned-app-transport ssh:<user>@<host> --owned-app-stage <remote-dir>\n" +
+      "        [--owned-app-known-hosts <path>] [--owned-app-remove-stage]]\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
@@ -962,6 +1068,12 @@ function usage(): never {
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
       "  --collect --admit  require the declared frozen suite; validate all contexts, plan all\n" +
       "           admissions, then place runs through the existing owner. No inclusion or publication.\n" +
+      "  --owned-app-transport  where an owned-app row starts: local (default) or an existing ssh host.\n" +
+      "           The host, stage and known-hosts file are environment configuration named here, never\n" +
+      "           product content; the host's own authority is unchanged by the transport.\n" +
+      "  --owned-app-stage  the persistent driver-owned remote subtree a staged run is checked out into.\n" +
+      "  --owned-app-known-hosts  the environment-owned known-hosts file host trust is pinned against.\n" +
+      "  --owned-app-remove-stage  remove the remote stage after the run; the default keeps it.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
       "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +
       "           --frozen-suite optionally asserts that id. Collection requires --collect;\n" +
@@ -978,6 +1090,10 @@ if (import.meta.main) {
   let development = false
   let outputDirectory: string | undefined
   let frozenSuite: string | undefined
+  let ownedAppRunner = "local"
+  let ownedAppStage: string | undefined
+  let ownedAppKnownHosts: string | undefined
+  let ownedAppRemoveStage = false
   const runs: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--plan") plan = true
@@ -990,6 +1106,17 @@ if (import.meta.main) {
     } else if (argv[index] === "--frozen-suite") {
       frozenSuite = argv[++index]
       if (frozenSuite === undefined || frozenSuite.startsWith("--")) usage()
+    } else if (argv[index] === "--owned-app-transport") {
+      ownedAppRunner = argv[++index] ?? usage()
+      if (ownedAppRunner.startsWith("--")) usage()
+    } else if (argv[index] === "--owned-app-stage") {
+      ownedAppStage = argv[++index]
+      if (ownedAppStage === undefined || ownedAppStage.startsWith("--")) usage()
+    } else if (argv[index] === "--owned-app-known-hosts") {
+      ownedAppKnownHosts = argv[++index]
+      if (ownedAppKnownHosts === undefined || ownedAppKnownHosts.startsWith("--")) usage()
+    } else if (argv[index] === "--owned-app-remove-stage") {
+      ownedAppRemoveStage = true
     } else {
       const value = argv[index]
       if (value === undefined) usage()
@@ -1000,7 +1127,20 @@ if (import.meta.main) {
     if (plan || admit === development || !outputDirectory || (development && frozenSuite) || runs.length) usage()
     try {
       if (admit && !frozenSuite) throw new Error("--collect --admit requires --frozen-suite <declared-id>")
-      const pass = await collectPass(resolve(outputDirectory), admit ? frozenSuite : undefined)
+      if (ownedAppRunner !== "local" && !ownedAppStage) {
+        throw new Error("--owned-app-transport ssh requires --owned-app-stage")
+      }
+      if (ownedAppRunner === "local" && (ownedAppStage || ownedAppRemoveStage || ownedAppKnownHosts)) {
+        throw new Error(
+          "--owned-app-stage/--owned-app-known-hosts/--owned-app-remove-stage require --owned-app-transport ssh:<user>@<host>",
+        )
+      }
+      const pass = await collectPass(resolve(outputDirectory), admit ? frozenSuite : undefined, {
+        runner: ownedAppRunner,
+        ...(ownedAppStage === undefined ? {} : { stage: ownedAppStage }),
+        ...(ownedAppKnownHosts === undefined ? {} : { knownHosts: ownedAppKnownHosts }),
+        ...(ownedAppRemoveStage ? { removeStage: true } : {}),
+      })
       console.log(`${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}`)
       for (const row of pass.contexts) {
         console.log(`${labelOf(row.context)}: ${row.status}${row.error ? ` — ${row.error}` : ""}`)

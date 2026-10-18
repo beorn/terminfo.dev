@@ -148,6 +148,21 @@ test("a self-hosted or unknown runner environment can never authorize a write", 
   expect(() => parseDisposableReceipt(JSON.stringify(unknown))).toThrow(/unknown kind/)
 })
 
+// 15323: a transport receipt records where a run started and what bytes it moved. It grants
+// nothing, so it is refused BY NAME here rather than only as an unrecognized kind.
+test("a transport receipt is refused by name and never authorizes a write", () => {
+  const transport = {
+    ...envelope,
+    kind: "owned-app-transport",
+    grants: "nothing",
+    sourceRevision: "a".repeat(40),
+    hostKeyFingerprint: "SHA256:fixture",
+  }
+  expect(() => parseDisposableReceipt(JSON.stringify(transport))).toThrow(
+    /owned-app-transport records where a run started and grants nothing/,
+  )
+})
+
 // 27910: existing missing-field checks allow a YAML job key to masquerade as a jobs-API id.
 // All three API identity fields must instead contain decimal digits, with jobId naming the trap.
 test("hosted job identity requires decimal API ids and refuses GITHUB_JOB by name", () => {
