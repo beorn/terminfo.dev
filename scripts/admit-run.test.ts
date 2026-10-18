@@ -111,7 +111,27 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
   // specimen's genuine retained evidence; this fixture makes no claim to have run the live suite.
   const liveSuite = probeSuiteSnapshot().probeHash
   complete.provenance.runtime.suiteHash = liveSuite
-  const fixture = { ...complete, suiteId: liveSuite, probeHash: liveSuite, runId: "run1", ...overrides }
+  // The historical specimen predates these definitions. This admission-only fixture ran none
+  // of them: retain explicit synthetic missing coverage, never invented native measurements.
+  const notTested = [...loaded.notTested]
+  const rawReplies = { ...loaded.rawReplies }
+  for (const [featureId, noObservable] of [
+    ["extensions.font-ligatures", "Synthetic admission fixture has no captured ligature comparison"],
+    ["input.kitty-click-events", "Synthetic admission fixture injects no clicks into a marked Kitty prompt"],
+    ["modes.decsscls", "Synthetic admission fixture captures no timed DECSSCLS presentation frames"],
+  ] as const) {
+    notTested.push({ featureId, reason: "no-semantic-observable", noObservable, rawReplyRef: featureId })
+    rawReplies[featureId] = JSON.stringify({ fixture: "admission-only", noObservable })
+  }
+  const fixture = {
+    ...complete,
+    suiteId: liveSuite,
+    probeHash: liveSuite,
+    runId: "run1",
+    notTested,
+    rawReplies,
+    ...overrides,
+  }
   const bytes = JSON.stringify(fixture)
   writeFileSync(path, bytes)
   // Synthetic test-only composer output, not a production completion receipt or measured claim.
@@ -242,6 +262,15 @@ test("planning refuses run/tree/frozen-suite disagreement before placement", () 
   document.probeHash = foreignSuite
   document.suiteId = foreignSuite
   document.provenance.runtime.suiteHash = foreignSuite
+  // Restore the historical suite's membership, keeping its genuine evidence unchanged.
+  if (!Array.isArray(document.notTested) || !object(document.rawReplies)) {
+    throw new Error("Synthetic frozen-suite fixture lacks coverage")
+  }
+  const syntheticCoverage = ["extensions.font-ligatures", "input.kitty-click-events", "modes.decsscls"]
+  document.notTested = document.notTested.filter(
+    (entry) => !object(entry) || !syntheticCoverage.some((featureId) => entry.featureId === featureId),
+  )
+  for (const featureId of syntheticCoverage) delete document.rawReplies[featureId]
   writeFileSync(source, JSON.stringify(document))
   expect(() => planAdmission(source, destination, { frozenSuiteId: foreignSuite })).toThrow(/this tree runs suite/)
   expect(existsSync(destination)).toBe(false)
