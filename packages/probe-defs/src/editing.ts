@@ -11,7 +11,8 @@ import {
 
 // DECRQCRA's checksum must be arithmetic over the requested cells. An absolute sum is not portable
 // (an implementation may hash attributes too), so the probe proves the DELTA: change one cell from
-// E to F and the same rectangle's 16-bit checksum must rise by exactly 1.
+// E to F and the same rectangle's 16-bit checksum must move by exactly 1 under the positive-checksum
+// extension, or by 65535 (modular -1) when the DEC-compatible default negates the sum.
 const DECRQCRA_SEED = "ABCDE"
 const DECRQCRA_EDIT = "\x1b[1;5HF"
 const DECRQCRA_REQUEST = "\x1b[1;1;1;1;1;5*y"
