@@ -726,7 +726,9 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     expect(result.status, result.stderr).toBe(1)
     expect(result.stdout).toMatch(/kitty\/macos: failed.*required route work/)
     const passName = readdirSync(join(directory, "output"))[0]!
-    const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8"))
+    const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8")) as Awaited<
+      ReturnType<typeof collectPass>
+    >
     expect(
       pass.contexts.find(
         (row: { context: { id: string; os: string } }) => row.context.id === "kitty" && row.context.os === "macos",
