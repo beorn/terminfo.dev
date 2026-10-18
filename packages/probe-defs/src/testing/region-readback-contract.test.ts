@@ -65,7 +65,8 @@ function harness(mode: Mode): Harness {
   let measured = 0
   let witnessVersion = 0
   // Every compared region in this suite spans more than one cell, so a single-cell request is
-  // always the reserved paint witness: the stability pair, a baseline, or the glyph read itself.
+  // always the reserved paint witness: a baseline or the glyph read itself. Stability reads cover
+  // the compared region and must not advance the seed/target/expected-frame counter.
   // Deriving the cell from the request keeps this harness valid for any spec's sentinel, not only
   // the row-3-column-1 sentinel the first two specs happened to use.
   const isWitness = (request: CaptureRequest) =>
@@ -77,11 +78,11 @@ function harness(mode: Mode): Harness {
     captures += 1
     let regionDigest: string
     let pixelsDigest: string
-    if (isWitness(request)) {
-      regionDigest =
-        request.label.includes("capture stability") && mode === "unstable"
-          ? digest(`stability:${request.label}`)
-          : digest(`witness:${witnessVersion}`)
+    if (request.label.includes("capture stability")) {
+      regionDigest = mode === "unstable" ? digest(`stability:${request.label}`) : digest("stability:static")
+      pixelsDigest = digest("window:static")
+    } else if (isWitness(request)) {
+      regionDigest = digest(`witness:${witnessVersion}`)
       pixelsDigest = digest(`window:${witnessVersion}`)
     } else {
       const step = measured

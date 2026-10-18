@@ -172,8 +172,12 @@ test("DEC special pixels take the 28540 region-readback verdict, not ungraded co
     { top: 1, left: 1, bottom: 1, right: 3 },
     { top: 1, left: 1, bottom: 1, right: 3 },
     { top: 1, left: 1, bottom: 1, right: 3 },
+    { top: 1, left: 1, bottom: 1, right: 3 },
+    { top: 1, left: 1, bottom: 1, right: 3 },
   ])
   expect(compared.map(({ label }) => label)).toEqual([
+    "charsets.dec-special: capture stability 1",
+    "charsets.dec-special: capture stability 2",
     "charsets.dec-special: pre-edit seed",
     "charsets.dec-special: post-sequence target",
     "charsets.dec-special: expected frame",
