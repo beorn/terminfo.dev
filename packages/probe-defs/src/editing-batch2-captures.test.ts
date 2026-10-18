@@ -330,7 +330,12 @@ test("editing.decsace grades the frames its own writes produced", async () => {
   // The bytes each capture was taken after, in order: the seed paint, the pair's two reads of that
   // SEEDED screen, then DECSACE 2 + DECCARA, then DECSACE 0 + DECCARA. The seed frame is the pair's
   // second read, so a pair taken before the paint changes this.
-  expect(frameWrites).toEqual([`\x1b[0m\x1b[2J\x1b[H\x1b[?25l${seed}`, "", `${seed}\x1b[2*x${cara}`, `${seed}\x1b[0*x${cara}`])
+  expect(frameWrites).toEqual([
+    `\x1b[0m\x1b[2J\x1b[H\x1b[?25l${seed}`,
+    "",
+    `${seed}\x1b[2*x${cara}`,
+    `${seed}\x1b[0*x${cara}`,
+  ])
   // The observation cites the seed — the pair's second read — and the two extent frames; the
   // pair's first read is evidence in the arm's own sequence, not a frame to grade.
   const frames = (result.observation?.frames ?? []) as ObservationFrame[]
