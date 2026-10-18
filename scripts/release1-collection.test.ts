@@ -12,7 +12,7 @@
  * @reach fs-walk vendor/terminfo.dev/content/** vendor/terminfo.dev/.github/workflows/**
  * @testonly none
  */
-import { dirname, join, relative } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync, spawnSync } from "node:child_process"
 import * as childProcesses from "node:child_process"
@@ -31,6 +31,7 @@ import {
 import { tmpdir } from "node:os"
 import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
+import * as catalog from "@terminfo/catalog"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
@@ -114,6 +115,44 @@ const ENGINE_BACKENDS = [
 const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
   target: { kind: "app", id: "xterm", os: "linux" },
   ...overrides,
+})
+
+// Refusal must precede filesystem effects; census and private-success cases never used repository output.
+it("refuses repository output before creating any directory", async () => {
+  const scratch = mkdtempSync(join(tmpdir(), "collection-output-refusal-"))
+  const repositoryScratch = join(dirname(CONTENT), basename(scratch))
+  const output = join(repositoryScratch, "not-created")
+  try {
+    expect(existsSync(repositoryScratch)).toBe(false)
+    await expect(collectPass(output)).rejects.toThrow(/output must be private, outside the source repository/)
+    expect(existsSync(repositoryScratch)).toBe(false)
+  } finally {
+    // Only this fixture's unique scratch path; no source input is edited or removed.
+    rmSync(repositoryScratch, { recursive: true, force: true })
+    rmSync(scratch, { recursive: true, force: true })
+  }
+})
+
+// The census-only cases cannot prove that collection preserves its shared owner's resource error.
+it("propagates an unsupported catalog kind from the census owner before dispatch", async () => {
+  const terminals = { ...catalog.loadTerminals(CONTENT) }
+  const kitty = terminals.kitty
+  if (!kitty) throw new Error("The committed catalog fixture must contain kitty")
+  terminals.kitty = { ...kitty }
+  Reflect.set(terminals.kitty, "kind", "unsupported-fixture")
+  const load = vi.spyOn(catalog, "loadTerminals").mockReturnValue(terminals)
+  const directory = mkdtempSync(join(tmpdir(), "collection-unsupported-kind-"))
+  const collector = vi.mocked(headless.collectHeadlessRuns)
+  collector.mockClear()
+  try {
+    await expect(collectPass(directory)).rejects.toThrow(
+      'kitty: kind "unsupported-fixture" is not an app, mux or headless context',
+    )
+    expect(collector).not.toHaveBeenCalled()
+  } finally {
+    load.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 // The dispatch boundary must use the CURRENT in-memory suite, even when the corpus already
@@ -647,6 +686,53 @@ it("requires an existing declared freeze before final collection dispatch", () =
     expect(result.status).not.toBe(0)
     expect(result.stderr).toContain("declared frozen suite 000000000000")
     expect(readdirSync(directory)).toEqual([])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 30_000)
+
+// A census-only missing-route row cannot catch the CLI returning success or entering admission.
+it("fails collection by name and exit 1 for a required null route without admission", () => {
+  const directory = mkdtempSync(join(tmpdir(), "collection-required-route-"))
+  const preload = join(directory, "external-owners.ts")
+  const admitted = join(directory, "admission-entered")
+  const root = dirname(CONTENT)
+  writeFileSync(
+    preload,
+    `
+import { mock } from "bun:test";
+import { writeFileSync } from "node:fs";
+const processes = await import("node:child_process");
+mock.module("node:child_process", () => ({...processes, spawnSync: () => ({ status: 1, stdout: "", stderr: "fixture external dispatch refused", signal: null })}));
+mock.module(${JSON.stringify(join(dirname(CONTENT), "packages/probes/collect-headless.ts"))}, () => ({collectHeadlessRuns: async (_selectors, directory) => ({directory, runs: [], failures: []})}));
+const refuseAdmission = () => { writeFileSync(${JSON.stringify(admitted)}, "unexpected admission"); throw new Error("development entered admission"); };
+mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, () => ({planAdmission: refuseAdmission, admitRun: refuseAdmission}));
+`,
+  )
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--preload",
+        preload,
+        "scripts/release1-collection.ts",
+        "--collect",
+        "--development",
+        "--output",
+        join(directory, "output"),
+      ],
+      { cwd: root, encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).toBe(1)
+    expect(result.stdout).toMatch(/kitty\/macos: failed.*required route work/)
+    const passName = readdirSync(join(directory, "output"))[0]!
+    const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8"))
+    expect(
+      pass.contexts.find(
+        (row: { context: { id: string; os: string } }) => row.context.id === "kitty" && row.context.os === "macos",
+      ),
+    ).toMatchObject({ status: "failed", error: expect.stringContaining("required route work") })
+    expect(existsSync(admitted)).toBe(false)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

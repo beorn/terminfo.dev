@@ -29,6 +29,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
+import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
 import { classifyDevelopmentRun, statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
@@ -285,11 +286,9 @@ export interface CollectionPass {
 export async function collectPass(outputDirectory: string, frozenSuiteId?: string): Promise<CollectionPass> {
   const snapshot = probeSuiteSnapshot()
   const freeze = frozenSuiteId === undefined ? undefined : declaredCollectionFreeze(frozenSuiteId, snapshot.probeHash)
+  assertPrivateCollectionOutput(outputDirectory)
   mkdirSync(outputDirectory, { recursive: true })
   const output = realpathSync(outputDirectory)
-  if (output === ROOT || output.startsWith(`${ROOT}${sep}`)) {
-    throw new Error(`Collection output must be private, outside the source repository: ${output}`)
-  }
   const directory = mkdtempSync(join(output, "pass-"))
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
@@ -880,7 +879,7 @@ function planLines(census: readonly CollectionContext[]): string[] {
   return [
     `Collection census — ${census.length} contexts` +
       ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "mux").length} mux, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
-    `Scope: catalog app/mux platforms plus the Termless engine manifest; historical and other catalog kinds are excluded from the app/mux projection.`,
+    `Scope: catalog app/mux platforms plus the Termless engine manifest; historical app/mux rows are excluded, and unsupported catalog kinds fail by name.`,
     `Routes are source recipes, not runtime qualification: ${uncollectable} have no qualified automatic route, ${pending} require a prerequisite.`,
     `Linux rows: preset, clipboard profile and ids are read back from the committed run named under each row.`,
     ...lines,

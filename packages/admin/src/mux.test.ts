@@ -5,7 +5,7 @@
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json
  * @testonly none
  */
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
@@ -40,9 +40,10 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
 
 // App/server suites cover admission. This mux boundary must independently prove that an output
 // directory chooses raw retention and still cleans up its own daemon/session, without grading it.
-it.each(["private", "empty"])("handles %s raw output without entering admission", async (mode) => {
+it.each(["private", "empty", "symlink"])("handles %s raw output without entering admission", async (mode) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-output-"))
   const output = mode === "empty" ? "" : join(directory, "output")
+  if (mode === "symlink") symlinkSync(new URL("../../../", import.meta.url), output)
   const wrapper = join(directory, "wrapper")
   mkdirSync(wrapper)
   const log = vi.spyOn(console, "log").mockImplementation(() => {})
@@ -56,7 +57,8 @@ it.each(["private", "empty"])("handles %s raw output without entering admission"
   // Only transport/persistence is exercised: this synthetic identity is not native mux evidence.
   run.target = { ...run.target, kind: "mux", id: "tmux", version: "3.6a" }
   const bytes = JSON.stringify(run)
-  const original = join(directory, "http-response.json")
+  // COPYFILE_EXCL cannot overwrite the real package.json on the unfixed path; the correct guard must refuse first.
+  const original = join(directory, mode === "symlink" ? "package.json" : "http-response.json")
   writeFileSync(original, bytes, { mode: 0o600 })
   vi.mocked(execSync).mockImplementation((command) =>
     command.toString().startsWith("which") ? "/usr/bin/tmux" : command.toString() === "tmux -V" ? "tmux 3.6a" : "",
@@ -90,6 +92,10 @@ it.each(["private", "empty"])("handles %s raw output without entering admission"
   try {
     if (mode === "empty") {
       await expect(handleMux("tmux", { output })).rejects.toThrow(/output directory is empty/)
+    } else if (mode === "symlink") {
+      await expect(handleMux("tmux", { output })).rejects.toThrow(
+        /output must be private, outside the source repository/,
+      )
     } else {
       await handleMux("tmux", { output })
     }
