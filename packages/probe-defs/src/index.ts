@@ -32,6 +32,8 @@ export type {
   ProbeSuiteManifest,
   RunOrigin,
   AppLaunchReceipt,
+  WindowsMesaRendererReceipt,
+  WindowsMesaRendererDllReceipt,
   AppSourceArtifact,
   DerivedSourceTreeArtifact,
   ProbeAssertion,

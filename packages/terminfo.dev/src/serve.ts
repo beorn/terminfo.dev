@@ -549,14 +549,19 @@ export async function collectProbeRun(
   } else if (kind === "windowsHosted") {
     if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
     // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
-    // the receipt names the launched WindowsTerminal.exe, the collector proves it is an ancestor,
-    // and every geometry probe then reads the console it is actually writing to.
+    // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
+    // an ancestor, and every geometry probe then reads the console it is actually writing to.
     ownedTerminal = await createOwnedTerminal({
       captureRunId,
       out,
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       windowsHosted: { receiptPath: hostedReceipt },
     })
+    if (ownedTerminal.hostedWindowsAppId && terminal.name !== ownedTerminal.hostedWindowsAppId) {
+      throw new Error(
+        `Hosted Windows terminal detected ${JSON.stringify(terminal.name)} while the receipt names ${ownedTerminal.hostedWindowsAppId}`,
+      )
+    }
     // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
     installTextCapture(ownedTerminal)
   }
@@ -640,7 +645,7 @@ export async function collectProbeRun(
   if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
   if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
   const measuredVersion =
-    terminal.name === "windows-terminal" && batch.appLaunch?.platform === "win32"
+    (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
       ? batch.appLaunch.productVersion
       : resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies)
   const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
