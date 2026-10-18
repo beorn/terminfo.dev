@@ -167,8 +167,30 @@ export function inconclusiveRows(cells: ShareCells, share: DecisiveShare): Incon
   })
 }
 
-function sharePct(count: number, denominator: number): number {
-  return denominator === 0 ? 0 : Math.round((count / denominator) * 100)
+/**
+ * The printed percentage, or a refusal. A zero denominator is a measurement that was never taken,
+ * and returning 0 would publish it as a real 0% everywhere this helper is used.
+ */
+export function sharePct(count: number, denominator: number): number {
+  if (denominator <= 0) {
+    throw new Error(`decisive share needs a positive denominator of scored ids, got ${denominator}`)
+  }
+  return Math.round((count / denominator) * 100)
+}
+
+/**
+ * The not-measured line for a required suite that has probes for none of the cohort's ids. The bar is
+ * never printed over zero coverage: counting the missing probes as non-decisive rows publishes
+ * "fail 0/N" for a suite that decided nothing, which is the doctrine `d3Verdict` already refuses for
+ * a zero denominator.
+ */
+export function notMeasuredCoverageLine(cohort: {
+  decidableIds: readonly string[]
+  measuredIds: readonly string[]
+}): string | undefined {
+  return cohort.decidableIds.length === 0
+    ? `not measured: 0 of ${cohort.measuredIds.length} cohort ids have probes`
+    : undefined
 }
 
 /**
@@ -201,6 +223,12 @@ export function decisiveShare(
     remainder,
     verdict: d3Verdict(decisive, aggregate.denominator),
   }
+}
+
+/** One admitted run's share cell: the coverage refusal when there is none, else the fraction and verdict. */
+export function admittedShareText(scoredCount: number, share: DecisiveShare, coverage?: string): string {
+  if (coverage !== undefined) return coverage
+  return `decisive/${scoredCount} ${share.decisive}/${share.denominator} = ${share.decisivePct}% · verdict ${share.verdict.text}`
 }
 
 /** The declared 62 tier-1 ids: the catalog rows whose slice is `tier1`, ascending. */
@@ -869,40 +897,61 @@ export const COHORT_FACTORIES: Readonly<Record<ReaderCohort, ((contentDir: strin
   candidate4: candidate4Cohort,
 }
 
+type ReaderReport = ReturnType<typeof buildReport>
+type ReaderCohortReport = NonNullable<ReaderReport["cohort"]>
+
+/**
+ * Everything the reader prints for a cohort, as lines. `main` only prints them, so a test can drive
+ * the REAL output path — including the zero-coverage refusal — instead of a helper it wires by hand.
+ */
+export function cohortReaderLines(
+  report: ReaderReport,
+  cohort: ReaderCohortReport,
+  terminalIds: readonly string[],
+  contentDir: string,
+): string[] {
+  const lines: string[] = []
+  lines.push(cohortHeaderLine(cohort))
+  lines.push(
+    `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
+  )
+  lines.push(
+    `basis: release: the cohort's ${cohort.measuredIds.length} scored over the ${cohort.scoredIds.length} an app run can decide, an id with no probe in the required suite counts as not decisive and is named, and ${cohort.libraryOnlyIds.length} ${cohort.libraryOnlyIds.length === 1 ? "row is" : "rows are"} library-only and not scored in apps; categories: ids with a probe in the required suite (${cohort.decidableIds.length} of ${cohort.measuredIds.length}), unavailable named beside: ${cohort.unavailableIds.join(", ") || "none"}, library-only named beside: ${cohort.libraryOnlyIds.join(", ") || "none"}`,
+  )
+  // Zero coverage is not a bar. The line names it and the rows are not printed, so no fraction or
+  // verdict can be read as a measurement the required suite never took.
+  const coverage = notMeasuredCoverageLine(cohort)
+  if (coverage !== undefined) {
+    lines.push(coverage)
+    lines.push(`BAR ROWS — not printed: ${coverage}`)
+  } else {
+    const categories = cohortCategories(cohort.decidableIds, loadCategories(contentDir))
+    const labelWidth = Math.max(...categories.map((category) => category.label.length))
+    lines.push("BAR ROWS — the site's selected run per Release 1 (terminal, os) context")
+    for (const row of cohort.barRows.filter(
+      (row) => !terminalIds.length || terminalIds.includes(row.context.terminalId),
+    )) {
+      lines.push(...formatCohortRow(row, categories, labelWidth, cohort.unavailableIds, cohort.libraryOnlyIds))
+    }
+  }
+  lines.push(`ADMITTED RUNS — every schema-v2 app run the site admits in ${report.searched}`)
+  for (const row of cohort.admittedRuns) {
+    lines.push(
+      `  ${row.run.terminalId} ${row.run.version} ${row.run.os} ${row.run.runId} · suite ${row.run.suiteId} · ` +
+        (row.measured ? admittedShareText(cohort.scoredIds.length, row.share, coverage) : row.reason),
+    )
+  }
+  lines.push(...refusedRunsSection(cohort.refusedRuns))
+  return lines
+}
+
 function main(): void {
   const contentDir = join(import.meta.dirname ?? process.cwd(), "..", "content")
   const { cohort: selectedCohort, terminalIds } = parseReaderArgs(process.argv.slice(2))
   const cohortSpec = COHORT_FACTORIES[selectedCohort]?.(contentDir)
   const report = buildReport({ contentDir, cohort: cohortSpec })
   if (report.cohort) {
-    const cohort = report.cohort
-    console.log(cohortHeaderLine(cohort))
-    console.log(
-      `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
-    )
-    console.log(
-      `basis: release: the cohort's ${cohort.measuredIds.length} scored over the ${cohort.scoredIds.length} an app run can decide, an id with no probe in the required suite counts as not decisive and is named, and ${cohort.libraryOnlyIds.length} ${cohort.libraryOnlyIds.length === 1 ? "row is" : "rows are"} library-only and not scored in apps; categories: ids with a probe in the required suite (${cohort.decidableIds.length} of ${cohort.measuredIds.length}), unavailable named beside: ${cohort.unavailableIds.join(", ") || "none"}, library-only named beside: ${cohort.libraryOnlyIds.join(", ") || "none"}`,
-    )
-    const categories = cohortCategories(cohort.decidableIds, loadCategories(contentDir))
-    const labelWidth = Math.max(...categories.map((category) => category.label.length))
-    console.log("BAR ROWS — the site's selected run per Release 1 (terminal, os) context")
-    for (const row of cohort.barRows.filter(
-      (row) => !terminalIds.length || terminalIds.includes(row.context.terminalId),
-    )) {
-      for (const line of formatCohortRow(row, categories, labelWidth, cohort.unavailableIds, cohort.libraryOnlyIds)) {
-        console.log(line)
-      }
-    }
-    console.log(`ADMITTED RUNS — every schema-v2 app run the site admits in ${report.searched}`)
-    for (const row of cohort.admittedRuns) {
-      console.log(
-        `  ${row.run.terminalId} ${row.run.version} ${row.run.os} ${row.run.runId} · suite ${row.run.suiteId} · ` +
-          (row.measured
-            ? `decisive/${cohort.scoredIds.length} ${row.share.decisive}/${row.share.denominator} = ${row.share.decisivePct}% · verdict ${row.share.verdict.text}`
-            : row.reason),
-      )
-    }
-    for (const line of refusedRunsSection(cohort.refusedRuns)) console.log(line)
+    for (const line of cohortReaderLines(report, report.cohort, terminalIds, contentDir)) console.log(line)
     return
   }
   const contexts = terminalIds.length
