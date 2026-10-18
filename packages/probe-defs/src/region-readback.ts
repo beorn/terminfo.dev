@@ -653,8 +653,8 @@ export interface StabilityCapture {
 
 /**
  * The ONE stability control both pixel arms use. Two reads of one frame must agree before either
- * arm compares extents or steps, and each arm takes the pair on the frame it will measure — the
- * region oracle on its witness cell, the DECSACE arm on its painted seed — so a frame that only
+ * arm compares extents or steps: the region oracle takes its pair on the screen as it stands before
+ * the first write, and the DECSACE arm takes its pair on the painted seed, so a frame that only
  * looks stable after the measurement cannot pass. The refusal is inconclusive, carries no frames,
  * reports both digests in the response, and cites the second stability capture; no target frame is
  * fabricated. A pair whose reads both report no digest is not refused here: two absent digests

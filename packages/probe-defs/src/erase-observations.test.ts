@@ -1083,8 +1083,8 @@ test("a relative background claim in the ignored frame refuses to load by row id
   const claimed = ignored.flat().some((cell) => typeof cell !== "string" && cell.attributes.bg !== undefined)
   expect(claimed, "the fixture needs at least one relative bg claim").toBe(true)
   // The after frame keeps the same geometry as PLAIN characters, so the ignored frame is the only
-  // place a relative bg claim survives. While after carried the claims too, deleting the ignored scan
-  // alone stayed green; this fixture is the one that discriminates (@cto round-3e B6).
+  // place a relative bg claim survives; a fixture whose after frame carried the claims too would
+  // stay green with the ignored scan deleted.
   const after = row.after.map((cells) => cells.map((cell) => (typeof cell === "string" ? cell : cell.char)))
   expect(() => regionReadbackProbe({ ...row, after, ignored, paint: undefined })).toThrow(
     new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
@@ -1094,7 +1094,7 @@ test("a relative background claim in the ignored frame refuses to load by row id
 test("an empty paint string refuses at load by row id, not in the painter", () => {
   const row = rowById("erase.el-with-attrs")
   // Falsy, not only undefined: an empty string paints nothing, so it must not slip past the load
-  // check and reach the frame builder (@cto round-3e B6).
+  // check and reach the frame builder as a claim no adapter can decide.
   expect(() => regionReadbackProbe({ ...row, paint: { bg: "" } })).toThrow(
     new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
   )

@@ -292,9 +292,10 @@ for (const row of editingReadbackRows) {
 }
 
 /**
- * @cto round-3e B4: the parser arm sets the same DECSACE extent mode the app arm does - `2*x` is part
- * of the row's step and 2J does not reset it - so its finally must run the row's own cleanup before
- * the SGR reset on every exit: decided, refused, or thrown by the reader.
+ * The parser arm sets the same DECSACE extent mode the app arm does — `2*x` is part of the row's
+ * step and 2J does not reset it — so its finally must run the row's own cleanup before the SGR reset
+ * on every exit: decided, refused, or thrown by the reader. A leftover extent mode is not cleared by
+ * 2J and would change what the next probe's DECCARA and DECRARA reach.
  */
 for (const id of ["editing.deccara", "editing.decrara"]) {
   test(`${id} clears its extent mode on the parser arm on every exit`, () => {

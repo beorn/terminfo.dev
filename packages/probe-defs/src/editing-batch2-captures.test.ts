@@ -543,8 +543,9 @@ test("editing.decsace names an adapter that reports no measured digest", async (
   let reads = 0
   context.capture = async ({ role, label }) => {
     reads += 1
-    // The stability pair reports a digest, so the refusal below is the FRAME-kind rule, not the
-    // earlier stability refusal: this test keeps the two named refusals distinguishable.
+    // The pair's two reads agree, so the refusal below is the frame-kind rule: a frame that
+    // reports no measured digest is named by the arm that compares the frames, not by the
+    // stability control.
     return {
       role,
       label,
