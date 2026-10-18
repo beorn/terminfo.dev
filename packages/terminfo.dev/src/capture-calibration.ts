@@ -295,6 +295,26 @@ function stripeSize(
       )
     }
   }
+  // Validate every scanline, masked or not, skipping only the fillet pixels themselves: the
+  // measured pitch must explain the whole grid, so a stray pixel on a masked scanline still refuses.
+  for (let line = 0; line < across; line++) {
+    for (let position = 0; position < length; position++) {
+      const x = grid.x + (horizontal ? position : line)
+      const y = grid.y + (horizontal ? line : position)
+      const key = y * frame.width + x
+      if (filletMask.has(key)) continue
+      const offset = key * 4
+      const cell = Math.min(count - 1, Math.floor(position / pitch))
+      const expectsCalibration = cell % 2 === 0
+      const calibration = rgbAt(frame, offset, CALIBRATION)
+      const blank = rgbAt(frame, offset, BLANK)
+      if (calibration === expectsCalibration && (calibration || blank)) continue
+      const painted = calibration ? "calibration paint" : blank ? "blank paint" : "neither calibration nor blank"
+      throw refusal(
+        `Capture calibration ${axis}: ${painted} at ${x},${y} on cell ${cell + 1}; the measured ${pitch} px pitch expects ${expectsCalibration ? "calibration" : "blank"} paint`,
+      )
+    }
+  }
   return { pitch, clip }
 }
 
@@ -461,6 +481,7 @@ export async function calibrateCaptureOrigin({
     return {
       origin: { x: grid.x, y: grid.y },
       pixelGeometry: measured,
+      ...(columnClip > 0 || rowClip > 0 ? { visible: { width: grid.width, height: grid.height } } : {}),
       basis: `collector complete witnessed raster: ${ctx.cols} columns x ${ctx.rows} rows, every unmasked scanline measures ${cellWidth}x${cellHeight}, visible ${grid.width}x${grid.height} grid at ${grid.x},${grid.y}${filletTrace}${clipTrace}; current paints and identical restore confirmed`,
     }
   } catch (cause) {

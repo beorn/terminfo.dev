@@ -453,6 +453,43 @@ test("a rectangle that leaves the window is loud, never clipped", () => {
   ).toThrow(/empty or negative region/)
 })
 
+test("a clipped text area crops its visible last row instead of the padding beyond it", () => {
+  const geometry = { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }
+  expect(
+    cellRectangle({
+      cells: { top: 46, left: 1, bottom: 46, right: 133 },
+      pixelGeometry: geometry,
+      textOrigin: { x: 0, y: 29 },
+      windowWidth: 800,
+      windowHeight: 628,
+      visible: { width: 798, height: 597 },
+    }),
+  ).toEqual({ x: 0, y: 614, width: 798, height: 12 })
+  expect(
+    cellRectangle({
+      cells: { top: 1, left: 1, bottom: 45, right: 133 },
+      pixelGeometry: geometry,
+      textOrigin: { x: 0, y: 29 },
+      windowWidth: 800,
+      windowHeight: 628,
+      visible: { width: 798, height: 597 },
+    }),
+  ).toEqual({ x: 0, y: 29, width: 798, height: 585 })
+})
+
+test("a cell beyond the clipped text area is loud, not silently clamped", () => {
+  expect(() =>
+    cellRectangle({
+      cells: { top: 47, left: 1, bottom: 47, right: 1 },
+      pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 },
+      textOrigin: { x: 0, y: 29 },
+      windowWidth: 800,
+      windowHeight: 628,
+      visible: { width: 798, height: 597 },
+    }),
+  ).toThrow(/leave the 133x46 text area/)
+})
+
 test("the window's own pixel size comes from the measured geometry, and a missing one is loud", () => {
   expect(windowPixels("WINDOW=4194317\nX=0\nY=0\nWIDTH=800\nHEIGHT=600\nSCREEN=0\n")).toEqual({
     width: 800,

@@ -446,8 +446,24 @@ test("a clipped last stripe calibrates and records its clip", async () => {
   expect(measured).toMatchObject({
     origin: { x: 2, y: 2 },
     pixelGeometry: { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 },
+    visible: { width: 8, height: 7 },
   })
   expect(measured.basis).toMatch(/rows clipped 1 px at the far edge/)
+})
+
+test("a wrong-colour pixel on a scanline the corner mask touches still refuses", async () => {
+  // The top row carries two corner fillets so it yields no intact stripe measurement, but its
+  // unmasked pixels must still match the pitch measured on the rows below.
+  const solid = filletCorners(rasterFrame("solid"))
+  const columns = filletCorners(rasterFrame("columns"))
+  columns.rgba.set([255, 0, 0, 255], (2 * 12 + 5) * 4)
+  const run = calibration({
+    frames: {
+      "solid grid paint": [solid, solid],
+      "column edge paint": [columns, columns],
+    },
+  })
+  await expect(run.promise).rejects.toThrow(/at 5,2 on cell 2/)
 })
 
 test("mixed stripe widths refuse as a fractional pitch", async () => {
