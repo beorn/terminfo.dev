@@ -49,7 +49,9 @@ function find(id: string) {
 
 // extensions.truecolor is NOT here: its claim is cell storage, decided by the DECRQSS SGR oracle
 // (extensions-qualification covers it), and a pixel comparison was never able to decide it.
-const capturedIds = ["extensions.sixel", "extensions.iterm2-images"] as const
+// extensions.sixel is NOT here: it decides through the region oracle against an independent
+// SGR-background reference (sixel-capture.test.ts), so it no longer records unasserted frames.
+const capturedIds = ["extensions.iterm2-images"] as const
 
 test.each(capturedIds)("%s records control+target pixels as honest, unasserted inconclusive evidence", async (id) => {
   const { context, writes, frames } = captureApp(24, 80)
@@ -80,8 +82,11 @@ test.each(capturedIds)("%s refuses an undersized capture terminal before any byt
 
 test("each image target writes its own payload rather than a generic consumption check", async () => {
   const sixel = captureApp(24, 80)
-  await find("extensions.sixel").term!(sixel.context)
-  expect(sixel.writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(true)
+  // With no measured pixel report the sixel row refuses by name before painting: a tile that
+  // cannot be sized from the run is not a measurement, and a guessed size would be.
+  const refused = await find("extensions.sixel").term!(sixel.context)
+  expect(refused.observation?.outcome).toBe("inconclusive")
+  expect(sixel.writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
   const iterm = captureApp(24, 80)
   await find("extensions.iterm2-images").term!(iterm.context)
   expect(iterm.writes.some((write) => write.includes("\x1b]1337;File=inline=1"))).toBe(true)

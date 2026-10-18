@@ -12,6 +12,8 @@ import {
   unmeasuredCellResult,
 } from "./helpers.ts"
 import { sgrTermReadback } from "./sgr.ts"
+import { captureRegionGeometry, captureRegionReadbackDecision, collectorRegionRead } from "./region-readback.ts"
+import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
 
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
 const ITERM2_RED_PNG =
@@ -1656,28 +1658,57 @@ export const extensionsProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
-        if (ctx.capture) {
-          const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
-          if (refusal) return refusal
-          try {
-            return await sgrCaptureFrames(
-              ctx,
-              "\x1b[0m\x1b[2J\x1b[H",
-              '\x1b[0m\x1b[2J\x1b[3;3H\x1bP0;1;0q"1;1;6;6#0;2;100;0;0#0~~~~~~\x1b\\',
-              "extensions.sixel",
-              { startRow: 3, startCol: 3, sixel: "6x6 solid #0 red block" },
-              "A rendered sixel block appears only if the payload was decoded; compare against the blank control",
-            )
-          } finally {
-            // SGR 0 alone does not remove a drawn sixel graphic; clear the owned disposable surface.
-            ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
+        // compare, and the missing adapter is pixel capture — named before a byte, as an
+        // instrument limit in the 3a8bddd5 shape, never a capability verdict.
+        if (!ctx.capture || ctx.captureKind === "text-cells") {
+          const note =
+            "Sixel paints pixels outside the cell grid; this arm has no pixel capture, so the missing adapter is pixel capture and the rendering is not observable here"
+          return {
+            pass: false,
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
           }
         }
-        const note = "No pixel readback for Sixel rendering"
-        return {
-          pass: false,
-          note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
+        if (refusal) return refusal
+        // Geometry first: the tile's size is a function of THIS run's report, so the frame cannot be
+        // built before it is known. A missing or unusable report is refused by name, not guessed.
+        const reported = await captureRegionGeometry(ctx, "extensions.sixel", {
+          region: { ...SIXEL_REGION },
+          ...SIXEL_BOUNDS,
+        })
+        if ("pass" in reported) return reported
+        const geometry = reported.geometry
+        if (!geometry) {
+          const note =
+            "extensions.sixel: this pixel arm reported no cell-to-pixel geometry, so the tile cannot be sized"
+          return {
+            pass: false,
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+          }
+        }
+        const read = collectorRegionRead(ctx)
+        if (!read) throw new Error("extensions.sixel: a pixel arm reached the region oracle without an owned capture")
+        try {
+          const decided = await captureRegionReadbackDecision(
+            ctx,
+            "extensions.sixel",
+            { ...sixelReadback(geometry), pixelGeometry: geometry, geometrySource: reported.source },
+            read,
+          )
+          if (decided) return decided
+          const note =
+            "extensions.sixel: the region oracle answered nothing for this arm, so the rendering was not compared"
+          return {
+            pass: false,
+            note,
+            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+          }
+        } finally {
+          // SGR 0 alone does not remove a drawn sixel graphic; clear the owned disposable surface.
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
         }
       },
     ),
