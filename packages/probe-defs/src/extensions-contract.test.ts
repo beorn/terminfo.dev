@@ -250,7 +250,8 @@ const EXTENSIONS_CONTRACT: GroupContract = [
   {
     id: "extensions.font-ligatures",
     expected: "not-tested",
-    claim: "Font ligatures: controlled-font visual verification is outside this executable suite",
+    claim:
+      "Font ligatures: the headless parser shapes no glyphs; app contexts capture a spaced control and a contiguous sample for review",
   },
 ]
 
@@ -266,13 +267,6 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/extensions-capture-observations.test.ts",
     "packages/probe-defs/src/extensions-geometry.test.ts",
     "packages/probe-defs/src/extensions-qualification.test.ts",
-  ],
-  namedUnavailable: [
-    {
-      id: "extensions.font-ligatures",
-      reason: "no-semantic-observable",
-      noObservable: "No executable semantic observer in this suite; controlled-font visual verification is outside it",
-    },
   ],
 }
 
@@ -484,7 +478,7 @@ test("the extensions contract covers every extension capability and names none u
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(extensionsProbes).toHaveLength(78)
+  expect(extensionsProbes).toHaveLength(79)
   expect(EXTENSIONS_CONTRACT).toHaveLength(79)
 })
 

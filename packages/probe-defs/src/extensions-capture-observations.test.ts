@@ -83,3 +83,44 @@ test("each image target writes its own payload rather than a generic consumption
   expect(truecolor.writes.some((write) => write.includes("\x1b[38;2;255;128;0m"))).toBe(true)
   expect(truecolor.writes.some((write) => write.includes("\x1b[38;2;17;97;201m"))).toBe(true)
 })
+
+test("extensions.font-ligatures captures a spaced control and a contiguous operator sample", async () => {
+  const { context, writes, frames } = captureApp(24, 80)
+  const result = await find("extensions.font-ligatures").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.assertions).toBeUndefined()
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(result.observation?.frames).toHaveLength(2)
+  expect(writes.some((write) => write.includes("! =\n- >\n= >\n< =\n= ="))).toBe(true)
+  expect(writes.some((write) => write.includes("!=\n->\n=>\n<=\n=="))).toBe(true)
+})
+
+test("extensions.font-ligatures names a missing capture instead of claiming a measurement", async () => {
+  const { context, frames } = captureApp(24, 80)
+  const noCapture = { ...context, capture: undefined }
+  const result = await find("extensions.font-ligatures").term!(noCapture)
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining("capture"),
+  })
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  expect(frames).toEqual([])
+})
+
+test("extensions.font-ligatures refuses an undersized capture terminal before any bytes", async () => {
+  const { context, writes, frames } = captureApp(2, 8)
+  const result = await find("extensions.font-ligatures").term!(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(result.assertions).toBeUndefined()
+  expect(frames).toEqual([])
+  expect(writes).toEqual([])
+})
