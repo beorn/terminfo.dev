@@ -555,32 +555,50 @@ function closureMirror(closure: string): void {
 /** A link-closure root ships ONLY what CODE_ROOT's HEAD tracks for it, at the revision HEAD records:
  * a submodule at its gitlink, a directory at its tree. Untracked and ignored files never reach the
  * host, and a root HEAD does not track as a directory is refused rather than copied from the disk. */
-function trackedExtract(entry: string, closure: string): void {
-  const listed = spawnSync("git", ["-C", CODE_ROOT, "ls-tree", "HEAD", "--", entry], { encoding: "utf8" })
-  const [, type, object] = /^\d{6} (commit|tree) ([0-9a-f]{40,64})\t/.exec(listed.stdout ?? "") ?? []
-  if (listed.error || listed.status !== 0 || type === undefined || object === undefined) {
-    fail(
-      "resource manifest mismatch",
-      `a staged link reaches ${entry}, which ${CODE_ROOT} HEAD does not track as a directory; only tracked files are staged${listed.status === 0 ? "" : ` (${listed.error?.message ?? listed.stderr.trim()})`}`,
-    )
+function trackedExtract(entry: string, closure: string, recorded?: { repository: string; object: string }): void {
+  if (recorded === undefined) {
+    const listed = spawnSync("git", ["-C", CODE_ROOT, "ls-tree", "HEAD", "--", entry], { encoding: "utf8" })
+    const [, type, object] = /^\d{6} (commit|tree) ([0-9a-f]{40,64})\t/.exec(listed.stdout ?? "") ?? []
+    if (listed.error || listed.status !== 0 || type === undefined || object === undefined) {
+      fail(
+        "resource manifest mismatch",
+        `a staged link reaches ${entry}, which ${CODE_ROOT} HEAD does not track as a directory; only tracked files are staged${listed.status === 0 ? "" : ` (${listed.error?.message ?? listed.stderr.trim()})`}`,
+      )
+    }
+    recorded = { repository: type === "commit" ? join(CODE_ROOT, entry) : CODE_ROOT, object }
+    // Only the closure root is a mirror symlink; nested gitlinks are empty archive directories.
+    rmSync(join(closure, entry), { force: true })
   }
+  const { repository, object } = recorded
   const destination = join(closure, entry)
-  rmSync(destination, { force: true })
   mkdirSync(destination, { recursive: true })
   const archivePath = join(dirname(closure), `${entry.replace(/\//g, "_")}.tar`)
-  const repository = type === "commit" ? join(CODE_ROOT, entry) : CODE_ROOT
   const archive = spawnSync("git", ["-C", repository, "archive", "--format=tar", "-o", archivePath, object], {
     encoding: "utf8",
   })
   if (archive.error || archive.status !== 0) {
     fail(
       "resource manifest mismatch",
-      `git archive ${object} for ${entry}: ${archive.error?.message ?? archive.stderr.trim()}`,
+      `git archive ${object} for ${entry} in ${repository}: ${archive.error?.message ?? archive.stderr.trim()}`,
     )
   }
   const extract = spawnSync("tar", ["-x", "-f", archivePath, "-C", destination], { encoding: "utf8" })
   if (extract.error || extract.status !== 0) {
     fail("resource manifest mismatch", `tar -x for ${entry}: ${extract.error?.message ?? extract.stderr.trim()}`)
+  }
+  // Archive leaves gitlinks empty. Follow the parent's recorded objects, never checkout HEADs.
+  const nested = spawnSync("git", ["-C", repository, "ls-tree", "-r", "-z", object], { encoding: "utf8" })
+  if (nested.error || nested.status !== 0) {
+    fail(
+      "resource manifest mismatch",
+      `git ls-tree ${object} for ${entry} in ${repository}: ${nested.error?.message ?? nested.stderr.trim()}`,
+    )
+  }
+  for (const record of nested.stdout.split("\0")) {
+    const [, nestedObject, nestedPath] = /^160000 commit ([0-9a-f]{40,64})\t([\s\S]+)$/.exec(record) ?? []
+    if (nestedObject === undefined || nestedPath === undefined) continue
+    const child = join(entry, nestedPath)
+    trackedExtract(child, closure, { repository: join(CODE_ROOT, child), object: nestedObject })
   }
 }
 

@@ -52,6 +52,40 @@ function git(cwd: string, ...args: string[]): string {
   return result.stdout.trim()
 }
 
+function nestedBinFixture(missingCommit = false): { nested: string; pinned: string } {
+  const parent = join(code, "km")
+  const nested = join(parent, "apps", "maddoc")
+  const payload = join(nested, "payload")
+  for (const repository of [parent, nested, payload]) {
+    mkdirSync(repository, { recursive: true })
+    git(repository, "init", "-q", "-b", "main")
+    git(repository, "config", "user.email", "fixture@example.invalid")
+    git(repository, "config", "user.name", "fixture")
+  }
+  writeFileSync(join(payload, "maddoc.ts"), "export const bin = 'pinned'\n")
+  git(payload, "add", "maddoc.ts")
+  git(payload, "commit", "-q", "-m", "pinned bin")
+  git(nested, "update-index", "--add", "--cacheinfo", `160000,${git(payload, "rev-parse", "HEAD")},payload`)
+  mkdirSync(join(nested, "bin"))
+  symlinkSync(join("..", "payload", "maddoc.ts"), join(nested, "bin", "maddoc.ts"))
+  git(nested, "add", "bin")
+  git(nested, "commit", "-q", "-m", "nested app")
+  const pinned = missingCommit ? "1234567890123456789012345678901234567890" : git(nested, "rev-parse", "HEAD")
+  git(parent, "update-index", "--add", "--cacheinfo", `160000,${pinned},apps/maddoc`)
+  git(parent, "commit", "-q", "-m", "parent records app")
+  git(code, "update-index", "--add", "--cacheinfo", `160000,${git(parent, "rev-parse", "HEAD")},km`)
+  git(code, "commit", "-q", "-m", "root records parent")
+  writeFileSync(join(payload, "maddoc.ts"), "export const bin = 'new HEAD'\n")
+  git(payload, "add", "maddoc.ts")
+  git(payload, "commit", "-q", "-m", "advance checkout past pin")
+  writeFileSync(join(payload, "maddoc.ts"), "export const bin = 'dirty'\n")
+  writeFileSync(join(payload, "untracked.ts"), "untracked\n")
+  symlinkSync(join("..", "km", "apps", "maddoc"), join(code, "node_modules", "maddoc"))
+  mkdirSync(join(code, "node_modules", ".bin"), { recursive: true })
+  symlinkSync(join("..", "maddoc", "bin", "maddoc.ts"), join(code, "node_modules", ".bin", "maddoc"))
+  return { nested, pinned }
+}
+
 function fixture(): void {
   root = mkdtempSync(join(tmpdir(), "owned-app-transport-"))
   code = join(root, "code")
@@ -703,6 +737,7 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("stages a closure root at its tracked revision only, never untracked or modified working files", () => {
+    nestedBinFixture()
     writeFileSync(join(code, "extra", "pkg", "untracked.ts"), "export const untracked = 1\n")
     writeFileSync(join(code, "extra", "pkg", "index.ts"), "export const extra = 'modified, uncommitted'\n")
     const result = run()
@@ -711,6 +746,21 @@ describe("owned-app ssh transport", () => {
     expect(readFileSync(join(stage, "source", "extra", "pkg", "index.ts"), "utf8")).toBe(
       "export const extra = 'fixture'\n",
     )
+    expect(readFileSync(join(stage, "source", "node_modules", ".bin", "maddoc"), "utf8")).toBe(
+      "export const bin = 'pinned'\n",
+    )
+    expect(existsSync(join(stage, "source", "km", "apps", "maddoc", "payload", "untracked.ts"))).toBe(false)
+  }, 60_000)
+
+  it("names the nested path, recorded commit and repository when the tracked object is unavailable", () => {
+    const { nested, pinned } = nestedBinFixture(true)
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("resource manifest mismatch")
+    expect(result.stderr).toContain("km/apps/maddoc")
+    expect(result.stderr).toContain(pinned)
+    expect(result.stderr).toContain(nested)
+    expect(lines(rsyncLog)).toHaveLength(0)
   }, 60_000)
 
   it("refuses a closure root its HEAD does not track", () => {
