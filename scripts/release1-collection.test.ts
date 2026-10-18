@@ -73,11 +73,10 @@ vi.mock("node:fs", async (importOriginal) => {
     readFileSync: ((
       path: Parameters<typeof actual.readFileSync>[0],
       options?: Parameters<typeof actual.readFileSync>[1],
-    ) =>
-      actual.readFileSync(
-        typeof path === "string" ? (fingerprintFixture.files[path] ?? path) : path,
-        options,
-      )) as typeof actual.readFileSync,
+    ) => {
+      const input = typeof path === "string" ? (fingerprintFixture.files[path] ?? path) : path
+      return options === undefined ? actual.readFileSync(input) : actual.readFileSync(input, options)
+    }) as typeof actual.readFileSync,
   }
 })
 afterAll(() => rmSync(fingerprintFixture.directory, { recursive: true, force: true }))
