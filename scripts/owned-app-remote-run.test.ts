@@ -17,6 +17,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -75,7 +76,7 @@ function fixture(): void {
   mkdirSync(join(source, "packages", "terminfo.dev", "src"), { recursive: true })
   writeFileSync(
     join(source, "packages", "terminfo.dev", "src", "disposable-receipt.ts"),
-    "export function sampleHostedIdentity(required: (key: string) => string): Record<string, string> { return { required: required('RUNNER_OS') } }\n",
+    "export function sampleOwnedHostIdentity(os: string): Record<string, string> { return { os } }\n",
   )
   git(source, "init", "-q", "-b", "main")
   git(source, "config", "user.email", "fixture@example.invalid")
@@ -101,6 +102,12 @@ function fixture(): void {
   mkdirSync(join(code, "extra", "pkg"), { recursive: true })
   writeFileSync(join(code, "extra", "pkg", "index.ts"), "export const extra = 'fixture'\n")
   symlinkSync(join("..", "..", "extra", "pkg"), join(code, "node_modules", "@terminfo", "extra"))
+  // The code tree is a repository too: a closure root ships only what its HEAD tracks.
+  git(code, "init", "-q", "-b", "main")
+  git(code, "config", "user.email", "fixture@example.invalid")
+  git(code, "config", "user.name", "fixture")
+  git(code, "add", "extra")
+  git(code, "commit", "-q", "-m", "fixture code")
 
   writeFileSync(knownHosts, "fixture.invalid ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGZpeHR1cmVrZXk=\n")
 
@@ -114,16 +121,17 @@ function fixture(): void {
       "if [ \"${SHIM_SSH_UNTRUSTED:-}\" = 1 ]; then echo 'Host key verification failed.' >&2; exit 255; fi",
       "verbose=0",
       'for a in "$@"; do [ "$a" = "-v" ] && verbose=1; done',
-      'while [ "$1" = "-o" ]; do shift 2; done',
-      'while [ "$1" = "-l" ]; do shift 2; done',
+      'while [ "$1" = "-o" ] || [ "$1" = "-F" ] || [ "$1" = "-l" ]; do shift 2; done',
       'while [ "$1" = "-v" ]; do shift; done',
       '[ "$1" = "--" ] && shift',
       "shift",
       '[ -n "${SHIM_SSH_SLEEP:-}" ] && sleep "$SHIM_SSH_SLEEP"',
       'command="$*"',
+      'if [ -n "${SHIM_SSH_SLEEP_ON:-}" ]; then case "$command" in *"$SHIM_SSH_SLEEP_ON"*) sleep 5 ;; esac; fi',
       'if [ "${SHIM_STAGE_CHECKOUT_FAIL:-}" = 1 ]; then',
       '  case "$command" in *"checkout --detach"*) echo "fatal: reference is not a tree: deadbeef" >&2; exit 128 ;; esac',
       "fi",
+      "[ \"$verbose\" = 1 ] && [ \"${SHIM_SSH_TWO_KEYS:-}\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureJumpHost' >&2",
       "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureNegotiated' >&2",
       'exec /bin/sh -c "$command"',
     ].join("\n"),
@@ -169,13 +177,18 @@ function fixture(): void {
       "  *) out=''",
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
       '     mkdir -p "$out/nested"',
+      '     [ "${SHIM_PROBE_CLOBBER_MARKER:-}" = 1 ] && printf \'not ours\\n\' > "$out/../../.owned-app-transport-stage"',
       '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/kitty-1.0-macos-run1.json"',
       "     printf 'fixture nested output\\n' > \"$out/nested/extra.log\"",
       "     echo 'fixture probe stdout' ;;",
       "esac",
     ].join("\n"),
   )
-  executable(join(shims, "kitty"), "#!/bin/sh\necho 'kitty 0.49.1'\n")
+  // The kitty the producer launches lives at a fixed path, off PATH; a decoy on PATH proves the
+  // receipt records the launched one, not whichever kitty a lookup finds first.
+  mkdirSync(join(root, "app"), { recursive: true })
+  executable(join(root, "app", "kitty"), "#!/bin/sh\necho 'kitty 0.49.1'\n")
+  executable(join(shims, "kitty"), "#!/bin/sh\necho 'kitty 0.0.0-decoy'\n")
 }
 
 function run(
@@ -190,6 +203,7 @@ function run(
     PATH: `${shims}:/usr/bin:/bin`,
     OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
     OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+    OWNED_APP_TRANSPORT_KITTY_PATH: join(root, "app", "kitty"),
     SHIM_SSH_LOG: sshLog,
     SHIM_RSYNC_LOG: rsyncLog,
     REAL_RSYNC: "/usr/bin/rsync",
@@ -219,6 +233,28 @@ function run(
     { encoding: "utf8", env },
   )
   return result
+}
+
+/** The pinned ssh options, in order, exactly as every ssh spawn and rsync -e must carry them. */
+function pinned(hosts: string): string[] {
+  return [
+    "-F",
+    "/dev/null",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    `UserKnownHostsFile=${hosts}`,
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
+    "-o",
+    "ConnectTimeout=15",
+    "-o",
+    "ServerAliveInterval=15",
+    "-o",
+    "ServerAliveCountMax=4",
+  ]
 }
 
 function proof(result: ReturnType<typeof run>) {
@@ -271,37 +307,12 @@ describe("owned-app ssh transport", () => {
     expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
     expect(existsSync(stage)).toBe(true)
 
-    // Every ssh spawn and every rsync transfer carried the same pinned trust; rsync's -e is the
-    // proof that no transfer fell back to the user's ssh_config.
-    const sshSpawns = lines(sshLog)
-    expect(sshSpawns.length).toBeGreaterThan(3)
-    for (const spawn of sshSpawns) {
-      expect(spawn).toContain("BatchMode=yes")
-      expect(spawn).toContain("StrictHostKeyChecking=yes")
-      expect(spawn).toContain(`UserKnownHostsFile=${knownHosts}`)
-      expect(spawn).toContain("GlobalKnownHostsFile=/dev/null")
-      expect(spawn).toContain("ConnectTimeout=15")
-    }
-    const transfers = lines(rsyncLog)
-    expect(transfers.length).toBeGreaterThan(1)
-    for (const transfer of transfers) {
-      expect(transfer).toContain("-e")
-      expect(transfer).toContain("BatchMode=yes")
-      expect(transfer).toContain("StrictHostKeyChecking=yes")
-      expect(transfer).toContain(`UserKnownHostsFile=${knownHosts}`)
-    }
-
     // The probe reaches the host as ONE bun: the runtime token is replaced, never prefixed twice.
+    const sshSpawns = lines(sshLog)
     const probeSpawn = sshSpawns.find((spawn) => spawn.includes("packages/admin/src/index.ts"))
     expect(probeSpawn).toBeDefined()
     expect(probeSpawn).not.toMatch(/'bun'/)
     expect(probeSpawn).toContain(join(shims, "bun"))
-
-    // Identity comes from the shared sampler, executed from the staged checkout.
-    expect(readFileSync(join(stage, "identity.ts"), "utf8")).toContain("sampleHostedIdentity")
-    expect(readFileSync(join(stage, "identity.ts"), "utf8")).toContain(
-      join(stage, "source", "vendor", "terminfo.dev", "packages", "terminfo.dev", "src", "disposable-receipt.ts"),
-    )
 
     // The producer's own filename contract is carried: the driver never renames or demands a name.
     expect(receipt.output.files.map((file) => file.path)).toContain("kitty-1.0-macos-run1.json")
@@ -311,6 +322,43 @@ describe("owned-app ssh transport", () => {
       const bytes = readFileSync(join(transport, file.path))
       expect(createHash("sha256").update(bytes).digest("hex")).toBe(file.sha256)
     }
+  }, 60_000)
+
+  it("pins every ssh spawn and every rsync -e to the same options, with -F /dev/null first", () => {
+    expect(run().status).toBe(0)
+    // An exact prefix, not presence: ssh keeps the FIRST value it reads, so an option placed ahead
+    // of the pins would win, and -F /dev/null keeps the user's ssh_config out of both. rsync's own
+    // ssh spawns name the host with -l; the driver's name it after --.
+    const sshSpawns = lines(sshLog)
+    expect(sshSpawns.length).toBeGreaterThan(3)
+    const prefix = ["SSH", ...pinned(knownHosts)].join("\t")
+    for (const spawn of sshSpawns) {
+      expect(spawn.startsWith(`${prefix}\t`), spawn).toBe(true)
+      expect(spawn.slice(prefix.length), spawn).toMatch(
+        /^\t((-v\t)?--\tfixture@fixture\.invalid|-l\tfixture\tfixture\.invalid)\t/,
+      )
+    }
+    const transfers = lines(rsyncLog)
+    expect(transfers.length).toBeGreaterThan(1)
+    const shell = ["ssh", ...pinned(knownHosts)].map((token) => `'${token}'`).join(" ")
+    for (const transfer of transfers) {
+      const fields = transfer.split("\t")
+      expect(fields.slice(0, 4), transfer).toEqual(["RSYNC", "-a", "-e", shell])
+      expect(fields.at(-3), transfer).toBe("--")
+    }
+  }, 60_000)
+
+  it("tells the identity sampler the os explicitly, inventing no hosted-runner variable", () => {
+    expect(run().status).toBe(0)
+    const sampler = readFileSync(join(stage, "identity.ts"), "utf8")
+    expect(sampler).toContain('sampleOwnedHostIdentity("macOS")')
+    expect(sampler).not.toContain("RUNNER_OS")
+    expect(sampler).toContain(
+      join(stage, "source", "vendor", "terminfo.dev", "packages", "terminfo.dev", "src", "disposable-receipt.ts"),
+    )
+    const sampleSpawn = lines(sshLog).find((spawn) => spawn.includes("identity.ts") && !spawn.includes("cat >"))
+    expect(sampleSpawn).toBeDefined()
+    expect(sampleSpawn).not.toContain("RUNNER_OS")
   }, 60_000)
 
   it("keeps the persistent stage and refreshes it to new source bytes and a new sha", () => {
@@ -476,15 +524,25 @@ describe("owned-app ssh transport", () => {
   it("refuses an argv that does not name the bun runtime token", () => {
     const result = run({}, [], ["/usr/local/bin/bun", "packages/admin/src/index.ts"])
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain("bun absent")
+    expect(result.stderr).toContain("invalid argv")
+    expect(result.stderr).not.toContain("bun absent")
     expect(result.stderr).toContain("runtime token")
   }, 60_000)
 
   it("refuses a host with no kitty", () => {
-    rmSync(join(shims, "kitty"))
+    rmSync(join(root, "app", "kitty"))
     const result = run()
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("kitty absent")
+  }, 60_000)
+
+  it("records the kitty the producer launches, not whichever kitty PATH finds first", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      runtime: { kitty: { path: string; version: string } }
+    }
+    expect(receipt.runtime.kitty).toEqual({ path: join(root, "app", "kitty"), version: "kitty 0.49.1" })
   }, 60_000)
 
   it("refuses to overwrite a remote output directory from an earlier run", () => {
@@ -524,6 +582,7 @@ describe("owned-app ssh transport", () => {
           PATH: `${shims}:/usr/bin:/bin`,
           OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
           OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+          OWNED_APP_TRANSPORT_KITTY_PATH: join(root, "app", "kitty"),
           SHIM_SSH_LOG: sshLog,
           SHIM_RSYNC_LOG: rsyncLog,
         },
@@ -552,5 +611,180 @@ describe("owned-app ssh transport", () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("receipt mismatch")
     expect(result.stderr).toContain("nested/extra.log")
+  }, 60_000)
+
+  it("accepts a stage under a symlinked ancestor: the host compares against the physical root", () => {
+    // A real symlinked directory, as macOS /tmp -> /private/tmp: realpath answers physically, so a
+    // logical $PWD root would read every valid staged link as an escape.
+    mkdirSync(join(root, "real-parent"), { recursive: true })
+    symlinkSync(join(root, "real-parent"), join(root, "linked-parent"))
+    const result = run({}, [], undefined, "kitty", join(root, "linked-parent", "stage"))
+    expect(result.status, result.stderr).toBe(0)
+    expect(existsSync(join(root, "real-parent", "stage", "source", "extra", "pkg", "index.ts"))).toBe(true)
+  }, 60_000)
+
+  it("accepts a code root reached through a symlink: local containment uses the physical root too", () => {
+    symlinkSync(code, join(root, "code-link"))
+    const result = run({ OWNED_APP_TRANSPORT_RESOURCE_ROOT: join(root, "code-link") })
+    expect(result.status, result.stderr).toBe(0)
+  }, 60_000)
+
+  it("stages every hop of a link chain, not only its final target", () => {
+    // node_modules/@terminfo/bridged -> bridge/pkg -> agx/pkg: the staged first link still needs
+    // bridge, so staging only agx would leave it dangling on the host.
+    mkdirSync(join(code, "agx", "pkg"), { recursive: true })
+    writeFileSync(join(code, "agx", "pkg", "index.ts"), "export const agx = 'bridged'\n")
+    mkdirSync(join(code, "bridge"), { recursive: true })
+    symlinkSync(join("..", "agx", "pkg"), join(code, "bridge", "pkg"))
+    git(code, "add", "agx", "bridge")
+    git(code, "commit", "-q", "-m", "fixture bridge")
+    symlinkSync(join("..", "..", "bridge", "pkg"), join(code, "node_modules", "@terminfo", "bridged"))
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    expect(readFileSync(join(stage, "source", "node_modules", "@terminfo", "bridged", "index.ts"), "utf8")).toBe(
+      "export const agx = 'bridged'\n",
+    )
+  }, 60_000)
+
+  it("refuses a link to vendor/ before any transfer, so nothing copies over the bundle-owned tree", () => {
+    symlinkSync(join("..", "..", "vendor"), join(code, "node_modules", "@terminfo", "vendor-root"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('reaches "vendor", which holds the bundle-owned vendor/terminfo.dev')
+    expect(lines(rsyncLog)).toHaveLength(0)
+  }, 60_000)
+
+  it("stages a closure root at its tracked revision only, never untracked or modified working files", () => {
+    writeFileSync(join(code, "extra", "pkg", "untracked.ts"), "export const untracked = 1\n")
+    writeFileSync(join(code, "extra", "pkg", "index.ts"), "export const extra = 'modified, uncommitted'\n")
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    expect(existsSync(join(stage, "source", "extra", "pkg", "untracked.ts"))).toBe(false)
+    expect(readFileSync(join(stage, "source", "extra", "pkg", "index.ts"), "utf8")).toBe(
+      "export const extra = 'fixture'\n",
+    )
+  }, 60_000)
+
+  it("refuses a closure root its HEAD does not track", () => {
+    mkdirSync(join(code, "loose", "pkg"), { recursive: true })
+    writeFileSync(join(code, "loose", "pkg", "index.ts"), "export const loose = 1\n")
+    symlinkSync(join("..", "..", "loose", "pkg"), join(code, "node_modules", "@terminfo", "loose"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("reaches loose, which")
+    expect(result.stderr).toContain("only tracked files are staged")
+    expect(lines(rsyncLog)).toHaveLength(0)
+  }, 60_000)
+
+  it("refuses a link closure deeper than its pass limit by name instead of cutting it short", () => {
+    // Each pass stages one more hop (the final real target, d5, is found at once), so five
+    // directories need a fourth pass.
+    for (const [from, to] of [
+      ["d1", "d2"],
+      ["d2", "d3"],
+      ["d3", "d4"],
+      ["d4", "d5"],
+    ] as const) {
+      mkdirSync(join(code, from, "x"), { recursive: true })
+      symlinkSync(join("..", "..", to, "x"), join(code, from, "x", "next"))
+    }
+    mkdirSync(join(code, "d5", "x"), { recursive: true })
+    writeFileSync(join(code, "d5", "x", "end.ts"), "export const end = 1\n")
+    git(code, "add", "d1", "d2", "d3", "d4", "d5")
+    git(code, "commit", "-q", "-m", "fixture chain")
+    symlinkSync(join("..", "..", "d1", "x"), join(code, "node_modules", "@terminfo", "chain"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("link closure exceeds 3 passes: links still reach d4")
+    expect(lines(rsyncLog)).toHaveLength(0)
+  }, 60_000)
+
+  it("refuses a host that reports two server host keys, since which one is the host's is a guess", () => {
+    const result = run({ SHIM_SSH_TWO_KEYS: "1" })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("host key mismatch: ssh reported 2 server host keys")
+    expect(existsSync(stage)).toBe(false)
+  }, 60_000)
+
+  it("quotes rsync's -e by rsync's own rule, so a known-hosts path holding a quote stays one word", () => {
+    mkdirSync(join(root, "kh'q"))
+    const quoted = join(root, "kh'q", "known_hosts")
+    writeFileSync(quoted, readFileSync(knownHosts))
+    knownHosts = quoted
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const transfers = lines(rsyncLog)
+    expect(transfers.length).toBeGreaterThan(1)
+    for (const transfer of transfers) expect(transfer).toContain(`'UserKnownHostsFile=${quoted.replace(/'/g, "''")}'`)
+  }, 60_000)
+
+  it("names a timed-out step that may still be running and keeps the stage even when asked to remove it", () => {
+    const result = run({ SHIM_SSH_SLEEP_ON: "checkout --detach" }, ["--ssh-timeout-ms", "3000", "--remove-stage"])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("timeout: stage checkout exceeded 0.05 min")
+    expect(result.stderr).toContain("may still be running on fixture@fixture.invalid, so the stage is kept")
+    expect(readFileSync(join(stage, ".owned-app-transport-stage"), "utf8")).toBe("owned-app-transport stage v1\n")
+  }, 30_000)
+
+  it("removes an owned stage after a failed run when asked, renaming it aside before deleting", () => {
+    const result = run({ SHIM_RSYNC_TAMPER: "1" }, ["--remove-stage"])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("resource manifest mismatch")
+    expect(existsSync(stage)).toBe(false)
+    expect(readdirSync(join(root, "remote"))).toEqual([])
+    expect(lines(sshLog).some((spawn) => /mv -- '[^']*\/stage' '[^']*\/stage\.removing-[0-9a-f]{12}'/.test(spawn))).toBe(
+      true,
+    )
+  }, 60_000)
+
+  it("leaves only the renamed aside when a removal is interrupted, so the stage path is free again", () => {
+    mkdirSync(join(stage, "runs", "locked"), { recursive: true })
+    writeFileSync(join(stage, ".owned-app-transport-stage"), "owned-app-transport stage v1\n")
+    writeFileSync(join(stage, "runs", "locked", "held.txt"), "cannot be unlinked\n")
+    chmodSync(join(stage, "runs", "locked"), 0o555)
+    try {
+      const result = run({}, ["--remove-stage"])
+      expect(result.status).toBe(1)
+      expect(result.stderr).toContain("stage removal failed")
+      expect(result.stderr).toMatch(/moved to \S*\/stage\.removing-[0-9a-f]{12} and only part of it was deleted/)
+      expect(existsSync(stage)).toBe(false)
+      const again = run()
+      expect(again.status, again.stderr).toBe(0)
+    } finally {
+      for (const entry of readdirSync(join(root, "remote"))) {
+        const locked = join(root, "remote", entry, "runs", "locked")
+        if (existsSync(locked)) chmodSync(locked, 0o755)
+      }
+    }
+  }, 60_000)
+
+  it("refuses to remove a stage whose marker changed during the run", () => {
+    const result = run({ SHIM_PROBE_CLOBBER_MARKER: "1" }, ["--remove-stage"])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("stage not owned")
+    expect(result.stderr).toContain("has no valid marker; refusing to delete it")
+    expect(existsSync(join(stage, "runs"))).toBe(true)
+  }, 60_000)
+
+  it("refuses a stage that is the remote home or holds it", () => {
+    for (const home of [stage, join(stage, "home")]) {
+      const result = run({ HOME: home })
+      expect(result.status, home).toBe(1)
+      expect(result.stderr, home).toContain("is the remote home or contains it")
+    }
+    expect(existsSync(stage)).toBe(false)
+  }, 60_000)
+
+  it("refuses a stage that is not normalized or too shallow to own, before any spawn", () => {
+    for (const [candidate, reason] of [
+      [`${join(root, "remote")}//stage`, "is not a normalized path"],
+      [`${join(root, "remote")}/./stage`, "is not a normalized path"],
+      ["/stage", "is too close to the root to own"],
+    ] as const) {
+      const result = run({}, [], undefined, "kitty", candidate)
+      expect(result.status, candidate).toBe(1)
+      expect(result.stderr, candidate).toContain(reason)
+    }
+    expect(lines(sshLog)).toHaveLength(0)
   }, 60_000)
 })

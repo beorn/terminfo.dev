@@ -15,6 +15,7 @@ import {
   bindReceiptToRun,
   parseDisposableReceipt,
   readDisposableReceipt,
+  sampleOwnedHostIdentity,
 } from "./disposable-receipt.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
@@ -299,4 +300,19 @@ test("HOSTED_IDENTITY_SOURCES Windows patterns match real-format lines and captu
   const bootMatch = bootRegex.exec(bootLine)
   expect(bootMatch).toBeDefined()
   expect(bootMatch?.[1]).toBe("2026-10-07T07:57:50.5000000Z")
+})
+
+test("an owned host is sampled for the os its caller names, with no hosted-runner label", () => {
+  // The os is an argument, never RUNNER_OS, and a refusal names an owned host, not a hosted receipt.
+  expect(() => sampleOwnedHostIdentity("Plan9")).toThrow(
+    'Owned host identity has no source table for os "Plan9"; known entries are Linux, macOS, Windows',
+  )
+  let refusal = ""
+  try {
+    sampleOwnedHostIdentity("Linux")
+  } catch (error) {
+    refusal = (error as Error).message
+  }
+  expect(refusal).toBe("Owned host identity machineIdSha256: source /etc/machine-id has no command to measure it")
+  expect(refusal).not.toMatch(/Hosted|hosted|RUNNER_OS/)
 })

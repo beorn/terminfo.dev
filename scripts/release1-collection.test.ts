@@ -44,6 +44,7 @@ import {
   clipboardProfileFor,
   linuxLedger,
   ownedAppCommand,
+  ownedAppRunsDirectory,
   presetFor,
   readOwnedAppTransportProof,
   release1Census,
@@ -926,8 +927,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       "#!/bin/sh",
       "verbose=0",
       'for a in "$@"; do [ "$a" = "-v" ] && verbose=1; done',
-      'while [ "$1" = "-o" ]; do shift 2; done',
-      'while [ "$1" = "-l" ]; do shift 2; done',
+      'while [ "$1" = "-o" ] || [ "$1" = "-F" ] || [ "$1" = "-l" ]; do shift 2; done',
       'while [ "$1" = "-v" ]; do shift; done',
       '[ "$1" = "--" ] && shift',
       "shift",
@@ -977,12 +977,15 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
         PATH: `${shims}:/usr/bin:/bin`,
         OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
         OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+        OWNED_APP_TRANSPORT_KITTY_PATH: join(shims, "kitty"),
         PRODUCER_RUN: producerRun,
         REAL_RSYNC: "/usr/bin/rsync",
       },
     })
     expect(result.status, result.stderr).toBe(0)
-    const transport = join(output, "transport")
+    // The collector's own selector names the directory, exactly where the real driver wrote.
+    const transport = ownedAppRunsDirectory(output, "ssh:fixture@fixture.invalid")
+    expect(ownedAppRunsDirectory(output, "local")).toBe(output)
     // Exactly what the collector's own read does: the receipt beside one run JSON.
     const proof = readOwnedAppTransportProof(join(transport, "transport-receipt.json"), revision)
     expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)

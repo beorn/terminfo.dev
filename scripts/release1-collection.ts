@@ -37,6 +37,7 @@ import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/vers
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
 import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const CONTENT = join(ROOT, "content")
@@ -369,6 +370,12 @@ export function ownedAppCommand(
  * the receipt is a record of where a run started and what bytes it moved, never a permission.
  * The receipt is bound to the revision this pass asked for, so a receipt from another run cannot
  * stand in for the bytes this one measured. */
+/** Where a context's owned-app artifacts land: the local route writes into the context's own
+ * output, the transport driver into <output>/transport. The collector reads from here only. */
+export function ownedAppRunsDirectory(output: string, runner: string): string {
+  return runner === "local" ? output : join(output, "transport")
+}
+
 export function readOwnedAppTransportProof(
   path: string,
   expectedRevision: string,
@@ -391,7 +398,7 @@ export function readOwnedAppTransportProof(
     resourceFiles?: unknown
     output?: { directory?: unknown }
   }
-  if (receipt.schemaVersion !== 1 || receipt.kind !== "owned-app-transport") {
+  if (receipt.schemaVersion !== 1 || receipt.kind !== TRANSPORT_RECEIPT_KIND) {
     throw new Error(`owned-app transport receipt at ${path} is not a schemaVersion 1 owned-app-transport record`)
   }
   if (receipt.grants !== "nothing") {
@@ -563,7 +570,7 @@ export async function collectPass(
         })
         // One home for the transport's artifacts: the driver writes the run JSON and the receipt
         // into <output>/transport, so the collector reads them from exactly there.
-        const runsDirectory = ownedApp.runner === "local" ? output : join(output, "transport")
+        const runsDirectory = ownedAppRunsDirectory(output, ownedApp.runner)
         if (ownedApp.runner !== "local") {
           const proof = readOwnedAppTransportProof(join(runsDirectory, "transport-receipt.json"), sourceRevision)
           row.transport = proof
@@ -1087,7 +1094,7 @@ function usage(): never {
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
       "       bun run release1-collection --collect --admit --frozen-suite <id> --output <private-directory>\n" +
       "       [--owned-app-transport ssh:<user>@<host> --owned-app-stage <remote-dir>\n" +
-      "        [--owned-app-known-hosts <path>] [--owned-app-remove-stage]]\n" +
+      "        --owned-app-known-hosts <path> [--owned-app-remove-stage]]\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +

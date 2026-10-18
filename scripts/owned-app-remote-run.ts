@@ -12,16 +12,17 @@
  * material is product content; `--stage` names the only remote subtree this driver writes, and a
  * stage without this driver's marker is refused rather than deleted.
  *
- * ONE ssh command serves every transfer: the same options reach `ssh` and `rsync -e`, so a transfer
- * cannot quietly fall back to the user's ssh_config. GlobalKnownHostsFile=/dev/null keeps trust to
- * the one file the caller named.
+ * ONE ssh command serves every transfer: the same options reach `ssh` and `rsync -e`, and
+ * `-F /dev/null` keeps the user's ssh_config out of both, so no transfer picks up a ProxyJump, a
+ * KnownHostsCommand or a host alias from it. GlobalKnownHostsFile=/dev/null keeps trust to the one
+ * file the caller named.
  *
  * Steps, each refusing by name:
  *   host unreachable | host key mismatch | bundle missing objects | stage source mismatch |
  *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent |
  *   kitty absent | output collision | rsync incomplete | receipt mismatch |
- *   invalid stage | stage not owned | invalid context | owned-app probe failed | timeout |
- *   invalid timeout
+ *   invalid stage | stage not owned | stage removal failed | invalid context | invalid argv |
+ *   owned-app probe failed | link closure exceeds N passes | timeout | invalid timeout
  *
  * The local resource manifest is computed BEFORE anything is staged and the remote recompute must
  * match it byte for byte; that compare is the proof, not the act of re-staging. The source half of
@@ -29,7 +30,7 @@
  * the bundle can carry — a working tree's ignored files are not staged and so cannot be compared.
  */
 import { spawnSync } from "node:child_process"
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import {
   existsSync,
   lstatSync,
@@ -40,26 +41,32 @@ import {
   readlinkSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, isAbsolute, join, relative as relativePath, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
+import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { KITTY_BINARY_PATH } from "../packages/admin/src/kitty-binary.ts"
 
 /** Production roots. The two environment names exist so this file's own tests can point at an
- * owned fixture tree, and they are honoured ONLY inside the test runner: a real invocation cannot
- * be diverted to another tree by environment alone, it refuses instead. */
+ * owned fixture tree. They are honoured only when VITEST=true, which the test runner sets, and a
+ * run without it refuses them: that stops an override left in a shell from silently diverting a
+ * real run. It is not a security boundary, since VITEST is environment too. */
 const DEFAULT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 function rootOverride(name: string, fallback: string): string {
   const value = process.env[name]
   if (value === undefined || value === "") return fallback
   if (process.env.VITEST !== "true") {
-    throw new Error(`${name} is a test-only override; a real transport run reads its source from this file's position`)
+    throw new Error(`${name} is a test-only override; a real transport run takes its trees and its kitty from fixed positions`)
   }
   return value
 }
 const ROOT = rootOverride("OWNED_APP_TRANSPORT_SOURCE_ROOT", DEFAULT_ROOT)
 const CODE_ROOT = rootOverride("OWNED_APP_TRANSPORT_RESOURCE_ROOT", resolve(ROOT, "../.."))
+/** The kitty the owned-app producer launches; the receipt records this path, never a PATH lookup. */
+const KITTY = rootOverride("OWNED_APP_TRANSPORT_KITTY_PATH", KITTY_BINARY_PATH)
 
 /** Directories copied beside the checkout, and single files. Directory sources are sent with a
  * trailing slash so rsync copies their CONTENTS: a nested copy would duplicate the tree the
@@ -73,6 +80,10 @@ const CONNECT_TIMEOUT_SECONDS = "15"
 /** Default limits. Both are parameters so a test can drive a small one and prove the refusal. */
 const DEFAULT_SSH_TIMEOUT_MS = 15 * 60_000
 const DEFAULT_RSYNC_TIMEOUT_MS = 30 * 60_000
+/** Link-closure passes before the run refuses: a deeper chain is named, never cut short. */
+const CLOSURE_PASSES = 3
+/** The os this driver's hosts run; the identity sampler is told it, never left to infer it. */
+const OWNED_HOST_OS = "macOS"
 const CONTEXT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 export interface OwnedAppRemoteOptions {
@@ -114,15 +125,36 @@ function shq(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
 
+/** rsync splits `-e` itself, not through a shell: a quote groups, a doubled quote inside it is a
+ * literal quote, and a backslash is literal. shq's `'\''` would end rsync's quote instead. */
+function rsyncWord(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
 /** Canonical manifest lines: sorted `path<TAB>kind:value`. The same canonical text is produced from
  * the remote recompute, so equal digests mean equal bytes. */
 function manifestScan(
   root: string,
   entries: readonly string[],
   missing: string,
+  also: readonly string[] = [],
 ): { lines: string[]; linkTargets: string[] } {
   const lines: string[] = []
+  // Staged-relative paths every link depends on: each hop's own lexical target AND the final real
+  // target, so a chain a -> bridge/pkg -> ag/pkg stages bridge as well as ag.
   const linkTargets: string[] = []
+  // Containment is decided on PHYSICAL roots, the same on both sides: a root under a symlinked
+  // ancestor (macOS /tmp -> /private/tmp) would otherwise read its own targets as escapes. `also`
+  // names further roots holding the same staged tree (the closure reaches declared resources
+  // through the code root); each maps onto the same staged-relative paths.
+  const physical = [root, ...also].map((path) => realpathSync(path))
+  const stagedPath = (path: string): string | undefined => {
+    for (const base of physical) {
+      if (path === base) return ""
+      if (path.startsWith(`${base}${sep}`)) return relativePath(base, path).split(sep).join("/")
+    }
+    return undefined
+  }
   const walk = (path: string): void => {
     let info
     try {
@@ -140,6 +172,10 @@ function manifestScan(
         fail("broken staged symlink", `${relative} -> ${target} is absolute and cannot be relocated into the stage`)
       }
       const resolved = resolve(dirname(path), target)
+      // The hop's own text must stay inside the tree, or the host resolves it outside the stage.
+      const hop =
+        resolved === root ? "" : resolved.startsWith(`${root}${sep}`) ? resolved.slice(root.length + 1) : undefined
+      if (hop === undefined) fail("resource manifest mismatch", `${relative} -> ${target} escapes the staged tree`)
       let real: string
       try {
         real = realpathSync(resolved)
@@ -148,11 +184,12 @@ function manifestScan(
       }
       // The real path follows every intermediate link, so a chain that leaves the tree and comes
       // back — or leaves it for good — is refused on the bytes, not on the lexical text.
-      if (real !== root && !real.startsWith(`${root}${sep}`)) {
+      const staged = stagedPath(real)
+      if (staged === undefined) {
         fail("resource manifest mismatch", `${relative} -> ${target} escapes the staged tree`)
       }
-      linkTargets.push(real)
-      lines.push(`${relative}\tsymlink:${target}\tresolved:${relativePath(root, real).split(sep).join("/")}`)
+      linkTargets.push(hop, staged)
+      lines.push(`${relative}\tsymlink:${target}\tresolved:${staged}`)
       return
     }
     if (info.isDirectory()) {
@@ -176,12 +213,18 @@ function manifestScan(
 
 /** Every directory a resolving link reaches must ALSO be staged, or the staged tree holds a link
  * the local tree could resolve and the host cannot. Two segments are kept for vendor/* because the
- * bundle owns vendor/terminfo.dev and must never be rsynced over it. */
-function extraRootsFor(targets: readonly string[], declared: readonly string[], root: string): string[] {
+ * bundle owns vendor/terminfo.dev and must never be rsynced over it; a link to the root, to vendor/
+ * or to any other ancestor of that tree is refused here, before anything is staged. */
+function extraRootsFor(targets: readonly string[], declared: readonly string[]): string[] {
   const extras = new Set<string>()
-  for (const target of targets) {
-    const relative = target.slice(root.length + 1)
-    if (!relative || relative.startsWith(`${STAGED_FROM_BUNDLE}/`) || relative === STAGED_FROM_BUNDLE) continue
+  for (const relative of targets) {
+    if (relative.startsWith(`${STAGED_FROM_BUNDLE}/`) || relative === STAGED_FROM_BUNDLE) continue
+    if (relative === "" || STAGED_FROM_BUNDLE.startsWith(`${relative}/`)) {
+      fail(
+        "resource manifest mismatch",
+        `a staged link reaches ${JSON.stringify(relative || ".")}, which holds the bundle-owned ${STAGED_FROM_BUNDLE}; staging it would copy over the exact-source checkout`,
+      )
+    }
     const parts = relative.split("/").filter(Boolean)
     const first = parts[0]
     if (first === undefined) continue
@@ -334,7 +377,6 @@ function limitOf(raw: string | undefined, fallback: number): number {
 function validateStage(stage: string): void {
   if (!stage.startsWith("/")) fail("invalid stage", `stage ${JSON.stringify(stage)} must be an absolute path`)
   if (resolve(stage) !== stage) fail("invalid stage", `stage ${JSON.stringify(stage)} is not a normalized path`)
-  if (stage === "/") fail("invalid stage", "the stage may not be the filesystem root")
   const segments = stage.split("/").filter(Boolean)
   if (segments.length < 2) fail("invalid stage", `stage ${JSON.stringify(stage)} is too close to the root to own`)
   // A stage travels into rsync's remote operand, so every segment is a plain name: no spaces, no
@@ -356,9 +398,12 @@ function usage(): never {
 
 /** The one ssh command every transfer uses. The known-hosts file is environment-owned input, named
  * explicitly; nothing here writes to it, and the global file is disabled so trust is exactly what
- * the caller named. */
+ * the caller named. `-F /dev/null` keeps every ssh_config file out, the user's and the system's;
+ * and since ssh keeps the FIRST value it reads for an option, nothing may be placed ahead of these. */
 function sshOptions(options: Parsed): string[] {
   return [
+    "-F",
+    "/dev/null",
     "-o",
     "BatchMode=yes",
     "-o",
@@ -376,9 +421,14 @@ function sshOptions(options: Parsed): string[] {
   ]
 }
 
-/** rsync parses `-e` through a shell, so every token is quoted for that shell. */
+/** rsync splits `-e` with its own quote rule, so every token is quoted for that rule. */
 function sshCommandLine(options: Parsed): string {
-  return ["ssh", ...sshOptions(options)].map(shq).join(" ")
+  return ["ssh", ...sshOptions(options)].map(rsyncWord).join(" ")
+}
+
+/** A refusal raised by a timeout: the remote side may still be running, so nothing removes the stage. */
+function isTimeout(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("timeout: ")
 }
 
 function sshRun(
@@ -391,12 +441,16 @@ function sshRun(
   const result = spawnSync(
     "ssh",
     [...sshOptions(options), ...(extra.verbose ? ["-v"] : []), "--", options.transport.slice(4), command],
-    // A wedged connection must fail the run by name rather than hang a collector forever.
+    // A wedged connection must fail the run by name rather than hang a collector forever. Killing
+    // the local ssh does not stop a remote command started without a tty, so the refusal says so.
     { encoding: "utf8", input: extra.input, maxBuffer: 64 * 1024 * 1024, timeout: options.sshTimeoutMs },
   )
   if (result.error) {
     if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
-      fail("timeout", `${label} exceeded ${minutesOf(options.sshTimeoutMs)} min`)
+      fail(
+        "timeout",
+        `${label} exceeded ${minutesOf(options.sshTimeoutMs)} min; the remote command may still be running on ${options.transport.slice(4)}, so the stage is kept`,
+      )
     }
     fail("host unreachable", `${label}: ${result.error.message}`)
   }
@@ -413,11 +467,18 @@ function sshRun(
 }
 
 /** The key ssh ACTUALLY negotiated, not the first record the known-hosts file happens to hold for
- * the host: ssh names it on its own verbose rail after the handshake. */
+ * the host: ssh names it on its own verbose rail after the handshake. Exactly one such line is
+ * required; two mean a second hop answered too, and which key is the host's is then a guess. */
 function hostKeyOf(verboseStderr: string): { algorithm: string; fingerprint: string } {
-  const match = /Server host key: (\S+) (SHA256:\S+)/.exec(verboseStderr)
-  if (!match?.[1] || !match[2]) {
-    fail("host key mismatch", "ssh did not report the host key it verified; no trust is assumed")
+  const matches = [...verboseStderr.matchAll(/Server host key: (\S+) (SHA256:\S+)/g)]
+  const match = matches[0]
+  if (matches.length !== 1 || !match?.[1] || !match[2]) {
+    fail(
+      "host key mismatch",
+      matches.length === 0
+        ? "ssh did not report the host key it verified; no trust is assumed"
+        : `ssh reported ${String(matches.length)} server host keys; exactly one is required, so no trust is assumed`,
+    )
   }
   return { algorithm: match[1], fingerprint: match[2] }
 }
@@ -474,6 +535,71 @@ function archiveOf(options: Parsed, destination: string): string {
   return destination
 }
 
+/** The closure root mirrors CODE_ROOT's top level with links, so a link inside an extracted root
+ * can be checked for existence before its own target root is added. Each added root then replaces
+ * its mirror link with a tracked extract. */
+function closureMirror(closure: string): void {
+  mkdirSync(join(closure, "vendor"), { recursive: true })
+  for (const entry of readdirSync(CODE_ROOT)) {
+    if (entry !== "vendor" && entry !== ".git") symlinkSync(join(CODE_ROOT, entry), join(closure, entry))
+  }
+  const vendor = join(CODE_ROOT, "vendor")
+  if (!existsSync(vendor)) return
+  for (const entry of readdirSync(vendor)) symlinkSync(join(vendor, entry), join(closure, "vendor", entry))
+}
+
+/** A link-closure root ships ONLY what CODE_ROOT's HEAD tracks for it, at the revision HEAD records:
+ * a submodule at its gitlink, a directory at its tree. Untracked and ignored files never reach the
+ * host, and a root HEAD does not track as a directory is refused rather than copied from the disk. */
+function trackedExtract(entry: string, closure: string): void {
+  const listed = spawnSync("git", ["-C", CODE_ROOT, "ls-tree", "HEAD", "--", entry], { encoding: "utf8" })
+  const [, type, object] = /^\d{6} (commit|tree) ([0-9a-f]{40,64})\t/.exec(listed.stdout ?? "") ?? []
+  if (listed.error || listed.status !== 0 || type === undefined || object === undefined) {
+    fail(
+      "resource manifest mismatch",
+      `a staged link reaches ${entry}, which ${CODE_ROOT} HEAD does not track as a directory; only tracked files are staged${listed.status === 0 ? "" : ` (${listed.error?.message ?? listed.stderr.trim()})`}`,
+    )
+  }
+  const destination = join(closure, entry)
+  rmSync(destination, { force: true })
+  mkdirSync(destination, { recursive: true })
+  const archivePath = join(dirname(closure), `${entry.replace(/\//g, "_")}.tar`)
+  const repository = type === "commit" ? join(CODE_ROOT, entry) : CODE_ROOT
+  const archive = spawnSync("git", ["-C", repository, "archive", "--format=tar", "-o", archivePath, object], {
+    encoding: "utf8",
+  })
+  if (archive.error || archive.status !== 0) {
+    fail(
+      "resource manifest mismatch",
+      `git archive ${object} for ${entry}: ${archive.error?.message ?? archive.stderr.trim()}`,
+    )
+  }
+  const extract = spawnSync("tar", ["-x", "-f", archivePath, "-C", destination], { encoding: "utf8" })
+  if (extract.error || extract.status !== 0) {
+    fail("resource manifest mismatch", `tar -x for ${entry}: ${extract.error?.message ?? extract.stderr.trim()}`)
+  }
+}
+
+/** Removal renames the stage aside first, so an interrupted delete never leaves a half-deleted
+ * directory at the stage path that the next run would read as a stranger's: the stage path is
+ * either whole or gone, and only the aside can be partial. */
+function removeStage(options: Parsed): void {
+  const stage = options.stage
+  sshRun(
+    options,
+    "stage removal",
+    "stage not owned",
+    `test "$(cat ${shq(`${stage}/${STAGE_MARKER}`)} 2>/dev/null)" = ${shq(STAGE_MARKER_VALUE)} || { echo ${shq(`stage ${stage} has no valid marker; refusing to delete it`)} >&2; exit 7; }`,
+  )
+  const aside = `${stage}.removing-${randomBytes(6).toString("hex")}`
+  sshRun(
+    options,
+    "stage removal",
+    "stage removal failed",
+    `mv -- ${shq(stage)} ${shq(aside)} || exit 1; find ${shq(aside)} -depth -delete || { echo ${shq(`the stage was moved to ${aside} and only part of it was deleted`)} >&2; exit 1; }`,
+  )
+}
+
 function rsync(
   options: Parsed,
   label: string,
@@ -487,7 +613,10 @@ function rsync(
   })
   if (result.error) {
     if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
-      fail("timeout", `${label} exceeded ${minutesOf(options.rsyncTimeoutMs)} min`)
+      fail(
+        "timeout",
+        `${label} exceeded ${minutesOf(options.rsyncTimeoutMs)} min; the remote rsync may still be running on ${options.transport.slice(4)}, so the stage is kept`,
+      )
     }
     fail("rsync incomplete", `rsync ${source} -> ${destination}: ${result.error.message}`)
   }
@@ -525,20 +654,42 @@ function main(options: Parsed): OwnedAppTransportProof {
   // The local manifest is bound before a single byte is staged: source from git archive, resources
   // from the code tree that will actually be copied.
   const scratch = mkdtempSync(join(tmpdir(), "owned-app-transport-"))
+  // Set once this run has verified or written the stage marker: from then on a failed run still
+  // honours --remove-stage, except after a timeout, when the remote side may still be using it.
+  let owned = false
   try {
     const archived = archiveOf(options, join(scratch, "archive"))
     const declared = [...RESOURCE_DIRS, ...RESOURCE_FILES]
+    const scan = manifestScan(CODE_ROOT, declared, "resource manifest mismatch")
+    // Roots a link reaches beyond the declared resources ship from tracked extracts only, so the
+    // closure is walked over the extracts, never over a working tree's untracked files.
+    const closure = join(scratch, "closure")
+    closureMirror(closure)
     let extras: string[] = []
-    let scan = manifestScan(CODE_ROOT, declared, "resource manifest mismatch")
-    for (let pass = 0; pass < 3; pass += 1) {
-      const added = extraRootsFor(scan.linkTargets, [...declared, ...extras], CODE_ROOT).filter(
+    const closureLines: string[] = []
+    let targets = scan.linkTargets
+    for (let pass = 0; ; pass += 1) {
+      const added = extraRootsFor(targets, [...declared, ...extras]).filter(
         (root) => !extras.includes(root),
       )
       if (added.length === 0) break
+      if (pass === CLOSURE_PASSES) {
+        fail(
+          `link closure exceeds ${String(CLOSURE_PASSES)} passes`,
+          `links still reach ${added.join(", ")} after ${String(CLOSURE_PASSES)} rounds of staging their targets; the chain is refused, never cut short`,
+        )
+      }
+      for (const entry of added) trackedExtract(entry, closure)
       extras = [...extras, ...added]
-      scan = manifestScan(CODE_ROOT, [...declared, ...extras], "resource manifest mismatch")
+      const next = manifestScan(closure, added, "resource manifest mismatch", [CODE_ROOT])
+      closureLines.push(...next.lines)
+      targets = next.linkTargets
     }
-    const localLines = [...manifestScan(archived, [], "resource manifest mismatch").lines, ...scan.lines]
+    const localLines = [
+      ...manifestScan(archived, [], "resource manifest mismatch").lines,
+      ...scan.lines,
+      ...closureLines,
+    ]
     localLines.sort()
     const local = digestValue(localLines)
     if (local.files === 0) fail("resource manifest mismatch", "the declared resources produced no files")
@@ -562,6 +713,7 @@ function main(options: Parsed): OwnedAppTransportProof {
         `printf '%s\\n' ${shq(STAGE_MARKER_VALUE)} > ${shq(`${stage}/${STAGE_MARKER}`)}`,
       ].join("\n"),
     )
+    owned = true
     rsync(options, "bundle transfer", bundle, `${userAndHost}:${stage}/source.bundle`)
     // Source reaches the host as a bundle and is fetched by the exact ref the bundle records, so a
     // revision that is not the current HEAD still lands; git's own stderr is kept on failure.
@@ -587,8 +739,11 @@ function main(options: Parsed): OwnedAppTransportProof {
     ).stdout.trim()
     if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
 
-    for (const entry of [...RESOURCE_DIRS, ...extras]) {
-      rsync(options, `resource transfer ${entry}`, `${CODE_ROOT}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
+    for (const [from, entry] of [
+      ...RESOURCE_DIRS.map((entry) => [CODE_ROOT, entry] as const),
+      ...extras.map((entry) => [closure, entry] as const),
+    ]) {
+      rsync(options, `resource transfer ${entry}`, `${from}/${entry}/`, `${userAndHost}:${source}/${entry}/`, [
         "--delete",
         "--exclude=.git",
       ])
@@ -608,13 +763,16 @@ function main(options: Parsed): OwnedAppTransportProof {
       "remote symlink listing",
       "broken staged symlink",
       [
-        `cd ${shq(source)}`,
+        // The physical root, never the logical $PWD: under a symlinked ancestor (macOS /tmp) realpath
+        // answers physically, so a logical root would read every valid link as an escape.
+        `cd ${shq(source)} && R=$(pwd -P) && export R &&`,
         `find . \\( -name .git -prune \\) -o -type l -exec sh -c '`,
         `  target=$(readlink "$1")`,
         `  if [ ! -e "$1" ]; then printf "%s\\t%s\\tdangling\\t%s\\n" "$1" "$target" "-"; exit 0; fi`,
         `  real=$(realpath "$1")`,
         `  case "$real" in`,
-        `    "$PWD"/*) printf "%s\\t%s\\tok\\t%s\\n" "$1" "$target" "\${real#"$PWD"/}" ;;`,
+        `    "$R") printf "%s\\t%s\\tok\\t%s\\n" "$1" "$target" "" ;;`,
+        `    "$R"/*) printf "%s\\t%s\\tok\\t%s\\n" "$1" "$target" "\${real#"$R"/}" ;;`,
         `    *) printf "%s\\t%s\\tescaped\\t%s\\n" "$1" "$target" "$real" ;;`,
         `  esac`,
         `' _ {} \\;`,
@@ -630,8 +788,13 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     const bun = sshRun(options, "bun lookup", "bun absent", "command -v bun").stdout.trim()
     if (!bun) fail("bun absent", `no bun on ${hostname}; the probe cannot start`)
-    const kitty = sshRun(options, "kitty lookup", "kitty absent", "command -v kitty || true").stdout.trim()
-    if (!kitty) fail("kitty absent", `no kitty executable on ${hostname}; the owned-app probe cannot launch it`)
+    const kitty = sshRun(
+      options,
+      "kitty lookup",
+      "kitty absent",
+      `test -x ${shq(KITTY)} && echo ${shq(KITTY)} || true`,
+    ).stdout.trim()
+    if (!kitty) fail("kitty absent", `no kitty at ${KITTY} on ${hostname}, the path the owned-app producer launches`)
 
     const remoteOutput = `${stage}/runs/${options.sourceRevision.slice(0, 12)}-${options.context}`
     sshRun(options, "remote output directory", "output collision", `mkdir -m 700 ${shq(remoteOutput)}`)
@@ -646,7 +809,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     // never reaches the host as "bun bun ...".
     const [runtime, ...probeArgs] = options.argv
     if (runtime !== "bun") {
-      fail("bun absent", `the owned-app argv must start with the bun runtime token, got ${JSON.stringify(runtime)}`)
+      fail("invalid argv", `the owned-app argv must start with the bun runtime token, got ${JSON.stringify(runtime)}`)
     }
     const probe = sshRun(
       options,
@@ -688,20 +851,17 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     const samplerScript = join(stage, "identity.ts")
     sshRun(options, "identity sampler", "receipt mismatch", `cat > ${shq(samplerScript)}`, {
+      // The os is named here, explicitly: an owned host is not a hosted runner, so no hosted-runner
+      // variable is set for the sampler to read.
       input:
-        `import { sampleHostedIdentity } from ${JSON.stringify(`${checkout}/packages/terminfo.dev/src/disposable-receipt.ts`)}\n` +
-        `const required = (key: string): string => {\n` +
-        `  const value = process.env[key]\n` +
-        `  if (value === undefined || value === "") throw new Error(\`required environment variable \${key} is absent\`)\n` +
-        `  return value\n` +
-        `}\n` +
-        `process.stdout.write(JSON.stringify(sampleHostedIdentity(required)))\n`,
+        `import { sampleOwnedHostIdentity } from ${JSON.stringify(`${checkout}/packages/terminfo.dev/src/disposable-receipt.ts`)}\n` +
+        `process.stdout.write(JSON.stringify(sampleOwnedHostIdentity(${JSON.stringify(OWNED_HOST_OS)})))\n`,
     })
     const sampled = sshRun(
       options,
       "identity sample",
       "receipt mismatch",
-      `cd ${shq(stage)} && RUNNER_OS=macOS ${shq(bun)} ${shq(samplerScript)}`,
+      `cd ${shq(stage)} && ${shq(bun)} ${shq(samplerScript)}`,
     )
     let identity: Record<string, string>
     try {
@@ -723,7 +883,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     if (!kittyVersion) fail("receipt mismatch", `${kitty} reported no version; the runtime identity is incomplete`)
     const receipt = {
       schemaVersion: 1,
-      kind: "owned-app-transport",
+      kind: TRANSPORT_RECEIPT_KIND,
       grants: "nothing",
       transport: options.transport,
       host: { hostname, home },
@@ -758,12 +918,8 @@ function main(options: Parsed): OwnedAppTransportProof {
     }
 
     if (options.removeStage) {
-      sshRun(
-        options,
-        "stage removal",
-        "stage not owned",
-        `test "$(cat ${shq(`${stage}/${STAGE_MARKER}`)} 2>/dev/null)" = ${shq(STAGE_MARKER_VALUE)} && find ${shq(stage)} -depth -delete`,
-      )
+      owned = false
+      removeStage(options)
     }
 
     return {
@@ -774,6 +930,15 @@ function main(options: Parsed): OwnedAppTransportProof {
       receiptSha256,
       remoteOutput,
     }
+  } catch (error) {
+    if (options.removeStage && owned && !isTimeout(error)) {
+      try {
+        removeStage(options)
+      } catch (removal) {
+        throw new Error(`${String((error as Error).message)}; ${String((removal as Error).message)}`)
+      }
+    }
+    throw error
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }

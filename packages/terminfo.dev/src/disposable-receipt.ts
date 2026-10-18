@@ -124,38 +124,59 @@ export function sampleHostedIdentity(required: (key: string) => string): Record<
       `Hosted receipt has no producer for RUNNER_OS=${JSON.stringify(os)}; ratified entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
     )
   }
-  const ratified = HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES] as {
+  return sampleIdentity(os as keyof typeof HOSTED_IDENTITY_SOURCES, "Hosted receipt", true)
+}
+
+/** The same sources, sampled on a host the caller owns. The os is the caller's explicit argument,
+ * never a hosted-runner variable, and nothing it prints claims a hosted runner or the hosted
+ * scopes (vm, image): those describe disposable runners, not an owned machine. */
+export function sampleOwnedHostIdentity(os: string): Record<string, string> {
+  if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
+    throw new Error(
+      `Owned host identity has no source table for os ${JSON.stringify(os)}; known entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
+    )
+  }
+  return sampleIdentity(os as keyof typeof HOSTED_IDENTITY_SOURCES, "Owned host identity", false)
+}
+
+function sampleIdentity(
+  os: keyof typeof HOSTED_IDENTITY_SOURCES,
+  subject: string,
+  hosted: boolean,
+): Record<string, string> {
+  const ratified = HOSTED_IDENTITY_SOURCES[os] as {
     sources: Record<string, HostedSource>
   }
   return Object.fromEntries(
     Object.entries(ratified.sources).map(([field, source]) => {
       const { command, args, pattern } = source
       if (command === undefined || args === undefined || pattern === undefined) {
-        throw new Error(`Hosted receipt ${field}: source ${source.source} is not produced by the hosted producer`)
+        throw new Error(
+          `${subject} ${field}: source ${source.source} ${hosted ? "is not produced by the hosted producer" : "has no command to measure it"}`,
+        )
       }
       const result = spawnSync(command, [...args], { encoding: "utf8" })
       if (result.error || result.status !== 0) {
         throw new Error(
-          `Hosted receipt ${field}: ${command} failed with exit ${result.status}, signal ${result.signal}; cannot measure ${source.source}`,
+          `${subject} ${field}: ${command} failed with exit ${result.status}, signal ${result.signal}; cannot measure ${source.source}`,
         )
       }
       const value = new RegExp(pattern).exec(result.stdout)?.[1]
       if (!value) {
-        throw new Error(`Hosted receipt ${field}: ${source.source} returned no value; no identity is substituted`)
+        throw new Error(`${subject} ${field}: ${source.source} returned no value; no identity is substituted`)
       }
       if (/^(0{8}-0{4}-0{4}-0{4}-0{12}|[fF]{8}-[fF]{4}-[fF]{4}-[fF]{4}-[fF]{12})$/.test(value)) {
         throw new Error(
-          `Hosted receipt ${field}: ${source.source} returned degenerate UUID (all-zero or all-F); refusing by name`,
+          `${subject} ${field}: ${source.source} returned degenerate UUID (all-zero or all-F); refusing by name`,
         )
       }
       if (/^00[:-]00[:-]00[:-]00[:-]00[:-]00$/.test(value)) {
-        throw new Error(`Hosted receipt ${field}: ${source.source} returned degenerate all-zero MAC; refusing by name`)
+        throw new Error(`${subject} ${field}: ${source.source} returned degenerate all-zero MAC; refusing by name`)
       }
       const hash = createHash("sha256").update(value).digest("hex")
       const label = `${command} ${args.join(" ")}`
-      process.stderr.write(
-        `${field}: ${label} · ${source.scope} · ${Buffer.byteLength(value)} bytes · sha256:${hash}\n`,
-      )
+      const scope = hosted ? ` · ${source.scope}` : ""
+      process.stderr.write(`${field}: ${label}${scope} · ${Buffer.byteLength(value)} bytes · sha256:${hash}\n`)
       return [field, hash]
     }),
   )
