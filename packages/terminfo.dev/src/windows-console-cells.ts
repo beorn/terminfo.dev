@@ -27,7 +27,14 @@
  *  - Nothing here guesses: a buffer that is the wrong size, a coord that cannot be packed, a read
  *    region the host changed and a native call that fails are all named before any cell is reported.
  */
-import { CSBI_BYTES, decodeConsoleWindowRect, withConsoleOutputHandle } from "./windows-console-ffi.ts"
+import { createHash } from "node:crypto"
+import { readFileSync } from "node:fs"
+import {
+  CSBI_BYTES,
+  decodeConsoleWindowRect,
+  readProcessImagePath,
+  withConsoleOutputHandle,
+} from "./windows-console-ffi.ts"
 import { loadKernel32, type Kernel32 } from "./windows-kernel32.ts"
 import { windowsCommBase, type WindowsProcessRow } from "./windows-process-ancestry.ts"
 
@@ -85,14 +92,27 @@ export type ConsoleHostImage = (typeof CONSOLE_HOST_IMAGES)[number]
 
 /** A console host as the process table names it. The pid is the host's own and the ppid is the
  * terminal that started it, because a buffer attributed to the wrong program decides nothing. */
-export interface ConsoleHostIdentity {
+export interface ConsoleHostProcess {
   readonly image: ConsoleHostImage
   readonly pid: number
   readonly ppid: number
 }
 
+/** The process-table identity, plus the executable this run opened and hashed. A read is attributed
+ * to a program only when both are known: an image name alone cannot be checked against the receipt
+ * the run carries (30042). */
+export interface ConsoleHostIdentity extends ConsoleHostProcess {
+  readonly executablePath: string
+  readonly executableSha256: string
+}
+
 /** Selecting the buffer owner, or the named reason it cannot be selected. */
 export type ConsoleHostLookup =
+  | { readonly status: "named"; readonly host: ConsoleHostProcess }
+  | { readonly status: "refused"; readonly reason: string }
+
+/** The executable-bearing identity, or the named reason the read has none. */
+export type ConsoleHostIdentityLookup =
   | { readonly status: "named"; readonly host: ConsoleHostIdentity }
   | { readonly status: "refused"; readonly reason: string }
 
@@ -142,6 +162,43 @@ export function consoleHostFromTable(
 export function consoleBufferOwner(lookup: ConsoleHostLookup | undefined): ConsoleHostLookup {
   // A refusal from the table already names what was looked for, so it passes through as it is.
   return lookup ?? { status: "refused", reason: "this arm selected no console host" }
+}
+
+export type ExecutableHasher = (path: string) => string
+
+const hashExecutable = (path: string): string =>
+  `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`
+
+/**
+ * Join the process-table identity to the executable it is actually running: resolve the path (per
+ * read, because a pid can be reused) and hash the file once per pid and path. The cache belongs to
+ * the collector run, so a run that took 598 captures hashes its console host once; a hash failure
+ * refuses only the read that asked instead of poisoning the cache.
+ */
+export function resolveConsoleHostIdentity(
+  process: ConsoleHostProcess,
+  options: { readonly kernel?: Kernel32; readonly cache: Map<string, string>; readonly hash?: ExecutableHasher },
+): ConsoleHostIdentityLookup {
+  const resolved = readProcessImagePath(process.pid, options.kernel)
+  if (resolved.status === "refused") return resolved
+  // The key names the INCARNATION, not the pid: Windows reuses pids, and a reused pid running
+  // different bytes at the same path would otherwise publish the former process's digest for the
+  // new one's frames. Creation time changes with the process, so one live host still hashes once
+  // and a new process hashes again (30042, CTO ruling 910846c7).
+  const key = `${String(process.pid)}\u0000${resolved.createdAt}\u0000${resolved.path}`
+  let digest = options.cache.get(key)
+  if (digest === undefined) {
+    try {
+      digest = (options.hash ?? hashExecutable)(resolved.path)
+    } catch (error) {
+      return {
+        status: "refused",
+        reason: `cannot hash the executable of console host pid ${String(process.pid)} at ${resolved.path}: ${(error as Error).message}`,
+      }
+    }
+    options.cache.set(key, digest)
+  }
+  return { status: "named", host: { ...process, executablePath: resolved.path, executableSha256: digest } }
 }
 
 /** The console a read saw must be the console this run bound to: a read on another console is not

@@ -72,6 +72,83 @@ export function readWindowsConsoleIdentity(kernel?: Kernel32): string {
   return String(symbols.GetConsoleWindow())
 }
 
+/** The least right that answers "which executable is this pid running":
+ * PROCESS_QUERY_LIMITED_INFORMATION, which a hosted runner grants without elevation. */
+export const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+/** One long-path buffer, in UTF-16 code units: MAX_PATH is not the ceiling on Windows, and a
+ * truncated path would name a file this run never hashed. */
+export const EXECUTABLE_PATH_CHARS = 32_768
+/** One FILETIME: two little-endian DWORDs of 100-ns ticks since 1601. */
+const FILETIME_BYTES = 8
+
+/**
+ * The executable a pid is running and the incarnation that runs it, or the named reason either
+ * could not be read. `createdAt` is GetProcessTimes' creation FILETIME in 100-ns ticks since 1601:
+ * a reused PID has a new one, so it separates two processes that share a pid and an image path
+ * (30042, CTO ruling 910846c7).
+ */
+export type ExecutablePathLookup =
+  | { readonly status: "named"; readonly path: string; readonly createdAt: string }
+  | { readonly status: "refused"; readonly reason: string }
+
+/**
+ * Resolve a process's image path with QueryFullProcessImageNameW and its creation time with
+ * GetProcessTimes, on ONE handle: PROCESS_QUERY_LIMITED_INFORMATION serves both calls, so the
+ * identity is read from a single incarnation and no second open can see a different process. Every
+ * failure reads GetLastError FIRST and becomes a named refusal: the caller attributes a buffer to
+ * this program, so an empty or guessed path would be worse than no read at all (30042).
+ */
+export function readProcessImagePath(pid: number, kernel?: Kernel32): ExecutablePathLookup {
+  const { symbols, ptr } = kernel ?? loadKernel32()
+  const handle = symbols.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION as never, 0 as never, pid as never)
+  // OpenProcess returns NULL on failure. INVALID_HANDLE_VALUE is CreateFileW's sentinel, not this
+  // call's, so the test is zero rather than the shared constant.
+  if (handle === 0n) {
+    const code = symbols.GetLastError()
+    return { status: "refused", reason: `cannot open console host pid ${String(pid)}: error ${String(code)}` }
+  }
+  try {
+    const name = Buffer.alloc(EXECUTABLE_PATH_CHARS * 2)
+    const size = Buffer.alloc(4)
+    size.writeUInt32LE(EXECUTABLE_PATH_CHARS, 0)
+    if (symbols.QueryFullProcessImageNameW(handle as never, 0 as never, ptr(name) as never, ptr(size) as never) === 0) {
+      const code = symbols.GetLastError()
+      return {
+        status: "refused",
+        reason: `cannot read the executable path of console host pid ${String(pid)}: error ${String(code)}`,
+      }
+    }
+    // lpdwSize returns the number of UTF-16 code units written, NOT bytes: decoding by bytes would
+    // append half the following unit and name a file this run never opened.
+    const characters = size.readUInt32LE(0)
+    if (characters === 0 || characters > EXECUTABLE_PATH_CHARS) {
+      return {
+        status: "refused",
+        reason: `console host pid ${String(pid)} reported ${String(characters)} executable-path characters`,
+      }
+    }
+    // GetProcessTimes refuses a NULL pointer for any of its four FILETIMEs, so one 32-byte block
+    // carries all four and only the first is read.
+    const times = Buffer.alloc(FILETIME_BYTES * 4)
+    const at = (index: number) => ptr(times.subarray(index * FILETIME_BYTES, (index + 1) * FILETIME_BYTES)) as never
+    if (symbols.GetProcessTimes(handle as never, at(0), at(1), at(2), at(3)) === 0) {
+      const code = symbols.GetLastError()
+      return {
+        status: "refused",
+        reason: `cannot read the creation time of console host pid ${String(pid)}: error ${String(code)}`,
+      }
+    }
+    // The creation FILETIME is the FIRST 8-byte slot and nothing else: its high DWORD is at byte 4,
+    // and byte 8 is the start of the exit FILETIME. Reading the whole u64 keeps every tick the
+    // kernel reported — a Number would round the low bits away — and stops a second FILETIME being
+    // mixed into the key at all.
+    const ticks = times.readBigUInt64LE(0)
+    return { status: "named", path: name.toString("utf16le", 0, characters * 2), createdAt: String(ticks) }
+  } finally {
+    symbols.CloseHandle(handle as never)
+  }
+}
+
 /** Open this process's CONOUT$ for the duration of one read. Every console read on this arm goes
  * through here, so the handle dance (and the GetLastError-before-anything-else rule) exists once. */
 export async function withConsoleOutputHandle<T>(

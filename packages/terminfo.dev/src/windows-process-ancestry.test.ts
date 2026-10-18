@@ -327,6 +327,11 @@ describe("queryWindowsProcessExecutablePath and detectHostedWindowsAncestor", ()
       symbols: {
         GetConsoleWindow: () => 0n,
         GetConsoleScreenBufferInfo: () => 0,
+        // The ancestry path reads an image path, never an incarnation. Loud rather than a quiet
+        // zero, so a future call here fails the test instead of reporting a creation time of zero.
+        GetProcessTimes: () => {
+          throw new Error("GetProcessTimes is not read on the process-ancestry path")
+        },
         CreateToolhelp32Snapshot: () => 77n,
         Process32FirstW: (_snapshot, entry) => {
           if (rows.length === 0) return 0

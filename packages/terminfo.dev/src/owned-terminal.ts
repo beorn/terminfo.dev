@@ -11,6 +11,7 @@ import {
   consoleHostFromTable,
   consoleIdentityMismatch,
   readWindowsConsoleCells,
+  resolveConsoleHostIdentity,
   type ConsoleCellRead,
   type ConsoleHostLookup,
 } from "./windows-console-cells.ts"
@@ -625,6 +626,9 @@ export async function createOwnedTerminal(options: {
           : undefined
       : undefined
   const darwinTextTty = binding.platform === "darwin" ? binding.tabTty : undefined
+  // One executable digest per console host per run: the identity is resolved on every read because
+  // a pid can be reused, but a 598-capture run has no reason to hash the same file 598 times.
+  const windowsExecutableDigests = new Map<string, string>()
   try {
     if (linux) clipboard = await createLinuxClipboardAdapter(linux.receiptPath, expectedLaunchRunId, linux.executable)
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
@@ -705,7 +709,12 @@ export async function createOwnedTerminal(options: {
           if (mismatch !== undefined) throw new Error(mismatch)
           const bufferOwner = consoleBufferOwner(windowsConsoleHost)
           if (bufferOwner.status === "refused") return { status: "refused", reason: bufferOwner.reason }
-          return readWindowsConsoleCells({ bufferOwner: bufferOwner.host, kernel: windowsKernel })
+          const hostIdentity = resolveConsoleHostIdentity(bufferOwner.host, {
+            kernel: windowsKernel,
+            cache: windowsExecutableDigests,
+          })
+          if (hostIdentity.status === "refused") return { status: "refused", reason: hostIdentity.reason }
+          return readWindowsConsoleCells({ bufferOwner: hostIdentity.host, kernel: windowsKernel })
         },
       }),
       ...(darwinTextApp !== undefined &&

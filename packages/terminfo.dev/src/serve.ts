@@ -163,13 +163,13 @@ export function textCellsFrame(
     trace: {
       kind: "text-cells",
       retained: `${hex}.txt`,
-      // What was actually read. On Windows it is the console host's buffer, and this collector
-      // records that host's image name only — its path and digest are not captured — so the label
-      // says what is known and names what is missing (30033 ruling f1f3c64b).
+      // What was actually read. On Windows it is the console host's buffer, and the read now
+      // records the host executable's path and digest, so the label names both rather than
+      // promising a fact the trace does not carry (30033 ruling f1f3c64b; 30042).
       source:
         bufferOwner === undefined
           ? "the terminal's own text snapshot"
-          : `the console host's buffer (${bufferOwner.image}); path and sha256 not recorded`,
+          : `the console host's buffer (${bufferOwner.image}); executable ${bufferOwner.executablePath} ${bufferOwner.executableSha256}`,
       ...(outside.length === 0 ? {} : { standIns: outside }),
       ...(textGrid === undefined ? {} : { droppedLines: textGrid.droppedLines, paddedRows: textGrid.paddedRows }),
       ...(bufferOwner === undefined ? {} : { bufferOwner }),

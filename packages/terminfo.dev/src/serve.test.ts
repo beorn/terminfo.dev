@@ -816,7 +816,7 @@ describe("private finite daemon startup", () => {
           readCells: async () => ({
             status: "read",
             grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
-            bufferOwner: { image: "OpenConsole.exe", pid: 1, ppid: 2 },
+            bufferOwner: { image: "OpenConsole.exe", pid: 1, ppid: 2, executablePath: "C:\\\\Windows\\\\System32\\\\OpenConsole.exe", executableSha256: "sha256:" + "a".repeat(64) },
             standIns: []
           }),
           dispose: async () => {}
@@ -911,7 +911,7 @@ describe("private finite daemon startup", () => {
           readCells: async () => ({
             status: "read",
             grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
-            bufferOwner: { image: "conhost.exe", pid: 7216, ppid: 4684 }
+            bufferOwner: { image: "conhost.exe", pid: 7216, ppid: 4684, executablePath: "C:\\\\Windows\\\\System32\\\\conhost.exe", executableSha256: "sha256:" + "b".repeat(64) }
           }),
           dispose: async () => {}
         })
