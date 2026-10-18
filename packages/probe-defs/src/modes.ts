@@ -410,7 +410,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     role: ObservationFrame["role"],
     setting: string,
     label: string,
-  ): Promise<{ changed: boolean; firstElapsedMs: number }> => {
+  ): Promise<{ changed: boolean; firstElapsedMs: number; screenshotRef: string }> => {
     const startedAt = Date.now()
     ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
@@ -419,7 +419,11 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       setTimeout(resolve, DECSSCLS_SETTLE_MS)
     })
     const second = await capture(role, `${label} t1`)
-    return { changed: decssclsFrameDigest(first) !== decssclsFrameDigest(second), firstElapsedMs }
+    return {
+      changed: decssclsFrameDigest(first) !== decssclsFrameDigest(second),
+      firstElapsedMs,
+      screenshotRef: second.ref,
+    }
   }
   const restored = "CSI 0 SP p (documented default; the prior setting is not queryable)"
   try {
@@ -443,6 +447,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
         evidence: "pixels",
+        screenshotRef: target.screenshotRef,
         frames,
         note: "Frames retained without an assertion: the capture route returns an opaque encoded-frame ref, not a raw whole-screen digest, and a repaint during the target pair changes it without proving scroll movement",
       },

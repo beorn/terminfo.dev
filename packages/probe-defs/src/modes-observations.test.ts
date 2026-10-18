@@ -639,6 +639,7 @@ test("modes.decsscls retains a changing target pair without asserting scrolling"
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "pixels",
+    screenshotRef: "slow-t1",
   })
   expect(result.assertions).toBeUndefined()
   expect(frames).toHaveLength(4)
