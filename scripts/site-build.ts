@@ -22,6 +22,7 @@ import {
   invalidateBuildStamp,
   peakBreachMessage,
   peakCeilingBytes,
+  phasePeaksMessage,
   startPeakGuard,
 } from "./build-peak-guard.ts"
 import { siteDistDir, siteTempDir } from "./site-out.ts"
@@ -80,6 +81,9 @@ const guard = startPeakGuard({
         ? "site-build: the breach came before any served stamp existed; nothing to invalidate"
         : `site-build: removed the served stamp (${invalidated.join(", ")}), so this output is never served`,
     )
+    // A breached build still reports its phase band: the failing run is exactly the one worth measuring, and the
+    // exit below would otherwise be the only outcome that never printed it.
+    console.log(phasePeaksMessage(guard.phasePeaks()))
     // The build owns a scratch root, not the served dist: a half-built output is never served, because landed-serve
     // refuses the output of a failed build and the health probe keeps answering `starting` until it is rebuilt.
     process.exit(1)
@@ -89,10 +93,13 @@ const guard = startPeakGuard({
 /** One line, whatever the outcome: the peak this build measured against its ceiling, so the unit's log carries it. */
 function reportPeak(status: string): void {
   const where = guard.peakPhase()
+  const gib = (bytes: number): string => (bytes / 1024 ** 3).toFixed(2)
   console.log(
-    `site-build: ${status} — peak resident ${(guard.peakBytes() / 1024 ** 3).toFixed(2)} GB ` +
+    `site-build: ${status} — peak resident ${gib(guard.peakBytes())} GB ` +
       `(ceiling ${(ceilingBytes / 1024 ** 3).toFixed(2)} GB; largest in ${where?.label ?? "no phase named"})`,
   )
+  // Every phase's own high-water, not only the largest: the next measurement chooses what to bound from the band.
+  console.log(phasePeaksMessage(guard.phasePeaks()))
 }
 
 /**

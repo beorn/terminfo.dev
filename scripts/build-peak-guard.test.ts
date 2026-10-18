@@ -14,6 +14,7 @@ import {
   invalidateBuildStamp,
   peakBreachMessage,
   peakCeilingBytes,
+  phasePeaksMessage,
   installRenderPhaseHook,
   startPeakGuard,
 } from "./build-peak-guard.ts"
@@ -71,6 +72,59 @@ describe("startPeakGuard", () => {
     expect(onBreach).toHaveBeenCalledTimes(1)
     expect(guard.peakBytes()).toBe(5000)
     guard.stop()
+  })
+
+  it("reports every phase's own high-water, not only the largest", async () => {
+    vi.useFakeTimers()
+    let rss = 100
+    const guard = startPeakGuard({ ceilingBytes: 10_000, rss: () => rss, onBreach: vi.fn() })
+    guard.phase("bundles")
+    rss = 800
+    await vi.advanceTimersByTimeAsync(600)
+    guard.phase("rendering pages")
+    rss = 500
+    await vi.advanceTimersByTimeAsync(600)
+    rss = 900
+    await vi.advanceTimersByTimeAsync(600)
+    guard.phase("emit")
+    rss = 700
+    await vi.advanceTimersByTimeAsync(600)
+    guard.stop()
+    expect(guard.phasePeaks()).toEqual([
+      { label: "startup", bytes: 100 },
+      { label: "bundles", bytes: 800 },
+      { label: "rendering pages", bytes: 900 },
+      { label: "emit", bytes: 700 },
+    ])
+  })
+
+  it("measures a phase that begins and ends between two sample ticks, at the boundary", () => {
+    // The 500 ms interval never fires here: a fast build can run four phases without yielding to a tick, and the
+    // boundary sample is then each phase's only measurement.
+    let rss = 100
+    const guard = startPeakGuard({ ceilingBytes: 1_000_000, rss: () => rss, onBreach: vi.fn() })
+    rss = 400
+    guard.phase("bundles")
+    rss = 800
+    guard.phase("rendering pages")
+    rss = 900
+    guard.phase("emit")
+    rss = 700
+    guard.stop()
+    expect(guard.phasePeaks()).toEqual([
+      // Each value is the resident set measured as that phase was left, so every phase has a real measurement.
+      { label: "startup", bytes: 400 },
+      { label: "bundles", bytes: 800 },
+      { label: "rendering pages", bytes: 900 },
+      { label: "emit", bytes: 700 },
+    ])
+  })
+
+  it("names a phase it never sampled instead of dropping it or inventing a zero", () => {
+    const guard = startPeakGuard({ ceilingBytes: 10_000, rss: () => 100, onBreach: vi.fn() })
+    guard.stop()
+    guard.phase("late")
+    expect(guard.phasePeaks().at(-1)).toEqual({ label: "late", bytes: null })
   })
 
   it("takes a final sample at stop, so a peak between ticks is not lost", async () => {
@@ -144,6 +198,16 @@ describe("peakBreachMessage", () => {
     expect(message).toMatch(/13\.00 GB/)
     expect(message).toMatch(/rendering pages/)
     expect(message).toMatch(/61\.5 s/)
+  })
+})
+
+describe("phasePeaksMessage", () => {
+  it("prints every named phase, and says a phase was not sampled rather than printing an invented zero", () => {
+    const message = phasePeaksMessage([
+      { label: "startup", bytes: 1.5 * 1024 ** 3 },
+      { label: "rendering pages", bytes: null },
+    ])
+    expect(message).toBe("site-build: phase peaks — startup 1.50 GB; rendering pages not sampled")
   })
 })
 

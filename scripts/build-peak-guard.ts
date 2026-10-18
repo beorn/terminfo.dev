@@ -64,17 +64,41 @@ export interface PeakGuardOptions {
 }
 
 export interface PeakGuard {
-  /** Name the phase the build is in, so a breach names where the memory went. */
+  /**
+   * Name the phase the build is in, so a breach names where the memory went. Leaving a phase takes one sample
+   * first, attributed to the phase being left: a phase shorter than the sample interval has no tick of its own, and
+   * this is the only moment its resident set is observed.
+   */
   phase(label: string): void
   /** The largest resident set measured, in bytes. */
   peakBytes(): number
   /** The phase whose own high-water was the largest, so a passing build still says where its memory went. */
   peakPhase(): { label: string; bytes: number } | undefined
+  /**
+   * Every phase's own high-water, in the order the phases were first named. A passing build reports the whole
+   * band, so the next measurement knows which phase to bound rather than only which one happened to top out.
+   * A named phase that was never sampled carries `null`, never an invented zero: the caller must say it was not
+   * measured rather than report a build that spent no memory there.
+   */
+  phasePeaks(): PhasePeak[]
   /** Take a final sample and stop sampling. */
   stop(): void
 }
 
+export interface PhasePeak {
+  label: string
+  /** The phase's own high-water in bytes, or `null` when no sample landed while the phase was current. */
+  bytes: number | null
+}
+
 const gib = (bytes: number): string => (bytes / 1024 ** 3).toFixed(2)
+
+/** The one band line, whatever the build's outcome: every named phase, and any phase no sample could reach. */
+export function phasePeaksMessage(peaks: readonly PhasePeak[]): string {
+  return `site-build: phase peaks — ${peaks
+    .map(({ label, bytes }) => `${label} ${bytes === null ? "not sampled" : `${gib(bytes)} GB`}`)
+    .join("; ")}`
+}
 
 /** The one line a breach prints: the measured resident set, the ceiling, the phase, and when it happened. */
 export function peakBreachMessage(breach: PeakBreach & { ceilingBytes: number }): string {
@@ -94,6 +118,7 @@ export function startPeakGuard(options: PeakGuardOptions): PeakGuard {
   const started = Date.now()
   let phase = "startup"
   let peak = 0
+  const named = new Set<string>(["startup"])
   const phasePeak = new Map<string, number>()
   let stopped = false
 
@@ -127,7 +152,12 @@ export function startPeakGuard(options: PeakGuardOptions): PeakGuard {
 
   return {
     phase(label: string): void {
+      // Sample before leaving the current phase: a phase can begin and end between two timer ticks, and this
+      // boundary sample is then its only measurement. Repeating the same label (the render hook runs per page)
+      // is not a transition and takes no sample.
+      if (label !== phase && !stopped) measure()
       phase = label
+      named.add(label)
     },
     peakBytes(): number {
       return peak
@@ -138,6 +168,12 @@ export function startPeakGuard(options: PeakGuardOptions): PeakGuard {
         if (top === undefined || bytes > top.bytes) top = { label, bytes }
       }
       return top
+    },
+    phasePeaks(): PhasePeak[] {
+      return [...named].map((label) => {
+        const bytes = phasePeak.get(label)
+        return { label, bytes: bytes === undefined ? null : bytes }
+      })
     },
     stop(): void {
       if (stopped) return
