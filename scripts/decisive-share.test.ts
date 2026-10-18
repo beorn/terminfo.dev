@@ -562,6 +562,33 @@ describe("release 1 decisive-count reader", () => {
     expect(stale.reason).toContain("store-a, store-b, store-c")
   })
 
+  it("prints one not-measured label per refusal, never a doubled prefix on either branch", () => {
+    // The reason is the bare refusal; the printed label is the formatter's. Both printed forms must
+    // therefore carry exactly one label, on the no-run branch and on the ambiguous one (29937).
+    const context = { terminalId: "kitty", os: "linux" }
+    const store = (key: string) => candidate({ key, runId: `kitty-${key}` })
+    const refusals = [
+      barRowForContext({ context, candidates: [], tier62Ids: IDS, tier52Ids: IDS }),
+      barRowForContext({
+        context,
+        candidates: [store("store-a"), store("store-b")],
+        tier62Ids: IDS,
+        tier52Ids: IDS,
+      }),
+    ]
+    for (const row of refusals) {
+      if (row.measured) throw new Error("expected an unmeasured refusal row")
+      expect(row.reason, "the reason itself carries no printed label").not.toContain("not measured")
+      for (const printed of [
+        formatBarRow(row).join("\n"),
+        formatCohortRow({ context: row.context, measured: false, reason: row.reason }, [], 20).join("\n"),
+      ]) {
+        expect(printed.match(/not measured —/g) ?? []).toHaveLength(1)
+        expect(printed).not.toContain("not measured — not measured")
+      }
+    }
+  })
+
   it("prints the included-52 clauses, the D3 verdict on the 52, the 62 as labelled context and the suite id", () => {
     const row = barRowForContext({
       context: { terminalId: "alacritty", os: "linux" },
@@ -749,7 +776,7 @@ describe("per-category decisive share (28018 AC2)", () => {
     const absent: CohortBarRow = {
       context: { terminalId: "windows-terminal", os: "windows" },
       measured: false,
-      reason: "not measured — no selected run",
+      reason: "no selected run",
     }
     const absentLines = formatCohortRow(absent, categories, labelWidth)
     expect(absentLines.some((line) => line.includes("CATEGORIES OF THE"))).toBe(false)

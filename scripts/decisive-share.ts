@@ -16,8 +16,8 @@
  *     id, the decisive count and share over the declared 62 tier-1 rows AND over the included 52, the
  *     inconclusive share ON THE INCLUDED 52, the remainder rows by name, each row's selected suite id,
  *     and the D3 verdict label over the included 52 (the declared 62 prints only as a labelled
- *     context line, never as the verdict). A context with no selected run
- *     prints "not measured — no selected run", a real tie with no reviewed row prints "ambiguous"
+ *     context line, never as the verdict). A context with no selected run carries the refusal
+ *     "no selected run", a real tie with no reviewed row carries "ambiguous"
  *     naming the contexts, and neither is ever 0%. The header names the Release 1 exceptions once
  *     with their ruling ids - ruled by name, not excluded by this reader, so a named row still
  *     prints its own FAIL/PASS on the bar.
@@ -263,6 +263,15 @@ export interface NotMeasuredRow {
 
 export type BarRow = MeasuredRow | NotMeasuredRow
 
+/**
+ * The one place the "not measured" label is written. A row's `reason` is the bare refusal — the
+ * selection, the suite or the declared blocker — and every printed form adds this label once, so a
+ * refusal that explains itself can never read "not measured — not measured — ..." (29937).
+ */
+export function notMeasuredSentence(reason: string): string {
+  return `not measured — ${reason}`
+}
+
 export function barRowForContext(args: {
   context: ReleaseContext
   candidates: readonly ContextCandidate[]
@@ -275,7 +284,7 @@ export function barRowForContext(args: {
     return {
       context: args.context,
       measured: false,
-      reason: `not measured — no selected run for ${args.context.terminalId}/${args.context.os}`,
+      reason: `no selected run for ${args.context.terminalId}/${args.context.os}`,
     }
   }
   if ("ambiguous" in picked) {
@@ -283,7 +292,7 @@ export function barRowForContext(args: {
       context: args.context,
       measured: false,
       reason:
-        `not measured — ambiguous current selection for ${args.context.terminalId}/${args.context.os}: ` +
+        `ambiguous current selection for ${args.context.terminalId}/${args.context.os}: ` +
         `${picked.ambiguous.join(", ")}; a reviewed default-context row must choose one`,
     }
   }
@@ -716,7 +725,7 @@ export function formatCohortRow(
     lines.push(`  run ${row.run.runId} · suite ${row.run.suiteId} · selected by ${row.selection} · ${row.run.key}`)
   }
   if (!row.measured) {
-    lines.push(`  not measured — ${row.reason}`)
+    lines.push(`  ${notMeasuredSentence(row.reason)}`)
     return lines
   }
   // The ratified cohort is the operator's list; the fraction divides over the app-observable rows, so
@@ -766,7 +775,7 @@ function inconclusiveLine(ids: readonly string[], indent = "    "): string {
 
 export function formatBarRow(row: BarRow): string[] {
   const label = `${row.context.terminalId}/${row.context.os || "os not recorded"}`
-  if (!row.measured) return [label, `  ${row.reason}`]
+  if (!row.measured) return [label, `  ${notMeasuredSentence(row.reason)}`]
   const { tier62, tier52 } = row.shares
   const lines = [
     `${label} ${row.run.version || "version not recorded"}`,
