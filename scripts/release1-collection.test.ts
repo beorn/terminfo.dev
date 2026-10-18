@@ -7,12 +7,13 @@
  *   does not count, and the census would read complete while it is not. Admission rejection must
  *   propagate from the single owner before the caller credits coverage.
  * @level l2
- * @consumer Release 1 final re-collection runner (scripts/release1-collection.ts)
- * @reach fs-walk <fixture-only: read-only content projection in a temporary directory>
+ * @consumer Full catalog/backend collection census and existing admission owner (scripts/release1-collection.ts)
+ * @reach fs-walk vendor/terminfo.dev/content/** vendor/terminfo.dev/.github/workflows/**
  * @testonly none
  */
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { spawnSync } from "node:child_process"
 import {
   existsSync,
   mkdirSync,
@@ -28,7 +29,8 @@ import { describe, expect, it, vi } from "vitest"
 import * as admission from "./admit-run.ts"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
-import { buildReport, RELEASE_1_CONTEXTS } from "./decisive-share.ts"
+import { buildReport } from "./decisive-share.ts"
+import { loadTerminals } from "@terminfo/catalog"
 import {
   admitProducedRuns,
   clipboardProfileFor,
@@ -102,14 +104,28 @@ const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
 })
 
 describe("release 1 collection census", () => {
-  it("covers exactly the bar's desktop contexts plus the engine family", () => {
+  it("covers every catalog app/mux platform plus the engine family, with no missing or duplicate context", () => {
     const all = census()
-    const apps = all.filter((entry) => entry.kind === "app")
-    expect(apps.map((entry) => `${entry.id}/${entry.os}`).sort()).toEqual(
-      RELEASE_1_CONTEXTS.map((context) => `${context.terminalId}/${context.os}`).sort(),
+    // Accepted full-project scope replaces the old 22-context release bar; the catalog owns membership.
+    const catalogContexts = Object.entries(loadTerminals(CONTENT)).flatMap(([id, terminal]) =>
+      !terminal.historical && (terminal.kind === "app" || terminal.kind === "mux")
+        ? (terminal.platforms ?? []).map((os) => `${terminal.kind}:${id}/${os}`)
+        : [],
     )
+    const contexts = all.map((entry) => `${entry.kind}:${entry.id}/${entry.os}`)
+    expect(contexts.filter((key) => !key.startsWith("headless:")).sort()).toEqual(catalogContexts.sort())
+    expect(new Set(contexts).size).toBe(33)
+    expect(all.filter((entry) => entry.kind === "app")).toHaveLength(18)
+    expect(all.filter((entry) => entry.kind === "mux")).toHaveLength(4)
     expect(all.filter((entry) => entry.kind === "headless")).toHaveLength(11)
-    expect(all).toHaveLength(22)
+    expect(all).toHaveLength(33)
+    // The CLI ledger must name the mux population as well; this is the real stdout boundary.
+    const command = spawnSync(process.execPath, ["scripts/release1-collection.ts", "--plan"], {
+      cwd: dirname(CONTENT),
+      encoding: "utf8",
+    })
+    expect(command.status, command.stderr).toBe(0)
+    expect(command.stdout.split("\n")[0]).toContain("18 app, 4 mux, 11 headless")
   })
 
   it("refuses a manifest that is not the eleven engines the collector asserts", () => {
@@ -124,7 +140,9 @@ describe("release 1 collection census", () => {
     // admissible row at db5558cf8d6c (run 38074622083), so the old "no owner and no hosted
     // workflow yet" gap is gone and the row carries a route and its dispatch command.
     expect(windows?.route).toBe("hosted-workflow")
-    expect(windows?.command).toMatch(/gh workflow run windows-measurement\.yml --repo beorn\/terminfo\.dev --ref main/)
+    expect(windows?.command).toMatch(
+      /gh workflow run windows-measurement\.yml --repo beorn\/terminfo\.dev --ref <exact-source-ref>/,
+    )
     expect(windows?.uncollectable).toBeNull()
     for (const entry of all) {
       if (entry.route === null) expect(entry.uncollectable).not.toBeNull()
@@ -132,14 +150,16 @@ describe("release 1 collection census", () => {
     }
   })
 
-  it("names kitty/macos uncollectable (ships as measured, 27928), never a workflow dispatch", () => {
+  it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
     // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty only — there is no kitty job — and
-    // hosted runners open no Kitty (no GPU, 27834). 27928 ruled it ships as measured at 31/52, so the
-    // census must NAME that, not print a command that silently produces no run.
+    // Chief bbf8eff9 retains all eight unresolved routes as expected work; no old ship-as-measured cut applies.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
     expect(kitty?.route).toBeNull()
     expect(kitty?.command).toBeNull()
-    expect(kitty?.uncollectable).toMatch(/ships as measured \(27928\)/)
+    expect(kitty?.uncollectable).toMatch(/required route work/)
+    const missing = census().filter((entry) => entry.route === null)
+    expect(missing).toHaveLength(8)
+    expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
@@ -148,11 +168,13 @@ describe("release 1 collection census", () => {
   it("names each context that produced no run, with its own reason", () => {
     const all = census()
     const uncovered = uncoveredContexts(all, [cleanRun()])
-    expect(uncovered).toHaveLength(21)
+    expect(uncovered).toHaveLength(32)
     expect(uncovered.find((entry) => entry.context.id === "windows-terminal")?.reason).toMatch(
       /no run produced by the hosted-workflow route/,
     )
-    expect(uncovered.find((entry) => entry.context.id === "kitty")?.reason).toMatch(/linux-container/)
+    expect(uncovered.find((entry) => entry.context.id === "kitty" && entry.context.os === "linux")?.reason).toMatch(
+      /linux-container/,
+    )
     // A produced run carries the os it was MEASURED on: an app its own, a headless engine the host's.
     const measured = all.map((entry) =>
       cleanRun({ target: { kind: entry.kind, id: entry.id, os: entry.kind === "headless" ? "linux" : entry.os } }),
@@ -169,12 +191,12 @@ describe("release 1 collection census", () => {
     const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
     expect(uncovered).not.toContain("headless:xtermjs")
     expect(uncovered).toContain("app:xterm")
-    expect(uncovered).toHaveLength(21)
+    expect(uncovered).toHaveLength(32)
   })
 
   it("leaves a Linux row uncollectable, named, when no committed run can be read", () => {
     const all = release1Census(ENGINE_BACKENDS, { ...LEDGER, kitty: undefined as never })
-    const kitty = all.find((entry) => entry.id === "kitty")
+    const kitty = all.find((entry) => entry.id === "kitty" && entry.os === "linux")
     expect(kitty?.route).toBe("linux-container")
     expect(kitty?.command).toBeNull()
     expect(kitty?.uncollectable).toMatch(/no committed run to read the launcher flags from/)

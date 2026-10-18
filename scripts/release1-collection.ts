@@ -27,6 +27,8 @@ import { spawnSync } from "node:child_process"
 import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { parse } from "yaml"
+import { loadTerminals } from "@terminfo/catalog"
 import { loadCurrentResults, loadDefaultContextPolicy } from "../docs/data/current-results.ts"
 import { statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
@@ -41,13 +43,13 @@ const CONTENT = join(ROOT, "content")
  * collects — macOS and Windows share it because the route names the collection METHOD, and the
  * row's own `command` names which workflow runs: the platform belongs to the row, not the route.
  */
-export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless"
+export type CollectionRoute = "linux-container" | "hosted-workflow" | "headless-termless" | "mux"
 
 export interface CollectionContext {
   /** The context id, as the published row is keyed by. */
   readonly id: string
   readonly os: string
-  readonly kind: "app" | "headless"
+  readonly kind: "app" | "headless" | "mux"
   readonly route: CollectionRoute | null
   /** The entry point that measures this row — the same one the row was measured with. */
   readonly command: string | null
@@ -152,7 +154,7 @@ const macRow = (id: string): CollectionContext => ({
   // "macos-terminal-measurement-artifacts" upload never existed — the matrix uploads four
   // per-app artifacts named macos-<app>-<run-id>-<attempt>, macos-measurement.yml:289).
   command:
-    "gh workflow run macos-measurement.yml --repo beorn/terminfo.dev --ref main, then " +
+    "gh workflow run macos-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
     "gh run download <run-id> --repo beorn/terminfo.dev for the four macos-<app>-<run-id>-<attempt> artifacts",
   requires: null,
   sourceRun: null,
@@ -170,49 +172,71 @@ const engineRow = (id: string): CollectionContext => ({
   uncollectable: null,
 })
 
-/**
- * The 11 desktop contexts the bar reads (#27909 `RELEASE_1_CONTEXTS`), plus the Windows row the
- * hosted workflow now measures. The five Linux rows carry the invocation read back from the
- * committed run the ledger names.
- */
-export function release1DesktopContexts(ledger: LinuxLedger): readonly CollectionContext[] {
-  return [
-    ...LINUX_TARGET_IDS.map((id) => linuxRow(id, ledger[id])),
-    macRow("terminal-app"),
-    macRow("iterm2"),
-    macRow("ghostty"),
-    macRow("alacritty"),
-    {
-      // kitty/darwin ships AS MEASURED (27928): no hosted kitty job exists and hosted runners open no
-      // Kitty (no GPU, 27834), so it has no collection route and is named uncollectable, never a run
-      // that silently never arrives (27929 D4).
-      id: "kitty",
-      os: "macos",
-      kind: "app",
-      route: null,
-      command: null,
-      requires: null,
-      sourceRun: null,
-      uncollectable: "ships as measured (27928): no hosted kitty job, and hosted runners open no Kitty (no GPU, 27834)",
-    },
-    {
-      id: "windows-terminal",
-      os: "windows",
-      kind: "app",
-      route: "hosted-workflow",
-      // Same shape as the macOS rows and read back from the workflow for the same reason:
-      // windows-measurement.yml declares `on: workflow_dispatch:` with no inputs, and it archives
-      // ONE artifact named win32-<app>-<run-id>-<attempt> (windows-measurement.yml:173).
-      command:
-        "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref main, then " +
-        "gh run download <run-id> --repo beorn/terminfo.dev for the win32-windows-terminal-<run-id>-<attempt> artifact",
-      requires: null,
-      sourceRun: null,
-      // No longer a gap: run 38074622083 collected windows-terminal 1.23.20211.0 at
-      // db5558cf8d6c through this workflow, admitted by scripts/admit-run.ts.
-      uncollectable: null,
-    },
-  ]
+/** Route membership comes from the existing workflow matrix, not a second list of app IDs. */
+function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
+  const path = join(ROOT, ".github", "workflows", `${os}-measurement.yml`)
+  const workflow = parse(readFileSync(path, "utf8")) as {
+    jobs?: Record<string, { strategy?: { matrix?: { include?: Array<{ id?: unknown }> } } }>
+  }
+  const rows = workflow?.jobs?.[`measure-${os}`]?.strategy?.matrix?.include
+  if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${path}: expected nonempty measure-${os} app matrix`)
+  const ids = new Set<string>()
+  for (const row of rows) {
+    if (typeof row?.id !== "string" || row.id.length === 0) throw new Error(`${path}: matrix app is missing its id`)
+    ids.add(row.id)
+  }
+  return ids
+}
+
+/** The catalog owns expected app/mux contexts; missing routes remain required work, never a scope cut. */
+function catalogContexts(ledger: LinuxLedger): CollectionContext[] {
+  const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
+  const contexts: CollectionContext[] = []
+  for (const [id, terminal] of Object.entries(loadTerminals(CONTENT))) {
+    if (terminal.historical || (terminal.kind !== "app" && terminal.kind !== "mux")) continue
+    if (!terminal.platforms?.length) throw new Error(`${CONTENT}/terminals.json: ${id} requires app/mux platforms`)
+    for (const os of terminal.platforms) {
+      if (terminal.kind === "mux") {
+        contexts.push({
+          id,
+          os,
+          kind: "mux",
+          route: "mux",
+          command: `bun packages/admin/src/index.ts probe mux ${id}`,
+          requires: "qualify the named outer terminal, genuine mux identity and private unadmitted output on this host",
+          sourceRun: null,
+          uncollectable: null,
+        })
+      } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
+      else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
+      else if (os === "windows" && hosted.windows.has(id)) {
+        contexts.push({
+          id,
+          os,
+          kind: "app",
+          route: "hosted-workflow",
+          command:
+            "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
+            `gh run download <run-id> --repo beorn/terminfo.dev for the win32-${id}-<run-id>-<attempt> artifact`,
+          requires: null,
+          sourceRun: null,
+          uncollectable: null,
+        })
+      } else {
+        contexts.push({
+          id,
+          os,
+          kind: "app",
+          route: null,
+          command: null,
+          requires: null,
+          sourceRun: null,
+          uncollectable: `required route work: ${id}/${os} has no qualified automatic owned launch/capture recipe in the current collection routes`,
+        })
+      }
+    }
+  }
+  return contexts
 }
 
 /**
@@ -224,7 +248,7 @@ export function release1Census(engineBackends: readonly string[], ledger: LinuxL
   if (engineBackends.length !== 11) {
     throw new Error(`Expected 11 headless engines in the Termless manifest; found ${engineBackends.length}`)
   }
-  return [...release1DesktopContexts(ledger), ...engineBackends.map(engineRow)]
+  return [...catalogContexts(ledger), ...engineBackends.map(engineRow)]
 }
 
 /** The engine backend names the collector would run, from the Termless manifest. */
@@ -411,9 +435,10 @@ function planLines(census: readonly CollectionContext[]): string[] {
   const uncollectable = census.filter((entry) => entry.uncollectable !== null).length
   const pending = census.filter((entry) => entry.requires !== null).length
   return [
-    `Release 1 final re-collection census — ${census.length} contexts` +
-      ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
-    `Routes: every row names the entry point it was measured with; ${uncollectable} uncollectable, ${pending} pending a prerequisite.`,
+    `Collection census — ${census.length} contexts` +
+      ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "mux").length} mux, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
+    `Scope: catalog app/mux platforms plus the Termless engine manifest; historical and other catalog kinds are excluded from the app/mux projection.`,
+    `Routes are source recipes, not runtime qualification: ${uncollectable} have no qualified automatic route, ${pending} require a prerequisite.`,
     `Linux rows: preset, clipboard profile and ids are read back from the committed run named under each row.`,
     ...lines,
   ]
