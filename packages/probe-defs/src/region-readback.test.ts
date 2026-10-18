@@ -144,16 +144,17 @@ function ownedWindow(options: {
         if (witnessWrite) glyph = witnessWrite.slice(-1)
       }
     }
+    const regionRectangle = options.cropFor?.(label)
     const frame: ObservationFrame = {
       role,
       label,
       capturedAt: reads,
       ref: `sha256:${String(reads).repeat(64)}`,
+      ...(regionRectangle ? { regionRectangle } : {}),
     }
     const cell = key(region)
     const content = cell === SENTINEL_CELL ? glyph : screen
     const suffix = options.unstable ? `-${reads}` : ""
-    const regionRectangle = options.cropFor?.(label)
     const capture: RegionCapture = {
       regionDigest: `${cell}|${content}${suffix}`,
       pixelsDigest: `frame|${screen}|${glyph}${suffix}`,
@@ -183,6 +184,8 @@ test("a painted edit that reaches the expected frame is supported, from three wi
   expect(result.observation.evidence).toBe("pixels")
   expect(result.assertions?.[0]?.kind).toBe("positive")
   expect(regionReads(fake).map(({ label }) => label)).toEqual([
+    "editing.delete-chars: capture stability 1",
+    "editing.delete-chars: capture stability 2",
     "editing.delete-chars: pre-edit seed",
     "editing.delete-chars: post-sequence target",
     "editing.delete-chars: expected frame",
@@ -344,6 +347,8 @@ test("an ignored-attribute plane names the attribute-dropping run unsupported, b
   expect(result.assertions?.[0]?.kind).toBe("negative")
   expect(result.observation.frames).toHaveLength(8)
   expect(regionReads(fake).map(({ label }) => label)).toEqual([
+    "editing.delete-chars: capture stability 1",
+    "editing.delete-chars: capture stability 2",
     "editing.delete-chars: pre-edit seed",
     "editing.delete-chars: post-sequence target",
     "editing.delete-chars: expected frame",
@@ -379,6 +384,67 @@ test("an unstable capture refuses before the first glyph is written", async () =
   expect(result.observation.note).toContain("were not byte-stable")
   expect(fake.writes.some((entry) => /^\x1b\[\d+;\d+H.$/.test(entry))).toBe(false)
 })
+
+/**
+ * @failure A stable paint witness hides moving compared cells, or unrelated whole-window motion
+ *   refuses a settled compared rectangle (30031). Existing unstable rows move both digests together.
+ * @level l1
+ * @consumer The production region decision over an owned capture, before its verdict frames.
+ */
+test.each(["outside", "inside", "crop", "missing-first", "missing-second"] as const)(
+  "stability follows the compared cells: %s movement",
+  async (movement) => {
+    const rectangle = { x: 0, y: 0, width: 64, height: 16 }
+    const fake = ownedWindow({
+      repaintAfterPolls: 1,
+      regionDigest: painter({ applied: "edited" }),
+      cropFor: () => rectangle,
+    })
+    const read = fake.read
+    let secondRef: string | undefined
+    fake.read = async (request) => {
+      const captured = await read(request)
+      if (!request.label.includes("capture stability")) return captured
+      if (captured.frame.kind === "text-cells") throw new Error("ownedWindow stability fixture requires pixels")
+      const second = request.label.endsWith("2")
+      if (second) secondRef = captured.frame.ref
+      const crop =
+        (movement === "missing-first" && !second) || (movement === "missing-second" && second)
+          ? undefined
+          : movement === "crop" && second
+            ? { ...rectangle, x: 8 }
+            : rectangle
+      return {
+        ...captured,
+        // The witness remains fixed. Only a read of the actual compared cells sees this change.
+        regionDigest:
+          movement === "inside" && second && key(request.region) !== SENTINEL_CELL
+            ? `${captured.regionDigest}:changed`
+            : captured.regionDigest,
+        pixelsDigest: second && movement !== "crop" ? `${captured.pixelsDigest}:changed` : captured.pixelsDigest,
+        regionRectangle: crop,
+        frame: { ...captured.frame, regionRectangle: crop },
+      }
+    }
+    const result = await decide(fake)
+    expect(result.observation.outcome).toBe(movement === "outside" ? "supported" : "inconclusive")
+    if (movement === "inside") expect(result.observation.note).toContain("not byte-stable")
+    if (movement === "crop") expect(result.observation.note).toContain("different screen positions")
+    if (movement !== "outside") {
+      expect(result.observation.screenshotRef).toBe(secondRef)
+      expect(result.observation.frames ?? []).toEqual([])
+    }
+    if (movement === "outside") {
+      expect(JSON.parse(String(result.response))).toMatchObject({
+        stability: {
+          regionDigest: ["1,1,1,8|seed", "1,1,1,8|seed"],
+          pixelsDigest: ["frame|seed|", "frame|seed|:changed"],
+          wholeWindowChanged: true,
+        },
+      })
+    }
+  },
+)
 
 test("DECTCEM is off before the first capture and restored after the last, around every read", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
@@ -444,12 +510,12 @@ test("every capture carries the terminal's own pixel report, and witness reads u
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: painter({ applied: "edited" }) })
   const result = await decide(fake)
   expect(result.observation.outcome).toBe("supported")
-  expect(regionReads(fake)).toHaveLength(3)
+  expect(regionReads(fake)).toHaveLength(5)
   for (const { region, pixelGeometry } of fake.requests) {
     expect(pixelGeometry).toEqual(GEOMETRY)
     expect(["1,1,1,8", SENTINEL_CELL]).toContain(key(region))
   }
-  expect(fake.requests.filter(({ region }) => key(region) !== SENTINEL_CELL)).toHaveLength(3)
+  expect(fake.requests.filter(({ region }) => key(region) !== SENTINEL_CELL)).toHaveLength(5)
 })
 
 // The raw-run contract requires a citation (child 28582, @cto b12b71b2): evidence "pixels" is
@@ -770,7 +836,11 @@ test("a no-op is the measured negative only when the caller's ignored frame IS t
 })
 
 test("a change outside the compared cells moves the whole window and not the verdict", async () => {
-  const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "frame" })
+  const fake = ownedWindow({
+    repaintAfterPolls: 1,
+    regionDigest: () => "frame",
+    cropFor: () => ({ x: 0, y: 0, width: 64, height: 16 }),
+  })
   const stable = fake.read
   const read: RegionRead = async (request) => {
     const captured = await stable(request)

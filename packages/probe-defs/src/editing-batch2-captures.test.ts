@@ -152,8 +152,12 @@ test("the readback-governed row hands the decision its own region and the termin
     { top: 1, left: 1, bottom: 1, right: 8 },
     { top: 1, left: 1, bottom: 1, right: 8 },
     { top: 1, left: 1, bottom: 1, right: 8 },
+    { top: 1, left: 1, bottom: 1, right: 8 },
+    { top: 1, left: 1, bottom: 1, right: 8 },
   ])
   expect(compared.map(({ label }) => label)).toEqual([
+    "editing.delete-chars: capture stability 1",
+    "editing.delete-chars: capture stability 2",
     "editing.delete-chars: pre-edit seed",
     "editing.delete-chars: post-sequence target",
     "editing.delete-chars: expected frame",

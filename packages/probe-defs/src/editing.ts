@@ -710,7 +710,11 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             const digests = frameDigests(frame)
             return { regionDigest: digests.cells, frame }
           }
-          const { refusal: instability, second: seedCapture } = await captureStabilityPair(
+          const {
+            refusal: instability,
+            second: seedCapture,
+            stability,
+          } = await captureStabilityPair(
             "editing.decsace",
             "pixels",
             () => stabilityRead("editing.decsace: seed stability 1"),
@@ -741,6 +745,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           const kind = "cells"
           const measured = frames.map((frame) => frameDigests(frame).cells)
           const observed = JSON.stringify({
+            stability,
             kind,
             seed: seed.ref,
             rectangle: rectangle.ref,

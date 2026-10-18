@@ -673,11 +673,14 @@ export interface StabilityCapture {
 }
 
 /**
- * The ONE stability control both pixel arms use. Two reads of one frame must agree before either
+ * The ONE stability control both capture arms use. Two reads of the compared cells must agree before either
  * arm compares extents or steps: the region oracle takes its pair on its prepared canvas before
  * the first verdict frame, and the DECSACE arm takes its pair on the painted seed, so a frame that only
- * looks stable after the measurement cannot pass. The refusal is inconclusive, carries no frames,
- * reports both digests in the response, and cites the second stability capture; no target frame is
+ * looks stable after the measurement cannot pass. Pixel crops must occupy the same screen rectangle;
+ * if either rectangle is absent, the existing both-digest proxy remains. With known matching crops,
+ * or on a text arm, outside-cell whole-window motion is named rather than vetoed (30031, CTO cf70f234).
+ * Both digest pairs and the whole-window-changed fact travel to the normal response as well as refusals.
+ * The refusal is inconclusive, carries no target frames, and cites the second stability capture; no target frame is
  * fabricated. A pair whose reads both report no digest is not refused here: two absent digests
  * agree without showing anything about stability, so the arm that owns the frames names the missing
  * measurement when it compares them.
@@ -691,11 +694,48 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   evidence: "pixels" | "text",
   first: () => Promise<T>,
   second: () => Promise<T>,
-): Promise<{ refusal: ProbeResult | null; second: T }> {
+): Promise<{
+  refusal: ProbeResult | null
+  second: T
+  stability: {
+    regionDigest: Array<string | undefined>
+    pixelsDigest: Array<string | undefined>
+    frameDigest: Array<string | undefined>
+    wholeWindowChanged: boolean
+  }
+}> {
   const stableA = await first()
   const stableB = await second()
-  if (stableA.regionDigest === stableB.regionDigest && stableA.pixelsDigest === stableB.pixelsDigest) {
-    return { refusal: null, second: stableB }
+  // DECSACE intentionally projects only its cell digest. Its original frame still owns whole-window
+  // identity, so use that identity for narration without changing its existing comparison proxy.
+  const wholeA = stableA.pixelsDigest ?? frameDigests(stableA.frame).whole
+  const wholeB = stableB.pixelsDigest ?? frameDigests(stableB.frame).whole
+  const stability = {
+    regionDigest: [stableA.regionDigest, stableB.regionDigest],
+    pixelsDigest: [stableA.pixelsDigest, stableB.pixelsDigest],
+    frameDigest: [wholeA, wholeB],
+    wholeWindowChanged: wholeA !== wholeB,
+  }
+  const response = JSON.stringify({ stability })
+  const knownCrops = stableA.frame.regionRectangle !== undefined && stableB.frame.regionRectangle !== undefined
+  if (evidence === "pixels") {
+    const movedCrop = cropPositionRefusal({
+      id,
+      compared: [
+        { role: "the first stability capture", rectangle: stableA.frame.regionRectangle },
+        { role: "the second stability capture", rectangle: stableB.frame.regionRectangle },
+      ],
+      response,
+      frames: [],
+      screenshotRef: stableB.frame.ref,
+    })
+    if (movedCrop) return { refusal: movedCrop, second: stableB, stability }
+  }
+  if (
+    stableA.regionDigest === stableB.regionDigest &&
+    (evidence === "text" || knownCrops || stableA.pixelsDigest === stableB.pixelsDigest)
+  ) {
+    return { refusal: null, second: stableB, stability }
   }
   const refusal = inconclusive(
     id,
@@ -711,14 +751,10 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   return {
     refusal: {
       ...refusal,
-      response: JSON.stringify({
-        stability: {
-          regionDigest: [stableA.regionDigest, stableB.regionDigest],
-          pixelsDigest: [stableA.pixelsDigest, stableB.pixelsDigest],
-        },
-      }),
+      response,
     },
     second: stableB,
+    stability,
   }
 }
 
@@ -777,21 +813,21 @@ export async function captureRegionReadbackDecision(
     ctx.write("\x1b[2J\x1b[H")
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
     // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
-    const { refusal: instability } = await captureStabilityPair(
+    const { refusal: instability, stability } = await captureStabilityPair(
       id,
       evidence,
       () =>
         read({
           role: "control",
           label: `${id}: capture stability 1`,
-          region: witnessCell,
+          region: spec.region,
           pixelGeometry: spec.pixelGeometry,
         }),
       () =>
         read({
           role: "control",
           label: `${id}: capture stability 2`,
-          region: witnessCell,
+          region: spec.region,
           pixelGeometry: spec.pixelGeometry,
         }),
     )
@@ -846,6 +882,7 @@ export async function captureRegionReadbackDecision(
       )
     }
     const observed = JSON.stringify({
+      stability,
       region: spec.region,
       sentinel: spec.sentinel,
       cursorRow: spec.cursorRow,
