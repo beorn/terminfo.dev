@@ -4,6 +4,7 @@ import {
   sgrProbe,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
+  sgrPlainFixtureTooSmall,
   sgrReadbackDecision,
   type SgrReadback,
   probe,
@@ -55,7 +56,12 @@ function sgrTermReadback(
 }
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
-async function consumedSgr(ctx: TermContext, id: string, sequence: string): Promise<ProbeResult> {
+async function consumedSgr(
+  ctx: TermContext,
+  id: string,
+  sequence: string,
+  controlLabel = `${id} control`,
+): Promise<ProbeResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -67,6 +73,8 @@ async function consumedSgr(ctx: TermContext, id: string, sequence: string): Prom
         "\x1b[0m\x1b[2J\x1b[3;3H" + sequence + sample,
         id,
         { sample, startRow: 3, startCol: 3, sampleCells: sample.length },
+        undefined,
+        controlLabel,
       )
     } finally {
       ctx.write("\x1b[0m")
@@ -162,6 +170,7 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
   // DECRQSS must report the requested RGB, not merely SGR 58; the termless path independently
   // calibrates the exact color against default-color controls.
   const readback: SgrReadback = { require: [4, 58], requireTokens: ["58:2:255:0:128"] }
+  const armed = sgrTermReadback(id, sequence, readback, (ctx) => consumedSgr(ctx, id, sequence, "Unstyled text sample"))
   return {
     ...probe(
       id,
@@ -201,7 +210,12 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         }
         return parserStateResult(null, expected, state, "Underline color readback was not calibrated for a negative")
       },
-      sgrTermReadback(id, sequence, readback, (ctx) => consumedSgr(ctx, id, sequence)),
+      async (ctx) => {
+        // The readback writes the sequence before it answers, so the fixture's own geometry refusal
+        // has to run ahead of it — a 1x2 terminal must refuse with a zero-byte trace.
+        const refusal = sgrPlainFixtureTooSmall(ctx)
+        return refusal ?? (await armed(ctx))
+      },
       // Unchanged from the sgrProbe this replaced: an exception in this arm is recorded as query
       // evidence, because the arm asks DECRQSS before any capture falls back.
       "query",

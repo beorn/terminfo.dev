@@ -18,6 +18,8 @@
  */
 import { expect, test } from "vitest"
 import { sgrProbes } from "./sgr.ts"
+import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
+import { captureRegionVerdict } from "./region-readback.ts"
 import type {
   CaptureCells,
   CapturePixelGeometry,
@@ -140,7 +142,17 @@ function indexOf(theme: string, index: number): string {
  * How the fake terminal renders colour. The last three model the terminals a row's sibling must
  * exclude, so a rule that cannot separate them refuses instead of passing.
  */
-type Mode = "render" | "ignore" | "collapse" | "quantize-truecolor" | "quantize-256" | "collapse-bright"
+type Mode =
+  | "render"
+  | "ignore"
+  | "collapse"
+  | "quantize-truecolor"
+  | "quantize-256"
+  | "collapse-bright"
+  | "deferred-paint"
+
+/** A colour SGR, as opposed to a reset, a CUP or the SGR 4 underline seed the colour rows qualify. */
+const COLOUR_SGR = /\x1b\[(?:3[0-7]|4[0-7]|9[0-7]|10[0-7]|(?:38|48|58);[25];)/
 
 interface ColourRequest {
   family: "standard" | "bright" | "index" | "rgb"
@@ -216,8 +228,8 @@ function canonical256(index: number): readonly [number, number, number] {
   return [level(Math.floor(n / 36)), level(Math.floor((n % 36) / 6)), level(n % 6)]
 }
 
-/** The 16-colour entry a terminal that quantises 256 colours would paint, as the palette's own RGB. */
-function nearest16(palette: Palette, index: number): string {
+/** The 16-colour ENTRY a terminal that quantises 256 colours picks: entries 0-15 stay themselves. */
+function nearest16Index(index: number): number {
   const requested = canonical256(index)
   let best = 0
   for (let candidate = 1; candidate < XTERM16.length; candidate += 1) {
@@ -225,11 +237,23 @@ function nearest16(palette: Palette, index: number): string {
       best = candidate
     }
   }
+  return best
+}
+
+/** The 16-colour entry a terminal that quantises 256 colours would paint, as the palette's own RGB. */
+function nearest16(palette: Palette, index: number): string {
+  const best = nearest16Index(index)
   return best < 8 ? (palette.standard[best] ?? "outside") : (palette.bright[best - 8] ?? "outside")
 }
 
-function resolve(mode: Mode, palette: Palette, channel: "fg" | "bg" | "underline", request: ColourRequest): string {
-  if (mode === "ignore") return "default"
+function resolve(
+  mode: Mode,
+  palette: Palette,
+  channel: "fg" | "bg" | "underline",
+  request: ColourRequest,
+  suppressColour: boolean,
+): string {
+  if (mode === "ignore" || suppressColour) return "default"
   if (mode === "collapse") return "one-colour"
   let rendered: string
   switch (request.family) {
@@ -254,7 +278,7 @@ function resolve(mode: Mode, palette: Palette, channel: "fg" | "bg" | "underline
   return `${channel}:${rendered}`
 }
 
-function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Palette): Ink {
+function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Palette, suppressColour: boolean): Ink {
   const next: Ink = { ...ink }
   let index = 0
   while (index < params.length) {
@@ -293,22 +317,22 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       continue
     }
     if (param >= 30 && param <= 37) {
-      next.fg = resolve(mode, palette, "fg", { family: "standard", index: param - 30 })
+      next.fg = resolve(mode, palette, "fg", { family: "standard", index: param - 30 }, suppressColour)
       index += 1
       continue
     }
     if (param >= 40 && param <= 47) {
-      next.bg = resolve(mode, palette, "bg", { family: "standard", index: param - 40 })
+      next.bg = resolve(mode, palette, "bg", { family: "standard", index: param - 40 }, suppressColour)
       index += 1
       continue
     }
     if (param >= 90 && param <= 97) {
-      next.fg = resolve(mode, palette, "fg", { family: "bright", index: param - 90 })
+      next.fg = resolve(mode, palette, "fg", { family: "bright", index: param - 90 }, suppressColour)
       index += 1
       continue
     }
     if (param >= 100 && param <= 107) {
-      next.bg = resolve(mode, palette, "bg", { family: "bright", index: param - 100 })
+      next.bg = resolve(mode, palette, "bg", { family: "bright", index: param - 100 }, suppressColour)
       index += 1
       continue
     }
@@ -316,7 +340,13 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
       const channel = param === 38 ? "fg" : param === 48 ? "bg" : "underline"
       const modeParam = params[index + 1]
       if (modeParam === 5) {
-        const colour = resolve(mode, palette, channel, { family: "index", index: params[index + 2] ?? 0 })
+        const colour = resolve(
+          mode,
+          palette,
+          channel,
+          { family: "index", index: params[index + 2] ?? 0 },
+          suppressColour,
+        )
         if (channel === "fg") next.fg = colour
         else if (channel === "bg") next.bg = colour
         else next.underlineColour = colour
@@ -324,10 +354,16 @@ function applySgr(ink: Ink, params: readonly number[], mode: Mode, palette: Pale
         continue
       }
       if (modeParam === 2) {
-        const colour = resolve(mode, palette, channel, {
-          family: "rgb",
-          rgb: [params[index + 2] ?? 0, params[index + 3] ?? 0, params[index + 4] ?? 0],
-        })
+        const colour = resolve(
+          mode,
+          palette,
+          channel,
+          {
+            family: "rgb",
+            rgb: [params[index + 2] ?? 0, params[index + 3] ?? 0, params[index + 4] ?? 0],
+          },
+          suppressColour,
+        )
         if (channel === "fg") next.fg = colour
         else if (channel === "bg") next.bg = colour
         else next.underlineColour = colour
@@ -364,7 +400,7 @@ const CONTROL = /^\x1b\[([0-9;:?]*)([@-~])/
 
 /** Paint one write onto the fake screen. The probe only writes CUP, ED and SGR, so everything else
  * is ignored rather than guessed at. */
-function paint(screen: Screen, write: string, mode: Mode, palette: Palette): void {
+function paint(screen: Screen, write: string, mode: Mode, palette: Palette, suppressColour: boolean): void {
   let rest = write
   while (rest.length > 0) {
     const control = CONTROL.exec(rest)
@@ -383,7 +419,7 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette): voi
         screen.row = 0
         screen.col = 0
       } else if (final === "m") {
-        screen.ink = applySgr(screen.ink, params, mode, palette)
+        screen.ink = applySgr(screen.ink, params, mode, palette, suppressColour)
       }
       rest = rest.slice(control[0].length)
       continue
@@ -391,7 +427,13 @@ function paint(screen: Screen, write: string, mode: Mode, palette: Palette): voi
     const char = rest[0] ?? ""
     const row = screen.grid[screen.row]
     if (row && screen.col < COLS) {
-      row[screen.col] = { ...screen.ink, char }
+      // The underline colour is visible only under an underline, so a fixture that dropped its
+      // underline seed would paint nothing and could not pass.
+      row[screen.col] = {
+        ...screen.ink,
+        underlineColour: screen.ink.underline ? screen.ink.underlineColour : "default",
+        char,
+      }
     }
     screen.col += 1
     if (screen.col >= COLS) {
@@ -433,10 +475,12 @@ interface ColourTerminal {
  * honours every colour; `ignore` leaves the ink at its default; `collapse` paints every colour with
  * one value; the three quantisation modes model the terminals a row's sibling must exclude.
  */
-function colourTerminal(mode: Mode, palette: Palette): ColourTerminal {
+function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, cols: COLS }): ColourTerminal {
   const screen = blankScreen()
   const writes: string[] = []
   let reads = 0
+  let frame = 0
+  let firstColourFrame: number | undefined
   const capture = async (request: CaptureRequest): Promise<ObservationFrame> => {
     reads += 1
     const digests = {
@@ -453,14 +497,23 @@ function colourTerminal(mode: Mode, palette: Palette): ColourTerminal {
     }
   }
   const ctx: TermContext = {
-    rows: ROWS,
-    cols: COLS,
+    rows: geometry.rows,
+    cols: geometry.cols,
     captureKind: "pixels",
     captureGeometry: { geometry: GEOMETRY, source: "measured by complete raster calibration" },
     capture,
     write(text) {
       writes.push(text)
-      paint(screen, text, mode, palette)
+      if (text.includes("\x1b[2J")) frame += 1
+      // A deferred-paint terminal renders the FIRST frame that paints a colour neutral and the
+      // second one normally. That is the one model that reaches the oracle's "after equals seed"
+      // branch without also making the seed equal the expected frame, which the oracle names
+      // inconclusive before it ever compares the post-sequence frame.
+      // The DECRQSS readback paints the sequence on an uncleared screen before the run begins; only
+      // a colour painted into a cleared frame is one of the oracle's compared frames.
+      const firstColourPaint = firstColourFrame === undefined && frame > 0 && COLOUR_SGR.test(text)
+      if (firstColourPaint) firstColourFrame = frame
+      paint(screen, text, mode, palette, mode === "deferred-paint" && firstColourPaint)
     },
     queryCursorPosition: async () => ({ row: screen.row + 1, col: screen.col + 1 }),
     measureRenderedWidth: async () => null,
@@ -493,9 +546,84 @@ for (const id of COLOUR_IDS) {
       expect(note).toContain("neutral sample")
       expect(note).toContain("sibling")
       expect(note).toContain("not interpreted")
+      expect(note.toLowerCase()).not.toContain("reference")
     })
   }
 }
+
+for (const id of COLOUR_IDS) {
+  test(`${id} downgrades the oracle's measured negative to inconclusive, with no negative assertion`, async () => {
+    // The oracle's "after equals seed" branch is a measured negative its own table publishes as
+    // unsupported. A colour row cannot tell an ignored sequence from one painted identically to the
+    // reference, so this path must not publish that as unsupported, and must not keep the negative
+    // assertion that named it.
+    const spec = COLOUR_CAPTURE[id]
+    if (!spec) throw new Error(`${id}: no colour capture row`)
+    const oracle = await captureRegionVerdict(
+      colourTerminal("deferred-paint", PALETTES[0] as Palette).ctx,
+      id,
+      spec,
+      "query",
+    )
+    // The fixture must actually reach the negative branch, or the routing below proves nothing.
+    expect(oracle?.observation?.outcome).toBe("unsupported")
+    expect(oracle?.assertions?.[0]?.kind).toBe("negative")
+    const result = await run(id, colourTerminal("deferred-paint", PALETTES[0] as Palette).ctx)
+    expect(result.observation?.outcome).toBe("inconclusive")
+    expect(result.observation?.note ?? "").toContain("does not decide unsupported")
+    expect(result.observation?.note ?? "").toContain("ignores the colour")
+    expect(result.assertions).toBeUndefined()
+    expect(result.pass).toBe(false)
+  })
+}
+
+test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async () => {
+  // These two rows were on the generic SGR fixture before the colour capture row took them, and that
+  // fixture refused a terminal it could not park the sample in with evidence "none" — never after
+  // the DECRQSS readback had already written the sequence.
+  for (const id of ["sgr.underline.color", "sgr.underline-color-rgb"] as const) {
+    const captured = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
+    const onCapture = await run(id, captured.ctx)
+    expect(onCapture.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    // The generic 1x2 floor is checked first on both arms, exactly as it was before these rows moved
+    // onto the capture row; the 3x34 capture guard is the stricter floor behind it.
+    expect(onCapture.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(captured.writes).toEqual([])
+
+    const plain = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
+    const onTerm = await run(id, { ...plain.ctx, capture: undefined, captureKind: undefined })
+    expect(onTerm.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    expect(onTerm.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(plain.writes).toEqual([])
+  }
+})
+
+test("the colour verdict drops the oracle's negative assertion and keeps the frames it measured", () => {
+  // The mapping is pinned directly as well, so a revert of the drop shows up without depending on
+  // the fixture reaching the branch: the reader records every assertion it is handed.
+  const frames: ObservationFrame[] = [
+    { kind: "pixels", role: "control", label: "seed", capturedAt: 1, ref: "sha256:seed", pixelsDigest: "d" },
+  ]
+  const downgraded = colourCaptureVerdict("sgr.fg.standard", {
+    pass: false,
+    response: "seed=1 after=1 expected=2",
+    observation: {
+      outcome: "unsupported",
+      evidence: "pixels",
+      screenshotRef: "sha256:abc",
+      frames,
+    },
+    assertions: [{ kind: "negative", expected: "sgr.fg.standard: equals the expected frame", observed: "1" }],
+  })
+  expect(downgraded.observation?.outcome).toBe("inconclusive")
+  expect(downgraded.observation?.reason).toBe("insufficient-evidence")
+  expect(downgraded.observation?.note ?? "").toContain("does not decide unsupported")
+  expect(downgraded.observation?.screenshotRef).toBe("sha256:abc")
+  expect(downgraded.observation?.frames).toBe(frames)
+  expect(downgraded.response).toBe("seed=1 after=1 expected=2")
+  expect(downgraded.assertions).toBeUndefined()
+  expect(downgraded.pass).toBe(false)
+})
 
 for (const id of COLOUR_IDS) {
   test(`${id} is inconclusive by name on a terminal that ignores colour`, async () => {
@@ -561,12 +689,27 @@ for (const id of REVIEW_IDS) {
 
 /** The fixture is the whole test's evidence: prove it separates the pairs it claims to, and that
  * each negative mode collapses exactly the pair its row's sibling is meant to exclude. */
+test("the modelled 256-to-16 quantiser keeps entries 0-15 and sends others to their nearest entry", () => {
+  // The fixture stands in for a real 16-colour terminal, so the quantiser is asserted on ENTRIES, not
+  // on rendered pixels that a palette alias could make equal for the wrong reason.
+  for (let index = 0; index < 16; index += 1) expect(nearest16Index(index)).toBe(index)
+  expect(nearest16Index(67)).toBe(8)
+  expect(nearest16Index(164)).toBe(nearest16Index(5))
+})
+
 test("the colour fixture separates colours, and collapses the sibling pairs it should", async () => {
   const cells: CaptureCells = { top: 3, left: 3, bottom: 3, right: 3 }
   const read = async (mode: Mode, sequence: string, palette: Palette): Promise<string> => {
     const { ctx } = colourTerminal(mode, palette)
     ctx.write("\x1b[0m\x1b[2J\x1b[3;3H")
     ctx.write(sequence)
+    const frame = await ctx.capture?.({ role: "target", label: mode, cells, pixelGeometry: GEOMETRY })
+    return frame?.regionDigest ?? "missing"
+  }
+  /** The row's own two frames, painted on the fixture, so the pair under test is the pair it ships. */
+  const readFrame = async (mode: Mode, writes: string, palette: Palette): Promise<string> => {
+    const { ctx } = colourTerminal(mode, palette)
+    ctx.write(writes)
     const frame = await ctx.capture?.({ role: "target", label: mode, cells, pixelGeometry: GEOMETRY })
     return frame?.regionDigest ?? "missing"
   }
@@ -589,15 +732,17 @@ test("the colour fixture separates colours, and collapses the sibling pairs it s
     expect(await read("collapse-bright", "\x1b[91mX", palette)).toBe(
       await read("collapse-bright", "\x1b[31mX", palette),
     )
-    expect(await read("quantize-256", "\x1b[38;5;67mX", palette)).toBe(await read("quantize-256", "\x1b[90mX", palette))
-    expect(await read("quantize-256", "\x1b[58;5;5mX", palette)).toBe(
-      await read("quantize-256", "\x1b[58;5;164mX", palette),
-    )
-    expect(await read("quantize-truecolor", "\x1b[38;2;255;128;0mX", palette)).toBe(
-      await read("quantize-truecolor", "\x1b[38;2;255;135;0mX", palette),
-    )
-    expect(await read("quantize-truecolor", "\x1b[58;2;255;0;128mX", palette)).toBe(
-      await read("quantize-truecolor", "\x1b[58;2;255;0;135mX", palette),
-    )
+    // Each negative mode collapses exactly the pair the row ships as its sibling.
+    for (const { ids, mode } of QUANTISATION) {
+      for (const id of ids) {
+        const spec = COLOUR_CAPTURE[id]
+        if (spec?.expected === undefined || spec.ignored === undefined) {
+          throw new Error(`${id}: the colour row must name both the expected and the ignored frame`)
+        }
+        expect(await readFrame(mode, spec.expected, palette)).toBe(await readFrame(mode, spec.ignored, palette))
+      }
+    }
+    // An underline colour paints nothing without SGR 4 in the same frame: the seed is load-bearing.
+    expect(await read("render", "\x1b[58;2;255;0;128mX", palette)).toBe(await read("render", "X", palette))
   }
 })
