@@ -1123,40 +1123,48 @@ it.each([
 })
 
 /**
- * editing.decsace measures WHOLE-WINDOW digests, so it must never read ctx.rows/ctx.cols: a run whose
- * owned terminal reports no geometry still measures both extents and KEEPS suiteComplete (@cto
- * 2026-10-18 condition 5). A geometry read here throws UndeclaredTerminalGeometry, which lands in
- * ungradedDiagnostics and loses the run — the one outcome this test refuses.
+ * editing.decsace compares the same measured 2x8 pixel cells across its seed and two extents.
+ * The collector must supply owned geometry and retain the cell digests and crop rectangle through
+ * canonical parsing, while keeping the completed observation in suiteComplete.
  *
  * The expected set is narrowed to this probe (the pattern the collector-error tests above use) so the
  * assertion is about the real completeness formula, `expected ⊆ observed ∪ notTested AND no
  * diagnostics`, without running every app probe through its real query timeouts.
  */
-it("grades editing.decsace on both extents with no geometry read and keeps suiteComplete", async () => {
+it("grades editing.decsace on measured pixel cells and keeps suiteComplete", async () => {
   verifiedBatchFixture()
   const others = ALL_PROBES.filter((probe) => probe.id !== "editing.decsace" && probe.term !== null)
   const originals = others.map((probe) => probe.term)
   let reads = 0
   const labels: string[] = []
+  const geometry = { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 }
   const originalWrite = process.stdout.write
   process.stdout.write = (() => true) as typeof process.stdout.write
   try {
     for (const probe of others) probe.term = null
     const batch = await runProbeBatch({
-      ownedTerminal: geometryOwner(noGeometry),
-      capture: async ({ role, label }) => {
+      ownedTerminal: geometryOwner(measured(24, 80)),
+      prepareCapture: async ({ context }) => {
+        context.captureGeometry = { geometry, source: "measured by complete raster calibration" }
+      },
+      capture: async ({ role, label, cells, pixelGeometry }) => {
+        expect(cells).toEqual({ top: 1, left: 1, bottom: 2, right: 8 })
+        expect(pixelGeometry).toEqual(geometry)
         reads += 1
         labels.push(label)
-        // A digit per MEASURED screen, not per read: the pair's two reads see the same seeded
-        // screen, and only the two DECSACE extents differ.
+        // The seed pair shares measured cells; encoded refs, whole frames and cells are distinct
+        // facts, and only the two DECSACE extents change the compared cells.
         const measured = label.includes("rectangle") ? "b" : label.includes("stream") ? "c" : "a"
+        const digest = (kind: string) => `sha256:${createHash("sha256").update(`${kind}:${measured}`).digest("hex")}`
         return {
           frame: {
             role,
             label,
             capturedAt: reads,
-            ref: `sha256:${measured.repeat(64)}`,
-            pixelsDigest: `sha256:${measured.repeat(64)}`,
+            ref: digest(`encoded:${reads}`),
+            pixelsDigest: digest("whole"),
+            regionDigest: digest("cells"),
+            regionRectangle: { x: 0, y: 0, width: 64, height: 32 },
           },
           trace: {},
         }
@@ -1167,6 +1175,14 @@ it("grades editing.decsace on both extents with no geometry read and keeps suite
     expect(batch.observations).toMatchObject([
       { featureId: "editing.decsace", outcome: "supported", evidence: "pixels" },
     ])
+    expect(
+      decodeCollectorRun(
+        "decsace.json",
+        JSON.stringify({ ...asRun(batch), screenshotRefs: batch.screenshotRefs }),
+        manifest,
+        sourceRevision,
+      ).run.observations,
+    ).toMatchObject([{ featureId: "editing.decsace", outcome: "supported", evidence: "pixels" }])
     expect(labels).toEqual([
       // The seed paint happens first, then the shared stability pair reads the seeded screen: its
       // second read IS the seed frame, so the extent frames follow.
