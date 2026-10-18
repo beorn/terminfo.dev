@@ -7,17 +7,24 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
 
 const execFile = vi.hoisted(() => vi.fn())
+const spawn = vi.hoisted(() => vi.fn())
 const kernelRelease = vi.hoisted(() => vi.fn())
+const detectWindowsAncestor = vi.hoisted(() => vi.fn())
 vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
   execFileSync: execFile,
+  spawnSync: spawn,
 }))
 vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
   release: kernelRelease,
 }))
+vi.mock("./windows-process-ancestry.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./windows-process-ancestry.ts")>()),
+  detectHostedWindowsAncestor: detectWindowsAncestor,
+}))
 
-import { detectTerminal } from "./detect.ts"
+import { detectTerminal, getWindowsAppVersion } from "./detect.ts"
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")
 
@@ -27,6 +34,7 @@ beforeEach(() => {
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
   kernelRelease.mockReturnValue("25.6.0")
   execFile.mockReturnValue("26.6.2\n") // measured by /usr/bin/sw_vers on the owned Mac fixture
+  detectWindowsAncestor.mockReturnValue(null)
 })
 
 afterEach(() => {
@@ -102,4 +110,38 @@ test("Windows Terminal handles PowerShell error gracefully with empty version", 
     os: "windows",
     osVersion: "10.0.26100",
   })
+})
+
+test("Windows Alacritty detects from proven process ancestor and queries --version only on its executablePath (C4)", () => {
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true })
+  kernelRelease.mockReturnValue("10.0.26100")
+  vi.stubEnv("TERM_PROGRAM", "")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "")
+  vi.stubEnv("WT_SESSION", "")
+  vi.stubEnv("ALACRITTY_WINDOW_ID", "")
+  vi.stubEnv("TERM", "xterm-256color")
+  detectWindowsAncestor.mockReturnValue({
+    app: { id: "alacritty", comm: "alacritty.exe" },
+    row: { pid: 4684, ppid: 9644, comm: "alacritty.exe" },
+    executablePath: "D:\\a\\_temp\\alacritty\\alacritty.exe",
+  })
+  spawn.mockReturnValue({ status: 0, stdout: "alacritty 0.15.1 (0c405d53)\r\n", stderr: "" })
+  expect(detectTerminal()).toEqual({
+    name: "alacritty",
+    version: "0.15.1",
+    os: "windows",
+    osVersion: "10.0.26100",
+  })
+  expect(spawn).toHaveBeenCalledWith(
+    "D:\\a\\_temp\\alacritty\\alacritty.exe",
+    ["--version"],
+    expect.objectContaining({ encoding: "utf8", timeout: 3000, windowsHide: true }),
+  )
+  expect(execFile).not.toHaveBeenCalled()
+})
+
+test("Windows Alacritty returns unknown empty version without PATH or Get-Command fallback when ancestor executablePath is absent (C4)", () => {
+  expect(getWindowsAppVersion("alacritty", null)).toBe("")
+  expect(spawn).not.toHaveBeenCalled()
+  expect(execFile).not.toHaveBeenCalled()
 })

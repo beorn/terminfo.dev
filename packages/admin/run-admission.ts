@@ -26,6 +26,7 @@ import {
   TERMINAL_IDENTITY_RULES,
   type TerminalIdentityRule,
 } from "../terminfo.dev/src/identity-guard.ts"
+import { windowsCommBase } from "../terminfo.dev/src/windows-process-ancestry.ts"
 import { activeInterpretations, applies, nonempty, parseInterpretations } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
 
@@ -141,18 +142,36 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
   if (!nonempty(identity.da1)) return null
-  if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
+  const os = (run.target.os ?? "").toLowerCase()
+  // On Windows, Alacritty spawns its child inside a ConPTY session (`conhost.exe --headless`),
+  // which answers DA1 with `\x1b[?61;...c` rather than Unix PTY's `\x1b[?6c` (run 39114986301).
+  const da1Pattern = run.target.id === "alacritty" && os.startsWith("win") ? /\?(?:6c|61;)/ : rule.da1Pattern
+  if (da1Pattern && !da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
-    const os = (run.target.os ?? "").toLowerCase()
-    // Windows Terminal does not report XTVERSION. The hosted apparatus measures the launched
-    // executable; identity is its byte-exact ProductVersion, never the installation template.
-    if (run.target.id === "windows-terminal" && os.startsWith("win")) {
+    // Windows Terminal and Alacritty on Windows do not report XTVERSION. The hosted apparatus
+    // measures the launched executable; identity is its byte-exact version and executable sha256,
+    // plus the pinned Mesa3D renderer receipt on Alacritty.
+    if ((run.target.id === "windows-terminal" || run.target.id === "alacritty") && os.startsWith("win")) {
       const receipt = run.origin.appLaunch
       if (
         run.target.version === "unknown" ||
         !receipt ||
         receipt.platform !== "win32" ||
         receipt.productVersion !== run.target.version
+      ) {
+        return null
+      }
+      if (run.target.id === "windows-terminal") {
+        if (
+          receipt.sourceArtifact.kind !== "portable-zip" ||
+          windowsCommBase(receipt.executablePath) !== "windowsterminal.exe"
+        ) {
+          return null
+        }
+      } else if (
+        receipt.sourceArtifact.kind !== "portable-exe" ||
+        windowsCommBase(receipt.executablePath) !== "alacritty.exe" ||
+        !receipt.mesaRenderer
       ) {
         return null
       }

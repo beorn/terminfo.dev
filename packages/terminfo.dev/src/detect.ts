@@ -5,7 +5,8 @@
  */
 
 import { release } from "node:os"
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
+import { detectHostedWindowsAncestor } from "./windows-process-ancestry.ts"
 
 export interface TerminalInfo {
   name: string
@@ -53,6 +54,7 @@ export function detectTerminal(): TerminalInfo {
 
   let name = "unknown"
   let version = ""
+  let windowsAncestorExecutablePath: string | null = null
 
   // On macOS, __CFBundleIdentifier is the most reliable — set by the actual running app
   const bundleId = process.env.__CFBundleIdentifier
@@ -103,9 +105,17 @@ export function detectTerminal(): TerminalInfo {
     } else if (process.env.TILIX_ID) name = "tilix"
   }
 
-  // Windows: check for Windows Terminal
+  // Windows: check for Windows Terminal or a proven hosted terminal ancestor
   if (name === "unknown" && os === "windows") {
-    if (process.env.WT_SESSION) name = "windows-terminal"
+    if (process.env.WT_SESSION) {
+      name = "windows-terminal"
+    } else {
+      const ancestor = detectHostedWindowsAncestor()
+      if (ancestor) {
+        name = ancestor.app.id
+        windowsAncestorExecutablePath = ancestor.executablePath
+      }
+    }
   }
 
   // Fallback: $TERM
@@ -120,7 +130,7 @@ export function detectTerminal(): TerminalInfo {
 
   // On Windows, get version from app/package metadata if we don't have it yet
   if (!version && os === "windows") {
-    version = getWindowsAppVersion(name)
+    version = getWindowsAppVersion(name, windowsAncestorExecutablePath)
   }
 
   return { name, version, os, osVersion }
@@ -129,8 +139,9 @@ export function detectTerminal(): TerminalInfo {
 /**
  * Get app version on Windows.
  * For Windows Terminal, queries package version or executable ProductVersion via PowerShell.
+ * For Alacritty, queries `--version` ONLY on the proven ancestor executable path (no PATH or Get-Command fallback).
  */
-function getWindowsAppVersion(terminalName: string): string {
+export function getWindowsAppVersion(terminalName: string, ancestorExecutablePath: string | null = null): string {
   try {
     if (terminalName === "windows-terminal") {
       const script = [
@@ -144,6 +155,20 @@ function getWindowsAppVersion(terminalName: string): string {
         timeout: 3000,
       }).trim()
       return version
+    }
+    if (terminalName === "alacritty") {
+      if (!ancestorExecutablePath) return ""
+      const result = spawnSync(ancestorExecutablePath, ["--version"], {
+        encoding: "utf8",
+        timeout: 3000,
+        windowsHide: true,
+      })
+      if (result.error || result.status !== 0) return ""
+      return (
+        /^alacritty\s+([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)\b/i.exec(
+          (result.stdout ?? "").trim(),
+        )?.[1] ?? ""
+      )
     }
     return ""
   } catch {

@@ -418,3 +418,175 @@ if (cmd.includes('Get-NetAdapter')) {
     await rm(dir, { recursive: true, force: true })
   }
 })
+
+test("the hosted producer supports Windows Alacritty with Mesa3D receipt and refuses --version failures by name (C1, C5)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-win-alacritty-"))
+  const raw = {
+    mac: "00-15-5D-12-34-56",
+    uuid: "12345678-ABCD-1234-ABCD-123456789ABC",
+    boot: "2026-10-18T09:20:00.0000000Z",
+  }
+  const alacrittyScript = join(dir, "alacritty.exe")
+  const winExecutablePath = String.raw`D:\a\_temp\alacritty\alacritty.exe`
+  const winSourcePath = String.raw`D:\a\_temp\measurement-artifacts\Alacritty-v0.15.1-portable.exe`
+  const winMesaArchivePath = String.raw`D:\a\_temp\measurement-artifacts\mesa-llvmpipe-x64-26.2.5.7z`
+  const winOpenglDllPath = String.raw`D:\a\_temp\alacritty\opengl32.dll`
+  const exeSha256 = "65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c"
+  const mesaArchiveSha256 = "d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d"
+  const openglDllSha256 = "8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1"
+  const versionMode: "ok" | "nonzero" | "empty" | "bad-regex" | "timeout" = "ok"
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify({ jobs: [{ id: 8888, runner_name: "win-runner", status: "in_progress" }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const writeAlacritty = () =>
+      writeFile(
+        alacrittyScript,
+        `#!${process.execPath}
+const mode = ${JSON.stringify(versionMode)};
+if (mode === "ok") {
+  process.stdout.write("alacritty 0.15.1 (0c405d53)\\r\\n");
+} else if (mode === "nonzero") {
+  process.stderr.write("alacritty failed\\n");
+  process.exit(2);
+} else if (mode === "empty") {
+  process.stdout.write("   \\r\\n");
+} else if (mode === "bad-regex") {
+  process.stdout.write("not-alacritty version output\\n");
+} else if (mode === "timeout") {
+  process.kill(process.pid, "SIGTERM");
+}
+`,
+        { mode: 0o755 },
+      )
+    await writeAlacritty()
+    // On POSIX test hosts, hosted-runner-receipt spawns measuredLaunch.executablePath directly for --version,
+    // while parseAppLaunchReceipt requires a win32 absolute path on Windows receipts. Wait: in hosted-runner-receipt.ts,
+    // measureWindowsAlacrittyVersion spawns measuredLaunch.executablePath! So on a POSIX test host, how can spawnSync(executablePath)
+    // run if executablePath is `D:\a\_temp\alacritty\alacritty.exe`?
+    // Look! If we create a file named `D:\a\_temp\alacritty\alacritty.exe` in `dir` and run with `cwd: dir`, on Linux `D:\a\_temp\alacritty\alacritty.exe` is a valid filename in `cwd` AND `win32.isAbsolute("D:\\a\\_temp\\alacritty\\alacritty.exe")` is true!
+    const winNamedExecutableInDir = join(dir, winExecutablePath)
+    await writeFile(
+      winNamedExecutableInDir,
+      `#!/usr/bin/env node
+const mode = process.env.ALACRITTY_VERSION_MODE || "ok";
+if (mode === "ok") {
+  process.stdout.write("alacritty 0.15.1 (0c405d53)\\r\\n");
+} else if (mode === "nonzero") {
+  process.stderr.write("alacritty failed\\n");
+  process.exit(2);
+} else if (mode === "empty") {
+  process.stdout.write("   \\r\\n");
+} else if (mode === "bad-regex") {
+  process.stdout.write("not-alacritty version output\\n");
+} else if (mode === "timeout") {
+  process.kill(process.pid, "SIGTERM");
+}
+`,
+      { mode: 0o755 },
+    )
+    const fakePs = `#!/usr/bin/env node
+const cmd = process.argv.slice(2).join(' ');
+if (cmd.includes('Get-NetAdapter')) {
+  console.log('${raw.mac}');
+} else if (cmd.includes('Win32_ComputerSystemProduct')) {
+  console.log('${raw.uuid}');
+} else if (cmd.includes('Win32_OperatingSystem')) {
+  console.log('${raw.boot}');
+} else if (cmd.includes('mesaRenderer')) {
+  console.log(JSON.stringify({
+    platform: 'win32',
+    executablePath: ${JSON.stringify(winExecutablePath)},
+    executableSha256: ${JSON.stringify(exeSha256)},
+    sourceArtifact: { kind: 'portable-exe', path: ${JSON.stringify(winSourcePath)}, sha256: ${JSON.stringify(exeSha256)} },
+    mesaRenderer: {
+      upstream: process.env.MESA_UPSTREAM,
+      version: process.env.MESA_VERSION,
+      archivePath: ${JSON.stringify(winMesaArchivePath)},
+      archiveSha256: ${JSON.stringify(mesaArchiveSha256)},
+      dlls: [{ name: 'opengl32.dll', path: ${JSON.stringify(winOpenglDllPath)}, sha256: ${JSON.stringify(openglDllSha256)} }]
+    }
+  }));
+} else {
+  console.log('');
+}
+`
+    await writeFile(join(dir, "powershell.exe"), fakePs, { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    const env = {
+      ...process.env,
+      PATH: `.:${dir}:${process.env.PATH}`,
+      APP_ID: "alacritty",
+      APP_EXECUTABLE: winExecutablePath,
+      APP_SOURCE_ARTIFACT: winSourcePath,
+      MESA_UPSTREAM: "https://github.com/mmozeiko/build-mesa",
+      MESA_VERSION: "26.2.5",
+      MESA_ARCHIVE_PATH: winMesaArchivePath,
+      ALACRITTY_VERSION_MODE: "ok",
+      RUNNER_ENVIRONMENT: "github-hosted",
+      RUNNER_NAME: "win-runner",
+      RUNNER_OS: "Windows",
+      RUNNER_ARCH: "X64",
+      RUNNER_TRACKING_ID: "win-tracking",
+      ImageOS: "win22",
+      ImageVersion: "20261001.1",
+      GITHUB_REPOSITORY: "fixture/repo",
+      GITHUB_WORKFLOW: "collect",
+      GITHUB_WORKFLOW_REF: "collect.yml@main",
+      GITHUB_RUN_ID: "89",
+      GITHUB_RUN_ATTEMPT: "1",
+      GITHUB_JOB: "collect",
+      GH_TOKEN: "fixture-token",
+      GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+    }
+    const run = (modeOverride: string, ...args: string[]) =>
+      promisify(execFile)(
+        "node",
+        ["--experimental-strip-types", fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)), ...args],
+        { cwd: dir, env: { ...env, ALACRITTY_VERSION_MODE: modeOverride } },
+      )
+    const start = join(dir, "start.json")
+    const receipt = join(dir, "host-measured.json")
+    await run("ok", "start", start)
+    const emitted = await run("ok", "emit", start, receipt)
+    expect(emitted.stderr).toContain('alacritty --version stdout (29 bytes): "alacritty 0.15.1 (0c405d53)\\r\\n"')
+    const parsed = parseDisposableReceipt(await readFile(receipt, "utf8"))
+    expect(parsed.appLaunch).toEqual({
+      platform: "win32",
+      executablePath: winExecutablePath,
+      productVersion: "0.15.1",
+      executableSha256: exeSha256,
+      sourceArtifact: {
+        kind: "portable-exe",
+        path: winSourcePath,
+        sha256: exeSha256,
+      },
+      mesaRenderer: {
+        upstream: "https://github.com/mmozeiko/build-mesa",
+        version: "26.2.5",
+        archivePath: winMesaArchivePath,
+        archiveSha256: mesaArchiveSha256,
+        dlls: [{ name: "opengl32.dll", path: winOpenglDllPath, sha256: openglDllSha256 }],
+      },
+    })
+
+    await expect(run("nonzero", "emit", start, join(dir, "nonzero.json"))).rejects.toThrow(
+      /alacritty --version failed.*exit 2/,
+    )
+    await expect(run("empty", "emit", start, join(dir, "empty.json"))).rejects.toThrow(
+      /alacritty --version produced empty output/,
+    )
+    await expect(run("bad-regex", "emit", start, join(dir, "bad-regex.json"))).rejects.toThrow(
+      /alacritty --version output did not match version regex/,
+    )
+    await expect(run("timeout", "emit", start, join(dir, "timeout.json"))).rejects.toThrow(
+      /alacritty --version timed out/,
+    )
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+})

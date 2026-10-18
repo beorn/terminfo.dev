@@ -88,8 +88,10 @@ export function parseAppLaunchReceipt(
     fail(path, "unknown appLaunch.platform")
   }
   if (value.platform === "win32") {
+    const keys = Object.keys(value).sort().join(",")
     if (
-      Object.keys(value).sort().join(",") !== "executablePath,executableSha256,platform,productVersion,sourceArtifact"
+      keys !== "executablePath,executableSha256,platform,productVersion,sourceArtifact" &&
+      keys !== "executablePath,executableSha256,mesaRenderer,platform,productVersion,sourceArtifact"
     ) {
       fail(path, "invalid win32 appLaunch fields; Windows and bundle fields cannot be mixed")
     }
@@ -104,7 +106,10 @@ export function parseAppLaunchReceipt(
     }
     const executableSha256 = measuredDigest(value.executableSha256, path, "appLaunch.executableSha256")
     if (!object(value.sourceArtifact)) fail(path, "missing appLaunch.sourceArtifact")
-    if (value.sourceArtifact.kind !== "portable-zip") fail(path, "win32 appLaunch.sourceArtifact must be portable-zip")
+    const sourceKind = value.sourceArtifact.kind
+    if (sourceKind !== "portable-zip" && sourceKind !== "portable-exe") {
+      fail(path, "win32 appLaunch.sourceArtifact must be portable-zip or portable-exe")
+    }
     if (Object.keys(value.sourceArtifact).sort().join(",") !== "kind,path,sha256") {
       fail(path, "invalid win32 appLaunch.sourceArtifact fields")
     }
@@ -113,12 +118,74 @@ export function parseAppLaunchReceipt(
       fail(path, "win32 appLaunch.sourceArtifact.path must be absolute")
     }
     const sha256 = measuredDigest(value.sourceArtifact.sha256, path, "appLaunch.sourceArtifact.sha256")
+    if (sourceKind === "portable-exe" && executableSha256 !== sha256) {
+      fail(path, "win32 portable-exe appLaunch.executableSha256 must match sourceArtifact.sha256")
+    }
+    if (sourceKind === "portable-zip" && value.mesaRenderer !== undefined) {
+      fail(path, "win32 portable-zip appLaunch cannot carry mesaRenderer")
+    }
+    let mesaRenderer:
+      | {
+          upstream: string
+          version: string
+          archivePath: string
+          archiveSha256: string
+          dlls: Array<{ name: string; path: string; sha256: string }>
+        }
+      | undefined
+    if (value.mesaRenderer !== undefined) {
+      if (!object(value.mesaRenderer)) fail(path, "invalid win32 appLaunch.mesaRenderer")
+      if (Object.keys(value.mesaRenderer).sort().join(",") !== "archivePath,archiveSha256,dlls,upstream,version") {
+        fail(path, "invalid win32 appLaunch.mesaRenderer fields")
+      }
+      const upstream = asString(value.mesaRenderer.upstream, path, "appLaunch.mesaRenderer.upstream")
+      if (upstream !== upstream.trim() || /[\r\n]/.test(upstream)) {
+        fail(path, "appLaunch.mesaRenderer.upstream has surrounding whitespace or a newline")
+      }
+      const version = asString(value.mesaRenderer.version, path, "appLaunch.mesaRenderer.version")
+      if (version !== version.trim() || /[\r\n]/.test(version)) {
+        fail(path, "appLaunch.mesaRenderer.version has surrounding whitespace or a newline")
+      }
+      const archivePath = asString(value.mesaRenderer.archivePath, path, "appLaunch.mesaRenderer.archivePath")
+      if (!win32.isAbsolute(archivePath) || win32.parse(archivePath).root.length <= 1) {
+        fail(path, "win32 appLaunch.mesaRenderer.archivePath must be absolute")
+      }
+      const archiveSha256 = measuredDigest(
+        value.mesaRenderer.archiveSha256,
+        path,
+        "appLaunch.mesaRenderer.archiveSha256",
+      )
+      if (!Array.isArray(value.mesaRenderer.dlls) || value.mesaRenderer.dlls.length === 0) {
+        fail(path, "win32 appLaunch.mesaRenderer.dlls must be a non-empty array")
+      }
+      const dlls = value.mesaRenderer.dlls.map((entry, index) => {
+        const field = `appLaunch.mesaRenderer.dlls[${String(index)}]`
+        if (!object(entry) || Object.keys(entry).sort().join(",") !== "name,path,sha256") {
+          fail(path, `invalid win32 ${field} fields`)
+        }
+        const name = asString(entry.name, path, `${field}.name`)
+        if (name !== name.trim() || /[\r\n/\\]/.test(name)) {
+          fail(path, `invalid win32 ${field}.name`)
+        }
+        const dllPath = asString(entry.path, path, `${field}.path`)
+        if (!win32.isAbsolute(dllPath) || win32.parse(dllPath).root.length <= 1) {
+          fail(path, `win32 ${field}.path must be absolute`)
+        }
+        const dllSha256 = measuredDigest(entry.sha256, path, `${field}.sha256`)
+        return { name, path: dllPath, sha256: dllSha256 }
+      })
+      if (!dlls.some((dll) => dll.name.toLowerCase() === "opengl32.dll")) {
+        fail(path, "win32 appLaunch.mesaRenderer.dlls must include opengl32.dll")
+      }
+      mesaRenderer = { upstream, version, archivePath, archiveSha256, dlls }
+    }
     return {
       platform: "win32",
       executablePath,
       productVersion,
       executableSha256,
-      sourceArtifact: { kind: "portable-zip", path: sourcePath, sha256 },
+      sourceArtifact: { kind: sourceKind, path: sourcePath, sha256 },
+      ...(mesaRenderer && { mesaRenderer }),
     }
   }
   if (Object.hasOwn(value, "productVersion")) fail(path, "mixed Windows and bundle appLaunch fields")

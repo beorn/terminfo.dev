@@ -21,6 +21,7 @@ jobs:
       matrix:
         include:
           - id: windows-terminal
+          - id: alacritty
     defaults:
       run:
         shell: bash
@@ -93,6 +94,54 @@ jobs:
               printf '%s\n' '{"$schema":"https://aka.ms/terminal-profiles-schema","profiles":{"defaults":{"closeOnExit":"always"}}}' > "$WT_DIR/settings/settings.json"
               test -f "$WT_DIR/WindowsTerminal.exe" || { echo "Windows Terminal binary missing at $WT_DIR/WindowsTerminal.exe" >&2; exit 1; }
               ;;
+            alacritty)
+              ALACRITTY_DIR="$RUNNER_TEMP/alacritty"
+              ALACRITTY_ARTIFACT="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.15.1-portable.exe"
+              ALACRITTY_EXPECTED_SHA256="65bbbecec3dcadca5fbcd7afcaaa83fedcb2b8febfbcdac8ac2cdbbef55b330c"
+              # Pinned Mesa3D Windows x64 llvmpipe software OpenGL 3.3+ rasterizer (mmozeiko/build-mesa 26.2.5)
+              # for headless windows-latest runners where Microsoft GDI Generic reports OpenGL 1.1.0 (C1 ruling 272cf5fc).
+              MESA_UPSTREAM="https://github.com/mmozeiko/build-mesa"
+              MESA_VERSION="26.2.5"
+              MESA_ARCHIVE="$RUNNER_TEMP/measurement-artifacts/mesa-llvmpipe-x64-26.2.5.7z"
+              MESA_EXPECTED_ARCHIVE_SHA256="d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d"
+              MESA_EXPECTED_OPENGL32_SHA256="8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1"
+              if [ -e "$ALACRITTY_DIR" ]; then
+                echo "Target directory $ALACRITTY_DIR already exists; refusing reuse" >&2
+                exit 1
+              fi
+              curl -L -s -f "https://github.com/alacritty/alacritty/releases/download/v0.15.1/Alacritty-v0.15.1-portable.exe" -o "$ALACRITTY_ARTIFACT"
+              ALACRITTY_ACTUAL_SHA256="$(sha256sum "$ALACRITTY_ARTIFACT" | awk '{print $1}')"
+              echo "alacritty portable exe sha256: $ALACRITTY_ACTUAL_SHA256 ($ALACRITTY_ARTIFACT)"
+              test "$ALACRITTY_ACTUAL_SHA256" = "$ALACRITTY_EXPECTED_SHA256" || {
+                echo "Alacritty portable exe sha256 mismatch: expected $ALACRITTY_EXPECTED_SHA256, got $ALACRITTY_ACTUAL_SHA256" >&2
+                exit 1
+              }
+              curl -L -s -f "$MESA_UPSTREAM/releases/download/$MESA_VERSION/mesa-llvmpipe-x64-$MESA_VERSION.7z" -o "$MESA_ARCHIVE"
+              MESA_ACTUAL_ARCHIVE_SHA256="$(sha256sum "$MESA_ARCHIVE" | awk '{print $1}')"
+              echo "Mesa3D archive ($MESA_UPSTREAM $MESA_VERSION) sha256: $MESA_ACTUAL_ARCHIVE_SHA256 ($MESA_ARCHIVE)"
+              test "$MESA_ACTUAL_ARCHIVE_SHA256" = "$MESA_EXPECTED_ARCHIVE_SHA256" || {
+                echo "Mesa3D archive sha256 mismatch: expected $MESA_EXPECTED_ARCHIVE_SHA256, got $MESA_ACTUAL_ARCHIVE_SHA256" >&2
+                exit 1
+              }
+              mkdir -p "$ALACRITTY_DIR" "$RUNNER_TEMP/mesa_unpacked"
+              7z x "$MESA_ARCHIVE" -o"$RUNNER_TEMP/mesa_unpacked" -y >/dev/null
+              cp "$ALACRITTY_ARTIFACT" "$ALACRITTY_DIR/alacritty.exe"
+              cp "$RUNNER_TEMP"/mesa_unpacked/*.dll "$ALACRITTY_DIR/"
+              for dll in "$ALACRITTY_DIR"/*.dll; do
+                dll_sha="$(sha256sum "$dll" | awk '{print $1}')"
+                echo "Mesa3D DLL $(basename "$dll") sha256: $dll_sha ($dll)"
+              done
+              OPENGL32_ACTUAL_SHA256="$(sha256sum "$ALACRITTY_DIR/opengl32.dll" | awk '{print $1}')"
+              test "$OPENGL32_ACTUAL_SHA256" = "$MESA_EXPECTED_OPENGL32_SHA256" || {
+                echo "Mesa3D opengl32.dll sha256 mismatch: expected $MESA_EXPECTED_OPENGL32_SHA256, got $OPENGL32_ACTUAL_SHA256" >&2
+                exit 1
+              }
+              cat > "$ALACRITTY_DIR/alacritty.toml" <<'TOML'
+          [window]
+          dimensions = { columns = 100, lines = 35 }
+          TOML
+              test -f "$ALACRITTY_DIR/alacritty.exe" || { echo "Alacritty binary missing at $ALACRITTY_DIR/alacritty.exe" >&2; exit 1; }
+              ;;
             *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
           esac
 
@@ -112,13 +161,26 @@ jobs:
           BUN_DIR="$(cygpath -w "$(dirname "$(command -v bun)")")"
           COLLECTOR_BUN="$(cygpath -w "$(command -v bun)")"
           COLLECTOR="$(cygpath -w "$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs")"
-          WT_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
-          WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe")"
-          WIN_ZIP="$(cygpath -w "$OUT/wt.zip")"
+          case "$APP_ID" in
+            windows-terminal)
+              APP_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
+              WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe")"
+              WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/wt.zip")"
+              ;;
+            alacritty)
+              APP_DIR="$(cygpath -w "$RUNNER_TEMP/alacritty")"
+              WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.exe")"
+              WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/Alacritty-v0.15.1-portable.exe")"
+              export MESA_UPSTREAM="https://github.com/mmozeiko/build-mesa"
+              export MESA_VERSION="26.2.5"
+              export MESA_ARCHIVE_PATH="$(cygpath -w "$OUT/mesa-llvmpipe-x64-26.2.5.7z")"
+              ;;
+            *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
+          esac
 
           cat > "$COMMAND_PATH" <<PS1
           \$ErrorActionPreference = "Continue"
-          \$env:PATH = "$WT_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
+          \$env:PATH = "$APP_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
           \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
 
@@ -138,7 +200,7 @@ jobs:
           # readiness wait and before the collector (27917: hosted runs never set it).
           \$receipt = Get-Content -Raw "$WIN_OUT\\host-measured.json" | ConvertFrom-Json
           if (\$receipt.appLaunch.platform -cne "win32" -or [string]::IsNullOrWhiteSpace(\$receipt.appLaunch.productVersion) -or \$receipt.appLaunch.executablePath -ine "$WIN_EXECUTABLE") {
-            Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt lacks the measured launched WindowsTerminal.exe path or ProductVersion; collection refused"
+            Set-Content -Path "$WIN_OUT\\collector.log" -Value "Receipt lacks the measured launched executable path or ProductVersion; collection refused"
             Set-Content -Path "$WIN_OUT\\collector-exit" -Value "1"
             exit 1
           }
@@ -161,11 +223,15 @@ jobs:
             windows-terminal)
               "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe" -d "$WIN_OUT" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
               ;;
+            alacritty)
+              WIN_CONFIG="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.toml")"
+              WGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe "$RUNNER_TEMP/alacritty/alacritty.exe" -v --config-file "$WIN_CONFIG" --working-directory "$WIN_OUT" --command powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
+              ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
 
           sleep 3
-          export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_ZIP"
+          export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_SOURCE_ARTIFACT"
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           touch "$OUT/collector-ready"
 

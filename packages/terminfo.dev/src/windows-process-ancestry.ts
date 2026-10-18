@@ -119,12 +119,9 @@ const ERROR_NO_MORE_FILES = 18
  * The whole process table, one decoded record at a time. `runtime.arch` is injectable so the layout
  * choice is testable; the default is the running process's own architecture.
  */
-export async function readWindowsProcessTable(
-  runtime: { arch?: string } = process,
-  kernel?: Kernel32,
-): Promise<WindowsProcessRow[]> {
+export function readWindowsProcessTable(runtime: { arch?: string } = process, kernel?: Kernel32): WindowsProcessRow[] {
   const layout = processEntry32WLayout(pointerBytesForArch(runtime.arch ?? process.arch))
-  const { symbols, ptr } = kernel ?? (await loadKernel32())
+  const { symbols, ptr } = kernel ?? loadKernel32()
   const snapshot = symbols.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS as never, 0 as never)
   // A refused snapshot is INVALID_HANDLE_VALUE, never NULL and never zero, and it must be refused
   // HERE: its own Win32 code is read first, and there is nothing to close on a failed handle.
@@ -222,17 +219,46 @@ export function windowsCommBase(comm: string): string {
   return (slash === -1 ? trimmed : trimmed.slice(slash + 1)).toLowerCase()
 }
 
+export type HostedWindowsAppId = "windows-terminal" | "alacritty"
+export type HostedWindowsApp = { id: HostedWindowsAppId; comm: string }
+
+/** The one Windows terminal executable table shared by owned-terminal and detect.ts (C2, C3). */
+export const HOSTED_WINDOWS_EXECUTABLE: Readonly<Record<string, HostedWindowsApp>> = {
+  "windowsterminal.exe": { id: "windows-terminal", comm: "WindowsTerminal.exe" },
+  "alacritty.exe": { id: "alacritty", comm: "alacritty.exe" },
+}
+
+/** Map a github-hosted-runner win32 appLaunch.executablePath to the hosted Windows terminal apps. */
+export function hostedWindowsAppFromExecutablePath(executablePath: string): HostedWindowsApp {
+  const base = windowsCommBase(executablePath)
+  const app = HOSTED_WINDOWS_EXECUTABLE[base]
+  if (!app) {
+    throw new Error(
+      `Hosted Windows receipt executable is not one of WindowsTerminal.exe, alacritty.exe: ${JSON.stringify(executablePath)}`,
+    )
+  }
+  return app
+}
+
 /**
- * Grant-time process identity on the hosted Windows route: the receipt's app (WindowsTerminal.exe)
- * must be one of this collector's ancestors. The same shape as the Darwin check, with Windows'
- * case-insensitive base-name matching; there is only one hosted Windows terminal app, so unlike the
- * Darwin arm there is no competing-app set to refuse against.
+ * Grant-time process identity on the hosted Windows route: the receipt's app (WindowsTerminal.exe or
+ * alacritty.exe) must be one of this collector's ancestors, and no competing hosted Windows terminal
+ * app may sit on the chain.
  */
 export function requireHostedWindowsAppAncestor(
   expectedComm: string,
   rows: readonly WindowsProcessRow[],
 ): WindowsProcessRow {
   const want = windowsCommBase(expectedComm)
+  const other = rows.find((row) => {
+    const base = windowsCommBase(row.comm)
+    return Object.hasOwn(HOSTED_WINDOWS_EXECUTABLE, base) && base !== want
+  })
+  if (other) {
+    throw new Error(
+      `Hosted Windows ancestry reached ${other.comm} (pid ${String(other.pid)}) while the receipt names ${expectedComm}`,
+    )
+  }
   const named = rows.filter((row) => windowsCommBase(row.comm) === want)
   const only = named[0]
   if (only === undefined) {
@@ -252,4 +278,67 @@ export function requireHostedWindowsAppAncestor(
     )
   }
   return only
+}
+
+/** PROCESS_QUERY_LIMITED_INFORMATION (winnt.h): minimum access right for QueryFullProcessImageNameW. */
+const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+const MAX_IMAGE_NAME_CHARS = 4096
+
+/**
+ * Read the full Win32 executable path of `pid` via OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) and
+ * QueryFullProcessImageNameW (measured on windows-latest in C1b run 39114986301). Returns null when
+ * the OS refuses the handle or image-name query; always closes an opened handle.
+ */
+export function queryWindowsProcessExecutablePath(pid: number, kernel?: Kernel32): string | null {
+  const { symbols, ptr } = kernel ?? loadKernel32()
+  const handle = symbols.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION as never, 0 as never, pid as never)
+  if (handle === 0n || handle === INVALID_HANDLE_VALUE) return null
+  try {
+    const buf = Buffer.alloc(MAX_IMAGE_NAME_CHARS * 2)
+    const sizeBuf = Buffer.alloc(4)
+    sizeBuf.writeUInt32LE(MAX_IMAGE_NAME_CHARS, 0)
+    const ok = symbols.QueryFullProcessImageNameW(handle as never, 0 as never, ptr(buf) as never, ptr(sizeBuf) as never)
+    if (ok === 0) return null
+    const charsWritten = sizeBuf.readUInt32LE(0)
+    if (charsWritten === 0 || charsWritten > MAX_IMAGE_NAME_CHARS) return null
+    return new TextDecoder("utf-16le").decode(buf.subarray(0, charsWritten * 2))
+  } finally {
+    symbols.CloseHandle(handle as never)
+  }
+}
+
+export interface DetectedWindowsAncestor {
+  readonly app: HostedWindowsApp
+  readonly row: WindowsProcessRow
+  readonly executablePath: string | null
+}
+
+/**
+ * Walk from `startPid` over the synchronous toolhelp32 process table and return the nearest ancestor
+ * in `HOSTED_WINDOWS_EXECUTABLE` together with its full executable path from `QueryFullProcessImageNameW`.
+ * Returns null if no ancestor in `HOSTED_WINDOWS_EXECUTABLE` is on the chain or if more than one
+ * distinct terminal app sits on the chain.
+ */
+export function detectHostedWindowsAncestor(
+  startPid: number = process.pid,
+  runtime: { arch?: string } = process,
+  kernel?: Kernel32,
+): DetectedWindowsAncestor | null {
+  const resolvedKernel = kernel ?? loadKernel32()
+  const rows = readWindowsProcessTable(runtime, resolvedKernel)
+  const chain = windowsProcessAncestry(rows, startPid)
+  const matches = chain
+    .map((row) => {
+      const app = HOSTED_WINDOWS_EXECUTABLE[windowsCommBase(row.comm)]
+      return app ? { app, row } : null
+    })
+    .filter((entry): entry is { app: HostedWindowsApp; row: WindowsProcessRow } => entry !== null)
+  const first = matches[0]
+  if (!first) return null
+  if (matches.some((entry) => entry.app.id !== first.app.id)) return null
+  return {
+    app: first.app,
+    row: first.row,
+    executablePath: queryWindowsProcessExecutablePath(first.row.pid, resolvedKernel),
+  }
 }

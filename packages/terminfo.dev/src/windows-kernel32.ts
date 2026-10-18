@@ -11,6 +11,7 @@
  * a node process on Windows refuses LOUDLY at loadKernel32 ("bun:ffi is not available in this
  * runtime") instead of grading a console it could not verify. Say "node starts" only ever beside it.
  */
+
 /** A kernel32 entry point as `bun:ffi` hands it back: untyped and variadic, so every call site casts
  * each argument to the FFI type the dlopen below declared for that symbol. */
 export type Kernel32Symbol = (...args: never[]) => number
@@ -36,6 +37,8 @@ export interface Kernel32Symbols {
   CreateToolhelp32Snapshot: Kernel32HandleSymbol
   Process32FirstW: Kernel32Symbol
   Process32NextW: Kernel32Symbol
+  OpenProcess: Kernel32HandleSymbol
+  QueryFullProcessImageNameW: Kernel32Symbol
   GetLastError: Kernel32Symbol
   CloseHandle: Kernel32Symbol
 }
@@ -83,15 +86,21 @@ export function kernel32Declaration(types: {
     CreateToolhelp32Snapshot: { args: [types.u32, types.u32], returns: types.u64 },
     Process32FirstW: { args: [types.u64, types.ptr], returns: types.i32 },
     Process32NextW: { args: [types.u64, types.ptr], returns: types.i32 },
+    // dwDesiredAccess u32, bInheritHandle BOOL (i32), dwProcessId u32 -> HANDLE (u64).
+    OpenProcess: { args: [types.u32, types.i32, types.u32], returns: types.u64 },
+    // hProcess HANDLE (u64), dwFlags u32, lpExeName ptr, lpdwSize ptr -> BOOL (i32).
+    QueryFullProcessImageNameW: { args: [types.u64, types.u32, types.ptr, types.ptr], returns: types.i32 },
     GetLastError: { args: [], returns: types.u32 },
     CloseHandle: { args: [types.u64], returns: types.i32 },
   }
 }
 
-export async function loadKernel32(): Promise<Kernel32> {
+export function loadKernel32(): Kernel32 {
   let ffi: FfiModule
   try {
-    ffi = (await import("bun:ffi")) as unknown as FfiModule
+    const mod = process.getBuiltinModule("bun:ffi") as FfiModule | undefined
+    if (!mod) throw new Error("process.getBuiltinModule('bun:ffi') returned undefined")
+    ffi = mod
   } catch (error) {
     throw new Error(
       `bun:ffi is not available in this runtime: ${error instanceof Error ? error.message : String(error)}`,

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { afterEach, expect, test } from "vitest"
-import { createOwnedTerminal } from "./owned-terminal.ts"
+import { createOwnedTerminal, hostedWindowsAppFromExecutablePath } from "./owned-terminal.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
 const directories: string[] = []
@@ -24,6 +24,20 @@ const ids = {
   captureRunId: "a".repeat(32),
   expectedLaunchRunId: "b".repeat(32),
 }
+
+test("hostedWindowsAppFromExecutablePath maps WindowsTerminal.exe and alacritty.exe from the receipt executable", () => {
+  expect(hostedWindowsAppFromExecutablePath("C:\\runner\\windows-terminal\\WindowsTerminal.exe")).toEqual({
+    id: "windows-terminal",
+    comm: "WindowsTerminal.exe",
+  })
+  expect(hostedWindowsAppFromExecutablePath("D:\\a\\_temp\\alacritty\\alacritty.exe")).toEqual({
+    id: "alacritty",
+    comm: "alacritty.exe",
+  })
+  expect(() => hostedWindowsAppFromExecutablePath("C:\\Program Files\\WezTerm\\wezterm-gui.exe")).toThrow(
+    /Hosted Windows receipt executable is not one of WindowsTerminal\.exe, alacritty\.exe/,
+  )
+})
 
 test("windowsHosted is a fourth XOR arm: linux plus windowsHosted is refused", async () => {
   await expect(
@@ -41,7 +55,7 @@ test("windowsHosted alone off Windows refuses by platform, before it reads any r
   directories.push(dir)
   const receiptPath = join(dir, "host-measured.json")
   // A receipt file that EXISTS but is not a github-hosted-runner envelope: if the platform guard
-  // came second, this test would fail on the receipt instead of the platform, and a Windows run
+  // came second, this test would fail on the receipt instead of the receipt platform, and a Windows run
   // started anywhere else would read a receipt it has no business reading.
   writeFileSync(receiptPath, "{}")
   await expect(

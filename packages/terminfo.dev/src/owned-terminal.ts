@@ -17,12 +17,17 @@ import {
 import { readTerminalTextSnapshot, type TerminalTextApp, type TerminalTextRead } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import {
+  HOSTED_WINDOWS_EXECUTABLE,
+  hostedWindowsAppFromExecutablePath,
   readWindowsProcessTable,
   requireHostedWindowsAppAncestor,
-  windowsCommBase,
   windowsProcessAncestry,
+  type HostedWindowsApp,
+  type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
+
+export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
 
 export type GeometrySource =
   | "stty size on a /proc/self/fd reopen of the verified output device"
@@ -35,9 +40,6 @@ export type GeometrySource =
  * WHICH read answered instead of naming the primary when the fallback did. */
 const WINDOWS_FFI_SOURCE = "GetConsoleScreenBufferInfo on the collector's own CONOUT$" as const
 const WINDOWS_MODE_CON_SOURCE = "`mode con` on the collector's own console" as const
-
-/** The one Windows terminal app the hosted route launches, named in windows-measurement.yml. */
-const HOSTED_WINDOWS_TERMINAL_COMM = "WindowsTerminal.exe"
 
 export type GeometryMeasurement =
   | {
@@ -100,6 +102,7 @@ export interface OwnedTerminal {
   readonly summary: string
   /** The PID of the receipt-named hosted app, measured from this collector's process ancestry. */
   readonly hostedAppPid?: number
+  readonly hostedWindowsAppId?: HostedWindowsAppId
   readonly clipboard?: LinuxClipboardAdapter
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
@@ -365,7 +368,7 @@ const geometrySource = (binding: OutputBinding): OwnedTerminal["geometrySource"]
 /** Always reopen the selected output, verify that clone, then ask stty for a fresh size. */
 async function readBoundGeometry(
   binding: OutputBinding,
-  windowsKernel?: Awaited<ReturnType<typeof loadKernel32>>,
+  windowsKernel?: ReturnType<typeof loadKernel32>,
 ): Promise<GeometryMeasurement> {
   // The Windows arm is the one read with no fd to reopen: the console read IS the verified read, on
   // the console windowsHostedOutput bound this process to.
@@ -463,9 +466,7 @@ async function readBoundGeometry(
  * `unavailable` carrying both attempts' diagnostics, so the caller keeps today's loud note instead
  * of grading on a guessed size.
  */
-async function readWindowsBoundGeometry(
-  kernel?: Awaited<ReturnType<typeof loadKernel32>>,
-): Promise<GeometryMeasurement> {
+async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>): Promise<GeometryMeasurement> {
   const at = new Date().toISOString()
   // The arm loads kernel32 once; the geometry read reuses that binding instead of loading a second.
   const read = await readConsoleGeometry({ ffi: () => readWindowsConsoleGeometry(kernel) })
@@ -518,10 +519,10 @@ export async function createOwnedTerminal(options: {
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
+  let hostedWindowsApp: HostedWindowsApp | undefined
   let hostedAncestor: AncestryRow | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
-  let hostedWindows = false
   /** The console host whose buffer the Windows cell read sees, or the reason none could be
    * selected. Windows Terminal draws the window and the host owns the buffer, so the name must come
    * from the process table and never from the drawing program. */
@@ -529,7 +530,7 @@ export async function createOwnedTerminal(options: {
   /** The console identity this run bound to, re-checked before every cell read. */
   let windowsConsoleIdentity: string | undefined
   /** One kernel32 binding for the whole arm: the identity, table, geometry and cell reads share it. */
-  let windowsKernel: Awaited<ReturnType<typeof loadKernel32>> | undefined
+  let windowsKernel: ReturnType<typeof loadKernel32> | undefined
   if (linux) {
     if (process.platform !== "linux") throw new Error("Owned Linux fixture requires Linux")
     binding = linuxOutput(out)
@@ -581,11 +582,7 @@ export async function createOwnedTerminal(options: {
     if (appLaunch?.platform !== "win32") {
       throw new Error("Hosted Windows github-hosted-runner receipt names no win32 appLaunch")
     }
-    if (windowsCommBase(appLaunch.executablePath) !== windowsCommBase(HOSTED_WINDOWS_TERMINAL_COMM)) {
-      throw new Error(
-        `Hosted Windows receipt executable is not ${HOSTED_WINDOWS_TERMINAL_COMM}: ${JSON.stringify(appLaunch.executablePath)}`,
-      )
-    }
+    hostedWindowsApp = hostedWindowsAppFromExecutablePath(appLaunch.executablePath)
     // The receipt's own launch id must be THIS launch, the same claim the Terminal.app arm makes.
     if (receipt.runId !== expectedLaunchRunId) {
       throw new Error(`Hosted Windows receipt run id ${receipt.runId} differs from this launch ${expectedLaunchRunId}`)
@@ -593,17 +590,17 @@ export async function createOwnedTerminal(options: {
     // The walk runs and PRINTS before the CONOUT$ precondition is checked: a refusal at the binding
     // must not leave the toolhelp32 layout - the one read here never yet seen from real bytes - unread
     // in the artifact. The Darwin arm prints its ps evidence to stderr the same way.
-    windowsKernel = await loadKernel32()
+    windowsKernel = loadKernel32()
     // The TABLE, not the ancestry walk: the console host is the terminal's other child, a sibling
     // of the shell, so a chain from this process can never contain it.
-    const windowsTable = await readWindowsProcessTable(process, windowsKernel)
+    const windowsTable = readWindowsProcessTable(process, windowsKernel)
     const windowsAncestry = windowsProcessAncestry(windowsTable, process.pid)
     process.stderr.write(
       `Hosted Windows measured process ancestry: ${windowsAncestry
         .map((row) => `${String(row.pid)}:${row.comm}`)
         .join(" <- ")}\n`,
     )
-    hostedAncestor = requireHostedWindowsAppAncestor(HOSTED_WINDOWS_TERMINAL_COMM, windowsAncestry)
+    hostedAncestor = requireHostedWindowsAppAncestor(hostedWindowsApp.comm, windowsAncestry)
     windowsConsoleHost = consoleHostFromTable(hostedAncestor.pid, windowsTable)
     process.stderr.write(
       `Hosted Windows console buffer owner: ${
@@ -612,10 +609,9 @@ export async function createOwnedTerminal(options: {
           : `refused: ${windowsConsoleHost.reason}`
       }\n`,
     )
-    windowsConsoleIdentity = await readWindowsConsoleIdentity(windowsKernel)
+    windowsConsoleIdentity = readWindowsConsoleIdentity(windowsKernel)
     binding = windowsHostedOutput(out, windowsConsoleIdentity)
     hostedReceiptSha256 = receipt.sha256
-    hostedWindows = true
   }
   let clipboard: LinuxClipboardAdapter | undefined
   // The two macOS terminals that answer no cell geometry: their read is the app's own text
@@ -641,9 +637,9 @@ export async function createOwnedTerminal(options: {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",
       }),
-      ...(hostedWindows && {
+      ...(hostedWindowsApp && {
         windowsHosted: {
-          appId: "windows-terminal",
+          appId: hostedWindowsApp.id,
           ancestor: hostedAncestor,
           // Which program's buffer a cell read returns, so the evidence can name it.
           consoleHost: windowsConsoleHost?.status === "named" ? windowsConsoleHost.host : null,
@@ -667,13 +663,14 @@ export async function createOwnedTerminal(options: {
       geometrySource: source,
       summary,
       ...(hostedAncestor && { hostedAppPid: hostedAncestor.pid }),
+      ...(hostedWindowsApp && { hostedWindowsAppId: hostedWindowsApp.id }),
       ...(clipboard && { clipboard }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")
         // A Windows console has no device to re-open, so the re-read is the console's own identity:
         // a changed window handle means these probes no longer write where the geometry came from.
         if (binding.platform === "windows") {
-          const identity = await readWindowsConsoleIdentity(windowsKernel)
+          const identity = readWindowsConsoleIdentity(windowsKernel)
           if (identity !== binding.consoleIdentity) {
             throw new Error(
               `Owned geometry console changed: window handle ${identity}, bound to ${binding.consoleIdentity}`,
@@ -698,12 +695,12 @@ export async function createOwnedTerminal(options: {
         }
         return readBoundGeometry(current, windowsKernel)
       },
-      ...(hostedWindows && {
+      ...(hostedWindowsApp && {
         async readCells() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
           // The console is re-checked as the geometry read re-checks its device: a cell read on a
           // different console than this run bound to is not this run's frame.
-          const identity = await readWindowsConsoleIdentity(windowsKernel)
+          const identity = readWindowsConsoleIdentity(windowsKernel)
           const mismatch = consoleIdentityMismatch(identity, windowsConsoleIdentity)
           if (mismatch !== undefined) throw new Error(mismatch)
           const bufferOwner = consoleBufferOwner(windowsConsoleHost)
