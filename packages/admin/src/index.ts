@@ -89,7 +89,8 @@ probe
   .argument("[terminal]", "Terminal app to probe")
   .option("--all", "Probe all installed terminals")
   .option("-f, --force", "Re-run even if cached")
-  .actionMerged(async (opts: { terminal?: string; all?: boolean; force?: boolean }) => {
+  .option("--output <directory>", "Retain the private development run without admission")
+  .actionMerged(async (opts: { terminal?: string; all?: boolean; force?: boolean; output?: string }) => {
     ensureSourceSuiteEnvironment()
     const { handleApp } = await import("./app.ts")
     await handleApp(opts.terminal, opts)

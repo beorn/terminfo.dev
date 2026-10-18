@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import { readFileSync, realpathSync } from "node:fs"
 import { join } from "node:path"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { run, tty, runningTerminal, type OwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import { run, tty, runningTerminal, type TerminalAppWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
 
 export interface TerminalAppCapture {
   receipt: AppLaunchReceipt
@@ -10,7 +10,7 @@ export interface TerminalAppCapture {
 }
 
 /** AppleScript takes a before-ID census and returns its new window ID plus the exact tab TTY. */
-export function launchTerminalWindow(scriptPath: string): OwnedTerminalWindow {
+export function launchTerminalWindow(scriptPath: string): TerminalAppWindow {
   const script = `tell application "Terminal"
   set AppleScript's text item delimiters to ","
   set priorList to id of every window
@@ -61,7 +61,7 @@ end tell`
       `Expected exactly one new single-tab Terminal window with returned TTY ${launchedTTY}; found ${matching.length}`,
     )
   }
-  return { windowId, tty: launchedTTY }
+  return { provider: "terminal-app", windowId, tty: launchedTTY }
 }
 
 function plist(bundlePath: string, key: string): string {
@@ -82,7 +82,7 @@ function field(raw: string, name: string): string {
 
 /** Run after private runId registration and /info verification, before the immutable raw write. */
 export function captureTerminalAppReceipt(
-  window: OwnedTerminalWindow,
+  window: TerminalAppWindow,
   daemonPid: number,
   intendedVersion: string,
 ): TerminalAppCapture {
