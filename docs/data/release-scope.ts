@@ -47,9 +47,9 @@ export function classifyCell(cell: { outcome: string; conclusive?: boolean } | u
   return "inconclusive"
 }
 
-/** Classify a whole cell map with the ONE classifier: the projection's entry point. Its only caller is
- * `projectResults` in `selected-results.ts`, where every run is classified once into `table`; no consumer
- * classifies raw cells, and a source-shape test pins both callers (28792 item 1). */
+/** Classify a whole prepared cell map with the ONE classifier. Its two callers live in
+ * `selected-results.ts`: `projectResults` fills the product table, while `classifyDevelopmentRun`
+ * returns private development states. Neither pages nor scripts classify raw cells (28792 item 1). */
 export function classifyCells(
   cells: Record<string, { outcome: string; conclusive?: boolean } | undefined>,
 ): Record<string, CellState> {

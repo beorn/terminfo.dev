@@ -325,7 +325,7 @@ describe("release 1 measurement scope", () => {
     expect(helper).not.toMatch(/from ["']node:fs["']/)
   })
 
-  it("runs the ONE classifier with one caller each: classifyCell only inside classifyCells, classifyCells only inside projectResults", () => {
+  it("keeps the ONE classifier inside the projection and its development entry", () => {
     // Every source the site builds or the CLI runs, tests excluded. A page or a script that classified
     // raw cells itself would be a second copy of the five-way chain, which is what item 1 removes
     // (28792 item 1, @cto 2026-10-12 must-fix).
@@ -342,6 +342,8 @@ describe("release 1 measurement scope", () => {
       { file: join("docs", "data", "release-scope.ts"), caller: "classifyCells" },
     ])
     expect(callSites("classifyCells")).toEqual([
+      // CTO 716686ae authorizes the development entry beside projectRun; no page/script classifies raw cells.
+      { file: join("docs", "data", "selected-results.ts"), caller: "classifyDevelopmentRun" },
       { file: join("docs", "data", "selected-results.ts"), caller: "projectResults" },
     ])
   })
