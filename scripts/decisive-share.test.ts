@@ -27,6 +27,7 @@ import {
   candidate4Cohort,
   COHORT_FACTORIES,
   admittedShareText,
+  cohortReaderLines,
   notMeasuredCoverageLine,
   sharePct,
   categoryShares,
@@ -1144,21 +1145,47 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       expect(sharePct(3, 4)).toBe(75)
     })
 
-    it("names zero coverage and prints neither a fraction nor a verdict", () => {
-      const coverage = notMeasuredCoverageLine({ decidableIds: [], measuredIds: ["a", "b", "c"] })
-      expect(coverage).toBe("not measured: 0 of 3 cohort ids have probes")
+    it("names zero coverage on the real reader output path, with a covered positive control", () => {
+      const real = join(import.meta.dirname ?? process.cwd(), "..", "content")
+      const contentDir = mkdtempSync(join(tmpdir(), "reader-zero-coverage-"))
+      try {
+        const suites = join(contentDir, "suites")
+        mkdirSync(suites)
+        // The projection's own suite, so the required suite is the only thing this fixture changes.
+        writeFileSync(join(suites, "5753741410a9.json"), readFileSync(join(real, "suites", "5753741410a9.json")))
+        const realManifest = join(real, "suites", "c24025ea22fc.json")
+        const raw = parseSuiteManifest(realManifest, readFileSync(realManifest, "utf8"))
+        // A suite that exists and is frozen for candidate4 but carries probes for NONE of the cohort:
+        // exactly the state that used to print a measured fail bar.
+        writeFileSync(
+          join(suites, "c24025ea22fc.json"),
+          JSON.stringify({ ...raw, probes: { ...raw.probes, app: [] } }, null, 2),
+        )
+        writeFileSync(join(contentDir, "categories.json"), readFileSync(join(real, "categories.json")))
+        writeFileSync(join(contentDir, "features.json"), readFileSync(join(real, "features.json")))
+        for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) mkdirSync(join(contentDir, dir))
+        writeFileSync(join(contentDir, "context-blockers.json"), readFileSync(join(real, "context-blockers.json")))
 
-      const covered = decisiveShare({ a: "supported" } as never, ["a"])
-      const blocked = admittedShareText(covered.denominator, covered, coverage)
-      expect(blocked).toBe("not measured: 0 of 3 cohort ids have probes")
-      expect(blocked).not.toContain("decisive/")
-      expect(blocked).not.toContain("verdict")
+        const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+        const cohort = report.cohort
+        if (!cohort) throw new Error("the fixture did not build a cohort")
+        expect(cohort.decidableIds).toHaveLength(0)
+        expect(cohort.measuredIds.length).toBeGreaterThan(0)
+        const printed = cohortReaderLines(report, cohort, [], contentDir).join("\n")
+        expect(printed).toContain(`not measured: 0 of ${cohort.measuredIds.length} cohort ids have probes`)
+        // The old wiring printed a fraction and a verdict here; neither may appear.
+        expect(printed).not.toContain("decisive/")
+        expect(printed).not.toMatch(/· verdict (pass|with gaps|fail)/)
+      } finally {
+        rmSync(contentDir, { recursive: true, force: true })
+      }
+    })
 
-      // Positive control: with coverage the same function still prints the fraction and the verdict.
-      expect(notMeasuredCoverageLine({ decidableIds: ["a"], measuredIds: ["a"] })).toBeUndefined()
-      const printed = admittedShareText(1, covered, undefined)
+    it("keeps the fraction and verdict when the required suite does have coverage", () => {
+      const printed = admittedShareText(1, decisiveShare({ a: "supported" } as never, ["a"]), undefined)
       expect(printed).toContain("decisive/1 1/1")
       expect(printed).toContain("verdict")
+      expect(notMeasuredCoverageLine({ decidableIds: ["a"], measuredIds: ["a"] })).toBeUndefined()
     })
   })
 })
