@@ -336,6 +336,11 @@ export function ownedAppCommand(
     return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
   }
   if (!transport.stage) throw new Error(`${labelOf(context)}: an ssh owned-app transport requires --owned-app-stage`)
+  if (!transport.knownHosts) {
+    throw new Error(
+      `${labelOf(context)}: an ssh owned-app transport requires --owned-app-known-hosts; trust is never invented`,
+    )
+  }
   return {
     argv: [
       "bun",
@@ -350,7 +355,8 @@ export function ownedAppCommand(
       sourceRevision,
       "--context",
       context.id,
-      ...(transport.knownHosts === undefined ? [] : ["--known-hosts", transport.knownHosts]),
+      "--known-hosts",
+      transport.knownHosts,
       ...(transport.removeStage ? ["--remove-stage"] : []),
       "--",
       ...probe,
@@ -360,8 +366,13 @@ export function ownedAppCommand(
 }
 
 /** Read the host-written transport receipt as the pass's own evidence shape. It grants nothing:
- * the receipt is a record of where a run started and what bytes it moved, never a permission. */
-export function readOwnedAppTransportProof(path: string): NonNullable<CollectionPass["transport"]> {
+ * the receipt is a record of where a run started and what bytes it moved, never a permission.
+ * The receipt is bound to the revision this pass asked for, so a receipt from another run cannot
+ * stand in for the bytes this one measured. */
+export function readOwnedAppTransportProof(
+  path: string,
+  expectedRevision: string,
+): NonNullable<CollectionPass["transport"]> {
   const bytes = readFileSync(path, "utf8")
   let value: unknown
   try {
@@ -372,6 +383,8 @@ export function readOwnedAppTransportProof(path: string): NonNullable<Collection
   const receipt = value as {
     schemaVersion?: unknown
     kind?: unknown
+    grants?: unknown
+    sourceRevision?: unknown
     transport?: unknown
     hostKeyFingerprint?: unknown
     resourceManifestSha256?: unknown
@@ -380,6 +393,16 @@ export function readOwnedAppTransportProof(path: string): NonNullable<Collection
   }
   if (receipt.schemaVersion !== 1 || receipt.kind !== "owned-app-transport") {
     throw new Error(`owned-app transport receipt at ${path} is not a schemaVersion 1 owned-app-transport record`)
+  }
+  if (receipt.grants !== "nothing") {
+    throw new Error(
+      `owned-app transport receipt at ${path} claims ${JSON.stringify(receipt.grants)}; this kind grants nothing`,
+    )
+  }
+  if (receipt.sourceRevision !== expectedRevision) {
+    throw new Error(
+      `owned-app transport receipt at ${path} names source ${JSON.stringify(receipt.sourceRevision)}, not the collected ${expectedRevision}`,
+    )
   }
   for (const field of ["transport", "hostKeyFingerprint", "resourceManifestSha256", "resourceFiles"] as const) {
     if (typeof receipt[field] !== "string" && typeof receipt[field] !== "number") {
@@ -538,16 +561,21 @@ export async function collectPass(
           stdout: join(output, "launcher.stdout.log"),
           stderr: join(output, "launcher.stderr.log"),
         })
+        // One home for the transport's artifacts: the driver writes the run JSON and the receipt
+        // into <output>/transport, so the collector reads them from exactly there.
+        const runsDirectory = ownedApp.runner === "local" ? output : join(output, "transport")
         if (ownedApp.runner !== "local") {
-          const proof = readOwnedAppTransportProof(join(output, "transport", "transport-receipt.json"))
+          const proof = readOwnedAppTransportProof(join(runsDirectory, "transport-receipt.json"), sourceRevision)
           row.transport = proof
           pass.transport = proof
         }
-        const runs = readdirSync(output).filter((entry) => entry.endsWith(".json"))
+        const runs = readdirSync(runsDirectory).filter(
+          (entry) => entry.endsWith(".json") && entry !== "transport-receipt.json",
+        )
         if (runs.length !== 1 || !runs[0]) {
           throw new Error(`owned-app probe produced ${runs.length} run JSON files in ${output}; expected exactly one`)
         }
-        path = realpathSync(join(output, runs[0]))
+        path = realpathSync(join(runsDirectory, runs[0]))
         if (!path.startsWith(`${output}${sep}`)) {
           throw new Error(`owned-app raw output escaped its private context: ${path}`)
         }

@@ -863,12 +863,140 @@ it("refuses an ssh transport with no stage rather than inventing one", () => {
   ).toThrow(/requires --owned-app-stage/)
 })
 
+it("refuses an ssh transport with no known-hosts file rather than inventing trust", () => {
+  expect(() =>
+    ownedAppCommand(
+      ownedAppContext,
+      "/private/kitty",
+      { runner: "ssh:fixture@fixture.invalid", stage: "/remote/stage" },
+      ownedAppRevision,
+    ),
+  ).toThrow(/requires --owned-app-known-hosts/)
+})
+
+// The collector's own argv builder, through the real driver, to the files the collector reads next:
+// one run JSON in <output>/transport and a receipt bound to the collected revision. parseRun and
+// classifyDevelopmentRun are untouched by this transport and stay exercised by the local route.
+it("runs the collector's ssh route through the driver and reads the run JSON it wrote", () => {
+  const directory = mkdtempSync(join(tmpdir(), "transport-route-"))
+  const code = join(directory, "code")
+  const source = join(code, "vendor", "terminfo.dev")
+  const shims = join(directory, "shims")
+  const stage = join(directory, "remote", "stage")
+  const knownHosts = join(directory, "known_hosts")
+  const output = join(directory, "owned-app", "kitty")
+  const git = (cwd: string, ...args: string[]): string => {
+    const result = spawnSync("git", args, { cwd, encoding: "utf8" })
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`)
+    return result.stdout.trim()
+  }
+  const shim = (name: string, body: string): void => {
+    writeFileSync(join(shims, name), body, { mode: 0o755 })
+  }
+  for (const path of [
+    source,
+    shims,
+    output,
+    join(code, "vendor", "silvery"),
+    join(code, "vendor", "termless"),
+    join(code, "node_modules"),
+  ]) {
+    mkdirSync(path, { recursive: true })
+  }
+  writeFileSync(join(source, "package.json"), '{"name":"terminfo.dev","private":true}\n')
+  mkdirSync(join(source, "packages", "admin", "src"), { recursive: true })
+  writeFileSync(join(source, "packages", "admin", "src", "index.ts"), "export const probe = 'fixture'\n")
+  git(source, "init", "-q", "-b", "main")
+  git(source, "config", "user.email", "fixture@example.invalid")
+  git(source, "config", "user.name", "fixture")
+  git(source, "add", "-A")
+  git(source, "commit", "-q", "-m", "fixture source")
+  const revision = git(source, "rev-parse", "HEAD")
+  for (const entry of ["package.json", "bun.lock", "tsconfig.json"]) {
+    writeFileSync(join(code, entry), `fixture ${entry}\n`)
+  }
+  writeFileSync(join(code, "vendor", "silvery", "index.ts"), "export const silvery = 'fixture'\n")
+  writeFileSync(join(code, "vendor", "termless", "index.ts"), "export const termless = 'fixture'\n")
+  writeFileSync(knownHosts, "fixture.invalid ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGZpeHR1cmVrZXk=\n")
+  shim(
+    "ssh",
+    [
+      "#!/bin/sh",
+      "verbose=0",
+      'for a in "$@"; do [ "$a" = "-v" ] && verbose=1; done',
+      'while [ "$1" = "-o" ]; do shift 2; done',
+      'while [ "$1" = "-v" ]; do shift; done',
+      '[ "$1" = "--" ] && shift',
+      "shift",
+      "[ \"$verbose\" = 1 ] && echo 'debug1: Server host key: ssh-ed25519 SHA256:fixtureRoute' >&2",
+      'exec /bin/sh -c "$*"',
+    ].join("\n"),
+  )
+  shim(
+    "rsync",
+    [
+      "#!/bin/sh",
+      "set -e",
+      'while [ $# -gt 2 ]; do case "$1" in -a|--delete|-v) shift ;; -e) shift 2 ;; --exclude=*) shift ;; --) shift ;; *) break ;; esac; done',
+      'src="$1"; dest="$2"',
+      'case "$src" in *:*) src="${src#*:}" ;; esac',
+      'case "$dest" in *:*) dest="${dest#*:}" ;; esac',
+      'case "$src" in */) mkdir -p "$dest"; cp -R "$src". "$dest" ;; *) [ -d "$dest" ] && find "$dest" -depth -delete; mkdir -p "$(dirname "$dest")"; cp -R "$src" "$dest" ;; esac',
+    ].join("\n"),
+  )
+  shim(
+    "bun",
+    [
+      "#!/bin/sh",
+      'case "$*" in',
+      "  *identity.ts*) printf '%s' '{\"machineIdSha256\":\"aaaa\"}' ;;",
+      "  --version) echo '1.2.3' ;;",
+      "  *) out=''",
+      '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
+      '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/v2-run.json" ;;',
+      "esac",
+    ].join("\n"),
+  )
+  shim("kitty", "#!/bin/sh\necho 'kitty 0.49.1'\n")
+  try {
+    const command = ownedAppCommand(
+      ownedAppContext,
+      output,
+      { runner: "ssh:fixture@fixture.invalid", stage, knownHosts },
+      revision,
+    )
+    // argv[0] is the `bun` token the collector resolves from PATH; here the runner is this process,
+    // so only the driver path and its arguments are passed.
+    const result = spawnSync(process.execPath, command.argv.slice(1), {
+      encoding: "utf8",
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      env: {
+        ...process.env,
+        PATH: `${shims}:/usr/bin:/bin`,
+        OWNED_APP_TRANSPORT_SOURCE_ROOT: source,
+        OWNED_APP_TRANSPORT_RESOURCE_ROOT: code,
+      },
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const transport = join(output, "transport")
+    // Exactly what the collector's own read does: the receipt beside one run JSON.
+    const proof = readOwnedAppTransportProof(join(transport, "transport-receipt.json"), revision)
+    expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
+    const runs = readdirSync(transport).filter((name) => name.endsWith(".json") && name !== "transport-receipt.json")
+    expect(runs).toEqual(["v2-run.json"])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}, 60_000)
+
 it("records the host-written transport receipt as evidence and refuses anything else", () => {
   const directory = mkdtempSync(join(tmpdir(), "transport-proof-"))
   const path = join(directory, "transport-receipt.json")
   const receipt = {
     schemaVersion: 1,
     kind: "owned-app-transport",
+    grants: "nothing",
+    sourceRevision: ownedAppRevision,
     transport: "ssh:fixture@fixture.invalid",
     hostKeyFingerprint: "SHA256:fixture",
     resourceManifestSha256: "d".repeat(64),
@@ -878,7 +1006,7 @@ it("records the host-written transport receipt as evidence and refuses anything 
   const bytes = `${JSON.stringify(receipt, null, 2)}\n`
   writeFileSync(path, bytes)
   try {
-    expect(readOwnedAppTransportProof(path)).toEqual({
+    expect(readOwnedAppTransportProof(path, ownedAppRevision)).toEqual({
       runner: "ssh:fixture@fixture.invalid",
       hostKeyFingerprint: "SHA256:fixture",
       resourceManifestSha256: "d".repeat(64),
@@ -887,7 +1015,15 @@ it("records the host-written transport receipt as evidence and refuses anything 
       remoteOutput: "/remote/stage/runs/cccccccccccc-kitty",
     })
     writeFileSync(path, JSON.stringify({ ...receipt, kind: "linux-xvfb-container" }))
-    expect(() => readOwnedAppTransportProof(path)).toThrow(/not a schemaVersion 1 owned-app-transport record/)
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(
+      /not a schemaVersion 1 owned-app-transport record/,
+    )
+    // A receipt that claims authority is refused: this kind records, it never grants.
+    writeFileSync(path, JSON.stringify({ ...receipt, grants: "mutate+readback" }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/this kind grants nothing/)
+    // A receipt for another revision cannot stand in for the bytes this pass measured.
+    writeFileSync(path, JSON.stringify({ ...receipt, sourceRevision: "e".repeat(40) }))
+    expect(() => readOwnedAppTransportProof(path, ownedAppRevision)).toThrow(/names source/)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
