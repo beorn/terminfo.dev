@@ -80,8 +80,7 @@ function filletComponent(
   if (!holes.has(origin)) return group
   const queue = [origin]
   group.add(origin)
-  while (queue.length > 0) {
-    const key = queue.pop()!
+  for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
     const x = key % width
     const y = (key - x) / width
     for (const [nextX, nextY] of [
@@ -199,6 +198,134 @@ function rgbAt(frame: CapturedFrame, offset: number, rgb: readonly number[]): bo
   return frame.rgba[offset] === rgb[0] && frame.rgba[offset + 1] === rgb[1] && frame.rgba[offset + 2] === rgb[2]
 }
 
+interface AxisScan {
+  horizontal: boolean
+  length: number
+  across: number
+}
+
+function axisScan(grid: CaptureRectangle, axis: "columns" | "rows"): AxisScan {
+  const horizontal = axis === "columns"
+  return {
+    horizontal,
+    length: horizontal ? grid.width : grid.height,
+    across: horizontal ? grid.height : grid.width,
+  }
+}
+
+function scanlineHasMask(
+  grid: CaptureRectangle,
+  scan: AxisScan,
+  line: number,
+  mask: ReadonlySet<number>,
+  width: number,
+): boolean {
+  for (let position = 0; position < scan.length; position++) {
+    const x = grid.x + (scan.horizontal ? position : line)
+    const y = grid.y + (scan.horizontal ? line : position)
+    if (mask.has(y * width + x)) return true
+  }
+  return false
+}
+
+/** One scanline's alternating cell edges, as stripe sizes; refuses anything but calibration or blank. */
+function scanlineSizes(
+  frame: CapturedFrame,
+  grid: CaptureRectangle,
+  scan: AxisScan,
+  axis: "columns" | "rows",
+  line: number,
+  count: number,
+): number[] {
+  const edges = [0]
+  let previous: boolean | undefined
+  for (let position = 0; position < scan.length; position++) {
+    const x = grid.x + (scan.horizontal ? position : line)
+    const y = grid.y + (scan.horizontal ? line : position)
+    const offset = (y * frame.width + x) * 4
+    const red = rgbAt(frame, offset, CALIBRATION)
+    if (!red && !rgbAt(frame, offset, BLANK)) {
+      throw refusal(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
+    }
+    if (position === 0 && !red) {
+      throw refusal(`Capture calibration ${axis}: first edge does not display the requested paint`)
+    }
+    if (previous !== undefined && red !== previous) edges.push(position)
+    previous = red
+  }
+  edges.push(scan.length)
+  if (edges.length !== count + 1) {
+    throw refusal(
+      `Capture calibration ${axis}: measured ${edges.length - 1} cells, expected ${count}; missing or extra grid edge`,
+    )
+  }
+  const sizes: number[] = []
+  for (let index = 1; index < edges.length; index++) {
+    const left = edges[index - 1]
+    const right = edges[index]
+    if (left === undefined || right === undefined) throw new Error("Capture calibration lost a measured stripe edge")
+    sizes.push(right - left)
+  }
+  return sizes
+}
+
+/** One integer pitch, with at most the last stripe shorter; any other variation is a fractional pitch. */
+function acceptPitch(sizes: readonly number[], axis: "columns" | "rows"): { pitch: number; clip: number } {
+  const pitch = sizes[0]
+  if (pitch === undefined) throw new Error("Capture calibration measured no stripes")
+  let clip = 0
+  for (let index = 1; index < sizes.length; index++) {
+    const size = sizes[index]
+    if (size === undefined) throw new Error("Capture calibration lost a measured stripe size")
+    if (index === sizes.length - 1) {
+      if (size > pitch) {
+        throw refusal(
+          `Capture calibration ${axis}: last stripe is ${size} px, longer than the ${pitch} px pitch; a clip can only shorten the far edge`,
+        )
+      }
+      clip = pitch - size
+      continue
+    }
+    if (size !== pitch) {
+      throw refusal(
+        `Capture calibration fractional pitch: stripes of ${pitch} and ${size} px on the ${axis} axis; only the last stripe at the far edge may be clipped`,
+      )
+    }
+  }
+  return { pitch, clip }
+}
+
+// The measured pitch must explain the whole grid, so every unmasked pixel on every scanline is
+// checked, masked or not; only the fillet pixels themselves are exempt.
+function validatePaint(
+  frame: CapturedFrame,
+  grid: CaptureRectangle,
+  scan: AxisScan,
+  axis: "columns" | "rows",
+  count: number,
+  pitch: number,
+  mask: ReadonlySet<number>,
+): void {
+  for (let line = 0; line < scan.across; line++) {
+    for (let position = 0; position < scan.length; position++) {
+      const x = grid.x + (scan.horizontal ? position : line)
+      const y = grid.y + (scan.horizontal ? line : position)
+      const key = y * frame.width + x
+      if (mask.has(key)) continue
+      const offset = key * 4
+      const cell = Math.min(count - 1, Math.floor(position / pitch))
+      const expectsCalibration = cell % 2 === 0
+      const calibration = rgbAt(frame, offset, CALIBRATION)
+      const blank = rgbAt(frame, offset, BLANK)
+      if (calibration === expectsCalibration && (calibration || blank)) continue
+      const painted = calibration ? "calibration paint" : blank ? "blank paint" : "neither calibration nor blank"
+      throw refusal(
+        `Capture calibration ${axis}: ${painted} at ${x},${y} on cell ${cell + 1}; the measured ${pitch} px pitch expects ${expectsCalibration ? "calibration" : "blank"} paint`,
+      )
+    }
+  }
+}
+
 /**
  * Every unmasked scanline must have the same exact alternating cell edges, not just a sampled row.
  * The corner-fillet mask is excluded: its pixels are not grid paint, and one clipped last stripe at
@@ -217,47 +344,11 @@ function stripeSize(
   if (frame.width !== baseline.width || frame.height !== baseline.height) {
     throw new Error("Capture calibration window dimensions changed")
   }
-  const horizontal = axis === "columns"
-  const length = horizontal ? grid.width : grid.height
-  const across = horizontal ? grid.height : grid.width
+  const scan = axisScan(grid, axis)
   let reference: number[] | undefined
-  for (let line = 0; line < across; line++) {
-    let masked = false
-    for (let position = 0; position < length && !masked; position++) {
-      const x = grid.x + (horizontal ? position : line)
-      const y = grid.y + (horizontal ? line : position)
-      if (filletMask.has(y * frame.width + x)) masked = true
-    }
-    if (masked) continue
-    const edges = [0]
-    let previous: boolean | undefined
-    for (let position = 0; position < length; position++) {
-      const x = grid.x + (horizontal ? position : line)
-      const y = grid.y + (horizontal ? line : position)
-      const offset = (y * frame.width + x) * 4
-      const red = rgbAt(frame, offset, CALIBRATION)
-      if (!red && !rgbAt(frame, offset, BLANK)) {
-        throw refusal(`Capture calibration ${axis}: ambiguous or non-solid cell paint at ${x},${y}`)
-      }
-      if (position === 0 && !red) {
-        throw refusal(`Capture calibration ${axis}: first edge does not display the requested paint`)
-      }
-      if (previous !== undefined && red !== previous) edges.push(position)
-      previous = red
-    }
-    edges.push(length)
-    if (edges.length !== count + 1) {
-      throw refusal(
-        `Capture calibration ${axis}: measured ${edges.length - 1} cells, expected ${count}; missing or extra grid edge`,
-      )
-    }
-    const sizes: number[] = []
-    for (let index = 1; index < edges.length; index++) {
-      const left = edges[index - 1],
-        right = edges[index]
-      if (left === undefined || right === undefined) throw new Error("Capture calibration lost a measured stripe edge")
-      sizes.push(right - left)
-    }
+  for (let line = 0; line < scan.across; line++) {
+    if (scanlineHasMask(grid, scan, line, filletMask, frame.width)) continue
+    const sizes = scanlineSizes(frame, grid, scan, axis, line, count)
     if (!reference) {
       reference = sizes
       continue
@@ -275,46 +366,8 @@ function stripeSize(
       `Capture calibration ${axis}: every scanline is touched by a corner fillet; the pitch cannot be measured`,
     )
   }
-  const pitch = reference[0]
-  if (pitch === undefined) throw new Error("Capture calibration measured no stripes")
-  let clip = 0
-  for (let index = 1; index < reference.length; index++) {
-    const size = reference[index]!
-    if (index === reference.length - 1) {
-      if (size > pitch) {
-        throw refusal(
-          `Capture calibration ${axis}: last stripe is ${size} px, longer than the ${pitch} px pitch; a clip can only shorten the far edge`,
-        )
-      }
-      clip = pitch - size
-      continue
-    }
-    if (size !== pitch) {
-      throw refusal(
-        `Capture calibration fractional pitch: stripes of ${pitch} and ${size} px on the ${axis} axis; only the last stripe at the far edge may be clipped`,
-      )
-    }
-  }
-  // Validate every scanline, masked or not, skipping only the fillet pixels themselves: the
-  // measured pitch must explain the whole grid, so a stray pixel on a masked scanline still refuses.
-  for (let line = 0; line < across; line++) {
-    for (let position = 0; position < length; position++) {
-      const x = grid.x + (horizontal ? position : line)
-      const y = grid.y + (horizontal ? line : position)
-      const key = y * frame.width + x
-      if (filletMask.has(key)) continue
-      const offset = key * 4
-      const cell = Math.min(count - 1, Math.floor(position / pitch))
-      const expectsCalibration = cell % 2 === 0
-      const calibration = rgbAt(frame, offset, CALIBRATION)
-      const blank = rgbAt(frame, offset, BLANK)
-      if (calibration === expectsCalibration && (calibration || blank)) continue
-      const painted = calibration ? "calibration paint" : blank ? "blank paint" : "neither calibration nor blank"
-      throw refusal(
-        `Capture calibration ${axis}: ${painted} at ${x},${y} on cell ${cell + 1}; the measured ${pitch} px pitch expects ${expectsCalibration ? "calibration" : "blank"} paint`,
-      )
-    }
-  }
+  const { pitch, clip } = acceptPitch(reference, axis)
+  validatePaint(frame, grid, scan, axis, count, pitch, filletMask)
   return { pitch, clip }
 }
 
