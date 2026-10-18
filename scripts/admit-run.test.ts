@@ -109,8 +109,28 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
   }
   // Only this test run's ID/suite are synthetic. Ownership and PNG bytes remain the committed
   // specimen's genuine retained evidence; this fixture makes no claim to have run the live suite.
-  const liveSuite = probeSuiteSnapshot().probeHash
+  // The specimen predates probes defined since it was captured, so membership under the live suite
+  // is completed with named not-tested rows rather than borrowing a measurement nobody took.
+  const live = probeSuiteSnapshot()
+  const liveSuite = live.probeHash
   complete.provenance.runtime.suiteHash = liveSuite
+  if (!Array.isArray(complete.observations) || !Array.isArray(complete.notTested)) {
+    throw new Error("Admission fixture has no observations or notTested list")
+  }
+  if (!object(complete.rawReplies)) throw new Error("Admission fixture has no raw replies")
+  const covered = new Set<string>()
+  for (const item of [...complete.observations, ...complete.notTested]) {
+    if (object(item) && typeof item.featureId === "string") covered.add(item.featureId)
+  }
+  for (const featureId of live.probes.app.filter((id) => !covered.has(id))) {
+    complete.rawReplies[featureId] = `fixture: the retained specimen predates ${featureId}`
+    complete.notTested.push({
+      featureId,
+      reason: "no-semantic-observable",
+      noObservable: "the retained specimen predates this probe, so nothing observed it",
+      rawReplyRef: featureId,
+    })
+  }
   const fixture = { ...complete, suiteId: liveSuite, probeHash: liveSuite, runId: "run1", ...overrides }
   const bytes = JSON.stringify(fixture)
   writeFileSync(path, bytes)
@@ -242,6 +262,14 @@ test("planning refuses run/tree/frozen-suite disagreement before placement", () 
   document.probeHash = foreignSuite
   document.suiteId = foreignSuite
   document.provenance.runtime.suiteHash = foreignSuite
+  // The specimen's own suite predates three probes this branch defined, so the fixture-only
+  // not-tested rows added above sit outside it; keep exactly the specimen's own membership.
+  const foreignPath = join(import.meta.dirname, "..", "content", "suites", `${foreignSuite}.json`)
+  const foreignIds = new Set(parseSuiteManifest(foreignPath, readFileSync(foreignPath, "utf8")).probes.app)
+  if (!Array.isArray(document.notTested)) throw new Error("Synthetic frozen-suite fixture lacks notTested")
+  document.notTested = document.notTested.filter(
+    (row) => object(row) && typeof row.featureId === "string" && foreignIds.has(row.featureId),
+  )
   writeFileSync(source, JSON.stringify(document))
   expect(() => planAdmission(source, destination, { frozenSuiteId: foreignSuite })).toThrow(/this tree runs suite/)
   expect(existsSync(destination)).toBe(false)

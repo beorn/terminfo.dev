@@ -46,11 +46,7 @@ export const DESIGN_EXCLUSION_CAUSES: Readonly<Record<string, string>> = Object.
  * The catalog rows with no probe definition yet. They are WORK, not exclusions: they remain in the
  * denominator, score as untested until measured, and are named beside every context's score.
  */
-export const MISSING_DEFINITION_IDS = [
-  "extensions.font-ligatures",
-  "input.kitty-click-events",
-  "modes.decsscls",
-] as const
+export const MISSING_DEFINITION_IDS = [] as const
 
 /** One row that leaves a denominator, with the set that excludes it. */
 export interface Exclusion {

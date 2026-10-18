@@ -16,6 +16,13 @@ import {
 const ITERM2_RED_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mP4z8CAFTEMLQkAKP8/wc53yE8AAAAASUVORK5CYII="
 
+/**
+ * Font-ligature sample: ONE line so the pair fits the minimum admitted capture geometry, and the
+ * control keeps each operator pair apart so no shaping rule can join it.
+ */
+const FONT_LIGATURE_CONTROL = "! = - > = > < = = ="
+const FONT_LIGATURE_TARGET = "!= -> => <= =="
+
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
 }
@@ -1376,6 +1383,43 @@ export const extensionsProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     termlessObservationEvidence: "parser-state",
+  },
+
+  // Font ligatures — a renderer glyph-shaping decision with no protocol query. The app callback
+  // captures a spaced-operator control and a contiguous-operator target from the same font and
+  // geometry; a ligature paints as one shaped glyph in the target run. The frames are retained
+  // for review, so no automatic pass or fail is claimed. The headless parser shapes no glyphs.
+  {
+    ...probe(
+      "extensions.font-ligatures",
+      () =>
+        notTestedResult("Font ligatures are renderer glyph shaping; the headless parser shapes no glyphs", {
+          ligatureSample: FONT_LIGATURE_TARGET,
+        }),
+      async (ctx) => {
+        if (!ctx.capture) {
+          return notTestedResult("Font ligatures need rendered pixels; this context exposes no capture callback", {
+            ligatureSample: FONT_LIGATURE_TARGET,
+          })
+        }
+        const refusal = sgrCaptureTooSmall(ctx, "extensions.font-ligatures")
+        if (refusal) return refusal
+        try {
+          return await sgrCaptureFrames(
+            ctx,
+            "\x1b[0m\x1b[2J\x1b[3;3H" + FONT_LIGATURE_CONTROL,
+            "\x1b[0m\x1b[2J\x1b[3;3H" + FONT_LIGATURE_TARGET,
+            "extensions.font-ligatures",
+            { control: FONT_LIGATURE_CONTROL, target: FONT_LIGATURE_TARGET, startRow: 3, startCol: 3 },
+            "Spaced operators (control) and contiguous operators (target) in the same font and geometry; a ligature paints as one shaped glyph in the target. Record the active font before grading",
+          )
+        } finally {
+          // Disposable owned run: clear the surface so no sample text is left behind.
+          ctx.write("\x1b[0m\x1b[2J\x1b[H")
+        }
+      },
+    ),
+    termNeedsGeometry: true,
   },
 
   // Kitty keyboard protocol

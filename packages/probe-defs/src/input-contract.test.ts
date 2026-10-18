@@ -33,7 +33,8 @@ import {
  * input.x10-mouse grades CSI M + 3 bytes under mode 9 after a 1000+1006 SGR control;
  * input.button-event-mouse grades SGR motion (Pb+32) under 1002 after a 1000+1006 SGR control;
  * remaining catalog mouse event probes stay inconclusive pending their regrade;
- * input.xtest-key, input.xtest-click, and input.xtest-wheel execute OS-level injection with same-run delivery control.
+ * input.xtest-key, input.xtest-click, and input.xtest-wheel execute OS-level injection with same-run delivery control;
+ * input.kitty-click-events marks an OSC 133 prompt and grades the click report with mouse modes off.
  */
 const INPUT_CONTRACT: GroupContract = [
   {
@@ -90,8 +91,9 @@ const INPUT_CONTRACT: GroupContract = [
   },
   {
     id: "input.kitty-click-events",
-    expected: "not-tested",
-    claim: "kitty-click-events: prompt click_events and the resulting SGR mouse report have no probe in this suite",
+    expected: "decided",
+    claim:
+      "kitty-click-events: OSC 133;A;click_events=1 on the click cell reports SGR mouse with mouse modes off after a 1000+1006 delivery control",
   },
 ]
 
@@ -104,14 +106,6 @@ const INPUT_CONTRACT_SPEC: GroupContractSpec = {
     "packages/probe-defs/src/input-observations.test.ts",
     "packages/probe-defs/src/input-xtest-observations.test.ts",
     "packages/probe-defs/src/probe-automation.test.ts",
-  ],
-  namedUnavailable: [
-    {
-      id: "input.kitty-click-events",
-      reason: "no-semantic-observable",
-      noObservable:
-        "This suite does not request prompt click_events or observe its click report; generic mouse tests do not establish it",
-    },
   ],
 }
 
@@ -188,6 +182,22 @@ function inputSatisfactionContext(id: string): { readonly headless?: TermlessCon
       }),
     }
   }
+  if (id === "input.kitty-click-events") {
+    const writes: string[] = []
+    return {
+      term: replayContext(new Map(), {
+        write: (text) => writes.push(text),
+        input: { injectKey: async () => {}, injectClick: async () => {} },
+        readInput: async (pattern) => {
+          // Kitty reports a prompt click only on the main linebuf at the current visible prompt;
+          // the rejected alternate-screen fixture must therefore stay silent.
+          if (pattern.test("\x1b[<0;10;5m") && !pattern.test("\x1b[<0;10;5M")) return null
+          if (writes.some((write) => write.includes("?1049h"))) return null
+          return ["\x1b[<0;10;5M"]
+        },
+      }),
+    }
+  }
   if (id === "input.urxvt-mouse") {
     let callCount = 0
     return {
@@ -260,7 +270,7 @@ test("the input contract covers every input capability and names none unknown", 
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
   expect(gaps.misdeclared).toEqual([])
-  expect(inputProbes).toHaveLength(10)
+  expect(inputProbes).toHaveLength(11)
   expect(INPUT_CONTRACT).toHaveLength(11)
 })
 
@@ -276,7 +286,6 @@ test("the input contract names its focused tests, and every named file exists", 
 
 test("the harness replays every input capability deterministically", async () => {
   for (const row of INPUT_CONTRACT) {
-    if (row.id === "input.kitty-click-events") continue
     const probe = inputProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing input probe ${row.id}`).toBeDefined()
     if (!probe) continue
@@ -292,7 +301,6 @@ test("the harness replays every input capability deterministically", async () =>
 
 test("every defined input contract row is satisfied by the harness context its claim requires", async () => {
   for (const row of INPUT_CONTRACT) {
-    if (row.id === "input.kitty-click-events") continue
     const probe = inputProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing input probe ${row.id}`).toBeDefined()
     if (!probe) continue

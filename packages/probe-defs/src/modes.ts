@@ -1,4 +1,5 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import { frameDigests } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -350,6 +351,106 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
 function alt1049ReadbackInconclusive(expected: string, note: string, error: unknown): ProbeResult {
   const message = error instanceof Error ? error.message : String(error)
   return parserStateResult(null, expected, { readbackError: message }, note)
+}
+
+const DECSSCLS_JUMP = "\x1b[9 p"
+const DECSSCLS_SLOW = "\x1b[0 p"
+const DECSSCLS_SETTLE_MS = 300
+const DECSSCLS_LINES_PER_SECOND = 9
+/** Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry. */
+const DECSSCLS_OVERFLOW_ROWS = 8
+
+/** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
+function decssclsBurst(rows: number): { text: string; lines: number } {
+  const lines = rows + DECSSCLS_OVERFLOW_ROWS
+  return { text: Array.from({ length: lines }, (_, index) => `line ${index + 1}`).join("\r\n") + "\r\n", lines }
+}
+
+/** Whole-screen digest when the frame carries one, else the frame ref: the comparison the capture returned. */
+function decssclsFrameDigest(frame: ObservationFrame): string {
+  return frameDigests(frame).whole ?? frame.ref
+}
+
+/**
+ * DECSSCLS (CSI Ps SP p) sets presentation speed and has no query. The same-run control sets jump
+ * scrolling; the target sets the documented 9-lines-per-second rate. Each phase takes two frames of
+ * the same screen: the first as soon as the collector can after the burst, the second after the
+ * settle delay. The burst overruns the MEASURED row count, so every context has to scroll and the
+ * only writer between two frames is that burst. A whole-screen difference is therefore attributable
+ * to the burst, not to an unrelated repaint.
+ *
+ * The frames are RETAINED, NOT ASSERTED. The normal capture route returns an opaque encoded-frame
+ * ref rather than a raw whole-screen digest, and a repaint (cursor blink, window damage) during the
+ * target pair can change that frame without any scrolling. Until an existing qualified observable
+ * separates scroll movement from repaint, every result here is inconclusive by name; the control
+ * timing and the first-frame elapsed time are recorded to qualify a future decision, never to
+ * decide this one.
+ */
+async function decsscls(ctx: TermContext): Promise<ProbeResult> {
+  const captureCallback = ctx.capture
+  if (!captureCallback) {
+    return notTestedResult("DECSSCLS needs rendered frames; this context exposes no capture callback", {
+      capture: false,
+    })
+  }
+  const frames: ObservationFrame[] = []
+  const rows = ctx.rows
+  if (!Number.isSafeInteger(rows) || rows < 1) {
+    return notTestedResult("DECSSCLS needs a measured screen height to force a real scroll", {
+      rows,
+    })
+  }
+  const burst = decssclsBurst(rows)
+  const throttledDurationMs = Math.ceil((burst.lines / DECSSCLS_LINES_PER_SECOND) * 1000)
+  const capture = async (role: ObservationFrame["role"], label: string): Promise<ObservationFrame> => {
+    const frame = await captureCallback({ role, label })
+    frames.push(frame)
+    return frame
+  }
+  const phase = async (
+    role: ObservationFrame["role"],
+    setting: string,
+    label: string,
+  ): Promise<{ changed: boolean; firstElapsedMs: number }> => {
+    const startedAt = Date.now()
+    ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
+    const first = await capture(role, `${label} t0`)
+    const firstElapsedMs = Date.now() - startedAt
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, DECSSCLS_SETTLE_MS)
+    })
+    const second = await capture(role, `${label} t1`)
+    return { changed: decssclsFrameDigest(first) !== decssclsFrameDigest(second), firstElapsedMs }
+  }
+  const restored = "CSI 0 SP p (documented default; the prior setting is not queryable)"
+  try {
+    const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
+    const target = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
+    const observed = {
+      controlChanged: control.changed,
+      targetChanged: target.changed,
+      controlFirstElapsedMs: control.firstElapsedMs,
+      targetFirstElapsedMs: target.firstElapsedMs,
+      settleMs: DECSSCLS_SETTLE_MS,
+      lines: burst.lines,
+      rows,
+      throttledDurationMs,
+      restored,
+    }
+    return {
+      pass: false,
+      response: JSON.stringify(observed),
+      observation: {
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+        frames,
+        note: "Frames retained without an assertion: the capture route returns an opaque encoded-frame ref, not a raw whole-screen digest, and a repaint during the target pair changes it without proving scroll movement",
+      },
+    }
+  } finally {
+    ctx.write(DECSSCLS_SLOW + "\x1b[?1049l\x1b[0m")
+  }
 }
 
 export const modesProbes: ProbeDefinition[] = [
@@ -1472,6 +1573,20 @@ export const modesProbes: ProbeDefinition[] = [
           },
         }
       },
+    ),
+    termNeedsGeometry: true,
+  },
+
+  // DECSSCLS — presentation speed with no query; measured by a settled jump control and a timed
+  // two-frame comparison of the same burst under the 9-lines-per-second setting.
+  {
+    ...probe(
+      "modes.decsscls",
+      () =>
+        notTestedResult("DECSSCLS controls presentation timing; the headless parser paints no frames", {
+          presentation: false,
+        }),
+      decsscls,
     ),
     termNeedsGeometry: true,
   },
