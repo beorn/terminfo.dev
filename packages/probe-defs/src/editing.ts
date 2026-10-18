@@ -767,6 +767,11 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         endCaptureLifecycle(ctx, "\x1b[0*x")
       }
     },
+    // Both arms measure the claim: the parser grades the exact attribute cells and the terminal
+    // separates the two extents by its frames. probeStatus derives from these two declarations, so
+    // leaving them off keeps the row on a reviewed partial however complete the measurement becomes.
+    "pixels",
+    "parser-state",
   ),
 
   {

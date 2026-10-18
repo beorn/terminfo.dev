@@ -86,6 +86,18 @@ test("the Editing contract names its focused tests, and every named file exists"
   for (const path of EDITING_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
+/**
+ * probeStatus derives from these declarations rather than from the catalog. A hand-written row whose
+ * arms both measure but declare nothing cannot derive: it inherits a reviewed partial and keeps
+ * reading partial after the measurement lands. DECSACE grades exact cells on the parser arm and
+ * extent separation on the terminal arm, so both kinds belong here by name.
+ */
+test("editing.decsace declares the measuring evidence kind of both its arms", () => {
+  const probe = editingProbes.find((entry) => entry.id === "editing.decsace")
+  expect(probe?.termObservationEvidence).toBe("pixels")
+  expect(probe?.termlessObservationEvidence).toBe("parser-state")
+})
+
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the table below.
 test("the harness replays every editing capability deterministically", async () => {

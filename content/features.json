@@ -862,10 +862,8 @@
     "tags": ["vt510"],
     "baseline": "legacy",
     "body": "DECSACE (<code>CSI Ps * x</code>) selects how DECCARA and DECRARA interpret their coordinates. <code>Ps</code>=1 (the default) treats the corners as endpoints of a stream of cells in scan order, so the operation affects the partial rows at the top and bottom plus every cell on the rows between. <code>Ps</code>=2 treats the coordinates as a true rectangle, affecting only the cells inside the box. Modern users almost always want the rectangle interpretation; the stream default is a relic of how DEC originally specified the operations.",
-    "probe": "Not measured: the headless callback checks sequence consumption only, without comparing attribute effects in stream and rectangle modes. The app callback leaves the mode unchanged. Neither establishes attribute-change extent.",
-    "sequence": "CSI Ps * x",
-    "probeStatus": "partial",
-    "probeStatusReason": "partial: the definition does not declare measuring evidence on every arm that runs, so the probe cannot establish the feature's full effect"
+    "probe": "Headless: paint a 2x8 seed and apply the same DECCARA over the same coordinates under DECSACE 2 and DECSACE 0, then grade every cell's reverse-video attribute against the measured seed characters; rectangle mode must mark only the 2x2 block and stream mode the reading-order span, and equal frames stay inconclusive by name. App: capture the seeded screen and both extent frames, require all three to carry one measured digest kind, and require each extent frame to differ from the seed and from the other; exact extents are graded by the headless arm.",
+    "sequence": "CSI Ps * x"
   },
   "editing.decrqcra": {
     "tier1": "included",
