@@ -653,8 +653,8 @@ export interface StabilityCapture {
 
 /**
  * The ONE stability control both pixel arms use. Two reads of one frame must agree before either
- * arm compares extents or steps: the region oracle takes its pair on the screen as it stands before
- * the first write, and the DECSACE arm takes its pair on the painted seed, so a frame that only
+ * arm compares extents or steps: the region oracle takes its pair on its prepared canvas before
+ * the first verdict frame, and the DECSACE arm takes its pair on the painted seed, so a frame that only
  * looks stable after the measurement cannot pass. The refusal is inconclusive, carries no frames,
  * reports both digests in the response, and cites the second stability capture; no target frame is
  * fabricated. A pair whose reads both report no digest is not refused here: two absent digests
@@ -746,6 +746,9 @@ export async function captureRegionReadbackDecision(
   const cropRectangles: Array<CaptureRectangle | undefined> = []
   try {
     beginCaptureLifecycle(ctx)
+    // Stability belongs to this run's cleared canvas, not the preceding probe's glyphs.
+    // Each declared frame still gets its own seed writes and paint witness below.
+    ctx.write("\x1b[2J\x1b[H")
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
     // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
     const { refusal: instability } = await captureStabilityPair(
