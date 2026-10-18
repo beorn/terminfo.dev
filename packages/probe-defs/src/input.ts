@@ -19,7 +19,10 @@ export const inputProbes: ProbeDefinition[] = [
   probe("input.xtest-key", () => xtestCoverage("key injection"), xtestKey, "interaction"),
   probe("input.xtest-click", () => xtestCoverage("click injection"), xtestClick, "interaction"),
   probe("input.xtest-wheel", () => xtestCoverage("wheel injection"), xtestWheel, "interaction"),
-  probe("input.kitty-click-events", () => xtestCoverage("click injection"), kittyClickEvents, "interaction"),
+  {
+    ...probe("input.kitty-click-events", () => xtestCoverage("click injection"), kittyClickEvents, "interaction"),
+    termlessObservationEvidence: "none",
+  },
 ]
 
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
