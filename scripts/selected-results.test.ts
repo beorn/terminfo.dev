@@ -810,8 +810,9 @@ describe("selected results", () => {
     ].map((value) => parseRun(`${value.runId}.json`, JSON.stringify(value), catalog))
     const reviews = runs.map(reviewFor)
     expect(
-      projectResults(runs, reviews, catalog, { currentProbeHash: "tree", releaseSuiteId: "release" }).current["app:kitty"]
-        ?.runId,
+      projectResults(runs, reviews, catalog, { currentProbeHash: "tree", releaseSuiteId: "release" }).current[
+        "app:kitty"
+      ]?.runId,
     ).toBe("release-suite")
     // No move: no release declaration, or one that IS the tree suite -- today's choice, unchanged.
     expect(projectResults(runs, reviews, catalog, { currentProbeHash: "tree" }).current["app:kitty"]?.runId).toBe(
