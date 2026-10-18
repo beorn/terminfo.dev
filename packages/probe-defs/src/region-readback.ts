@@ -629,6 +629,25 @@ export async function captureRegionVerdict(
  * `read` is null when this run has no owned capture, in which case the caller's existing
  * capture-inconclusive path stays in force — a missing readback is never a negative.
  */
+/**
+ * The ONE capture lifecycle both pixel arms share, so no arm reimplements it and none forgets a half
+ * (@cto round-2 B1b, @dev/review2 round-3 B1). Opening: SGR reset and DECTCEM off, so every capture of
+ * the run sees the same cursor state. Closing, on every exit — decided, refused or thrown: the row's
+ * own cleanup first (it clears the mode the last frame left set, which the prelude cannot reach),
+ * then DECTCEM restored and the screen reset, so a run never leaves a hidden cursor or an inherited
+ * mode behind for the next probe.
+ */
+export function beginCaptureLifecycle(ctx: TermContext): void {
+  ctx.write("\x1b[0m")
+  ctx.write("\x1b[?25l")
+}
+
+export function endCaptureLifecycle(ctx: TermContext, cleanup?: string): void {
+  if (cleanup !== undefined) ctx.write(cleanup)
+  ctx.write("\x1b[?25h")
+  ctx.write("\x1b[0m\x1b[2J\x1b[H")
+}
+
 export async function captureRegionReadbackDecision(
   ctx: TermContext,
   id: string,
@@ -673,9 +692,7 @@ export async function captureRegionReadbackDecision(
   // only when their rectangles match (29580).
   const cropRectangles: Array<CaptureRectangle | undefined> = []
   try {
-    ctx.write("\x1b[0m")
-    // DECTCEM off before the first read, so every capture shares one cursor state.
-    ctx.write("\x1b[?25l")
+    beginCaptureLifecycle(ctx)
     // Two reads of one static frame, before the first verdict: an unstable capture cannot decide.
     const stableA = await read({
       role: "control",
@@ -690,15 +707,26 @@ export async function captureRegionReadbackDecision(
       pixelGeometry: spec.pixelGeometry,
     })
     if (stableA.regionDigest !== stableB.regionDigest || stableA.pixelsDigest !== stableB.pixelsDigest) {
-      return inconclusive(
+      const refusal = inconclusive(
         id,
         `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
         "insufficient-evidence",
-        // No step has run yet, so no target frame exists: the citation is the stability read's ref.
-        // On a text arm there is nothing to cite: one frame is not a frame pair.
         evidence,
+        // No target frame exists on this path and none is fabricated (@cto 0e40f3b1): the citation is
+        // the stability capture actually taken. On a text arm there is no image to cite.
         evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
       )
+      // The decisive evidence is the PAIR of reads, so both digests travel in the response even though
+      // the observation carries no frames (@dev/review2 round-3 B1).
+      return {
+        ...refusal,
+        response: JSON.stringify({
+          stability: {
+            regionDigest: [stableA.regionDigest, stableB.regionDigest],
+            pixelsDigest: [stableA.pixelsDigest, stableB.pixelsDigest],
+          },
+        }),
+      }
     }
     for (const [index, step] of steps.entries()) {
       ctx.write(step.writes)
@@ -845,11 +873,6 @@ export async function captureRegionReadbackDecision(
       ],
     }
   } finally {
-    // The row's own cleanup first — it clears the mode the last frame left set, which the prelude
-    // below cannot reach — then DECTCEM restored and the screen reset, so a refused or thrown run
-    // leaves no hidden cursor and no inherited mode.
-    if (spec.cleanup !== undefined) ctx.write(spec.cleanup)
-    ctx.write("\x1b[?25h")
-    ctx.write("\x1b[0m\x1b[2J\x1b[H")
+    endCaptureLifecycle(ctx, spec.cleanup)
   }
 }

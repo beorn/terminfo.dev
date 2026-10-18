@@ -269,6 +269,7 @@ function decsaceCaptureContext() {
   let cursor = { row: 0, col: 0 }
   let decsace = 0
   const frameWrites: string[] = []
+  const writes: string[] = []
   let sinceCapture = ""
 
   const invert = (top: number, left: number, bottom: number, right: number) => {
@@ -285,6 +286,7 @@ function decsaceCaptureContext() {
   }
 
   const apply = (sequence: string) => {
+    writes.push(sequence)
     sinceCapture += sequence
     let index = 0
     while (index < sequence.length) {
@@ -350,7 +352,7 @@ function decsaceCaptureContext() {
     sinceCapture = ""
     return frame
   }
-  return { context, frameWrites, seed: DECSACE_SEED_PAINT, cara: DECSACE_CARA }
+  return { context, frameWrites, writes, seed: DECSACE_SEED_PAINT, cara: DECSACE_CARA }
 }
 
 /**
@@ -359,12 +361,12 @@ function decsaceCaptureContext() {
  * when DECSACE 2 and DECSACE 0 leave screens that differ from the seed AND from each other.
  */
 test("editing.decsace grades the frames its own writes produced", async () => {
-  const { context, frameWrites, seed, cara } = decsaceCaptureContext()
+  const { context, frameWrites, writes, seed, cara } = decsaceCaptureContext()
   const result = await find("editing.decsace").term!(context)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
   // The bytes each capture was taken after, in order: the seed, the second read of that same static
   // frame, DECSACE 2 + DECCARA, then DECSACE 0 + DECCARA. A swapped or missing write changes this.
-  expect(frameWrites).toEqual([`\x1b[?25l${seed}`, "", `${seed}\x1b[2*x${cara}`, `${seed}\x1b[0*x${cara}`])
+  expect(frameWrites).toEqual([`\x1b[0m\x1b[?25l${seed}`, "", `${seed}\x1b[2*x${cara}`, `${seed}\x1b[0*x${cara}`])
   // The observation cites the three DECIDED frames; the stability read is the second write bucket
   // above and exists as evidence in the arm's own sequence, not as a frame to grade.
   const frames = (result.observation?.frames ?? []) as ObservationFrame[]
@@ -378,6 +380,20 @@ test("editing.decsace grades the frames its own writes produced", async () => {
   expect(observed.seed).not.toBe(observed.rectangle)
   expect(observed.seed).not.toBe(observed.stream)
   expect(observed.rectangle).not.toBe(observed.stream)
+  // The shared lifecycle closes as well as opens: DECTCEM restored and the screen reset on the way
+  // out, so the next probe on this terminal does not inherit a hidden cursor (@dev/review2 R3 B1).
+  expect(writes).toContain("\x1b[?25h")
+  expect(writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
+})
+
+test("editing.decsace restores the cursor when a capture throws", async () => {
+  const { context, writes } = decsaceCaptureContext()
+  context.capture = async () => {
+    throw new Error("capture failed")
+  }
+  await expect(find("editing.decsace").term!(context)).rejects.toThrow(/capture failed/)
+  expect(writes).toContain("\x1b[?25h")
+  expect(writes.at(-1)).toBe("\x1b[0m\x1b[2J\x1b[H")
 })
 
 /**
@@ -538,12 +554,61 @@ test("an attribute row on a text-only adapter is inconclusive by name", async ()
 })
 
 /**
- * @cto round-2 R4: removing the attribute painting failed only one erase test, so the deccara and
- * decrara expected frames were unpinned. The expected frame is the oracle's third write; it must
- * carry the row's own SGR (reverse video here), or the expected frame is indistinguishable from the
- * seed and the row could only ever read inconclusive.
+ * @cto round-2 R4 and @dev/review2 round-3 R4: the expected frame must be pinned PER ROW and per
+ * CELL, not by finding `\x1b[7m` anywhere in the writes — the DECRARA seed already carries `7m`, so
+ * a global search proved nothing about the expected phase, and DECRARA's claim is the opposite one:
+ * its expected cells must CLEAR inverse.
+ *
+ * The check is semantic: render every write into its screen cells (CUP + SGR), then require a write
+ * whose cells equal the row's own `after` grid in BOTH the character and the inverse flag. A
+ * missing painting leaves every cell non-inverse; an always-inverse painting turns DECRARA's
+ * flanks on. Either way no write matches, per row.
  */
-test("each attribute row paints its expected frame with its own SGR", async () => {
+/**
+ * The screen each write leaves, in order. SGR state PERSISTS across writes, exactly as a terminal
+ * keeps it: an expected frame that never resets would inherit the seed's reverse video, which is the
+ * very failure DECRARA's after grid exists to catch.
+ */
+function paintedScreens(writes: readonly string[]): Array<Map<string, { char: string; inverse: boolean }>> {
+  let row = 1
+  let col = 1
+  let inverse = false
+  return writes.map((write) => {
+    const cells = new Map<string, { char: string; inverse: boolean }>()
+    let index = 0
+    while (index < write.length) {
+      if (write[index] !== "\x1b") {
+        cells.set(`${row},${col}`, { char: write[index] ?? "", inverse })
+        col += 1
+        index += 1
+        continue
+      }
+      const match = /^\x1b\[([0-9;]*)([A-Za-z])/.exec(write.slice(index))
+      if (!match) {
+        index += 1
+        continue
+      }
+      const params = (match[1] ?? "")
+        .split(";")
+        .filter((entry) => entry !== "")
+        .map(Number)
+      if (match[2] === "H") {
+        row = params[0] ?? 1
+        col = params[1] ?? 1
+      } else if (match[2] === "m") {
+        for (const code of params.length === 0 ? [0] : params) {
+          if (code === 0) inverse = false
+          else if (code === 7) inverse = true
+        }
+      }
+      index += match[0].length
+    }
+    return new Map(cells)
+  })
+}
+
+test("each attribute row's expected frame carries its own cells and inverse flags", async () => {
+  const failures: string[] = []
   for (const id of ["editing.deccara", "editing.decrara"]) {
     const row = editingReadbackRows.find((entry) => entry.id === id)
     if (!row?.sentinel) throw new Error(`missing sentinel for ${id}`)
@@ -552,7 +617,31 @@ test("each attribute row paints its expected frame with its own SGR", async () =
       col: row.sentinel.col ?? 1,
     })
     await find(id).term!(context)
-    const painted = writes.filter((entry) => entry.includes("\x1b[7m"))
-    expect(painted.length, `${id} paints reverse video in its expected frame`).toBeGreaterThan(0)
+    const top = row.region?.top ?? 1
+    const left = row.region?.left ?? 1
+    const screens = paintedScreens(writes)
+    const matched = writes.findIndex((_write, index) => {
+      const painted = screens[index]
+      if (painted === undefined) return false
+      return row.after.every((cells, cellRow) =>
+        cells.every((cell, cellCol) => {
+          if (typeof cell === "string") return true
+          const got = painted.get(`${top + cellRow},${left + cellCol}`)
+          return got?.char === cell.char && got.inverse === (cell.attributes.inverse === true)
+        }),
+      )
+    })
+    // DECRARA's claim is the CLEAR: its expected frame must contain no reverse video at all, while
+    // DECCARA's must set it. A frame that merely inherits the seed's state is not the same frame.
+    const expectedWrite = matched === -1 ? "" : (writes[matched] ?? "")
+    const paintedAsClaimed = matched !== -1
+    const clearsAsClaimed = id === "editing.deccara" || !expectedWrite.includes("\x1b[7m")
+    const setsAsClaimed = id !== "editing.deccara" || expectedWrite.includes("\x1b[7m")
+    if (!paintedAsClaimed || !clearsAsClaimed || !setsAsClaimed) {
+      failures.push(
+        `${id} (matched=${String(paintedAsClaimed)}, clears=${String(clearsAsClaimed)}, sets=${String(setsAsClaimed)})`,
+      )
+    }
   }
+  expect(failures).toEqual([])
 })

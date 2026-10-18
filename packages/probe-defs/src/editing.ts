@@ -1,6 +1,7 @@
 import type { ProbeDefinition, ProbeResult, TermlessContext } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
+import { beginCaptureLifecycle, endCaptureLifecycle } from "./region-readback.ts"
 import {
   parserStateResult,
   probe,
@@ -629,11 +630,12 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         return unmeasuredCellResult(pos, "attributes set by DECCARA under a DECSACE extent")
       }
       try {
-        // The capture-region oracle's two controls, reused rather than reimplemented (region-readback.ts
-        // `captureRegionReadbackDecision`): the cursor stays hidden for every read, and two captures of
-        // ONE static frame must agree before any extent is compared. On a terminal that ignores
-        // DECSACE, a blinking cursor alone moves the whole-window digest (@cto round-2 B1b).
-        ctx.write("\x1b[?25l")
+        // The capture-region oracle's OWN lifecycle and controls, called rather than copied
+        // (region-readback.ts beginCaptureLifecycle/endCaptureLifecycle): the cursor stays hidden for
+        // every read and is restored on every exit, and two captures of ONE static frame must agree
+        // before any extent is compared. On a terminal that ignores DECSACE, a blinking cursor alone
+        // moves the whole-window digest (@cto round-2 B1b, @dev/review2 round-3 B1).
+        beginCaptureLifecycle(ctx)
         ctx.write(DECSACE_PAINT)
         const seed = await capture({ role: "control", label: "editing.decsace: seed before DECSACE" })
         const stable = await capture({ role: "control", label: "editing.decsace: capture stability" })
@@ -701,12 +703,14 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         if (stableDigest !== measured[0]) {
           return {
             pass: false,
-            response: observed,
+            // The decisive evidence is the PAIR: carry the stable frame and both digests, so the
+            // refusal names the capture the verdict rests on (@dev/review2 round-3 B1).
+            response: JSON.stringify({ kind, seed: measured[0], stability: stableDigest }),
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
               evidence: "pixels",
-              frames,
+              frames: [seed, stable, rectangle, stream],
               note: `Two captures of one static frame were not byte-stable (${measured[0]} then ${stableDigest}), so no extent can be read`,
             },
           }
@@ -762,7 +766,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           ],
         }
       } finally {
-        ctx.write("\x1b[0m\x1b[2J\x1b[H\x1b[1;1H")
+        endCaptureLifecycle(ctx)
       }
     },
   ),
