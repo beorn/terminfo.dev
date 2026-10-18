@@ -288,7 +288,7 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "query",
-    note: expect.stringContaining("no reference independent of a full reset"),
+    note: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
   })
 })
 

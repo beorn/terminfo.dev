@@ -18,6 +18,15 @@ const SENTINEL = { row: 1, col: 1 } as const
 const CURSOR_ROW = 4
 
 /**
+ * The published reason for the three rows whose reset clears two or more attributes. It names the
+ * cause the reader actually saw rather than only the missing reference: the DECRQSS report this row
+ * depends on did not come back (wezterm answers with a malformed DCS echo, alacritty with the DA1
+ * sentinel alone), so the row rests on a capture reference that would share the reset's own failure.
+ */
+const NO_INDEPENDENT_REFERENCE =
+  "no independent reference exists for a multi-attribute reset: no usable SGR DECRQSS report came back (a malformed DCS echo, or the DA1 sentinel alone), and a capture reference would share the reset's own failure"
+
+/**
  * One frame of the fixture. XX carries the setup attribute in EVERY frame, so the comparison is
  * only ever about YY; YY carries either the setup attribute (the seed and the ignored frame) or just
  * the attributes the row says survive the reset (the expected frame).
@@ -49,7 +58,9 @@ function frame(setup: string, yy: string, repaint = "\x1b[0m\x1b[2J"): string {
  * use it: a reset under test and a RIS that both miss the same part of the cleared set leave
  * expected equal to after and different from ignored, so the row reads supported while the attribute
  * survived. They carry
- * `noIndependentReference`, and the region oracle declines them BY NAME before a byte.
+ * `noIndependentReference`, and the region oracle declines them BY NAME before a byte, naming the
+ * cause the reader saw: the SGR DECRQSS report this row needs did not come back, and a capture
+ * reference would share the reset's own failure.
  */
 function expectedFrame(setup: string, residual: string): string {
   return (
@@ -89,18 +100,18 @@ function row(setup: string, reset: string, residual: string): Omit<RegionReadbac
 export const RESET_FAMILY_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = {
   "reset.sgr": {
     ...row("\x1b[1;3;7m", "\x1b[0m", ""),
-    noIndependentReference: "no reference independent of a full reset",
+    noIndependentReference: NO_INDEPENDENT_REFERENCE,
   },
   "sgr.reset": {
     ...row("\x1b[1;3;4m", "\x1b[0m", ""),
-    noIndependentReference: "no reference independent of a full reset",
+    noIndependentReference: NO_INDEPENDENT_REFERENCE,
   },
   "sgr.fg.default": row("\x1b[31m", "\x1b[39m", ""),
   "sgr.bg.default": row("\x1b[42m", "\x1b[49m", ""),
   "sgr.underline-color-reset": row("\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
   "sgr.selective-reset.bold": {
     ...row("\x1b[1;2;3m", "\x1b[22m", "\x1b[3m"),
-    noIndependentReference: "no reference independent of a full reset",
+    noIndependentReference: NO_INDEPENDENT_REFERENCE,
   },
   "sgr.selective-reset.underline": row("\x1b[1;4m", "\x1b[24m", "\x1b[1m"),
   "sgr.selective-reset.italic": row("\x1b[1;3m", "\x1b[23m", "\x1b[1m"),
