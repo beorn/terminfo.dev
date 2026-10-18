@@ -73,8 +73,9 @@ export interface Candidate2Group {
    */
   darkHeldBy: Candidate2DarkHeldContext[]
   /**
-   * The ruled per-context contexts that cleared the bar on the previous freeze and are not measured
-   * now: named as ruled but unmeasurable, never counted as included.
+   * The ruled per-context contexts that are not measured now: named as ruled but unmeasurable, never
+   * counted as included. A RULING, not a measurement, so moving the release pointer can never shrink
+   * the ruled basis when a context's newest history run stops clearing the bar.
    */
   darkRuled: string[]
   /** Contexts with no published run: neither included nor held, named with the row's own reason. */
@@ -351,6 +352,18 @@ export function loadCandidate2Data(): Candidate2Data {
   // The groups the per-context include ruling names. Membership is data, not a name test at the
   // call site. The test keeps an independent statement of these two groups.
   const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets"])
+  // The same ruling names SIX contexts for those two groups: the four Linux app rows measured on the
+  // required suite, plus Ghostty and Alacritty on macOS (27928). It is a RULING, not a measurement —
+  // a ruled context stays in the basis while it is dark, even when its newest history run no longer
+  // clears the bar, so moving the release pointer can never improve a public claim by shrinking it.
+  const RULED_CONTEXTS = new Set([
+    "kitty/linux",
+    "wezterm/linux",
+    "alacritty/linux",
+    "xterm/linux",
+    "ghostty/macos",
+    "alacritty/macos",
+  ])
   const groupsWithState: Candidate2Group[] = groups.map((group) => {
     const includedOn: string[] = []
     const heldBy: Candidate2HeldContext[] = []
@@ -359,6 +372,8 @@ export function loadCandidate2Data(): Candidate2Data {
     let measuredContexts = 0
     for (const [index, row] of contexts.entries()) {
       if (!row.published) {
+        // Ruled and dark is ruled-but-not-measurable whether or not a history run still clears it.
+        if (PER_CONTEXT_INCLUDED.has(group.key) && RULED_CONTEXTS.has(row.context)) darkRuled.push(row.context)
         const bar = cohort.barRows[index]
         const selectedRun = bar && "run" in bar ? bar.run : undefined
         // History may HOLD a group, never CLAIM one. When a newer off-freeze run has taken selection,
@@ -384,9 +399,6 @@ export function loadCandidate2Data(): Candidate2Data {
             decisivePct: basis.decisivePct,
             reason: row.reason,
           })
-        } else if (PER_CONTEXT_INCLUDED.has(group.key)) {
-          // The ruling named this context; it cleared before and is unmeasurable now.
-          darkRuled.push(row.context)
         }
         continue
       }

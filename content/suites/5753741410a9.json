@@ -777,9 +777,5 @@
       "unicode.tab-stops",
       "unicode.wrap-boundary"
     ]
-  },
-  "freeze": {
-    "release": "candidate2",
-    "at": "2026-10-16T09:30:22.506Z"
   }
 }
