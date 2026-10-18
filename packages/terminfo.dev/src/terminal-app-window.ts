@@ -107,8 +107,8 @@ function processExecutable(pid: number): string | null {
   if (!raw) return null
   try {
     return realpathSync(raw)
-  } catch {
-    return null
+  } catch (error) {
+    throw new Error(`kitty owner executable lookup failed for pid ${pid} at ${JSON.stringify(raw)}`, { cause: error })
   }
 }
 
