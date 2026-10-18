@@ -13,6 +13,7 @@ import {
   readWindowsConsoleCells,
   type ConsoleCellRead,
   type ConsoleHostLookup,
+  type RequiredCells,
 } from "./windows-console-cells.ts"
 import { readTerminalTextSnapshot, type TerminalTextApp, type TerminalTextRead } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
@@ -111,7 +112,7 @@ export interface OwnedTerminal {
    * WITH prior scrollback: an app that leaves trailing blank rows out of its contents would pull
    * scrollback onto the screen without refusing, which no separate shape can show. Until then the
    * text snapshot is admitted as non-measuring evidence. */
-  readCells?(): Promise<ConsoleCellRead | TerminalTextRead>
+  readCells?(required?: RequiredCells): Promise<ConsoleCellRead | TerminalTextRead>
   dispose(): Promise<void>
 }
 
@@ -699,7 +700,7 @@ export async function createOwnedTerminal(options: {
         return readBoundGeometry(current, windowsKernel)
       },
       ...(hostedWindows && {
-        async readCells() {
+        async readCells(required?: RequiredCells) {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
           // The console is re-checked as the geometry read re-checks its device: a cell read on a
           // different console than this run bound to is not this run's frame.
@@ -708,7 +709,7 @@ export async function createOwnedTerminal(options: {
           if (mismatch !== undefined) throw new Error(mismatch)
           const bufferOwner = consoleBufferOwner(windowsConsoleHost)
           if (bufferOwner.status === "refused") return { status: "refused", reason: bufferOwner.reason }
-          return readWindowsConsoleCells({ bufferOwner: bufferOwner.host, kernel: windowsKernel })
+          return readWindowsConsoleCells({ bufferOwner: bufferOwner.host, kernel: windowsKernel, required })
         },
       }),
       ...(darwinTextApp !== undefined &&

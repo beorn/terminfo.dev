@@ -284,6 +284,33 @@ describe("decodeCharInfo — exact cells in the host's own encoding", () => {
     expect(refuse(cellBytes([[0xfffd, 0x0007]]), 1, 1)).toMatch(/holds U\+FFFD/u)
   })
 
+  // 28638: one emoji probe left the host's wide-glyph placeholder at window row 1, column 1, and
+  // every later region row that only measured its own 1x8 rectangle was refused by that cell. A
+  // cell a row does not measure cannot decide that row.
+  const poisonedWindow = () =>
+    cellBytes([
+      [0xfffd, 0x0007],
+      ...Array.from({ length: 7 }, () => [0x0020, 0x0007] as const),
+      ...Array.from({ length: 8 }, (_, index) => [0x41 + index, 0x0007] as const),
+      ...Array.from({ length: 8 }, (_, index) => [0x61 + index, 0x0007] as const),
+    ])
+
+  it("names a poisoned cell OUTSIDE the measured rectangle and decodes the row that measures elsewhere", () => {
+    const decoded = decodeCharInfo(poisonedWindow(), 8, 3, { top: 3, left: 1, bottom: 3, right: 8 })
+    if (decoded.status !== "decoded") throw new Error(`expected a decoded grid, got: ${decoded.reason}`)
+    expect(decoded.outside).toEqual([expect.stringContaining("row 1, column 1 holds U+FFFD")])
+    expect(decoded.grid.text[0]!.startsWith(" ")).toBe(true)
+    // The cell the caller measures is untouched by the substitution.
+    expect(decoded.grid.text[2]).toBe("abcdefgh")
+  })
+
+  it("still refuses that same cell when the measured rectangle contains it", () => {
+    expect(refuse(poisonedWindow(), 8, 3)).toMatch(/row 1, column 1 holds U\+FFFD/u)
+    const inside = decodeCharInfo(poisonedWindow(), 8, 3, { top: 1, left: 1, bottom: 1, right: 1 })
+    if (inside.status !== "refused") throw new Error("a cell the row measures must still refuse")
+    expect(inside.reason).toMatch(/row 1, column 1 holds U\+FFFD/u)
+  })
+
   it("refuses a lone surrogate by name, with its row and column", () => {
     const reason = refuse(
       cellBytes([
@@ -391,6 +418,7 @@ describe("readWindowsConsoleCells — the window rect, read back and checked", (
     expect(read).toEqual({
       status: "read",
       bufferOwner: CONSOLE_HOST,
+      outside: [],
       grid: {
         cols: 3,
         rows: 2,

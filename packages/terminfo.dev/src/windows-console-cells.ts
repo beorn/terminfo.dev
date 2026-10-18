@@ -56,6 +56,10 @@ export type ConsoleCellRead =
   | {
       readonly status: "read"
       readonly grid: ConsoleCellGrid
+      /** Cells the host wrote in a shape no row can read, OUTSIDE the rectangle the caller asked
+       * about: named on the frame, left as a space, never a refusal — a cell a row does not
+       * measure cannot decide that row. */
+      readonly outside: readonly string[]
       /** The program whose buffer this is, named so the evidence says how it was seen. */
       readonly bufferOwner: ConsoleHostIdentity
     }
@@ -149,17 +153,36 @@ export function packCoord(x: number, y: number): number {
   return (((y & 0xffff) << 16) | (x & 0xffff)) >>> 0
 }
 
+/** The cells one checkpoint actually measures, in 1-based window coordinates. */
+export interface RequiredCells {
+  readonly top: number
+  readonly left: number
+  readonly bottom: number
+  readonly right: number
+}
+
 /** A decode, or the named reason these bytes are not a grid of cells. */
 export type ConsoleCellDecode =
-  | { readonly status: "decoded"; readonly grid: ConsoleCellGrid }
+  | { readonly status: "decoded"; readonly grid: ConsoleCellGrid; readonly outside: readonly string[] }
   | { readonly status: "refused"; readonly reason: string }
 
 /**
  * Decode a PCHAR_INFO buffer filled for `cols` x `rows`. Pure, so the layout and the host's own
  * wide-glyph encoding are testable where no console exists. A buffer of any other size is a bug in
  * the caller, not a partial read; content the host cannot have written is refused, not decoded.
+ *
+ * `required` scopes the refusal: a cell inside it that the host cannot have written still refuses
+ * the read, because the caller means to grade it; the SAME cell outside it is named in `outside`
+ * and left as a space, because a row that never measures a cell cannot be decided by it. Measured
+ * 2026-10-18 (28638): one emoji probe's U+FFFD placeholder at window row 1, column 1 refused every
+ * later region row that only ever measured its own 1x8 window rectangle.
  */
-export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): ConsoleCellDecode {
+export function decodeCharInfo(
+  bytes: Uint8Array,
+  cols: number,
+  rows: number,
+  required?: RequiredCells,
+): ConsoleCellDecode {
   const expected = cols * rows * CHAR_INFO_BYTES
   if (bytes.byteLength !== expected) {
     throw new Error(
@@ -170,60 +193,75 @@ export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): C
   const at = (row: number, col: number) => (row * cols + col) * CHAR_INFO_BYTES
   const text: string[] = []
   const attributes: number[][] = []
+  const outside: string[] = []
+  const measured = (row: number, col: number): boolean =>
+    required === undefined ||
+    (row + 1 >= required.top && row + 1 <= required.bottom && col + 1 >= required.left && col + 1 <= required.right)
+  /** Why this cell cannot be read as one character, or undefined when it can. */
+  const unusableCell = (row: number, col: number, unit: number, attribute: number): string | undefined => {
+    const where = `row ${String(row + 1)}, column ${String(col + 1)}`
+    if (unit === 0 && attribute === 0) {
+      return `${where} decodes as NUL with no attribute; the console writes a blank cell as U+0020 with the fill attribute, so this cell was never written`
+    }
+    if (unit === WIDE_GLYPH_UNKNOWN) {
+      return `${where} holds U+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit, so this region cannot be read as characters`
+    }
+    // One UTF-16 unit per cell: a surrogate is half a character, which the host never writes,
+    // so it is refused rather than decoded into a string that is not text.
+    if (unit >= 0xd800 && unit <= 0xdfff) {
+      return `${where} holds the lone surrogate U+${unit.toString(16).toUpperCase()}, which the host never writes into a cell`
+    }
+    const leading = (attribute & LEADING_BYTE) !== 0
+    const trailing = (attribute & TRAILING_BYTE) !== 0
+    if (leading && trailing) return `${where} is marked both leading and trailing in one cell`
+    if (trailing && (col === 0 || (view.getUint16(at(row, col - 1) + 2, true) & LEADING_BYTE) === 0)) {
+      return `${where} is a wide glyph's trailing cell with no leading half before it`
+    }
+    return undefined
+  }
   for (let row = 0; row < rows; row += 1) {
     const units: number[] = []
     const rowAttributes: number[] = []
     for (let col = 0; col < cols; col += 1) {
       const cell = at(row, col)
-      const unit = view.getUint16(cell, true)
-      const attribute = view.getUint16(cell + 2, true)
+      let unit = view.getUint16(cell, true)
+      let attribute = view.getUint16(cell + 2, true)
       const where = `row ${String(row + 1)}, column ${String(col + 1)}`
-      if (unit === 0 && attribute === 0) {
-        return {
-          status: "refused",
-          reason: `${where} decodes as NUL with no attribute; the console writes a blank cell as U+0020 with the fill attribute, so this cell was never written`,
-        }
-      }
-      if (unit === WIDE_GLYPH_UNKNOWN) {
-        return {
-          status: "refused",
-          reason: `${where} holds U+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit, so this region cannot be read as characters`,
-        }
-      }
-      // One UTF-16 unit per cell: a surrogate is half a character, which the host never writes,
-      // so it is refused rather than decoded into a string that is not text.
-      if (unit >= 0xd800 && unit <= 0xdfff) {
-        return {
-          status: "refused",
-          reason: `${where} holds the lone surrogate U+${unit.toString(16).toUpperCase()}, which the host never writes into a cell`,
-        }
-      }
       const leading = (attribute & LEADING_BYTE) !== 0
       const trailing = (attribute & TRAILING_BYTE) !== 0
-      if (leading && trailing) {
-        return { status: "refused", reason: `${where} is marked both leading and trailing in one cell` }
+      const unusable = unusableCell(row, col, unit, attribute)
+      if (unusable !== undefined) {
+        if (measured(row, col)) return { status: "refused", reason: unusable }
+        outside.push(unusable)
+        unit = 0x20
+        attribute &= ~(LEADING_BYTE | TRAILING_BYTE)
+        units.push(unit)
+        rowAttributes.push(attribute)
+        continue
       }
       if (leading) {
         if (col + 1 >= cols) {
-          return {
-            status: "refused",
-            reason: `${where} is a wide glyph's leading cell in the last column, so its trailing half is outside the read`,
-          }
+          const reason = `${where} is a wide glyph's leading cell in the last column, so its trailing half is outside the read`
+          if (measured(row, col)) return { status: "refused", reason }
+          outside.push(reason)
+          unit = 0x20
+          attribute &= ~(LEADING_BYTE | TRAILING_BYTE)
+          units.push(unit)
+          rowAttributes.push(attribute)
+          continue
         }
         const next = at(row, col + 1)
         const nextUnit = view.getUint16(next, true)
         const nextAttribute = view.getUint16(next + 2, true)
         if ((nextAttribute & TRAILING_BYTE) === 0 || nextUnit !== unit) {
-          return {
-            status: "refused",
-            reason: `${where} is a wide glyph's leading cell, but the next cell is not its trailing half`,
-          }
-        }
-      }
-      if (trailing && (col === 0 || (view.getUint16(at(row, col - 1) + 2, true) & LEADING_BYTE) === 0)) {
-        return {
-          status: "refused",
-          reason: `${where} is a wide glyph's trailing cell with no leading half before it`,
+          const reason = `${where} is a wide glyph's leading cell, but the next cell is not its trailing half`
+          if (measured(row, col)) return { status: "refused", reason }
+          outside.push(reason)
+          unit = 0x20
+          attribute &= ~(LEADING_BYTE | TRAILING_BYTE)
+          units.push(unit)
+          rowAttributes.push(attribute)
+          continue
         }
       }
       units.push(unit)
@@ -234,13 +272,16 @@ export function decodeCharInfo(bytes: Uint8Array, cols: number, rows: number): C
     text.push(units.map((unit) => String.fromCharCode(unit)).join(""))
     attributes.push(rowAttributes)
   }
-  return { status: "decoded", grid: { cols, rows, text, attributes } }
+  return { status: "decoded", grid: { cols, rows, text, attributes }, outside }
 }
 
 export interface ConsoleCellReadOptions {
   /** The console host whose buffer this read returns. Required: an unnamed buffer cannot be cited
    * as evidence, and the image is one of the two hosts, never the terminal that draws the window. */
   readonly bufferOwner: ConsoleHostIdentity | undefined
+  /** The cells the caller means to grade, in 1-based window coordinates. A host-written shape
+   * outside them is named on the frame instead of refusing the read (28638). */
+  readonly required?: RequiredCells
   /** Injection seam for tests; production passes the binding the arm already loaded. */
   readonly kernel?: Kernel32
 }
@@ -317,9 +358,14 @@ export async function readWindowsConsoleCells(options: ConsoleCellReadOptions): 
         reason: `the console window moved from ${formatRect(rect)} to ${formatRect(now)} during the cell read, so these cells are not one screen`,
       } satisfies ConsoleCellRead
     }
-    const decoded = decodeCharInfo(cells, cols, rows)
+    const decoded = decodeCharInfo(cells, cols, rows, options.required)
     if (decoded.status === "refused") return decoded
-    return { status: "read", grid: decoded.grid, bufferOwner: owner } satisfies ConsoleCellRead
+    return {
+      status: "read",
+      grid: decoded.grid,
+      outside: decoded.outside,
+      bufferOwner: owner,
+    } satisfies ConsoleCellRead
   }, kernel)
 }
 

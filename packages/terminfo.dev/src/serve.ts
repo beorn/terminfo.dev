@@ -365,7 +365,8 @@ export async function collectProbeRun(
     const artifactDirectory = captureDirectory
     mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
     capture = async (checkpoint) => {
-      const read = await readCells()
+      // The row's own rectangle, so a cell it never measures cannot refuse its read (28638).
+      const read = await readCells(checkpoint.cells)
       const result = textCellsFrame(checkpoint, read, Date.now())
       // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
       // second write, and a digest that maps to different bytes is named instead of overwritten.
