@@ -114,6 +114,24 @@ test("every editing contract row reads its declared outcome against a surface th
   }
 })
 
+// 29817: the attribute-change extent starts at the DEC power-on default, which is STREAM, not the
+// rectangle the early DECCARA/DECRARA rows assumed without selecting it. A row that wants the
+// rectangle must say so with DECSACE 2, so a fixture that forgets cannot silently inherit rectangle
+// semantics while the reading claims to measure the terminal.
+test("an attribute change starts at the stream extent until the row selects rectangle", () => {
+  const paint = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
+  const change = "\x1b[1;2;2;3;7$r"
+  const pattern = (selectExtent: string): string => {
+    const ctx = headlessContext(createSemanticSurface({ cols: 8, rows: 2 }))
+    ctx.feed(paint + selectExtent + change)
+    return Array.from({ length: 2 }, (_, row) =>
+      Array.from({ length: 8 }, (_, col) => (ctx.getCell(row, col).inverse ? "#" : ".")).join(""),
+    ).join("|")
+  }
+  expect(pattern(""), "no DECSACE means the spec's stream default, never the rectangle").toBe(".#######|###.....")
+  expect(pattern("\x1b[2*x"), "DECSACE 2 is the rectangle the row asked for").toBe(".##.....|.##.....")
+})
+
 // One negative control: the surface stops inserting characters, so the row must read "unsupported". A
 // decided row cannot show this through `satisfies` (it accepts either pass or fail), so the observation
 // itself is asserted. This is what makes the table above a measurement, not a stamp.

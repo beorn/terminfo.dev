@@ -61,13 +61,17 @@ interface EditingCaptureSpec {
  * or folding the SGR family's attribute readback (sgr.ts, sgrReadbackDecision) into the region kind,
  * whichever comes first - then both arms get an attribute-carrying cell once, reviewed, and these two
  * convert with it.
+ *
+ * Both rows select their DECSACE extent explicitly (29817): DECSACE 2 is the rectangle they measure,
+ * and the surface starts at the spec's power-on default of stream, so neither row relies on a
+ * default it does not state.
  */
 const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
   "editing.deccara": {
     minRows: 1,
     minCols: 6,
     seed: "\x1b[1;1HaaaaaZ",
-    edit: "\x1b[1;1H\x1b[1;1;1;5;7$r",
+    edit: "\x1b[1;1H\x1b[2*x\x1b[1;1;1;5;7$r",
     region: { row: 1, col: 1, rows: 1, cols: 5 },
     note: "DECCARA (stream and rectangle extent agree on one row) should set inverse on the five measured cells and leave the sixth-column flank plain",
   },
@@ -75,7 +79,7 @@ const EDITING_CAPTURE_SPECS: Record<string, EditingCaptureSpec> = {
     minRows: 1,
     minCols: 6,
     seed: "\x1b[1;1H\x1b[7maaaaa\x1b[0mZ",
-    edit: "\x1b[1;1H\x1b[1;1;1;5;7$t",
+    edit: "\x1b[1;1H\x1b[2*x\x1b[1;1;1;5;7$t",
     region: { row: 1, col: 1, rows: 1, cols: 5 },
     note: "DECRARA (one row) should clear inverse on the five measured cells and leave the sixth-column flank already-plain",
   },
@@ -559,7 +563,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         if (setup.x !== 0 || setup.y !== 0) {
           return parserStateResult(null, expected, { before, setup }, "DECCARA cursor setup failed")
         }
-        ctx.feed("\x1b[1;1;3;5;7$r")
+        // DECSACE 2 selects the rectangle extent this row measures; the surface default is stream (29817).
+        ctx.feed("\x1b[2*x\x1b[1;1;3;5;7$r")
         const after = Array.from({ length: 3 }, (_, row) =>
           Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
         )
@@ -586,7 +591,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           }
         }
         ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[1;1;3;5;7$r") // DECCARA
+        ctx.write("\x1b[2*x\x1b[1;1;3;5;7$r") // DECSACE 2 (rectangle), then DECCARA
         const pos = await ctx.queryCursorPosition()
         return unmeasuredCellResult(pos, "edited cells or attributes")
       },
@@ -620,7 +625,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         if (setup.x !== 0 || setup.y !== 0) {
           return parserStateResult(null, expected, { before, setup }, "DECRARA cursor setup failed")
         }
-        ctx.feed("\x1b[1;1;3;5;7$t")
+        // DECSACE 2 selects the rectangle extent this row measures; the surface default is stream (29817).
+        ctx.feed("\x1b[2*x\x1b[1;1;3;5;7$t")
         const after = Array.from({ length: 3 }, (_, row) =>
           Array.from({ length: 6 }, (_, col) => ctx.getCell(row, col)),
         )
@@ -647,7 +653,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           }
         }
         ctx.write("\x1b[1;1H")
-        ctx.write("\x1b[1;1;3;5;7$t") // DECRARA
+        ctx.write("\x1b[2*x\x1b[1;1;3;5;7$t") // DECSACE 2 (rectangle), then DECRARA
         const pos = await ctx.queryCursorPosition()
         return unmeasuredCellResult(pos, "edited cells or attributes")
       },

@@ -354,12 +354,11 @@ export function createSemanticSurface(options: SemanticSurfaceOptions = {}): Sem
 
   /**
    * DECSACE's extent for the attribute changes DECCARA/DECRARA apply: Ps 0 and 1 are stream, Ps 2 is
-   * rectangle. The surface starts at the rectangle the existing DECCARA/DECRARA rows assume without
-   * selecting it - not the DEC power-on default, which is stream. A fixture that wants the stream
-   * extent selects it with DECSACE 0 or 1 before its write, so one row's mode can never leak into
-   * another's. The start flips to stream once every row selects its extent explicitly.
+   * rectangle. The surface starts at the DEC power-on default, stream (29817), and every row selects
+   * the extent it means with DECSACE 0, 1 or 2 before its write — so one row's mode can never leak
+   * into another's, and a row that forgets cannot inherit rectangle semantics it never asked for.
    */
-  let attributeExtent: 0 | 1 = 1
+  let attributeExtent: 0 | 1 = 0
   const clampCol = (col: number): number => (col < 0 ? 0 : col > cols - 1 ? cols - 1 : col)
   const cellAt = (row: number, col: number): SurfaceCell => grid[row]?.[col] ?? blankCell(NO_ATTRIBUTES)
 
