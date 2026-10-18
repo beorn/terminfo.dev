@@ -3,14 +3,23 @@
  * The existing collection entry point, extended toward the full 273-capability, 33-context pass.
  * Bare/--plan prints a read-only census and historical Linux launcher recipes.
  * --collect --development invokes existing raw collectors, validates the current suite in memory,
- * and retains private classifications. WIP: only headless dispatch is wired; every other context
+ * and retains private classifications. WIP: headless and Linux dispatch are wired; other contexts
  * stays visible as unfinished work. No development admission, suite declaration or inclusion.
  * Supplied-run --admit retains its existing admission-owner path and decisive-share report.
  * Full platform dispatch and the frozen final collection mode remain unfinished. No deploy.
  */
 import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
@@ -259,6 +268,7 @@ export interface DevelopmentCollection {
     context: CollectionContext
     status: "classified" | "failed"
     rawRun?: string
+    directory?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
     error?: string
   }>
@@ -299,7 +309,8 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
       ? {
           ...context,
           uncollectable: null,
-          requires: "wire the existing full-suite launcher with explicit version/config pins",
+          requires: null,
+          command: `bash scripts/linux-container-run.sh --target ${context.id} --preset ${context.id === "kitty" ? "current" : "default"} --clipboard-profile default <private-output>`,
         }
       : context,
   )
@@ -343,7 +354,45 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
     const row: DevelopmentCollection["contexts"][number] = { context, status: "failed" }
     pass.contexts.push(row)
     try {
-      if (context.kind !== "headless") {
+      let path: string
+      if (context.route === "linux-container") {
+        const output = join(directory, "linux", context.id)
+        row.directory = output
+        mkdirSync(output, { recursive: true })
+        runChild(
+          [
+            "bash",
+            "scripts/linux-container-run.sh",
+            "--target",
+            context.id,
+            "--preset",
+            context.id === "kitty" ? "current" : "default",
+            "--clipboard-profile",
+            "default",
+            output,
+          ],
+          `${labelOf(context)} Linux collection`,
+          {
+            stdout: join(output, "launcher.stdout.log"),
+            stderr: join(output, "launcher.stderr.log"),
+          },
+        )
+        const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
+        if (runs.length !== 1 || !runs[0]) {
+          throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
+        }
+        path = realpathSync(join(output, runs[0].name, "raw", "v2-run.json"))
+        if (!path.startsWith(`${output}${sep}`)) {
+          throw new Error(`Linux raw output escaped its private context: ${path}`)
+        }
+      } else if (context.kind === "headless") {
+        const paths = files.get(context.id) ?? []
+        if (failures.has(context.id)) throw new Error(failures.get(context.id))
+        if (paths.length !== 1 || !paths[0]) {
+          throw new Error(`headless collector produced ${paths.length} raw runs; expected exactly one`)
+        }
+        path = paths[0]
+      } else {
         throw new Error(
           context.route === null
             ? (context.uncollectable ?? "required route work")
@@ -352,16 +401,14 @@ export async function collectDevelopmentPass(outputDirectory: string): Promise<D
               : `required automation work: ${context.route} dispatch is not wired yet`,
         )
       }
-      const paths = files.get(context.id) ?? []
-      if (failures.has(context.id)) throw new Error(failures.get(context.id))
-      if (paths.length !== 1) {
-        throw new Error(`headless collector produced ${paths.length} raw runs; expected exactly one`)
-      }
-      const path = paths[0]
-      if (!path) throw new Error("headless collector lost its raw run path")
       row.rawRun = path
       const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
-      if (run.schemaVersion !== 2 || run.target.kind !== context.kind || run.target.id !== context.id) {
+      if (
+        run.schemaVersion !== 2 ||
+        run.target.kind !== context.kind ||
+        run.target.id !== context.id ||
+        (context.kind !== "headless" && run.target.os !== context.os)
+      ) {
         throw new Error(`raw run does not identify the expected v2 ${context.kind}:${context.id} context`)
       }
       if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
@@ -572,12 +619,24 @@ function planLines(census: readonly CollectionContext[]): string[] {
 const labelOf = (entry: CollectionContext): string =>
   entry.kind === "headless" ? `${entry.id} [headless]` : `${entry.id}/${entry.os}`
 
-function runChild(argv: readonly string[], label: string): void {
+function runChild(argv: readonly string[], label: string, logs?: { stdout: string; stderr: string }): void {
   const [command, ...rest] = argv
   if (command === undefined) throw new Error(`${label}: no command to run`)
-  const result = spawnSync(command, rest, { cwd: ROOT, stdio: "inherit" })
-  if (result.error) throw new Error(`${label}: ${result.error.message}`, { cause: result.error })
-  if (result.status !== 0) throw new Error(`${label} exited ${String(result.status)}`)
+  const stdout = logs ? openSync(logs.stdout, "wx") : undefined
+  let stderr: number | undefined
+  try {
+    stderr = logs ? openSync(logs.stderr, "wx") : undefined
+    const result = spawnSync(command, rest, {
+      cwd: ROOT,
+      stdio: stdout === undefined || stderr === undefined ? "inherit" : ["ignore", stdout, stderr],
+    })
+    const retained = logs ? `; logs retained at ${dirname(logs.stderr)}` : ""
+    if (result.error) throw new Error(`${label}: ${result.error.message}${retained}`, { cause: result.error })
+    if (result.status !== 0) throw new Error(`${label} exited ${String(result.status)}${retained}`)
+  } finally {
+    if (stdout !== undefined) closeSync(stdout)
+    if (stderr !== undefined) closeSync(stderr)
+  }
 }
 
 function usage(): never {
@@ -588,7 +647,7 @@ function usage(): never {
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
       "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
-      "  --collect --development  collect private headless runs and classify against the live suite.\n" +
+      "  --collect --development  collect private headless/Linux runs and classify against the live suite.\n" +
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
       "           and print the decisive-share table. The owner reads candidate2's manifest freeze;\n" +

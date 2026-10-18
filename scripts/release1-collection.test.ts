@@ -14,6 +14,7 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync, spawnSync } from "node:child_process"
+import * as childProcesses from "node:child_process"
 import {
   existsSync,
   mkdirSync,
@@ -23,6 +24,7 @@ import {
   rmSync,
   symlinkSync,
   writeFileSync,
+  writeSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { describe, expect, it, vi } from "vitest"
@@ -46,6 +48,10 @@ import {
 
 // Replace only the external terminal process owner; parsing and classification remain real.
 vi.mock("../packages/probes/collect-headless.ts", () => ({ collectHeadlessRuns: vi.fn() }))
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>()
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) }
+})
 
 /** One fixture Linux row: a committed run the census reads the launcher flags back from. */
 const ledgerRow = (id: string, overrides: Partial<LinuxLedger[string]> = {}): LinuxLedger[string] => ({
@@ -138,6 +144,22 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     writeFileSync(raw, bytes)
     return { directory: output, requested: ENGINE_BACKENDS, runs: [raw], failures: [] }
   })
+  // The real launcher owns containers and receipts. Its process boundary is replaced here;
+  // a failed Kitty launch and other malformed raw outputs must remain separate, retained failures.
+  const launcher = vi.spyOn(childProcesses, "spawnSync").mockImplementation((_command, args, options) => {
+    if (!Array.isArray(args)) throw new Error("expected explicit Linux launcher argv")
+    const output = args.at(-1)
+    if (typeof output !== "string") throw new Error("expected private Linux output directory")
+    const isKitty = args.includes("kitty")
+    if (!isKitty) {
+      const raw = join(output, "fixture-run", "raw")
+      mkdirSync(raw, { recursive: true })
+      writeFileSync(join(raw, "v2-run.json"), "{}")
+    }
+    const stdio = options?.stdio
+    if (Array.isArray(stdio) && typeof stdio[2] === "number") writeSync(stdio[2], "launcher fixture diagnostic")
+    return { pid: 1, output: [], stdout: "", stderr: "", status: isKitty ? 17 : 0, signal: null }
+  })
   try {
     const pass = await collectDevelopmentPass(directory)
     expect(pass.mode).toBe("development")
@@ -154,11 +176,38 @@ it.each(["different", "matching"])("retains a private %s-suite pass without admi
     expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
     expect(JSON.parse(readFileSync(join(pass.directory, "pass.json"), "utf8"))).toEqual(pass)
     expect(collector).toHaveBeenCalledTimes(1)
+    expect(launcher).toHaveBeenCalledTimes(5)
+    for (const id of Object.keys(LEDGER)) {
+      const row = pass.contexts.find(
+        (entry) => entry.context.kind === "app" && entry.context.id === id && entry.context.os === "linux",
+      )
+      const output = join(pass.directory, "linux", id)
+      expect(launcher).toHaveBeenCalledWith(
+        "bash",
+        [
+          "scripts/linux-container-run.sh",
+          "--target",
+          id,
+          "--preset",
+          id === "kitty" ? "current" : "default",
+          "--clipboard-profile",
+          "default",
+          output,
+        ],
+        expect.anything(),
+      )
+      expect(row?.status).toBe("failed")
+      expect(row?.error).toContain(`${id}/linux`)
+      expect(readFileSync(join(output, "launcher.stderr.log"), "utf8")).toBe("launcher fixture diagnostic")
+      if (id === "kitty") expect(row?.error).toMatch(/exited 17/)
+      else expect(row?.rawRun && readFileSync(row.rawRun, "utf8")).toBe("{}")
+    }
     expect(planner).not.toHaveBeenCalled()
     expect(writer).not.toHaveBeenCalled()
     expect(readFileSync(original, "utf8")).toBe(originalBytes)
   } finally {
     collector.mockRestore()
+    launcher.mockRestore()
     planner.mockRestore()
     writer.mockRestore()
     snapshot?.mockRestore()
