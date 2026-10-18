@@ -1474,6 +1474,32 @@ it("records an opted-in query callback exception as collector error, never suppo
   expect(batch.suiteComplete).toBe(false)
 })
 
+it("retains a generated region callback's early write failure as a collector error", async () => {
+  verifiedBatchFixture()
+  const definition = ALL_PROBES.find((item) => item.id === "editing.insert-chars")!
+  process.stdout.write = (() => {
+    throw new Error("Region TTY write failed")
+  }) as typeof process.stdout.write
+  const batch = await runProbeBatch({
+    ids: [definition.id],
+    ownedTerminal: geometryOwner(measured(24, 80)),
+    capture: async () => {
+      throw new Error("A frame cannot precede the failed region write")
+    },
+  })
+  expect(batch.observations).toEqual([
+    expect.objectContaining({
+      featureId: definition.id,
+      outcome: "error",
+      reason: "collector-error",
+      evidence: "pixels",
+      note: "Region TTY write failed",
+    }),
+  ])
+  expect(batch.ungradedDiagnostics[definition.id]).toBeUndefined()
+  expect(batch.suiteComplete).toBe(false)
+})
+
 it("does not use a headless-only marker to grade an app callback exception", async () => {
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalApp = definition.termObservationEvidence

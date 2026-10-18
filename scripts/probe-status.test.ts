@@ -9,7 +9,17 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
-import { probe, type ProbeDefinition } from "@terminfo/probe-defs"
+import {
+  ALL_PROBES,
+  charsetReadbackRows,
+  editingReadbackRows,
+  eraseReadbackRows,
+  modesReadbackRows,
+  scrollbackReadbackRows,
+  textReadbackRows,
+  probe,
+  type ProbeDefinition,
+} from "@terminfo/probe-defs"
 import { loadFeatures, type FeatureCatalog } from "@terminfo/catalog"
 import { derivedProbeStatus, probeStatusOf, probeStatusSummary } from "../docs/data/probe-status.ts"
 
@@ -90,6 +100,28 @@ describe("probeStatusSummary", () => {
 
 describe("the real catalog", () => {
   const contentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
+
+  it("derives the generated region readback methods without obsolete partial overrides", () => {
+    const features = loadFeatures(contentDir)
+    const definitions = new Map(ALL_PROBES.map((entry) => [entry.id, entry]))
+    const rows = [
+      ...charsetReadbackRows,
+      ...editingReadbackRows,
+      ...eraseReadbackRows,
+      ...modesReadbackRows,
+      ...scrollbackReadbackRows,
+      ...textReadbackRows,
+    ]
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const definition = definitions.get(row.id)
+      if (!definition) throw new Error(`Missing generated region definition ${row.id}`)
+      // The method is automated; whether this particular run can inspect the effect is recorded
+      // by its actual pixel/text/query observation, independently of this catalog projection.
+      expect(derivedProbeStatus(definition), row.id).toBe("automated")
+      expect(probeStatusOf(row.id, features), row.id).toBe("automated")
+    }
+  })
 
   it("settles, reviews or names every feature, leaving no row unaccounted for", () => {
     const features = loadFeatures(contentDir)
