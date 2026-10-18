@@ -183,10 +183,18 @@ function inputSatisfactionContext(id: string): { readonly headless?: TermlessCon
     }
   }
   if (id === "input.kitty-click-events") {
+    const writes: string[] = []
     return {
       term: replayContext(new Map(), {
+        write: (text) => writes.push(text),
         input: { injectKey: async () => {}, injectClick: async () => {} },
-        readInput: async () => ["\x1b[<0;10;5M"],
+        readInput: async (pattern) => {
+          // Kitty reports a prompt click only on the main linebuf at the current visible prompt;
+          // the rejected alternate-screen fixture must therefore stay silent.
+          if (pattern.test("\x1b[<0;10;5m") && !pattern.test("\x1b[<0;10;5M")) return null
+          if (writes.some((write) => write.includes("?1049h"))) return null
+          return ["\x1b[<0;10;5M"]
+        },
       }),
     }
   }

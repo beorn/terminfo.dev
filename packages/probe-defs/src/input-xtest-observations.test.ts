@@ -931,10 +931,9 @@ test("input.kitty-click-events supports a prompt click report while mouse modes 
   expect(result.assertions).toEqual([expect.objectContaining({ kind: "positive", action: "kitty-click-events:1" })])
   expect(clicks).toEqual([1, 1])
   const marker = writes.find((write) => write.includes("\x1b]133;A;click_events=1"))
-  expect(marker).toBe("\x1b[5;1H\x1b]133;A;click_events=1\x07$ " + " ".repeat(8) + "\x1b]133;B\x07")
-  const resetIndex = writes.findIndex((write) => write === "\x1b[?1000l\x1b[?1006l")
-  expect(resetIndex).toBeGreaterThan(-1)
-  expect(writes.indexOf(marker!)).toBeGreaterThan(resetIndex)
+  expect(marker).toBe("\x1b[5;1H\x1b]133;A;click_events=1\x07$ " + " ".repeat(8))
+  expect(writes.some((write) => write.includes("\x1b]133;B\x07\x1b[5;1H\x1b[2K"))).toBe(true)
+  expect(writes.some((write) => write.includes("\x1b[?1049h"))).toBe(false)
 })
 
 test("input.kitty-click-events reports unsupported when a delivered click leaves the marked prompt silent", async () => {
@@ -948,5 +947,16 @@ test("input.kitty-click-events names the missing click injection instead of meas
   const result = await probe("input.kitty-click-events").term!(term())
   expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
   expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+})
+
+test("input.kitty-click-events stays inconclusive when the report does not match the control click", async () => {
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<2;30;9M"] }, [])
+  const result = await probe("input.kitty-click-events").term!(ctx)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "interaction",
+  })
   expect(result.assertions).toBeUndefined()
 })

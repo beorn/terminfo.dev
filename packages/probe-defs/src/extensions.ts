@@ -16,9 +16,12 @@ import {
 const ITERM2_RED_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mP4z8CAFTEMLQkAKP8/wc53yE8AAAAASUVORK5CYII="
 
-/** Font-ligature sample: the control keeps each operator pair apart so no shaping rule can join it. */
-const FONT_LIGATURE_CONTROL = "! =\n- >\n= >\n< =\n= ="
-const FONT_LIGATURE_TARGET = "!=\n->\n=>\n<=\n=="
+/**
+ * Font-ligature sample: ONE line so the pair fits the minimum admitted capture geometry, and the
+ * control keeps each operator pair apart so no shaping rule can join it.
+ */
+const FONT_LIGATURE_CONTROL = "! = - > = > < = = ="
+const FONT_LIGATURE_TARGET = "!= -> => <= =="
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }

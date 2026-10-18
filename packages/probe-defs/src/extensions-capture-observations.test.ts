@@ -95,8 +95,16 @@ test("extensions.font-ligatures captures a spaced control and a contiguous opera
   expect(result.assertions).toBeUndefined()
   expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
   expect(result.observation?.frames).toHaveLength(2)
-  expect(writes.some((write) => write.includes("! =\n- >\n= >\n< =\n= ="))).toBe(true)
-  expect(writes.some((write) => write.includes("!=\n->\n=>\n<=\n=="))).toBe(true)
+  expect(writes.some((write) => write.includes("! = - > = > < = = ="))).toBe(true)
+  expect(writes.some((write) => write.includes("!= -> => <= =="))).toBe(true)
+})
+
+test("extensions.font-ligatures fits the minimum admitted three-row capture geometry", async () => {
+  const { context, writes, frames } = captureApp(3, 80)
+  const result = await find("extensions.font-ligatures").term!(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
+  expect(writes.some((write) => write.includes("!= -> => <= =="))).toBe(true)
 })
 
 test("extensions.font-ligatures names a missing capture instead of claiming a measurement", async () => {

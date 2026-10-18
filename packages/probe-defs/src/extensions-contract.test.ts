@@ -568,6 +568,7 @@ test("semantic observables omitted in headless mode return notTested without fai
     "extensions.osc1-icon",
     "extensions.osc117-reset-highlight-bg",
     "extensions.osc119-reset-highlight-fg",
+    "extensions.font-ligatures",
   ]
   const headless = headlessContext(inertModel())
   for (const id of omittedProbes) {
