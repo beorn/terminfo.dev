@@ -141,7 +141,7 @@ jobs:
           import { writeFileSync } from "node:fs"
           import { createRequire } from "node:module"
           import { readWindowsProcessTable, windowsProcessAncestry } from "./windows-process-ancestry.ts"
-          import { queryOutcome } from "./tty.ts"
+          import { queryOutcome, withRawMode } from "./tty.ts"
 
           const require = createRequire(import.meta.url)
           const ffi = require("bun:ffi") as {
@@ -217,7 +217,7 @@ jobs:
               : []
 
             const startMs = performance.now()
-            const da1 = await queryOutcome("\x1b[c", /\x1b\[\?([0-9;]+)c/, 2000)
+            const da1 = await withRawMode(() => queryOutcome("\x1b[c", /\x1b\[\?([0-9;]+)c/, 2000))
             const elapsedMs = Math.round((performance.now() - startMs) * 100) / 100
 
             const report = {
