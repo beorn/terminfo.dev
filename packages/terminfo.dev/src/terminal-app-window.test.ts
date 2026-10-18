@@ -42,8 +42,14 @@ describe("descendant walk", () => {
     [100, 1],
   ])
 
-  test("accepts a daemon that descends from the recorded kitty pid", () => {
+  test("accepts a daemon that descends from the recorded kitty pid, including past 64 hops", () => {
     expect(() => descendToOwner(300, 100, (pid) => parents.get(pid) ?? null)).not.toThrow()
+    // The removed hop ceiling accepted three hops and refused this one; a valid chain of 71 hops now
+    // passes, so a returned cap fails this same accepted case instead of hiding behind a short chain.
+    const long = new Map<number, number>()
+    for (let pid = 1000; pid < 1070; pid += 1) long.set(pid, pid + 1)
+    long.set(1070, 100)
+    expect(() => descendToOwner(1000, 100, (pid) => long.get(pid) ?? null)).not.toThrow()
   })
 
   test("refuses a chain that ends at pid 1 and names the chain it walked", () => {
