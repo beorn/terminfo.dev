@@ -19,6 +19,7 @@ export const inputProbes: ProbeDefinition[] = [
   probe("input.xtest-key", () => xtestCoverage("key injection"), xtestKey, "interaction"),
   probe("input.xtest-click", () => xtestCoverage("click injection"), xtestClick, "interaction"),
   probe("input.xtest-wheel", () => xtestCoverage("wheel injection"), xtestWheel, "interaction"),
+  probe("input.kitty-click-events", () => xtestCoverage("click injection"), kittyClickEvents, "interaction"),
 ]
 
 const MOUSE_SET = "\x1b[?1000h\x1b[?1006h"
@@ -54,6 +55,8 @@ const ALT_SCROLL_SET = "\x1b[?1007h"
 const ALT_SCROLL_RESET = "\x1b[?1007l"
 const ALT_SCROLL_OR_SGR = /\x1b(?:\[(?:<\d+;\d+;\d+[Mm]|[AB])|O[AB])/
 const ALT_SCROLL_ENCODING = /\x1b(?:\[[AB]|O[AB])/
+const KITTY_CLICK_START = "\x1b]133;A;click_events=1\x07"
+const KITTY_CLICK_END = "\x1b]133;B\x07"
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
@@ -429,4 +432,40 @@ async function xtestWheel(ctx: TermContext): Promise<ProbeResult> {
       report,
     })
   })
+}
+
+/**
+ * Kitty shell-integration click events: mark a prompt with click_events=1 and click inside it.
+ * The same-run 1000+1006 delivery control proves the pointer is over the app and records the
+ * click cell, so the marker is placed under that exact cell; mouse modes are then off, leaving
+ * the click-events path as the only way a report can arrive. A report is support; a silent click
+ * after that control is a measured negative, not a missing observation.
+ */
+async function kittyClickEvents(ctx: TermContext): Promise<ProbeResult> {
+  const input = ctx.input
+  const readInput = ctx.readInput
+  if (!input || !readInput) return xtestCoverage("click injection")
+  const control = await withMouseModes(ctx, () =>
+    deliveryControl(
+      () => input.injectClick(1),
+      readInput,
+      SGR_MOUSE,
+      "OS click delivery control failed: click under 1000+1006 did not reach the app",
+    ),
+  )
+  const point = sgrMouseCoords(control)
+  if (!point) throw new Error(`click delivery control ${JSON.stringify(control)} carries no SGR cell coordinates`)
+  const expected = "Click inside an OSC 133 prompt marked click_events=1 reports SGR mouse while mouse modes are off"
+  ctx.write(ALT_SCREEN_SET)
+  try {
+    // The marker spans the click cell: prompt start at col 1, prompt end past the click column.
+    const pad = " ".repeat(Math.max(0, point.x - 2))
+    ctx.write(`\x1b[${point.y};1H${KITTY_CLICK_START}$ ${pad}${KITTY_CLICK_END}`)
+    const report = (await readInput(SGR_MOUSE, 1000, () => input.injectClick(1)))?.[0]
+    const observed = { marker: "OSC 133;A;click_events=1", control, report: report ?? null, pointer: point }
+    if (report) return interactionResult("kitty-click-events:1", expected, observed)
+    return unsupportedInteraction("kitty-click-events:1", expected, observed)
+  } finally {
+    ctx.write(ALT_SCREEN_RESET)
+  }
 }

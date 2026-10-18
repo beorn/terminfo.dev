@@ -1,7 +1,7 @@
 /**
  * @failure XTEST or catalog input probes publish unsupported, skip same-run delivery control, omit interaction action, or grade Tab as a throw.
  * @level l0
- * @consumer App collector OS-level key/click/wheel injection and modifyOtherKeys observations.
+ * @consumer App collector OS-level key/click/wheel injection, prompt click events and modifyOtherKeys observations.
  * @testonly none
  */
 import { expect, test } from "vitest"
@@ -921,4 +921,32 @@ test("input.button-event-mouse throws when the 1002 drag is silent after deliver
   expect(drags).toEqual([1])
   expect(writes.join("")).toContain("\x1b[?1002h")
   expect(writes.join("")).toContain("\x1b[?1002l")
+})
+
+test("input.kitty-click-events supports a prompt click report while mouse modes are off", async () => {
+  const writes: string[] = []
+  const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<0;10;5M"] }, writes)
+  const result = await probe("input.kitty-click-events").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.assertions).toEqual([expect.objectContaining({ kind: "positive", action: "kitty-click-events:1" })])
+  expect(clicks).toEqual([1, 1])
+  const marker = writes.find((write) => write.includes("\x1b]133;A;click_events=1"))
+  expect(marker).toBe("\x1b[5;1H\x1b]133;A;click_events=1\x07$ " + " ".repeat(8) + "\x1b]133;B\x07")
+  const resetIndex = writes.findIndex((write) => write === "\x1b[?1000l\x1b[?1006l")
+  expect(resetIndex).toBeGreaterThan(-1)
+  expect(writes.indexOf(marker!)).toBeGreaterThan(resetIndex)
+})
+
+test("input.kitty-click-events reports unsupported when a delivered click leaves the marked prompt silent", async () => {
+  const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, [])
+  const result = await probe("input.kitty-click-events").term!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "kitty-click-events:1" })
+})
+
+test("input.kitty-click-events names the missing click injection instead of measuring", async () => {
+  const result = await probe("input.kitty-click-events").term!(term())
+  expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
 })
