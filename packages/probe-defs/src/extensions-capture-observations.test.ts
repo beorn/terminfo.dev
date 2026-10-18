@@ -20,7 +20,12 @@ function captureApp(rows: number, cols: number) {
     query: async () => null,
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
-    queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
+    // A real context writes the query bytes before waiting; record them so a probe's query is
+    // observable here instead of vanishing into the fake.
+    queryWithSentinelOutcome: async (sequence: string) => {
+      writes.push(sequence)
+      return { match: null, reason: "timeout", raw: "", rawBase64: "" }
+    },
     queryMode: async () => null,
     capture: async ({ role, label }) => {
       const frame = {
@@ -42,7 +47,9 @@ function find(id: string) {
   return definition
 }
 
-const capturedIds = ["extensions.truecolor", "extensions.sixel", "extensions.iterm2-images"] as const
+// extensions.truecolor is NOT here: its claim is cell storage, decided by the DECRQSS SGR oracle
+// (extensions-qualification covers it), and a pixel comparison was never able to decide it.
+const capturedIds = ["extensions.sixel", "extensions.iterm2-images"] as const
 
 test.each(capturedIds)("%s records control+target pixels as honest, unasserted inconclusive evidence", async (id) => {
   const { context, writes, frames } = captureApp(24, 80)
@@ -78,10 +85,11 @@ test("each image target writes its own payload rather than a generic consumption
   const iterm = captureApp(24, 80)
   await find("extensions.iterm2-images").term!(iterm.context)
   expect(iterm.writes.some((write) => write.includes("\x1b]1337;File=inline=1"))).toBe(true)
+  // Truecolor asks the terminal for its own SGR state instead of painting two RGB runs.
   const truecolor = captureApp(24, 80)
   await find("extensions.truecolor").term!(truecolor.context)
   expect(truecolor.writes.some((write) => write.includes("\x1b[38;2;255;128;0m"))).toBe(true)
-  expect(truecolor.writes.some((write) => write.includes("\x1b[38;2;17;97;201m"))).toBe(true)
+  expect(truecolor.writes.some((write) => write.includes("\x1bP$qm"))).toBe(true)
 })
 
 test("extensions.font-ligatures captures a spaced control and a contiguous operator sample", async () => {
