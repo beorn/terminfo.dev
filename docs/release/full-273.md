@@ -45,7 +45,10 @@ This page scores the live tree suite against the runs that exist today. It is no
       <td><code>{{ row.context }}</code></td>
       <td>{{ row.kind }}</td>
       <template v-if="row.collected">
-        <td>{{ row.result.fraction }} &middot; {{ row.result.pct }}%</td>
+        <td>
+          {{ row.result.fraction }} &middot; {{ row.result.pct }}%
+          &middot; {{ row.result.instrumentLimitCount }} applied instrument limits ({{ instrumentLimits.length }} recorded)
+        </td>
         <td>{{ row.result.ceiling }}</td>
         <td>{{ label(row) }}</td>
       </template>
@@ -76,7 +79,7 @@ This page scores the live tree suite against the runs that exist today. It is no
       <tr v-for="group in row.result.groups" :key="group.key">
         <td><code>{{ group.key }}</code></td>
         <td>{{ group.catalogRows }}</td>
-        <td><template v-if="group.verdict">{{ group.fraction }} &middot; {{ group.pct }}%</template><template v-else>&mdash;</template></td>
+        <td><template v-if="group.verdict">{{ group.fraction }} &middot; {{ group.pct }}% &middot; {{ group.instrumentLimitCount }} applied instrument limits</template><template v-else>&mdash;</template></td>
         <td>{{ group.ceiling }}</td>
         <td>
           <template v-if="group.verdict">{{ group.included ? 'included' : 'not included' }}</template><template v-else>every row excluded</template>
@@ -146,7 +149,19 @@ These rows have no probe definition yet. They stay in the denominator as open wo
 
 ### Reviewed instrument limits ({{ instrumentLimits.length }})
 
-None is recorded yet. A row may leave one context's denominator only for a named, reviewed local instrument limit that no planned or approved work can cure.
+A row may leave one context's denominator only for a named, reviewed local instrument limit that no planned or approved work in this release can cure. Each cause names what WOULD observe the row — a per-terminal adapter or a fixture — and says that this release does not build it. They are recorded here now; whether the release bar counts them out of the denominator is a separate scope decision, and no row is subtracted silently under either answer.
+
+<table>
+  <thead>
+    <tr><th>Row</th><th>Why it is unobserved, and what would observe it</th></tr>
+  </thead>
+  <tbody>
+    <tr v-for="limit in instrumentLimits" :key="limit.id">
+      <td><code>{{ limit.id }}</code></td>
+      <td>{{ limit.cause }}</td>
+    </tr>
+  </tbody>
+</table>
 
 ## Contexts not collected
 

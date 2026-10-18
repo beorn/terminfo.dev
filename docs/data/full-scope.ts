@@ -42,6 +42,59 @@ export const DESIGN_EXCLUSION_IDS = DESIGN_EXCLUSIONS.map(([id]) => id)
 /** The stated cause for each design exclusion, so a printed row is named and explained. */
 export const DESIGN_EXCLUSION_CAUSES: Readonly<Record<string, string>> = Object.fromEntries(DESIGN_EXCLUSIONS)
 
+/** The one wording for a mark the terminal consumes, with no query to ask it back. */
+const consumedMarkCause = (mark: string): string =>
+  `${mark} is consumed by the terminal and exposes no query; a shell-integration fixture that runs the shell with that integration and captures the emitted mark stream would observe it, and this release does not build one`
+
+/**
+ * A PROMPT-START mark is the one mark prompt jumping can retain: the adapter navigates prompts and
+ * the viewport readback shows where. It says nothing about the other marks in the same namespace.
+ */
+const promptJumpCause = (mark: string): string =>
+  `${mark} is consumed by the terminal; a per-terminal prompt-jump adapter, in the terminals that implement prompt jumping, plus a viewport readback would observe it, and this release does not build one`
+
+/**
+ * The reviewed instrument limits: rows the expected app route cannot observe, each with the cause
+ * that explains why and names what WOULD observe it. @cto accepted all sixteen as true on 2026-10-18.
+ *
+ * They are data, not a blanket exclusion: a context that carries the named adapter or fixture can
+ * decide its rows, so the caller applies them per context. Nothing removes a row silently — every
+ * percentage a page prints carries their count beside it.
+ */
+const INSTRUMENT_LIMIT_CAUSES_SOURCE = [
+  ["extensions.osc133-a", promptJumpCause("OSC 133;A (prompt start)")],
+  ["extensions.osc133-b", consumedMarkCause("OSC 133;B (command start)")],
+  ["extensions.osc133-c", consumedMarkCause("OSC 133;C (command executed)")],
+  ["extensions.osc133-d", consumedMarkCause("OSC 133;D (command finished)")],
+  ["extensions.osc133-p", consumedMarkCause("OSC 133;P (properties)")],
+  ["extensions.osc633-a", promptJumpCause("OSC 633;A (prompt start)")],
+  ["extensions.osc633-b", consumedMarkCause("OSC 633;B (prompt end)")],
+  ["extensions.osc633-c", consumedMarkCause("OSC 633;C (pre-execution)")],
+  ["extensions.osc633-d", consumedMarkCause("OSC 633;D (command finished)")],
+  ["extensions.osc633-e", consumedMarkCause("OSC 633;E (set commandline)")],
+  ["extensions.osc633-p", consumedMarkCause("OSC 633;P (properties)")],
+  ["extensions.semantic-prompts", consumedMarkCause("the semantic-prompt marks (OSC 133)")],
+  ["extensions.osc-633-vscode", consumedMarkCause("the VS Code shell-integration marks (OSC 633)")],
+  [
+    "extensions.notifications",
+    "desktop notification delivery leaves the terminal for the session bus; a desktop-session fixture that watches that bus would observe it, and this release does not build one",
+  ],
+  [
+    "extensions.osc9-progress",
+    "OSC 9;4 reports progress through the terminal's NATIVE progress display, so a desktop-notification fixture cannot see it; a window or taskbar progress-property readback — a new collector surface of the window-property class — would observe it, and this release does not build one",
+  ],
+  [
+    "extensions.osc8",
+    "OSC 8 link state lives in the terminal's model with no query protocol; a per-terminal hints adapter (kitty shows OSC 8 targets) would observe it, and this release does not build one",
+  ],
+] as const
+
+/** The reviewed limits in the shape `ScopeInput.instrumentLimits` takes; the one export callers use. */
+export const INSTRUMENT_LIMITS: readonly InstrumentLimit[] = INSTRUMENT_LIMIT_CAUSES_SOURCE.map(([id, cause]) => ({
+  id,
+  cause,
+}))
+
 /**
  * The catalog rows with no probe definition yet. They are WORK, not exclusions: they remain in the
  * denominator, score as untested until measured, and are named beside every context's score.
@@ -78,6 +131,8 @@ export interface ScopeGroup {
   catalogRows: number
   denominator: number
   decisive: number
+  /** How many of this group's rows left for a reviewed instrument limit — printed beside its score. */
+  instrumentLimitCount: number
   /** The states behind the group's non-decisive rows, so a below-bar label can name its causes. */
   counts: Readonly<Record<CellState, number>>
   /** Empty when every row of the group is excluded: no denominator, so no score is printed. */
@@ -94,6 +149,8 @@ export interface ScopeResult {
   catalogRows: number
   /** B ∪ I, in catalog order, with the set that named each row. */
   excluded: readonly Exclusion[]
+  /** How many of `excluded` are reviewed instrument limits — printed beside every percentage. */
+  instrumentLimitCount: number
   /** D = N − |B ∪ I|. */
   denominator: number
   decisive: number
@@ -164,6 +221,7 @@ export function scopeAggregate(input: ScopeInput): ScopeResult {
     scope: input.scope,
     catalogRows: input.catalogIds.length,
     excluded: exclusions,
+    instrumentLimitCount: exclusions.filter((entry) => entry.cause === "instrument").length,
     denominator: aggregate.denominator,
     decisive,
     counts: aggregate.counts,
@@ -178,7 +236,7 @@ export function scopeAggregate(input: ScopeInput): ScopeResult {
       cause: entry.cause,
       state: input.cells[entry.id] ?? "untested",
     })),
-    groups: groupsFor(input.catalogIds, seen, input.cells),
+    groups: groupsFor(input.catalogIds, new Map(exclusions.map((entry) => [entry.id, entry.cause])), input.cells),
   }
 }
 
@@ -220,7 +278,7 @@ function exclusion(
 
 function groupsFor(
   catalogIds: readonly string[],
-  excluded: ReadonlySet<string>,
+  excluded: ReadonlyMap<string, Exclusion["cause"]>,
   cells: Readonly<Record<string, CellState>>,
 ): ScopeGroup[] {
   const order: string[] = []
@@ -239,6 +297,7 @@ function groupsFor(
   return order.map((key) => {
     const ids = idsByGroup.get(key) ?? []
     const denominatorIds = ids.filter((id) => !excluded.has(id))
+    const instrumentLimitCount = ids.filter((id) => excluded.get(id) === "instrument").length
     if (denominatorIds.length === 0) {
       // Every row leaves this group's denominator: there is no score to print, and an empty
       // fraction must never read as a zero. The caller prints the group as wholly excluded.
@@ -247,6 +306,7 @@ function groupsFor(
         catalogRows: ids.length,
         denominator: 0,
         decisive: 0,
+        instrumentLimitCount,
         counts: { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 },
         fraction: "",
         pct: null,
@@ -263,6 +323,7 @@ function groupsFor(
       catalogRows: ids.length,
       denominator: aggregate.denominator,
       decisive,
+      instrumentLimitCount,
       counts: aggregate.counts,
       fraction: verdict.fraction,
       pct: verdict.pct,
