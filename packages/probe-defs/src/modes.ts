@@ -375,9 +375,8 @@ function decssclsFrameDigest(frame: ObservationFrame): string {
  * DECSSCLS (CSI Ps SP p) sets presentation speed and has no query. The same-run control sets jump
  * scrolling; the target sets the documented 9-lines-per-second rate. Each phase takes two frames of
  * the same screen: the first as soon as the collector can after the burst, the second after the
- * settle delay. The burst overruns the MEASURED row count, so every context has to scroll and the
- * only writer between two frames is that burst. A whole-screen difference is therefore attributable
- * to the burst, not to an unrelated repaint.
+ * settle delay. The burst overruns the MEASURED row count, so every context has to scroll; that
+ * alone does not attribute a frame difference to scrolling.
  *
  * The frames are RETAINED, NOT ASSERTED. The normal capture route returns an opaque encoded-frame
  * ref rather than a raw whole-screen digest, and a repaint (cursor blink, window damage) during the
