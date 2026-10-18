@@ -226,6 +226,23 @@ export interface RunOrigin {
   appLaunch?: AppLaunchReceipt
 }
 
+export interface WindowsMesaRendererDllReceipt {
+  name: string
+  path: string
+  sha256: string
+}
+
+export interface WindowsMesaRendererReceipt {
+  upstream: string
+  version: string
+  archivePath: string
+  archiveSha256: string
+  dlls: WindowsMesaRendererDllReceipt[]
+}
+
+/** The Mesa3D files the hosted Windows route places beside the app: a measured renderer is exactly this set. */
+export const WINDOWS_MESA_RENDERER_DLLS: readonly string[] = ["opengl32.dll"]
+
 export type AppLaunchReceipt =
   | {
       platform?: never
@@ -241,7 +258,8 @@ export type AppLaunchReceipt =
       executablePath: string
       productVersion: string
       executableSha256: string
-      sourceArtifact: { kind: "portable-zip"; path: string; sha256: string }
+      sourceArtifact: { kind: "portable-zip" | "portable-exe"; path: string; sha256: string }
+      mesaRenderer?: WindowsMesaRendererReceipt
     }
 
 /**

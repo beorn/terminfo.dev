@@ -18,7 +18,9 @@ import {
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
 } from "@terminfo/probe-defs"
-import { parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
+import { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
+
+export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree }
 
 export interface LoadedRun {
   path: string

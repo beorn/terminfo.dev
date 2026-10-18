@@ -21,6 +21,7 @@ export {
   NON_MEASURING_EVIDENCE,
   frameDigests,
   isNonMeasuringEvidence,
+  WINDOWS_MESA_RENDERER_DLLS,
 } from "./types.ts"
 export type {
   ObservationOutcome,
@@ -32,6 +33,8 @@ export type {
   ProbeSuiteManifest,
   RunOrigin,
   AppLaunchReceipt,
+  WindowsMesaRendererReceipt,
+  WindowsMesaRendererDllReceipt,
   AppSourceArtifact,
   DerivedSourceTreeArtifact,
   ProbeAssertion,

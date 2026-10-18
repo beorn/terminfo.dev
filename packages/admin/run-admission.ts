@@ -13,6 +13,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import type { Interpretation, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
+import { WINDOWS_MESA_RENDERER_DLLS } from "@terminfo/probe-defs"
 import {
   decodeExactUtf8,
   measuredVersionTokens,
@@ -26,6 +27,7 @@ import {
   TERMINAL_IDENTITY_RULES,
   type TerminalIdentityRule,
 } from "../terminfo.dev/src/identity-guard.ts"
+import { windowsCommBase } from "../terminfo.dev/src/windows-process-ancestry.ts"
 import { activeInterpretations, applies, nonempty, parseInterpretations } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
 
@@ -141,18 +143,36 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
   if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
   if (!nonempty(identity.da1)) return null
-  if (rule.da1Pattern && !rule.da1Pattern.test(identity.da1)) return null
+  const os = (run.target.os ?? "").toLowerCase()
+  // On Windows, ?61; is conhost's own reply (Alacritty runs its child inside a ConPTY session),
+  // so DA1 identifies nothing there and identity rests on the measured launch receipt.
+  const da1Pattern = run.target.id === "alacritty" && os.startsWith("win") ? /\?61;/ : rule.da1Pattern
+  if (da1Pattern && !da1Pattern.test(identity.da1)) return null
   if (rule.forbidXtversion) {
-    const os = (run.target.os ?? "").toLowerCase()
-    // Windows Terminal does not report XTVERSION. The hosted apparatus measures the launched
-    // executable; identity is its byte-exact ProductVersion, never the installation template.
-    if (run.target.id === "windows-terminal" && os.startsWith("win")) {
+    // Windows Terminal and Alacritty on Windows do not report XTVERSION. The hosted apparatus
+    // measures the launched executable; identity is its byte-exact version and executable sha256,
+    // plus the pinned Mesa3D renderer receipt on Alacritty.
+    if ((run.target.id === "windows-terminal" || run.target.id === "alacritty") && os.startsWith("win")) {
       const receipt = run.origin.appLaunch
       if (
         run.target.version === "unknown" ||
         !receipt ||
         receipt.platform !== "win32" ||
         receipt.productVersion !== run.target.version
+      ) {
+        return null
+      }
+      if (run.target.id === "windows-terminal") {
+        if (
+          receipt.sourceArtifact.kind !== "portable-zip" ||
+          windowsCommBase(receipt.executablePath) !== "windowsterminal.exe"
+        ) {
+          return null
+        }
+      } else if (
+        receipt.sourceArtifact.kind !== "portable-exe" ||
+        windowsCommBase(receipt.executablePath) !== "alacritty.exe" ||
+        !receipt.mesaRenderer
       ) {
         return null
       }
@@ -664,6 +684,18 @@ function preflightOwnershipReceipt(
       "ownership-receipt-app-launch-mismatch",
       `Run ${runId} origin.appLaunch${differing ? `.${differing}` : ""} differs from cited ownership receipt ${receiptPath}`,
     )
+  }
+  // The measured renderer must be exactly the pinned Mesa3D set: a DLL beyond it is a renderer
+  // nobody pinned, and the presence of opengl32.dll alone does not say which one drew the frames.
+  const mesaRenderer = receipt.appLaunch?.platform === "win32" ? receipt.appLaunch.mesaRenderer : undefined
+  if (mesaRenderer) {
+    const names = mesaRenderer.dlls.map((dll) => dll.name.toLowerCase()).sort()
+    if (names.join("\n") !== [...WINDOWS_MESA_RENDERER_DLLS].sort().join("\n")) {
+      throw new ReceiptRefusal(
+        "ownership-receipt-invalid",
+        `Receipt ${receiptPath}: appLaunch.mesaRenderer.dlls ${names.join(", ")} is not exactly the Mesa3D set ${WINDOWS_MESA_RENDERER_DLLS.join(", ")}`,
+      )
+    }
   }
   if (receipt.kind === "github-hosted-runner" && compareHostedHistory) {
     // Strict parsing above owns validation. Decode only the already-validated hosted fields here;
