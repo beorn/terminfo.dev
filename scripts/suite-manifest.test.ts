@@ -23,6 +23,8 @@ import {
   derivedSuiteManifest,
   freezeCurrentSuiteManifest,
   frozenSuiteIdFor,
+  frozenSuiteLineage,
+  moveReleasePointer,
   persistSuiteManifest,
   suiteManifestMode,
   uncommittedCollectorDirt,
@@ -307,6 +309,45 @@ test("a move that would leave the old release with two claimants is refused befo
   const frozen = freezeCurrentSuiteManifest(directory, "candidate4", { snapshot: a })
   expect(frozen.suiteId).toBe(a.probeHash)
   expect(frozenSuiteIdFor(join(directory, "content"), "candidate2")).toBe(b.probeHash)
+})
+
+test("a pointer move records the suite it left, and the lineage reader walks the chain", () => {
+  const directory = authoringRepo("terminfo-suite-pointer-lineage-")
+  const contentDir = join(directory, "content")
+  const from = snapshotOf("a".repeat(12))
+  const to = snapshotOf("b".repeat(12))
+  const firstAt = "2026-10-16T09:30:22.506Z"
+  const movedAt = "2026-10-18T02:27:38.228Z"
+  expect(freezeCurrentSuiteManifest(directory, "candidate2", { snapshot: from, at: firstAt }).suiteId).toBe(
+    from.probeHash,
+  )
+  persistSuiteManifest(join(contentDir, "suites", `${to.probeHash}.json`), derivedSuiteManifest(to), to)
+  const moved = moveReleasePointer(directory, "candidate2", { snapshot: to, at: movedAt })
+  expect(moved).toEqual({
+    status: "moved",
+    from: from.probeHash,
+    to: to.probeHash,
+    path: join(contentDir, "suites", `${to.probeHash}.json`),
+  })
+  // The new record names its predecessor in the same write, the old suite keeps no claim, and the
+  // reader walks the chain. Dark attribution can no longer be inferred from the live pointer: after
+  // this move the lineage names BOTH suites, which is what a reader needs to hold a group that was
+  // published on either one.
+  expect(parseSuiteManifest(moved.path, readFileSync(moved.path, "utf8")).freeze).toEqual({
+    release: "candidate2",
+    at: movedAt,
+    previous: { suite: from.probeHash },
+  })
+  const fromPath = join(contentDir, "suites", `${from.probeHash}.json`)
+  expect(parseSuiteManifest(fromPath, readFileSync(fromPath, "utf8")).freeze).toBeUndefined()
+  expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(to.probeHash)
+  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([to.probeHash, from.probeHash])
+})
+
+test("the live registry records the candidate2 pointer move it already made", () => {
+  // The seed for the move 29952 made by hand (3a0e12f7, 2026-10-18T02:27:38.228Z): the current
+  // suite names the one it left, so the lineage is recoverable from content and not only from git.
+  expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual(["68847e4d5355", "5753741410a9"])
 })
 
 test("the declaration API cannot write a release claim, so no writer bypasses the checked act", () => {

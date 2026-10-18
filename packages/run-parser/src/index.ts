@@ -659,7 +659,12 @@ export function validateObservationOutcome(value: Record<string, unknown>, path:
  */
 export interface ParsedSuiteManifest extends ProbeSuiteManifest {
   /** Written only by a freeze act: the release whose current suite this manifest is. */
-  freeze?: { release: string; at: string }
+  freeze?: {
+    release: string
+    at: string
+    /** The suite the pointer moved off; the move writes it, and the lineage chain walks it. */
+    previous?: { suite: string }
+  }
 }
 
 export function parseSuiteManifest(path: string, source: string): ParsedSuiteManifest {
@@ -716,14 +721,25 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   let freeze: ParsedSuiteManifest["freeze"]
   if ("freeze" in value) {
     const raw = value.freeze
-    if (!object(raw) || Object.keys(raw).sort().join(",") !== "at,release") {
-      fail(path, "invalid suite freeze pointer")
-    }
+    if (!object(raw)) fail(path, "invalid suite freeze pointer")
+    const rawKeys = Object.keys(raw).sort().join(",")
+    if (rawKeys !== "at,release" && rawKeys !== "at,previous,release") fail(path, "invalid suite freeze pointer")
     if (typeof raw.release !== "string" || !raw.release.trim()) fail(path, "invalid suite freeze release")
     if (typeof raw.at !== "string" || !date(raw.at) || new Date(raw.at).toISOString() !== raw.at) {
       fail(path, "invalid suite freeze at")
     }
-    freeze = { release: raw.release, at: raw.at }
+    let previous: { suite: string } | undefined
+    if ("previous" in raw) {
+      const rawPrevious = raw.previous
+      if (!object(rawPrevious) || Object.keys(rawPrevious).join(",") !== "suite") {
+        fail(path, "invalid suite freeze previous pointer")
+      }
+      if (typeof rawPrevious.suite !== "string" || !rawPrevious.suite.trim()) {
+        fail(path, "invalid suite freeze previous suite")
+      }
+      previous = { suite: rawPrevious.suite }
+    }
+    freeze = { release: raw.release, at: raw.at, ...(previous === undefined ? {} : { previous }) }
   }
   return {
     probeHash,
