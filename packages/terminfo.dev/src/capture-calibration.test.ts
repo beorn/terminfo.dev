@@ -403,6 +403,21 @@ function filletCorners(
   return result
 }
 
+// A cell boundary can fall inside a device pixel, so the paint covers part of the ONE line directly
+// outside the grid: every pixel there is the adjacent cell's paint colour at one alpha over its own
+// pre-paint value. The retained macOS frame measured exactly that on y=28, 217/255 of magenta over
+// black. This fixture reproduces the measured line over the 8 px wide raster grid at 2,2.
+function blendTop(source: CapturedFrame, alpha = 217 / 255): CapturedFrame {
+  const result = { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+  for (let x = 2; x < 10; x++) {
+    const line = (1 * result.width + x) * 4
+    const paint = (2 * result.width + x) * 4
+    const blended = [0, 1, 2].map((channel) => Math.round(alpha * source.rgba[paint + channel]!))
+    result.rgba.set([...blended, 255], line)
+  }
+  return result
+}
+
 test("window corner fillets do not defeat calibration of an exact raster", async () => {
   const run = calibration({
     frames: {
@@ -428,6 +443,67 @@ test("a hole on an edge but away from a corner still refuses", async () => {
   solid.rgba.set([0, 0, 0, 255], (2 * 12 + 5) * 4)
   const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
   await expect(run.promise).rejects.toThrow(/non-solid grid/)
+})
+
+test("one uniform-alpha line outside the grid is admitted and recorded", async () => {
+  const run = calibration({
+    frames: {
+      "solid grid paint": [blendTop(rasterFrame("solid")), blendTop(rasterFrame("solid"))],
+      "column edge paint": [blendTop(rasterFrame("columns")), blendTop(rasterFrame("columns"))],
+      "row edge paint": [blendTop(rasterFrame("rows")), blendTop(rasterFrame("rows"))],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  expect(measured.basis).toMatch(/edge blend top y=1 alpha 0\.851 \(8 px\)/)
+})
+
+test("a line outside the grid in another colour refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([217, 0, 0, 255], (1 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a partial blend line refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([0, 0, 0, 255], (1 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("two alphas on one line refuse", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  for (let x = 6; x < 10; x++) solid.rgba.set([128, 0, 128, 255], (1 * 12 + x) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a second line outside the same edge refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([217, 0, 217, 255], (0 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("corner fillets and the blend line together still calibrate", async () => {
+  const run = calibration({
+    frames: {
+      "solid grid paint": [
+        blendTop(filletCorners(rasterFrame("solid"))),
+        blendTop(filletCorners(rasterFrame("solid"))),
+      ],
+      "column edge paint": [
+        blendTop(filletCorners(rasterFrame("columns"))),
+        blendTop(filletCorners(rasterFrame("columns"))),
+      ],
+      "row edge paint": [blendTop(filletCorners(rasterFrame("rows"))), blendTop(filletCorners(rasterFrame("rows")))],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  expect(measured.basis).toMatch(/corner fillets 4 px/)
+  expect(measured.basis).toMatch(/edge blend top y=1 alpha 0\.851 \(8 px\)/)
 })
 
 test("a clipped last stripe calibrates and records its clip", async () => {
