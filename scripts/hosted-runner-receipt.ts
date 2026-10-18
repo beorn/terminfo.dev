@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
-import { HOSTED_IDENTITY_SOURCES, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
+import { sampleHostedIdentity, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import {
   ALACRITTY_VERSION_PATTERN,
   WINDOWS_MESA_RENDERER_DLLS,
@@ -22,48 +22,6 @@ function decimal(key: string): string {
   const value = required(key)
   if (/[^0-9]/.test(value)) throw new Error(`Hosted receipt ${key} must contain decimal digits`)
   return value
-}
-
-function sampleIdentity(): Record<string, string> {
-  const os = required("RUNNER_OS")
-  if (!Object.hasOwn(HOSTED_IDENTITY_SOURCES, os)) {
-    throw new Error(
-      `Hosted receipt has no producer for RUNNER_OS=${JSON.stringify(os)}; ratified entries are ${Object.keys(HOSTED_IDENTITY_SOURCES).join(", ")}`,
-    )
-  }
-  const ratified = HOSTED_IDENTITY_SOURCES[os as keyof typeof HOSTED_IDENTITY_SOURCES]
-  return Object.fromEntries(
-    Object.entries(ratified.sources).map(([field, source]) => {
-      if (!("command" in source && "args" in source && "pattern" in source)) {
-        throw new Error(`Hosted receipt ${field}: source ${source.source} is not produced by the hosted producer`)
-      }
-      const result = spawnSync(source.command, source.args, { encoding: "utf8" })
-      if (result.error || result.status !== 0) {
-        throw new Error(
-          `Hosted receipt ${field}: ${source.command} failed with exit ${result.status}, signal ${result.signal}; cannot measure ${source.source}`,
-        )
-      }
-      const value = new RegExp(source.pattern).exec(result.stdout)?.[1]
-      if (!value) {
-        throw new Error(`Hosted receipt ${field}: ${source.source} returned no value; no identity is substituted`)
-      }
-      if (/^(0{8}-0{4}-0{4}-0{4}-0{12}|[fF]{8}-[fF]{4}-[fF]{4}-[fF]{4}-[fF]{12})$/.test(value)) {
-        throw new Error(
-          `Hosted receipt ${field}: ${source.source} returned degenerate UUID (all-zero or all-F); refusing by name`,
-        )
-      }
-      if (/^00[:-]00[:-]00[:-]00[:-]00[:-]00$/.test(value)) {
-        throw new Error(`Hosted receipt ${field}: ${source.source} returned degenerate all-zero MAC; refusing by name`)
-      }
-      const hash = createHash("sha256").update(value).digest("hex")
-      const label =
-        "command" in source && "args" in source ? `${source.command} ${source.args.join(" ")}` : source.source
-      process.stderr.write(
-        `${field}: ${label} · ${source.scope} · ${Buffer.byteLength(value)} bytes · sha256:${hash}\n`,
-      )
-      return [field, hash]
-    }),
-  )
 }
 
 /** Run a measuring command and return its raw stdout. A non-zero exit, a signal, or no output is
@@ -398,7 +356,7 @@ async function main(): Promise<void> {
     throw new Error("Hosted receipt requires RUNNER_ENVIRONMENT=github-hosted; never assumed")
   }
   // Sampling precedes API lookup/setup. No raw source value leaves this function.
-  const identity = sampleIdentity()
+  const identity = sampleHostedIdentity(required)
   const current = await context()
   if (mode === "start") {
     mkdirSync(dirname(startPath), { recursive: true })

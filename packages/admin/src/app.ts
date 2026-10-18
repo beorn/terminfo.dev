@@ -29,6 +29,7 @@ import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -84,7 +85,7 @@ const APPS: AppDef[] = [
     name: "kitty",
     id: "kitty",
     appPath: "/Applications/kitty.app",
-    binaryPath: "/Applications/kitty.app/Contents/MacOS/kitty",
+    binaryPath: KITTY_BINARY_PATH,
     launchArgs: (script) => ["--hold", script],
     bundleId: "net.kovidgoyal.kitty",
   },
