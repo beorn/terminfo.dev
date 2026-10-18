@@ -74,6 +74,23 @@ const textContext = (): TermContext => ({
 })
 
 describe("a text arm decides its rows from cells it read, never from pixels", () => {
+  it("names outside-cell whole-window motion while deciding stable compared cells", async () => {
+    const ctx = textContext()
+    ctx.capture = async (request) => {
+      const frame = textFrame(request.label, request.role)
+      if (frame.kind !== "text-cells" || !request.label.endsWith("capture stability 2")) return frame
+      const whole = digest("outside-cell motion")
+      return { ...frame, ref: whole, frameDigest: whole }
+    }
+    const result = await captureRegionVerdict(ctx, "erase.el", spec)
+    expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
+    expect(JSON.parse(String(result?.response)).stability).toMatchObject({
+      regionDigest: [digest("stable:measured"), digest("stable:measured")],
+      pixelsDigest: [digest("stable:measured:whole"), digest("outside-cell motion")],
+      wholeWindowChanged: true,
+    })
+  })
+
   it("decides a supported row without ever demanding a pixel report", async () => {
     const result = await captureRegionVerdict(textContext(), "erase.el", spec)
     expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
