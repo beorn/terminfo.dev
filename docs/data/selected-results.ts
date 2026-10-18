@@ -447,6 +447,16 @@ export function projectResults(
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null
+  // 29930: a release-bound reading selects within its declared freeze. While the tree has moved past
+  // the release suite, a version's runs are ranked release suite, then tree suite, then older, so a
+  // newer capture at the tree cannot displace the frozen reading; measuredAt still breaks ties inside
+  // a rank. With no move (no release suite, or it equals the tree suite) the ordering is unchanged.
+  const treeMoved = releaseSuiteId !== null && releaseSuiteId !== policy.currentProbeHash
+  const suiteRank = (run: LoadedRun): number => {
+    if (!run.suiteComplete) return 0
+    if (treeMoved && run.probeHash === releaseSuiteId) return 2
+    return run.probeHash === policy.currentProbeHash ? 1 : 0
+  }
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
   for (const run of runs) {
@@ -526,11 +536,12 @@ export function projectResults(
     for (const version of [...byVersion.keys()].sort((a, b) => versionCompare(b, a))) {
       const choices = byVersion.get(version)
       if (!choices?.length) throw new Error(`missing run choices for ${key} ${version}`)
-      choices.sort((a, b) => {
-        const af = a.probeHash === policy.currentProbeHash && a.suiteComplete ? 1 : 0
-        const bf = b.probeHash === policy.currentProbeHash && b.suiteComplete ? 1 : 0
-        return bf - af || Date.parse(b.measuredAt) - Date.parse(a.measuredAt) || b.runId.localeCompare(a.runId)
-      })
+      choices.sort(
+        (a, b) =>
+          suiteRank(b) - suiteRank(a) ||
+          Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
+          b.runId.localeCompare(a.runId),
+      )
       const chosen = choices[0]
       if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
       const assessment = assessments.get(chosen.runId)
