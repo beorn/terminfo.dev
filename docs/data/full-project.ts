@@ -11,6 +11,7 @@
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
 import type { CellState } from "./release-scope.ts"
+import { reviewedContextFor } from "./current-results.ts"
 import { DESIGN_EXCLUSION_IDS, MISSING_DEFINITION_IDS, scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import type { CensusContext, ContextKind } from "./full-census.ts"
 
@@ -126,7 +127,10 @@ function buildRow(
       }
     }
   }
-  const picked = pickContextRun(matches, args.reviewed?.[`${context.kind}:${context.terminalId}`])
+  const picked = pickContextRun(
+    matches,
+    reviewedContextFor(args.reviewed ?? {}, context.kind, context.terminalId, context.os),
+  )
   if (!picked) return { ...base, collected: false, cause: "no selected run for this context" }
   if ("ambiguous" in picked) {
     return {

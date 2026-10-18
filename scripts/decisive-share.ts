@@ -54,6 +54,7 @@ import { loadFeatures, type FeatureCatalog, type Slice } from "@terminfo/catalog
 import {
   loadCurrentResults,
   loadDefaultContextPolicy,
+  reviewedContextFor,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
 import { statesFor } from "../docs/data/selected-results.ts"
@@ -400,42 +401,49 @@ export interface CohortSpec {
 }
 
 /**
- * Candidate 2's cohort: the categories the catalog labels `classics`, read on the suite the
- * candidate-4 freeze declares. The classics bar moves to that suite so the reading never falls
- * between two freezes; the printed ownership says whose freeze declared it.
+ * Candidate 2's cohort: the categories the catalog labels `classics`, read on the suite candidate 2's
+ * OWN freeze declares. The bar follows candidate 2's pointer, so a move cannot strand the reading on
+ * a suite the rest of the site no longer reads; the printed ownership says whose freeze declared it.
  */
 export function candidate2Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate2",
     slices: ["classics"],
     excludingTier1: false,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
-    suiteFrozenFor: "candidate4",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
   }
 }
 
-/** Candidate 3's modes/device additions, read on the suite the candidate-4 freeze declares. */
+/**
+ * Candidate 3's modes/device additions, read on the suite candidate 2's freeze declares. The three
+ * candidates share ONE suite (@chief's convergence ruling, 2026-10-18) and a suite manifest carries
+ * exactly one `freeze.release`, so candidate 2's freeze is the single pointer they all read.
+ */
 export function candidate3Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate3",
     slices: ["modes", "device"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
-    suiteFrozenFor: "candidate4",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
   }
 }
 
 /**
- * Candidate 4's cohort: the extensions and input slices, read on the suite candidate 4's own freeze
- * declares. The suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
+ * Candidate 4's cohort: the extensions and input slices, read on the suite candidate 2's freeze
+ * declares. Candidate 4's own freeze RECORD STAYS — release-scope still pins it at 4f6fcc8c3ff7 — and
+ * no bar reads it: one suite carries one `freeze.release`, so candidate 4's pointer cannot also name
+ * the converged suite, and reading its one-run suite emptied this bar to a single measured context.
+ * The suite is named here EXPLICITLY, so the printed ownership is read, never assumed.
  */
 export function candidate4Cohort(contentDir: string): CohortSpec {
   return {
     name: "candidate4",
     slices: ["extensions", "input"],
     excludingTier1: true,
-    suiteId: frozenSuiteIdFor(contentDir, "candidate4"),
-    suiteFrozenFor: "candidate4",
+    suiteId: frozenSuiteIdFor(contentDir, "candidate2"),
+    suiteFrozenFor: "candidate2",
   }
 }
 
@@ -596,7 +604,7 @@ export function buildReport(args: {
         (candidate) =>
           candidate.kind === "app" && candidate.terminalId === context.terminalId && candidate.os === context.os,
       ),
-      reviewed: reviewed[`app:${context.terminalId}`],
+      reviewed: reviewedContextFor(reviewed, "app", context.terminalId, context.os),
       tier62Ids,
       tier52Ids,
     }),

@@ -632,10 +632,14 @@ test("--move takes exactly one release, through the same parser as --freeze", ()
 })
 
 test("the live registry records the candidate2 pointer move it already made", () => {
-  // The live registry carries the move that put candidate2 on 68847: the current record names the
-  // suite it left and the window that suite held the pointer, so the lineage is recoverable from
+  // The live registry carries the move that put candidate2 on 67ad: the current record names the
+  // suites it left and the window each held the pointer, so the lineage is recoverable from
   // content alone rather than only from the Git history of the hand edit.
-  expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual(["68847e4d5355", "5753741410a9"])
+  expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual([
+    "67ad1f1d1580",
+    "68847e4d5355",
+    "5753741410a9",
+  ])
 })
 
 test("the declaration API cannot write a release claim, so no writer bypasses the checked act", () => {

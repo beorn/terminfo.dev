@@ -132,17 +132,19 @@ describe("candidate-2 page: publication rule (AC4)", () => {
   it("prints the reader's declared blocker, word for word, for a blocked macOS context", () => {
     // @chief's acceptance condition: the dark contexts read NOT MEASURED with the cause, not a bare
     // suite refusal. The page prints the reader's reason verbatim, so this pins the two together.
+    // Re-pinned 2026-10-18: terminal-app/macos is MEASURED on 67ad now, so the blocked macOS context
+    // is kitty/macos — the one macOS context with no route at all.
     const readerRow = report.cohort?.barRows.find(
-      (row) => row.context.terminalId === "terminal-app" && row.context.os === "macos",
+      (row) => row.context.terminalId === "kitty" && row.context.os === "macos",
     )
-    if (!readerRow) throw new Error("reader carries no terminal-app/macos bar row")
-    if (readerRow.measured) throw new Error("terminal-app/macos should be blocked, not measured")
-    const pageRow = data.contexts.find((row) => row.context === "terminal-app/macos")
-    if (!pageRow) throw new Error("page carries no terminal-app/macos row")
+    if (!readerRow) throw new Error("reader carries no kitty/macos bar row")
+    if (readerRow.measured) throw new Error("kitty/macos should be blocked, not measured")
+    const pageRow = data.contexts.find((row) => row.context === "kitty/macos")
+    if (!pageRow) throw new Error("page carries no kitty/macos row")
     expect(pageRow.published).toBe(false)
     expect(pageRow.reason).toBe(readerRow.reason)
-    expect(pageRow.reason).toContain("Screen Recording permission gate")
-    expect(pageRow.reason).toContain("29918")
+    expect(pageRow.reason).toContain("no hosted kitty route")
+    expect(pageRow.reason).toContain("27928")
   })
 
   it("never publishes the same context twice", () => {
@@ -197,11 +199,13 @@ describe("candidate-2 page: the two bases", () => {
     }
   })
 
-  it("reads the measured Scrollback witness at its ruled 7/9 with gaps", () => {
-    const context = data.contexts.find((row) => row.context === "alacritty/macos")
-    if (!context?.published) throw new Error("alacritty/macos is not published; nothing to read")
-    const scrollback = context.groups.find((share) => share.key === "scrollback")
-    if (!scrollback) throw new Error("alacritty/macos carries no scrollback group")
+  it("reads the Scrollback group at its ruled 7/9 with gaps on the contexts that decide it", () => {
+    // Re-pinned 2026-10-18 on 67ad: wezterm/linux is the published context this row reads for the
+    // ruled 7/9 acceptance. The ruled basis does not move with the context.
+    const wezterm = data.contexts.find((row) => row.context === "wezterm/linux")
+    if (!wezterm?.published) throw new Error("wezterm/linux is not published; nothing to read")
+    const scrollback = wezterm.groups.find((share) => share.key === "scrollback")
+    if (!scrollback) throw new Error("wezterm/linux carries no scrollback group")
     expect(scrollback.decisive).toBe(7)
     expect(scrollback.denominator).toBe(7)
     expect(scrollback.acceptance).toMatchObject({
@@ -310,26 +314,23 @@ describe("candidate-2 page: wiring", () => {
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
-  it("includes Editing and Character Sets on the measured context that clears the bar, and names the rest", () => {
+  it("includes Editing and Character Sets on the six measured contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
     // context held, and every context with no run on the required suite named not measured. The
-    // lists moved with the 4f6 suite: alacritty/macos has its admitted run, while the Linux contexts
-    // have no eligible selection on that suite. A new suite or
-    // collection that moves these numbers must change this table deliberately, never loosen it.
-    const clearing = ["alacritty/macos"]
-    const below: string[] = []
-    const dark = [
+    // lists moved with the census landing on the converged suite (67ad): all five Linux app rows and
+    // the four macOS captures are measured, so six contexts clear the bar and only kitty/macos — which
+    // has no route at all — is not measured. A new suite or collection that moves these numbers must
+    // change this table deliberately, never loosen it.
+    const clearing = [
       "kitty/linux",
-      "ghostty/linux",
       "wezterm/linux",
       "alacritty/linux",
       "xterm/linux",
-      "terminal-app/macos",
-      "iterm2/macos",
       "ghostty/macos",
-      "kitty/macos",
-      "windows-terminal/windows",
+      "alacritty/macos",
     ]
+    const below = ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"]
+    const dark = ["kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -350,49 +351,52 @@ describe("candidate-2 page: wiring", () => {
         group.unmeasured.map((row) => row.context),
         key,
       ).toEqual(dark)
-      const reasons = new Map(group.unmeasured.map((row) => [row.context, row.reason]))
-      expect(reasons.get("terminal-app/macos"), key).toContain("Screen Recording permission gate")
-      expect(reasons.get("terminal-app/macos"), key).toContain("29918")
-      expect(reasons.get("kitty/macos"), key).toContain("no hosted kitty route")
-      expect(reasons.get("kitty/macos"), key).toContain("27928")
-      expect(reasons.get("kitty/linux"), key).toContain("ambiguous current selection")
+      expect(group.unmeasured[0]?.reason, key).toContain("no hosted kitty route")
+      expect(group.unmeasured[0]?.reason, key).toContain("27928")
     }
   })
 
   it("never lets a public claim improve because a context went dark", () => {
-    // @chief 2026-10-17: a public claim must never improve because data went dark. Text's only
-    // holding context is terminal-app on macOS (17 of 20); it has no run on the required suite now,
-    // so the group stays HELD and names that context instead of flipping to Included.
-    const text = data.groups.find((group) => group.key === "text")
-    if (!text) throw new Error("text group missing from the page")
-    expect(text.included).toBe(false)
-    expect(text.darkHeldBy.map((row) => row.context)).toEqual(["terminal-app/macos"])
-    expect(text.darkHeldBy[0]).toMatchObject({ decisive: 17, denominator: 20 })
-    expect(text.darkHeldBy[0]?.reason).toContain("29918")
+    // @chief 2026-10-17: a public claim must never improve because data went dark. Re-pinned again
+    // 2026-10-18, after the census landed: every context except kitty/macos is measured on 67ad, so no
+    // group holds a claim back because a context WENT DARK on live data. The rule itself is pinned by
+    // the mocked history test below ("reads a dark context's hold from history..."); what is pinned
+    // here is the invariant that keeps the live page honest — no group may name a dark context that is
+    // actually published, and a group held by a below-bar context stays held and names it.
+    for (const group of data.groups) {
+      for (const row of group.darkHeldBy) {
+        const context = data.contexts.find((entry) => entry.context === row.context)
+        if (context?.published) throw new Error(`${group.key} names a published context as dark: ${row.context}`)
+      }
+    }
+    const editing = data.groups.find((group) => group.key === "editing")
+    if (!editing) throw new Error("editing group missing from the page")
+    expect(editing.included).toBe(false)
+    expect(editing.darkHeldBy).toEqual([])
+    expect(editing.heldBy.map((row) => row.context)).toEqual([
+      "ghostty/linux",
+      "terminal-app/macos",
+      "iterm2/macos",
+      "windows-terminal/windows",
+    ])
 
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
-      "held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (29918)",
+      "held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (30033)",
     )
     expect(page).toContain(
       "ruled for {{ group.includedOn.length + group.darkRuled.length }}, measurable on {{ group.includedOn.length }}",
     )
-    expect(page).toContain("{{ darkRuledSentence(group) }} not measured (29918)")
+    expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // The two ruled groups read "ruled for six, measurable on one", and the five dark ruled
+    // The two ruled groups read "ruled for six, measurable on four", and the two dark ruled
     // contexts are named rather than counted as included.
-    const measurable = ["alacritty/macos"]
+    const six = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)
-      expect(group.includedOn).toEqual(measurable)
-      expect(group.darkRuled).toEqual([
-        "kitty/linux",
-        "wezterm/linux",
-        "alacritty/linux",
-        "xterm/linux",
-        "ghostty/macos",
-      ])
+      expect(group.includedOn).toEqual(six)
+      expect(group.darkRuled).toEqual([])
       expect(group.includedOn.length + group.darkRuled.length).toBe(6)
     }
     // The rule pins the direction of the change, not a blanket demotion: Unicode clears its share on

@@ -202,6 +202,24 @@ export function loadDefaultContextPolicy(contentDir: string): Record<string, Def
   return policy
 }
 
+/**
+ * The reviewed row that applies to ONE context. An os-qualified key (`app:kitty/linux`) is read before
+ * the id-level key (`app:kitty`) for that os ONLY, so a review can break a tie inside a group the
+ * id-level row cannot address: `app:kitty` names the macOS context, and the linux group (one default
+ * profile plus two clipboard overrides) would otherwise have no reviewed choice at all. The bar's
+ * per-context rows and the census ledger both call THIS function, so the site and the census can never
+ * select different runs for the same context. A context with no os-qualified row resolves exactly as
+ * it did before this key existed.
+ */
+export function reviewedContextFor<Row extends { contextKey: string }>(
+  policy: Readonly<Record<string, Row>>,
+  kind: string,
+  id: string,
+  os: string,
+): Row | undefined {
+  return policy[`${kind}:${id}/${os}`] ?? policy[`${kind}:${id}`]
+}
+
 /** Compatibility consumers select one reviewed context per kind:id, then derive stable v1/site keys. */
 export function compatibilityTargets(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
   const policy = loadDefaultContextPolicy(contentDir)
