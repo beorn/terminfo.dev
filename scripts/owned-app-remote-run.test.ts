@@ -96,6 +96,11 @@ function fixture(): void {
     join("..", "..", "vendor", "terminfo.dev", "packages", "run-parser"),
     join(code, "node_modules", "@terminfo", "run-parser"),
   )
+  // A second link reaches a directory that is NOT declared as a resource: it exists locally and the
+  // transport must stage its target or the host holds a link it cannot resolve.
+  mkdirSync(join(code, "extra", "pkg"), { recursive: true })
+  writeFileSync(join(code, "extra", "pkg", "index.ts"), "export const extra = 'fixture'\n")
+  symlinkSync(join("..", "..", "extra", "pkg"), join(code, "node_modules", "@terminfo", "extra"))
 
   writeFileSync(knownHosts, "fixture.invalid ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGZpeHR1cmVrZXk=\n")
 
@@ -132,6 +137,7 @@ function fixture(): void {
       'case "$src" in *:*) src="${src#*:}" ;; esac',
       'case "$dest" in *:*) dest="${dest#*:}" ;; esac',
       'if [ "${SHIM_RSYNC_SKIP_BACK:-}" = 1 ]; then case "$1" in *:*) exit 0 ;; esac; fi',
+      'if [ "${SHIM_RSYNC_SKIP_EXTRA:-}" = 1 ]; then case "$src" in */extra/) exit 0 ;; esac; fi',
       'case "$src" in */) mkdir -p "$dest"; cp -R "$src". "$dest" ;; *) [ -d "$dest" ] && find "$dest" -depth -delete; mkdir -p "$(dirname "$dest")"; cp -R "$src" "$dest" ;; esac',
       'if [ "${SHIM_RSYNC_TAMPER:-}" = 1 ]; then case "$dest" in */source/package.json) printf \'tampered\' >> "$dest" ;; esac; fi',
       'if [ "${SHIM_RSYNC_TAMPER_RECEIPT:-}" = 1 ]; then case "$dest" in */transport/) printf \' \' >> "$dest/transport-receipt.json" ;; esac; fi',
@@ -147,7 +153,7 @@ function fixture(): void {
       "  *) out=''",
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
       '     mkdir -p "$out/nested"',
-      '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/v2-run.json"',
+      '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/kitty-1.0-macos-run1.json"',
       "     printf 'fixture nested output\\n' > \"$out/nested/extra.log\"",
       "     echo 'fixture probe stdout' ;;",
       "esac",
@@ -279,6 +285,8 @@ describe("owned-app ssh transport", () => {
       join(stage, "source", "vendor", "terminfo.dev", "packages", "terminfo.dev", "src", "disposable-receipt.ts"),
     )
 
+    // The producer's own filename contract is carried: the driver never renames or demands a name.
+    expect(receipt.output.files.map((file) => file.path)).toContain("kitty-1.0-macos-run1.json")
     // Every returned file is hashed, not just the ones at depth 1.
     expect(receipt.output.files).toHaveLength(2)
     for (const file of receipt.output.files) {
@@ -313,6 +321,27 @@ describe("owned-app ssh transport", () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("invalid stage")
     expect(existsSync("/runs")).toBe(false)
+  }, 60_000)
+
+  it("refuses a stage whose path carries a shell separator or a space", () => {
+    for (const candidate of ["/remote/stage;rm", "/remote/st age"]) {
+      const result = run({}, [], undefined, "kitty", candidate)
+      expect(result.status, candidate).toBe(1)
+      expect(result.stderr).toContain("invalid stage")
+    }
+  }, 60_000)
+
+  it("stages the directory a resolving link reaches, so the host can resolve it too", () => {
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    expect(readFileSync(join(stage, "source", "extra", "pkg", "index.ts"), "utf8")).toContain("fixture")
+    expect(existsSync(join(stage, "source", "node_modules", "@terminfo", "extra"))).toBe(true)
+  }, 60_000)
+
+  it("refuses a staged link the host cannot resolve, even when its target text matches", () => {
+    const result = run({ SHIM_RSYNC_SKIP_EXTRA: "1" })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("broken staged symlink")
   }, 60_000)
 
   it("refuses a context that would escape the stage, before touching the host", () => {

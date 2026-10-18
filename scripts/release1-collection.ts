@@ -178,7 +178,7 @@ const engineRow = (id: string): CollectionContext => ({
 })
 
 /**
- * macOS apps the admin launches and owns on this host. kitty is the first one (15323): the launch
+ * macOS apps the admin launches and owns on this host. kitty is the first one: the launch
  * proves ownership through kitty's own exported identity plus live TTY and process descent, so the
  * pass runs the same admin entry point the local development route uses and classifies its output.
  */

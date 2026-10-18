@@ -113,7 +113,7 @@ interface HostedSource {
   readonly pattern?: string
 }
 
-/** 27910/15323: the one identity sampler. The hosted producer runs pre-checkout with Node's type
+/** The one identity sampler. The hosted producer runs pre-checkout with Node's type
  * stripping, so this module keeps to Node built-ins and the parser it already imports. The caller
  * supplies the environment reader: which variables exist is the producer's policy, never this
  * module's, and no value is ever invented when a ratified source returns nothing. */

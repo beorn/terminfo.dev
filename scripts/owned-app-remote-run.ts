@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * 15323: transport-only driver for an owned-app measurement on an EXISTING remote macOS host.
+ * Transport-only driver for an owned-app measurement on an EXISTING remote macOS host.
  *
- * Transport changes WHERE a run starts, never what it may do (CTO C1): the identical owned-app argv
+ * Transport changes WHERE a run starts, never what it may do: the identical owned-app argv
  * is executed on the host, under the host's own authority, from an exact-source checkout. This file
  * moves bytes and proves identity; it never parses or classifies a run, and it never decides what a
  * run may touch.
@@ -20,7 +20,7 @@
  *   host unreachable | host key mismatch | bundle missing objects | stage source mismatch |
  *   stage dirty tree | resource manifest mismatch | broken staged symlink | bun absent |
  *   kitty absent | output collision | rsync incomplete | receipt mismatch |
- *   invalid stage | stage not owned | invalid context
+ *   invalid stage | stage not owned | invalid context | owned-app probe failed
  *
  * The local resource manifest is computed BEFORE anything is staged and the remote recompute must
  * match it byte for byte; that compare is the proof, not the act of re-staging. The source half of
@@ -106,8 +106,13 @@ function shq(value: string): string {
 
 /** Canonical manifest lines: sorted `path<TAB>kind:value`. The same canonical text is produced from
  * the remote recompute, so equal digests mean equal bytes. */
-function manifestLines(root: string, entries: readonly string[], missing: string): string[] {
+function manifestScan(
+  root: string,
+  entries: readonly string[],
+  missing: string,
+): { lines: string[]; linkTargets: string[] } {
   const lines: string[] = []
+  const linkTargets: string[] = []
   const walk = (path: string): void => {
     let info
     try {
@@ -123,6 +128,7 @@ function manifestLines(root: string, entries: readonly string[], missing: string
       if (resolved !== root && !resolved.startsWith(`${root}${sep}`)) {
         fail("resource manifest mismatch", `${relative} -> ${target} escapes the staged tree`)
       }
+      linkTargets.push(resolved)
       lines.push(`${relative}\tsymlink:${target}`)
       return
     }
@@ -142,7 +148,26 @@ function manifestLines(root: string, entries: readonly string[], missing: string
     for (const entry of entries) walk(join(root, entry))
   }
   lines.sort()
-  return lines
+  return { lines, linkTargets }
+}
+
+/** Every directory a resolving link reaches must ALSO be staged, or the staged tree holds a link
+ * the local tree could resolve and the host cannot. Two segments are kept for vendor/* because the
+ * bundle owns vendor/terminfo.dev and must never be rsynced over it. */
+function extraRootsFor(targets: readonly string[], declared: readonly string[], root: string): string[] {
+  const extras = new Set<string>()
+  for (const target of targets) {
+    const relative = target.slice(root.length + 1)
+    if (!relative || relative.startsWith(`${STAGED_FROM_BUNDLE}/`) || relative === STAGED_FROM_BUNDLE) continue
+    const parts = relative.split("/").filter(Boolean)
+    const first = parts[0]
+    if (first === undefined) continue
+    const candidate = first === "vendor" && parts[1] !== undefined ? `vendor/${parts[1]}` : first
+    if (candidate === STAGED_FROM_BUNDLE || candidate.startsWith(`${STAGED_FROM_BUNDLE}/`)) continue
+    if (declared.some((entry) => candidate === entry || candidate.startsWith(`${entry}/`))) continue
+    extras.add(candidate)
+  }
+  return [...extras].sort()
 }
 
 function digestValue(lines: readonly string[]): { sha256: string; files: number } {
@@ -163,10 +188,15 @@ function canonicalRemote(
     return `${path.replace(/\\/g, "/")}\tsha256:${hash}`
   })
   for (const line of links) {
-    const tab = line.indexOf("\t")
-    if (tab < 0) fail("resource manifest mismatch", `remote symlink line is malformed: ${JSON.stringify(line)}`)
-    const relative = line.slice(0, tab).replace(/^\.\//, "")
-    lines.push(`${relative}\tsymlink:${line.slice(tab + 1)}`)
+    const [rawPath, target, state] = line.split("\t")
+    if (rawPath === undefined || target === undefined || state === undefined) {
+      fail("resource manifest mismatch", `remote symlink line is malformed: ${JSON.stringify(line)}`)
+    }
+    const relative = rawPath.replace(/^\.\//, "")
+    // A link the host cannot resolve is a staged tree that differs from the one measured locally,
+    // even when the target text is byte-identical: refusal, never a manifest match.
+    if (state !== "ok") fail("broken staged symlink", `${relative} -> ${target} does not resolve in the stage`)
+    lines.push(`${relative}\tsymlink:${target}`)
   }
   lines.sort()
   return { ...digestValue(lines), lines }
@@ -252,7 +282,9 @@ function validateStage(stage: string): void {
   if (stage === "/") fail("invalid stage", "the stage may not be the filesystem root")
   const segments = stage.split("/").filter(Boolean)
   if (segments.length < 2) fail("invalid stage", `stage ${JSON.stringify(stage)} is too close to the root to own`)
-  if (segments.some((segment) => segment === ".." || segment === "." || segment.startsWith("-"))) {
+  // A stage travels into rsync's remote operand, so every segment is a plain name: no spaces, no
+  // shell metacharacters, no separators beyond the path slashes already split on.
+  if (segments.some((segment) => !/^[A-Za-z0-9._-]+$/.test(segment) || segment === ".." || segment === ".")) {
     fail("invalid stage", `stage ${JSON.stringify(stage)} carries a segment that is not a plain name`)
   }
 }
@@ -423,10 +455,18 @@ function main(options: Parsed): OwnedAppTransportProof {
   const scratch = mkdtempSync(join(tmpdir(), "owned-app-transport-"))
   try {
     const archived = archiveOf(options, join(scratch, "archive"))
-    const localLines = [
-      ...manifestLines(archived, [], "resource manifest mismatch"),
-      ...manifestLines(CODE_ROOT, [...RESOURCE_DIRS, ...RESOURCE_FILES], "resource manifest mismatch"),
-    ]
+    const declared = [...RESOURCE_DIRS, ...RESOURCE_FILES]
+    let extras: string[] = []
+    let scan = manifestScan(CODE_ROOT, declared, "resource manifest mismatch")
+    for (let pass = 0; pass < 3; pass += 1) {
+      const added = extraRootsFor(scan.linkTargets, [...declared, ...extras], CODE_ROOT).filter(
+        (root) => !extras.includes(root),
+      )
+      if (added.length === 0) break
+      extras = [...extras, ...added]
+      scan = manifestScan(CODE_ROOT, [...declared, ...extras], "resource manifest mismatch")
+    }
+    const localLines = [...manifestScan(archived, [], "resource manifest mismatch").lines, ...scan.lines]
     localLines.sort()
     const local = digestValue(localLines)
     if (local.files === 0) fail("resource manifest mismatch", "the declared resources produced no files")
@@ -475,7 +515,7 @@ function main(options: Parsed): OwnedAppTransportProof {
     ).stdout.trim()
     if (dirty) fail("stage dirty tree", `the staged checkout holds changes no source revision names:\n${dirty}`)
 
-    for (const entry of RESOURCE_DIRS) {
+    for (const entry of [...RESOURCE_DIRS, ...extras]) {
       rsync(options, `${CODE_ROOT}/${entry}/`, `${userAndHost}:${source}/${entry}/`, ["--delete", "--exclude=.git"])
     }
     for (const entry of RESOURCE_FILES) {
@@ -492,7 +532,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       options,
       "remote symlink listing",
       "broken staged symlink",
-      `cd ${shq(source)} && find . \\( -name .git -prune \\) -o -type l -exec sh -c 'printf "%s\\t%s\\n" "$1" "$(readlink "$1")"' _ {} \\;`,
+      `cd ${shq(source)} && find . \\( -name .git -prune \\) -o -type l -exec sh -c 'printf "%s\\t%s\\t%s\\n" "$1" "$(readlink "$1")" "$(test -e "$1" && echo ok || echo dangling)"' _ {} \\;`,
     ).stdout
     const remote = canonicalRemote(files.trim().split("\n").filter(Boolean), links.trim().split("\n").filter(Boolean))
     if (remote.sha256 !== local.sha256) {
@@ -558,9 +598,6 @@ function main(options: Parsed): OwnedAppTransportProof {
         "receipt mismatch",
         `the remote probe produced ${String(runJson.length)} run JSON files; expected exactly one`,
       )
-    }
-    if (runJson[0].path !== "v2-run.json") {
-      fail("receipt mismatch", `the remote probe's run JSON is ${runJson[0].path}; the collector reads v2-run.json`)
     }
 
     const samplerScript = join(stage, "identity.ts")

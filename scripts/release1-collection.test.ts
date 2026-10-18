@@ -477,7 +477,7 @@ describe("release 1 collection census", () => {
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
     // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty only — there is no kitty job — and
     // Chief bbf8eff9 retains the unresolved routes as expected work. kitty/macos is no longer one of
-    // them: 15323 gives it an owned local launch on the host the pass runs on, and the run is still
+    // them: an owned local launch runs on the host the pass runs on, and the run is still
     // parsed and classified by this pass rather than by a second dispatcher.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
     expect(kitty?.route).toBe("local-owned-app")
@@ -802,7 +802,7 @@ const ownedAppContext: CollectionContext = {
 }
 const ownedAppRevision = "c".repeat(40)
 
-// 15323: the local route must stay byte-identical to the argv it always ran; the ssh route hands the
+// The local route must stay byte-identical to the argv it always ran; the ssh route hands the
 // SAME probe arguments to the transport driver after its own transport flags, never a second probe.
 it("starts an owned-app row locally with the probe argv it always ran", () => {
   const command = ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "local" }, ownedAppRevision)
@@ -953,7 +953,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
       "  --version) echo '1.2.3' ;;",
       "  *) out=''",
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
-      '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/v2-run.json" ;;',
+      '     printf \'{\"target\":{\"id\":\"kitty\"}}\\n\' > "$out/kitty-1.0-macos-run1.json" ;;',
       "esac",
     ].join("\n"),
   )
@@ -983,7 +983,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const proof = readOwnedAppTransportProof(join(transport, "transport-receipt.json"), revision)
     expect(proof.receiptSha256).toMatch(/^[a-f0-9]{64}$/)
     const runs = readdirSync(transport).filter((name) => name.endsWith(".json") && name !== "transport-receipt.json")
-    expect(runs).toEqual(["v2-run.json"])
+    expect(runs).toEqual(["kitty-1.0-macos-run1.json"])
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

@@ -148,7 +148,7 @@ test("a self-hosted or unknown runner environment can never authorize a write", 
   expect(() => parseDisposableReceipt(JSON.stringify(unknown))).toThrow(/unknown kind/)
 })
 
-// 15323: a transport receipt records where a run started and what bytes it moved. It grants
+// A transport receipt records where a run started and what bytes it moved. It grants
 // nothing, so it is refused BY NAME here rather than only as an unrecognized kind.
 test("a transport receipt is refused by name and never authorizes a write", () => {
   const transport = {
