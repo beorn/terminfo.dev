@@ -1065,8 +1065,8 @@ test("the EL-with-attrs row names an erase that drops the current background uns
  */
 test("a relative background claim refuses to load without its paint bytes", () => {
   const row = rowById("erase.el-with-attrs")
-  // The ROW ID is the discriminator: paintBytes also throws, without it, at frame
-  // build, so a regex that matches only the shared tail stays green when the load check is deleted.
+  // The ROW ID makes the assertion name this row's load refusal rather than any later failure:
+  // paintBytes only strips the SGR wrapper, so no row-less fallback can satisfy this pattern.
   expect(() => regionReadbackProbe({ ...row, paint: undefined })).toThrow(
     new RegExp(`${row.id}: cell \\d+,\\d+ asserts a relative bg with no paint bytes`),
   )

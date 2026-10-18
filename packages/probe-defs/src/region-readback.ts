@@ -132,9 +132,9 @@ export interface RegionReadback {
    * A write the run needs AFTER its frames — a mode or a scroll region the last frame leaves set,
    * which a later probe sharing this terminal must not inherit. Issued from the run's own `finally`,
    * so it lands exactly when this oracle wrote bytes: a refusal that wrote none leaves a zero-byte
-   * trace, which run-parser's zero-byte rule requires of every `none` observation. Named for the JOB
-   * Named for the JOB: `afterVerdict` named the moment it runs, and this is the write that clears the
-   * mode the last frame left set.
+   * trace, which run-parser's zero-byte rule requires of every `none` observation. Named for the JOB:
+   * `afterVerdict` named the moment it runs, and this is the write that clears the mode the last
+   * frame left set.
    */
   cleanup?: string
   /**

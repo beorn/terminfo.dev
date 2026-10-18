@@ -420,8 +420,8 @@ function paintFrame(
 
 /**
  * A relative colour claim (`present`, `same-as-before`) is only established against a measured
- * default: without a baseline the claim would hold vacuously on a backend that ignores the row's SGR
- * Loaded rows cannot make one without the fixture.
+ * default: without a baseline the claim would hold vacuously on a backend that ignores the row's
+ * SGR. Loaded rows cannot make one without the fixture.
  */
 function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
   if (row.baseline !== undefined) return
@@ -443,8 +443,8 @@ function assertRelativeClaimsQualified(row: RegionReadbackRow): void {
  */
 function assertRelativeClaimsPainted(row: RegionReadbackRow): void {
   // EVERY frame the row builds, not only `after`: `ignored` is painted by the same paintFrame call,
-  // so a relative claim there needs the same bytes. The message names the row, so a test that
-  // deletes this check cannot be satisfied by paintBytes' row-less fallback.
+  // so a relative claim there needs the same bytes. The message names the row, and paintBytes has
+  // no refusal of its own, so a test that deletes this check cannot pass on a row-less fallback.
   for (const cells of [row.after, ...(row.ignored === undefined ? [] : [row.ignored])]) {
     for (const [rowIndex, line] of cells.entries()) {
       for (const [col, cell] of line.entries()) {

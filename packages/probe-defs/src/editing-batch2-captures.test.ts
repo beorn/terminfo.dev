@@ -259,9 +259,9 @@ test("without a capture adapter a converted row refuses by name and writes nothi
  * wrong extent, omits DECCARA, or grades the seed still earns three different digests and passes.
  *
  * Each frame carries a DISTINCT ref, so the run parser's citation rule can fail on this double: a
- * pixel return that cites a control frame, or a frame absent from the run's screenshotRefs, is
- * refused. A comparison that regressed to `ref` is caught by the digest-versus-ref row below,
- * which gives one measured screen three different refs.
+ * pixel return that cites a control frame, or drops its citation, is refused. A comparison that
+ * regressed to `ref` is caught by the digest-versus-ref row below, which gives one measured screen
+ * three different refs.
  */
 function decsaceCaptureContext() {
   const DECSACE_SEED_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
