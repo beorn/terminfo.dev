@@ -403,6 +403,46 @@ function filletCorners(
   return result
 }
 
+// A cell boundary can fall inside a device pixel, so the paint covers part of the ONE line directly
+// outside the grid: every pixel there is the adjacent cell's paint colour at one alpha over its own
+// pre-paint value. The retained macOS frame measured exactly that on y=28, 217/255 of magenta over
+// black. This fixture reproduces the measured line over the 8 px wide raster grid at 2,2.
+function blendTop(source: CapturedFrame, alpha = 217 / 255): CapturedFrame {
+  const result = { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+  for (let x = 2; x < 10; x++) {
+    const line = (1 * result.width + x) * 4
+    const paint = (2 * result.width + x) * 4
+    const blended = [0, 1, 2].map((channel) => {
+      const value = source.rgba[paint + channel]
+      if (value === undefined) throw new Error(`fixture is missing byte ${paint + channel}`)
+      return Math.round(alpha * value)
+    })
+    result.rgba.set([...blended, 255], line)
+  }
+  return result
+}
+
+/** The same measured blend outside any other edge of that grid, for the edges blendTop does not reach. */
+function blendEdge(source: CapturedFrame, edge: "bottom" | "left" | "right", alpha = 217 / 255): CapturedFrame {
+  const result = { width: source.width, height: source.height, rgba: new Uint8Array(source.rgba) }
+  for (let position = 2; position < 10; position++) {
+    const [x, y, paintX, paintY] =
+      edge === "bottom"
+        ? [position, 10, position, 9]
+        : edge === "left"
+          ? [1, position, 2, position]
+          : [10, position, 9, position]
+    const paint = (paintY * result.width + paintX) * 4
+    const blended = [0, 1, 2].map((channel) => {
+      const value = source.rgba[paint + channel]
+      if (value === undefined) throw new Error(`fixture is missing byte ${paint + channel}`)
+      return Math.round(alpha * value)
+    })
+    result.rgba.set([...blended, 255], (y * result.width + x) * 4)
+  }
+  return result
+}
+
 test("window corner fillets do not defeat calibration of an exact raster", async () => {
   const run = calibration({
     frames: {
@@ -428,6 +468,141 @@ test("a hole on an edge but away from a corner still refuses", async () => {
   solid.rgba.set([0, 0, 0, 255], (2 * 12 + 5) * 4)
   const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
   await expect(run.promise).rejects.toThrow(/non-solid grid/)
+})
+
+test("one uniform-alpha line outside the grid is admitted and recorded", async () => {
+  const run = calibration({
+    frames: {
+      "solid grid paint": [blendTop(rasterFrame("solid")), blendTop(rasterFrame("solid"))],
+      "column edge paint": [blendTop(rasterFrame("columns")), blendTop(rasterFrame("columns"))],
+      "row edge paint": [blendTop(rasterFrame("rows")), blendTop(rasterFrame("rows"))],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  expect(measured.basis).toMatch(/edge blend solid top y=1 alpha 0\.851 \(8 px\)/)
+})
+
+test("a line outside the grid in another colour refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([217, 0, 0, 255], (1 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a partial blend line refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([0, 0, 0, 255], (1 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("two alphas on one line refuse", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  for (let x = 6; x < 10; x++) solid.rgba.set([128, 0, 128, 255], (1 * 12 + x) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a second line outside the same edge refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([217, 0, 217, 255], (0 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("corner fillets and the blend line together still calibrate", async () => {
+  const run = calibration({
+    frames: {
+      "solid grid paint": [
+        blendTop(filletCorners(rasterFrame("solid"))),
+        blendTop(filletCorners(rasterFrame("solid"))),
+      ],
+      "column edge paint": [
+        blendTop(filletCorners(rasterFrame("columns"))),
+        blendTop(filletCorners(rasterFrame("columns"))),
+      ],
+      "row edge paint": [blendTop(filletCorners(rasterFrame("rows"))), blendTop(filletCorners(rasterFrame("rows")))],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  expect(measured.basis).toMatch(/corner fillets 4 px/)
+  expect(measured.basis).toMatch(/edge blend solid top y=1 alpha 0\.851 \(8 px\)/)
+})
+
+test("a blend whose alpha byte changes outside the grid refuses", async () => {
+  // The model explains a colour, never opacity: the alpha byte stays exactly as the baseline had it.
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([0], (1 * 12 + 5) * 4 + 3)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a blend admitted only in the columns stage is recorded", async () => {
+  // Every stage that admits a line names it; the solid stage alone is not the record.
+  const run = calibration({
+    frames: {
+      "column edge paint": [blendTop(rasterFrame("columns")), blendTop(rasterFrame("columns"))],
+    },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 } })
+  expect(measured.basis).toMatch(/edge blend columns top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).not.toMatch(/edge blend solid/)
+})
+
+test("a blend admitted only in the rows stage is recorded", async () => {
+  const run = calibration({
+    frames: { "row edge paint": [blendTop(rasterFrame("rows")), blendTop(rasterFrame("rows"))] },
+  })
+  const measured = await run.promise
+  expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+  expect(measured.basis).toMatch(/edge blend rows top y=1 alpha 0\.851 \(8 px\)/)
+  expect(measured.basis).not.toMatch(/edge blend (solid|columns)/)
+})
+
+test("a rows-stage blend whose alpha byte changes outside the grid refuses", async () => {
+  const rows = blendTop(rasterFrame("rows"))
+  rows.rgba.set([0], (1 * 12 + 5) * 4 + 3)
+  const run = calibration({ frames: { "row edge paint": [rows, rows] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+for (const [edge, line] of [
+  ["bottom", "bottom y=10"],
+  ["left", "left x=1"],
+  ["right", "right x=10"],
+] as const) {
+  test(`one uniform-alpha line outside the ${edge} edge is admitted and recorded`, async () => {
+    const solid = blendEdge(rasterFrame("solid"), edge)
+    const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+    const measured = await run.promise
+    expect(measured).toMatchObject({ origin: { x: 2, y: 2 }, pixelGeometry: geometry })
+    expect(measured.basis).toMatch(new RegExp(`edge blend solid ${line} alpha 0\\.851 \\(8 px\\)`))
+  })
+}
+
+test("a blend pixel 2 levels off the line's alpha refuses", async () => {
+  // 219 is alpha 0.859, inside the 0.01 alpha window but 2 levels from the line's 217.
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([219, 0, 217, 255], (1 * 12 + 5) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a line at the full paint colour outside the grid refuses", async () => {
+  // Alpha 1 is a whole further cell line, never a cell boundary inside a device pixel.
+  const columns = blendTop(rasterFrame("columns"), 1)
+  const run = calibration({ frames: { "column edge paint": [columns, columns] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
+})
+
+test("a blend line whose last pixel is another colour refuses", async () => {
+  const solid = blendTop(rasterFrame("solid"))
+  solid.rgba.set([217, 0, 0, 255], (1 * 12 + 9) * 4)
+  const run = calibration({ frames: { "solid grid paint": [solid, solid] } })
+  await expect(run.promise).rejects.toThrow(/paint changed pixels outside the witnessed grid/)
 })
 
 test("a clipped last stripe calibrates and records its clip", async () => {
