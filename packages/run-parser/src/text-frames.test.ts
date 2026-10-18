@@ -96,6 +96,52 @@ describe("text frames — admitted only as what they are", () => {
     expect(loaded.textSnapshotRefs).toEqual([SNAPSHOT])
   })
 
+  // 30055 AC4: the host the collector recorded survives the parse, so the projection and the site
+  // read one structured field instead of parsing a caption out of the raw reply.
+  it("carries the console host a text observation recorded, unchanged", () => {
+    const host = {
+      image: "OpenConsole.exe",
+      executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+      executableSha256: digest("console-host"),
+    }
+    const run = textRun()
+    const loaded = parse({ ...run, observations: [{ ...(run.observations as object[])[0], host }] })
+    expect(loaded.observations[0]?.host).toEqual(host)
+  })
+
+  // A host belongs to a text read alone. On a pixels row it is a stray field, refused by name the
+  // same way a pixel frame carrying text fields is — no new gate (@cto ruling 6255e75d condition 2).
+  it("refuses a pixels observation that carries a console host, naming the observation and the field", () => {
+    const run = textRun()
+    const png = digest("some-png")
+    const frames = [textFrame("control", 1), textFrame("target", 2)].map(
+      ({ kind: _kind, cellDigest: _c, frameDigest: _f, cellRectangle: _r, ...rest }) => ({ ...rest, ref: png }),
+    )
+    expect(() =>
+      parse({
+        ...run,
+        assertions: [],
+        screenshotRefs: [png],
+        textSnapshotRefs: [],
+        observations: [
+          {
+            ...(run.observations as object[])[0],
+            outcome: "inconclusive",
+            reason: "insufficient-evidence",
+            evidence: "pixels",
+            screenshotRef: png,
+            frames,
+            host: {
+              image: "OpenConsole.exe",
+              executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+              executableSha256: digest("console-host"),
+            },
+          },
+        ],
+      }),
+    ).toThrow(/pixels observation for erase\.el carries host/u)
+  })
+
   it("refuses a pixel frame that carries a text field without declaring kind text-cells", () => {
     const run = textRun()
     const png = digest("some-png")

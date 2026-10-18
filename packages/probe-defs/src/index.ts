@@ -27,6 +27,7 @@ export type {
   ObservationReason,
   ObservationEvidence,
   Observation,
+  ConsoleBufferOwner,
   ObservationFrame,
   ProbeTarget,
   ProbeSuiteManifest,

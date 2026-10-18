@@ -29,6 +29,7 @@
  */
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
+import type { ConsoleBufferOwner } from "@terminfo/probe-defs"
 import {
   CSBI_BYTES,
   decodeConsoleWindowRect,
@@ -101,9 +102,10 @@ export interface ConsoleHostProcess {
 /** The process-table identity, plus the executable this run opened and hashed. A read is attributed
  * to a program only when both are known: an image name alone cannot be checked against the receipt
  * the run carries (30042). */
-export interface ConsoleHostIdentity extends ConsoleHostProcess {
-  readonly executablePath: string
-  readonly executableSha256: string
+export interface ConsoleHostIdentity extends ConsoleBufferOwner {
+  readonly image: ConsoleHostImage
+  readonly pid: number
+  readonly ppid: number
 }
 
 /** Selecting the buffer owner, or the named reason it cannot be selected. */

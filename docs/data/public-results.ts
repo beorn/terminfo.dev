@@ -1,6 +1,13 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
-import type { Observation, ObservationFrame, ProbeAssertion, ProbeTarget, RunOrigin } from "@terminfo/probe-defs"
+import type {
+  ConsoleBufferOwner,
+  Observation,
+  ObservationFrame,
+  ProbeAssertion,
+  ProbeTarget,
+  RunOrigin,
+} from "@terminfo/probe-defs"
 import type { CurrentResult } from "./current-results.ts"
 import { statesFor, type SelectedCell, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
@@ -28,6 +35,8 @@ export interface EvidenceDocument {
 
 export interface PublicCell extends Pick<SelectedCell, "featureId" | "outcome" | "reason" | "evidence" | "conclusive"> {
   note?: string
+  /** The console host the read returned; absent on a pixels row and on a text row that had none. */
+  host?: ConsoleBufferOwner
   chain: {
     origin: Pick<RunOrigin, "kind" | "url">
     method: Observation["evidence"]
@@ -114,6 +123,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       evidence: cell.evidence,
       conclusive: cell.conclusive,
       ...(cell.reason && { reason: cell.reason }),
+      ...(cell.host !== undefined && { host: cell.host }),
       ...((reviewedCorrection || approved) && cell.note !== undefined && { note: cell.note }),
       chain: {
         origin: { kind: origin.kind, ...(origin.url && /^https?:\/\//.test(origin.url) && { url: origin.url }) },

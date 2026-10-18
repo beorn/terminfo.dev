@@ -72,6 +72,13 @@ export function isNonMeasuringEvidence(evidence: ObservationEvidence): boolean {
   return NON_MEASURING_EVIDENCE.has(evidence)
 }
 
+/** The program whose console buffer a TEXT read returned. */
+export interface ConsoleBufferOwner {
+  image: string
+  executablePath: string
+  executableSha256: string
+}
+
 export interface Observation {
   featureId: string
   outcome: ObservationOutcome
@@ -80,6 +87,10 @@ export interface Observation {
   rawReplyRef?: string
   screenshotRef?: string
   frames?: ObservationFrame[]
+  /** Present only on a text read whose buffer had a console host (Windows): image, path, digest.
+   * `pid` and `ppid` stay in the run artifact, because they name one process instance rather than a
+   * host a reader can check (30055 AC4; @cto ruling 6255e75d). */
+  host?: ConsoleBufferOwner
   note?: string
 }
 
