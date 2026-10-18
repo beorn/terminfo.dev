@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 const driver = fileURLToPath(new URL("./owned-app-remote-run.ts", import.meta.url))
+const identityScript = fileURLToPath(new URL("./owned-host-identity.ts", import.meta.url))
 
 let root: string
 let code: string
@@ -76,8 +77,12 @@ function fixture(): void {
   mkdirSync(join(source, "packages", "terminfo.dev", "src"), { recursive: true })
   writeFileSync(
     join(source, "packages", "terminfo.dev", "src", "disposable-receipt.ts"),
-    "export function sampleOwnedHostIdentity(os: string): Record<string, string> { return { os } }\n",
+    "export function sampleOwnedHostIdentity(os: string): Record<string, string> {\n" +
+      "  return { os, machineIdSha256: 'aaaa', productUuidSha256: 'bbbb', bootIdSha256: 'cccc' }\n}\n",
   )
+  // The real tracked sampler, so the stand-in host runs the very file the driver names.
+  mkdirSync(join(source, "scripts"), { recursive: true })
+  writeFileSync(join(source, "scripts", "owned-host-identity.ts"), readFileSync(identityScript))
   git(source, "init", "-q", "-b", "main")
   git(source, "config", "user.email", "fixture@example.invalid")
   git(source, "config", "user.name", "fixture")
@@ -166,6 +171,7 @@ function fixture(): void {
       'if [ "${SHIM_RSYNC_TAMPER:-}" = 1 ]; then case "$dest" in */source/package.json) printf \'tampered\' >> "$dest" ;; esac; fi',
       'if [ "${SHIM_RSYNC_TAMPER_RECEIPT:-}" = 1 ]; then case "$dest" in */transport/) printf \' \' >> "$dest/transport-receipt.json" ;; esac; fi',
       'if [ "${SHIM_RSYNC_TAMPER_NESTED:-}" = 1 ]; then case "$dest" in */transport/) printf \'tampered\' >> "$dest/nested/extra.log" ;; esac; fi',
+      'if [ "${SHIM_RSYNC_TAMPER_ROOT_LINK:-}" = 1 ]; then case "$dest" in */source/node_modules/) ln -sfn ../.. "$dest/@terminfo/run-parser" ;; esac; fi',
     ].join("\n"),
   )
   executable(
@@ -173,7 +179,7 @@ function fixture(): void {
     [
       "#!/bin/sh",
       'case "$*" in',
-      '  *identity.ts*) printf \'%s\' \'{"machineIdSha256":"aaaa","productUuidSha256":"bbbb","bootIdSha256":"cccc"}\' ;;',
+      '  *owned-host-identity.ts*) exec "$REAL_BUN" "$@" ;;',
       "  *) out=''",
       '     while [ $# -gt 0 ]; do case "$1" in --output) shift; out="$1" ;; esac; shift; done',
       '     mkdir -p "$out/nested"',
@@ -207,6 +213,7 @@ function run(
     SHIM_SSH_LOG: sshLog,
     SHIM_RSYNC_LOG: rsyncLog,
     REAL_RSYNC: "/usr/bin/rsync",
+    REAL_BUN: process.execPath,
     ...extraEnv,
   }
   rmSync(join(output, "transport"), { recursive: true, force: true })
@@ -349,16 +356,28 @@ describe("owned-app ssh transport", () => {
   }, 60_000)
 
   it("tells the identity sampler the os explicitly, inventing no hosted-runner variable", () => {
-    expect(run().status).toBe(0)
-    const sampler = readFileSync(join(stage, "identity.ts"), "utf8")
-    expect(sampler).toContain('sampleOwnedHostIdentity("macOS")')
-    expect(sampler).not.toContain("RUNNER_OS")
-    expect(sampler).toContain(
-      join(stage, "source", "vendor", "terminfo.dev", "packages", "terminfo.dev", "src", "disposable-receipt.ts"),
-    )
-    const sampleSpawn = lines(sshLog).find((spawn) => spawn.includes("identity.ts") && !spawn.includes("cat >"))
-    expect(sampleSpawn).toBeDefined()
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const sampler = join(stage, "source", "vendor", "terminfo.dev", "scripts", "owned-host-identity.ts")
+    // The staged checkout carries the tracked sampler, and nothing writes a sampler on the host.
+    expect(readFileSync(sampler, "utf8")).toBe(readFileSync(identityScript, "utf8"))
+    expect(lines(sshLog).some((spawn) => spawn.includes("cat >") && spawn.includes("identity"))).toBe(false)
+    const sampleSpawn = lines(sshLog).find((spawn) => spawn.includes("owned-host-identity.ts"))
+    expect(sampleSpawn).toContain(`'${sampler}' 'macOS'`)
     expect(sampleSpawn).not.toContain("RUNNER_OS")
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      identity: Record<string, string>
+    }
+    expect(receipt.identity).toMatchObject({ os: "macOS" })
+  }, 60_000)
+
+  it("runs the tracked sampler for the os its one argument names, and refuses a missing one by name", () => {
+    const missing = spawnSync(process.execPath, [identityScript], { encoding: "utf8" })
+    expect(missing.status).not.toBe(0)
+    expect(missing.stderr).toContain("owned-host-identity: missing os argument")
+    const unknown = spawnSync(process.execPath, [identityScript, "Plan9"], { encoding: "utf8" })
+    expect(unknown.status).not.toBe(0)
+    expect(unknown.stderr).toContain('Owned host identity has no source table for os "Plan9"')
   }, 60_000)
 
   it("keeps the persistent stage and refreshes it to new source bytes and a new sha", () => {
@@ -371,6 +390,18 @@ describe("owned-app ssh transport", () => {
     expect(again.status, again.stderr).toBe(0)
     expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
     expect(readFileSync(join(stage, "source", "vendor", "terminfo.dev", "README.md"), "utf8")).toBe("second revision\n")
+  }, 60_000)
+
+  it("refreshes a persistent stage at the same sha: every resource is sent again, so host drift is replaced or deleted", () => {
+    expect(run().status).toBe(0)
+    const staged = join(stage, "source", "vendor", "silvery")
+    writeFileSync(join(staged, "index.ts"), "export const silvery = 'drifted on the host'\n")
+    writeFileSync(join(staged, "stray.ts"), "export const stray = 'left on the host'\n")
+    const again = run({}, [], ["bun", "packages/admin/src/index.ts"], "wezterm")
+    expect(again.status, again.stderr).toBe(0)
+    expect(git(join(stage, "source", "vendor", "terminfo.dev"), "rev-parse", "HEAD")).toBe(revision)
+    expect(readFileSync(join(staged, "index.ts"), "utf8")).toBe("export const silvery = 'fixture'\n")
+    expect(existsSync(join(staged, "stray.ts"))).toBe(false)
   }, 60_000)
 
   it("removes the stage only when asked", () => {
@@ -652,6 +683,23 @@ describe("owned-app ssh transport", () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('reaches "vendor", which holds the bundle-owned vendor/terminfo.dev')
     expect(lines(rsyncLog)).toHaveLength(0)
+  }, 60_000)
+
+  it("reads a local link to the code root itself as inside the tree, so it is refused as bundle-owned, never as an escape", () => {
+    symlinkSync(join("..", ".."), join(code, "node_modules", "@terminfo", "code-root"))
+    const result = run()
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('reaches ".", which holds the bundle-owned vendor/terminfo.dev')
+    expect(result.stderr).not.toContain("escapes the staged tree")
+    expect(lines(rsyncLog)).toHaveLength(0)
+  }, 60_000)
+
+  it("reads a host link to the staged root itself as inside the stage, so the changed target is named, never an escape", () => {
+    const result = run({ SHIM_RSYNC_TAMPER_ROOT_LINK: "1" })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("resource manifest mismatch")
+    expect(result.stderr).toContain('staged "node_modules/@terminfo/run-parser\\tsymlink:../..\\tresolved:"')
+    expect(result.stderr).not.toContain("escaped")
   }, 60_000)
 
   it("stages a closure root at its tracked revision only, never untracked or modified working files", () => {

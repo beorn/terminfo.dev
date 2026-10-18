@@ -86,6 +86,8 @@ const DEFAULT_RSYNC_TIMEOUT_MS = 30 * 60_000
 const CLOSURE_PASSES = 3
 /** The os this driver's hosts run; the identity sampler is told it, never left to infer it. */
 const OWNED_HOST_OS = "macOS"
+/** The tracked identity sampler, run by path inside the staged checkout with the os as its argument. */
+const IDENTITY_SCRIPT = "scripts/owned-host-identity.ts"
 const CONTEXT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 export interface OwnedAppRemoteOptions {
@@ -778,7 +780,9 @@ function main(options: Parsed): OwnedAppTransportProof {
         `' _ {} \\;`,
       ].join("\n"),
     ).stdout
-    const remote = canonicalRemote(files.trim().split("\n").filter(Boolean), links.trim().split("\n").filter(Boolean))
+    // The link listing is never trimmed: a link to the stage root ends its line with an empty
+    // resolved field, and a trim would strip that tab and misread the line as malformed.
+    const remote = canonicalRemote(files.trim().split("\n").filter(Boolean), links.split("\n").filter(Boolean))
     if (remote.sha256 !== local.sha256) {
       fail(
         "resource manifest mismatch",
@@ -849,19 +853,13 @@ function main(options: Parsed): OwnedAppTransportProof {
       )
     }
 
-    const samplerScript = join(stage, "identity.ts")
-    sshRun(options, "identity sampler", "receipt mismatch", `cat > ${shq(samplerScript)}`, {
-      // The os is named here, explicitly: an owned host is not a hosted runner, so no hosted-runner
-      // variable is set for the sampler to read.
-      input:
-        `import { sampleOwnedHostIdentity } from ${JSON.stringify(`${checkout}/packages/terminfo.dev/src/disposable-receipt.ts`)}\n` +
-        `process.stdout.write(JSON.stringify(sampleOwnedHostIdentity(${JSON.stringify(OWNED_HOST_OS)})))\n`,
-    })
+    // The sampler is a tracked file of the staged checkout, and the os is named as its argument,
+    // explicitly: an owned host is not a hosted runner, so no hosted-runner variable is set.
     const sampled = sshRun(
       options,
       "identity sample",
       "receipt mismatch",
-      `cd ${shq(stage)} && ${shq(bun)} ${shq(samplerScript)}`,
+      `cd ${shq(stage)} && ${shq(bun)} ${shq(`${checkout}/${IDENTITY_SCRIPT}`)} ${shq(OWNED_HOST_OS)}`,
     )
     let identity: Record<string, string>
     try {
