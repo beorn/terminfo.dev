@@ -8,14 +8,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import {
-  SIXEL_CURSOR_ROW,
-  SIXEL_GEOMETRY_PROBE,
-  SIXEL_REGION,
-  sixelPayload,
-  sixelReadback,
-  sixelTileSize,
-} from "./sixel-capture.ts"
+import { SIXEL_CURSOR_ROW, SIXEL_REGION, sixelPayload, sixelReadback, sixelTileSize } from "./sixel-capture.ts"
 import { extensionsProbes } from "./extensions.ts"
 import type { TermContext } from "./types.ts"
 
@@ -96,5 +89,65 @@ test("a pixel arm that reports no geometry refuses by name before painting anyth
   const result = await definition.term(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
-  expect(SIXEL_GEOMETRY_PROBE).toEqual({ cellWidth: 1, cellHeight: 1, textWidth: 1, textHeight: 1 })
+})
+
+/** A pixel arm that reports complete same-run geometry, and a capture whose reads are byte-stable. */
+function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-cells" = "pixels") {
+  const writes: string[] = []
+  let reads = 0
+  const context = {
+    rows: 24,
+    cols: 80,
+    captureKind,
+    captureGeometry: { geometry, source: "measured by complete raster calibration" as const },
+    write: (bytes: string) => writes.push(bytes),
+    capture: async () => {
+      // The two stability reads of one static frame agree; every later frame differs, so a paint
+      // witness is observed instead of polled to its timeout.
+      const index = reads < 2 ? 0 : reads
+      reads += 1
+      return {
+        role: "target" as const,
+        label: "unused",
+        capturedAt: 1,
+        ref: "sha256:unused",
+        regionDigest: `sha256:region${String(index)}`,
+        pixelsDigest: `sha256:whole${String(index)}`,
+      }
+    },
+    query: async () => null,
+    queryWithSentinel: async () => null,
+    queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
+    queryWithSentinelOutcome: async (sequence: string) => {
+      writes.push(sequence)
+      return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
+    },
+    queryCursorPosition: async () => null,
+    queryMode: async () => null,
+    measureRenderedWidth: async () => null,
+  } as unknown as TermContext
+  return { context, writes }
+}
+
+test("the row sizes its tile from THIS run's reported geometry, not from a fixed value", async () => {
+  // 3 cells of 8x17 is 24px wide and 51px tall, which rounds up to 54 — the payload names both.
+  const { context, writes } = calibratedPixelArm()
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
+  if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
+  await definition.term(context)
+  expect(writes.some((write) => write.includes('"1;1;24;54'))).toBe(true)
+  expect(writes.some((write) => write.includes('"1;1;30;36'))).toBe(false)
+})
+
+test("a text-cells arm is the named instrument limit before a byte, not a query that never ran", async () => {
+  const { context, writes } = calibratedPixelArm(GEOMETRY, "text-cells")
+  const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
+  if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
+  const result = await definition.term(context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "none",
+  })
+  expect(writes).toHaveLength(0)
 })

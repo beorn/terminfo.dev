@@ -13,7 +13,7 @@ import {
 } from "./helpers.ts"
 import { sgrTermReadback } from "./sgr.ts"
 import { captureRegionGeometry, captureRegionReadbackDecision, collectorRegionRead } from "./region-readback.ts"
-import { SIXEL_CURSOR_ROW, SIXEL_GEOMETRY_PROBE, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
+import { SIXEL_BOUNDS, SIXEL_REGION, sixelReadback } from "./sixel-capture.ts"
 
 /** A minimal solid-red 8x8 PNG; the OSC 1337 inline image target renders it as reviewable pixels. */
 const ITERM2_RED_PNG =
@@ -1661,7 +1661,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
         // compare, and the missing adapter is pixel capture — named before a byte, as an
         // instrument limit in the 3a8bddd5 shape, never a capability verdict.
-        if (!ctx.capture) {
+        if (!ctx.capture || ctx.captureKind === "text-cells") {
           const note =
             "Sixel paints pixels outside the cell grid; this arm has no pixel capture, so the missing adapter is pixel capture and the rendering is not observable here"
           return {
@@ -1676,9 +1676,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         // built before it is known. A missing or unusable report is refused by name, not guessed.
         const reported = await captureRegionGeometry(ctx, "extensions.sixel", {
           region: { ...SIXEL_REGION },
-          minRows: SIXEL_CURSOR_ROW,
-          minCols: SIXEL_REGION.right + 2,
-          pixelGeometry: SIXEL_GEOMETRY_PROBE,
+          ...SIXEL_BOUNDS,
         })
         if ("pass" in reported) return reported
         const geometry = reported.geometry

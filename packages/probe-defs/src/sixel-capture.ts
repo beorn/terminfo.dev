@@ -36,6 +36,12 @@ export const SIXEL_REGION = {
   right: BLOCK_LEFT + 1,
 } as const
 
+/**
+ * The grid this readback needs, stated once: the cursor parks below the block and the widest write
+ * is the block itself. The geometry query and the readback both read this, so they cannot drift.
+ */
+export const SIXEL_BOUNDS = { minRows: SIXEL_CURSOR_ROW, minCols: BLOCK_LEFT + BLOCK_COLS } as const
+
 const SENTINEL = { row: 1, col: 1 } as const
 
 export interface SixelTileSize {
@@ -97,10 +103,7 @@ export function sixelReadback(geometry: PixelGeometry): Omit<RegionReadback, "pi
     expected: `${CLEAR}${sgrBlock()}${park()}`,
     timeoutMs: 8000,
     pollMs: 250,
-    minRows: SIXEL_CURSOR_ROW,
-    minCols: BLOCK_LEFT + BLOCK_COLS,
+    minRows: SIXEL_BOUNDS.minRows,
+    minCols: SIXEL_BOUNDS.minCols,
   }
 }
-
-/** The bounds check runs before the geometry is queried, so it needs a size and never uses this one. */
-export const SIXEL_GEOMETRY_PROBE: PixelGeometry = { cellWidth: 1, cellHeight: 1, textWidth: 1, textHeight: 1 }
