@@ -611,10 +611,14 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
 const DECSSCLS_GEOMETRY = { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 } as const
 const DECSSCLS_RECTANGLE = { x: 0, y: 0, width: 800, height: 440 } as const
 const DECSSCLS_WITNESS = { top: 1, left: 1, bottom: 23, right: 80 } as const
+const DECSSCLS_MARKER_REF = "marker-ref"
+const DECSSCLS_BAND_RECTANGLE = { x: 0, y: 0, width: 800, height: 20 } as const
 
 interface DecssclsFixture {
   /** Raw region digest per capture, in capture order; defaults to the frame ref. */
   cells?: readonly (string | undefined)[]
+  /** Marker-band presence per band capture AFTER the clean-screen reference, in capture order. */
+  band?: readonly ("present" | "absent")[]
   /** The screen rectangle each capture was cropped from; defaults to one shared rectangle. */
   rectangles?: readonly CaptureRectangle[]
   /** Capture index that answers with a text-cells frame, as a text arm does. */
@@ -641,12 +645,31 @@ function decssclsContext(
   }
   context.queryMode = async () => fixture.decsclm ?? null
   let index = 0
+  let bandIndex = 0
   context.capture = async (request) => {
     fixture.requests?.push(request)
+    // A one-row request is the marker band; the whole-witness request keeps the old path. The
+    // clean-screen reference is the first band capture and always shows the band.
+    if (request.cells !== undefined && request.cells.top === request.cells.bottom) {
+      const present = bandIndex === 0 || (fixture.band?.[bandIndex - 1] ?? "present") === "present"
+      bandIndex += 1
+      const ref = present ? DECSSCLS_MARKER_REF : "no-band"
+      const bandFrame: ObservationFrame = {
+        role: request.role,
+        label: request.label,
+        capturedAt: frames.length + 1,
+        ref,
+        regionDigest: ref,
+        pixelsDigest: `whole:${ref}`,
+        regionRectangle: DECSSCLS_BAND_RECTANGLE,
+      }
+      frames.push(bandFrame)
+      return bandFrame
+    }
     const position = index
     index += 1
     const ref = refs[position] ?? "sha256:missing"
-    const base = { role: request.role, label: request.label, capturedAt: position + 1, ref }
+    const base = { role: request.role, label: request.label, capturedAt: frames.length + 1, ref }
     const frame: ObservationFrame =
       position === fixture.textCellsAt
         ? {
@@ -699,6 +722,7 @@ test("modes.decsscls grades text moving through the witness region inside the wi
   const result = await decsscls().term!(
     decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
       cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      band: ["present", "present", "absent", "present"],
       requests,
     }),
   )
@@ -707,16 +731,17 @@ test("modes.decsscls grades text moving through the witness region inside the wi
     evidence: "pixels",
     screenshotRef: "slow-t1",
   })
-  expect(result.observation?.note).toContain("moved through the witness region")
+  expect(result.observation?.note).toContain("marker band reached its settled row")
   // The decided verdict cites the four region digests, so the run parser can recompute it.
   expect(result.response).toContain(JSON.stringify({ control: ["jump", "jump"], target: ["slow-t0", "slow-t1"] }))
   expect(result.assertions).toMatchObject([{ kind: "positive" }])
-  expect(frames).toHaveLength(4)
-  // Every capture names the witness cells AND the measured geometry: pixels only, never ctx.cells.
-  for (const request of requests) {
-    expect(request.cells).toEqual(DECSSCLS_WITNESS)
-    expect(request.pixelGeometry).toEqual(DECSSCLS_GEOMETRY)
-  }
+  expect(frames).toHaveLength(9)
+  // Every capture names the measured geometry: pixels only, never ctx.cells. The first is the
+  // clean-screen marker reference; then each frame is a witness capture plus a 1-row band capture.
+  for (const request of requests) expect(request.pixelGeometry).toEqual(DECSSCLS_GEOMETRY)
+  expect(requests[0]?.cells).toEqual({ top: 16, left: 1, bottom: 16, right: 80 })
+  expect(requests.slice(1).filter((request) => request.cells?.top === request.cells?.bottom)).toHaveLength(4)
+  expect(requests.slice(1).filter((request) => request.cells?.top !== request.cells?.bottom)).toHaveLength(4)
   expect(writes.some((write) => write.includes("\x1b[?4h"))).toBe(true)
   // DECSCLM is restored to what DECRQM 4 reported; this fixture answers nothing, so it restores reset.
   const exit = writes.find((write) => write.includes("\x1b[?1049l"))
@@ -729,12 +754,26 @@ test("modes.decsscls grades text moving through the witness region inside the wi
   expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
 })
 
+test("modes.decsscls grades an instant repaint with the marker band in place as unsupported", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await decsscls().term!(
+    decssclsContext(["jump", "jump", "slow-before", "slow-after"], writes, frames, 24, {
+      cells: ["jump", "jump", "slow-before", "slow-after"],
+      band: ["present", "present", "present", "present"],
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(result.observation?.note).toContain("marker band")
+})
+
 test("modes.decsscls overruns whatever height the context measured", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const result = await decsscls().term!(
     decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 50, {
       cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      band: ["present", "present", "absent", "present"],
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
@@ -761,6 +800,7 @@ test("modes.decsscls puts back the DECSCLM state it read before the probe", asyn
     const result = await decsscls().term!(
       decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
         cells: ["jump", "jump", "slow-t0", "slow-t1"],
+        band: ["present", "present", "absent", "present"],
         decsclm: prior,
       }),
     )
@@ -769,7 +809,7 @@ test("modes.decsscls puts back the DECSCLM state it read before the probe", asyn
     expect(exit, prior).toContain(expected)
     expect(result.response, prior).toContain(`"prior":"${prior}"`)
   }
-})
+}, 20_000)
 
 test("modes.decsscls names a refused capture geometry instead of claiming the run had none", async () => {
   const writes: string[] = []
@@ -789,6 +829,7 @@ test("modes.decsscls does not grade unsupported when an honoring first frame lan
     const result = await decsscls().term!(
       decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
         cells: ["jump", "jump", "slow-t0", "slow-t1"],
+        band: ["present", "present", "absent", "present"],
       }),
     )
     expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
@@ -822,11 +863,40 @@ test("modes.decsscls grades an identical target pair inside the window as unsupp
   const result = await decsscls().term!(
     decssclsContext(["jump-t0", "jump-t1", "slow", "slow"], writes, frames, 24, {
       cells: ["jump", "jump", "slow", "slow"],
+      band: ["present", "present", "present", "present"],
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
-  expect(result.observation?.note).toContain("scrolled regardless of the rate")
+  expect(result.observation?.note).toContain("already at its settled row in the target's first frame")
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
+})
+
+test("modes.decsscls stays inconclusive when the marker band never arrives", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await decsscls().term!(
+    decssclsContext(["jump", "jump", "slow-before", "slow-after"], writes, frames, 24, {
+      cells: ["jump", "jump", "slow-before", "slow-after"],
+      band: ["present", "present", "absent", "absent"],
+    }),
+  )
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.observation?.note).toContain("had not reached its settled row")
+  expect(result.assertions).toBeUndefined()
+})
+
+test("modes.decsscls refuses a screen too short to place the marker band", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await decsscls().term!(decssclsContext(["a", "b", "c", "d"], writes, frames, 8))
+  expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(result.note).toContain("at least 10 rows")
+  expect(writes).toEqual([])
+  expect(frames).toEqual([])
 })
 
 test("modes.decsscls stays inconclusive when the jump control is still painting", async () => {
