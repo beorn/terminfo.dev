@@ -23,6 +23,7 @@ import {
 import { WINDOWS_MESA_RENDERER_DLLS } from "../run-parser/src/app-launch.ts"
 import {
   deriveIdentity,
+  resolveMeasuredAppVersion,
   verifyTerminalIdentity,
   TERMINAL_IDENTITY_RULES,
   type TerminalIdentityRule,
@@ -85,6 +86,9 @@ export type AdmissionExclusionCode =
   | "identity-replies-mismatch"
   | "native-provenance-missing"
   | "native-provenance-dirty"
+  | "outer-app-proof-missing"
+  | "outer-app-identity-mismatch"
+  | "mux-platform-unqualified"
   | "source-uncommitted"
   | "community-unreviewed"
   | "suite-incomplete"
@@ -134,11 +138,26 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     const versionReply = run.schemaVersion === 2 ? deriveIdentity(run.rawReplies).xtversionPayload : undefined
     return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : { rule: "runtime-identity" }
   }
+  return protocolIdentityMatch({
+    target: run.target,
+    rawReplies: run.rawReplies,
+    provenance: run.provenance,
+    appLaunch: run.origin.appLaunch,
+    results: Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"])),
+  })
+}
+
+/** An identity preflight has no suite observations or fabricated LoadedRun. */
+type ProtocolIdentitySubject = Pick<LoadedRun, "target" | "rawReplies" | "provenance"> & {
+  appLaunch?: LoadedRun["origin"]["appLaunch"]
+  results?: Record<string, boolean>
+}
+
+function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission | null {
   const rule = ADMISSION_IDENTITY_RULES[run.target.id]
   if (!rule) return null
-  const results = Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"]))
   const verification = TERMINAL_IDENTITY_RULES[run.target.id]
-    ? verifyTerminalIdentity(run.target.id, run.rawReplies, results)
+    ? verifyTerminalIdentity(run.target.id, run.rawReplies, run.results)
     : { ok: true, checked: true }
   if (!verification.checked || !verification.ok) return null
   const identity = deriveIdentity(run.rawReplies)
@@ -148,12 +167,16 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
   // so DA1 identifies nothing there and identity rests on the measured launch receipt.
   const da1Pattern = run.target.id === "alacritty" && os.startsWith("win") ? /\?61;/ : rule.da1Pattern
   if (da1Pattern && !da1Pattern.test(identity.da1)) return null
+  if (rule.da2VersionEncoding === "screen") {
+    const measured = resolveMeasuredAppVersion(run.target.id, "", run.rawReplies)
+    return measured === run.target.version ? { rule: run.target.id, da1: identity.da1 } : null
+  }
   if (rule.forbidXtversion) {
     // Windows Terminal and Alacritty on Windows do not report XTVERSION. The hosted apparatus
     // measures the launched executable; identity is its byte-exact version and executable sha256,
     // plus the pinned Mesa3D renderer receipt on Alacritty.
     if ((run.target.id === "windows-terminal" || run.target.id === "alacritty") && os.startsWith("win")) {
-      const receipt = run.origin.appLaunch
+      const receipt = run.appLaunch
       if (
         run.target.version === "unknown" ||
         !receipt ||
@@ -198,7 +221,7 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     }
     // macOS: unchanged. The launched bundle's CFBundleShortVersionString must equal the declared version.
     if (os.startsWith("mac") || os.startsWith("darwin")) {
-      const receipt = run.origin.appLaunch
+      const receipt = run.appLaunch
       if (
         !receipt ||
         receipt.platform === "win32" ||
@@ -250,11 +273,33 @@ function identityDecision(
   return identityAdmission ? null : "identity-replies-mismatch"
 }
 
-/** Linux app runs require apparatus provenance; every supplied provenance must be clean. */
+/** All target kinds pass through this one provenance decision. Attachment joins remain owner evidence. */
 function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
-  if (run.target.kind === "app" && isLinux(run.target.os) && !run.provenance) return "native-provenance-missing"
   if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
-  return null
+  switch (run.target.kind) {
+    case "headless":
+      return null
+    case "app":
+      return isLinux(run.target.os) && !run.provenance ? "native-provenance-missing" : null
+    case "mux": {
+      // CTO 41878c53: the Linux arm may land alone; Darwin awaits its measured owner.
+      if (!isLinux(run.target.os)) return "mux-platform-unqualified"
+      const outer = run.outerApp
+      if (!outer) return "outer-app-proof-missing"
+      if (!protocolIdentityMatch(outer)) return "outer-app-identity-mismatch"
+      if (outer.provenance && !outer.provenance.runtime.cleanTree) return "native-provenance-dirty"
+      if (isLinux(outer.target.os) && !outer.provenance) return "native-provenance-missing"
+      const os = (outer.target.os ?? "").toLowerCase()
+      if ((os.startsWith("mac") || os.startsWith("darwin")) && !outer.appLaunch) {
+        return "ownership-receipt-app-launch-mismatch"
+      }
+      return null
+    }
+    default: {
+      const unhandled: never = run.target.kind
+      return unhandled
+    }
+  }
 }
 
 function admissionRefusal(

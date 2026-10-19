@@ -2816,12 +2816,46 @@ describe("identity self-admission", () => {
         const assessment = assessRunAdmission(parsed, [], { mode: "historical" })
         expect.soft(assessment.accepted, `${mux}/${kind} must retain the outer-proof refusal`).toBe(false)
         if (!assessment.accepted) {
-          // Screen's current app-only identity path cannot use its DA2 without outer composition.
-          expect
-            .soft(assessment.reason)
-            .toBe(mux === "screen" ? "identity-replies-mismatch" : "native-provenance-missing")
+          expect.soft(assessment.reason).toBe(kind === "mux" ? "outer-app-proof-missing" : "native-provenance-missing")
         }
       }
+    },
+  )
+
+  it("matches Screen's retained DA2 version before applying native ownership requirements", () => {
+    const specimen = muxIdentity.specimens.find((entry) => entry.mux === "screen")!
+    const suites = new Map([[specimen.run.probeHash, manifest(specimen.run.probeHash, muxIdentity.featureIds)]])
+    for (const [version, reason] of [
+      [specimen.version, "native-provenance-missing"],
+      ["4.09.02", "identity-replies-mismatch"],
+    ]) {
+      const parsed = parseRunSource(
+        "screen-identity.json",
+        JSON.stringify({ ...specimen.run, target: { ...specimen.run.target, kind: "app", id: "screen", version } }),
+        muxIdentity.featureIds,
+        suites,
+      )
+      expect(assessRunAdmission(parsed, [], { mode: "historical" })).toMatchObject({ accepted: false, reason })
+    }
+  })
+
+  // Only the measured Linux owner is approved; the Linux corpus cannot witness a Darwin leak.
+  it.each(muxIdentity.specimens)(
+    "keeps macOS $mux admission held pending its measured owner",
+    ({ mux, version, run: specimen }) => {
+      const parsed = parseRunSource(
+        "darwin-mux.json",
+        JSON.stringify({
+          ...specimen,
+          target: { ...specimen.target, kind: "mux", id: mux, version, os: "darwin" },
+        }),
+        muxIdentity.featureIds,
+        new Map([[specimen.probeHash, manifest(specimen.probeHash, muxIdentity.featureIds)]]),
+      )
+      expect(assessRunAdmission(parsed, [], { mode: "historical" })).toMatchObject({
+        accepted: false,
+        reason: "mux-platform-unqualified",
+      })
     },
   )
 
