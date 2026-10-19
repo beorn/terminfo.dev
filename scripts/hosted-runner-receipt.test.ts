@@ -279,7 +279,142 @@ console.log(value);
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })
   }
-})
+}, 60_000)
+
+test("a transient jobs-API failure retries with a fresh window and returns the job id", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-retry-"))
+  let requests = 0
+  const server = createServer((_req, res) => {
+    requests += 1
+    res.setHeader("content-type", "application/json")
+    if (requests === 1) {
+      res.statusCode = 503
+      res.end(JSON.stringify({ message: "Service Unavailable" }))
+      return
+    }
+    res.end(JSON.stringify({ jobs: [{ id: 4242, runner_name: "retry-runner" }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const fixture = `#!${process.execPath}\nconst n=process.argv[1]; if(n.endsWith('ifconfig')) console.log('ether 02:00:00:00:00:04'); else if(n.endsWith('ioreg')) console.log('"IOPlatformUUID" = "retry-platform"'); else console.log('retry-boot');\n`
+    for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    const started = Date.now()
+    const { stdout } = await promisify(execFile)(
+      "node",
+      [
+        "--experimental-strip-types",
+        fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)),
+        "start",
+        join(dir, "retry.json"),
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH}`,
+          GITHUB_OUTPUT: join(dir, "outputs.txt"),
+          RUNNER_ENVIRONMENT: "github-hosted",
+          RUNNER_NAME: "retry-runner",
+          RUNNER_OS: "macOS",
+          RUNNER_ARCH: "ARM64",
+          RUNNER_TRACKING_ID: "fixture-tracking",
+          ImageOS: "macos26",
+          ImageVersion: "fixture-image",
+          GITHUB_REPOSITORY: "fixture/repo",
+          GITHUB_WORKFLOW: "collect",
+          GITHUB_WORKFLOW_REF: "collect.yml@main",
+          GITHUB_RUN_ID: "44",
+          GITHUB_RUN_ATTEMPT: "1",
+          GITHUB_JOB: "collect",
+          GH_TOKEN: "fixture-token",
+          GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+        },
+      },
+    )
+    // The retry starts a FRESH window after the named interval: it can never be the old window's
+    // expired remainder, and it does not wait out the full 30 s before trying again.
+    expect(Date.now() - started).toBeLessThan(20_000)
+    expect(requests).toBe(2)
+    expect(stdout).toContain("hosted receipt jobs-API lookup: 2 attempt(s) of cap 3")
+    expect(await readFile(join(dir, "outputs.txt"), "utf8")).toBe("jobs-api-attempts=2\n")
+    const start = JSON.parse(await readFile(join(dir, "retry.json"), "utf8")) as { job: { jobId: string } }
+    expect(start.job.jobId).toBe("4242")
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+}, 40_000)
+
+test("every attempt failing refuses by name after the cap, naming the total bound and the last status", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-retry-exhausted-"))
+  let requests = 0
+  const server = createServer((_req, res) => {
+    requests += 1
+    res.setHeader("content-type", "application/json")
+    res.statusCode = 503
+    res.end(JSON.stringify({ message: "Service Unavailable" }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const fixture = `#!${process.execPath}\nconst n=process.argv[1]; if(n.endsWith('ifconfig')) console.log('ether 02:00:00:00:00:05'); else if(n.endsWith('ioreg')) console.log('"IOPlatformUUID" = "retry-exhausted-platform"'); else console.log('retry-exhausted-boot');\n`
+    for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    const started = Date.now()
+    let failure: unknown
+    try {
+      await promisify(execFile)(
+        "node",
+        [
+          "--experimental-strip-types",
+          fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)),
+          "start",
+          join(dir, "exhausted.json"),
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            GITHUB_OUTPUT: join(dir, "outputs.txt"),
+            RUNNER_ENVIRONMENT: "github-hosted",
+            RUNNER_NAME: "outage-runner",
+            RUNNER_OS: "macOS",
+            RUNNER_ARCH: "ARM64",
+            RUNNER_TRACKING_ID: "fixture-tracking",
+            ImageOS: "macos26",
+            ImageVersion: "fixture-image",
+            GITHUB_REPOSITORY: "fixture/repo",
+            GITHUB_WORKFLOW: "collect",
+            GITHUB_WORKFLOW_REF: "collect.yml@main",
+            GITHUB_RUN_ID: "45",
+            GITHUB_RUN_ATTEMPT: "1",
+            GITHUB_JOB: "collect",
+            GH_TOKEN: "fixture-token",
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          },
+        },
+      )
+    } catch (error) {
+      failure = error
+    }
+    const message = failure instanceof Error ? failure.message : String(failure)
+    // A voided run must be attributable to the API: attempts, the cap, the total bound, the last
+    // status, and the elapsed time all appear, so nobody blames the measurement.
+    expect(message).toContain('jobs API lookup for "outage-runner"')
+    expect(message).toContain("failed after 3 attempt(s) (cap 3)")
+    expect(message).toContain("total bound 90000ms")
+    expect(message).toContain("last HTTP status 503")
+    expect(message).toMatch(/elapsed \d+ms/)
+    expect(message).toContain("HTTP 503")
+    // Three immediate failures and two named intervals; the window is not waited out three times.
+    expect(requests).toBe(3)
+    expect(Date.now() - started).toBeLessThan(20_000)
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+}, 40_000)
 
 test("a hosted macOS job that cannot measure its launch refuses by name, never with an invented block", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-launch-"))
@@ -747,17 +882,19 @@ test("a runner name that never appears is refused by name after one bounded budg
       failure = error
     }
     const message = failure instanceof Error ? failure.message : String(failure)
-    // The refusal names what was looked for, what was seen, and how long it looked.
-    expect(message).toContain('requires exactly one jobs-API RUNNER_NAME match for "runner-that-never-registers"')
-    expect(message).toMatch(/found 0 \(.*scans \d+/)
-    expect(message).toContain("match counts")
-    expect(Date.now() - started).toBeGreaterThanOrEqual(30_000)
-    expect(Date.now() - started).toBeLessThan(45_000)
+    // The refusal names what was looked for, that every attempt spent its full window, and the cap.
+    expect(message).toContain('jobs API lookup for "runner-that-never-registers"')
+    expect(message).toContain("failed after 3 attempt(s) (cap 3) of 30000ms each")
+    expect(message).toContain("total bound 90000ms")
+    expect(message).toContain("last HTTP status 200")
+    expect(message).toContain("the runner name never appeared in the jobs API")
+    expect(Date.now() - started).toBeGreaterThanOrEqual(90_000)
+    expect(Date.now() - started).toBeLessThan(130_000)
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })
   }
-}, 50_000)
+}, 140_000)
 
 test("two matching job ids on the first page refuse immediately, without asking for a second page", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-ambiguous-"))

@@ -3,7 +3,7 @@
  * importing only the parser and Node built-ins. Later workflows add OS sources to the same owner. */
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
+import { appendFileSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { sampleHostedIdentity, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import {
@@ -289,97 +289,158 @@ $dlls = @($dllFiles | ForEach-Object {
 }
 
 /** The jobs API registers a job's runner name slightly after the job starts. One bounded re-observe
- * closes that race: a COMPLETE scan that matches nothing is re-read while the single budget lasts, and
- * everything else — an HTTP failure, a malformed body, an unreadable id, more than one match — refuses
- * at once. There is no assumed identity and no fallback; the run is named, never guessed. */
+ * closes that race: a COMPLETE scan that matches nothing is re-read while the attempt's window lasts.
+ * A transient failure — the API unreachable, HTTP 5xx/429, or a full scan that still matched nothing —
+ * retries with a FRESH window under the attempt cap, because a one-off Actions outage must not void a
+ * whole measurement run (30321). Everything non-transient — a malformed body, an unreadable id, more
+ * than one match, a 4xx other than 429 — refuses at once, unchanged. No assumed identity, no fallback. */
 const JOBS_LOOKUP_BUDGET_MS = 30_000
 const JOBS_LOOKUP_RESCAN_MS = 1_000
+const JOBS_LOOKUP_ATTEMPTS = 3
+const JOBS_LOOKUP_RETRY_MS = 2_000
 
 interface JobsLookup {
   jobId: number
   scans: number
   pages: number
+  attempts: number
 }
 
-async function lookupJobId(input: { endpoint: string; name: string; token: string }): Promise<JobsLookup> {
-  // One monotonic budget: performance.now() never steps with the wall clock, so an NTP correction or a
-  // VM suspend/resume cannot stretch or collapse the 30s window this lookup is allowed.
-  const started = performance.now()
-  const deadline = started + JOBS_LOOKUP_BUDGET_MS
-  const remaining = (): number => deadline - performance.now()
-  const counts: number[] = []
-  let scans = 0
-  let pages = 0
-  const diagnose = (reason: string, count = counts.at(-1) ?? 0): Error =>
-    new Error(
-      `Hosted receipt requires exactly one jobs-API RUNNER_NAME match for ${JSON.stringify(input.name)} at ${input.endpoint}; found ${count} (${reason}; scans ${scans}, pages ${pages}, elapsed ${Math.round(performance.now() - started)}ms of ${JOBS_LOOKUP_BUDGET_MS}ms, match counts ${JSON.stringify(counts)}); refusing to guess the job id`,
-    )
+/** A failure the lookup may retry with a fresh window. Everything else throws a plain Error and ends
+ * the lookup at once, so an ambiguity or an unsafe id is never laundered into a retry. */
+class TransientJobsLookup extends Error {
+  readonly status: number | null
 
-  for (;;) {
-    scans += 1
-    pages = 0
-    const ids: number[] = []
-    for (let page = 1; ; page += 1) {
-      // AbortSignal.timeout requires an integer delay and refuses a fractional one, so the monotonic
-      // remainder is rounded UP: never shorter than the budget left, and never passed as a fraction.
-      const budget = Math.ceil(remaining())
-      if (budget <= 0) throw diagnose("the budget expired before this scan finished")
-      pages += 1
-      const url = `${input.endpoint}?per_page=100&page=${page}`
-      let response: Response
-      try {
-        response = await fetch(url, {
-          headers: { Authorization: `Bearer ${input.token}`, Accept: "application/vnd.github+json" },
-          signal: AbortSignal.timeout(budget),
-        })
-      } catch (cause) {
-        throw new Error(
-          `Hosted receipt jobs API ${url} could not be read within the remaining ${budget}ms of the ${JOBS_LOOKUP_BUDGET_MS}ms budget; no numeric job id can be measured`,
-          { cause },
-        )
-      }
-      if (!response.ok) {
-        throw new Error(
-          `Hosted receipt jobs API ${url} returned HTTP ${response.status}; no numeric job id can be measured`,
-        )
-      }
-      const body = (await response.json()) as { jobs?: unknown }
-      if (!Array.isArray(body.jobs)) throw new Error(`Hosted receipt jobs API ${url} returned no jobs array`)
-      for (const job of body.jobs as Array<{ runner_name?: unknown; id?: unknown }>) {
-        if (job.runner_name !== input.name) continue
-        if (typeof job.id !== "number" || !Number.isSafeInteger(job.id) || job.id < 0) {
-          throw new Error(
-            `Hosted receipt jobs API ${url}: matching RUNNER_NAME has no safe numeric id; GITHUB_JOB is a YAML key`,
-          )
-        }
-        ids.push(job.id)
-        // The approved rule is IMMEDIATE refusal: a second safe match is already ambiguity, so no further
-        // page is requested and no further scan happens. Waiting for the walk to finish would spend more
-        // of the budget to learn something this page already proved.
-        if (ids.length > 1) throw diagnose("several live jobs claim this runner name", ids.length)
-      }
-      if (body.jobs.length < 100) break
-    }
-    counts.push(ids.length)
-    if (ids.length > 1) throw diagnose("several live jobs claim this runner name")
-    const [onlyJobId] = ids
-    if (onlyJobId !== undefined) return { jobId: onlyJobId, scans, pages }
-    const wait = Math.min(JOBS_LOOKUP_RESCAN_MS, Math.ceil(remaining()))
-    if (wait <= 0) throw diagnose("the runner name never appeared in the jobs API")
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, wait)
-    })
+  constructor(reason: string, status: number | null = null) {
+    super(reason)
+    this.name = "TransientJobsLookup"
+    this.status = status
   }
 }
 
-async function context() {
+async function lookupJobId(input: { endpoint: string; name: string; token: string }): Promise<JobsLookup> {
+  // performance.now() never steps with the wall clock, so an NTP correction or a VM suspend/resume
+  // cannot stretch or collapse any attempt's window.
+  const overallStarted = performance.now()
+  let scans = 0
+  let pages = 0
+  let attempts = 0
+  let lastStatus: number | null = null
+  let lastFailure = "no attempt ran"
+
+  for (attempts = 1; attempts <= JOBS_LOOKUP_ATTEMPTS; attempts += 1) {
+    // Every attempt gets its own window: a retry never inherits an expired remainder.
+    const ended = performance.now() + JOBS_LOOKUP_BUDGET_MS
+    const remaining = (): number => ended - performance.now()
+    const counts: number[] = []
+    const diagnose = (reason: string, count = counts.at(-1) ?? 0): Error =>
+      new Error(
+        `Hosted receipt requires exactly one jobs-API RUNNER_NAME match for ${JSON.stringify(input.name)} at ${input.endpoint}; found ${count} (${reason}; attempt ${attempts} of ${JOBS_LOOKUP_ATTEMPTS}, scans ${scans}, pages ${pages}, elapsed ${Math.round(performance.now() - overallStarted)}ms, match counts ${JSON.stringify(counts)}); refusing to guess the job id`,
+      )
+    try {
+      for (;;) {
+        scans += 1
+        pages = 0
+        const ids: number[] = []
+        for (let page = 1; ; page += 1) {
+          // AbortSignal.timeout requires an integer delay and refuses a fractional one, so the monotonic
+          // remainder is rounded UP: never shorter than the window left, and never passed as a fraction.
+          const budget = Math.ceil(remaining())
+          if (budget <= 0) {
+            throw new TransientJobsLookup(
+              ids.length === 1
+                ? "the window expired before the scan could confirm its one match"
+                : "the window expired and the runner name never appeared in the jobs API",
+              lastStatus,
+            )
+          }
+          pages += 1
+          const url = `${input.endpoint}?per_page=100&page=${page}`
+          let response: Response
+          try {
+            response = await fetch(url, {
+              headers: { Authorization: `Bearer ${input.token}`, Accept: "application/vnd.github+json" },
+              signal: AbortSignal.timeout(budget),
+            })
+          } catch (cause) {
+            throw new TransientJobsLookup(
+              `jobs API ${url} could not be read within the remaining ${budget}ms of this ${JOBS_LOOKUP_BUDGET_MS}ms window (${cause instanceof Error ? cause.message : String(cause)})`,
+              lastStatus,
+            )
+          }
+          lastStatus = response.status
+          if (!response.ok) {
+            const detail = `jobs API ${url} returned HTTP ${response.status}`
+            // A 5xx or an explicit rate limit is the API's own transient state; any other non-2xx is
+            // this request's permanent refusal and is never retried.
+            if (response.status === 429 || response.status >= 500) {
+              throw new TransientJobsLookup(detail, response.status)
+            }
+            throw new Error(`Hosted receipt ${detail}; no numeric job id can be measured`)
+          }
+          let body: { jobs?: unknown }
+          try {
+            body = (await response.json()) as { jobs?: unknown }
+          } catch (cause) {
+            throw new Error(
+              `Hosted receipt jobs API ${url} returned a body that is not JSON (${cause instanceof Error ? cause.message : String(cause)})`,
+            )
+          }
+          if (!Array.isArray(body.jobs)) throw new Error(`Hosted receipt jobs API ${url} returned no jobs array`)
+          for (const job of body.jobs as Array<{ runner_name?: unknown; id?: unknown }>) {
+            if (job.runner_name !== input.name) continue
+            if (typeof job.id !== "number" || !Number.isSafeInteger(job.id) || job.id < 0) {
+              throw new Error(
+                `Hosted receipt jobs API ${url}: matching RUNNER_NAME has no safe numeric id; GITHUB_JOB is a YAML key`,
+              )
+            }
+            ids.push(job.id)
+            // The approved rule is IMMEDIATE refusal: a second safe match is already ambiguity, so no
+            // further page is requested and no further scan happens. Waiting for the walk to finish
+            // would spend more of the window to learn something this page already proved.
+            if (ids.length > 1) throw diagnose("several live jobs claim this runner name", ids.length)
+          }
+          if (body.jobs.length < 100) break
+        }
+        counts.push(ids.length)
+        if (ids.length > 1) throw diagnose("several live jobs claim this runner name")
+        const [onlyJobId] = ids
+        if (onlyJobId !== undefined) return { jobId: onlyJobId, scans, pages, attempts }
+        const wait = Math.min(JOBS_LOOKUP_RESCAN_MS, Math.ceil(remaining()))
+        if (wait <= 0) throw new TransientJobsLookup("the runner name never appeared in the jobs API", lastStatus)
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, wait)
+        })
+      }
+    } catch (cause) {
+      if (!(cause instanceof TransientJobsLookup)) throw cause
+      lastStatus = cause.status ?? lastStatus
+      lastFailure = cause.message
+      if (attempts >= JOBS_LOOKUP_ATTEMPTS) break
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, JOBS_LOOKUP_RETRY_MS)
+      })
+    }
+  }
+  throw new Error(
+    `Hosted receipt jobs API lookup for ${JSON.stringify(input.name)} at ${input.endpoint} failed after ${attempts} attempt(s) (cap ${JOBS_LOOKUP_ATTEMPTS}) of ${JOBS_LOOKUP_BUDGET_MS}ms each, total bound ${JOBS_LOOKUP_ATTEMPTS * JOBS_LOOKUP_BUDGET_MS}ms; last HTTP status ${lastStatus === null ? "none" : String(lastStatus)}; elapsed ${Math.round(performance.now() - overallStarted)}ms; last failure: ${lastFailure}; no numeric job id can be measured`,
+  )
+}
+
+async function context(mode: "start" | "emit") {
   const repository = required("GITHUB_REPOSITORY")
   const githubRunId = decimal("GITHUB_RUN_ID")
   const githubRunAttempt = decimal("GITHUB_RUN_ATTEMPT")
   const name = required("RUNNER_NAME")
   const endpoint = `${required("GITHUB_API_URL")}/repos/${repository}/actions/runs/${githubRunId}/attempts/${githubRunAttempt}/jobs`
   const token = required("GH_TOKEN")
-  const { jobId } = await lookupJobId({ endpoint, name, token })
+  const { jobId, attempts } = await lookupJobId({ endpoint, name, token })
+  // The run's own log and, when GitHub supplies one, the step output say how many attempts the lookup
+  // spent, so a slow bootstrap is attributable to the API rather than to the measurement (30321).
+  process.stdout.write(`hosted receipt jobs-API lookup: ${attempts} attempt(s) of cap ${JOBS_LOOKUP_ATTEMPTS}\n`)
+  if (mode === "start" && process.env.GITHUB_OUTPUT) {
+    appendFileSync(process.env.GITHUB_OUTPUT, `jobs-api-attempts=${attempts}\n`)
+  }
   return {
     job: {
       repository,
@@ -417,7 +478,7 @@ async function main(): Promise<void> {
   }
   // Sampling precedes API lookup/setup. No raw source value leaves this function.
   const identity = sampleHostedIdentity(required)
-  const current = await context()
+  const current = await context(mode)
   if (mode === "start") {
     mkdirSync(dirname(startPath), { recursive: true })
     writeFileSync(startPath, JSON.stringify({ phase: "job-start", ...current, identity }) + "\n", {

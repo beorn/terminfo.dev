@@ -30,6 +30,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Bootstrap the pinned producer and sample at job start
+        id: start
         run: |
           set -euo pipefail
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
