@@ -194,7 +194,7 @@ describe("release 1 decisive-count reader", () => {
     }
   }, 15_000)
 
-  it("reports candidate 3's exact modes/device delta on the declared candidate-4 freeze", () => {
+  it("reports candidate 3's exact modes/device delta on the declared candidate-2 freeze", () => {
     // The generic reader already covers suite selection and grading; this checks the new CLI value's
     // actual data path, including all unavailable rows, rather than constructing its spec in the test.
     const contentDir = join(import.meta.dirname, "..", "content")
@@ -212,15 +212,14 @@ describe("release 1 decisive-count reader", () => {
         .digest("hex"),
     ).toBe("8169578733a75fabb8da1edf4e32fb37a35ea40de9287ea5c30851136b3a3ced")
     expect(cohort.scoredIds).toHaveLength(44)
-    // 29, not 30, on the frozen suite c24025ea22fc: that suite carries 260 probe ids to 67ad1f1d1580's
-    // 263, and modes.decsscls is one of the three it does not carry (with input.kitty-click-events and
-    // extensions.font-ligatures). The row is named unavailable rather than quietly disappearing.
-    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(29)
+    // The f945 freeze carries 263 app ids, including modes.decsscls, unlike its c240 predecessor.
+    // The nine environment-only Device rows remain unavailable; no denominator is dropped.
+    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(30)
     expect(cohort.decidableIds.filter((id) => id.startsWith("device."))).toHaveLength(5)
-    expect(cohort.unavailableIds).toHaveLength(10)
+    expect(cohort.unavailableIds).toHaveLength(9)
     expect(cohort.unavailableIds.filter((id) => id.startsWith("device.env-"))).toHaveLength(9)
-    expect(cohort.unavailableIds).toContain("modes.decsscls")
-    expect(cohort.decidableIds).not.toContain("modes.decsscls")
+    expect(cohort.unavailableIds).not.toContain("modes.decsscls")
+    expect(cohort.decidableIds).toContain("modes.decsscls")
     expect(cohort.libraryOnlyIds).toEqual([])
     expect(cohortHeaderLine(cohort)).toContain("frozen for candidate2, read here for candidate3 ids")
     expect(() => frozenSuiteIdFor(contentDir, "candidate3")).toThrow(
@@ -1446,7 +1445,16 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       }
       writeFileSync(
         join(suites, `${requiredSuite}.json`),
-        JSON.stringify({ ...raw, probes: { ...raw.probes, app: [...probeIds] } }, null, 2),
+        JSON.stringify(
+          {
+            ...raw,
+            probes: { ...raw.probes, app: [...probeIds] },
+            // Keep the narrowed synthetic suite's text claims within its app membership.
+            ...(raw.textClaims === undefined ? {} : { textClaims: raw.textClaims.filter((id) => probeIds.includes(id)) }),
+          },
+          null,
+          2,
+        ),
       )
       writeFileSync(join(contentDir, "categories.json"), readFileSync(join(real, "categories.json")))
       writeFileSync(join(contentDir, "features.json"), readFileSync(join(real, "features.json")))
