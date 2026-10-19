@@ -2041,7 +2041,15 @@ describe("selected results", () => {
       expect(version?.textQualification).toEqual(measured.textQualification)
       const failedAssessment =
         missing !== undefined ||
-        ["changed-bytes", "failed-shape", "wrong-rectangle", "wrong-version", "suite-recipe-mismatch", "extra-control", "extra-target"].includes(fault ?? "")
+        [
+          "changed-bytes",
+          "failed-shape",
+          "wrong-rectangle",
+          "wrong-version",
+          "suite-recipe-mismatch",
+          "extra-control",
+          "extra-target",
+        ].includes(fault ?? "")
       if (failedAssessment) {
         expect(cell?.textQualificationReason).toMatch(/Run qualified-text: /u)
         if (missing) expect(cell?.textQualificationReason).toContain(missing)
