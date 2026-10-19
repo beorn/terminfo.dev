@@ -239,6 +239,11 @@ jobs:
             wezterm)
               # start --always-new-process keeps this run on its own GUI process instead of joining the mux,
               # and the command after -- is the serve script WezTerm executes in the new window.
+              # The arm64 hosted runner has no OpenGL pixel format, and WezTerm's default front end refuses
+              # the window without one ("failed to create NSOpenGLPixelFormat", run 39245025212). The software
+              # front end renders the same cells without a GPU context, so the window exists at all.
+              mkdir -p "$HOME/.config/wezterm"
+              printf "return { front_end = 'Software' }\n" > "$HOME/.config/wezterm/wezterm.lua"
               nohup "$APP_BUNDLE/Contents/MacOS/wezterm" start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
