@@ -15,7 +15,8 @@ import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-
  * Must be called while stdin is in raw mode.
  */
 const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
-const operationContext = new AsyncLocalStorage<{ active: boolean; out: NodeJS.WriteStream }>()
+type TTYOperationLease = { active: boolean; out: NodeJS.WriteStream; verify?: () => Promise<void> }
+const operationContext = new AsyncLocalStorage<TTYOperationLease>()
 const collectorOpenedControllingOutputs = new WeakSet<NodeJS.WriteStream>()
 
 /** Open the controlling terminal for CLI runs whose stdout carries JSON. */
@@ -61,24 +62,31 @@ export function withTTYQueryTrace<T>(
 }
 
 /** Serialize whole terminal operations; queries inside one operation run inline. */
-export function withTTYOperation<T>(fn: () => Promise<T>, out?: NodeJS.WriteStream): Promise<T> {
+export function withTTYOperation<T>(
+  fn: () => Promise<T>,
+  out?: NodeJS.WriteStream,
+  verify?: () => Promise<void>,
+): Promise<T> {
+  const execute = (lease: TTYOperationLease) =>
+    operationContext.run(lease, async () => {
+      try {
+        await lease.verify?.()
+        return await fn()
+      } finally {
+        lease.active = false
+      }
+    })
   const active = operationContext.getStore()
   if (active?.active) {
     if (out && out !== active.out) throw new Error("Nested TTY operation changed output stream")
-    return fn()
+    const check = verify ?? active.verify
+    return check ? execute({ active: true, out: active.out, verify: check }) : fn()
   }
   const previous = ttyOperations.get(process.stdin) ?? Promise.resolve()
   const current = previous
     .catch(() => {})
     .then(() => {
-      const lease = { active: true, out: out ?? process.stdout }
-      return operationContext.run(lease, async () => {
-        try {
-          return await fn()
-        } finally {
-          lease.active = false
-        }
-      })
+      return execute({ active: true, out: out ?? process.stdout, ...(verify && { verify }) })
     })
   ttyOperations.set(
     process.stdin,

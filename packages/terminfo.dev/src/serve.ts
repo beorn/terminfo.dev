@@ -37,7 +37,7 @@ import {
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
-import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
+import { withRawMode, withTTYOperation, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture } from "./darwin-capture.ts"
@@ -682,87 +682,97 @@ export async function collectProbeRun(
         throw new Error("Outer preflight differs from the verified mux attachment")
       }
     }
-    batch = await withRawMode(async () => {
-      let geometryCorroboration: GeometryCorroboration | undefined
-      let identityQuery:
-        | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
-        | undefined
-      let da2Query: Awaited<ReturnType<typeof queryWithSentinelOutcome>> | undefined
-      if (ownedTerminal) {
-        const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
-        const query = {
-          sequence: "\x1b[18t" as const,
-          outbound: "\x1b[18t\x1b[c" as const,
-          reason: response.reason,
-          raw: response.raw,
-          rawBase64: response.rawBase64,
-        }
-        if (response.match) {
-          const rows = Number(response.match[1])
-          const cols = Number(response.match[2])
-          const grant = ownedTerminal.geometryAtGrant
-          const status =
-            !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)
-              ? "malformed"
-              : grant?.status !== "measured"
-                ? "uncorroborated"
-                : rows === grant.rows && cols === grant.cols
-                  ? "agree"
-                  : "conflict"
-          geometryCorroboration = { status, query, ...(status !== "malformed" ? { rows, cols } : {}) }
-        } else {
-          geometryCorroboration = {
-            status: response.raw.includes("\x1b[8;") ? "malformed" : "silent",
-            query,
-          }
-        }
-        const identity = await queryWithSentinelOutcome("\x1b[>0q", COMPLETE_XTVERSION, 700)
-        identityQuery = {
-          sequence: "\x1b[>0q",
-          outbound: "\x1b[>0q\x1b[c",
-          reason: identity.reason,
-          raw: identity.raw,
-          rawBase64: identity.rawBase64,
-        }
-        // Only Screen consumes DA2 for its measured version; ordinary apps keep their preflight.
-        if (measuredTerminal.name === "screen") da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
-        resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
-          "collector.xtversion": identity.raw,
-          ...(da2Query && { "collector.da2": da2Query.raw }),
-        })
-      }
-      // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
-      // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
-      // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
-      // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
-      if (preflightDarwinCapture) await preflightDarwinCapture()
-      const result = await runProbeBatch({
-        ids: options.ids,
-        out,
-        captureRunId,
-        // The run's own target, from the launched app: the receipt is bound to this before any write.
-        target: { kind: muxTarget?.kind ?? "app", id: measuredTerminal.name, os: terminal.os },
-        ...(capture && { capture }),
-        ...(textCapture && { captureKind: "text-cells" as const }),
-        ...(input && { input }),
-        ...(ownedTerminal && { ownedTerminal }),
-        ...(geometryCorroboration && { geometryCorroboration }),
-        ...(prepareCapture && { prepareCapture }),
-      })
-      if (identityQuery) {
-        result.rawReplies["collector.xtversion"] = identityQuery.raw
-        result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
-      }
-      if (da2Query) {
-        result.rawReplies["collector.da2"] = da2Query.raw
-        result.rawReplies["collector.da2Query"] = JSON.stringify({ sequence: "\x1b[>c", ...da2Query })
-      }
-      if (captureCalibration) {
-        result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
-      }
-      await drainStdin(1000)
-      return result
-    }, out)
+    batch = await withRawMode(
+      () =>
+        withTTYOperation(
+          async () => {
+            let geometryCorroboration: GeometryCorroboration | undefined
+            let identityQuery:
+              | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
+              | undefined
+            let da2Query: Awaited<ReturnType<typeof queryWithSentinelOutcome>> | undefined
+            if (ownedTerminal) {
+              const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
+              const query = {
+                sequence: "\x1b[18t" as const,
+                outbound: "\x1b[18t\x1b[c" as const,
+                reason: response.reason,
+                raw: response.raw,
+                rawBase64: response.rawBase64,
+              }
+              if (response.match) {
+                const rows = Number(response.match[1])
+                const cols = Number(response.match[2])
+                const grant = ownedTerminal.geometryAtGrant
+                const status =
+                  !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)
+                    ? "malformed"
+                    : grant?.status !== "measured"
+                      ? "uncorroborated"
+                      : rows === grant.rows && cols === grant.cols
+                        ? "agree"
+                        : "conflict"
+                geometryCorroboration = { status, query, ...(status !== "malformed" ? { rows, cols } : {}) }
+              } else {
+                geometryCorroboration = {
+                  status: response.raw.includes("\x1b[8;") ? "malformed" : "silent",
+                  query,
+                }
+              }
+              const identity = await queryWithSentinelOutcome("\x1b[>0q", COMPLETE_XTVERSION, 700)
+              identityQuery = {
+                sequence: "\x1b[>0q",
+                outbound: "\x1b[>0q\x1b[c",
+                reason: identity.reason,
+                raw: identity.raw,
+                rawBase64: identity.rawBase64,
+              }
+              // Only Screen consumes DA2 for its measured version; ordinary apps keep their preflight.
+              if (measuredTerminal.name === "screen") {
+                da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
+              }
+              resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
+                "collector.xtversion": identity.raw,
+                ...(da2Query && { "collector.da2": da2Query.raw }),
+              })
+            }
+            // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
+            // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
+            // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
+            // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
+            if (preflightDarwinCapture) await preflightDarwinCapture()
+            const result = await runProbeBatch({
+              ids: options.ids,
+              out,
+              captureRunId,
+              // The run's own target, from the launched app: the receipt is bound to this before any write.
+              target: { kind: muxTarget?.kind ?? "app", id: measuredTerminal.name, os: terminal.os },
+              ...(capture && { capture }),
+              ...(textCapture && { captureKind: "text-cells" as const }),
+              ...(input && { input }),
+              ...(ownedTerminal && { ownedTerminal }),
+              ...(geometryCorroboration && { geometryCorroboration }),
+              ...(prepareCapture && { prepareCapture }),
+            })
+            if (identityQuery) {
+              result.rawReplies["collector.xtversion"] = identityQuery.raw
+              result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
+            }
+            if (da2Query) {
+              result.rawReplies["collector.da2"] = da2Query.raw
+              result.rawReplies["collector.da2Query"] = JSON.stringify({ sequence: "\x1b[>c", ...da2Query })
+            }
+            if (captureCalibration) {
+              result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
+            }
+            await drainStdin(1000)
+            return result
+          },
+          out,
+          clipboard ? () => clipboard.assertOwned() : undefined,
+        ),
+      out,
+    )
   } finally {
     await ownedTerminal?.dispose()
   }

@@ -34,6 +34,34 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  it("checks a scoped owner before nested queries and releases it with the operation", async () => {
+    const failure = new Error("attachment continuity lost")
+    const writes: string[] = []
+    let revoked = false
+    const verify = vi.fn(async () => {
+      if (revoked) throw failure
+    })
+    const out = {
+      write(sequence: string) {
+        writes.push(sequence)
+        reply("\x1b[1;1R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    await withTTYOperation(
+      async () => {
+        expect(await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).not.toBeNull()
+        revoked = true
+        await expect(query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).rejects.toBe(failure)
+      },
+      out,
+      verify,
+    )
+    expect(verify).toHaveBeenCalledTimes(3)
+    expect(writes).toEqual(["\x1b[6n"])
+    expect(await withTTYOperation(() => query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20), out)).not.toBeNull()
+    expect(verify).toHaveBeenCalledTimes(3)
+  })
   it("restores an untouched input stream after draining, including errors and nested leases", async () => {
     const stdin = process.stdin
     const originalTTY = Object.getOwnPropertyDescriptor(stdin, "isTTY")

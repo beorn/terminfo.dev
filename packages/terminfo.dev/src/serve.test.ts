@@ -55,7 +55,7 @@ it.each(["tmux", "screen"])(
       assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:{pid:95,startTicks:"115"},executable:{version},config:{path:"/out/mux.conf"}}
       return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({muxAttachment:attachment}),
-        clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
+        clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:async()=>{},...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
       assert.equal(options.target.kind,"mux");assert.equal(options.target.id,mux)

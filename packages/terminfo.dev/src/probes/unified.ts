@@ -337,6 +337,8 @@ export async function runProbeBatch(
   // mutation-and-readback probe additionally needs a verified disposable-ownership receipt; an
   // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
   const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
+  const clipboard = ownsTerminal ? options.ownedTerminal?.clipboard : undefined
+  const verify = clipboard ? () => clipboard.assertOwned() : undefined
   const disposable = resolveDisposableReceipt()
   // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
@@ -473,7 +475,15 @@ export async function runProbeBatch(
       context.withClipboardFixture = (work) =>
         clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event))
     }
-    if (options.input) context.input = options.input
+    if (options.input) {
+      const input = options.input
+      const injectDrag = input.injectDrag?.bind(input)
+      context.input = {
+        injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
+        injectClick: (button) => withTTYOperation(() => input.injectClick(button), out, verify),
+        ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
+      }
+    }
     const capture = options.capture
     // A text run hands its adapter to the region readback alone: it is the one consumer whose
     // verdict is about cells. Every other probe reads pixels, so it gets no adapter here and takes
@@ -486,14 +496,14 @@ export async function runProbeBatch(
         context.captureKind = "text-cells"
         context.cells = async (checkpoint) => {
           captureAttempted = true
-          const result = await capture({ featureId: probe.id, ...checkpoint })
+          const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
           recordCapture(probe.id, captures, result, checkpoint.role)
           return result.frame
         }
       } else {
         context.capture = async (checkpoint) => {
           captureAttempted = true
-          const result = await capture({ featureId: probe.id, ...checkpoint })
+          const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
           recordCapture(probe.id, captures, result, checkpoint.role)
           return result.frame
         }
@@ -583,6 +593,7 @@ export async function runProbeBatch(
               }),
             ),
           out,
+          verify,
         )
         captureGeometry = preparationContext.captureGeometry
         captureGeometryRefusal = preparationContext.captureGeometryRefusal
@@ -616,6 +627,7 @@ export async function runProbeBatch(
               return callback(context)
             }),
           out,
+          verify,
         )
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
@@ -747,5 +759,6 @@ export async function runProbeBatch(
   batch.suiteComplete =
     expected.every((probe) => observed.has(probe.id) || namedNotTested.has(probe.id)) &&
     Object.keys(batch.ungradedDiagnostics).length === 0
+  await verify?.()
   return batch
 }
