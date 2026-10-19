@@ -420,6 +420,19 @@ describe("candidate-2 page: wiring", () => {
     expect(unicode.darkHeldBy.map((row) => row.context)).toEqual(["kitty/macos"])
   })
 
+  it("divides a group's acceptance basis once on both published and dark history rows", () => {
+    // 30248: the ratified base already contains a group's library-only ids. Appending them again when
+    // the acceptance basis is built counts those rows twice, which inflated Reset's denominator to 6
+    // and Scrollback's to 12 on the dark history rows while the published rows read the correct 5 and 9.
+    for (const group of data.groups) {
+      if (group.libraryOnly.length === 0) continue
+      const expected = group.capabilities.length - group.unavailable.length
+      for (const row of [...group.heldBy, ...group.darkHeldBy]) {
+        expect(row.denominator, `${group.key} ${row.context}`).toBe(expected)
+      }
+    }
+  })
+
   it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
     const real = join(import.meta.dirname, "..", "content")
     const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
@@ -493,8 +506,15 @@ describe("candidate-2 page: wiring", () => {
       const scrollback = loadCandidate2Data().groups.find((group) => group.key === "scrollback")
       if (!scrollback) throw new Error("scrollback group missing")
       const ids = scrollback.capabilities.map((capability) => capability.id)
+      // The acceptance basis is the app-decidable rows plus the library-only rows ONCE (30248): the
+      // capability list already contains the library-only ids, so appending them again counted them twice.
+      const decidableIds = ids.filter(
+        (id) =>
+          !scrollback.libraryOnly.some((capability) => capability.id === id) &&
+          !scrollback.unavailable.some((capability) => capability.id === id),
+      )
       const expected = reader.decisiveShare(darkRun.run.states, [
-        ...ids,
+        ...decidableIds,
         ...scrollback.libraryOnly.map((capability) => capability.id),
       ])
       const held = scrollback.darkHeldBy.find((row) => row.context === "wezterm/linux")

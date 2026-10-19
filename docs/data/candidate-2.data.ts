@@ -408,9 +408,15 @@ export function loadCandidate2Data(): Candidate2Data {
         if (!row.reason) {
           throw new Error(`unpublished context ${row.context} carries no reason; cannot name it as unmeasured`)
         }
-        const category = includedByKey.get(group.key)
-        if (!category) throw new Error(`group ${group.key} is not in the ratified base; cannot judge a dark context`)
-        const libraryOnlyIds = category.ids.filter((id) => libraryOnly.has(id))
+        // The acceptance basis is the decidable rows plus the library-only rows ONCE — the same
+        // composition the published branch uses. Taking both from the ratified base counted the
+        // library-only rows twice (30248: Reset read 6 and Scrollback 12 on history rows, not 5 and 9).
+        const category = decidableByKey.get(group.key)
+        const ratified = includedByKey.get(group.key)
+        if (!category || !ratified) {
+          throw new Error(`group ${group.key} is not in the decidable base; cannot judge a dark context`)
+        }
+        const libraryOnlyIds = ratified.ids.filter((id) => libraryOnly.has(id))
         const share = decisiveShare(run.states, category.ids)
         const acceptance =
           libraryOnlyIds.length > 0 ? decisiveShare(run.states, [...category.ids, ...libraryOnlyIds]) : null
