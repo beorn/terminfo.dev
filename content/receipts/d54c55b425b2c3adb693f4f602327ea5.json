@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "f2aedda9b0e5aeaa6b6b87848cb3e42f",
+  "collectedAt": "2026-10-19T15:13:39.827Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/task/luna3-macos-wezterm-software-cli",
+    "githubRunId": "39275868085",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "118139895673"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000048828",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20261013.0424.1",
+    "trackingId": "github_83de587f-2bb9-4f44-9dd3-bcc1be9d184b"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "242f6f72e599743b89e29253873e63506d0d35ad5726259688dd87ff88312cd6",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "dccbc7608914a9dbf7f1eb5dd509ab7e41655ff34c1b242bf48d34733b9e2ddb"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "242f6f72e599743b89e29253873e63506d0d35ad5726259688dd87ff88312cd6",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "dccbc7608914a9dbf7f1eb5dd509ab7e41655ff34c1b242bf48d34733b9e2ddb"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/WezTerm.app",
+    "cfBundleShortVersionString": "0.1.0",
+    "cfBundleVersion": "1",
+    "executablePath": "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+    "executableSha256": "994efe1b96a5d02df9405ef95f22f1836d34f9474a99b7c768b152e47e0dca7b",
+    "sourceArtifact": {
+      "path": "/Users/runner/Library/Caches/Homebrew/downloads/5a006909a88f46f9a0463f940383325b71ba83da5e7437280579038994c369cc--WezTerm-macos-20240203-110809-5046fc22.zip",
+      "sha256": "e77388cad55f2e9da95a220a89206a6c58f865874a629b7c3ea3c162f5692224"
+    }
+  }
+}
