@@ -1,0 +1,165 @@
+{
+  "scope": "Test-only projection of three identity probes from immutable detached Linux HTTP specimens. Other observations omitted; tests supply a matching projected manifest. Original target labels preserved here; relabelling occurs only in the regression. No qualified outer context or admitted run is claimed.",
+  "featureIds": ["device.primary-da", "device.secondary-da", "device.xtversion"],
+  "specimens": [
+    {
+      "mux": "tmux",
+      "version": "3.6",
+      "sourceSha256": "7702424cc5778d9d76b1004c8f1092635054d96a324494b753bdeaac7bb49773",
+      "run": {
+        "schemaVersion": 2,
+        "runId": "fc39e9438503a9ac5f78604b845f2731",
+        "target": {
+          "kind": "app",
+          "id": "tmux-256color",
+          "version": "unknown",
+          "os": "linux",
+          "osVersion": "7.0.0-34-generic",
+          "outerTerminal": null,
+          "mux": null,
+          "config": null,
+          "permissions": null
+        },
+        "identity": "unverified",
+        "suiteId": "b070fbbea85f",
+        "probeHash": "b070fbbea85f",
+        "suiteComplete": true,
+        "sourceRevision": "b16b61b32d7880defcaead11665d63832e4df8d7",
+        "measuredAt": "2026-10-19T06:39:26.429Z",
+        "origin": {
+          "kind": "collector"
+        },
+        "screenshotRefs": [],
+        "rawReplies": {
+          "collector.disposableOwnership": "{\"kind\":\"shared\"}",
+          "device.primary-da": "\u001b[?1;2;4c",
+          "device.secondary-da": "\u001b[>84;0;0c\u001b[?1;2;4c",
+          "device.xtversion": "\u001bP>|tmux 3.6\u001b\\\u001b[?1;2;4c"
+        },
+        "assertions": [
+          {
+            "featureId": "device.primary-da",
+            "kind": "positive",
+            "expected": "complete DA1 CSI ? numeric attributes c",
+            "observed": "\u001b[?1;2;4c",
+            "rawReplyRef": "device.primary-da"
+          },
+          {
+            "featureId": "device.secondary-da",
+            "kind": "positive",
+            "expected": "complete DA2 CSI > three numeric fields c",
+            "observed": "\u001b[>84;0;0c",
+            "rawReplyRef": "device.secondary-da"
+          },
+          {
+            "featureId": "device.xtversion",
+            "kind": "positive",
+            "expected": "complete XTVERSION DCS >| printable name/version ST",
+            "observed": "\u001bP>|tmux 3.6\u001b\\",
+            "rawReplyRef": "device.xtversion"
+          }
+        ],
+        "observations": [
+          {
+            "featureId": "device.primary-da",
+            "outcome": "supported",
+            "evidence": "query",
+            "rawReplyRef": "device.primary-da"
+          },
+          {
+            "featureId": "device.secondary-da",
+            "outcome": "supported",
+            "evidence": "query",
+            "rawReplyRef": "device.secondary-da"
+          },
+          {
+            "featureId": "device.xtversion",
+            "outcome": "supported",
+            "evidence": "query",
+            "rawReplyRef": "device.xtversion"
+          }
+        ]
+      }
+    },
+    {
+      "mux": "screen",
+      "version": "4.09.01",
+      "sourceSha256": "d26571119eab4540e960d6bec68a44f949302bdf1ef1869ff45ac87956af1d86",
+      "run": {
+        "schemaVersion": 2,
+        "runId": "387acb4a0a08a034c886c6561c063fbe",
+        "target": {
+          "kind": "app",
+          "id": "screen",
+          "version": "unknown",
+          "os": "linux",
+          "osVersion": "7.0.0-34-generic",
+          "outerTerminal": null,
+          "mux": null,
+          "config": null,
+          "permissions": null
+        },
+        "identity": "unverified",
+        "suiteId": "b070fbbea85f",
+        "probeHash": "b070fbbea85f",
+        "suiteComplete": true,
+        "sourceRevision": "b16b61b32d7880defcaead11665d63832e4df8d7",
+        "measuredAt": "2026-10-19T06:43:13.264Z",
+        "origin": {
+          "kind": "collector"
+        },
+        "screenshotRefs": [],
+        "rawReplies": {
+          "collector.disposableOwnership": "{\"kind\":\"shared\"}",
+          "device.primary-da": "\u001b[?1;2c",
+          "device.secondary-da": "\u001b[>83;40901;0c\u001b[?1;2c",
+          "device.xtversion": "\u001b[?1;2c"
+        },
+        "assertions": [
+          {
+            "featureId": "device.primary-da",
+            "kind": "positive",
+            "expected": "complete DA1 CSI ? numeric attributes c",
+            "observed": "\u001b[?1;2c",
+            "rawReplyRef": "device.primary-da"
+          },
+          {
+            "featureId": "device.secondary-da",
+            "kind": "positive",
+            "expected": "complete DA2 CSI > three numeric fields c",
+            "observed": "\u001b[>83;40901;0c",
+            "rawReplyRef": "device.secondary-da"
+          },
+          {
+            "featureId": "device.xtversion",
+            "kind": "negative",
+            "expected": "complete XTVERSION DCS >| printable name/version ST",
+            "observed": "DA1 answered at +1ms; no reply through the 250 ms window",
+            "rawReplyRef": "device.xtversion"
+          }
+        ],
+        "observations": [
+          {
+            "featureId": "device.primary-da",
+            "outcome": "supported",
+            "evidence": "query",
+            "rawReplyRef": "device.primary-da"
+          },
+          {
+            "featureId": "device.secondary-da",
+            "outcome": "supported",
+            "evidence": "query",
+            "rawReplyRef": "device.secondary-da"
+          },
+          {
+            "featureId": "device.xtversion",
+            "outcome": "unsupported",
+            "evidence": "query",
+            "note": "negative by sentinel",
+            "rawReplyRef": "device.xtversion"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -6,6 +6,57 @@
  */
 import { describe, it, expect } from "vitest"
 import { resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
+import muxIdentity from "./fixtures/mux-identity.json"
+
+describe("measured multiplexer identity", () => {
+  // These are the bytes retained by the detached Linux probes; the fixture records their hashes.
+  // Existing app cases cannot catch a mux being accepted from its outer app's replies.
+  it.each(muxIdentity.specimens)(
+    "resolves and verifies $mux from its own complete replies",
+    ({ mux, version, run }) => {
+      expect(resolveMeasuredAppVersion(mux, "", run.rawReplies)).toBe(version)
+      expect(verifyTerminalIdentity(mux, run.rawReplies)).toEqual({ ok: true, checked: true })
+      expect(() => resolveMeasuredAppVersion(mux, "0.0", run.rawReplies)).toThrow(/version mismatch/)
+      expect(
+        verifyTerminalIdentity(mux, {
+          "device.primary-da": "\x1b[?62;52;c",
+          "device.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c",
+        }),
+      ).toMatchObject({ ok: false, checked: true })
+    },
+  )
+
+  it("measures Screen from preflight DA2 even when feature selection omitted identity probes", () => {
+    const replies = { "collector.xtversion": "\x1b[?1;2c", "collector.da2": "\x1b[>83;40901;0c\x1b[?1;2c" }
+    expect(resolveMeasuredAppVersion("screen", "", replies)).toBe("4.09.01")
+    expect(verifyTerminalIdentity("screen", replies)).toEqual({ ok: true, checked: true })
+    expect(verifyTerminalIdentity("screen", { ...replies, "device.primary-da": "\x1b[?1;2;4c" }).reason).toMatch(
+      /DA1 mismatch/,
+    )
+  })
+
+  it.each(["", "\x1b[?1;2c", "\x1b[>83;40901;0", "\x1b[>84;40901;0c", "\x1b[>83;40901;0cjunk"])(
+    "refuses Screen preflight %j without borrowing a valid feature DA2",
+    (da2) => {
+      const replies = {
+        "collector.xtversion": "\x1b[?1;2c",
+        "collector.da2": da2,
+        "device.secondary-da": "\x1b[>83;40901;0c\x1b[?1;2c",
+      }
+      expect(() => resolveMeasuredAppVersion("screen", "", replies)).toThrow(/DA2/)
+      expect(verifyTerminalIdentity("screen", replies)).toMatchObject({ ok: false, checked: true })
+    },
+  )
+
+  it.each(["", "tmux 3.6", "\x1bP>|tmux 3.6", "\x1bP>|tmux anything\x1b\\"])(
+    "refuses tmux identity without a complete version-bearing DCS: %j",
+    (xtversion) => {
+      const replies = { "device.primary-da": "\x1b[?1;2;4c", "device.xtversion": xtversion }
+      expect(verifyTerminalIdentity("tmux", replies)).toMatchObject({ ok: false, checked: true })
+      expect(() => resolveMeasuredAppVersion("tmux", "", replies)).toThrow(/XTVERSION/)
+    },
+  )
+})
 
 describe("verifyTerminalIdentity", () => {
   it("measures Kitty version and DA1 from collector identity without feature keys", () => {

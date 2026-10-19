@@ -22,6 +22,7 @@ import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/rele
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
+import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 /** 28240: the app-launch receipt parser refuses a placeholder digest (one repeated character), so
@@ -2781,7 +2782,7 @@ describe("identity self-admission", () => {
     }
   })
 
-  it("refuses mux identities without an identity profile", () => {
+  it("refuses mux identities relayed from an outer app", () => {
     const parsed = parseRun(
       "mux.json",
       JSON.stringify(
@@ -2794,10 +2795,35 @@ describe("identity self-admission", () => {
     expect(project([parsed]).exclusions).toContainEqual(
       expect.objectContaining({
         runId: "mux-no-profile",
-        reason: "identity-no-profile",
+        reason: "identity-replies-mismatch",
       }),
     )
   })
+
+  // The identity profiles alone admit detached tmux/mux. This is deliberately RED on Slice 1;
+  // only the combined outer-proof implementation may make it green (CTO 9f1f9b8f, 30069).
+  it.each(muxIdentity.specimens)(
+    "refuses detached $mux with either mux or app labelling",
+    ({ mux, version, run: specimen }) => {
+      const projectedManifest = manifest(specimen.probeHash, muxIdentity.featureIds)
+      for (const kind of ["mux", "app"] as const) {
+        const parsed = parseRunSource(
+          `detached-${mux}-${kind}.json`,
+          JSON.stringify({ ...specimen, target: { ...specimen.target, kind, id: mux, version } }),
+          muxIdentity.featureIds,
+          new Map([[specimen.probeHash, projectedManifest]]),
+        )
+        const assessment = assessRunAdmission(parsed, [], { mode: "historical" })
+        expect.soft(assessment.accepted, `${mux}/${kind} must retain the outer-proof refusal`).toBe(false)
+        if (!assessment.accepted) {
+          // Screen's current app-only identity path cannot use its DA2 without outer composition.
+          expect
+            .soft(assessment.reason)
+            .toBe(mux === "screen" ? "identity-replies-mismatch" : "native-provenance-missing")
+        }
+      }
+    },
+  )
 
   it("excludes a schema-v2 kitty run whose XTVERSION is missing", () => {
     const parsed = parseRun(

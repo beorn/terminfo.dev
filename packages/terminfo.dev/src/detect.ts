@@ -54,6 +54,15 @@ export function detectTerminal(): TerminalInfo {
   const os = detectOS()
   const osVersion = detectOSVersion()
 
+  // A mux pane inherits its outer app's bundle and environment. These are only hints:
+  // the identity resolver must still match the terminal's own complete protocol replies.
+  const tmux = Boolean(process.env.TMUX)
+  const screen = Boolean(process.env.STY)
+  if (tmux && screen) {
+    throw new Error("Terminal identity: TMUX and STY are both present; nested mux identity is ambiguous")
+  }
+  if (tmux || screen) return { name: tmux ? "tmux" : "screen", version: "", os, osVersion }
+
   let name = "unknown"
   let version = ""
   let windowsAncestorExecutablePath: string | null = null
