@@ -194,7 +194,7 @@ describe("release 1 decisive-count reader", () => {
     }
   }, 15_000)
 
-  it("reports candidate 3's exact modes/device delta on the declared candidate-2 freeze", () => {
+  it("reports candidate 3's exact modes/device delta on the declared candidate-4 freeze", () => {
     // The generic reader already covers suite selection and grading; this checks the new CLI value's
     // actual data path, including all unavailable rows, rather than constructing its spec in the test.
     const contentDir = join(import.meta.dirname, "..", "content")
@@ -212,8 +212,9 @@ describe("release 1 decisive-count reader", () => {
         .digest("hex"),
     ).toBe("8169578733a75fabb8da1edf4e32fb37a35ea40de9287ea5c30851136b3a3ced")
     expect(cohort.scoredIds).toHaveLength(44)
-    // The f945 freeze carries 263 app ids, including modes.decsscls, unlike its c240 predecessor.
-    // The nine environment-only Device rows remain unavailable; no denominator is dropped.
+    // 30, not 29, on the frozen suite f9450b3bc56a: that suite DECLARES modes.decsscls where c24025ea22fc
+    // did not (it runs as notTested, no-semantic-observable), so the row is decidable and is no longer
+    // named unavailable. Linux-only until an all-platform collection lands on the live suite; see 30286.
     expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(30)
     expect(cohort.decidableIds.filter((id) => id.startsWith("device."))).toHaveLength(5)
     expect(cohort.unavailableIds).toHaveLength(9)
@@ -1445,15 +1446,18 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       }
       writeFileSync(
         join(suites, `${requiredSuite}.json`),
+        // The reduced probe list has to carry its text claims with it: a suite manifest whose textClaims
+        // name a probe outside its own membership is refused by the parser, and that refusal is not the
+        // zero coverage this fixture is about. Linux-only until an all-platform collection lands on the
+        // live suite; see 30286.
         JSON.stringify(
-          {
-            ...raw,
-            probes: { ...raw.probes, app: [...probeIds] },
-            // Keep the narrowed synthetic suite's text claims within its app membership.
-            ...(raw.textClaims === undefined
-              ? {}
-              : { textClaims: raw.textClaims.filter((id) => probeIds.includes(id)) }),
-          },
+          (() => {
+            const claims = (raw.textClaims ?? []).filter((id) => probeIds.includes(id))
+            const reduced: Record<string, unknown> = { ...raw, probes: { ...raw.probes, app: [...probeIds] } }
+            if (claims.length === 0) delete reduced.textClaims
+            else reduced.textClaims = claims
+            return reduced
+          })(),
           null,
           2,
         ),
