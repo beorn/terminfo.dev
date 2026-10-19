@@ -99,6 +99,19 @@ function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSui
       throw new Error(`Suite ${kind} membership mismatch: ${path}`)
     }
   }
+  if (
+    snapshot.textClaims === undefined
+      ? value.textClaims !== undefined
+      : !sameStrings(value.textClaims, snapshot.textClaims)
+  ) {
+    throw new Error(`Suite text claims mismatch: ${path}`)
+  }
+  if (
+    value.textQualification?.version !== snapshot.textQualification?.version ||
+    value.textQualification?.recipe !== snapshot.textQualification?.recipe
+  ) {
+    throw new Error(`Suite text qualification mismatch: ${path}`)
+  }
   return value
 }
 
