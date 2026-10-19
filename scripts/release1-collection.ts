@@ -185,9 +185,9 @@ const engineRow = (id: string): CollectionContext => ({
 
 /**
  * macOS apps the admin launches and owns on this host instead of collecting through the hosted
- * workflow. Empty since @cto ruled kitty onto the hosted matrix (2026-10-19): Option 2 keeps one
- * macOS pixel path, and Option 1 returns only if a codimac-only app appears that the hosted runner
- * cannot run. The route and its command stay live for that case.
+ * workflow. kitty no longer belongs here: @cto ruled it onto the hosted matrix (2026-10-19, Option
+ * 2), keeping one macOS pixel path. The route stays live for a codimac-only app that the hosted
+ * runner cannot run; such an app adds its id to this set.
  */
 const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>()
 
