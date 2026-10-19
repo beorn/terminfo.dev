@@ -7,6 +7,7 @@
  * @testonly none
  */
 import { spawnSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -142,6 +143,54 @@ test("a package whose bun.lock entry is not a matching registry tuple is still r
  * @testonly fileLinkIntegrity: mismatch case imports the binder because swapping the live .bun
  *   install would poison sibling identity tests
  */
+/**
+ * @failure A Nix derivation whose env.src is an unpacked source directory (nixpkgs kitty)
+ *   died with EISDIR in kittyIdentity, which read it as a flat archive file; no nixpkgs-built
+ *   kitty could ever be identified.
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts kittySourceProof (lane 5, lead ruling bb23d916)
+ * @reach fs-walk <fixture-only: temporary archive file and source directory>
+ * @testonly kittySourceProof: the helper is imported because driving the full kittyIdentity
+ *   needs a real pinned Nix kitty in the store, which the fixture cannot fabricate
+ */
+test("kitty source proof: archive file keeps flat sha256, directory yields its NAR hash", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "kitty-source-proof-"))
+  try {
+    const archive = join(tmp, "kitty.tar.xz")
+    writeFileSync(archive, "fake archive bytes")
+    const tree = join(tmp, "source")
+    mkdirSync(join(tree, "src"), { recursive: true })
+    writeFileSync(join(tree, "src", "main.c"), "int main(void);\n")
+    const run = (path: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
+           process.stdout.write(JSON.stringify(kittySourceProof(${JSON.stringify(path)})))`,
+        ],
+        { encoding: "utf8" },
+      )
+    const archiveResult = run(archive)
+    expect(archiveResult.status, archiveResult.stderr).toBe(0)
+    expect(JSON.parse(archiveResult.stdout)).toEqual({
+      kind: "archive",
+      sha256: createHash("sha256").update("fake archive bytes").digest("hex"),
+    })
+    const treeResult = run(tree)
+    expect(treeResult.status, treeResult.stderr).toBe(0)
+    const nar = spawnSync("nix", ["hash", "path", tree], { encoding: "utf8" })
+    expect(nar.status, nar.stderr).toBe(0)
+    expect(JSON.parse(treeResult.stdout)).toEqual({ kind: "directory", narHash: nar.stdout.trim() })
+    const missing = run(join(tmp, "absent"))
+    expect(missing.status).not.toBe(0)
+    expect(missing.stderr).toMatch(/Kitty source path is neither/)
+  } finally {
+    // raw-delete-allow: this test's own mkdtemp scratch root
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
 test("same name and version with different installed bytes is refused", () => {
   const workspace = join(fixture.vterm, "packages", "vt100")
   const tmp = mkdtempSync(join(tmpdir(), "28548-mismatch-"))
