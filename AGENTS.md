@@ -99,6 +99,30 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHash, generated }`
 
+### One suite per collection (cut one commit, collect every context there)
+
+A merge that touches the collector sources changes the probe suite id, so a run collected before that
+merge cannot be admitted (30286). A collection therefore starts at ONE commit, never at whatever `main`
+reads on the day:
+
+1. **Cut.** Choose one terminfo commit and put a branch on it.
+2. **Collect every context at that commit.** Local Linux runs in a worktree at it; macOS and Windows
+   dispatch their workflows at the same branch —
+   `gh workflow run macos-measurement.yml --ref <branch>` and
+   `gh workflow run windows-measurement.yml --ref <branch>`. Both check out the dispatched ref
+   (`actions/checkout@v4`, no `ref` override), so every context measures one suite.
+3. **Admit on that branch and merge it through Yrd** (next section), then move the release pointer onto
+   that suite: `bun scripts/suite-manifest.ts --freeze <release>` while the tree is still at the cut, or
+   later from `main` naming the admitted suite,
+   `bun scripts/suite-manifest.ts --move <release> --suite <id>`.
+4. **Probe changes merged after the cut wait for the next cut.** They are not back-ported into a
+   collection already in flight. When to cut is the release owner's call with `@chief`.
+
+A suite named by `--suite` is read from its own registry record and never compared with the live
+collector, which is what lets a pointer move onto an older admitted suite from a newer `main`; the id
+must be twelve lowercase hex and an existing manifest must carry it. A pointer never claims a suite that
+has no admitted run.
+
 ### Admitting a run (the one suite-manifest writer)
 
 A schema-v2 run cites the executable suite (`probeHash`) that produced it, and the parser refuses a run
