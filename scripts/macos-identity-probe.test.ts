@@ -16,7 +16,7 @@ import { promisify } from "node:util"
 import { expect, test, vi } from "vitest"
 import { parse } from "yaml"
 
-test("five fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
+test("seven fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   expect(Object.keys(workflow.jobs)).toEqual(["measure-macos"])
   const job = workflow.jobs["measure-macos"]
@@ -26,12 +26,18 @@ test("five fresh Mac jobs bootstrap the shared producer before checkout and coll
     "ghostty",
     "alacritty",
     "wezterm",
+    "cursor",
+    "com.microsoft.VSCode",
   ])
   expect(job["runs-on"]).toBe("macos-latest")
   const first = job.steps[0]
   expect(job.steps[1].uses).toBe("actions/checkout@v4")
   const collectIndex = job.steps.findIndex((step: { id?: string }) => step.id === "collect")
-  expect(job.steps[collectIndex + 1].if).toBe("failure() && steps.collect.outputs.iterm_failure == 'true'")
+  const failureIndex = job.steps.findIndex(
+    (step: { name?: string }) => step.name === "Preserve iTerm launch failure evidence",
+  )
+  expect(failureIndex).toBeGreaterThan(collectIndex)
+  expect(job.steps[failureIndex].if).toBe("failure() && steps.collect.outputs.iterm_failure == 'true'")
   expect(job.steps.at(-1).uses).toBe("actions/upload-artifact@v4")
   const collect = job.steps[collectIndex].run as string
   const install = job.steps.find((step: { name?: string }) => step.name === "Install this job's terminal")
