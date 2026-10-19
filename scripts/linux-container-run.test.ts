@@ -153,6 +153,7 @@ fi
   const container = join(dir, "container.json")
   const containerFacts = JSON.parse(readFileSync(container, "utf8")) as {
     collector: { frozenRunnerSha256: string; buildReceiptSha256: string }
+    executable: { path: string; sha256: string }
   }
   containerFacts.collector = { frozenRunnerSha256: digest, buildReceiptSha256: digest }
   writeFileSync(container, JSON.stringify(containerFacts))
@@ -174,6 +175,36 @@ fi
   expect(combined.sourceArtifact).toMatchObject(raw.sourceArtifact)
   expect(combined.receiptInputs.hostSha256).toBe(parsed.sha256)
   expect(combined.clipboardFixture.sha256).not.toBe(parsed.sha256)
+
+  // The launcher's post-batch check must bind the measured ELF to this run's
+  // outer app. Mux runs deliberately have no top-level app provenance.
+  const source = readFileSync(launcher, "utf8")
+  const match = source.match(/jq -e --slurpfile run "\$raw\/v2-run\.json" \\\n\s*'([^']*)'/)
+  if (!match) throw new Error("Retained executable comparison not found in scripts/linux-container-run.sh")
+  const executable = containerFacts.executable
+  const runPath = join(dir, "v2-run.json")
+  const selectedKey = mux ? "outerApp" : "provenance"
+  for (const mismatch of ["none", "path", "sha256", "missing"] as const) {
+    const measured = { ...executable }
+    if (mismatch === "path") measured.path = "/wrong/executable"
+    if (mismatch === "sha256") measured.sha256 = "wrong-hash"
+    const selected = mux ? { provenance: { executable: measured } } : { executable: measured }
+    const run = {
+      target,
+      [selectedKey]: selected,
+      // A matching wrong-location decoy must never rescue missing provenance.
+      ...(mismatch === "missing"
+        ? mux
+          ? { outerApp: {}, provenance: { executable } }
+          : { provenance: {}, outerApp: { provenance: { executable } } }
+        : {}),
+    }
+    writeFileSync(runPath, JSON.stringify(run))
+    const checked = spawnSync("jq", ["-e", "--slurpfile", "run", runPath, match[1]!, container], {
+      encoding: "utf8",
+    })
+    expect(checked.status, `${mux || "app"}: ${mismatch}: ${checked.stderr}`).toBe(mismatch === "none" ? 0 : 1)
+  }
 })
 
 // Receipt issuance must identify the newly live collector, while preserving the preflight

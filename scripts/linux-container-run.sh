@@ -1200,8 +1200,10 @@ jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_s
   echo "Raw v2 run differs from container receipt" >&2; exit 2;
 }
 jq -e --slurpfile run "$raw/v2-run.json" \
-  '.executable.path == $run[0].provenance.executable.path and
-   .executable.sha256 == $run[0].provenance.executable.sha256' \
+  '($run[0] | if .target.kind == "mux" then .outerApp.provenance.executable
+              else .provenance.executable end) as $executable |
+   .executable.path == $executable.path and
+   .executable.sha256 == $executable.sha256' \
   "$raw/container-receipt.json" >/dev/null || {
   echo "Retained v2 run executable differs from measured container ELF" >&2; exit 2;
 }
