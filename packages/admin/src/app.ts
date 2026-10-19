@@ -309,6 +309,58 @@ export interface AppLaunch {
   marker?: ProcessMarker
 }
 
+/** In-memory spawn input only: inherited environment must never be retained or logged. */
+export interface PreparedCliLaunch {
+  spawnPath: string
+  args: string[]
+  env: NodeJS.ProcessEnv
+  recipeEnvKeys: string[]
+  identityPath: string
+  executablePath: string
+  marker: ProcessMarker
+}
+
+/** Prepare the existing CLI recipe without writing the caller's command or starting a daemon. */
+export function prepareCliLaunch(appId: string, run: ProbeRun): PreparedCliLaunch {
+  const app = APPS.find((candidate) => candidate.id === appId)
+  if (!app?.cliLaunch) {
+    throw new Error(
+      `No CLI launch recipe for ${appId}; known CLI app ids: ${APPS.filter((candidate) => candidate.cliLaunch)
+        .map((candidate) => candidate.id)
+        .join(", ")}`,
+    )
+  }
+  const recipe = app.cliLaunch
+  const marker = runScopedMarker({
+    appName: app.name,
+    runId: run.id,
+    flag: recipe.markerFlag,
+    value: recipe.markerValue(run),
+  })
+  recipe.prepare?.(run, marker.value)
+  return {
+    spawnPath: recipe.spawnPath,
+    args: recipe.args(run.scriptPath, marker.value),
+    env: { ...process.env, ...recipe.env },
+    recipeEnvKeys: Object.keys(recipe.env ?? {}),
+    identityPath: join(run.directory, "owner-tty.txt"),
+    executablePath: recipe.executablePath,
+    marker,
+  }
+}
+
+/** Spawn once; GUI ownership is resolved separately after the caller's readiness handshake. */
+export function launchPreparedCli(prepared: PreparedCliLaunch): AppLaunch {
+  const child = spawn(prepared.spawnPath, prepared.args, { detached: true, stdio: "ignore", env: prepared.env })
+  child.unref()
+  return {
+    proc: child,
+    identityPath: prepared.identityPath,
+    executablePath: prepared.executablePath,
+    marker: prepared.marker,
+  }
+}
+
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
   const suite = sourceSuiteEnvironment()
   const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
@@ -330,25 +382,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the
     // launch to an already-running instance. The marker is what survives, so the owner is resolved
     // from it once the daemon has registered, never from this child handle.
-    const marker = runScopedMarker({
-      appName: app.name,
-      runId: run.id,
-      flag: app.cliLaunch.markerFlag,
-      value: app.cliLaunch.markerValue(run),
-    })
-    app.cliLaunch.prepare?.(run, marker.value)
-    const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env, ...app.cliLaunch.env },
-    })
-    child.unref()
-    return {
-      proc: child,
-      identityPath,
-      executablePath: app.cliLaunch.executablePath,
-      marker,
-    }
+    return launchPreparedCli(prepareCliLaunch(app.id, run))
   }
 
   if (app.binaryPath && existsSync(app.binaryPath)) {
@@ -530,7 +564,7 @@ function ownedKittyWindow(app: AppDef, launch: AppLaunch): KittyWindow {
  * run-scoped marker at this single moment and recorded as the arm's pid; assert and close then read only
  * that pid, so a later handoff or a reused pid can never move the owner underneath the run.
  */
-function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | undefined {
+export function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | undefined {
   if (launch.marker === undefined || launch.executablePath === undefined || launch.identityPath === undefined) {
     return undefined
   }

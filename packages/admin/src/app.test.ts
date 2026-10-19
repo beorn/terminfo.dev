@@ -9,7 +9,7 @@ import { execFileSync, execSync, spawn } from "node:child_process"
 import { mkdirSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { handleApp, stopLaunchedApp, type AppLaunch } from "./app.ts"
+import { handleApp, launchPreparedCli, prepareCliLaunch, stopLaunchedApp, type AppLaunch } from "./app.ts"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -155,6 +155,40 @@ beforeEach(() => {
   }))
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
   vi.mocked(spawn).mockReturnValue({ unref: vi.fn() } as unknown as ReturnType<typeof spawn>)
+})
+
+// The hosted caller needs recipe preparation without the local daemon. Existing handleApp
+// journeys cannot detect a hosted implementation leaking inherited environment into fixtures.
+test("hosted preparation keeps inherited secrets in spawn memory and leaves the command caller-owned", () => {
+  const secret = "hosted-inherited-secret-sentinel"
+  vi.stubEnv("TERMINFO_TEST_INHERITED_SECRET", secret)
+  const log = vi.spyOn(console, "log").mockImplementation(() => {})
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  const error = vi.spyOn(console, "error").mockImplementation(() => {})
+  try {
+    const run = { id: "private-run", directory: "/private/run", scriptPath: "/private/run/serve.sh" }
+    const prepared = prepareCliLaunch("cursor", run)
+    expect(spawn).not.toHaveBeenCalled()
+    expect(vi.mocked(writeFileSync).mock.calls.some(([path]) => path === run.scriptPath)).toBe(false)
+    const launched = launchPreparedCli(prepared)
+    expect(launched.identityPath).toBe("/private/run/owner-tty.txt")
+    expect(spawn).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(spawn).mock.calls[0]?.[2]?.env?.TERMINFO_TEST_INHERITED_SECRET).toBe(secret)
+    expect(findOwnedDaemon).not.toHaveBeenCalled()
+    expect(requestDaemonProbe).not.toHaveBeenCalled()
+    const retained = JSON.stringify({
+      writes: vi.mocked(writeFileSync).mock.calls,
+      log: log.mock.calls,
+      warn: warn.mock.calls,
+      error: error.mock.calls,
+    })
+    expect(retained).not.toContain(secret)
+  } finally {
+    vi.unstubAllEnvs()
+    log.mockRestore()
+    warn.mockRestore()
+    error.mockRestore()
+  }
 })
 
 describe("WezTerm cli-process arm", () => {
