@@ -37,7 +37,9 @@ vi.mock("node:fs", () => ({
   writeFileSync: vi.fn(),
 }))
 vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn(() => "2.15\n"),
+  execFileSync: vi.fn((file, args) =>
+    String(file).endsWith("/wezterm") && args[0] === "--version" ? "wezterm 2.15\n" : "2.15\n",
+  ),
   execSync: vi.fn(() => "2.15\n"),
   spawn: vi.fn(),
 }))
@@ -302,6 +304,32 @@ describe("Terminal.app app collection", () => {
 })
 
 describe("App version diagnostics", () => {
+  // The native WezTerm plist is 0.1.0; its executable reports this build tag instead.
+  // Listing and collection use the same private version producer.
+  test.each(["wezterm 20240203-110809-5046fc22\n", "", "unexpected version text"])(
+    "WezTerm version comes from its executable: %j",
+    async (reply) => {
+      const output = vi.spyOn(console, "log").mockImplementation(() => {})
+      vi.mocked(execFileSync).mockImplementation((file, args) => {
+        if (String(file).endsWith("/wezterm") && args[0] === "--version") return reply
+        return String(args.at(-1)).includes("WezTerm.app") ? "0.1.0\n" : "2.15\n"
+      })
+      try {
+        if (reply.startsWith("wezterm ")) {
+          await handleApp(undefined, {})
+          expect(output.mock.calls.map(([line]) => String(line)).find((line) => line.includes("WezTerm"))).toContain(
+            "20240203-110809-5046fc22",
+          )
+        } else {
+          await expect(handleApp(undefined, {})).rejects.toThrow(/WezTerm.*wezterm.*--version/)
+        }
+        expect(createProbeRun).not.toHaveBeenCalled()
+      } finally {
+        output.mockRestore()
+      }
+    },
+  )
+
   test.each(["missing plist", "permission denied"])(
     "listing refuses %s instead of printing unknown",
     async (reason) => {

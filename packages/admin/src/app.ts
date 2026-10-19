@@ -158,17 +158,31 @@ const APPS: AppDef[] = [
 
 function getAppVersion(app: AppDef): string {
   const plistPath = join(app.appPath, "Contents", "Info.plist")
+  // WezTerm's plist uses a placeholder; the same installed CLI supplies its measured build tag.
+  const cliVersion = app.id === "wezterm"
+  const source = cliVersion ? `${app.binaryPath} --version` : plistPath
   try {
-    const version = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", plistPath], {
-      encoding: "utf8",
-      timeout: 5000,
-      maxBuffer: 262144,
-    }).trim()
-    if (!version) throw new Error("CFBundleShortVersionString is empty")
+    const raw = execFileSync(
+      cliVersion ? app.binaryPath : "/usr/libexec/PlistBuddy",
+      cliVersion ? ["--version"] : ["-c", "Print :CFBundleShortVersionString", plistPath],
+      {
+        encoding: "utf8",
+        timeout: 5000,
+        maxBuffer: 262144,
+      },
+    ).trim()
+    const version = cliVersion ? /^wezterm (\S+)$/.exec(raw)?.[1] : raw
+    if (!version) {
+      throw new Error(
+        cliVersion
+          ? `Expected "wezterm <version>", received ${JSON.stringify(raw)}`
+          : "CFBundleShortVersionString is empty",
+      )
+    }
     return version
   } catch (cause) {
     const detail = cause instanceof Error ? cause.message : String(cause)
-    throw new Error(`Cannot read ${app.name} version from ${plistPath}: ${detail}`, { cause })
+    throw new Error(`Cannot read ${app.name} version from ${source}: ${detail}`, { cause })
   }
 }
 
