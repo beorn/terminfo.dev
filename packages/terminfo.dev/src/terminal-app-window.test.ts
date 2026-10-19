@@ -9,16 +9,14 @@ import { spawnSync } from "node:child_process"
 import { realpathSync } from "node:fs"
 import { describe, expect, test, vi } from "vitest"
 import {
-  argvCarriesMarker,
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
-  descendToOwner,
   parseKittyIdentity,
   recordedOwnerTty,
   resolveOwnedProcessByMarker,
-  runScopedMarker,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
+import { argvCarriesMarker, descendToOwner, runScopedMarker } from "./owned-process.ts"
 
 vi.mock("node:child_process", () => ({ spawnSync: vi.fn() }))
 vi.mock("node:fs", () => ({ realpathSync: vi.fn() }))
@@ -398,7 +396,7 @@ describe("run-scoped marker derivation", () => {
     ["an empty flag", "", `/tmp/terminfo-${runId}`],
     ["a flag containing whitespace", "--config file", `/tmp/terminfo-${runId}`],
   ])("refuses %s", (_name, flag, value) => {
-    expect(() => runScopedMarker({ appName: "WezTerm", runId, flag, value })).toThrow(/cli-process marker/)
+    expect(() => runScopedMarker({ appName: "WezTerm", runId, flag, value })).toThrow(/owned-process marker/)
   })
 })
 

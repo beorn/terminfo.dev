@@ -50,7 +50,8 @@ vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
   launchTerminalWindow: vi.fn(),
 }))
-vi.mock("../../terminfo.dev/src/terminal-app-window.ts", () => ({
+vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../terminfo.dev/src/terminal-app-window.ts")>()),
   assertOwnedTerminalWindow: vi.fn(),
   closeOwnedTerminalWindow: vi.fn(),
   parseKittyIdentity: vi.fn(),
@@ -141,12 +142,14 @@ describe("Terminal.app app collection", () => {
     expect(captureTerminalAppReceipt).toHaveBeenCalledWith(window, 555, "2.15")
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
     expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-      asserter: "terminfo-admin",
-      launchRunId: "private-run",
-      workerPid: 555,
-      windowId: 14,
-      tabTty: "/dev/ttys003",
-      intendedVersion: "2.15",
+      terminalApp: {
+        asserter: "terminfo-admin",
+        launchRunId: "private-run",
+        workerPid: 555,
+        windowId: 14,
+        tabTty: "/dev/ttys003",
+        intendedVersion: "2.15",
+      },
     })
     const requestOrder = vi.mocked(requestDaemonProbe).mock.invocationCallOrder[0]!
     expect(vi.mocked(captureTerminalAppReceipt).mock.invocationCallOrder[0]).toBeLessThan(requestOrder)

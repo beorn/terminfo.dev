@@ -33,6 +33,7 @@ import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
+  kittyOwnedProcess,
   parseKittyIdentity,
   recordedOwnerTty,
   resolveOwnedProcessByMarker,
@@ -41,6 +42,7 @@ import {
   type OwnedTerminalWindow,
   type KittyWindow,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
+import type { ProcessOwnerAssertion } from "../../terminfo.dev/src/owned-terminal.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -292,20 +294,24 @@ async function probeDaemon(
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
   assertOwnedTerminalWindow(ownedWindow, daemon.pid)
-  // The daemon's owner-request field is Terminal.app's own assertion and refuses any other terminal;
-  // kitty's ownership is proved here, in the run trace, and never sent as a Terminal.app claim.
+  // One owner claim per request, never two: Terminal.app sends its window assertion, while kitty and
+  // cli-process send the shared process proof's own observables so the worker can re-verify them.
   const res = await requestDaemonProbe(
     daemon,
     ownedWindow.provider === "terminal-app"
       ? {
-          asserter: "terminfo-admin",
-          launchRunId: daemon.runId,
-          workerPid: daemon.pid,
-          windowId: ownedWindow.windowId,
-          tabTty: ownedWindow.tty,
-          intendedVersion: version,
+          terminalApp: {
+            asserter: "terminfo-admin",
+            launchRunId: daemon.runId,
+            workerPid: daemon.pid,
+            windowId: ownedWindow.windowId,
+            tabTty: ownedWindow.tty,
+            intendedVersion: version,
+          },
         }
-      : undefined,
+      : {
+          process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
+        },
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
@@ -378,6 +384,28 @@ function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | undefin
     marker: launch.marker,
     tty: recordedOwnerTty(readFileSync(launch.identityPath, "utf8")),
   })
+}
+
+/** A process-backed window's claim: the shared proof's observables, with kitty's instance group as its
+ * marker. Terminal.app's window id is not part of it — the worker cannot check one. */
+function processOwnerAssertion(
+  window: Exclude<OwnedTerminalWindow, { provider: "terminal-app" }>,
+  launchRunId: string,
+  workerPid: number,
+  intendedVersion: string,
+): ProcessOwnerAssertion {
+  const owned = window.provider === "kitty" ? kittyOwnedProcess(window) : window
+  return {
+    asserter: "terminfo-admin",
+    launchRunId,
+    workerPid,
+    provider: window.provider,
+    ownerPid: owned.ownerPid,
+    executablePath: owned.executablePath,
+    marker: owned.marker,
+    tty: owned.tty,
+    intendedVersion,
+  }
 }
 
 async function runApp(
