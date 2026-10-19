@@ -8,7 +8,7 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -198,7 +198,6 @@ exports.activate = (context) => {
         const directory = dirname(markerValue)
         return [
           "--new-window",
-          "--verbose",
           "--user-data-dir",
           markerValue,
           "--extensions-dir",
@@ -294,27 +293,17 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
       value: app.cliLaunch.markerValue(run),
     })
     app.cliLaunch.prepare?.(run, marker.value)
-    const stdout = openSync(join(run.directory, "launch.stdout.log"), "wx", 0o600)
-    try {
-      const stderr = openSync(join(run.directory, "launch.stderr.log"), "wx", 0o600)
-      try {
-        const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
-          detached: true,
-          stdio: ["ignore", stdout, stderr],
-          env: { ...process.env, ...app.cliLaunch.env },
-        })
-        child.unref()
-        return {
-          proc: child,
-          identityPath,
-          executablePath: app.cliLaunch.executablePath,
-          marker,
-        }
-      } finally {
-        closeSync(stderr)
-      }
-    } finally {
-      closeSync(stdout)
+    const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, ...app.cliLaunch.env },
+    })
+    child.unref()
+    return {
+      proc: child,
+      identityPath,
+      executablePath: app.cliLaunch.executablePath,
+      marker,
     }
   }
 
