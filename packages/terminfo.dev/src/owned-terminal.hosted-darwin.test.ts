@@ -51,8 +51,12 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "wezterm",
     comm: "wezterm-gui",
   })
+  expect(hostedDarwinAppFromExecutablePath("/Applications/kitty.app/Contents/MacOS/kitty")).toEqual({
+    id: "kitty",
+    comm: "kitty",
+  })
   expect(() => hostedDarwinAppFromExecutablePath("/usr/bin/script")).toThrow(
-    /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm/,
+    /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm, kitty/,
   )
 })
 

@@ -141,6 +141,9 @@ function measureAppLaunch(): Record<string, unknown> {
   } else if (appId === "alacritty") {
     const installer = join(required("RUNNER_TEMP"), "Alacritty.dmg")
     sourceArtifact = { path: installer, sha256: hashBytes("the installed Alacritty.dmg", installer) }
+  } else if (appId === "kitty") {
+    const installer = join(required("RUNNER_TEMP"), "kitty-0.48.2.dmg")
+    sourceArtifact = { path: installer, sha256: hashBytes("the installed kitty-0.48.2.dmg", installer) }
   } else if (CASK_APP_IDS.has(appId)) {
     const installer = measured(`brew --cache --cask ${appId}`, "brew", ["--cache", "--cask", appId]).trim()
     sourceArtifact = { path: installer, sha256: hashBytes(`the cached ${appId} cask installer`, installer) }
