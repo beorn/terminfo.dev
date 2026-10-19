@@ -108,9 +108,10 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     if (JSON.stringify(current) !== JSON.stringify(window)) {
       throw new Error(`Darwin owned window ${window.id} identity or bounds changed during capture`)
     }
+    return current
   }
   const acquire = async (deadline?: number) => {
-    await assertOwned(deadline)
+    const preCaptureWindow = await assertOwned(deadline)
     const path = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
     const file = "/usr/sbin/screencapture"
     const args = ["-l", String(window.id), "-o", "-x", "-t", "png", path]
@@ -125,8 +126,9 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     } catch (cause) {
       const underlying =
         cause instanceof Error ? { name: cause.name, message: cause.message } : { message: String(cause) }
+      const captureContext = { measuredAppPid: appPid, selectedWindow: window, preCaptureWindow }
       const error = new Error(
-        `Darwin screenshot capture failed: ${JSON.stringify({ file, args, outputPath: path, stdout: stdout?.toString() ?? null, stdoutBase64: stdout?.toString("base64") ?? null, stderr: stderr.toString(), stderrBase64: stderr.toString("base64"), cause: underlying })}`,
+        `Darwin screenshot capture failed: ${JSON.stringify({ captureContext, file, args, outputPath: path, stdout: stdout?.toString() ?? null, stdoutBase64: stdout?.toString("base64") ?? null, stderr: stderr.toString(), stderrBase64: stderr.toString("base64"), cause: underlying })}`,
         { cause },
       )
       error.name = stdout === undefined ? "DarwinCaptureCommandFailed" : "DarwinCaptureOutputMissing"
