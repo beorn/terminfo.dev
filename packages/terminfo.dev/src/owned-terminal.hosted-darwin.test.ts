@@ -51,6 +51,23 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "wezterm",
     comm: "wezterm-gui",
   })
+  // 30211: the receipt names the editor GUI, never its CLI or an Electron helper.
+  expect(hostedDarwinAppFromExecutablePath("/Applications/Cursor.app/Contents/MacOS/Cursor")).toEqual({
+    id: "cursor",
+    comm: "Cursor",
+  })
+  expect(hostedDarwinAppFromExecutablePath("/Applications/Visual Studio Code.app/Contents/MacOS/Code")).toEqual({
+    id: "com.microsoft.VSCode",
+    comm: "Code",
+  })
+  for (const path of [
+    "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+    "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+    "/Applications/Cursor.app/Contents/Frameworks/Cursor Helper.app/Contents/MacOS/Cursor Helper",
+    "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper",
+  ] as const) {
+    expect(() => hostedDarwinAppFromExecutablePath(path)).toThrow(/Hosted Darwin receipt executable/)
+  }
   expect(() => hostedDarwinAppFromExecutablePath("/usr/bin/script")).toThrow(
     /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm/,
   )
@@ -102,6 +119,32 @@ test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps
   expect(() => requireHostedDarwinAppAncestor("iTerm2", wrong)).toThrow(
     /Hosted Darwin ancestry reached \/Applications\/Ghostty\.app\/Contents\/MacOS\/ghostty \(pid 90\) while the receipt names iTerm2/,
   )
+
+  for (const [comm, path, otherPath] of [
+    [
+      "Cursor",
+      "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    ],
+    [
+      "Code",
+      "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+      "/Applications/Cursor.app/Contents/MacOS/Cursor",
+    ],
+  ] as const) {
+    const editor = [
+      { pid: 1, ppid: 0, comm: "/sbin/launchd" },
+      { pid: 90, ppid: 1, comm: path },
+      { pid: 100, ppid: 90, comm: "/bin/zsh" },
+    ]
+    expect(requireHostedDarwinAppAncestor(comm, editor)).toEqual(editor[1])
+    expect(() => requireHostedDarwinAppAncestor(comm, [...editor, { pid: 110, ppid: 100, comm: otherPath }])).toThrow(
+      `Hosted Darwin ancestry reached ${otherPath} (pid 110) while the receipt names ${comm}`,
+    )
+    expect(() => requireHostedDarwinAppAncestor(comm, [{ pid: 90, ppid: 1, comm: `${comm} Helper` }])).toThrow(
+      `Hosted Darwin ancestry never reached ${comm}`,
+    )
+  }
 })
 
 test("darwinHosted is a third XOR arm: linux plus darwinHosted is refused", async () => {

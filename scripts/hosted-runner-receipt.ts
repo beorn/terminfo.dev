@@ -141,6 +141,10 @@ function measureAppLaunch(): Record<string, unknown> {
   } else if (appId === "alacritty") {
     const installer = join(required("RUNNER_TEMP"), "Alacritty.dmg")
     sourceArtifact = { path: installer, sha256: hashBytes("the installed Alacritty.dmg", installer) }
+  } else if (appId === "cursor" || appId === "com.microsoft.VSCode") {
+    // The workflow installs this retained pinned ZIP directly; canonical editor IDs are not cask tokens.
+    const installer = join(required("RUNNER_TEMP"), "editor-installer.zip")
+    sourceArtifact = { path: installer, sha256: hashBytes("the installed editor-installer.zip", installer) }
   } else if (CASK_APP_IDS.has(appId)) {
     const installer = measured(`brew --cache --cask ${appId}`, "brew", ["--cache", "--cask", appId]).trim()
     sourceArtifact = { path: installer, sha256: hashBytes(`the cached ${appId} cask installer`, installer) }

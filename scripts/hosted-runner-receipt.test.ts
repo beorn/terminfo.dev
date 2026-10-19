@@ -66,6 +66,10 @@ const values = process.env.APP_ID === "iterm2"
   ? { CFBundleShortVersionString: "3.6.11", CFBundleVersion: "3.6.11", CFBundleExecutable: "iTerm2" }
   : process.env.APP_ID === "wezterm"
   ? { CFBundleShortVersionString: "20240203", CFBundleVersion: "20240203", CFBundleExecutable: "wezterm" }
+  : process.env.APP_ID === "cursor"
+  ? { CFBundleShortVersionString: "3.0.8", CFBundleVersion: "30211", CFBundleExecutable: "Cursor" }
+  : process.env.APP_ID === "com.microsoft.VSCode"
+  ? { CFBundleShortVersionString: "1.126.0", CFBundleVersion: "30212", CFBundleExecutable: "Code" }
   : { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
 const value = values[process.argv[3]];
 if (!value) { console.error("no fixture value for " + process.argv[3]); process.exit(1); }
@@ -77,7 +81,7 @@ console.log(value);
     // case name its own cached installer so two cask apps cannot silently share one artifact.
     await writeFile(
       join(dir, "brew"),
-      `#!${process.execPath}\nconsole.log(process.env.BREW_CASK_PATH || ${JSON.stringify(installer)});\n`,
+      `#!${process.execPath}\nif (["cursor", "com.microsoft.VSCode"].includes(process.env.APP_ID)) { console.error("editor IDs must not reach cask lookup"); process.exit(1); }\nconsole.log(process.env.BREW_CASK_PATH || ${JSON.stringify(installer)});\n`,
       { mode: 0o755 },
     )
     const address = server.address()
@@ -188,6 +192,39 @@ console.log(value);
         sha256: createHash("sha256").update(weztermInstallerBytes).digest("hex"),
       },
     })
+    // 30211: both canonical IDs bind the ZIP actually installed by their isolated job. Existing
+    // cask/iTerm cases cannot catch an editor using a cask token or hashing another cached archive.
+    for (const [appId, bundleName, executableName, version, build] of [
+      ["cursor", "Cursor.app", "Cursor", "3.0.8", "30211"],
+      ["com.microsoft.VSCode", "Visual Studio Code.app", "Code", "1.126.0", "30212"],
+    ] as const) {
+      const editorBundle = join(dir, bundleName)
+      await mkdir(join(editorBundle, "Contents", "MacOS"), { recursive: true })
+      await writeFile(join(editorBundle, "Contents", "Info.plist"), `fixture ${appId} plist\n`)
+      const editorExecutable = join(editorBundle, "Contents", "MacOS", executableName)
+      const editorExecutableBytes = `fixture ${appId} GUI executable\n`
+      await writeFile(editorExecutable, editorExecutableBytes)
+      const editorInstaller = join(dir, "editor-installer.zip")
+      const editorInstallerBytes = `fixture ${appId} installed ZIP\n`
+      await writeFile(editorInstaller, editorInstallerBytes)
+      env.APP_ID = appId
+      env.APP_BUNDLE = editorBundle
+      // Deliberately retain another app's valid cask archive: it must not enter this receipt.
+      env.BREW_CASK_PATH = weztermInstaller
+      const editorReceipt = join(dir, `${executableName}-host-measured.json`)
+      await run("emit", start, editorReceipt)
+      expect(parseDisposableReceipt(await readFile(editorReceipt, "utf8")).appLaunch).toEqual({
+        bundlePath: realpathSync(editorBundle),
+        cfBundleShortVersionString: version,
+        cfBundleVersion: build,
+        executablePath: realpathSync(editorExecutable),
+        executableSha256: createHash("sha256").update(editorExecutableBytes).digest("hex"),
+        sourceArtifact: {
+          path: editorInstaller,
+          sha256: createHash("sha256").update(editorInstallerBytes).digest("hex"),
+        },
+      })
+    }
     env.APP_ID = "ghostty"
     env.APP_BUNDLE = bundle
     env.BREW_CASK_PATH = ""
@@ -315,6 +352,11 @@ console.log(values[process.argv[3]] ?? "");
     await expect(run({ APP_ID: "iterm2" }, "emit", start, join(dir, "no-iterm-installer.json"))).rejects.toThrow(
       /cannot read the installed iTerm2-3_6_11\.zip/,
     )
+    for (const appId of ["cursor", "com.microsoft.VSCode"]) {
+      await expect(run({ APP_ID: appId }, "emit", start, join(dir, `no-${appId}-installer.json`))).rejects.toThrow(
+        /cannot read the installed editor-installer\.zip/,
+      )
+    }
     // An app with no measured installer route is refused, never described.
     await expect(run({ APP_ID: "warp" }, "emit", start, join(dir, "no-route.json"))).rejects.toThrow(
       /no measured source-artifact route for APP_ID="warp"/,
