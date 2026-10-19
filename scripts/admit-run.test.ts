@@ -47,7 +47,7 @@ function authoringFixture(): void {
   const directory = temp("terminfo-admission-authoring-")
   const git = (...args: string[]): string =>
     execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
-  git("init", "-q", "-b", "main")
+  git("init", "-q", "-b", "task/fixture")
   git("config", "user.email", "fixture@example.invalid")
   git("config", "user.name", "fixture")
   writeFileSync(join(directory, "fixture.txt"), "main\n")
@@ -55,10 +55,12 @@ function authoringFixture(): void {
   git("commit", "-q", "-m", "main fixture")
   git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
   const assertAuthoring = suiteManifest.assertDeclareIsAuthoring
-  expect(() => assertAuthoring(directory)).toThrow(/origin\/main/)
-  writeFileSync(join(directory, "fixture.txt"), "authoring\n")
-  git("add", "fixture.txt")
-  git("commit", "-q", "-m", "authoring fixture")
+  // A fresh branch at origin/main authors the commit admission writes (30163); the same commit on the
+  // default branch does not. The guard is the real one, pointed at this fixture.
+  expect(() => assertAuthoring(directory)).not.toThrow()
+  git("switch", "-q", "-C", "main")
+  expect(() => assertAuthoring(directory)).toThrow(/default branch/)
+  git("switch", "-q", "task/fixture")
   vi.spyOn(suiteManifest, "assertDeclareIsAuthoring").mockImplementation((_root, hash) =>
     assertAuthoring(directory, hash),
   )

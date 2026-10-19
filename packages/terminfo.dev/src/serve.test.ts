@@ -143,6 +143,17 @@ describe("daemon HTTP boundary", () => {
       tabTty: "/dev/ttys004",
       intendedVersion: "2.15",
     }
+    const processOwner = {
+      asserter: "terminfo-admin",
+      launchRunId: registration.runId,
+      workerPid: registration.pid,
+      provider: "kitty",
+      ownerPid: 900,
+      executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+      marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` },
+      tty: "/dev/ttys004",
+      intendedVersion: "0.44.0",
+    }
     const headers = { Authorization: `Bearer ${registration.token}`, "Content-Type": "application/json" }
     const unauthenticated = await fetch(url, { method: "POST", body: JSON.stringify({ terminalAppOwner: owner }) })
     expect(unauthenticated.status).toBe(403)
@@ -153,10 +164,15 @@ describe("daemon HTTP boundary", () => {
       JSON.stringify({ terminalAppOwner: { ...owner, workerPid: registration.pid + 1 } }),
       JSON.stringify({ terminalAppOwner: { ...owner, token: registration.token } }),
       JSON.stringify({ unexpectedOwner: owner }),
+      JSON.stringify({ processOwner: null }),
+      JSON.stringify({ processOwner: { ...processOwner, launchRunId: "f".repeat(32) } }),
+      JSON.stringify({ processOwner: { ...processOwner, workerPid: registration.pid + 1 } }),
+      JSON.stringify({ processOwner: { ...processOwner, windowId: 791 } }),
+      JSON.stringify({ terminalAppOwner: owner, processOwner: { ...owner, provider: "kitty" } }),
     ]) {
       const response = await fetch(url, { method: "POST", headers, body })
       expect(response.status).toBe(400)
-      expect(await response.json()).toEqual({ error: "Invalid or mismatched Terminal.app owner assertion" })
+      expect(await response.json()).toEqual({ error: "Invalid or mismatched owned-terminal owner assertion" })
     }
   })
 

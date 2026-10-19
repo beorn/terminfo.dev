@@ -450,17 +450,44 @@ describe("TTY transaction replies", () => {
   })
 })
 
-/** The window is a measured value, so widening it is explicit and a typo must never be silent. */
+/**
+ * The window is a measured value, so widening it is explicit; a typo falls back to the documented
+ * floor with a named warning instead of refusing the sizing run (28385, 30255).
+ */
 describe("sentinel grace override", () => {
-  it("keeps the floor when unset or empty, honours a whole count, and refuses anything else", () => {
-    expect(sentinelGraceMs(undefined)).toBe(250)
-    expect(sentinelGraceMs("")).toBe(250)
-    expect(sentinelGraceMs("1000")).toBe(1000)
-    expect(() => sentinelGraceMs("1s")).toThrow(/whole number of milliseconds/)
-    expect(() => sentinelGraceMs("-5")).toThrow(/whole number of milliseconds/)
-    expect(() => sentinelGraceMs("0")).toThrow(/positive whole number/)
-    expect(() => sentinelGraceMs("1.5")).toThrow(/whole number of milliseconds/)
-    expect(() => sentinelGraceMs("9007199254740993")).toThrow(/positive whole number/)
+  it("keeps the floor when unset or empty and honours a whole count, silently", () => {
+    const warn = vi.fn()
+    expect(sentinelGraceMs(undefined, warn)).toBe(250)
+    expect(sentinelGraceMs("", warn)).toBe(250)
+    expect(sentinelGraceMs("1000", warn)).toBe(1000)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["1s", "not a whole number"],
+    ["-5", "negative"],
+    ["0", "zero"],
+    ["1.5", "a fraction"],
+    ["9007199254740993", "past the safe-integer range"],
+  ])("falls back to the floor and warns for %s (%s)", (raw) => {
+    const warn = vi.fn()
+    expect(sentinelGraceMs(raw, warn)).toBe(250)
+    expect(warn).toHaveBeenCalledTimes(1)
+    const [line] = warn.mock.calls[0] ?? []
+    expect(line).toContain("TERMINFO_SENTINEL_GRACE_MS")
+    expect(line).toContain(JSON.stringify(raw))
+    expect(line).toContain("250")
+  })
+
+  it("writes the warning to stderr when no warn seam is passed", () => {
+    const writes: string[] = []
+    vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+      writes.push(String(chunk))
+      return true
+    }) as typeof process.stderr.write)
+    expect(sentinelGraceMs("1s")).toBe(250)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toContain("TERMINFO_SENTINEL_GRACE_MS")
   })
 })
 

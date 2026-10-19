@@ -310,7 +310,7 @@ it("sends the attributed owner assertion only after verifying the private daemon
     terminal: "terminal-app",
     terminalVersion: "2.15",
   }
-  await requestDaemonProbe(registration, owner)
+  await requestDaemonProbe(registration, { terminalApp: owner })
   expect(seen.map(({ path, method }) => ({ path, method }))).toEqual([
     { path: "/info", method: "GET" },
     { path: "/probe", method: "POST" },
@@ -435,4 +435,56 @@ it("refuses permissive stores, symlinks and conflicting bytes before returning a
     }),
   ).rejects.toThrow(/symbolic link/)
   expect(existsSync(join(publicDir, "http-responses"))).toBe(false)
+})
+
+it("sends the process owner as processOwner, refused when it names another daemon run or pid", async () => {
+  const owner = {
+    asserter: "terminfo-admin" as const,
+    launchRunId: "c".repeat(32),
+    workerPid: 222,
+    provider: "kitty" as const,
+    ownerPid: 900,
+    executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+    marker: { flag: "--instance-group", value: `terminfo-${"c".repeat(32)}` },
+    tty: "/dev/ttys004",
+    intendedVersion: "0.44.0",
+  }
+  const seen: Array<{ path: string; method: string; body: string }> = []
+  const server = createServer((req, res) => {
+    void (async () => {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(Buffer.from(chunk))
+      seen.push({ path: req.url ?? "", method: req.method ?? "", body: Buffer.concat(chunks).toString() })
+      res.end(JSON.stringify({ runId: owner.launchRunId, pid: 222, terminal: "kitty", terminalVersion: "0.44.0" }))
+    })().catch((error: unknown) => res.destroy(error instanceof Error ? error : new Error(String(error))))
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("fixture did not bind")
+  const registration = {
+    runId: owner.launchRunId,
+    pid: 222,
+    port: address.port,
+    token: "b".repeat(64),
+    terminal: "kitty",
+    terminalVersion: "0.44.0",
+  }
+  try {
+    await requestDaemonProbe(registration, { process: owner })
+    expect(seen.map(({ path, method }) => ({ path, method }))).toEqual([
+      { path: "/info", method: "GET" },
+      { path: "/probe", method: "POST" },
+    ])
+    expect(JSON.parse(seen[1]!.body)).toEqual({ processOwner: owner })
+
+    await expect(requestDaemonProbe({ ...registration, runId: "e".repeat(32) }, { process: owner })).rejects.toThrow(
+      /kitty owner assertion differs from the selected daemon/,
+    )
+    await expect(requestDaemonProbe({ ...registration, pid: 223 }, { process: owner })).rejects.toThrow(
+      /kitty owner assertion differs from the selected daemon/,
+    )
+  } finally {
+    server.close()
+  }
 })

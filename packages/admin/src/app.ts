@@ -33,14 +33,15 @@ import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
+  kittyOwnedProcess,
   parseKittyIdentity,
   recordedOwnerTty,
   resolveOwnedProcessByMarker,
-  runScopedMarker,
-  type ProcessMarker,
   type OwnedTerminalWindow,
   type KittyWindow,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
+import type { ProcessOwnerAssertion } from "../../terminfo.dev/src/owned-terminal.ts"
+import { runScopedMarker, type ProcessMarker } from "../../terminfo.dev/src/owned-process.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(__dirname, "..", "..", "..")
@@ -72,10 +73,16 @@ interface AppDef {
     markerValue: (run: ProbeRun) => string
     /** The launch arguments, given the serve script and the run-scoped marker value. */
     args: (script: string, markerValue: string) => string[]
+    /** Run-scoped files the marker refers to, written once the marker is validated and before the
+     * launch. A marker that names a config file needs that file to exist; no other app needs this. */
+    prepare?: (run: ProbeRun, markerValue: string) => void
   }
 }
 
 const BUN = process.execPath // use the same bun that's running us
+
+/** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
+const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
 
 const APPS: AppDef[] = [
   {
@@ -109,6 +116,33 @@ const APPS: AppDef[] = [
     binaryPath: KITTY_BINARY_PATH,
     launchArgs: (script) => ["--hold", script],
     bundleId: "net.kovidgoyal.kitty",
+  },
+  {
+    name: "WezTerm",
+    id: "wezterm",
+    appPath: "/Applications/WezTerm.app",
+    binaryPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
+    launchArgs: (script) => ["start", "--always-new-process", "--", "/bin/bash", script],
+    bundleId: "com.github.wez.wezterm",
+    // The CLI execs into this GUI binary, which is the process that carries the marker in its argv.
+    cliLaunch: {
+      spawnPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
+      executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+      markerFlag: "--config-file",
+      markerValue: weztermConfigPath,
+      prepare: (_run, markerValue) => {
+        writeFileSync(markerValue, "return {}\n", { flag: "wx", mode: 0o600 })
+      },
+      args: (script, markerValue) => [
+        "--config-file",
+        markerValue,
+        "start",
+        "--always-new-process",
+        "--",
+        "/bin/bash",
+        script,
+      ],
+    },
   },
   {
     name: "Warp",
@@ -180,6 +214,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
       flag: app.cliLaunch.markerFlag,
       value: app.cliLaunch.markerValue(run),
     })
+    app.cliLaunch.prepare?.(run, marker.value)
     const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
       detached: true,
       stdio: "ignore",
@@ -292,20 +327,24 @@ async function probeDaemon(
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
   assertOwnedTerminalWindow(ownedWindow, daemon.pid)
-  // The daemon's owner-request field is Terminal.app's own assertion and refuses any other terminal;
-  // kitty's ownership is proved here, in the run trace, and never sent as a Terminal.app claim.
+  // One owner claim per request, never two: Terminal.app sends its window assertion, while kitty and
+  // cli-process send the shared process proof's own observables so the worker can re-verify them.
   const res = await requestDaemonProbe(
     daemon,
     ownedWindow.provider === "terminal-app"
       ? {
-          asserter: "terminfo-admin",
-          launchRunId: daemon.runId,
-          workerPid: daemon.pid,
-          windowId: ownedWindow.windowId,
-          tabTty: ownedWindow.tty,
-          intendedVersion: version,
+          terminalApp: {
+            asserter: "terminfo-admin",
+            launchRunId: daemon.runId,
+            workerPid: daemon.pid,
+            windowId: ownedWindow.windowId,
+            tabTty: ownedWindow.tty,
+            intendedVersion: version,
+          },
         }
-      : undefined,
+      : {
+          process: processOwnerAssertion(ownedWindow, daemon.runId, daemon.pid, version),
+        },
   )
   const retained = await readRetainedDaemonProbeResponse(res)
   console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
@@ -378,6 +417,28 @@ function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | undefin
     marker: launch.marker,
     tty: recordedOwnerTty(readFileSync(launch.identityPath, "utf8")),
   })
+}
+
+/** A process-backed window's claim: the shared proof's observables, with kitty's instance group as its
+ * marker. Terminal.app's window id is not part of it — the worker cannot check one. */
+function processOwnerAssertion(
+  window: Exclude<OwnedTerminalWindow, { provider: "terminal-app" }>,
+  launchRunId: string,
+  workerPid: number,
+  intendedVersion: string,
+): ProcessOwnerAssertion {
+  const owned = window.provider === "kitty" ? kittyOwnedProcess(window) : window
+  return {
+    asserter: "terminfo-admin",
+    launchRunId,
+    workerPid,
+    provider: window.provider,
+    ownerPid: owned.ownerPid,
+    executablePath: owned.executablePath,
+    marker: owned.marker,
+    tty: owned.tty,
+    intendedVersion,
+  }
 }
 
 async function runApp(
