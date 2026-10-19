@@ -86,6 +86,50 @@ const BUN = process.execPath // use the same bun that's running us
 /** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
 const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
 
+function prepareEditorFixture(run: ProbeRun, markerValue: string, prefix: "cursor" | "vscode"): void {
+  const fixture = join(run.directory, `${prefix}-fixture`)
+  for (const directory of [markerValue, join(run.directory, `${prefix}-extensions`), fixture]) {
+    mkdirSync(directory, { mode: 0o700 })
+  }
+  writeFileSync(
+    join(fixture, "package.json"),
+    JSON.stringify({
+      name: `terminfo-${prefix}-${run.id}`,
+      publisher: "terminfo",
+      version: "0.0.0",
+      engines: { vscode: "^1.74.0" },
+      main: "./extension.cjs",
+      activationEvents: ["onStartupFinished"],
+    }),
+    { flag: "wx", mode: 0o600 },
+  )
+  const terminal = {
+    name: `terminfo-${run.id}`,
+    shellPath: "/bin/bash",
+    shellArgs: [run.scriptPath],
+    cwd: run.directory,
+  }
+  writeFileSync(
+    join(fixture, "extension.cjs"),
+    `const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal(${JSON.stringify(terminal)});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`,
+    { flag: "wx", mode: 0o600 },
+  )
+}
+
+const vscodeAdditionalStatePaths = [
+  ["--shared-data-dir", "vscode-shared"],
+  ["--agent-plugins-dir", "vscode-agent-plugins"],
+  ["--agents-user-data-dir", "vscode-agents-data"],
+  ["--agents-extensions-dir", "vscode-agents-extensions"],
+  ["--crash-reporter-directory", "vscode-crash"],
+] as const
+
 const APPS: AppDef[] = [
   {
     name: "Ghostty",
@@ -159,41 +203,7 @@ const APPS: AppDef[] = [
       markerFlag: "--user-data-dir",
       markerValue: (run) => join(run.directory, `cursor-${run.id}`),
       env: { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" },
-      prepare: (run, markerValue) => {
-        const fixture = join(run.directory, "cursor-fixture")
-        for (const directory of [markerValue, join(run.directory, "cursor-extensions"), fixture]) {
-          mkdirSync(directory, { mode: 0o700 })
-        }
-        writeFileSync(
-          join(fixture, "package.json"),
-          JSON.stringify({
-            name: `terminfo-cursor-${run.id}`,
-            publisher: "terminfo",
-            version: "0.0.0",
-            engines: { vscode: "^1.74.0" },
-            main: "./extension.cjs",
-            activationEvents: ["onStartupFinished"],
-          }),
-          { flag: "wx", mode: 0o600 },
-        )
-        const terminal = {
-          name: `terminfo-${run.id}`,
-          shellPath: "/bin/bash",
-          shellArgs: [run.scriptPath],
-          cwd: run.directory,
-        }
-        writeFileSync(
-          join(fixture, "extension.cjs"),
-          `const vscode = require("vscode");
-exports.activate = (context) => {
-  const terminal = vscode.window.createTerminal(${JSON.stringify(terminal)});
-  context.subscriptions.push(terminal);
-  terminal.show();
-};
-`,
-          { flag: "wx", mode: 0o600 },
-        )
-      },
+      prepare: (run, markerValue) => prepareEditorFixture(run, markerValue, "cursor"),
       args: (_script, markerValue) => {
         const directory = dirname(markerValue)
         return [
@@ -204,6 +214,39 @@ exports.activate = (context) => {
           join(directory, "cursor-extensions"),
           "--extensionDevelopmentPath",
           join(directory, "cursor-fixture"),
+        ]
+      },
+    },
+  },
+  {
+    name: "VS Code",
+    id: "com.microsoft.VSCode",
+    appPath: "/Applications/Visual Studio Code.app",
+    binaryPath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    launchArgs: () => [],
+    bundleId: "com.microsoft.VSCode",
+    cliLaunch: {
+      spawnPath: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+      executablePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+      markerFlag: "--user-data-dir",
+      markerValue: (run) => join(run.directory, `vscode-${run.id}`),
+      prepare: (run, markerValue) => {
+        prepareEditorFixture(run, markerValue, "vscode")
+        for (const [, directory] of vscodeAdditionalStatePaths) {
+          mkdirSync(join(run.directory, directory), { mode: 0o700 })
+        }
+      },
+      args: (_script, markerValue) => {
+        const directory = dirname(markerValue)
+        return [
+          "--new-window",
+          "--user-data-dir",
+          markerValue,
+          "--extensions-dir",
+          join(directory, "vscode-extensions"),
+          ...vscodeAdditionalStatePaths.flatMap(([flag, path]) => [flag, join(directory, path)]),
+          "--extensionDevelopmentPath",
+          join(directory, "vscode-fixture"),
         ]
       },
     },
@@ -628,7 +671,7 @@ export async function handleApp(
   let appsToRun = APPS
   if (terminal) {
     const name = terminal.toLowerCase()
-    appsToRun = APPS.filter((app) => app.id === name || app.name.toLowerCase() === name)
+    appsToRun = APPS.filter((app) => app.id.toLowerCase() === name || app.name.toLowerCase() === name)
     if (appsToRun.length === 0) {
       throw new Error(`Unknown terminal. Available: ${APPS.map((a) => a.id).join(", ")}`)
     }

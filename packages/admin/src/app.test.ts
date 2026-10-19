@@ -216,36 +216,54 @@ describe("WezTerm cli-process arm", () => {
   })
 })
 
-// Cursor's recipe must deliver a terminal through the extension API without
-// workspace tasks or input synthesis. The WezTerm case cannot exercise that fixture.
-test("Cursor prepares a private editor fixture and forwards the existing GUI owner assertion", async () => {
+// Editor recipes deliver a terminal through the extension API without workspace
+// tasks or input synthesis. The canonical mixed-case VS Code id also exercises selection.
+test.each([
+  { input: "cursor", prefix: "cursor", appPath: "/Applications/Cursor.app", executable: "Cursor", helper: "cursor" },
+  {
+    input: "com.microsoft.VSCode",
+    prefix: "vscode",
+    appPath: "/Applications/Visual Studio Code.app",
+    executable: "Code",
+    helper: "code",
+  },
+])("$input prepares a private editor fixture and forwards the GUI owner assertion", async ({ input, prefix, appPath, executable, helper }) => {
   const ownedWindow = {
     provider: "cli-process" as const,
     ownerPid: 778,
     tty: "/dev/ttys009",
-    executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
-    marker: { flag: "--user-data-dir", value: "/private/run/cursor-private-run" },
+    executablePath: `${appPath}/Contents/MacOS/${executable}`,
+    marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },
   }
   vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
-  await handleApp("cursor", {})
+  await handleApp(input, {})
   expect(spawn).toHaveBeenCalledWith(
-    "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+    `${appPath}/Contents/Resources/app/bin/${helper}`,
     [
       "--new-window",
       "--user-data-dir",
       ownedWindow.marker.value,
       "--extensions-dir",
-      "/private/run/cursor-extensions",
+      `/private/run/${prefix}-extensions`,
+      ...(prefix === "vscode"
+        ? [
+            "--shared-data-dir", "/private/run/vscode-shared",
+            "--agent-plugins-dir", "/private/run/vscode-agent-plugins",
+            "--agents-user-data-dir", "/private/run/vscode-agents-data",
+            "--agents-extensions-dir", "/private/run/vscode-agents-extensions",
+            "--crash-reporter-directory", "/private/run/vscode-crash",
+          ]
+        : []),
       "--extensionDevelopmentPath",
-      "/private/run/cursor-fixture",
+      `/private/run/${prefix}-fixture`,
     ],
     {
       detached: true,
       stdio: "ignore",
-      env: expect.objectContaining({ CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" }),
+      env: expect.objectContaining(prefix === "cursor" ? { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" } : {}),
     },
   )
-  expect(mkdirSync).toHaveBeenCalledWith("/private/run/cursor-fixture", { mode: 0o700 })
+  expect(mkdirSync).toHaveBeenCalledWith(`/private/run/${prefix}-fixture`, { mode: 0o700 })
   expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
     executablePath: ownedWindow.executablePath,
     marker: ownedWindow.marker,
@@ -253,12 +271,23 @@ test("Cursor prepares a private editor fixture and forwards the existing GUI own
   })
   const writes = vi.mocked(writeFileSync).mock.calls
   expect(writes.every(([path]) => String(path).startsWith("/private/run/"))).toBe(true)
-  const manifest = writes.find(([path]) => String(path).endsWith("cursor-fixture/package.json"))
-  expect(JSON.parse(String(manifest?.[1]))).toMatchObject({
+  const manifest = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/package.json`))
+  expect(manifest?.[1]).toBe(JSON.stringify({
+    name: `terminfo-${prefix}-private-run`,
+    publisher: "terminfo",
+    version: "0.0.0",
+    engines: { vscode: "^1.74.0" },
     main: "./extension.cjs",
     activationEvents: ["onStartupFinished"],
-  })
-  const script = writes.find(([path]) => String(path).endsWith("cursor-fixture/extension.cjs"))
+  }))
+  const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+  expect(script?.[1]).toBe(`const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal({"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`)
   const terminal = { show: vi.fn(), dispose: vi.fn() }
   const createTerminal = vi.fn(() => terminal)
   const exported: { activate?: (context: { subscriptions: unknown[] }) => void } = {}

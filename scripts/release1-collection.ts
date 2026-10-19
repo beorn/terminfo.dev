@@ -188,7 +188,7 @@ const engineRow = (id: string): CollectionContext => ({
  * proves ownership through kitty's own exported identity plus live TTY and process descent, so the
  * pass runs the same admin entry point the local development route uses and classifies its output.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set(["kitty"])
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set(["kitty", "com.microsoft.VSCode"])
 
 const localOwnedAppRow = (id: string): CollectionContext => ({
   id,
