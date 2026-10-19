@@ -713,7 +713,11 @@ test("modes.decsscls grades text moving through the witness region inside the wi
     expect(request.pixelGeometry).toEqual(DECSSCLS_GEOMETRY)
   }
   expect(writes.some((write) => write.includes("\x1b[?4h"))).toBe(true)
-  expect(writes.some((write) => write.includes("\x1b[?4l"))).toBe(true)
+  // DECSCLM is restored to the baseline the probe set, never flipped to jump behind the run's back.
+  expect(writes.some((write) => write.includes("\x1b[?4l"))).toBe(false)
+  const exit = writes.find((write) => write.includes("\x1b[?1049l"))
+  expect(exit).toContain("\x1b[0 p")
+  expect(exit).toContain("\x1b[?4h")
   expect(writes.some((write) => write.includes("\x1b[9 p"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
   expect(writes.some((write) => write.includes("line 40"))).toBe(true)
@@ -730,6 +734,16 @@ test("modes.decsscls overruns whatever height the context measured", async () =>
   )
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
   expect(writes.some((write) => write.includes("line 66"))).toBe(true)
+})
+
+test("modes.decsscls refuses a one-row screen, where its witness would be the cursor row", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const result = await decsscls().term!(decssclsContext(["a", "b", "c", "d"], writes, frames, 1))
+  expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(result.note).toContain("no row above it")
+  expect(writes).toEqual([])
+  expect(frames).toEqual([])
 })
 
 test("modes.decsscls does not grade unsupported when an honoring first frame lands at 1.5 s", async () => {

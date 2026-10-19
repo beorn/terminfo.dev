@@ -376,10 +376,14 @@ const DECSSCLS_OVERFLOW_ROWS = 16
  * capture that returns a few milliseconds either side of it cannot flip the verdict.
  */
 const DECSSCLS_TIMING_MARGIN_MS = 150
-/** Smooth scrolling, enabled for both phases: the documented rate applies to it, and a probe that
- * compared a jump phase without it would compare two different presentation modes. */
-const DECSSCLS_SMOOTH_SCROLL_ON = "\x1b[?4h"
-const DECSSCLS_SMOOTH_SCROLL_OFF = "\x1b[?4l"
+/**
+ * DECSCLM smooth scrolling, which the documented rate applies to. It is ALSO the declared baseline:
+ * it is the mode's power-up default, and DECSCLM has no query, so the probe writes this setting
+ * before the first phase and re-asserts the same setting on exit instead of flipping to jump and
+ * leaving a terminal in a state it never asked about. Tonight's review named the unconditional
+ * CSI ?4l as a state leak; this constant is the one place a different run baseline would change.
+ */
+const DECSSCLS_BASELINE = "\x1b[?4h"
 
 /** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
 function decssclsBurst(rows: number): { text: string; lines: number } {
@@ -435,6 +439,12 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       rows,
     })
   }
+  if (rows < 2) {
+    return notTestedResult(
+      "DECSSCLS needs at least two rows: its witness sits ABOVE the cursor row, and a one-row screen has no row above it",
+      { rows },
+    )
+  }
   const cols = ctx.cols
   const geometry = ctx.captureGeometry?.geometry
   if (!Number.isSafeInteger(cols) || cols < 1 || geometry === undefined) {
@@ -470,7 +480,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     return { cells: digests.cells, rectangle: frame.regionRectangle, ref: frame.ref }
   }
   const phase = async (role: ObservationFrame["role"], setting: string, label: string): Promise<DecssclsPair> => {
-    ctx.write(DECSSCLS_SMOOTH_SCROLL_ON)
+    ctx.write(DECSSCLS_BASELINE)
     const startedAt = performance.now()
     ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
@@ -492,7 +502,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       rectangles: [first.rectangle, second.rectangle],
     }
   }
-  const restored = "CSI 0 SP p (documented default; the prior setting is not queryable)"
+  const restored = "CSI 0 SP p and CSI ?4h (documented defaults; the prior setting is not queryable)"
   try {
     const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
     const target = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
@@ -509,7 +519,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       rows,
       throttledDurationMs,
       timingBoundMs,
-      smoothScroll: "DECSCLM set for both phases (CSI ?4h)",
+      smoothScroll: "DECSCLM smooth (CSI ?4h) written before the first phase and re-asserted on exit",
       rectangles: {
         control: control.rectangles,
         target: target.rectangles,
@@ -596,7 +606,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       assertions: [{ kind: "negative", expected: note, observed: response }],
     }
   } finally {
-    ctx.write(DECSSCLS_SLOW + DECSSCLS_SMOOTH_SCROLL_OFF + "\x1b[?1049l\x1b[0m")
+    ctx.write(DECSSCLS_SLOW + DECSSCLS_BASELINE + "\x1b[?1049l\x1b[0m")
   }
 }
 
