@@ -34,7 +34,9 @@ import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
   parseKittyIdentity,
+  recordedOwnerTty,
   resolveOwnedProcessByMarker,
+  runScopedMarker,
   type ProcessMarker,
   type OwnedTerminalWindow,
   type KittyWindow,
@@ -58,10 +60,16 @@ interface AppDef {
    * the run-scoped marker in its argv, never by the CLI shim's pid, which may exit after the handoff.
    * No app sets this until its marker is measured on a real host (28018). */
   cliLaunch?: {
+    /** The binary the launch spawns. A CLI that hands off and then execs into the GUI belongs here
+     * (`wezterm` execs into `wezterm-gui`), so the spawn path and the owner path are separate. */
+    spawnPath: string
     /** The GUI owner binary the marker must be found on; never the CLI shim. */
     executablePath: string
     /** The argv flag whose value carries the run id. */
     markerFlag: string
+    /** The marker value, derived from the run. It must contain the run id and no whitespace; both are
+     * refused at launch rather than surfacing later as a misleading "no live process". */
+    markerValue: (run: ProbeRun) => string
     /** The launch arguments, given the serve script and the run-scoped marker value. */
     args: (script: string, markerValue: string) => string[]
   }
@@ -132,7 +140,7 @@ function getAppVersion(app: AppDef): string {
 
 // ── Launch terminal with serve daemon ──
 
-interface AppLaunch {
+export interface AppLaunch {
   proc: ChildProcess | null
   windowId?: number
   terminalWindow?: OwnedTerminalWindow
@@ -166,8 +174,13 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the
     // launch to an already-running instance. The marker is what survives, so the owner is resolved
     // from it once the daemon has registered, never from this child handle.
-    const markerValue = `terminfo-${run.id}`
-    const child = spawn(app.cliLaunch.executablePath, app.cliLaunch.args(run.scriptPath, markerValue), {
+    const marker = runScopedMarker({
+      appName: app.name,
+      runId: run.id,
+      flag: app.cliLaunch.markerFlag,
+      value: app.cliLaunch.markerValue(run),
+    })
+    const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
       detached: true,
       stdio: "ignore",
       env: { ...process.env },
@@ -177,7 +190,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
       proc: child,
       identityPath,
       executablePath: app.cliLaunch.executablePath,
-      marker: { flag: app.cliLaunch.markerFlag, value: markerValue },
+      marker,
     }
   }
 
@@ -232,14 +245,20 @@ end tell`,
   throw new Error(`${app.name} requires manually starting the probe server`)
 }
 
-function stopLaunchedApp(app: AppDef, launch: AppLaunch): void {
+export function stopLaunchedApp(app: Pick<AppDef, "name" | "id">, launch: AppLaunch): void {
   if (launch.terminalWindow) {
     closeOwnedTerminalWindow(launch.terminalWindow)
     return
   }
   // A cli-process launch whose owner was never resolved leaves only the CLI shim in hand. That shim is
-  // not the window we launched, so there is nothing here we may signal.
-  if (launch.marker !== undefined) return
+  // not the window we launched, so there is nothing here we may signal — but a window may still be open
+  // under that marker, so say which one rather than returning silently.
+  if (launch.marker !== undefined) {
+    console.error(
+      `  WARNING: ${app.name} launched with the run-scoped marker ${launch.marker.flag} ${launch.marker.value} but its owner was never resolved; no process was signaled. A window may still be open — find the live process carrying that marker and close it.`,
+    )
+    return
+  }
   if (launch.proc) {
     launch.proc.kill("SIGTERM")
     return
@@ -354,14 +373,10 @@ function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | undefin
   if (launch.marker === undefined || launch.executablePath === undefined || launch.identityPath === undefined) {
     return undefined
   }
-  const recordedTty = readFileSync(launch.identityPath, "utf8").trim()
-  if (recordedTty.length === 0) {
-    throw new Error("cli-process launch recorded no TTY in its launched window; refusing to guess the owner's TTY")
-  }
   return resolveOwnedProcessByMarker({
     executablePath: launch.executablePath,
     marker: launch.marker,
-    tty: recordedTty.startsWith("/dev/") ? recordedTty : `/dev/${recordedTty}`,
+    tty: recordedOwnerTty(readFileSync(launch.identityPath, "utf8")),
   })
 }
 

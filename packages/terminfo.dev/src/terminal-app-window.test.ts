@@ -14,7 +14,9 @@ import {
   closeOwnedTerminalWindow,
   descendToOwner,
   parseKittyIdentity,
+  recordedOwnerTty,
   resolveOwnedProcessByMarker,
+  runScopedMarker,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
 
@@ -327,5 +329,55 @@ describe("marker token matching", () => {
     [[], false],
   ])("%j matches %s", (argv, expected) => {
     expect(argvCarriesMarker(argv as string[], { flag: "--flag", value: "value" })).toBe(expected)
+  })
+})
+
+describe("run-scoped marker derivation", () => {
+  const runId = "0f3c9a7d"
+
+  test("accepts a path-valued marker that carries the run id", () => {
+    // The measured WezTerm recipe: the marker value is a run-scoped config path, not a bare token.
+    expect(
+      runScopedMarker({
+        appName: "WezTerm",
+        runId,
+        flag: "--config-file",
+        value: `/tmp/terminfo-${runId}/wezterm.lua`,
+      }),
+    ).toEqual({ flag: "--config-file", value: `/tmp/terminfo-${runId}/wezterm.lua` })
+  })
+
+  test("accepts the one-token form a user-data-dir recipe uses", () => {
+    expect(
+      runScopedMarker({ appName: "VS Code", runId, flag: "--user-data-dir", value: `/tmp/terminfo-${runId}` }),
+    ).toEqual({ flag: "--user-data-dir", value: `/tmp/terminfo-${runId}` })
+  })
+
+  test.each([
+    ["a value without the run id", "--config-file", "/tmp/wezterm.lua"],
+    ["a value containing whitespace", "--config-file", `/tmp/terminfo-${runId} dir/wezterm.lua`],
+    ["an empty value", "--config-file", ""],
+    ["an empty flag", "", `/tmp/terminfo-${runId}`],
+    ["a flag containing whitespace", "--config file", `/tmp/terminfo-${runId}`],
+  ])("refuses %s", (_name, flag, value) => {
+    expect(() => runScopedMarker({ appName: "WezTerm", runId, flag, value })).toThrow(/cli-process marker/)
+  })
+})
+
+describe("recorded owner TTY", () => {
+  test("normalizes a device path", () => {
+    expect(recordedOwnerTty("/dev/ttys005\n")).toBe("/dev/ttys005")
+  })
+
+  test("accepts the bare device name a shell prints", () => {
+    expect(recordedOwnerTty("ttys005")).toBe("/dev/ttys005")
+  })
+
+  test('refuses the literal "not a tty" by name instead of fabricating /dev/not a tty', () => {
+    expect(() => recordedOwnerTty("not a tty")).toThrow(/"not a tty"/)
+  })
+
+  test("refuses an empty record", () => {
+    expect(() => recordedOwnerTty("  \n")).toThrow(/recorded no TTY/)
   })
 })
