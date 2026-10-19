@@ -61,7 +61,7 @@ export interface Candidate2Group {
   included: boolean
   /**
    * The published contexts that CLEAR this group's bar, in page order — what the page includes it on
-   * when per-context inclusion applies to the group. Only the two groups the ruling names carry a
+   * when per-context inclusion applies to the group. Only the groups the ruling names carry a
    * claim here; other groups leave this empty and retain their global inclusion state.
    */
   includedOn: string[]
@@ -251,6 +251,17 @@ export function loadCandidate2Data(): Candidate2Data {
     if (!previousRunsByContext.has(key)) previousRunsByContext.set(key, run)
   }
 
+  // The groups the per-context include ruling names. Membership is data, not a name test at the
+  // call site. The test keeps an independent statement of these groups.
+  const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets", "reset"])
+  // Reset joined them at @cto's c67af756 (2026-10-19): "included on each context clearing 90, held
+  // by name on each that does not", the same option A (6a257095) Editing and Character Sets closed
+  // under. Its library-only row is named, never scored.
+  // The groups whose RULED acceptance base counts their library-only rows. It is a ruling per group,
+  // not a rule: chief 11cede0b put Scrollback's two library-only rows in its acceptance base (7/9),
+  // while @cto c67af756 (chief 450d65e4 (b)) keeps reset.method OUTSIDE Reset's denominator, where
+  // the four scored rows give kitty and xterm 4/4.
+  const ACCEPTANCE_COUNTS_LIBRARY_ONLY = new Set(["scrollback"])
   const groups: Omit<
     Candidate2Group,
     "included" | "includedOn" | "heldBy" | "darkHeldBy" | "darkRuled" | "ruledTotal" | "unmeasured"
@@ -325,7 +336,9 @@ export function loadCandidate2Data(): Candidate2Data {
         // library-only rows, aggregated by the same classifier. No second share is invented here.
         const libraryOnlyIds = (includedByKey.get(category.key)?.ids ?? []).filter((id) => libraryOnly.has(id))
         const acceptance =
-          libraryOnlyIds.length > 0 ? decisiveShare(row.run.states, [...category.ids, ...libraryOnlyIds]) : null
+          libraryOnlyIds.length > 0 && ACCEPTANCE_COUNTS_LIBRARY_ONLY.has(category.key)
+            ? decisiveShare(row.run.states, [...category.ids, ...libraryOnlyIds])
+            : null
         return {
           key: category.key,
           decisive: groupShare.decisive,
@@ -366,10 +379,7 @@ export function loadCandidate2Data(): Candidate2Data {
   // Inclusion is MEASURED per group, never claimed page-wide: a group is included only when every
   // context we actually measured clears its pass bar, and the contexts that do not are named. A
   // context with no published run cannot hold a group, and cannot accept one either.
-  // The groups the per-context include ruling names. Membership is data, not a name test at the
-  // call site. The test keeps an independent statement of these two groups.
-  const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets"])
-  // The same ruling names SIX contexts for those two groups: the four Linux app rows measured on the
+  // The same ruling names SIX contexts for the groups it covers: the four Linux app rows measured on the
   // required suite, plus Ghostty and Alacritty on macOS (27928). It is a RULING, not a measurement —
   // a ruled context stays in the basis while it is dark, even when its newest history run no longer
   // clears the bar, so moving the release pointer can never improve a public claim by shrinking it.
@@ -419,7 +429,9 @@ export function loadCandidate2Data(): Candidate2Data {
         const libraryOnlyIds = ratified.ids.filter((id) => libraryOnly.has(id))
         const share = decisiveShare(run.states, category.ids)
         const acceptance =
-          libraryOnlyIds.length > 0 ? decisiveShare(run.states, [...category.ids, ...libraryOnlyIds]) : null
+          libraryOnlyIds.length > 0 && ACCEPTANCE_COUNTS_LIBRARY_ONLY.has(category.key)
+            ? decisiveShare(run.states, [...category.ids, ...libraryOnlyIds])
+            : null
         const basis = acceptance ?? share
         if (basis.decisivePct < D3_VERDICT_BAR.passPct) {
           darkHeldBy.push({
