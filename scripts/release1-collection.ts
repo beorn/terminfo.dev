@@ -189,7 +189,7 @@ const engineRow = (id: string): CollectionContext => ({
  * the hosted runner (see UNMEASURABLE_MAC_APPS). The route stays live for a codimac-only app that
  * the hosted runner cannot run and that qualifies.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set(["com.microsoft.VSCode"])
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>()
 
 /**
  * A macOS row with a measured reason it cannot be collected at all, kept as a named fact instead of

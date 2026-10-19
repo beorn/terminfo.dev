@@ -597,14 +597,9 @@ describe("release 1 collection census", () => {
     expect(kitty?.requires).toBeNull()
     expect(kitty?.sourceRun).toBe("39302236007")
     expect(kitty?.uncollectable).toMatch(/not measurable on the hosted runner.*39302236007/)
-    const vscode = census().find((entry) => entry.id === "com.microsoft.VSCode" && entry.os === "macos")
-    expect(vscode?.route).toBe("local-owned-app")
-    expect(vscode?.command).toMatch(/probe app com\.microsoft\.VSCode --output/)
-    expect(vscode?.uncollectable).toBeNull()
-    expect(census()).toHaveLength(33)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(4)
-    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(3)
+    expect(missing).toHaveLength(5)
+    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(4)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
