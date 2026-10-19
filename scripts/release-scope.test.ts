@@ -183,11 +183,11 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
     // candidate 2 moved 67ad1f1d1580 -> c24025ea22fc on 2026-10-18 through the supported writer (28018),
-    // then c24025ea22fc -> f9450b3bc56a on 2026-10-19 when the five Linux contexts were admitted on the
-    // suite the pin then built (28023). Linux-only until an all-platform collection lands on the live
-    // suite; see 30286. The suite a move leaves keeps no claim of its own, so the lineage carried on the
-    // new record is the only place c240 is still named.
-    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("f9450b3bc56a")
+    // then c24025ea22fc -> f9450b3bc56a on 2026-10-19 when the five Linux contexts were admitted (28023),
+    // then f9450b3bc56a -> 448ce7769d2c once the macOS and Windows halves were admitted and the cut's
+    // suite could be read as a whole (2026-10-19). The suite a move leaves keeps no claim of its own, so
+    // the lineage carried on the new record is the only place c240 is still named.
+    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("448ce7769d2c")
     expect(frozenSuiteLineage(contentDir, "candidate2")).toContain("c24025ea22fc")
     // Candidate 4 keeps its own freeze, a different declaration from candidate 2's, while its COHORT
     // reads candidate 2's suite (@chief convergence ruling, 2026-10-18). The registry lookup and the
