@@ -220,7 +220,7 @@ describe("private finite daemon startup", () => {
           const checkpoint = { featureId: "erase.character", role: "target", label: "erase.character: capture stability 1" }
           let actual, failure
           try { actual = await options.capture(checkpoint) } catch (error) { failure = error }
-          assert.equal(reads, 4, "baseline plus three diagnostic reads")
+          assert.equal(reads, 5, "baseline plus four diagnostic reads")
           assert.equal(queries, 1)
           if (mode === "baseline-error") assert.equal(failure, baselineError)
           else if (mode === "retention-error") {
@@ -237,16 +237,18 @@ describe("private finite daemon startup", () => {
             assert.equal(evidence.kind, "windows-write-read-experiment")
             assert.equal(evidence.completion.callbackBeforeReturn, true)
             assert.equal(evidence.completion.returnValue, false)
-            assert.equal(evidence.samples.length, 4)
-            assert.deepEqual(evidence.samples.map(sample => sample.name), ["baseline", "event-loop", "idle-control", "cursor-query"])
-            assert.ok(evidence.samples[2].enteredAt - evidence.samples[1].returnedAt >= 690)
+            assert.equal(evidence.samples.length, 5)
+            assert.deepEqual(evidence.samples.map(sample => sample.name), ["baseline", "event-loop", "matched-elapsed", "cursor-query", "idle-control"])
+            assert.equal(evidence.matchedElapsed.requestedMs, 2)
+            assert.ok(evidence.matchedElapsed.elapsedMs >= 2)
+            assert.ok(evidence.samples[4].enteredAt - evidence.samples[3].returnedAt >= 690)
             assert.equal(evidence.query.outcome.raw, "\\x1b[1;2R")
             assert.ok(evidence.query.roundTripMs >= 0)
             if (mode === "baseline-error") assert.equal(evidence.samples[0].error.message, baselineError.message)
             else assert.deepEqual(evidence.samples[0].read, baselineRead)
             if (mode === "diagnostic-error") assert.equal(evidence.samples[1].error.message, "DiagnosticFixture")
             await options.capture(checkpoint)
-            assert.equal(reads, 5, "the repeated checkpoint has only its stock baseline")
+            assert.equal(reads, 6, "the repeated checkpoint has only its stock baseline")
             assert.equal(queries, 1)
           }
           assert.equal(writes, mode === "retention-error" ? 1 : 2)

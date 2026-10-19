@@ -493,10 +493,12 @@ export async function collectProbeRun(
           setImmediate(resolve)
         })
         await sample("event-loop")
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, 700)
-        })
-        await sample("idle-control")
+        // A timer can oversleep on Windows. Measure a no-query interval at least as long as the
+        // previous native CPR round trip before testing the query as an ordering witness.
+        const matchedEnteredAt = performance.now()
+        while (performance.now() - matchedEnteredAt < 2) {}
+        const matchedElapsed = { requestedMs: 2, elapsedMs: performance.now() - matchedEnteredAt }
+        await sample("matched-elapsed")
         const queryEnteredAt = performance.now()
         let query: Record<string, unknown>
         try {
@@ -509,6 +511,10 @@ export async function collectProbeRun(
           query = { error: describeError(error), roundTripMs: performance.now() - queryEnteredAt }
         }
         await sample("cursor-query")
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 700)
+        })
+        await sample("idle-control")
         try {
           retain(
             artifactDirectory,
@@ -519,6 +525,7 @@ export async function collectProbeRun(
                 selectedOutput,
                 completion,
                 samples,
+                matchedElapsed,
                 query,
                 baselineOutcome: outcome.ok
                   ? { frame: outcome.value.frame, trace: outcome.value.trace }
