@@ -227,97 +227,107 @@ test.each([
     executable: "Code",
     helper: "code",
   },
-])("$input prepares a private editor fixture and forwards the GUI owner assertion", async ({ input, prefix, appPath, executable, helper }) => {
-  const ownedWindow = {
-    provider: "cli-process" as const,
-    ownerPid: 778,
-    tty: "/dev/ttys009",
-    executablePath: `${appPath}/Contents/MacOS/${executable}`,
-    marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },
-  }
-  vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
-  await handleApp(input, {})
-  expect(spawn).toHaveBeenCalledWith(
-    `${appPath}/Contents/Resources/app/bin/${helper}`,
-    [
-      "--new-window",
-      "--user-data-dir",
-      ownedWindow.marker.value,
-      "--extensions-dir",
-      `/private/run/${prefix}-extensions`,
-      ...(prefix === "vscode"
-        ? [
-            "--shared-data-dir", "/private/run/vscode-shared",
-            "--agent-plugins-dir", "/private/run/vscode-agent-plugins",
-            "--agents-user-data-dir", "/private/run/vscode-agents-data",
-            "--agents-extensions-dir", "/private/run/vscode-agents-extensions",
-            "--crash-reporter-directory", "/private/run/vscode-crash",
-          ]
-        : []),
-      "--extensionDevelopmentPath",
-      `/private/run/${prefix}-fixture`,
-    ],
-    {
-      detached: true,
-      stdio: "ignore",
-      env: expect.objectContaining(prefix === "cursor" ? { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" } : {}),
-    },
-  )
-  expect(mkdirSync).toHaveBeenCalledWith(`/private/run/${prefix}-fixture`, { mode: 0o700 })
-  expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
-    executablePath: ownedWindow.executablePath,
-    marker: ownedWindow.marker,
-    tty: ownedWindow.tty,
-  })
-  const writes = vi.mocked(writeFileSync).mock.calls
-  expect(writes.every(([path]) => String(path).startsWith("/private/run/"))).toBe(true)
-  const manifest = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/package.json`))
-  expect(manifest?.[1]).toBe(JSON.stringify({
-    name: `terminfo-${prefix}-private-run`,
-    publisher: "terminfo",
-    version: "0.0.0",
-    engines: { vscode: "^1.74.0" },
-    main: "./extension.cjs",
-    activationEvents: ["onStartupFinished"],
-  }))
-  const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
-  expect(script?.[1]).toBe(`const vscode = require("vscode");
+])(
+  "$input prepares a private editor fixture and forwards the GUI owner assertion",
+  async ({ input, prefix, appPath, executable, helper }) => {
+    const ownedWindow = {
+      provider: "cli-process" as const,
+      ownerPid: 778,
+      tty: "/dev/ttys009",
+      executablePath: `${appPath}/Contents/MacOS/${executable}`,
+      marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },
+    }
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    await handleApp(input, {})
+    expect(spawn).toHaveBeenCalledWith(
+      `${appPath}/Contents/Resources/app/bin/${helper}`,
+      [
+        "--new-window",
+        "--user-data-dir",
+        ownedWindow.marker.value,
+        "--extensions-dir",
+        `/private/run/${prefix}-extensions`,
+        ...(prefix === "vscode"
+          ? [
+              "--shared-data-dir",
+              "/private/run/vscode-shared",
+              "--agent-plugins-dir",
+              "/private/run/vscode-agent-plugins",
+              "--agents-user-data-dir",
+              "/private/run/vscode-agents-data",
+              "--agents-extensions-dir",
+              "/private/run/vscode-agents-extensions",
+              "--crash-reporter-directory",
+              "/private/run/vscode-crash",
+            ]
+          : []),
+        "--extensionDevelopmentPath",
+        `/private/run/${prefix}-fixture`,
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        env: expect.objectContaining(prefix === "cursor" ? { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" } : {}),
+      },
+    )
+    expect(mkdirSync).toHaveBeenCalledWith(`/private/run/${prefix}-fixture`, { mode: 0o700 })
+    expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
+      executablePath: ownedWindow.executablePath,
+      marker: ownedWindow.marker,
+      tty: ownedWindow.tty,
+    })
+    const writes = vi.mocked(writeFileSync).mock.calls
+    expect(writes.every(([path]) => String(path).startsWith("/private/run/"))).toBe(true)
+    const manifest = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/package.json`))
+    expect(manifest?.[1]).toBe(
+      JSON.stringify({
+        name: `terminfo-${prefix}-private-run`,
+        publisher: "terminfo",
+        version: "0.0.0",
+        engines: { vscode: "^1.74.0" },
+        main: "./extension.cjs",
+        activationEvents: ["onStartupFinished"],
+      }),
+    )
+    const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+    expect(script?.[1]).toBe(`const vscode = require("vscode");
 exports.activate = (context) => {
   const terminal = vscode.window.createTerminal({"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"});
   context.subscriptions.push(terminal);
   terminal.show();
 };
 `)
-  const terminal = { show: vi.fn(), dispose: vi.fn() }
-  const createTerminal = vi.fn(() => terminal)
-  const exported: { activate?: (context: { subscriptions: unknown[] }) => void } = {}
-  runInNewContext(String(script?.[1]), {
-    exports: exported,
-    require: (id: string) => {
-      if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
-      return { window: { createTerminal } }
-    },
-  })
-  const subscriptions: unknown[] = []
-  expect(typeof exported.activate).toBe("function")
-  exported.activate!({ subscriptions })
-  expect(createTerminal).toHaveBeenCalledWith({
-    name: "terminfo-private-run",
-    shellPath: "/bin/bash",
-    shellArgs: ["/private/run/serve.sh"],
-    cwd: "/private/run",
-  })
-  expect(terminal.show).toHaveBeenCalledOnce()
-  expect(subscriptions).toEqual([terminal])
-  expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
-    process: expect.objectContaining({
-      ownerPid: 778,
-      executablePath: ownedWindow.executablePath,
-      marker: ownedWindow.marker,
-    }),
-  })
-  expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
-})
+    const terminal = { show: vi.fn(), dispose: vi.fn() }
+    const createTerminal = vi.fn(() => terminal)
+    const exported: { activate?: (context: { subscriptions: unknown[] }) => void } = {}
+    runInNewContext(String(script?.[1]), {
+      exports: exported,
+      require: (id: string) => {
+        if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
+        return { window: { createTerminal } }
+      },
+    })
+    const subscriptions: unknown[] = []
+    expect(typeof exported.activate).toBe("function")
+    exported.activate!({ subscriptions })
+    expect(createTerminal).toHaveBeenCalledWith({
+      name: "terminfo-private-run",
+      shellPath: "/bin/bash",
+      shellArgs: ["/private/run/serve.sh"],
+      cwd: "/private/run",
+    })
+    expect(terminal.show).toHaveBeenCalledOnce()
+    expect(subscriptions).toEqual([terminal])
+    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+      process: expect.objectContaining({
+        ownerPid: 778,
+        executablePath: ownedWindow.executablePath,
+        marker: ownedWindow.marker,
+      }),
+    })
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
+  },
+)
 
 describe("Terminal.app app collection", () => {
   test("attaches measured receipt and trace before the single exclusive raw write", async () => {
