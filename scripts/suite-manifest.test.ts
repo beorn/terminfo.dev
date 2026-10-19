@@ -278,6 +278,11 @@ test("declaring refuses the default branch and a detached HEAD, and allows a fre
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/detached/)
   expect(() => declareCurrentSuiteManifest(directory, snapshot)).toThrow(/detached/)
 
+  // A clone cut from an author branch points origin/HEAD elsewhere; main stays a default branch.
+  git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/task/other")
+  git("switch", "-q", "main")
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/default branch \(main\)/)
+
   git("switch", "-q", "-c", "task/fresh", "origin/main")
   expect(() => assertDeclareIsAuthoring(directory)).not.toThrow()
   const declared = declareCurrentSuiteManifest(directory, snapshot)

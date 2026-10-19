@@ -215,9 +215,12 @@ function declarationCheckoutState(cwd: string): { authoring: boolean; detail: st
     throw new Error(`Cannot declare a suite: git symbolic-ref failed (${branch.status}): ${branch.stderr.trim()}`)
   }
   const name = branch.stdout.trim()
+  // main is always a default branch here, whatever origin/HEAD names: a clone cut from an author
+  // branch can point origin/HEAD elsewhere, and a write on main is never the act this guard admits.
   const originHead = run(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
-  const defaultBranch = originHead.status === 0 ? originHead.stdout.trim().replace(/^origin\//, "") : "main"
-  if (name === defaultBranch) return { authoring: false, detail: `its HEAD is the default branch (${name})` }
+  const defaults = new Set(["main"])
+  if (originHead.status === 0) defaults.add(originHead.stdout.trim().replace(/^origin\//, ""))
+  if (defaults.has(name)) return { authoring: false, detail: `its HEAD is the default branch (${name})` }
   return { authoring: true, detail: `it is on the non-default branch ${name}` }
 }
 
