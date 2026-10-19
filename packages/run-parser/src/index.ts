@@ -18,6 +18,7 @@ import {
   type RunOrigin,
   type HeadlessRuntimeIdentity,
   type RunProvenance,
+  type OuterAppProof,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
   type TextQualification,
@@ -38,6 +39,7 @@ export interface LoadedRun {
   identity: ProbeRun["identity"]
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
+  outerApp?: OuterAppProof
   suiteId: string
   probeHash: string | null
   suiteComplete: boolean
@@ -199,7 +201,7 @@ export function parseJsonStrict(path: string, source: string): unknown {
   return parsed
 }
 
-function parseTarget(value: unknown, path: string): ProbeTarget {
+export function parseTarget(value: unknown, path: string): ProbeTarget {
   if (!object(value)) fail(path, "missing target")
   if (!["app", "headless", "mux"].includes(String(value.kind))) fail(path, "invalid target.kind")
   return {
@@ -1040,6 +1042,48 @@ function parseNotTested(
   return records
 }
 
+export function parseOuterApp(
+  value: unknown,
+  target: ProbeTarget,
+  originKind: RunOrigin["kind"],
+  expected: { probeHash: string; sourceRevision: string },
+  path: string,
+): OuterAppProof | undefined {
+  if (value === undefined) return undefined
+  if (target.kind !== "mux") fail(path, "outerApp is only valid for a mux target")
+  if (
+    !object(value) ||
+    Object.keys(value).some((key) => !["target", "rawReplies", "provenance", "appLaunch"].includes(key))
+  ) {
+    fail(path, "invalid outerApp fields")
+  }
+  const outerTarget = parseTarget(value.target, `${path}.outerApp`)
+  if (outerTarget.kind !== "app" || outerTarget.outerTerminal !== null || outerTarget.mux !== null) {
+    fail(path, "outerApp requires one app target without another outer terminal or mux")
+  }
+  if (target.outerTerminal !== outerTarget.id || target.mux !== target.id) {
+    fail(path, "outerApp disagrees with the claimed outer terminal or mux")
+  }
+  if (
+    target.os !== outerTarget.os ||
+    target.osVersion !== outerTarget.osVersion ||
+    target.permissions !== outerTarget.permissions
+  ) {
+    fail(path, "outerApp disagrees with the run OS or permission context")
+  }
+  if (!object(value.rawReplies) || !Object.values(value.rawReplies).every((reply) => typeof reply === "string")) {
+    fail(path, "invalid outerApp.rawReplies")
+  }
+  const provenance = parseRunProvenance(value.provenance, outerTarget, expected, `${path}.outerApp`)
+  const appLaunch = parseAppLaunchReceipt(value.appLaunch, originKind, outerTarget.kind, `${path}.outerApp`)
+  return {
+    target: { ...outerTarget, kind: "app" },
+    rawReplies: value.rawReplies as Record<string, string>,
+    ...(provenance && { provenance }),
+    ...(appLaunch && { appLaunch }),
+  }
+}
+
 export function parseRun(
   path: string,
   source: string,
@@ -1048,6 +1092,7 @@ export function parseRun(
 ): LoadedRun {
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
+  if (raw.outerApp !== undefined && raw.schemaVersion !== 2) fail(path, "outerApp requires a schema-v2 mux run")
   if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2) {
     fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
   }
@@ -1123,6 +1168,13 @@ export function parseRun(
     const probeHash = asString(raw.probeHash, path, "probeHash")
     const sourceRevision = asString(raw.sourceRevision, path, "sourceRevision")
     const provenance = parseRunProvenance(raw.provenance, target, { probeHash, sourceRevision }, path)
+    const outerApp = parseOuterApp(
+      raw.outerApp,
+      target,
+      raw.origin.kind as RunOrigin["kind"],
+      { probeHash, sourceRevision },
+      path,
+    )
     const manifest = suites.get(probeHash)
     if (!manifest || manifest.probeHash !== probeHash) {
       fail(path, `unknown suite ${probeHash}; missing trusted manifest`)
@@ -1171,6 +1223,7 @@ export function parseRun(
       identity: raw.identity as LoadedRun["identity"],
       ...(runtimeIdentity && { runtimeIdentity }),
       ...(provenance && { provenance }),
+      ...(outerApp && { outerApp }),
       suiteId: asString(raw.suiteId, path, "suiteId"),
       probeHash,
       suiteComplete,
@@ -1287,6 +1340,7 @@ export function decodeCollectorRun(
     identity: "unverified",
     ...(measured.runtimeIdentity && { runtimeIdentity: measured.runtimeIdentity }),
     ...(measured.provenance && { provenance: measured.provenance }),
+    ...(measured.outerApp && { outerApp: measured.outerApp }),
     suiteId: measured.suiteId,
     probeHash: manifest.probeHash,
     suiteComplete: measured.suiteComplete,

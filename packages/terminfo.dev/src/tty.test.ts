@@ -34,6 +34,34 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
+  it("checks a scoped owner before nested queries and releases it with the operation", async () => {
+    const failure = new Error("attachment continuity lost")
+    const writes: string[] = []
+    let revoked = false
+    const verify = vi.fn(async () => {
+      if (revoked) throw failure
+    })
+    const out = {
+      write(sequence: string) {
+        writes.push(sequence)
+        reply("\x1b[1;1R")
+        return true
+      },
+    } as unknown as NodeJS.WriteStream
+    await withTTYOperation(
+      async () => {
+        expect(await query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).not.toBeNull()
+        revoked = true
+        await expect(query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20)).rejects.toBe(failure)
+      },
+      out,
+      verify,
+    )
+    expect(verify).toHaveBeenCalledTimes(3)
+    expect(writes).toEqual(["\x1b[6n"])
+    expect(await withTTYOperation(() => query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 20), out)).not.toBeNull()
+    expect(verify).toHaveBeenCalledTimes(3)
+  })
   it("restores an untouched input stream after draining, including errors and nested leases", async () => {
     const stdin = process.stdin
     const originalTTY = Object.getOwnPropertyDescriptor(stdin, "isTTY")
@@ -112,6 +140,53 @@ describe("TTY transaction replies", () => {
 
   it("captures stdin emitted during inject, which inject-then-listen would drop", async () => {
     expect(await readResponse(/^a/, 50, async () => reply("a"))).toEqual(["a"])
+  })
+
+  it("starts the input reply budget after nested custody verification and releases a refused listener", async () => {
+    const listeners = process.stdin.listenerCount("data")
+    vi.useFakeTimers()
+    try {
+      const verify = async () => {
+        await vi.advanceTimersByTimeAsync(75)
+      }
+      const received = await withTTYOperation(
+        () =>
+          readResponse(/^a/, 50, () =>
+            withTTYOperation(
+              async () => {
+                expect(process.stdin.listenerCount("data")).toBe(listeners + 1)
+                expect(vi.getTimerCount()).toBe(1)
+                reply("a")
+              },
+              undefined,
+              verify,
+            ),
+          ),
+        undefined,
+        verify,
+      )
+      expect(received).toEqual(["a"])
+      expect(process.stdin.listenerCount("data")).toBe(listeners)
+      const failure = new Error("input custody changed")
+      let injected = false
+      await expect(
+        readResponse(/^a/, 50, () =>
+          withTTYOperation(
+            async () => {
+              injected = true
+            },
+            undefined,
+            async () => {
+              throw failure
+            },
+          ),
+        ),
+      ).rejects.toBe(failure)
+      expect(injected).toBe(false)
+      expect(process.stdin.listenerCount("data")).toBe(listeners)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("retains exact synchronous reply bytes across UTF-8 chunk boundaries", async () => {

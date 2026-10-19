@@ -15,6 +15,95 @@ let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
 
+// The owner factory has its own live-custody tests. This consumer case checks that the collector
+// carries its verified subject rather than treating an untrusted envelope as an app or a grant.
+it.each(["tmux", "screen"])(
+  "collects a %s envelope only when its target agrees with the verified attachment",
+  (mux) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-mux-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
+    import {mock} from "bun:test"
+    import assert from "node:assert/strict"
+    import {writeFileSync} from "node:fs"
+    import {join} from "node:path"
+    const unified=await import("./packages/terminfo.dev/src/probes/unified.ts")
+    const tty=await import("./packages/terminfo.dev/src/tty.ts")
+    const owned=await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const hash="a".repeat(12),revision="b".repeat(40)
+    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest:{probeHash:hash,probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:revision}
+    const mux=process.env.TERMINFO_TEST_MUX, version=mux==="screen"?"4.09.01":"3.6"
+    const target={kind:"mux",id:mux,version,os:"linux",osVersion:"fixture",outerTerminal:"kitty",mux,config:"/out/mux.conf",permissions:null}
+    const outerApp={target:{...target,kind:"app",id:"kitty",version:"0.49.2",outerTerminal:null,mux:null,config:"--config NONE"},
+      rawReplies:{"device.primary-da":"\x1b[?62;52;c","device.xtversion":"kitty(0.49.2)","collector.preflightIdentity":JSON.stringify({pid:95,startTicks:"115",launchRunId:"a".repeat(32)})},
+      provenance:{executable:{path:"/fixture/kitty",sha256:"cd".repeat(32),version:"kitty 0.49.2"},
+        sourceArtifact:{url:"https://example.invalid/kitty.tar",sha256:"de".repeat(32)},
+        runtime:{imageId:"sha256:"+"ef".repeat(32),imageTarSha256:"12".repeat(32),arch:"amd64",nixLockRevision:"c".repeat(40),sourceRevision:revision,cleanTree:true,suiteHash:hash},
+        fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
+    const path=join(process.env.HOME,"runtime.json")
+    process.env.TERMINFO_RUNTIME_PROVENANCE=path
+    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false
+    const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
+    const write=()=>writeFileSync(path,JSON.stringify({target:suppliedTarget,outerApp}))
+    write()
+    mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:mux,version,os:"linux",osVersion:"fixture"})}))
+    mock.module("./packages/terminfo.dev/src/tty.ts",()=>({...tty,withRawMode:async fn=>fn(),drainStdin:async()=>{},
+      queryWithSentinelOutcome:async(sequence,pattern)=>{const raw=sequence.includes("[18t")?"\x1b[8;24;80t":sequence==="\x1b[>c"?"\x1b[>83;40901;0c\x1b[?1;2c":mux==="screen"?"\x1b[?1;2c":"\x1bP>|tmux 3.6\x1b\\\x1b[?1;2;4c";return {raw,rawBase64:Buffer.from(raw).toString("base64"),match:pattern.exec(raw),reason:"reply"}}}))
+    mock.module("./packages/terminfo.dev/src/owned-terminal.ts",()=>({...owned,createOwnedTerminal:async options=>{
+      assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
+      const attachment={mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:{pid:95,startTicks:"115"},executable:{version},config:{path:"/out/mux.conf"}}
+      return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({muxAttachment:attachment}),
+        clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
+    }}))
+    mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
+      assert.equal(options.target.kind,"mux");assert.equal(options.target.id,mux)
+      assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
+      inBatch=true
+      try{await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
+      return {rawReplies:{},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
+    }}))
+    const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
+    const run=await collectProbeRun({ids:["device.xtversion"]})
+    assert.equal(verifierCalls,1)
+    custodyFailure=new Error("fixture mux custody revoked at batch")
+    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),error=>error===custodyFailure)
+    assert.equal(verifierCalls,2)
+    custodyFailure=undefined
+    assert.deepEqual(run.target,target)
+    assert.deepEqual(run.outerApp,outerApp)
+    assert.equal(run.provenance,undefined)
+    assert.equal(JSON.parse(run.rawReplies["collector.terminalOwnership"]).muxAttachment.captureRunId,run.runId)
+    suppliedTarget={...target,config:"/foreign.conf"};write()
+    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),/mux.*attachment|attachment.*mux/i)
+    suppliedTarget=target;hasAttachment=false;write()
+    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),/mux.*attachment|attachment.*mux/i)
+    hasAttachment=true
+    outerApp.rawReplies["collector.preflightIdentity"]=JSON.stringify({pid:96,startTicks:"115",launchRunId:"a".repeat(32)});write()
+    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),/preflight.*attachment/i)
+  `,
+      ],
+      {
+        cwd: packageRoot,
+        encoding: "utf8",
+        timeout: 15000,
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINFO_TEST_MUX: mux,
+          TERMINFO_CAPTURE_DIRECTORY: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "fixture-receipt",
+          TERMINFO_DISPOSABLE_RECEIPT: "",
+        },
+      },
+    )
+    expect(result.error, result.stderr).toBeUndefined()
+    expect(result.status, result.stderr).toBe(0)
+  },
+)
+
 async function startTestDaemon(
   source = `import { startDaemon } from "./packages/terminfo.dev/src/serve.ts"; await startDaemon()`,
   environment: Record<string, string | undefined> = {},
@@ -103,7 +192,10 @@ describe("daemon HTTP boundary", () => {
     })
     expect(response.status).toBe(500)
     const body: unknown = await response.json()
-    expect(body).toEqual({ error: "Probe daemon request failed" })
+    expect(body).toEqual({
+      name: "Error",
+      error: "v2 collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
+    })
   })
 
   it("requires its private token and refuses cross-origin mutation", async () => {

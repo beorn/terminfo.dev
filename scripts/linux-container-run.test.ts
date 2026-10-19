@@ -17,6 +17,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
@@ -24,6 +25,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import type { MuxAttachmentProof } from "@terminfo/probe-defs"
+import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
@@ -81,6 +84,166 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
+
+// The producer must bind disposable authority to the mux without relabeling Kitty's
+// archive/version. Existing composition tests supply host JSON and missed this join.
+it.each(["", "tmux", "screen"])("host writer binds %s while retaining the outer source facts", (mux) => {
+  const host = join(dir, "produced-host.json")
+  const build = join(dir, "build.json")
+  writeFileSync(build, "{}")
+  const digest = createHash("sha256").update("measured-image").digest("hex")
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      String.raw`
+source "$1"
+mux_kind=$2
+probe_ids=null run_id=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa image_id=sha256:$3 image_tar_sha=$3
+image_arch=amd64 nix_lock_revision=abcdef123456 source_revision=abcdef root_revision=abcdef suite_hash=abcdef
+bundle_tar_sha=$3 bundle_sha=sha256-source root_lock_sha=$3 frozen_runner_sha=$3 build_receipt_sha=$3
+source_status=clean cli_receipt=$4 preset=current clipboard_profile=default target_version=0.49.1 target_id=kitty
+source_url=https://example.invalid/kitty.txz source_sri=sha256-kitty proof_kind='' proof_nar_sri='' proof_revision=''
+prep=$5
+write_host_receipt "$6"
+TERMINFO_MUX_KIND=$mux_kind TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile target_preset=$preset target_source_url=$source_url
+validate_host_metadata "$6"
+target_version=wrong-outer-version
+if validate_host_metadata "$6" 2>"$5/version-mismatch.stderr"; then
+  echo "Container accepted a different outer version" >&2
+  exit 1
+fi
+`,
+      "_",
+      launcher,
+      mux,
+      digest,
+      build,
+      dir,
+      host,
+    ],
+    { encoding: "utf8" },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  const bytes = readFileSync(host, "utf8")
+  const parsed = parseDisposableReceipt(bytes)
+  const target = { kind: mux ? "mux" : "app", id: mux || "kitty", os: "linux" }
+  expect(() => bindReceiptToRun(parsed, target, "host writer test")).not.toThrow()
+  expect(() => bindReceiptToRun(parsed, { ...target, id: "wrong-target" }, "host writer test")).toThrow(/disagree/)
+  const raw = JSON.parse(bytes) as {
+    declaredTarget: { kind: string; id: string; os: string; version?: string }
+    sourceArtifact: { url: string; sri: string; target?: { kind: string; id: string; version: string; os: string } }
+  }
+  expect(raw.sourceArtifact.url).toBe("https://example.invalid/kitty.txz")
+  expect(raw.sourceArtifact.sri).toBe("sha256-kitty")
+  const outer = { kind: "app", id: "kitty", version: "0.49.1", os: "linux" }
+  if (mux) {
+    expect(raw.declaredTarget).toEqual(target)
+    expect(raw.sourceArtifact.target).toEqual(outer)
+    expect(() => bindReceiptToRun(parsed, outer, "host writer test")).toThrow(/disagree/)
+  } else {
+    expect(raw.declaredTarget).toEqual(outer)
+    expect(raw.sourceArtifact).not.toHaveProperty("target")
+  }
+
+  // Compose the producer's bytes with the existing measured-container fixture.
+  // The host receipt must remain unchanged, and its artifact subject must survive.
+  const fixture = compose()
+  expect(fixture.result.status, fixture.result.stderr).toBe(0)
+  const container = join(dir, "container.json")
+  const containerFacts = JSON.parse(readFileSync(container, "utf8")) as {
+    collector: { frozenRunnerSha256: string; buildReceiptSha256: string }
+  }
+  containerFacts.collector = { frozenRunnerSha256: digest, buildReceiptSha256: digest }
+  writeFileSync(container, JSON.stringify(containerFacts))
+  const composed = join(dir, "produced-run-receipt.json")
+  const joined = spawnSync(
+    "bash",
+    ["-c", 'source "$1"; compose_receipt "$2" "$3" "$4"', "_", launcher, host, container, composed],
+    { encoding: "utf8" },
+  )
+  expect(joined.status, joined.stderr).toBe(0)
+  expect(readFileSync(host, "utf8")).toBe(bytes)
+  const combined = JSON.parse(readFileSync(composed, "utf8")) as {
+    declaredTarget: unknown
+    sourceArtifact: unknown
+    receiptInputs: { hostSha256: string }
+    clipboardFixture: { sha256: string }
+  }
+  expect(combined.declaredTarget).toEqual(raw.declaredTarget)
+  expect(combined.sourceArtifact).toMatchObject(raw.sourceArtifact)
+  expect(combined.receiptInputs.hostSha256).toBe(parsed.sha256)
+  expect(combined.clipboardFixture.sha256).not.toBe(parsed.sha256)
+})
+
+// Receipt issuance must identify the newly live collector, while preserving the preflight
+// identity. Existing compose tests only join already-produced host/container receipts.
+it.runIf(process.platform === "linux")(
+  "mux receipt producer measures the inner collector separately from preflight",
+  () => {
+    const config = join(dir, "empty.conf")
+    const preflight = join(dir, "preflight.json")
+    writeFileSync(config, "", { mode: 0o600 })
+    writeFileSync(preflight, JSON.stringify({ pid: 95, startTicks: "203389044" }))
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        String.raw`
+source "$1"
+TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-$TERMINFO_RUN_ID"
+`,
+        "_",
+        launcher,
+        preflight,
+        config,
+        join(dir, "terminfo-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sock"),
+      ],
+      { encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    const target = JSON.parse(result.stdout) as Pick<
+      MuxAttachmentProof,
+      | "preflightCollector"
+      | "collector"
+      | "outerShell"
+      | "outerTerminal"
+      | "config"
+      | "executable"
+      | "bootId"
+      | "mux"
+      | "socketPath"
+      | "session"
+    > & { kind: "mux" }
+    const stat = readFileSync("/proc/self/stat", "utf8")
+    const parentFields = stat
+      .slice(stat.lastIndexOf(")") + 2)
+      .trim()
+      .split(/\s+/)
+    const shell = realpathSync(Bun.which("bash")!)
+    expect(target.kind).toBe("mux")
+    expect(target.mux).toBe("tmux")
+    expect(target.preflightCollector).toEqual({ pid: 95, startTicks: "203389044" })
+    expect(target.collector.pid).toBe(result.pid)
+    expect(target.collector.startTicks).toMatch(/^\d+$/)
+    expect(target.outerShell).toEqual({
+      pid: result.pid,
+      startTicks: target.collector.startTicks,
+      ttyRdev: Number(parentFields[4]),
+    })
+    expect(target.outerTerminal).toEqual({ pid: process.pid, startTicks: parentFields[19] })
+    expect(target.config).toEqual({ path: config, sha256: createHash("sha256").update("").digest("hex") })
+    expect(target.executable).toEqual({
+      path: shell,
+      sha256: createHash("sha256").update(readFileSync(shell)).digest("hex"),
+      version: "3.7c",
+    })
+    expect(target.bootId).toBe(readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim())
+    expect(target.socketPath).toBe(join(dir, "terminfo-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sock"))
+    expect(target.session).toBe("terminfo-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+  },
+)
 
 describe("container run receipt composition", () => {
   it("combines host image identity with the matching container measurements", () => {

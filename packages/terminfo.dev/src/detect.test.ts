@@ -29,18 +29,48 @@ vi.mock("./windows-process-ancestry.ts", async (importOriginal) => {
 })
 
 import { detectTerminal, getWindowsAppVersion } from "./detect.ts"
+import { resolveMeasuredAppVersion } from "./identity-guard.ts"
 import * as windowsProcessAncestry from "./windows-process-ancestry.ts"
 
 const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")
 const originalGetBuiltinModule = process.getBuiltinModule
 
 beforeEach(() => {
+  vi.stubEnv("TMUX", "")
+  vi.stubEnv("STY", "")
   vi.stubEnv("TERM_PROGRAM", "Apple_Terminal")
   vi.stubEnv("TERM_PROGRAM_VERSION", "2.14")
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true })
   kernelRelease.mockReturnValue("25.6.0")
   execFile.mockReturnValue("26.6.2\n") // measured by /usr/bin/sw_vers on the owned Mac fixture
   detectWindowsAncestor.mockReturnValue(null)
+})
+
+test.each(["tmux", "screen"])("%s hint survives inherited outer app identity but cannot override replies", (mux) => {
+  vi.stubEnv(mux === "tmux" ? "TMUX" : "STY", "owned-mux-session")
+  vi.stubEnv("__CFBundleIdentifier", "net.kovidgoyal.kitty")
+  vi.stubEnv("KITTY_WINDOW_ID", "1")
+  vi.stubEnv("TERM_PROGRAM", "kitty")
+  vi.stubEnv("TERM_PROGRAM_VERSION", "0.49.2")
+  const hint = detectTerminal()
+  expect(hint).toMatchObject({ name: mux, version: "" })
+  const muxReplies: Record<string, string> =
+    mux === "tmux"
+      ? { "collector.xtversion": "\x1bP>|tmux 3.6\x1b\\\x1b[?1;2;4c" }
+      : { "collector.xtversion": "\x1b[?1;2c", "collector.da2": "\x1b[>83;40901;0c\x1b[?1;2c" }
+  expect(resolveMeasuredAppVersion(hint.name, hint.version, muxReplies)).toBe(mux === "tmux" ? "3.6" : "4.09.01")
+  // A fresh Kitty can inherit the same mux hint. Refuse naming both; never record it as the mux.
+  expect(() =>
+    resolveMeasuredAppVersion(hint.name, hint.version, {
+      "collector.xtversion": "\x1bP>|kitty(0.49.2)\x1b\\\x1b[?62;52;c",
+    }),
+  ).toThrow(new RegExp(`${mux}.*kitty`))
+})
+
+test("nested TMUX and STY do not arbitrarily choose an innermost mux", () => {
+  vi.stubEnv("TMUX", "tmux-session")
+  vi.stubEnv("STY", "screen-session")
+  expect(() => detectTerminal()).toThrow(/TMUX.*STY.*ambiguous/)
 })
 
 afterEach(() => {
