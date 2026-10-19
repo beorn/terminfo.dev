@@ -41,6 +41,8 @@ for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes
   fs.writeFileSync(exe(name), bytes, {mode:0o600})
 }
 const real = {...fs}
+const fsFault = new Error("fixture filesystem link unavailable")
+let spawns=0
 let mux, variant, table, socket, muxTarget, reads = 0
 const statText = pid => {
   const p = table.get(pid)
@@ -51,6 +53,7 @@ const statText = pid => {
 mock.module("node:os", () => ({...os,homedir:()=>root}))
 mock.module("node:fs", () => ({...fs,
   readFileSync(path,...args) {
+    if (variant === "config-io" && path === exe("config")) throw fsFault
     if (path === "/proc/sys/kernel/random/boot_id") return bootId + "\n"
     if (path === "/proc/net/unix") return "Num RefCount Protocol Flags Type St Inode Path\n0000: 2 0 10000 1 01 12345 " + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n"
     const m = /^\/proc\/(\d+)\/(stat|status|cmdline|exe)$/.exec(path)
@@ -65,15 +68,18 @@ mock.module("node:fs", () => ({...fs,
     return real.readFileSync(path,...args)
   },
   realpathSync(path,...args) {
+    if (variant === "exe-io" && path === "/proc/"+process.pid+"/exe") throw fsFault
     const m = /^\/proc\/(\d+)\/exe$/.exec(path)
     if (m) return table.get(Number(m[1])).exe
     return real.realpathSync(path,...args)
   },
   readdirSync(path,...args) {
+    if (variant === "fd-directory-io" && path === "/proc/147/fd") throw fsFault
     if (path === "/proc/147/fd") return variant === "second-client" ? ["3","4","5","7"] : ["3","4","5"]
     return real.readdirSync(path,...args)
   },
   readlinkSync(path,...args) {
+    if (variant === "fd-link-io" && path === "/proc/147/fd/3") throw fsFault
     if (path === "/proc/147/fd/3") return variant === "detached" ? "/dev/null" : "/dev/pts/0"
     if (path === "/proc/147/fd/4") return "socket:[12345]"
     if (path === "/proc/147/fd/5") return "/dev/pts/ptmx"
@@ -81,6 +87,7 @@ mock.module("node:fs", () => ({...fs,
     return real.readlinkSync(path,...args)
   },
   statSync(path,...args) {
+    if (variant === "socket-io" && path === socket) throw fsFault
     if (path === socket) return {isSocket:()=>true,uid:process.getuid(),mode:0o140700}
     if (path === "/dev/pts/0" || path === "/proc/147/fd/3") return {isCharacterDevice:()=>true,rdev:34816}
     if (path === "/dev/pts/2" || path === "/proc/147/fd/7") return {isCharacterDevice:()=>true,rdev:34818}
@@ -88,6 +95,7 @@ mock.module("node:fs", () => ({...fs,
   },
 }))
 mock.module("node:child_process", () => ({...cp,
+  spawn(){spawns++;throw new Error("unowned clipboard writer spawned")},
   execFile(file,args,options,callback) {
     if (file === "xdotool") callback(null,"76\n")
     else if (file === exe("tmux")) {
@@ -161,6 +169,38 @@ try {
       initialize(kind,bad)
       await assert.rejects(factory(),message,kind+" "+bad)
       assert.equal(reads,0,kind+" "+bad+" accessed clipboard before rejecting")
+    }
+    // Filesystem faults must name the broken custody link and retain the original error.
+    for(const [bad, message] of Object.entries({
+      "exe-io": /process executable/,
+      "config-io": /mux config/,
+      "socket-io": /mux socket/,
+      ...(kind === "screen" ? {"fd-directory-io": /Screen server fd directory/, "fd-link-io": /Screen server fd link/} : {}),
+    })) {
+      initialize(kind,bad)
+      await assert.rejects(factory(),error=>{
+        assert.match(error.message,message)
+        assert.equal(error.cause,fsFault)
+        return true
+      })
+      assert.equal(reads,0)
+    }
+    // Loss inside the callback must refuse both a requested write and finally restoration.
+    for(const operation of ["write","restore"]) {
+      initialize(kind,"valid")
+      const revoked=await factory(), events=[]
+      const beforeSpawns=spawns
+      let afterLossReads
+      await assert.rejects(revoked.withClipboardFixture(async fixture=>{
+        variant="detached";afterLossReads=reads
+        if(operation === "write") await fixture.writeText("unowned mutation")
+        return {pass:true}
+      },event=>events.push(event)),/Owned clipboard restoration failed:.*(?:attached client|attached display)/)
+      assert.equal(reads,afterLossReads)
+      assert.equal(spawns,beforeSpawns)
+      assert(events.some(event=>event.kind === "clipboard-restore" && event.status === "error"))
+      assert.equal(events.some(event=>event.kind === "clipboard-write" && event.status === "error"),operation === "write")
+      await revoked.dispose()
     }
     initialize(kind,"valid")
     const changedChain=await factory()

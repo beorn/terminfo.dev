@@ -136,7 +136,11 @@ function processExecutable(pid: number): string {
   const status = readFileSync(`/proc/${pid}/status`, "utf8")
   const uid = Number(/^Uid:\s+(\d+)/m.exec(status)?.[1])
   if (uid !== process.getuid?.()) throw new Error(`Clipboard process ${pid} has another owner`)
-  return realpathSync(`/proc/${pid}/exe`)
+  try {
+    return realpathSync(`/proc/${pid}/exe`)
+  } catch (cause) {
+    throw new Error(`Clipboard process executable /proc/${pid}/exe cannot be resolved`, { cause })
+  }
 }
 
 type ProcessIdentity = MuxAttachmentProof["chain"][number] & { ppid: number }
@@ -326,10 +330,22 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
     throw new Error("Owned mux ancestry contains an undeclared executable or no mux")
   }
   for (const p of intermediates) assertLiveExecutable(p.pid, target.executable)
-  if (digest(readFileSync(target.config.path)) !== target.config.sha256) {
+  let configBytes: Buffer
+  try {
+    configBytes = readFileSync(target.config.path)
+  } catch (cause) {
+    throw new Error(`Owned mux config ${target.config.path} cannot be read`, { cause })
+  }
+  if (digest(configBytes) !== target.config.sha256) {
     throw new Error("Owned mux config digest differs from receipt")
   }
-  const socket = statSync(target.socketPath)
+  const socket = (() => {
+    try {
+      return statSync(target.socketPath)
+    } catch (cause) {
+      throw new Error(`Owned mux socket ${target.socketPath} cannot be inspected`, { cause })
+    }
+  })()
   if (!socket.isSocket() || socket.uid !== process.getuid?.() || (socket.mode & 0o077) !== 0) {
     throw new Error("Owned mux socket is not private and owned")
   }
@@ -402,9 +418,21 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
       const socketLink = `socket:[${inode}]`
       let ownsSocket = false
       const displays: number[] = []
-      for (const fd of readdirSync(`/proc/${server.pid}/fd`)) {
-        const path = `/proc/${server.pid}/fd/${fd}`
-        const link = readlinkSync(path)
+      const directory = `/proc/${server.pid}/fd`
+      let descriptors: string[]
+      try {
+        descriptors = readdirSync(directory)
+      } catch (cause) {
+        throw new Error(`Owned mux Screen server fd directory ${directory} cannot be read`, { cause })
+      }
+      for (const fd of descriptors) {
+        const path = `${directory}/${fd}`
+        let link: string
+        try {
+          link = readlinkSync(path)
+        } catch (cause) {
+          throw new Error(`Owned mux Screen server fd link ${path} cannot be read`, { cause })
+        }
         if (link === socketLink) ownsSocket = true
         if (/^\/dev\/pts\/\d+$/.test(link)) displays.push(statSync(path).rdev)
       }
@@ -504,11 +532,15 @@ export async function createLinuxClipboardAdapter(
     ) {
       throw new Error("Owned clipboard process chain changed since grant")
     }
-    if (receipt.target?.kind === "mux") {
+    const target = receipt.target
+    switch (target?.kind) {
+      case undefined:
+      case "app":
+        break
+      case "mux": {
       if (typeof captureRunId !== "string" || !/^[0-9a-f]{32}$/.test(captureRunId)) {
         throw new Error("Owned mux capture run ID is missing")
       }
-      const target = receipt.target
       const attachedClient = await assertMuxAttachment(target, chain)
       const collector = chain[0]
       if (!collector) throw new Error("Owned mux collector is absent from ancestry")
@@ -537,6 +569,10 @@ export async function createLinuxClipboardAdapter(
         socketPath: target.socketPath,
         session: target.session,
       }
+      break
+      }
+      default:
+        return target satisfies never
     }
     if (JSON.stringify(ancestorOfCollector(receipt.terminal.pid)) !== JSON.stringify(chain)) {
       throw new Error("Owned clipboard process chain changed during verification")
