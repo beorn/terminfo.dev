@@ -5,13 +5,14 @@ import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
 import { release, tmpdir } from "node:os"
-import { join, relative, resolve } from "node:path"
+import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
 import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
+import { owningCheckout } from "./termless-root.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
 // Match the existing Linux full-probe HTTP budget for one engine.
@@ -62,12 +63,6 @@ function trustedSuite() {
 
 /** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
 async function collectOne(name: string, directory: string): Promise<string> {
-  let termlessRoot: string
-  try {
-    termlessRoot = realpathSync(resolve(ROOT, "../termless"))
-  } catch (cause) {
-    throw new Error(`Local headless v2 collection requires the owned Termless checkout beside ${ROOT}`, { cause })
-  }
   const { headlessRuntimeIdentity } = await import("./headless-identity.ts")
   const entry = manifest().backends[name]
   if (!entry || entry.type === "os") throw new Error(`Unknown or OS-only headless backend ${name}`)
@@ -100,10 +95,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
     } catch (cause) {
       throw new Error(`${name} requires installed ${entry.package} in the owned source workspace`, { cause })
     }
-    const adapterRelative = relative(termlessRoot, adapterPath)
-    if (adapterRelative.startsWith("../") || adapterRelative === ".." || adapterRelative.startsWith("/")) {
-      throw new Error(`${entry.package} resolved outside owned Termless: ${adapterPath}`)
-    }
+    // The loaded adapter must belong to the checkout that tracks it; the call refuses otherwise.
+    owningCheckout(adapterPath, entry.package)
     const mod: unknown = await import(pathToFileURL(adapterPath).href)
     if (!record(mod) || typeof mod.resolve !== "function") {
       throw new Error(`${entry.package} does not export resolve()`)
