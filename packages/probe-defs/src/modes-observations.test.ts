@@ -610,7 +610,7 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
 
 const DECSSCLS_GEOMETRY = { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 } as const
 const DECSSCLS_RECTANGLE = { x: 0, y: 0, width: 800, height: 440 } as const
-const DECSSCLS_WITNESS = { top: 1, left: 1, bottom: 22, right: 80 } as const
+const DECSSCLS_WITNESS = { top: 1, left: 1, bottom: 23, right: 80 } as const
 
 interface DecssclsFixture {
   /** Raw region digest per capture, in capture order; defaults to the frame ref. */
@@ -623,6 +623,8 @@ interface DecssclsFixture {
   missingDigestAt?: number
   /** The requests the probe handed the capture adapter, in capture order. */
   requests?: CaptureRequest[]
+  /** What DECRQM 4 answers before the probe: the DECSCLM state it must put back. */
+  decsclm?: "set" | "reset" | "unknown" | null
 }
 
 function decssclsContext(
@@ -637,6 +639,7 @@ function decssclsContext(
     geometry: { ...DECSSCLS_GEOMETRY },
     source: "measured by complete raster calibration",
   }
+  context.queryMode = async () => fixture.decsclm ?? null
   let index = 0
   context.capture = async (request) => {
     fixture.requests?.push(request)
@@ -705,6 +708,8 @@ test("modes.decsscls grades text moving through the witness region inside the wi
     screenshotRef: "slow-t1",
   })
   expect(result.observation?.note).toContain("moved through the witness region")
+  // The decided verdict cites the four region digests, so the run parser can recompute it.
+  expect(result.response).toContain(JSON.stringify({ control: ["jump", "jump"], target: ["slow-t0", "slow-t1"] }))
   expect(result.assertions).toMatchObject([{ kind: "positive" }])
   expect(frames).toHaveLength(4)
   // Every capture names the witness cells AND the measured geometry: pixels only, never ctx.cells.
@@ -713,11 +718,11 @@ test("modes.decsscls grades text moving through the witness region inside the wi
     expect(request.pixelGeometry).toEqual(DECSSCLS_GEOMETRY)
   }
   expect(writes.some((write) => write.includes("\x1b[?4h"))).toBe(true)
-  // DECSCLM is restored to the baseline the probe set, never flipped to jump behind the run's back.
-  expect(writes.some((write) => write.includes("\x1b[?4l"))).toBe(false)
+  // DECSCLM is restored to what DECRQM 4 reported; this fixture answers nothing, so it restores reset.
   const exit = writes.find((write) => write.includes("\x1b[?1049l"))
   expect(exit).toContain("\x1b[0 p")
-  expect(exit).toContain("\x1b[?4h")
+  expect(exit).toContain("\x1b[?4l")
+  expect(result.response).toContain("prior DECSCLM unknown, restored reset")
   expect(writes.some((write) => write.includes("\x1b[9 p"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
   expect(writes.some((write) => write.includes("line 40"))).toBe(true)
@@ -744,6 +749,37 @@ test("modes.decsscls refuses a one-row screen, where its witness would be the cu
   expect(result.note).toContain("no row above it")
   expect(writes).toEqual([])
   expect(frames).toEqual([])
+})
+
+test("modes.decsscls puts back the DECSCLM state it read before the probe", async () => {
+  for (const [prior, expected] of [
+    ["set", "\x1b[?4h"],
+    ["reset", "\x1b[?4l"],
+  ] as const) {
+    const writes: string[] = []
+    const frames: ObservationFrame[] = []
+    const result = await decsscls().term!(
+      decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+        cells: ["jump", "jump", "slow-t0", "slow-t1"],
+        decsclm: prior,
+      }),
+    )
+    expect(result.observation?.outcome, prior).toBe("supported")
+    const exit = writes.find((write) => write.includes("\x1b[?1049l"))
+    expect(exit, prior).toContain(expected)
+    expect(result.response, prior).toContain(`"prior":"${prior}"`)
+  }
+})
+
+test("modes.decsscls names a refused capture geometry instead of claiming the run had none", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const context = captureContext(24, 80, writes, frames)
+  context.captureGeometryRefusal = "cell-to-pixel calibration answered no DA1 reply"
+  const result = await decsscls().term!(context)
+  expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(result.note).toContain("this run refused capture geometry: cell-to-pixel calibration answered no DA1 reply")
+  expect(writes).toEqual([])
 })
 
 test("modes.decsscls does not grade unsupported when an honoring first frame lands at 1.5 s", async () => {
@@ -776,7 +812,7 @@ test("modes.decsscls stays inconclusive when the first target frame lands outsid
       evidence: "pixels",
     })
     expect(result.observation?.note).toContain("outside the 1889 ms throttled window")
-    expect(result.assertions).toMatchObject([{ kind: "positive" }])
+    expect(result.assertions).toBeUndefined()
   })
 })
 
@@ -807,7 +843,7 @@ test("modes.decsscls stays inconclusive when the jump control is still painting"
     evidence: "pixels",
   })
   expect(result.observation?.note).toContain("jump control moved between two frames")
-  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+  expect(result.assertions).toBeUndefined()
 })
 
 test("modes.decsscls stays inconclusive when the pair was cropped from different rectangles", async () => {
@@ -826,7 +862,7 @@ test("modes.decsscls stays inconclusive when the pair was cropped from different
     evidence: "pixels",
   })
   expect(result.observation?.note).toContain("cropped from different rectangles")
-  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+  expect(result.assertions).toBeUndefined()
 })
 
 test("modes.decsscls refuses a text-cells frame instead of grading a buffer", async () => {

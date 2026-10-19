@@ -372,18 +372,20 @@ const DECSSCLS_LINES_PER_SECOND = 9
  */
 const DECSSCLS_OVERFLOW_ROWS = 16
 /**
- * Slack under the throttled window. "The first frame landed inside the window" is a bound, so a
- * capture that returns a few milliseconds either side of it cannot flip the verdict.
+ * Slack under the throttled window. At 9 lines per second one line takes 111 ms, so 150 ms is more
+ * than a full line: a terminal that honours the rate moves at least one line between the first and
+ * second target frame, while a capture that returns a few milliseconds either side of the bound
+ * cannot flip the verdict on its own.
  */
 const DECSSCLS_TIMING_MARGIN_MS = 150
 /**
- * DECSCLM smooth scrolling, which the documented rate applies to. It is ALSO the declared baseline:
- * it is the mode's power-up default, and DECSCLM has no query, so the probe writes this setting
- * before the first phase and re-asserts the same setting on exit instead of flipping to jump and
- * leaving a terminal in a state it never asked about. Tonight's review named the unconditional
- * CSI ?4l as a state leak; this constant is the one place a different run baseline would change.
+ * DECSCLM smooth scrolling, the mode DECSSCLS's documented rate applies to. Both phases set it, and
+ * the probe reads DECSCLM before it starts (DECRQM 4) so the finally can put back exactly what it
+ * found. No run-level reset exists between probes, so a probe that leaves smooth scrolling on would
+ * change the timing of every later row that never asked for it.
  */
-const DECSSCLS_BASELINE = "\x1b[?4h"
+const DECSSCLM_SMOOTH = "\x1b[?4h"
+const DECSSCLM_JUMP = "\x1b[?4l"
 
 /** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
 function decssclsBurst(rows: number): { text: string; lines: number } {
@@ -396,7 +398,7 @@ function decssclsBurst(rows: number): { text: string; lines: number } {
  * the cursor on, so no cursor repaint reaches it and scrolling has to move text through it.
  */
 function decssclsWitness(rows: number, cols: number): CaptureCells {
-  return { top: 1, left: 1, bottom: Math.max(1, rows - 2), right: cols }
+  return { top: 1, left: 1, bottom: rows - 1, right: cols }
 }
 
 interface DecssclsPair {
@@ -404,6 +406,8 @@ interface DecssclsPair {
   sameRectangle: boolean
   /** The region digest changed between the pair: content moved through the witness region. */
   changed: boolean
+  /** The two frames' region digests, in capture order, so a decided verdict can cite them. */
+  digests: readonly [string, string]
   firstElapsedMs: number
   screenshotRef: string
   rectangles: readonly [CaptureRectangle, CaptureRectangle]
@@ -448,12 +452,27 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const cols = ctx.cols
   const geometry = ctx.captureGeometry?.geometry
   if (!Number.isSafeInteger(cols) || cols < 1 || geometry === undefined) {
-    return notTestedResult("DECSSCLS needs a measured pixel geometry to digest a cell region", {
-      rows,
-      cols,
-      geometry: geometry !== undefined,
-    })
+    const refusal = ctx.captureGeometryRefusal
+    return notTestedResult(
+      refusal === undefined
+        ? "DECSSCLS needs a measured pixel geometry to digest a cell region"
+        : `DECSSCLS needs a measured pixel geometry to digest a cell region; this run refused capture geometry: ${refusal}`,
+      {
+        rows,
+        cols,
+        geometry: geometry !== undefined,
+        ...(refusal !== undefined && { captureGeometryRefusal: refusal }),
+      },
+    )
   }
+  const priorMode = await ctx.queryMode(4)
+  const restoreMode = priorMode === "set" ? DECSSCLM_SMOOTH : DECSSCLM_JUMP
+  const restoredDecsclm =
+    priorMode === "set"
+      ? "smooth (CSI ?4h), as read before the probe"
+      : priorMode === "reset"
+        ? "jump (CSI ?4l), as read before the probe"
+        : "jump (CSI ?4l); prior DECSCLM unknown, restored reset"
   const burst = decssclsBurst(rows)
   // The clear and home fill the first `rows` lines without scrolling, so only the rest line-feeds
   // scroll. The window counts those scrolls, not the burst length.
@@ -480,7 +499,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     return { cells: digests.cells, rectangle: frame.regionRectangle, ref: frame.ref }
   }
   const phase = async (role: ObservationFrame["role"], setting: string, label: string): Promise<DecssclsPair> => {
-    ctx.write(DECSSCLS_BASELINE)
+    ctx.write(DECSSCLM_SMOOTH)
     const startedAt = performance.now()
     ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
@@ -497,12 +516,14 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     return {
       sameRectangle,
       changed: first.cells !== second.cells,
+      digests: [first.cells, second.cells],
       firstElapsedMs,
       screenshotRef: second.ref,
       rectangles: [first.rectangle, second.rectangle],
     }
   }
-  const restored = "CSI 0 SP p and CSI ?4h (documented defaults; the prior setting is not queryable)"
+  const restored =
+    "CSI 0 SP p, and DECSCLM restored to the mode read before the probe; the DECSSCLS speed itself is not queryable"
   try {
     const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
     const target = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
@@ -519,7 +540,15 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       rows,
       throttledDurationMs,
       timingBoundMs,
-      smoothScroll: "DECSCLM smooth (CSI ?4h) written before the first phase and re-asserted on exit",
+      decssclm: {
+        prior: priorMode ?? "none",
+        setForBothPhases: "CSI ?4h",
+        restored: restoredDecsclm,
+      },
+      regionDigests: {
+        control: control.digests,
+        target: target.digests,
+      },
       rectangles: {
         control: control.rectangles,
         target: target.rectangles,
@@ -529,7 +558,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     const response = JSON.stringify(observed)
     if (!control.sameRectangle || !target.sameRectangle) {
       const note =
-        "Frames were cropped from different rectangles, so their digests do not compare (29580); the capture arm must place the same region for both frames"
+        "Frames were cropped from different rectangles, so their digests do not compare; the capture arm must place the same region for both frames"
       return {
         pass: false,
         response,
@@ -541,7 +570,6 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
           frames,
           note,
         },
-        assertions: [{ kind: "positive", expected: note, observed: response }],
       }
     }
     if (control.changed) {
@@ -558,7 +586,6 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
           frames,
           note,
         },
-        assertions: [{ kind: "positive", expected: note, observed: response }],
       }
     }
     if (!insideWindow) {
@@ -574,7 +601,6 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
           frames,
           note,
         },
-        assertions: [{ kind: "positive", expected: note, observed: response }],
       }
     }
     if (target.changed) {
@@ -606,7 +632,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       assertions: [{ kind: "negative", expected: note, observed: response }],
     }
   } finally {
-    ctx.write(DECSSCLS_SLOW + DECSSCLS_BASELINE + "\x1b[?1049l\x1b[0m")
+    ctx.write(DECSSCLS_SLOW + restoreMode + "\x1b[?1049l\x1b[0m")
   }
 }
 
