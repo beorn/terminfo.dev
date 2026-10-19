@@ -91,6 +91,7 @@ jobs:
           const copied = new Map();
           let missingDuringStartup = 0;
           let observing = true;
+          let observerError;
           async function copy(path, root) {
             try {
               const info = await stat(path);
@@ -107,7 +108,8 @@ jobs:
           // Only this fresh jobs run-scoped launch directories, never an operator profile.
           // Snapshot while the collector runs: its existing successful cleanup removes the source.
           const observer = (async () => {
-            while (observing) {
+            while (true) {
+              const finalPass = !observing;
               for (const entry of await readdir("/tmp", { withFileTypes: true })) {
                 if (!entry.isDirectory() || !entry.name.startsWith("terminfo-run-")) continue;
                 const root = join("/tmp", entry.name);
@@ -128,16 +130,23 @@ jobs:
                   }
                 }
               }
+              if (finalPass) break;
               await Bun.sleep(100);
             }
-          })();
+          })().catch(error => { observerError = error; });
           const env = { ...process.env };
           delete env.TERMINFO_DISPOSABLE_RECEIPT;
           delete env.TERMINFO_CAPTURE_DIRECTORY;
-          const child = Bun.spawn(["bun", "packages/admin/src/index.ts", "probe", "app", process.env.APP_ID, "--force", "--output", join(out, "private-runs")], { env, stdout: Bun.file(join(out, "collector.log")), stderr: Bun.file(join(out, "collector.stderr")) });
           let status;
-          try { status = await child.exited; } finally { observing = false; await observer; }
-          await writeFile(join(out, "discriminator.json"), JSON.stringify({ app: process.env.APP_ID, surface: process.env.APP_SURFACE, sourceRevision: process.env.GITHUB_SHA, exitCode: status, observedRoots: [...observedRoots], copiedPaths: [...copied.keys()], missingDuringStartup, scope: "startup/fixture activation/terminal read only; no pixel qualification or admission", retained: "private-runs plus fixture, owner tty and extension-host/renderer log snapshots" }, null, 2));
+          let launchError;
+          try {
+            const child = Bun.spawn(["bun", "packages/admin/src/index.ts", "probe", "app", process.env.APP_ID, "--force", "--output", join(out, "private-runs")], { env, stdout: Bun.file(join(out, "collector.log")), stderr: Bun.file(join(out, "collector.stderr")) });
+            status = await child.exited;
+          } catch (error) { launchError = error; }
+          finally { observing = false; await observer; }
+          await writeFile(join(out, "discriminator.json"), JSON.stringify({ app: process.env.APP_ID, surface: process.env.APP_SURFACE, sourceRevision: process.env.GITHUB_SHA, exitCode: status ?? null, launchError: launchError ? String(launchError) : null, observerError: observerError ? String(observerError) : null, observedRoots: [...observedRoots], copiedPaths: [...copied.keys()], missingDuringStartup, scope: "startup/fixture activation/terminal read only; no pixel qualification or admission", retained: "private-runs plus fixture, owner tty and extension-host/renderer log snapshots" }, null, 2));
+          if (launchError) throw launchError;
+          if (observerError) throw observerError;
           process.exitCode = status;
           '
       - uses: actions/upload-artifact@v4
