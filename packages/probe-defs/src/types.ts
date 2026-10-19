@@ -432,6 +432,26 @@ export interface OuterAppProof {
   appLaunch?: AppLaunchReceipt
 }
 
+/** Snapshot verified by the live Linux owner, retained for historical joins without live PID queries. */
+export interface MuxAttachmentProof {
+  platform: "linux"
+  mux: "tmux" | "screen"
+  bootId: string
+  receiptSha256: string
+  launchRunId: string
+  captureRunId: string
+  preflightCollector: { pid: number; startTicks: string }
+  outerShell: { pid: number; startTicks: string; ttyRdev: number }
+  outerTerminal: { pid: number; startTicks: string }
+  collector: { pid: number; startTicks: string; ttyRdev: number }
+  attachedClient: { pid: number; startTicks: string; ttyRdev: number }
+  chain: { pid: number; startTicks: string; executablePath: string; ttyRdev: number }[]
+  executable: { path: string; sha256: string; version: string }
+  config: { path: string; sha256: string }
+  socketPath: string
+  session: string
+}
+
 /** Raw run records are immutable; review decisions live in Interpretation. */
 export interface ProbeRun {
   schemaVersion: 2
