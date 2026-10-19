@@ -72,10 +72,16 @@ interface AppDef {
     markerValue: (run: ProbeRun) => string
     /** The launch arguments, given the serve script and the run-scoped marker value. */
     args: (script: string, markerValue: string) => string[]
+    /** Run-scoped files the marker refers to, written once the marker is validated and before the
+     * launch. A marker that names a config file needs that file to exist; no other app needs this. */
+    prepare?: (run: ProbeRun, markerValue: string) => void
   }
 }
 
 const BUN = process.execPath // use the same bun that's running us
+
+/** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
+const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
 
 const APPS: AppDef[] = [
   {
@@ -109,6 +115,33 @@ const APPS: AppDef[] = [
     binaryPath: KITTY_BINARY_PATH,
     launchArgs: (script) => ["--hold", script],
     bundleId: "net.kovidgoyal.kitty",
+  },
+  {
+    name: "WezTerm",
+    id: "wezterm",
+    appPath: "/Applications/WezTerm.app",
+    binaryPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
+    launchArgs: (script) => ["start", "--always-new-process", "--", "/bin/bash", script],
+    bundleId: "com.github.wez.wezterm",
+    // The CLI execs into this GUI binary, which is the process that carries the marker in its argv.
+    cliLaunch: {
+      spawnPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
+      executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+      markerFlag: "--config-file",
+      markerValue: weztermConfigPath,
+      prepare: (_run, markerValue) => {
+        writeFileSync(markerValue, "return {}\n", { flag: "wx", mode: 0o600 })
+      },
+      args: (script, markerValue) => [
+        "--config-file",
+        markerValue,
+        "start",
+        "--always-new-process",
+        "--",
+        "/bin/bash",
+        script,
+      ],
+    },
   },
   {
     name: "Warp",
@@ -180,6 +213,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
       flag: app.cliLaunch.markerFlag,
       value: app.cliLaunch.markerValue(run),
     })
+    app.cliLaunch.prepare?.(run, marker.value)
     const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
       detached: true,
       stdio: "ignore",
