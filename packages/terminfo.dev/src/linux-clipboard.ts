@@ -617,7 +617,7 @@ export async function createLinuxClipboardAdapter(
     permissions: receipt.permissions,
     assertOwned,
     get muxAttachmentProof() {
-      return muxAttachmentProof ? structuredClone(muxAttachmentProof) : undefined
+      return muxAttachmentProof ? globalThis.structuredClone(muxAttachmentProof) : undefined
     },
     summary: JSON.stringify({
       receiptSha256: digest(receiptBytes),
