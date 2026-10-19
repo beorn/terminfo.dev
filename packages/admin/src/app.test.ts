@@ -269,9 +269,9 @@ test.each([
     expect(options?.detached).toBe(true)
     expect(options?.stdio).toBe("ignore")
     const env = options?.env
+    expect(env?.HOME).toBe(process.env.HOME)
     if (prefix === "cursor") expect(env?.CURSOR_CLI_BLOCK_CURSOR_AGENT).toBe("true")
     if (prefix === "vscode") {
-      expect(env?.HOME).toBe(process.env.HOME)
       const cursorKeys = Object.keys(env ?? {})
         .filter((key) => key.startsWith("CURSOR_"))
         .sort()
