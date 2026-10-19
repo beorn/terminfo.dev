@@ -101,7 +101,7 @@ export type AdmissionExclusionCode =
 /** Only expected admission refusals become public exclusions; detail stays in authoring diagnostics. */
 class ReceiptRefusal extends Error {
   constructor(
-    readonly code: ReceiptRefusalCode,
+    readonly code: AdmissionExclusionCode,
     readonly detail: string,
     cause?: unknown,
   ) {
@@ -290,7 +290,7 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
     if (!isRecord(fixture) || typeof fixture.receiptSource !== "string" || !isRecord(preflight)) return false
     const receiptSha256 = createHash("sha256").update(fixture.receiptSource, "utf8").digest("hex")
     if (receiptSha256 !== fixture.receiptSha256 || receiptSha256 !== attachment.receiptSha256) return false
-    if (fixture.muxAttachmentProof !== undefined && !isDeepStrictEqual(fixture.muxAttachmentProof, attachment)) {
+    if (!isDeepStrictEqual(fixture.muxAttachmentProof, attachment)) {
       return false
     }
     const receipt = parseLinuxClipboardReceipt(parseJsonStrict("mux clipboard receipt", fixture.receiptSource))
@@ -320,7 +320,7 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
   } catch (cause) {
     // Malformed retained input is a named admission refusal, never an empty/default proof.
     if (!(cause instanceof Error)) throw cause
-    return false
+    throw new ReceiptRefusal("mux-attachment-invalid", cause.message, cause)
   }
 }
 
@@ -344,10 +344,10 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
       if (ownershipSource === undefined) return "mux-attachment-missing"
       let ownership: unknown
       try {
-        ownership = JSON.parse(ownershipSource)
+        ownership = parseJsonStrict("collector.terminalOwnership", ownershipSource)
       } catch (cause) {
-        if (!(cause instanceof SyntaxError)) throw cause
-        return "mux-attachment-invalid"
+        if (!(cause instanceof Error)) throw cause
+        throw new ReceiptRefusal("mux-attachment-invalid", cause.message, cause)
       }
       if (!isRecord(ownership)) return "mux-attachment-invalid"
       if (ownership.muxAttachment === undefined) return "mux-attachment-missing"
@@ -409,9 +409,9 @@ export function assessRunAdmission(
   const reviewed = active.some(
     (entry) => entry.runId === run.runId && entry.runSha256 === run.sha256 && applies(entry, run) && entry.reviewed,
   )
-  const reason = admissionRefusal(run, active, reviewed, identityAdmission)
-  if (reason === null) {
-    try {
+  try {
+    const reason = admissionRefusal(run, active, reviewed, identityAdmission)
+    if (reason === null) {
       preflightOwnershipReceipt(
         run.path,
         run.rawReplies["collector.disposableOwnership"],
@@ -422,14 +422,16 @@ export function assessRunAdmission(
         evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
         evidence.mode === "placement",
       )
-    } catch (cause) {
-      if (!(cause instanceof ReceiptRefusal)) {
-        throw new Error(`Cannot assess ownership receipt for run ${run.runId}`, { cause })
-      }
-      return { accepted: false, reason: cause.code, detail: cause.detail, identityAdmission: null }
     }
+    return reason === null
+      ? { accepted: true, identityAdmission }
+      : { accepted: false, reason, identityAdmission: null }
+  } catch (cause) {
+    if (!(cause instanceof ReceiptRefusal)) {
+      throw new Error(`Cannot assess ownership receipt for run ${run.runId}`, { cause })
+    }
+    return { accepted: false, reason: cause.code, detail: cause.detail, identityAdmission: null }
   }
-  return reason === null ? { accepted: true, identityAdmission } : { accepted: false, reason, identityAdmission: null }
 }
 
 const SAFE_COMPONENT = /^[a-zA-Z0-9._-]+$/

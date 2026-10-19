@@ -393,9 +393,9 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
   if (!sameProcess(last, proof.outerTerminal)) {
     fail(where, "chain does not end at the declared outer terminal identity")
   }
-  const shell = chain.find((row) => sameProcess(row, proof.outerShell))
-  if (!shell || shell.ttyRdev !== proof.outerShell.ttyRdev) {
-    fail(where, "outer shell identity or TTY is absent from chain")
+  const shell = chain.at(-2)
+  if (!shell || !sameProcess(shell, proof.outerShell) || shell.ttyRdev !== proof.outerShell.ttyRdev) {
+    fail(where, "outer shell identity or TTY is absent immediately before the outer terminal")
   }
   if (new Set(chain.map((row) => row.pid)).size !== chain.length) fail(where, "chain repeats a process")
   if (
@@ -408,8 +408,10 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
   if (proof.attachedClient.ttyRdev !== proof.outerShell.ttyRdev) {
     fail(where, "attached client TTY differs from outer shell")
   }
-  for (const row of chain.slice(1, -1)) {
-    if (!sameProcess(row, proof.outerShell) && row.executablePath !== proof.executable.path) {
+  const muxProcesses = chain.slice(1, -2)
+  if (muxProcesses.length === 0) fail(where, "chain has no declared mux process between collector and outer shell")
+  for (const row of muxProcesses) {
+    if (row.executablePath !== proof.executable.path) {
       fail(where, `chain process ${row.pid} does not name the declared mux executable`)
     }
   }

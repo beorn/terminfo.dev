@@ -54,6 +54,12 @@ test("mux attachment preserves its measured chain and refuses malformed or mixed
     session: "owned",
   }
   expect(parseMuxAttachmentProof(proof)).toEqual(proof)
+  for (const chain of [
+    proof.chain.filter((row) => row.pid !== 145),
+    [proof.chain[0], proof.chain[2], proof.chain[1], proof.chain[3]],
+  ]) {
+    expect.soft(() => parseMuxAttachmentProof({ ...proof, chain })).toThrow(/mux attachment/)
+  }
   for (const invalid of [
     { ...proof, extra: true },
     { ...proof, platform: "darwin" },

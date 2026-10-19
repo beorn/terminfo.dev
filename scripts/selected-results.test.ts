@@ -2958,6 +2958,30 @@ describe("identity self-admission", () => {
           { mode: "historical" },
         )
       expect(assessBound(boundSource)).toMatchObject({ accepted: true })
+      expect(
+        assessBound({
+          ...boundSource,
+          rawReplies: { ...boundSource.rawReplies, "collector.clipboardFixture": "{broken" },
+        }),
+      ).toMatchObject({
+        accepted: false,
+        reason: "mux-attachment-invalid",
+        detail: expect.stringContaining("mux clipboard fixture"),
+      })
+      const ownership = boundSource.rawReplies["collector.terminalOwnership"]
+      expect(
+        assessBound({
+          ...boundSource,
+          rawReplies: {
+            ...boundSource.rawReplies,
+            "collector.terminalOwnership": ownership.replace("{", '{"muxAttachment":null,'),
+          },
+        }),
+      ).toMatchObject({
+        accepted: false,
+        reason: "mux-attachment-invalid",
+        detail: expect.stringContaining("duplicate"),
+      })
       for (const [field, value] of Object.entries({
         bootId: "99999999-2222-3333-4444-555555555555",
         preflightCollector: processIdentity(96),
@@ -2995,6 +3019,7 @@ describe("identity self-admission", () => {
       }
       for (const fixture of [
         undefined,
+        { receiptSource, receiptSha256: attachment.receiptSha256 },
         { receiptSource: receiptSource + " ", receiptSha256: attachment.receiptSha256 },
         {
           receiptSource,
@@ -3056,13 +3081,18 @@ describe("identity self-admission", () => {
   it("matches Screen's retained DA2 version before applying native ownership requirements", () => {
     const specimen = muxIdentity.specimens.find((entry) => entry.mux === "screen")!
     const suites = new Map([[specimen.run.probeHash, manifest(specimen.run.probeHash, muxIdentity.featureIds)]])
-    for (const [version, reason] of [
-      [specimen.version, "outer-app-proof-missing"],
-      ["4.09.02", "identity-replies-mismatch"],
+    for (const [version, da2, reason] of [
+      [specimen.version, specimen.run.rawReplies["device.secondary-da"], "outer-app-proof-missing"],
+      ["4.09.02", specimen.run.rawReplies["device.secondary-da"], "identity-replies-mismatch"],
+      [specimen.version, "\x1b[>83;99999999999999999999;0c", "identity-replies-mismatch"],
     ]) {
       const parsed = parseRunSource(
         "screen-identity.json",
-        JSON.stringify({ ...specimen.run, target: { ...specimen.run.target, kind: "mux", id: "screen", version } }),
+        JSON.stringify({
+          ...specimen.run,
+          target: { ...specimen.run.target, kind: "mux", id: "screen", version },
+          rawReplies: { ...specimen.run.rawReplies, "device.secondary-da": da2 },
+        }),
         muxIdentity.featureIds,
         suites,
       )

@@ -32,7 +32,7 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
     terminal: "screen",
     targetKind: "mux",
     da1Pattern: /^\x1b\[\?1;2c$/,
-    da2Pattern: /^\x1b\[>83;(?<version>[1-9]\d{4,});0c(?:\x1b\[\?[0-9;]+c)?$/,
+    da2Pattern: /^\x1b\[>83;(?<version>[1-9]\d{4,14});0c(?:\x1b\[\?[0-9;]+c)?$/,
     da2VersionEncoding: "screen",
     forbidXtversion: true,
   },
