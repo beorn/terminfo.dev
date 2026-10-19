@@ -252,6 +252,44 @@ describe("cli-process ownership", () => {
     }
   })
 
+  test("close escalates to SIGKILL once the owner survives the SIGTERM window", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const signals: Array<string | number | undefined> = []
+    let killed = false
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0) {
+        if (killed) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+        return true
+      }
+      signals.push(signal)
+      if (signal === "SIGKILL") killed = true
+      return true
+    }) as typeof process.kill)
+    try {
+      closeOwnedTerminalWindow(owner)
+      expect(signals).toEqual(["SIGTERM", "SIGKILL"])
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("close does not SIGKILL a pid that lost this launch's marker during the SIGTERM window", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    const table = { comm: { [ownerPid]: executablePath }, command: { [ownerPid]: argv } }
+    fakeProcessTable(table)
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === "SIGTERM") table.command[ownerPid] = `${executablePath} --config-file someone-elses-run`
+      return true
+    }) as typeof process.kill)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/does not carry the launched marker/)
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
   test("kitty's close now re-checks its instance-group marker before signalling", () => {
     vi.mocked(realpathSync).mockImplementation((path) => String(path))
     const kitty: OwnedTerminalWindow = {
