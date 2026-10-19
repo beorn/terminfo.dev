@@ -338,7 +338,7 @@ describe("candidate-2 page: wiring", () => {
     const dark = ["iterm2/macos", "kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
-    expect(page).toContain("ruled for {{ group.ruledTotal }}, measurable on {{ group.includedOn.length }}")
+    expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
     expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
@@ -388,14 +388,14 @@ describe("candidate-2 page: wiring", () => {
     expect(page).toContain(
       "held by {{ group.darkHeldBy.map((row) => contextSentence(row.context) + ' (' + row.decisive + ' of ' + row.denominator + ')').join(', ') }}; that context is not measured, so the group is not claimed (30033)",
     )
-    expect(page).toContain("ruled for {{ group.ruledTotal }}, measurable on {{ group.includedOn.length }}")
+    expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // Both ruled groups keep the ruling's six contexts: four measurable on c240 and the two macOS
+    // Both ruled groups keep the ruling's six contexts: four included on c240 and the two macOS
     // contexts the ruling names. Since the 2026-10-18 hosted collection those two macOS contexts are
     // measured on c240 and held below the bar rather than dark, so the dark-ruled row is empty and
     // the hold is named in heldBy above. ruledTotal carries the six either way, so the page still
-    // reads "ruled for six, measurable on four" instead of quietly shrinking to four (30033).
+    // reads "ruled for six, included on four" instead of quietly shrinking to four (30033).
     const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
@@ -418,6 +418,19 @@ describe("candidate-2 page: wiring", () => {
     expect(unicode.heldBy.map((row) => row.context)).toEqual([])
     // The hold kitty/macos carried is kept in history and named as dark, never dropped.
     expect(unicode.darkHeldBy.map((row) => row.context)).toEqual(["kitty/macos"])
+  })
+
+  it("divides a group's acceptance basis once on both published and dark history rows", () => {
+    // 30248: the ratified base already contains a group's library-only ids. Appending them again when
+    // the acceptance basis is built counts those rows twice, which inflated Reset's denominator to 6
+    // and Scrollback's to 12 on the dark history rows while the published rows read the correct 5 and 9.
+    for (const group of data.groups) {
+      if (group.libraryOnly.length === 0) continue
+      const expected = group.capabilities.length - group.unavailable.length
+      for (const row of [...group.heldBy, ...group.darkHeldBy]) {
+        expect(row.denominator, `${group.key} ${row.context}`).toBe(expected)
+      }
+    }
   })
 
   it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
@@ -493,8 +506,15 @@ describe("candidate-2 page: wiring", () => {
       const scrollback = loadCandidate2Data().groups.find((group) => group.key === "scrollback")
       if (!scrollback) throw new Error("scrollback group missing")
       const ids = scrollback.capabilities.map((capability) => capability.id)
+      // The acceptance basis is the app-decidable rows plus the library-only rows ONCE (30248): the
+      // capability list already contains the library-only ids, so appending them again counted them twice.
+      const decidableIds = ids.filter(
+        (id) =>
+          !scrollback.libraryOnly.some((capability) => capability.id === id) &&
+          !scrollback.unavailable.some((capability) => capability.id === id),
+      )
       const expected = reader.decisiveShare(darkRun.run.states, [
-        ...ids,
+        ...decidableIds,
         ...scrollback.libraryOnly.map((capability) => capability.id),
       ])
       const held = scrollback.darkHeldBy.find((row) => row.context === "wezterm/linux")

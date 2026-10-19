@@ -7,7 +7,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync } from "node:child_process"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { handleApp } from "./app.ts"
+import { handleApp, stopLaunchedApp, type AppLaunch } from "./app.ts"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -243,5 +243,29 @@ describe("App version diagnostics", () => {
     vi.mocked(execSync).mockReturnValueOnce(" \n")
     vi.mocked(execFileSync).mockReturnValueOnce(" \n")
     await expect(handleApp(undefined, {})).rejects.toThrow(/Ghostty.*Info\.plist.*empty/)
+  })
+})
+
+describe("cli-process stop when the owner was never resolved", () => {
+  test("keeps the shim unsignaled and names the marker that may still own a window", () => {
+    const kill = vi.fn()
+    const error = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      stopLaunchedApp(
+        { name: "WezTerm", id: "wezterm" },
+        {
+          proc: { kill } as unknown as AppLaunch["proc"],
+          marker: { flag: "--config-file", value: "/tmp/terminfo-0f3c9a7d/wezterm.lua" },
+        },
+      )
+      expect(kill).not.toHaveBeenCalled()
+      expect(error).toHaveBeenCalledTimes(1)
+      const warning = String(error.mock.calls[0]?.[0])
+      expect(warning).toContain("WezTerm")
+      expect(warning).toContain("--config-file /tmp/terminfo-0f3c9a7d/wezterm.lua")
+      expect(warning).toContain("never resolved")
+    } finally {
+      error.mockRestore()
+    }
   })
 })

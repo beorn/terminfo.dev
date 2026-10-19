@@ -21,6 +21,9 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
   const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-"))
   const raw = { machine: "02:00:00:00:00:01", platform: "fixture-platform-uuid", boot: "fixture-boot-uuid" }
   let matches = 1
+  /** A registration delay: the runner name only appears once this clock passes, so one scan can be
+   * complete and still match nothing — the race the bounded re-observe exists to absorb. */
+  let matchAt = 0
   let apiStatus = 200
   const queried: string[] = []
   const server = createServer((req, res) => {
@@ -34,7 +37,7 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
           url.searchParams.get("page") === "1"
             ? Array.from({ length: 100 }, (_, i) => ({
                 id: 1234 + i,
-                runner_name: i === 0 && matches > 0 ? "fixture-runner" : `other-${i}`,
+                runner_name: i === 0 && matches > 0 && Date.now() >= matchAt ? "fixture-runner" : `other-${i}`,
               }))
             : matches > 1
               ? [{ id: 5678, runner_name: "fixture-runner" }]
@@ -228,9 +231,11 @@ console.log(value);
     await expect(run("emit", join(dir, "absent.json"), join(dir, "missing.json"))).rejects.toThrow(/absent.json/)
     matches = 2
     await expect(run("start", join(dir, "ambiguous.json"))).rejects.toThrow(/exactly one.*RUNNER_NAME.*found 2/)
-    matches = 0
-    await expect(run("start", join(dir, "unmatched.json"))).rejects.toThrow(/exactly one.*RUNNER_NAME.*found 0/)
-    matches = 1
+    // A complete scan that matches nothing is re-observed inside the one budget, so a runner that
+    // registers just after the job starts still resolves to exactly one job id.
+    matchAt = Date.now() + 300
+    await run("start", join(dir, "registered-late.json"))
+    matchAt = 0
     await writeFile(join(dir, "ifconfig"), `#!${process.execPath}\nprocess.exit(7);\n`, { mode: 0o755 })
     await expect(run("start", join(dir, "failed-source.json"))).rejects.toThrow(/machineIdSha256.*ifconfig.*7/)
   } finally {
@@ -350,8 +355,9 @@ if (cmd.includes('Get-NetAdapter')) {
 } else if (cmd.includes('Win32_OperatingSystem')) {
   console.log('${raw.boot}');
 } else if (cmd.includes('ProductVersion')) {
-  const hash=(name)=>createHash('sha256').update(readFileSync(${JSON.stringify(dir)}+'/'+name)).digest('hex');
-  console.log(JSON.stringify({platform:'win32',executablePath:${JSON.stringify(executablePath)},productVersion:${JSON.stringify(productVersion)},executableSha256:hash('WindowsTerminal.exe'),sourceArtifact:{kind:'portable-zip',path:${JSON.stringify(zipPath)},sha256:hash('wt.zip')}}));
+  const hash=(file)=>createHash('sha256').update(readFileSync(file)).digest('hex');
+  const exe=process.env.APP_EXECUTABLE; const zip=process.env.APP_SOURCE_ARTIFACT;
+  console.log(JSON.stringify({platform:'win32',executablePath:exe,productVersion:process.env.FAKE_PRODUCT_VERSION||${JSON.stringify(productVersion)},executableSha256:hash(${JSON.stringify(dir)}+'/'+(process.env.FAKE_EXE_FILE||'WindowsTerminal.exe')),sourceArtifact:{kind:'portable-zip',path:zip,sha256:hash(${JSON.stringify(dir)}+'/'+(process.env.FAKE_ZIP_FILE||'wt.zip'))}}));
 } else {
   console.log('');
 }
@@ -369,6 +375,9 @@ if (cmd.includes('Get-NetAdapter')) {
       RUNNER_NAME: "win-runner",
       RUNNER_OS: "Windows",
       RUNNER_ARCH: "X64",
+      FAKE_PRODUCT_VERSION: "",
+      FAKE_EXE_FILE: "",
+      FAKE_ZIP_FILE: "",
       RUNNER_TRACKING_ID: "win-tracking",
       ImageOS: "win22",
       ImageVersion: "20261001.1",
@@ -412,6 +421,40 @@ if (cmd.includes('Get-NetAdapter')) {
     expect(decoded.vm.identityAtJobStart.machineIdSha256).toBe(createHash("sha256").update(raw.mac).digest("hex"))
     expect(decoded.vm.identityAtJobStart.productUuidSha256).toBe(createHash("sha256").update(raw.uuid).digest("hex"))
     expect(decoded.vm.identityAtJobStart.bootIdSha256).toBe(createHash("sha256").update(raw.boot).digest("hex"))
+
+    // 30197: the same portable-ZIP arm must carry WezTerm on Windows, whose owner process is
+    // wezterm-gui.exe — not the `wezterm` shim, exactly as wt.exe is not WindowsTerminal.exe. Before
+    // the arm knew this app id the producer refused the app by name at emit.
+    const weztermExe = String.raw`C:\runner\wezterm\wezterm-gui.exe`
+    const weztermZip = String.raw`C:\runner\wezterm.zip`
+    const weztermExeBytes = "fixture wezterm-gui executable bytes\n"
+    const weztermZipBytes = "fixture wezterm portable ZIP bytes\n"
+    await writeFile(join(dir, "wezterm-gui.exe"), weztermExeBytes)
+    await writeFile(join(dir, "wezterm.zip"), weztermZipBytes)
+    env.APP_ID = "wezterm"
+    env.APP_EXECUTABLE = weztermExe
+    env.APP_SOURCE_ARTIFACT = weztermZip
+    env.FAKE_PRODUCT_VERSION = "0.2026.10.14"
+    env.FAKE_EXE_FILE = "wezterm-gui.exe"
+    env.FAKE_ZIP_FILE = "wezterm.zip"
+    await run("emit", start, join(dir, "wezterm-host-measured.json"))
+    expect(parseDisposableReceipt(await readFile(join(dir, "wezterm-host-measured.json"), "utf8")).appLaunch).toEqual({
+      platform: "win32",
+      executablePath: weztermExe,
+      productVersion: "0.2026.10.14",
+      executableSha256: createHash("sha256").update(weztermExeBytes).digest("hex"),
+      sourceArtifact: {
+        kind: "portable-zip",
+        path: weztermZip,
+        sha256: createHash("sha256").update(weztermZipBytes).digest("hex"),
+      },
+    })
+    env.APP_ID = "windows-terminal"
+    env.APP_EXECUTABLE = executablePath
+    env.APP_SOURCE_ARTIFACT = zipPath
+    env.FAKE_PRODUCT_VERSION = ""
+    env.FAKE_EXE_FILE = ""
+    env.FAKE_ZIP_FILE = ""
 
     // Existing machine identity cases cannot catch a launch version silently omitted from emit.
     productVersion = ""
@@ -607,6 +650,142 @@ if (cmd.includes('Get-NetAdapter')) {
     await expect(run("timeout", "emit", start, join(dir, "timeout.json"))).rejects.toThrow(
       /alacritty --version timed out/,
     )
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+test("a runner name that never appears is refused by name after one bounded budget, never awaited forever", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-exhaustion-"))
+  const server = createServer((_req, res) => {
+    res.setHeader("content-type", "application/json")
+    res.end(JSON.stringify({ jobs: [{ id: 1234, runner_name: "another-runner" }] }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const fixture = `#!${process.execPath}\nconst n=process.argv[1]; if(n.endsWith('ifconfig')) console.log('ether 02:00:00:00:00:02'); else if(n.endsWith('ioreg')) console.log('"IOPlatformUUID" = "exhaustion-platform"'); else console.log('exhaustion-boot');\n`
+    for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    const started = Date.now()
+    let failure: unknown
+    try {
+      await promisify(execFile)(
+        "node",
+        [
+          "--experimental-strip-types",
+          fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)),
+          "start",
+          join(dir, "exhaustion.json"),
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            RUNNER_ENVIRONMENT: "github-hosted",
+            RUNNER_NAME: "runner-that-never-registers",
+            RUNNER_OS: "macOS",
+            RUNNER_ARCH: "ARM64",
+            RUNNER_TRACKING_ID: "fixture-tracking",
+            ImageOS: "macos26",
+            ImageVersion: "fixture-image",
+            GITHUB_REPOSITORY: "fixture/repo",
+            GITHUB_WORKFLOW: "collect",
+            GITHUB_WORKFLOW_REF: "collect.yml@main",
+            GITHUB_RUN_ID: "42",
+            GITHUB_RUN_ATTEMPT: "1",
+            GITHUB_JOB: "collect",
+            GH_TOKEN: "fixture-token",
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          },
+        },
+      )
+    } catch (error) {
+      failure = error
+    }
+    const message = failure instanceof Error ? failure.message : String(failure)
+    // The refusal names what was looked for, what was seen, and how long it looked.
+    expect(message).toContain('requires exactly one jobs-API RUNNER_NAME match for "runner-that-never-registers"')
+    expect(message).toMatch(/found 0 \(.*scans \d+/)
+    expect(message).toContain("match counts")
+    expect(Date.now() - started).toBeGreaterThanOrEqual(30_000)
+    expect(Date.now() - started).toBeLessThan(45_000)
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+    await rm(dir, { recursive: true, force: true })
+  }
+}, 50_000)
+
+test("two matching job ids on the first page refuse immediately, without asking for a second page", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hosted-receipt-ambiguous-"))
+  const queried: string[] = []
+  const server = createServer((req, res) => {
+    const url = new URL(req.url ?? "", "http://fixture")
+    queried.push(url.searchParams.get("page") ?? "")
+    res.setHeader("content-type", "application/json")
+    res.end(
+      JSON.stringify({
+        // A full first page with two matches, and a short second page so the OLD walk terminates and
+        // reaches its late refusal instead of burning the budget on endless full pages.
+        jobs:
+          url.searchParams.get("page") === "1"
+            ? Array.from({ length: 100 }, (_, i) => ({
+                id: 9000 + i,
+                runner_name: i < 2 ? "ambiguous-runner" : `other-${i}`,
+              }))
+            : [],
+      }),
+    )
+  })
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
+  try {
+    const fixture = `#!${process.execPath}\nconst n=process.argv[1]; if(n.endsWith('ifconfig')) console.log('ether 02:00:00:00:00:03'); else if(n.endsWith('ioreg')) console.log('"IOPlatformUUID" = "ambiguous-platform"'); else console.log('ambiguous-boot');\n`
+    for (const name of ["ifconfig", "ioreg", "sysctl"]) await writeFile(join(dir, name), fixture, { mode: 0o755 })
+    const address = server.address()
+    if (!address || typeof address === "string") throw new Error("Expected fixture server address")
+    let failure: unknown
+    try {
+      await promisify(execFile)(
+        "node",
+        [
+          "--experimental-strip-types",
+          fileURLToPath(new URL("./hosted-runner-receipt.ts", import.meta.url)),
+          "start",
+          join(dir, "ambiguous.json"),
+        ],
+        {
+          env: {
+            ...process.env,
+            PATH: `${dir}:${process.env.PATH}`,
+            RUNNER_ENVIRONMENT: "github-hosted",
+            RUNNER_NAME: "ambiguous-runner",
+            RUNNER_OS: "macOS",
+            RUNNER_ARCH: "ARM64",
+            RUNNER_TRACKING_ID: "fixture-tracking",
+            ImageOS: "macos26",
+            ImageVersion: "fixture-image",
+            GITHUB_REPOSITORY: "fixture/repo",
+            GITHUB_WORKFLOW: "collect",
+            GITHUB_WORKFLOW_REF: "collect.yml@main",
+            GITHUB_RUN_ID: "43",
+            GITHUB_RUN_ATTEMPT: "1",
+            GITHUB_JOB: "collect",
+            GH_TOKEN: "fixture-token",
+            GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
+          },
+        },
+      )
+    } catch (error) {
+      failure = error
+    }
+    const message = failure instanceof Error ? failure.message : String(failure)
+    expect(message).toContain("several live jobs claim this runner name")
+    expect(message).toMatch(/found 2 \(/)
+    expect(message).toContain("pages 1")
+    // The approved rule is immediate refusal: a page whose second entry already matches must never cost
+    // a second request. Before the fix this array was ["1", "2"].
+    expect(queried).toEqual(["1"])
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })

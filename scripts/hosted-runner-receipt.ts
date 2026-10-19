@@ -200,12 +200,13 @@ function measureWindowsAppLaunch() {
   required("APP_EXECUTABLE")
   required("APP_SOURCE_ARTIFACT")
   let value: unknown
-  if (appId === "windows-terminal") {
+  if (appId === "windows-terminal" || appId === "wezterm") {
+    const expectedExecutable = appId === "windows-terminal" ? "WindowsTerminal.exe" : "wezterm-gui.exe"
     const script = `$ErrorActionPreference = 'Stop'
 $expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
-if ($expected.PSIsContainer -or $expected.Name -cne 'WindowsTerminal.exe') { throw 'APP_EXECUTABLE must name WindowsTerminal.exe, not its wt.exe launcher' }
-$processes = @(Get-CimInstance Win32_Process -Filter "Name='WindowsTerminal.exe'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
-if ($processes.Count -ne 1) { throw "Expected exactly one launched WindowsTerminal.exe at $($expected.FullName); found $($processes.Count)" }
+if ($expected.PSIsContainer -or $expected.Name -cne '${expectedExecutable}') { throw 'APP_EXECUTABLE must name ${expectedExecutable}' }
+$processes = @(Get-CimInstance Win32_Process -Filter "Name='${expectedExecutable}'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
+if ($processes.Count -ne 1) { throw "Expected exactly one launched ${expectedExecutable} at $($expected.FullName); found $($processes.Count)" }
 $executable = Get-Item -LiteralPath $processes[0].ExecutablePath
 $zip = Get-Item -LiteralPath $env:APP_SOURCE_ARTIFACT
 if ($zip.PSIsContainer -or $zip.Extension -ine '.zip' -or $zip.Length -eq 0 -or $executable.Length -eq 0) { throw 'Windows executable and retained portable ZIP must be nonempty files' }
@@ -219,7 +220,7 @@ if ([string]::IsNullOrWhiteSpace($productVersion)) { throw "No measured ProductV
   sourceArtifact = @{ kind = 'portable-zip'; path = $zip.FullName; sha256 = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 } | ConvertTo-Json -Compress -Depth 4`
     value = JSON.parse(
-      measured("launched WindowsTerminal.exe version and retained ZIP bytes", "powershell.exe", [
+      measured(`launched ${expectedExecutable} version and retained ZIP bytes`, "powershell.exe", [
         "-NoProfile",
         "-Command",
         script,
@@ -275,12 +276,96 @@ $dlls = @($dllFiles | ForEach-Object {
     value = { ...measuredLaunch, productVersion }
   } else {
     throw new Error(
-      `Hosted Windows receipt requires APP_ID=windows-terminal or APP_ID=alacritty; received ${JSON.stringify(appId)}`,
+      `Hosted Windows receipt requires APP_ID=windows-terminal, APP_ID=alacritty or APP_ID=wezterm; received ${JSON.stringify(appId)}`,
     )
   }
   const receipt = parseAppLaunchReceipt(value, "collector", "app", "Hosted Windows launch measurement")
   if (receipt?.platform !== "win32") throw new Error("Hosted Windows launch measurement has no win32 receipt")
   return receipt
+}
+
+/** The jobs API registers a job's runner name slightly after the job starts. One bounded re-observe
+ * closes that race: a COMPLETE scan that matches nothing is re-read while the single budget lasts, and
+ * everything else — an HTTP failure, a malformed body, an unreadable id, more than one match — refuses
+ * at once. There is no assumed identity and no fallback; the run is named, never guessed. */
+const JOBS_LOOKUP_BUDGET_MS = 30_000
+const JOBS_LOOKUP_RESCAN_MS = 1_000
+
+interface JobsLookup {
+  jobId: number
+  scans: number
+  pages: number
+}
+
+async function lookupJobId(input: { endpoint: string; name: string; token: string }): Promise<JobsLookup> {
+  // One monotonic budget: performance.now() never steps with the wall clock, so an NTP correction or a
+  // VM suspend/resume cannot stretch or collapse the 30s window this lookup is allowed.
+  const started = performance.now()
+  const deadline = started + JOBS_LOOKUP_BUDGET_MS
+  const remaining = (): number => deadline - performance.now()
+  const counts: number[] = []
+  let scans = 0
+  let pages = 0
+  const diagnose = (reason: string, count = counts.at(-1) ?? 0): Error =>
+    new Error(
+      `Hosted receipt requires exactly one jobs-API RUNNER_NAME match for ${JSON.stringify(input.name)} at ${input.endpoint}; found ${count} (${reason}; scans ${scans}, pages ${pages}, elapsed ${Math.round(performance.now() - started)}ms of ${JOBS_LOOKUP_BUDGET_MS}ms, match counts ${JSON.stringify(counts)}); refusing to guess the job id`,
+    )
+
+  for (;;) {
+    scans += 1
+    pages = 0
+    const ids: number[] = []
+    for (let page = 1; ; page += 1) {
+      // AbortSignal.timeout requires an integer delay and refuses a fractional one, so the monotonic
+      // remainder is rounded UP: never shorter than the budget left, and never passed as a fraction.
+      const budget = Math.ceil(remaining())
+      if (budget <= 0) throw diagnose("the budget expired before this scan finished")
+      pages += 1
+      const url = `${input.endpoint}?per_page=100&page=${page}`
+      let response: Response
+      try {
+        response = await fetch(url, {
+          headers: { Authorization: `Bearer ${input.token}`, Accept: "application/vnd.github+json" },
+          signal: AbortSignal.timeout(budget),
+        })
+      } catch (cause) {
+        throw new Error(
+          `Hosted receipt jobs API ${url} could not be read within the remaining ${budget}ms of the ${JOBS_LOOKUP_BUDGET_MS}ms budget; no numeric job id can be measured`,
+          { cause },
+        )
+      }
+      if (!response.ok) {
+        throw new Error(
+          `Hosted receipt jobs API ${url} returned HTTP ${response.status}; no numeric job id can be measured`,
+        )
+      }
+      const body = (await response.json()) as { jobs?: unknown }
+      if (!Array.isArray(body.jobs)) throw new Error(`Hosted receipt jobs API ${url} returned no jobs array`)
+      for (const job of body.jobs as Array<{ runner_name?: unknown; id?: unknown }>) {
+        if (job.runner_name !== input.name) continue
+        if (typeof job.id !== "number" || !Number.isSafeInteger(job.id) || job.id < 0) {
+          throw new Error(
+            `Hosted receipt jobs API ${url}: matching RUNNER_NAME has no safe numeric id; GITHUB_JOB is a YAML key`,
+          )
+        }
+        ids.push(job.id)
+        // The approved rule is IMMEDIATE refusal: a second safe match is already ambiguity, so no further
+        // page is requested and no further scan happens. Waiting for the walk to finish would spend more
+        // of the budget to learn something this page already proved.
+        if (ids.length > 1) throw diagnose("several live jobs claim this runner name", ids.length)
+      }
+      if (body.jobs.length < 100) break
+    }
+    counts.push(ids.length)
+    if (ids.length > 1) throw diagnose("several live jobs claim this runner name")
+    const [onlyJobId] = ids
+    if (onlyJobId !== undefined) return { jobId: onlyJobId, scans, pages }
+    const wait = Math.min(JOBS_LOOKUP_RESCAN_MS, Math.ceil(remaining()))
+    if (wait <= 0) throw diagnose("the runner name never appeared in the jobs API")
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, wait)
+    })
+  }
 }
 
 async function context() {
@@ -290,36 +375,7 @@ async function context() {
   const name = required("RUNNER_NAME")
   const endpoint = `${required("GITHUB_API_URL")}/repos/${repository}/actions/runs/${githubRunId}/attempts/${githubRunAttempt}/jobs`
   const token = required("GH_TOKEN")
-  const matches: number[] = []
-  for (let page = 1; ; page++) {
-    const url = `${endpoint}?per_page=100&page=${page}`
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
-      signal: AbortSignal.timeout(30_000),
-    })
-    if (!response.ok) {
-      throw new Error(
-        `Hosted receipt jobs API ${url} returned HTTP ${response.status}; no numeric job id can be measured`,
-      )
-    }
-    const body = (await response.json()) as { jobs?: unknown }
-    if (!Array.isArray(body.jobs)) throw new Error(`Hosted receipt jobs API ${url} returned no jobs array`)
-    for (const job of body.jobs as Array<{ runner_name?: unknown; id?: unknown }>) {
-      if (job.runner_name !== name) continue
-      if (typeof job.id !== "number" || !Number.isSafeInteger(job.id) || job.id < 0) {
-        throw new Error(
-          `Hosted receipt jobs API ${url}: matching RUNNER_NAME has no safe numeric id; GITHUB_JOB is a YAML key`,
-        )
-      }
-      matches.push(job.id)
-    }
-    if (body.jobs.length < 100) break
-  }
-  if (matches.length !== 1) {
-    throw new Error(
-      `Hosted receipt requires exactly one jobs-API RUNNER_NAME match for ${JSON.stringify(name)} at ${endpoint}; found ${matches.length}`,
-    )
-  }
+  const { jobId } = await lookupJobId({ endpoint, name, token })
   return {
     job: {
       repository,
@@ -328,7 +384,7 @@ async function context() {
       githubRunId,
       githubRunAttempt,
       job: required("GITHUB_JOB"),
-      jobId: String(matches[0]),
+      jobId: String(jobId),
     },
     runner: {
       environment: required("RUNNER_ENVIRONMENT"),
