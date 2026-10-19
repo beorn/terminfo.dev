@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "8b0d5d85cd854d6fa2e7b16440267c59",
+  "collectedAt": "2026-10-19T16:46:44.931Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "windows-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/windows-measurement.yml@refs/heads/measure/dev11-wezterm-1fdac95a",
+    "githubRunId": "39288137832",
+    "githubRunAttempt": "1",
+    "job": "measure-windows",
+    "jobId": "118181460307"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000048862",
+    "os": "Windows",
+    "arch": "X64",
+    "imageOS": "win25-vs2026",
+    "imageVersion": "20261007.264.1",
+    "trackingId": "github_36dd233e-7b78-4a95-b335-738e131f1987"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "25b587b8d63f10187c14ba4b3f6cf7fcad7758d957e25a42738172b9538f98f0",
+      "productUuidSha256": "b2f8174b821b200a25d65d19742e62fc60e98c4b1a4fb5f8310e7b898ce01a74",
+      "bootIdSha256": "dc60477b62a99d9fe6d3389dcb0992d77551436255f7f366bef287507685a83f"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "25b587b8d63f10187c14ba4b3f6cf7fcad7758d957e25a42738172b9538f98f0",
+      "productUuidSha256": "b2f8174b821b200a25d65d19742e62fc60e98c4b1a4fb5f8310e7b898ce01a74",
+      "bootIdSha256": "dc60477b62a99d9fe6d3389dcb0992d77551436255f7f366bef287507685a83f"
+    }
+  },
+  "appLaunch": {
+    "platform": "win32",
+    "executablePath": "D:\\a\\_temp\\alacritty\\alacritty.exe",
+    "productVersion": "0.17.0",
+    "executableSha256": "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f",
+    "sourceArtifact": {
+      "kind": "portable-exe",
+      "path": "D:\\a\\_temp\\measurement-artifacts\\Alacritty-v0.17.0-portable.exe",
+      "sha256": "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
+    },
+    "mesaRenderer": {
+      "upstream": "https://github.com/mmozeiko/build-mesa",
+      "version": "26.2.5",
+      "archivePath": "D:\\a\\_temp\\measurement-artifacts\\mesa-llvmpipe-x64-26.2.5.7z",
+      "archiveSha256": "d1b713ca2a7fba47a50c058099f13c435ddb76a16a422c334e4d787f9755a31d",
+      "dlls": [
+        {
+          "name": "opengl32.dll",
+          "path": "D:\\a\\_temp\\alacritty\\opengl32.dll",
+          "sha256": "8ddc061ee752fff06ae682de0ac2e010926d76a93c1aecc4c206adee771856e1"
+        }
+      ]
+    }
+  }
+}
