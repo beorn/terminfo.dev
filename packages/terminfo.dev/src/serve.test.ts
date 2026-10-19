@@ -183,7 +183,10 @@ describe("daemon HTTP boundary", () => {
     })
     expect(response.status).toBe(500)
     const body: unknown = await response.json()
-    expect(body).toEqual({ error: "Probe daemon request failed" })
+    expect(body).toEqual({
+      name: "Error",
+      error: "v2 collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
+    })
   })
 
   it("requires its private token and refuses cross-origin mutation", async () => {

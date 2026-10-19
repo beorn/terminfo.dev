@@ -338,7 +338,18 @@ export async function runProbeBatch(
   // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
   const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
   const clipboard = ownsTerminal ? options.ownedTerminal?.clipboard : undefined
-  const verify = clipboard ? () => clipboard.assertOwned() : undefined
+  const custody: { failure?: { error: unknown } } = {}
+  const verify = clipboard
+    ? async () => {
+        if (custody.failure) throw custody.failure.error
+        try {
+          await clipboard.assertOwned()
+        } catch (error) {
+          custody.failure ??= { error }
+          throw custody.failure.error
+        }
+      }
+    : undefined
   const disposable = resolveDisposableReceipt()
   // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
@@ -703,6 +714,7 @@ export async function runProbeBatch(
         }
       }
     } catch (error) {
+      if (custody.failure) throw custody.failure.error
       const name = error instanceof Error ? error.name : "Error"
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the

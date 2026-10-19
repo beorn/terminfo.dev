@@ -357,7 +357,8 @@ try {
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, foreign), false)
     assert.equal(verifier.ownedTerminalVerifiedFor({ ...adapter }, capture, process.stdout), false)
     // A genuine granted owner must also remain current at each consumer boundary (CTO 7acc71d2).
-    // Revoke the SAME verifier after callback start; counters detect a final-check-only placebo.
+    // Temporary loss must also reject after recovery, including a probe that catches the error.
+    // The permanent cases and counters still detect a final-check-only placebo.
     const { ALL_PROBES: definitions } = await import("@terminfo/probe-defs")
     const definition = definitions.find(probe => probe.id === "reset.ris")
     const originalCallback = definition.term
@@ -365,22 +366,35 @@ try {
     const originalWrite = process.stdout.write
     const refusal = new Error("fixture attachment continuity lost")
     const failures = []
-    let revoked = false, touched = 0
-    adapter.clipboard.assertOwned = async () => { if (revoked) throw refusal; await originalAssert() }
+    let revoked = false, touched = 0, restoreOnRefusal = false
+    adapter.clipboard.assertOwned = async () => {
+      if (revoked) {
+        if (restoreOnRefusal) revoked = false
+        throw refusal
+      }
+      await originalAssert()
+    }
     process.stdout.write = function (chunk, ...args) {
       if (chunk === "\x1b[6n") touched++
       return originalWrite.call(this, chunk, ...args)
     }
     try {
-      for (const boundary of ["callback", "query", "capture", "input", "final"]) {
+      for (const temporary of [false, true]) for (const boundary of ["callback", "query", "capture", "input", "final"]) {
+        if (temporary && boundary === "final") continue
+        restoreOnRefusal = temporary
         revoked = boundary === "callback"; touched = 0
         let callbacks = 0
         definition.term = async context => {
           callbacks++
           revoked = true
-          if (boundary === "query") await context.query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 100)
-          if (boundary === "capture") await context.capture({role:"control",label:"custody"})
-          if (boundary === "input") await context.input.injectKey("a")
+          try {
+            if (boundary === "query") await context.query("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 100)
+            if (boundary === "capture") await context.capture({role:"control",label:"custody"})
+            if (boundary === "input") await context.input.injectKey("a")
+          } catch (error) {
+            if (!temporary) throw error
+            assert.equal(error, refusal)
+          }
           return {observation:{outcome:"supported",evidence:"query"}}
         }
         try {
@@ -391,7 +405,7 @@ try {
           })), error=>error===refusal, boundary+" must name the custody failure")
           assert.equal(touched,0,boundary+" crossed the refused boundary")
           if (boundary === "callback") assert.equal(callbacks,0,"revoked callback ran")
-        } catch(error) { failures.push(boundary+": "+error.message) }
+        } catch(error) { failures.push((temporary ? "temporary " : "permanent ")+boundary+": "+error.message) }
       }
     } finally {
       definition.term = originalCallback

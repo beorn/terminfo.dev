@@ -1136,7 +1136,12 @@ export function startDaemon(port = 0): void {
       if (res.headersSent) res.destroy(err instanceof Error ? err : new Error(String(err)))
       else {
         res.statusCode = 500
-        res.end(JSON.stringify({ error: "Probe daemon request failed" }))
+        res.end(
+          JSON.stringify({
+            name: err instanceof Error ? err.name : "Error",
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
       }
     })
   })

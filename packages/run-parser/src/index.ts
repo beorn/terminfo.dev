@@ -1340,6 +1340,7 @@ export function decodeCollectorRun(
     identity: "unverified",
     ...(measured.runtimeIdentity && { runtimeIdentity: measured.runtimeIdentity }),
     ...(measured.provenance && { provenance: measured.provenance }),
+    ...(measured.outerApp && { outerApp: measured.outerApp }),
     suiteId: measured.suiteId,
     probeHash: manifest.probeHash,
     suiteComplete: measured.suiteComplete,
