@@ -8,6 +8,10 @@
  * @reach fs-walk <fixture-only: one owned temporary fixture tree per test>
  * @reach fs-walk vendor/terminfo.dev/scripts/
  * @testonly none
+ * @source-grep artifact equality, not source semantics: the fixture stages the identity script
+ *   (scripts/owned-host-identity.ts) as the remote's own file, and the test compares the emitted
+ *   sampler with those source bytes so a transport that rewrites or drops the payload cannot pass;
+ *   the other reads are transport receipts hashed against their recorded sha256.
  */
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
