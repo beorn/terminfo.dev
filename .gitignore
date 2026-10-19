@@ -2,7 +2,7 @@ node_modules/
 content/analysis.json
 docs/.vitepress/cache/
 docs/.vitepress/dist/
-docs/.vitepress/config.ts.timestamp-*.mjs
+docs/**/*.timestamp-*.mjs
 packages/*/dist/
 .DS_Store
 .playwright-cli/
