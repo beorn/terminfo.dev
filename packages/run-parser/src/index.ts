@@ -26,7 +26,7 @@ import {
   type TextQualificationShape,
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
-import { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
+import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
 export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree }
 
@@ -934,6 +934,11 @@ export function parseRunProvenance(
   const digest = (input: unknown, field: string): string => {
     const parsed = asString(input, path, field)
     if (!/^[a-f0-9]{64}$/.test(parsed)) fail(path, `invalid ${field} SHA256`)
+    // 28260: one repeated character is what a hand writes when nothing was measured, so it is
+    // refused BY NAME, through the one predicate the app-launch branch already owns.
+    if (PLACEHOLDER.test(parsed)) {
+      fail(path, `${field} is a placeholder: one repeated character, so no bytes were measured`)
+    }
     return parsed
   }
   const executablePath = asString(value.executable.path, path, "provenance.executable.path")
