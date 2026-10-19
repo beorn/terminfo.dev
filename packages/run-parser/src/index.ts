@@ -5,6 +5,7 @@ import {
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
+  TEXT_QUALIFICATION_SHAPES,
   frameDigests,
   isNonMeasuringEvidence,
   type ConsoleBufferOwner,
@@ -452,10 +453,11 @@ function parseTextQualification(
     fail(path, "invalid textQualification grid")
   }
   if (!Array.isArray(value.shapes)) fail(path, "invalid textQualification shapes")
-  const names = ["mid-line-gap", "trailing-gap", "soft-wrap", "prior-scrollback", "empty-last-row"]
   const seen = new Set<string>()
   const shapes: TextQualification["shapes"] = value.shapes.map((entry: unknown) => {
-    if (!object(entry) || !names.includes(String(entry.shape))) fail(path, "invalid textQualification shape")
+    if (!object(entry) || !TEXT_QUALIFICATION_SHAPES.some((shape) => shape === entry.shape)) {
+      fail(path, "invalid textQualification shape")
+    }
     const shape = entry.shape as TextQualificationShape
     if (seen.has(shape)) fail(path, `duplicate textQualification shape ${shape}`)
     seen.add(shape)

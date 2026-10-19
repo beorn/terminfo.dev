@@ -1898,6 +1898,8 @@ describe("selected results", () => {
         "wrong-version",
         "suite-recipe-mismatch",
         "console-host",
+        "extra-control",
+        "extra-target",
       ].map((fault) => ({
         name: fault,
         missing: undefined,
@@ -1958,11 +1960,15 @@ describe("selected results", () => {
       }
       const shapes = grids
         .filter(({ shape }) => shape !== missing)
-        .map(({ shape, control, target }) =>
-          fault === "failed-shape" && shape === "mid-line-gap"
-            ? { shape, reason: "terminal refused shape" }
-            : { shape, frames: [frame(control, "control"), frame(target, "target")] },
-        )
+        .map(({ shape, control, target }) => {
+          if (fault === "failed-shape" && shape === "mid-line-gap") return { shape, reason: "terminal refused shape" }
+          const frames = [frame(control, "control"), frame(target, "target")]
+          // A valid first pair cannot hide a later, conflicting witness for this same shape.
+          if (shape === "mid-line-gap" && (fault === "extra-control" || fault === "extra-target")) {
+            frames.push(frame(["D           ", blank, blank, blank], fault === "extra-control" ? "control" : "target"))
+          }
+          return { shape, frames }
+        })
       const observationFrames = [frame(filled, "control"), frame(["AX          ", blank, blank, blank], "target")]
       const targetRef = observationFrames[1]?.ref
       if (!targetRef) throw new Error("Missing target fixture")

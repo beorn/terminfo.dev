@@ -219,6 +219,13 @@ function assessTextQualification(
     const witness = qualification.shapes.find(({ shape }) => shape === fixture.shape)
     if (!witness) return rejected(`missing text qualification shape ${fixture.shape}`)
     if (witness.reason !== undefined) return rejected(`text qualification shape ${fixture.shape}: ${witness.reason}`)
+    if (
+      witness.frames.length !== 2 ||
+      witness.frames.filter((frame) => frame.role === "control").length !== 1 ||
+      witness.frames.filter((frame) => frame.role === "target").length !== 1
+    ) {
+      return rejected(`text qualification shape ${fixture.shape} requires exactly one control and one target frame`)
+    }
     for (const role of ["control", "target"] as const) {
       const frame = witness.frames.find((entry) => entry.role === role)
       if (!frame) return rejected(`text qualification shape ${fixture.shape} has no ${role}`)
