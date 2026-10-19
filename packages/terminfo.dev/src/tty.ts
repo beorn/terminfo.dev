@@ -209,19 +209,22 @@ export const SENTINEL_GRACE_MS = 250
 /**
  * The window is a measured value, so the one-time sizing pass may widen it without a code change:
  * TERMINFO_SENTINEL_GRACE_MS sets the post-DA1 read for that pass only. An unset or empty value is
- * the floor; anything that is not a whole number of milliseconds is loud, never a silent default —
- * a typo here would silently publish sentinel-negatives inside a too-short window.
+ * the floor. Anything that is not a positive whole number of milliseconds falls back to the same
+ * floor and says so on stderr: a typo here must never be silent, and a mistyped sizing value does
+ * not justify refusing the pass (28385, 30255).
  */
-export function sentinelGraceMs(raw: string | undefined = process.env.TERMINFO_SENTINEL_GRACE_MS): number {
+export function sentinelGraceMs(
+  raw: string | undefined = process.env.TERMINFO_SENTINEL_GRACE_MS,
+  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): number {
   if (raw === undefined || raw === "") return SENTINEL_GRACE_MS
-  if (!/^[0-9]+$/.test(raw)) {
-    throw new Error(
-      `TERMINFO_SENTINEL_GRACE_MS must be a whole number of milliseconds; received ${JSON.stringify(raw)}`,
-    )
-  }
-  const value = Number(raw)
+  const value = /^[0-9]+$/.test(raw) ? Number(raw) : Number.NaN
   if (!Number.isSafeInteger(value) || value < 1) {
-    throw new Error(`TERMINFO_SENTINEL_GRACE_MS must be a positive whole number of milliseconds; received ${raw}`)
+    warn(
+      `TERMINFO_SENTINEL_GRACE_MS ${JSON.stringify(raw)} is not a positive whole number of milliseconds; ` +
+        `using the ${SENTINEL_GRACE_MS} ms floor for this run`,
+    )
+    return SENTINEL_GRACE_MS
   }
   return value
 }
