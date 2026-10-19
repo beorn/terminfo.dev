@@ -163,6 +163,125 @@ function runHostedDarwinFixture(script: string) {
 }
 
 describe("private finite daemon startup", () => {
+  it("retains the once-only Windows read experiment without replacing its baseline outcome", () => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-read-experiment-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      import { readdirSync, readFileSync } from "node:fs"
+      import { join } from "node:path"
+      import { createHash } from "node:crypto"
+      Object.defineProperty(process, "platform", { value: "win32" })
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const tty = await import("./packages/terminfo.dev/src/tty.ts")
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const core = await import("./packages/terminfo.dev/src/capture-core.ts")
+      const retainArtifact = core.retain
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        collectorRevision: "b".repeat(40)
+      }
+      let mode, reads, writes, queries, events, baselineError, baselineRead, directory
+      const geometry = { status: "measured", rows: 1, cols: 2 }
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "kitty", version: "0.49.2", os: "windows", osVersion: "fixture" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        ownedTerminalVerifiedFor: () => true,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, summary: "owned fixture",
+          readCells: async () => {
+            reads++; events.push("read" + reads)
+            if (reads === 1 && mode === "baseline-error") throw baselineError
+            if (reads === 2 && mode === "diagnostic-error") throw new Error("DiagnosticFixture")
+            return reads === 1 ? baselineRead : { ...baselineRead, grid: { ...baselineRead.grid, text: ["cd"] } }
+          }, dispose: async () => {} })
+      }))
+      mock.module("./packages/terminfo.dev/src/capture-core.ts", () => ({ ...core,
+        retain: (path, bytes, extension) => {
+          assert.ok(reads >= 1, "no retention before baseline read")
+          if (extension === "json" && mode === "retention-error") throw new Error("RetentionFixture")
+          return retainArtifact(path, bytes, extension)
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+        withRawMode: async callback => callback(), drainStdin: async () => {},
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          if (sequence === "\\x1b[6n") { queries++; events.push("query"); assert.equal(reads, 3) }
+          const raw = sequence === "\\x1b[6n" ? "\\x1b[1;2R" : sequence === "\\x1b[18t" ? "\\x1b[8;1;2t" : "\\x1bP>|kitty(0.49.2)\\x1b\\\\"
+          return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
+        runProbeBatch: async options => {
+          const checkpoint = { featureId: "erase.character", role: "target", label: "erase.character: capture stability 1" }
+          let actual, failure
+          try { actual = await options.capture(checkpoint) } catch (error) { failure = error }
+          assert.equal(reads, 4, "baseline plus three diagnostic reads")
+          assert.equal(queries, 1)
+          if (mode === "baseline-error") assert.equal(failure, baselineError)
+          else if (mode === "retention-error") {
+            assert.equal(failure.name, "WindowsReadExperimentRetentionError")
+            assert.equal(failure.cause.frame.kind, "text-cells")
+          } else {
+            assert.equal(failure, undefined)
+            assert.equal(actual.frame.ref, "sha256:" + createHash("sha256").update("ab\\n#attributes\\n7,7").digest("hex"))
+          }
+          if (mode !== "retention-error") {
+            const files = readdirSync(directory).filter(name => name.endsWith(".json"))
+            assert.equal(files.length, 1)
+            const evidence = JSON.parse(readFileSync(join(directory, files[0]), "utf8"))
+            assert.equal(evidence.kind, "windows-write-read-experiment")
+            assert.equal(evidence.completion.callbackBeforeReturn, true)
+            assert.equal(evidence.completion.returnValue, false)
+            assert.equal(evidence.samples.length, 4)
+            assert.deepEqual(evidence.samples.map(sample => sample.name), ["baseline", "event-loop", "idle-control", "cursor-query"])
+            assert.ok(evidence.samples[2].enteredAt - evidence.samples[1].returnedAt >= 690)
+            assert.equal(evidence.query.outcome.raw, "\\x1b[1;2R")
+            assert.ok(evidence.query.roundTripMs >= 0)
+            if (mode === "baseline-error") assert.equal(evidence.samples[0].error.message, baselineError.message)
+            else assert.deepEqual(evidence.samples[0].read, baselineRead)
+            if (mode === "diagnostic-error") assert.equal(evidence.samples[1].error.message, "DiagnosticFixture")
+            await options.capture(checkpoint)
+            assert.equal(reads, 5, "the repeated checkpoint has only its stock baseline")
+            assert.equal(queries, 1)
+          }
+          assert.equal(writes, mode === "retention-error" ? 1 : 2)
+          return { rawReplies: {}, observations: [], assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false }
+        }
+      }))
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      for (mode of ["frame", "baseline-error", "diagnostic-error", "retention-error"]) {
+        reads = writes = queries = 0; events = []; baselineError = new Error("BaselineFixture")
+        directory = join(process.env.HOME, mode); process.env.TERMINFO_CAPTURE_DIRECTORY = directory
+        baselineRead = { status: "read", grid: { rows: 1, cols: 2, text: ["ab"], attributes: [[7,7]] },
+          bufferOwner: { image: "OpenConsole.exe", pid: 42, ppid: 41, executablePath: "C:/OpenConsole.exe", executableSha256: "sha256:" + "a".repeat(64) }, standIns: [] }
+        const out = { fd: 1, isTTY: true, write: function selectedWrite(bytes, callback) { writes++; assert.equal(bytes, ""); callback(); return false } }
+        await collectProbeRun({ ids: ["erase.character"], out })
+      }
+    `,
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          TERMINFO_DISPOSABLE_RECEIPT: "hardware-fixture",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        },
+        encoding: "utf8",
+        timeout: 15_000,
+      },
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+  })
+
   it("reports the same named capture refusal for the first and later probes when Darwin calibration fails", () => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
     const result = spawnSync(

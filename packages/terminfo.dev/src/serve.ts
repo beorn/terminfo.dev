@@ -400,22 +400,148 @@ export async function collectProbeRun(
     // `<out>/artifacts`, and admission reads the bytes from there.
     const artifactDirectory = captureDirectory
     mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
+    let measuredWindowsCheckpoint = false
     capture = async (checkpoint) => {
-      // A queued clear is not yet visible to a synchronous console read. Wait for this selected
-      // stream's earlier writes; completion is not a paint witness or permission to weaken a frame.
-      await new Promise<void>((resolve, reject) => {
-        out.write("", (error) => {
-          if (error) reject(error)
-          else resolve()
+      const measure =
+        process.platform === "win32" &&
+        !measuredWindowsCheckpoint &&
+        checkpoint.featureId === "erase.character" &&
+        checkpoint.label === "erase.character: capture stability 1"
+      if (measure) measuredWindowsCheckpoint = true
+      const selectedOutput = measure
+        ? {
+            fd: "fd" in out ? out.fd : { status: "absent", reason: "Selected stream exposes no fd" },
+            isTTY: out.isTTY,
+            constructor: out.constructor.name,
+            write: out.write.name,
+          }
+        : undefined
+      const completion = measure
+        ? {
+            enteredAt: null as number | null,
+            callbackAt: null as number | null,
+            returnedAt: null as number | null,
+            callbackBeforeReturn: false,
+            returnValue: null as boolean | null,
+          }
+        : undefined
+      type Sample = {
+        name: string
+        enteredAt: number
+        returnedAt: number
+        read?: Awaited<ReturnType<typeof readCells>>
+        error?: Record<string, unknown>
+      }
+      const samples: Sample[] = []
+      const describeError = (error: unknown): Record<string, unknown> =>
+        error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { name: "ThrownValue", value: String(error) }
+      let outcome: { ok: true; value: Awaited<ReturnType<ProbeCapture>> } | { ok: false; error: unknown }
+      let baselineEnteredAt: number | undefined
+      try {
+        // A queued clear is not yet visible to a synchronous console read. Wait for this selected
+        // stream's earlier writes; completion is not a paint witness or permission to weaken a frame.
+        await new Promise<void>((resolve, reject) => {
+          if (completion) completion.enteredAt = performance.now()
+          const returned = out.write("", (error) => {
+            if (completion) {
+              completion.callbackAt = performance.now()
+              completion.callbackBeforeReturn = completion.returnedAt === null
+            }
+            if (error) reject(error)
+            else resolve()
+          })
+          if (completion) {
+            completion.returnedAt = performance.now()
+            completion.returnValue = returned
+          }
         })
-      })
-      const read = await readCells()
-      const result = textCellsFrame(checkpoint, read, Date.now())
-      // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
-      // second write, and a digest that maps to different bytes is named instead of overwritten.
-      // The bytes are the ones the frame's ref hashed — never a re-encoded copy.
-      retain(artifactDirectory, result.retained, "txt")
-      return { frame: result.frame, trace: result.trace }
+        if (measure) baselineEnteredAt = performance.now()
+        const read = await readCells()
+        if (measure && baselineEnteredAt !== undefined) {
+          samples.push({ name: "baseline", enteredAt: baselineEnteredAt, returnedAt: performance.now(), read })
+        }
+        const result = textCellsFrame(checkpoint, read, Date.now())
+        // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
+        // second write, and a digest that maps to different bytes is named instead of overwritten.
+        // The bytes are the ones the frame's ref hashed — never a re-encoded copy.
+        retain(artifactDirectory, result.retained, "txt")
+        outcome = { ok: true, value: { frame: result.frame, trace: result.trace } }
+      } catch (error) {
+        if (measure && samples.length === 0) {
+          samples.push({
+            name: "baseline",
+            enteredAt: baselineEnteredAt ?? performance.now(),
+            returnedAt: performance.now(),
+            error: describeError(error),
+          })
+        }
+        outcome = { ok: false, error }
+      }
+      if (measure) {
+        const sample = async (name: string) => {
+          const enteredAt = performance.now()
+          try {
+            const read = await readCells()
+            samples.push({ name, enteredAt, returnedAt: performance.now(), read })
+          } catch (error) {
+            samples.push({ name, enteredAt, returnedAt: performance.now(), error: describeError(error) })
+          }
+        }
+        await new Promise<void>((resolve) => {
+          setImmediate(resolve)
+        })
+        await sample("event-loop")
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 700)
+        })
+        await sample("idle-control")
+        const queryEnteredAt = performance.now()
+        let query: Record<string, unknown>
+        try {
+          const reply = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 700)
+          query = {
+            outcome: reply,
+            roundTripMs: performance.now() - queryEnteredAt,
+          }
+        } catch (error) {
+          query = { error: describeError(error), roundTripMs: performance.now() - queryEnteredAt }
+        }
+        await sample("cursor-query")
+        try {
+          retain(
+            artifactDirectory,
+            Buffer.from(
+              JSON.stringify({
+                kind: "windows-write-read-experiment",
+                checkpoint,
+                selectedOutput,
+                completion,
+                samples,
+                query,
+                baselineOutcome: outcome.ok
+                  ? { frame: outcome.value.frame, trace: outcome.value.trace }
+                  : { error: describeError(outcome.error) },
+                lateInputEffect: {
+                  status: "unadmitted",
+                  evidence:
+                    "Correlate this query's raw reply with subsequent probes' rawReplies; no later input has been read at this checkpoint.",
+                },
+              }),
+            ),
+            "json",
+          )
+        } catch (error) {
+          const failure = new Error(`Windows read experiment evidence retention failed: ${String(error)}`, {
+            cause: outcome.ok ? outcome.value : outcome.error,
+          })
+          failure.name = "WindowsReadExperimentRetentionError"
+          throw failure
+        }
+      }
+      if (!outcome.ok) throw outcome.error
+      return outcome.value
     }
     textCapture = true
     if (process.platform === "darwin") {
