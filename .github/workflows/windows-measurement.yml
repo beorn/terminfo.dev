@@ -21,8 +21,6 @@ jobs:
       matrix:
         include:
           - id: windows-terminal
-          - id: alacritty
-          - id: wezterm
     defaults:
       run:
         shell: bash
