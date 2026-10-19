@@ -219,13 +219,14 @@ export function windowsCommBase(comm: string): string {
   return (slash === -1 ? trimmed : trimmed.slice(slash + 1)).toLowerCase()
 }
 
-export type HostedWindowsAppId = "windows-terminal" | "alacritty"
+export type HostedWindowsAppId = "windows-terminal" | "alacritty" | "wezterm"
 export type HostedWindowsApp = { id: HostedWindowsAppId; comm: string }
 
 /** The one Windows terminal executable table shared by owned-terminal and detect.ts. */
 export const HOSTED_WINDOWS_EXECUTABLE: Readonly<Record<string, HostedWindowsApp>> = {
   "windowsterminal.exe": { id: "windows-terminal", comm: "WindowsTerminal.exe" },
   "alacritty.exe": { id: "alacritty", comm: "alacritty.exe" },
+  "wezterm-gui.exe": { id: "wezterm", comm: "wezterm-gui.exe" },
 }
 
 /** Map a github-hosted-runner win32 appLaunch.executablePath to the hosted Windows terminal apps. */
@@ -234,7 +235,7 @@ export function hostedWindowsAppFromExecutablePath(executablePath: string): Host
   const app = HOSTED_WINDOWS_EXECUTABLE[base]
   if (!app) {
     throw new Error(
-      `Hosted Windows receipt executable is not one of WindowsTerminal.exe, alacritty.exe: ${JSON.stringify(executablePath)}`,
+      `Hosted Windows receipt executable is not one of WindowsTerminal.exe, alacritty.exe, wezterm-gui.exe: ${JSON.stringify(executablePath)}`,
     )
   }
   return app
@@ -242,8 +243,8 @@ export function hostedWindowsAppFromExecutablePath(executablePath: string): Host
 
 /**
  * Grant-time process identity on the hosted Windows route: the receipt's app (WindowsTerminal.exe or
- * alacritty.exe) must be one of this collector's ancestors, and no competing hosted Windows terminal
- * app may sit on the chain.
+ * alacritty.exe or wezterm-gui.exe) must be one of this collector's ancestors, and no competing
+ * hosted Windows terminal app may sit on the chain.
  */
 export function requireHostedWindowsAppAncestor(
   expectedComm: string,

@@ -36,7 +36,7 @@ test("hostedWindowsAppFromExecutablePath maps WindowsTerminal.exe and alacritty.
     id: "alacritty",
     comm: "alacritty.exe",
   })
-  expect(() => hostedWindowsAppFromExecutablePath("C:\\Program Files\\WezTerm\\wezterm-gui.exe")).toThrow(
+  expect(() => hostedWindowsAppFromExecutablePath("C:\\Windows\\System32\\cmd.exe")).toThrow(
     /Hosted Windows receipt executable is not one of WindowsTerminal\.exe, alacritty\.exe/,
   )
 })
@@ -230,8 +230,8 @@ test("windowsHosted grants ownership to an alacritty.exe ancestor from a portabl
 test.each([
   {
     name: "a receipt executable that is not a hosted Windows app, even with that executable on the chain",
-    executablePath: "D:\\a\\_temp\\wezterm\\wezterm-gui.exe",
-    table: alacrittyTable.map((row) => (row.comm === "alacritty.exe" ? { ...row, comm: "wezterm-gui.exe" } : row)),
+    executablePath: "C:\\Windows\\System32\\cmd.exe",
+    table: alacrittyTable.map((row) => (row.comm === "alacritty.exe" ? { ...row, comm: "cmd.exe" } : row)),
     refusal: /Hosted Windows receipt executable is not one of WindowsTerminal\.exe, alacritty\.exe/,
   },
   {
