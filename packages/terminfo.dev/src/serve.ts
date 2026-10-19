@@ -401,6 +401,14 @@ export async function collectProbeRun(
     const artifactDirectory = captureDirectory
     mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
     capture = async (checkpoint) => {
+      // A queued clear is not yet visible to a synchronous console read. Wait for this selected
+      // stream's earlier writes; completion is not a paint witness or permission to weaken a frame.
+      await new Promise<void>((resolve, reject) => {
+        out.write("", (error) => {
+          if (error) reject(error)
+          else resolve()
+        })
+      })
       const read = await readCells()
       const result = textCellsFrame(checkpoint, read, Date.now())
       // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
