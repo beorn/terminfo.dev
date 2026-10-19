@@ -1099,13 +1099,13 @@ describe("selected results", () => {
     const provenance = {
       executable: {
         path: "/nix/store/wezterm/bin/wezterm",
-        sha256: "a".repeat(64),
+        sha256: "a1".repeat(32),
         version: "wezterm 0-unstable-2026-09-17",
       },
-      sourceArtifact: { url: "https://example.invalid/wezterm-0-unstable-2026-09-17.tar.gz", sha256: "b".repeat(64) },
+      sourceArtifact: { url: "https://example.invalid/wezterm-0-unstable-2026-09-17.tar.gz", sha256: "b7".repeat(32) },
       runtime: {
         imageId: `sha256:${"c".repeat(64)}`,
-        imageTarSha256: "d".repeat(64),
+        imageTarSha256: "d4".repeat(32),
         arch: "x86_64-linux",
         nixLockRevision: "e".repeat(40),
         sourceRevision: "2".repeat(40),
@@ -1160,13 +1160,13 @@ describe("selected results", () => {
 
   it("admits a controlled-Linux alacritty run from ?6c and the apparatus-measured executable, and refuses every other half", () => {
     const da1 = "\u001b[?6c"
-    const executable = { version: "alacritty 0.17.0", sha256: "3".repeat(64) }
+    const executable = { version: "alacritty 0.17.0", sha256: "31".repeat(32) }
     const provenance = {
       executable: { path: "/nix/store/alacritty-0.17.0/bin/alacritty", ...executable },
-      sourceArtifact: { url: "https://example.invalid/alacritty-0.17.0.tar.gz", sha256: "b".repeat(64) },
+      sourceArtifact: { url: "https://example.invalid/alacritty-0.17.0.tar.gz", sha256: "b7".repeat(32) },
       runtime: {
         imageId: `sha256:${"c".repeat(64)}`,
-        imageTarSha256: "d".repeat(64),
+        imageTarSha256: "d4".repeat(32),
         arch: "x86_64-linux",
         nixLockRevision: "e".repeat(40),
         sourceRevision: "2".repeat(40),
@@ -1568,11 +1568,11 @@ describe("selected results", () => {
 
   it("requires measured in-run native provenance for a selectable Linux app", () => {
     const provenance = {
-      executable: { path: "/nix/store/kitty/bin/kitty", sha256: "a".repeat(64), version: "kitty 0.46.2" },
-      sourceArtifact: { url: "https://example.invalid/kitty-0.46.2.txz", sha256: "b".repeat(64) },
+      executable: { path: "/nix/store/kitty/bin/kitty", sha256: "a1".repeat(32), version: "kitty 0.46.2" },
+      sourceArtifact: { url: "https://example.invalid/kitty-0.46.2.txz", sha256: "b7".repeat(32) },
       runtime: {
         imageId: `sha256:${"c".repeat(64)}`,
-        imageTarSha256: "d".repeat(64),
+        imageTarSha256: "d4".repeat(32),
         arch: "x86_64-linux",
         nixLockRevision: "e".repeat(40),
         sourceRevision: "2".repeat(40),

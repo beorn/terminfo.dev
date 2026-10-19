@@ -716,11 +716,12 @@ test("--move takes exactly one release, through the same parser as --freeze", ()
 
 test("the live registry records the candidate2 pointer move it already made", () => {
   // The live registry carries every move: the hand edit that put candidate2 on 67ad, the supported
-  // writer's --move onto c24025ea22fc (28018), and the --move onto f9450b3bc56a when the five Linux
-  // contexts were admitted (28023). Linux-only until an all-platform collection lands on the live
-  // suite; see 30286. The current record names every suite it left and the window each held the
-  // pointer, so the lineage is recoverable from content alone rather than only from Git history.
+  // writer's --move onto c24025ea22fc (28018), the --move onto f9450b3bc56a when the five Linux
+  // contexts were admitted (28023), and the --move onto 448ce7769d2c when the all-platform
+  // collection landed (30286). The current record names every suite it left and the window each held
+  // the pointer, so the lineage is recoverable from content alone rather than only from Git history.
   expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual([
+    "448ce7769d2c",
     "f9450b3bc56a",
     "c24025ea22fc",
     "67ad1f1d1580",

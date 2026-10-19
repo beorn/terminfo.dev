@@ -333,34 +333,44 @@ describe("candidate-2 page: wiring", () => {
   it("includes Editing, Character Sets and Reset on the contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
     // context held, and every context with no run on the required suite named not measured.
-    // Linux-only until an all-platform collection lands on the live suite; see 30286. The required
-    // suite is now f9450b3bc56a, which carries the five Linux contexts admitted on 2026-10-19 (28023)
-    // and no macOS or Windows run at all, so the three darwin contexts that were held below the bar
-    // on c24025ea22fc are unmeasured here rather than held, and the held set shrinks to the Linux
-    // context that misses the bar. Charsets clears on all five Linux contexts; editing clears on four
-    // and holds ghostty/linux. A collection that moves these numbers must change this table
-    // deliberately, never loosen it.
+    // The required suite is 448ce7769d2c, where candidate 2 moved on 2026-10-19 after all three
+    // halves of the cut were admitted. Ten contexts are measured there and only kitty/macos is dark,
+    // so the two ruled macOS contexts join the per-context claim and the macOS and Windows contexts
+    // measured below the bar are held by name instead of being unmeasured. Charsets clears on all
+    // seven ruled contexts and holds the three unruled ones measured at 0; editing clears on six and
+    // holds ghostty/linux at 15 of 17 plus the three at 1 of 17. A collection that moves these
+    // numbers must change this table deliberately, never loosen it.
     // Reset joined at @cto's c67af756 (2026-10-19): four scored rows, reset.method named outside
-    // the denominator, so kitty and xterm read 4/4 included and the three contexts with an
-    // inconclusive row (ghostty reset.decaln; wezterm, alacritty reset.sgr) are held by name.
+    // the denominator, so kitty/linux, xterm/linux and ghostty/macos read 4/4 included and the
+    // remaining measured contexts, which carry an inconclusive row (ghostty/linux reset.decaln;
+    // wezterm, alacritty reset.sgr), are held by name.
     const clearing: Record<string, string[]> = {
-      editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
-      charsets: ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
-      reset: ["kitty/linux", "xterm/linux"],
+      editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"],
+      charsets: [
+        "kitty/linux",
+        "ghostty/linux",
+        "wezterm/linux",
+        "alacritty/linux",
+        "xterm/linux",
+        "ghostty/macos",
+        "alacritty/macos",
+      ],
+      reset: ["kitty/linux", "xterm/linux", "ghostty/macos"],
     }
     const below: Record<string, string[]> = {
-      editing: ["ghostty/linux"],
-      charsets: [],
-      reset: ["ghostty/linux", "wezterm/linux", "alacritty/linux"],
+      editing: ["ghostty/linux", "terminal-app/macos", "iterm2/macos", "windows-terminal/windows"],
+      charsets: ["terminal-app/macos", "iterm2/macos", "windows-terminal/windows"],
+      reset: [
+        "ghostty/linux",
+        "wezterm/linux",
+        "alacritty/linux",
+        "terminal-app/macos",
+        "iterm2/macos",
+        "alacritty/macos",
+        "windows-terminal/windows",
+      ],
     }
-    const dark = [
-      "terminal-app/macos",
-      "iterm2/macos",
-      "ghostty/macos",
-      "alacritty/macos",
-      "kitty/macos",
-      "windows-terminal/windows",
-    ]
+    const dark = ["kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
@@ -402,19 +412,17 @@ describe("candidate-2 page: wiring", () => {
     const editing = data.groups.find((group) => group.key === "editing")
     if (!editing) throw new Error("editing group missing from the page")
     expect(editing.included).toBe(false)
-    // Linux-only until an all-platform collection lands on the live suite; see 30286. On f9450b3bc56a
-    // only the five Linux contexts have runs, so the three darwin contexts that were measured and held
-    // below the bar on c24025ea22fc are dark here, and the held set is the one Linux context that misses
-    // the bar. The invariant below is untouched: nothing dark is published and no claim improves.
-    expect(editing.darkHeldBy.map((row) => row.context)).toEqual([
+    // On the live suite 448ce7769d2c ten contexts are measured and only kitty/macos is dark, so the
+    // dark hold is that one context and the macOS and Windows contexts added by the other two halves
+    // of the cut are held below the bar instead. The invariant below is untouched: nothing dark is
+    // published and no claim improves because a context went dark.
+    expect(editing.darkHeldBy.map((row) => row.context)).toEqual(["kitty/macos"])
+    expect(editing.heldBy.map((row) => row.context)).toEqual([
+      "ghostty/linux",
       "terminal-app/macos",
       "iterm2/macos",
-      "ghostty/macos",
-      "alacritty/macos",
-      "kitty/macos",
       "windows-terminal/windows",
     ])
-    expect(editing.heldBy.map((row) => row.context)).toEqual(["ghostty/linux"])
 
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -424,28 +432,38 @@ describe("candidate-2 page: wiring", () => {
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
     // Both ruled groups keep the ruling's seven contexts: the five Linux app rows plus the two macOS
-    // contexts the ruling names (30297 added ghostty/linux to the basis). Linux-only until an
-    // all-platform collection lands on the live suite; see 30286. On f9450b3bc56a those two macOS
-    // contexts have no run, so they are back to dark-ruled rather than held below the bar, and the page
-    // names them as ruled-but-unmeasured. ruledTotal still carries all seven, so the page reads
-    // "ruled for seven" instead of quietly shrinking to the contexts that clear (30033).
+    // contexts the ruling names (30297 added ghostty/linux to the basis). On 448ce7769d2c both macOS
+    // contexts have a run, so neither is dark-ruled any more, and each is named where its own share
+    // puts it. ruledTotal still carries all seven, so the page reads "ruled for seven" instead of
+    // quietly shrinking to the contexts that clear (30033).
     const cleared: Record<string, string[]> = {
-      editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
-      charsets: ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
+      editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux", "ghostty/macos", "alacritty/macos"],
+      charsets: [
+        "kitty/linux",
+        "ghostty/linux",
+        "wezterm/linux",
+        "alacritty/linux",
+        "xterm/linux",
+        "ghostty/macos",
+        "alacritty/macos",
+      ],
     }
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)
       expect(group.includedOn).toEqual(cleared[key])
-      expect(group.darkRuled).toEqual(["ghostty/macos", "alacritty/macos"])
+      // A ruled context that has a run is measured, not dark-ruled: naming it dark would hide a
+      // measurement the page can show.
+      expect(group.darkRuled).toEqual([])
       // The ruled basis is seven whether those two contexts are dark or measured below the bar: the
       // count may not shrink to the contexts that clear it.
       expect(group.ruledTotal).toBe(7)
-      // Both ruled macOS contexts stay visible: with no run on the live suite they are named as
-      // dark-ruled rather than held, and neither drops out of the page.
-      expect(group.darkHeldBy.map((row) => row.context)).toEqual(
+      // Both ruled macOS contexts stay visible: measured here, so they are named in the claim rather
+      // than in the dark hold, and neither drops out of the page.
+      expect([...group.includedOn, ...group.heldBy.map((row) => row.context)]).toEqual(
         expect.arrayContaining(["ghostty/macos", "alacritty/macos"]),
       )
+      expect(group.darkHeldBy.map((row) => row.context)).toEqual(["kitty/macos"])
     }
     // A new below-bar measurement can lower the global claim; it cannot be hidden as a dark context.
     const unicode = data.groups.find((group) => group.key === "unicode")
@@ -630,7 +648,11 @@ describe("candidate-2 page: wiring", () => {
     expect(perContext.length).toBe(3)
     for (const group of perContext) {
       const named = new Set([...group.includedOn, ...group.heldBy.map((row) => row.context), ...group.darkRuled])
-      expect([...named].sort(), group.key).toEqual([...ruled].sort())
+      // Every ruled context is named, whatever its state. The cell also names measured contexts
+      // outside the ruling as held: a context measured below the bar blocks the claim whether or not
+      // the ruling named it, so the page may not hide it, and the count stays the ruled seven.
+      for (const context of ruled) expect(named.has(context), `${group.key} ${context}`).toBe(true)
+      for (const context of group.darkRuled) expect(ruled.has(context), `${group.key} ${context}`).toBe(true)
       expect(group.ruledTotal, group.key).toBe(ruled.size)
     }
   })
@@ -647,17 +669,17 @@ describe("candidate-2 page: wiring", () => {
     )
     expect(page).toContain("below the bar on {{ group.heldBy.length }} of {{ published.length }} measured contexts")
     expect(page).not.toContain("published.length + group.darkHeldBy")
-    // The live case: Editing is included on four contexts and carries six dark holds, so the clause
+    // The live case: Editing is included on six contexts and carries one dark hold, so the clause
     // has something to print exactly where the head stops at includedOn.
     const editing = data.groups.find((group) => group.key === "editing")
     if (!editing) throw new Error("editing group missing")
-    expect(editing.includedOn.length).toBe(4)
-    expect(editing.darkHeldBy.length).toBe(6)
-    // And the other head that used to hide them: Scrollback stops at heldBy and carries six too.
+    expect(editing.includedOn.length).toBe(6)
+    expect(editing.darkHeldBy.length).toBe(1)
+    // And the other head that used to hide it: Scrollback stops at heldBy and carries one too.
     const scrollback = data.groups.find((group) => group.key === "scrollback")
     if (!scrollback) throw new Error("scrollback group missing")
     expect(scrollback.heldBy.length).toBeGreaterThan(0)
-    expect(scrollback.darkHeldBy.length).toBe(6)
+    expect(scrollback.darkHeldBy.length).toBe(1)
     // The "not measured" list is the remainder: a dark hold is always one of those contexts, so
     // printing both lists unchanged names each held context twice in the same cell.
     expect(page).toContain('v-if="unmeasuredWithoutHold(group).length > 0"')

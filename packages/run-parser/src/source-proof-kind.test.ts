@@ -31,11 +31,12 @@ const derived = {
   sha256: "b2".repeat(32),
 }
 const provenance = (sourceArtifact: unknown) => ({
-  executable: { path: "/nix/store/ghostty/bin/ghostty", sha256: "a".repeat(64), version: "1.3.1" },
+  // 28260: a placeholder is refused by name, so every measured digest is a two-char cycle.
+  executable: { path: "/nix/store/ghostty/bin/ghostty", sha256: "a1".repeat(32), version: "1.3.1" },
   sourceArtifact,
   runtime: {
     imageId: "sha256:" + "c".repeat(64),
-    imageTarSha256: "d".repeat(64),
+    imageTarSha256: "d4".repeat(32),
     arch: "amd64",
     nixLockRevision: "1".repeat(40),
     sourceRevision: "2".repeat(40),
@@ -80,7 +81,23 @@ describe("native provenance source proof kind", () => {
   })
 
   it("keeps the flat-archive form unchanged when no kind is present", () => {
-    const flat = { url: "https://invisible-island.net/archives/xterm/xterm-411.tgz", sha256: "b".repeat(64) }
+    const flat = { url: "https://invisible-island.net/archives/xterm/xterm-411.tgz", sha256: "b7".repeat(32) }
     expect(parseRunProvenance(provenance(flat), target, expected, "p")?.sourceArtifact).toEqual(flat)
+  })
+
+  // 28260: the container-provenance digests must refuse a digest nothing measured, by name, the same
+  // way the app-launch branch does. A repeated character is what a hand writes when no bytes existed.
+  it("refuses a placeholder digest in each container-provenance field", () => {
+    const placeholder = "0".repeat(64)
+    const base = provenance(derived)
+    const flat = { url: "https://invisible-island.net/archives/xterm/xterm-411.tgz", sha256: placeholder }
+    const cases: Array<[string, typeof base]> = [
+      ["executable.sha256", { ...base, executable: { ...base.executable, sha256: placeholder } }],
+      ["sourceArtifact.sha256", { ...base, sourceArtifact: flat }],
+      ["runtime.imageTarSha256", { ...base, runtime: { ...base.runtime, imageTarSha256: placeholder } }],
+    ]
+    for (const [field, value] of cases) {
+      expect(() => parseRunProvenance(value, target, expected, "p"), field).toThrow(/placeholder/)
+    }
   })
 })

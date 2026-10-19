@@ -26,7 +26,7 @@ import {
   type TextQualificationShape,
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
-import { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
+import { ALACRITTY_VERSION_PATTERN, PLACEHOLDER, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
 export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree }
 
@@ -136,10 +136,15 @@ const nullableString = (value: unknown, path: string, name: string): string | nu
 function rejectDuplicateKeys(source: string, path: string): void {
   let i = 0
   const ws = () => {
-    while (/\s/.test(source[i] ?? "")) i++
+    // JSON.parse has already checked syntax; JSON whitespace is exactly these four bytes.
+    while (i < source.length) {
+      const code = source.charCodeAt(i)
+      if (code !== 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) break
+      i++
+    }
   }
-  const quoted = (): string => {
-    const start = i++
+  const quoted = (): void => {
+    i++
     while (i < source.length) {
       if (source[i] === "\\") {
         i += 2
@@ -147,7 +152,6 @@ function rejectDuplicateKeys(source: string, path: string): void {
       }
       if (source[i++] === '"') break
     }
-    return JSON.parse(source.slice(start, i)) as string
   }
   const value = (): void => {
     ws()
@@ -156,7 +160,9 @@ function rejectDuplicateKeys(source: string, path: string): void {
       const keys = new Set<string>()
       ws()
       while (source[i] !== "}") {
-        const key = quoted()
+        const start = i
+        quoted()
+        const key = JSON.parse(source.slice(start, i)) as string
         if (keys.has(key)) fail(path, `duplicate key ${key}`)
         keys.add(key)
         ws()
@@ -928,6 +934,11 @@ export function parseRunProvenance(
   const digest = (input: unknown, field: string): string => {
     const parsed = asString(input, path, field)
     if (!/^[a-f0-9]{64}$/.test(parsed)) fail(path, `invalid ${field} SHA256`)
+    // 28260: one repeated character is what a hand writes when nothing was measured, so it is
+    // refused BY NAME, through the one predicate the app-launch branch already owns.
+    if (PLACEHOLDER.test(parsed)) {
+      fail(path, `${field} is a placeholder: one repeated character, so no bytes were measured`)
+    }
     return parsed
   }
   const executablePath = asString(value.executable.path, path, "provenance.executable.path")

@@ -23,11 +23,11 @@ const target = {
 }
 const expected = { probeHash: "3".repeat(12), sourceRevision: "2".repeat(40) }
 const provenance = (version: string) => ({
-  executable: { path: "/nix/store/xterm-411/bin/xterm", sha256: "a".repeat(64), version },
-  sourceArtifact: { url: "https://invisible-island.net/archives/xterm/xterm-411.tgz", sha256: "b".repeat(64) },
+  executable: { path: "/nix/store/xterm-411/bin/xterm", sha256: "a1".repeat(32), version },
+  sourceArtifact: { url: "https://invisible-island.net/archives/xterm/xterm-411.tgz", sha256: "b7".repeat(32) },
   runtime: {
     imageId: "sha256:" + "c".repeat(64),
-    imageTarSha256: "d".repeat(64),
+    imageTarSha256: "d4".repeat(32),
     arch: "amd64",
     nixLockRevision: "1".repeat(40),
     sourceRevision: "2".repeat(40),
