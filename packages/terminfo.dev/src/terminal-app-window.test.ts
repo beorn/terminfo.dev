@@ -115,6 +115,17 @@ describe("provider dispatch", () => {
       })
       expect(failure).toHaveProperty("message", expect.stringContaining(window.executablePath))
       expect(kill).not.toHaveBeenCalledWith(window.kittyPid, "SIGTERM")
+      // Darwin reports an already exited GUI owner as <defunct>, not an executable path.
+      vi.mocked(realpathSync).mockClear()
+      vi.mocked(spawnSync).mockReturnValue({ ...result, stdout: "<defunct>\n" })
+      if (operation === "assert") {
+        vi.mocked(spawnSync).mockReturnValueOnce({ ...result, stdout: "ttys004\n" })
+        expect(act).toThrow(/not a running process/)
+      } else {
+        expect(act).not.toThrow()
+      }
+      expect(realpathSync).not.toHaveBeenCalled()
+      expect(kill).not.toHaveBeenCalled()
       if (operation === "close") {
         vi.mocked(spawnSync).mockReturnValue({ ...result, status: 1, stdout: "" })
         kill.mockImplementation(() => {

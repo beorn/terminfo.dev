@@ -80,7 +80,8 @@ export function processExecutable(pid: number, who: string): string | null {
   const result = spawnSync("/bin/ps", ["-p", String(pid), "-o", "comm="], { encoding: "utf8", timeout: 5_000 })
   if (result.error || result.status !== 0) return null
   const raw = String(result.stdout ?? "").trim()
-  if (!raw) return null
+  // Darwin's ps comm is this exact marker after the GUI has exited but before it is reaped.
+  if (!raw || raw === "<defunct>") return null
   try {
     return realpathSync(raw)
   } catch (error) {
