@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn } from "node:child_process"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { closeSync, mkdirSync, openSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp, stopLaunchedApp, type AppLaunch } from "./app.ts"
@@ -34,6 +34,8 @@ vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitR
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(() => true),
+  openSync: vi.fn((path: unknown) => (String(path).endsWith("launch.stdout.log") ? 71 : 72)),
+  closeSync: vi.fn(),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
   writeFileSync: vi.fn(),
@@ -190,7 +192,7 @@ describe("WezTerm cli-process arm", () => {
         "/bin/bash",
         "/private/run/serve.sh",
       ],
-      { detached: true, stdio: "ignore", env: expect.any(Object) },
+      { detached: true, stdio: ["ignore", 71, 72], env: expect.any(Object) },
     )
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "wezterm")
     expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
@@ -232,6 +234,7 @@ test("Cursor prepares a private editor fixture and forwards the existing GUI own
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
     [
       "--new-window",
+      "--verbose",
       "--user-data-dir",
       ownedWindow.marker.value,
       "--extensions-dir",
@@ -239,8 +242,16 @@ test("Cursor prepares a private editor fixture and forwards the existing GUI own
       "--extensionDevelopmentPath",
       "/private/run/cursor-fixture",
     ],
-    { detached: true, stdio: "ignore", env: expect.objectContaining({ CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" }) },
+    {
+      detached: true,
+      stdio: ["ignore", 71, 72],
+      env: expect.objectContaining({ CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" }),
+    },
   )
+  expect(openSync).toHaveBeenCalledWith("/private/run/launch.stdout.log", "wx", 0o600)
+  expect(openSync).toHaveBeenCalledWith("/private/run/launch.stderr.log", "wx", 0o600)
+  expect(closeSync).toHaveBeenCalledWith(71)
+  expect(closeSync).toHaveBeenCalledWith(72)
   expect(mkdirSync).toHaveBeenCalledWith("/private/run/cursor-fixture", { mode: 0o700 })
   expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
     executablePath: ownedWindow.executablePath,
@@ -324,20 +335,28 @@ describe("Terminal.app app collection", () => {
     expect(removeProbeRun).toHaveBeenCalledOnce()
   })
 
-  test.each(["daemon startup", "owned close"])(
+  test.each(["daemon startup", "owned close", "CLI launch"])(
     "retains the private launch directory after %s failure",
     async (failure) => {
       if (failure === "daemon startup") vi.mocked(findOwnedDaemon).mockResolvedValueOnce(null)
-      else {
+      else if (failure === "CLI launch") {
+        vi.mocked(spawn).mockImplementationOnce(() => {
+          throw new Error("CLI launch failed")
+        })
+      } else {
         vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
           throw new Error("owned close failed")
         })
       }
       const error = vi.spyOn(console, "error").mockImplementation(() => {})
       try {
-        await expect(handleApp("terminal-app", {})).rejects.toThrow(
-          failure === "daemon startup" ? /Owned daemon did not register/ : /owned close failed/,
+        await expect(handleApp(failure === "CLI launch" ? "cursor" : "terminal-app", {})).rejects.toThrow(
+          failure === "daemon startup" ? /Owned daemon did not register/ : new RegExp(`${failure} failed`),
         )
+        if (failure === "CLI launch") {
+          expect(closeSync).toHaveBeenCalledWith(71)
+          expect(closeSync).toHaveBeenCalledWith(72)
+        }
         expect(removeProbeRun).not.toHaveBeenCalled()
         expect(error.mock.calls.flat().join("\n")).toContain("/private/run")
       } finally {
