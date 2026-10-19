@@ -62,7 +62,7 @@ function plistValue(plistPath: string, key: string): string {
 
 /** The apps this apparatus installs from a Homebrew cask, and the ones it installs another way.
  * A bundle this producer has no measured installer for is refused by name rather than described. */
-const CASK_APP_IDS = new Set(["ghostty"])
+const CASK_APP_IDS = new Set(["ghostty", "wezterm"])
 
 /** Terminal.app is an OS component, not something this job installed: its source artifact is the
  * sealed system volume's snapshot and code signature, measured exactly as the owned Terminal.app

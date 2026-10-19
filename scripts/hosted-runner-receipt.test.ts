@@ -61,6 +61,8 @@ test("the actual hosted producer self-parses measured bytes and refuses incomple
       `#!${process.execPath}
 const values = process.env.APP_ID === "iterm2"
   ? { CFBundleShortVersionString: "3.6.11", CFBundleVersion: "3.6.11", CFBundleExecutable: "iTerm2" }
+  : process.env.APP_ID === "wezterm"
+  ? { CFBundleShortVersionString: "20240203", CFBundleVersion: "20240203", CFBundleExecutable: "wezterm" }
   : { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
 const value = values[process.argv[3]];
 if (!value) { console.error("no fixture value for " + process.argv[3]); process.exit(1); }
@@ -68,9 +70,13 @@ console.log(value);
 `,
       { mode: 0o755 },
     )
-    await writeFile(join(dir, "brew"), `#!${process.execPath}\nconsole.log(${JSON.stringify(installer)});\n`, {
-      mode: 0o755,
-    })
+    // The cask cache path is whatever brew reports for the app this job installed; the fixture lets a
+    // case name its own cached installer so two cask apps cannot silently share one artifact.
+    await writeFile(
+      join(dir, "brew"),
+      `#!${process.execPath}\nconsole.log(process.env.BREW_CASK_PATH || ${JSON.stringify(installer)});\n`,
+      { mode: 0o755 },
+    )
     const address = server.address()
     if (!address || typeof address === "string") throw new Error("Expected fixture server address")
     const env = {
@@ -84,6 +90,7 @@ console.log(value);
       RUNNER_OS: "macOS",
       RUNNER_ARCH: "ARM64",
       RUNNER_TRACKING_ID: "fixture-tracking",
+      BREW_CASK_PATH: "",
       ImageOS: "macos26",
       ImageVersion: "fixture-image",
       GITHUB_REPOSITORY: "fixture/repo",
@@ -150,8 +157,37 @@ console.log(value);
         sha256: createHash("sha256").update(itermInstallerBytes).digest("hex"),
       },
     })
+    // WezTerm is a cask install too (the mac workflow's wezterm case). Before the cask list knew this
+    // app id the producer threw "no measured source-artifact route for APP_ID=\"wezterm\"" here, after
+    // the workflow had already routed the job — a route that could never release a collection (30054).
+    const weztermBundle = join(dir, "WezTerm.app")
+    await mkdir(join(weztermBundle, "Contents", "MacOS"), { recursive: true })
+    await writeFile(join(weztermBundle, "Contents", "Info.plist"), "fixture WezTerm plist\n")
+    const weztermExecutable = join(weztermBundle, "Contents", "MacOS", "wezterm")
+    const weztermExecutableBytes = "fixture-wezterm-executable\n"
+    await writeFile(weztermExecutable, weztermExecutableBytes, { mode: 0o755 })
+    const weztermInstaller = join(dir, "wezterm--20240203-110809-5046fc22.zip")
+    const weztermInstallerBytes = "fixture-wezterm-installer\n"
+    await writeFile(weztermInstaller, weztermInstallerBytes)
+    env.APP_ID = "wezterm"
+    env.APP_BUNDLE = weztermBundle
+    env.BREW_CASK_PATH = weztermInstaller
+    const weztermReceipt = join(dir, "wezterm-host-measured.json")
+    await run("emit", start, weztermReceipt)
+    expect(parseDisposableReceipt(await readFile(weztermReceipt, "utf8")).appLaunch).toEqual({
+      bundlePath: realpathSync(weztermBundle),
+      cfBundleShortVersionString: "20240203",
+      cfBundleVersion: "20240203",
+      executablePath: realpathSync(weztermExecutable),
+      executableSha256: createHash("sha256").update(weztermExecutableBytes).digest("hex"),
+      sourceArtifact: {
+        path: weztermInstaller,
+        sha256: createHash("sha256").update(weztermInstallerBytes).digest("hex"),
+      },
+    })
     env.APP_ID = "ghostty"
     env.APP_BUNDLE = bundle
+    env.BREW_CASK_PATH = ""
     expect(decoded.job.jobId).toBe("1234")
     expect(decoded.runId).toBe(
       createHash("sha256")
