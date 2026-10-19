@@ -239,37 +239,49 @@ test.each([
     }
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
     await handleApp(input, {})
-    expect(spawn).toHaveBeenCalledWith(
-      `${appPath}/Contents/Resources/app/bin/${helper}`,
-      [
-        "--new-window",
-        "--user-data-dir",
-        ownedWindow.marker.value,
-        "--extensions-dir",
-        `/private/run/${prefix}-extensions`,
-        ...(prefix === "vscode"
-          ? [
-              "--shared-data-dir",
-              "/private/run/vscode-shared",
-              "--agent-plugins-dir",
-              "/private/run/vscode-agent-plugins",
-              "--agents-user-data-dir",
-              "/private/run/vscode-agents-data",
-              "--agents-extensions-dir",
-              "/private/run/vscode-agents-extensions",
-              "--crash-reporter-directory",
-              "/private/run/vscode-crash",
-            ]
-          : []),
-        "--extensionDevelopmentPath",
-        `/private/run/${prefix}-fixture`,
-      ],
-      {
-        detached: true,
-        stdio: "ignore",
-        env: expect.objectContaining(prefix === "cursor" ? { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" } : {}),
-      },
-    )
+    expect(spawn).toHaveBeenCalledTimes(1)
+    const [spawnPath, args, options] = vi.mocked(spawn).mock.calls[0]!
+    expect(spawnPath).toBe(`${appPath}/Contents/Resources/app/bin/${helper}`)
+    expect(args).toEqual([
+      "--new-window",
+      ...(prefix === "cursor" ? ["--classic"] : []),
+      "--user-data-dir",
+      ownedWindow.marker.value,
+      "--extensions-dir",
+      `/private/run/${prefix}-extensions`,
+      ...(prefix === "vscode"
+        ? [
+            "--shared-data-dir",
+            "/private/run/vscode-shared",
+            "--agent-plugins-dir",
+            "/private/run/vscode-agent-plugins",
+            "--agents-user-data-dir",
+            "/private/run/vscode-agents-data",
+            "--agents-extensions-dir",
+            "/private/run/vscode-agents-extensions",
+            "--crash-reporter-directory",
+            "/private/run/vscode-crash",
+          ]
+        : []),
+      "--extensionDevelopmentPath",
+      `/private/run/${prefix}-fixture`,
+    ])
+    expect(options?.detached).toBe(true)
+    expect(options?.stdio).toBe("ignore")
+    const env = options?.env
+    if (prefix === "cursor") expect(env?.CURSOR_CLI_BLOCK_CURSOR_AGENT).toBe("true")
+    if (prefix === "vscode") {
+      expect(env?.HOME).toBe(process.env.HOME)
+      const cursorKeys = Object.keys(env ?? {})
+        .filter((key) => key.startsWith("CURSOR_"))
+        .sort()
+      expect(cursorKeys).toEqual(
+        Object.keys(process.env)
+          .filter((key) => key.startsWith("CURSOR_"))
+          .sort(),
+      )
+      expect(cursorKeys.filter((key) => env?.[key] !== process.env[key])).toEqual([])
+    }
     const privateDirectories = [
       `${prefix}-private-run`,
       `${prefix}-extensions`,

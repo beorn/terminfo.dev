@@ -208,6 +208,7 @@ const APPS: AppDef[] = [
         const directory = dirname(markerValue)
         return [
           "--new-window",
+          "--classic",
           "--user-data-dir",
           markerValue,
           "--extensions-dir",
