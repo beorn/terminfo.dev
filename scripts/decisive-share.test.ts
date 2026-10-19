@@ -1450,7 +1450,9 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
             ...raw,
             probes: { ...raw.probes, app: [...probeIds] },
             // Keep the narrowed synthetic suite's text claims within its app membership.
-            ...(raw.textClaims === undefined ? {} : { textClaims: raw.textClaims.filter((id) => probeIds.includes(id)) }),
+            ...(raw.textClaims === undefined
+              ? {}
+              : { textClaims: raw.textClaims.filter((id) => probeIds.includes(id)) }),
           },
           null,
           2,

@@ -217,7 +217,14 @@ function callbackFixture(id: string) {
             ? "control-witness"
             : `target-witness-${captureIndex}`
         return {
-          ...frame(role, label, captureIndex, digest(`png-${captureIndex}`), digest(region), digest(`whole-${captureIndex}`)),
+          ...frame(
+            role,
+            label,
+            captureIndex,
+            digest(`png-${captureIndex}`),
+            digest(region),
+            digest(`whole-${captureIndex}`),
+          ),
           regionRectangle: { x: 16, y: 16, width: 640, height: band ? 16 : 368 },
         }
       }

@@ -342,7 +342,9 @@ describe("candidate-2 page: wiring", () => {
       if (!group) throw new Error(`group ${key} is missing from the page`)
       expect(group.included, key).toBe(false)
       expect(group.includedOn, key).toEqual(
-        key === "charsets" ? ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"] : clearing,
+        key === "charsets"
+          ? ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
+          : clearing,
       )
       expect(
         group.heldBy.map((row) => row.context),
@@ -390,8 +392,9 @@ describe("candidate-2 page: wiring", () => {
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // Both ruled groups keep the ruling's six contexts: four or five Linux contexts clear f945 and the two macOS
-    // contexts the ruling names. Those two contexts are dark on f945 and remain named in
+    // Both ruled groups keep the ruling's six contexts: four Linux and two macOS contexts.
+    // Character Sets additionally clears ghostty/linux on f945, outside that original basis.
+    // The two ruled macOS contexts are dark on f945 and remain named in
     // darkRuled and darkHeldBy. ruledTotal carries the six either way, so the page still
     // names the full ruled basis instead of quietly shrinking it to current inclusion (30033).
     const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
