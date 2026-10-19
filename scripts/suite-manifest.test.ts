@@ -53,12 +53,12 @@ const temp = (prefix: string): string => {
   return directory
 }
 
-/** A checkout one commit ahead of origin/main: the state a declaration is allowed to author in. */
+/** A checkout on a non-default branch, one commit ahead of origin/main: a declaration may author here. */
 const authoringRepo = (prefix: string): string => {
   const directory = temp(prefix)
   const git = (...args: string[]): string =>
     execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
-  git("init", "-q", "-b", "main")
+  git("init", "-q", "-b", "task/fixture")
   git("config", "user.email", "fixture@example.invalid")
   git("config", "user.name", "fixture")
   writeFileSync(join(directory, "a.txt"), "one\n")
@@ -246,10 +246,12 @@ test("the check is red when a declaration is not named for the hash it declares"
 
 /**
  * The stray manifests in shared main came from a declare on a commit origin/main already held. The
- * refusal now names the undeclared suite and the cure (27864), so an operator sees a suite problem
- * and its fix, not a git problem.
+ * refusal names the undeclared suite and the cure (27864), so an operator sees a suite problem and
+ * its fix, not a git problem. The authoring discriminator is the branch (30163): a fresh branch cut
+ * at origin/main authors the commit the act creates, while the default branch and a detached HEAD
+ * land the write on nobody's commit.
  */
-test("declaring refuses a checkout whose HEAD is already on origin/main and allows one that is not", () => {
+test("declaring refuses the default branch and a detached HEAD, and allows a fresh named branch at origin/main", () => {
   const directory = temp("terminfo-suite-manifest-git-")
   const git = (...args: string[]): string =>
     execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
@@ -259,24 +261,59 @@ test("declaring refuses a checkout whose HEAD is already on origin/main and allo
   writeFileSync(join(directory, "a.txt"), "one\n")
   git("add", "a.txt")
   git("commit", "-q", "-m", "one")
-  git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD").trim())
+  const atOriginMain = git("rev-parse", "HEAD").trim()
+  git("update-ref", "refs/remotes/origin/main", atOriginMain)
 
   const undeclared = "a".repeat(12)
   const snapshot = snapshotOf(undeclared)
-  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/origin\/main/)
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/default branch \(main\)/)
   expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(
     new RegExp(`Suite ${undeclared} cannot be declared or admitted on this checkout`),
   )
-  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/admit-run\.ts --for/)
-  expect(() => declareCurrentSuiteManifest(directory, snapshot)).toThrow(/origin\/main/)
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).not.toThrow(/admit-run\.ts --for/)
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/git switch -c task\/<name> origin\/main/)
+  expect(() => declareCurrentSuiteManifest(directory, snapshot)).toThrow(/default branch/)
 
-  writeFileSync(join(directory, "b.txt"), "two\n")
-  git("add", "b.txt")
-  git("commit", "-q", "-m", "two")
+  git("checkout", "-q", "--detach", atOriginMain)
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/detached/)
+  expect(() => declareCurrentSuiteManifest(directory, snapshot)).toThrow(/detached/)
+
+  // A clone cut from an author branch points origin/HEAD elsewhere; main stays a default branch.
+  git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/task/other")
+  git("switch", "-q", "main")
+  expect(() => assertDeclareIsAuthoring(directory, undeclared)).toThrow(/default branch \(main\)/)
+
+  git("switch", "-q", "-c", "task/fresh", "origin/main")
   expect(() => assertDeclareIsAuthoring(directory)).not.toThrow()
   const declared = declareCurrentSuiteManifest(directory, snapshot)
   expect(declared.status).toBe("created")
   expect(existsSync(declared.path)).toBe(true)
+})
+
+/**
+ * origin/HEAD is optional, and `--quiet` reports an absent ref and a direct ref the same way: neither
+ * names a remote default. main stays the default and a named task branch still authors (30163).
+ */
+test("declaring treats a non-symbolic origin/HEAD as naming no remote default", () => {
+  const directory = authoringRepo("terminfo-suite-manifest-origin-head-direct-")
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("branch", "main", git("rev-parse", "HEAD").trim())
+  git("update-ref", "refs/remotes/origin/HEAD", git("rev-parse", "HEAD").trim())
+  expect(() => assertDeclareIsAuthoring(directory)).not.toThrow()
+  git("switch", "-q", "main")
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(/default branch \(main\)/)
+})
+
+/** Any other exit from the same read is a failure the guard never asked for, never a reason to admit. */
+test("declaring throws and names the command when reading origin/HEAD fails unexpectedly", () => {
+  const directory = authoringRepo("terminfo-suite-manifest-origin-head-corrupt-")
+  writeFileSync(join(directory, ".git", "refs", "remotes", "origin", "HEAD"), "not a ref\n")
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(
+    /git symbolic-ref --quiet --short refs\/remotes\/origin\/HEAD/,
+  )
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(/exited /)
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(directory)
 })
 
 test("a freeze act writes the release pointer on a suite that admission already declared", () => {
@@ -722,7 +759,7 @@ test("the source-tree collector derives the same manifest that the admission wri
   const directory = temp("terminfo-serve-writer-parity-")
   const git = (...args: string[]): string =>
     execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
-  git("init", "-q", "-b", "main")
+  git("init", "-q", "-b", "task/fixture")
   git("config", "user.email", "fixture@example.invalid")
   git("config", "user.name", "fixture")
   writeFileSync(join(directory, "a.txt"), "one\n")
