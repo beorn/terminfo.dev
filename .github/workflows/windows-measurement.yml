@@ -21,8 +21,6 @@ jobs:
       matrix:
         include:
           - id: windows-terminal
-          - id: alacritty
-          - id: wezterm
     defaults:
       run:
         shell: bash
@@ -72,6 +70,105 @@ jobs:
           cp bun.lock "$OUT/collector-bun.lock"
           cp packages/terminfo.dev/dist/terminfo.bundle.receipt.json "$OUT/collector-build.json"
           cp packages/terminfo.dev/dist/terminfo.bundle.mjs "$OUT/collector-bundle.mjs"
+
+      - name: Prepare the private readback experiment
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/native-readback.ts" <<'TS'
+          /** Private Windows experiment; never a full-suite run or admission artifact. */
+          import { randomBytes } from "node:crypto"
+          import { closeSync, mkdirSync, openSync, writeSync } from "node:fs"
+          import { dirname, join } from "node:path"
+          import { pathToFileURL } from "node:url"
+
+          if (process.platform !== "win32") throw new Error("This diagnostic requires the actual hosted Windows app")
+          const source = process.env.GITHUB_WORKSPACE
+          const receiptPath = process.env.TERMINFO_DISPOSABLE_RECEIPT
+          const launchId = process.env.TERMINFO_RUN_ID
+          const destination = process.argv[2]
+          if (!source || !receiptPath || !launchId || !destination) throw new Error("Expected workspace, real receipt, launch ID and output path")
+          const moduleAt = (name: string) => pathToFileURL(join(source, "packages/terminfo.dev/src", name)).href
+          const { openControllingTTY, withRawMode } = await import(moduleAt("tty.ts"))
+          const { createOwnedTerminal } = await import(moduleAt("owned-terminal.ts"))
+          const { detectTerminal } = await import(moduleAt("detect.ts"))
+          const { runProbeBatch } = await import(moduleAt("probes/unified.ts"))
+          const { textCellsFrame } = await import(moduleAt("serve.ts"))
+          const { retain } = await import(moduleAt("capture-core.ts"))
+          const { loadKernel32 } = await import(moduleAt("windows-kernel32.ts"))
+          const { CSBI_BYTES, decodeConsoleWindowRect, readProcessImagePath, readWindowsConsoleIdentity, withConsoleOutputHandle } = await import(moduleAt("windows-console-ffi.ts"))
+          const log = openSync(destination, "wx", 0o600)
+          const record = (event: Record<string, unknown>) => writeSync(log, JSON.stringify({ at: new Date().toISOString(), monotonicNs: String(process.hrtime.bigint()), ...event }) + "\n")
+          const out = openControllingTTY()
+          const captureRunId = randomBytes(16).toString("hex")
+          const kernel = loadKernel32()
+          let owner: Awaited<ReturnType<typeof createOwnedTerminal>> | undefined
+          let stage = "bind"
+          const artifacts = join(dirname(destination), "diagnostic-text-artifacts")
+          mkdirSync(artifacts, { recursive: true })
+          try {
+            const terminal = detectTerminal()
+            owner = await createOwnedTerminal({ captureRunId, out, expectedLaunchRunId: launchId, windowsHosted: { receiptPath } })
+            if (terminal.name !== owner.hostedWindowsAppId) throw new Error("Detected app differs from the independently bound receipt app")
+            const selectedHost = JSON.parse(owner.summary).windowsHosted.consoleHost
+            if (!selectedHost || !owner.readCells) throw new Error("Bound app supplies no named console host or cell read")
+            record({ event: "grant", captureRunId, launchId, terminal, owner: JSON.parse(owner.summary) })
+            const nativeWindow = () => withConsoleOutputHandle((handle: bigint, api: typeof kernel) => {
+              const bytes = Buffer.alloc(CSBI_BYTES)
+              if (api.symbols.GetConsoleScreenBufferInfo(handle as never, api.ptr(bytes) as never) === 0) throw new Error(`GetConsoleScreenBufferInfo failed: ${api.symbols.GetLastError()}`)
+              return { rect: decodeConsoleWindowRect(bytes), csbiHex: bytes.toString("hex") }
+            }, kernel)
+            const read = async (checkpoint: Record<string, unknown>) => {
+              const before = { console: readWindowsConsoleIdentity(kernel), host: readProcessImagePath(selectedHost.pid, kernel), window: await nativeWindow() }
+              const cells = await owner!.readCells!()
+              const after = { console: readWindowsConsoleIdentity(kernel), host: readProcessImagePath(selectedHost.pid, kernel), window: await nativeWindow() }
+              // These are the production reader's decoded WCHAR/WORD pairs, including each stand-in.
+              const charInfo = cells.status === "read" && "grid" in cells ? cells.grid.text.map((line: string, row: number) => Array.from({ length: cells.grid.cols }, (_, col) => [line.charCodeAt(col), cells.grid.attributes[row][col]])) : undefined
+              record({ event: "read", stage, checkpoint, sameBirthAndWindow: before.host.status === "named" && after.host.status === "named" && JSON.stringify(before) === JSON.stringify(after), before, after, cells, charInfo })
+              return cells
+            }
+            const capture = async (checkpoint: Record<string, unknown>) => {
+              const cells = await read(checkpoint)
+              try {
+                const frame = textCellsFrame(checkpoint, cells, Date.now())
+                retain(artifacts, frame.retained, "txt")
+                return { frame: frame.frame, trace: frame.trace }
+              } catch (error) {
+                record({ event: "original-frame-refusal", stage, checkpoint, error: String(error) })
+                throw error
+              }
+            }
+            await withRawMode(async () => {
+              for (const [name, id] of [["erase-alone", "erase.character"], ["actual-emoji", "text.wide.emoji-zwj"], ["erase-after-emoji", "erase.character"]]) {
+                stage = name
+                await read({ label: "before actual callback" })
+                const batch = await runProbeBatch({ ids: [id], out, ownedTerminal: owner, captureRunId, target: { kind: "app", id: terminal.name, os: terminal.os }, captureKind: "text-cells", capture })
+                record({ event: "diagnostic-batch", stage, batch })
+                await read({ label: "after actual callback and cleanup" })
+              }
+              stage = "explicit-clear-order"
+              await read({ label: "before explicit clear" })
+              record({ event: "write-start", stage, sequence: "\u001b[0m\u001b[2J\u001b[H" })
+              const complete = new Promise<void>((resolve, reject) => out.write("\u001b[0m\u001b[2J\u001b[H", (error?: Error | null) => {
+                record({ event: "write-complete", stage, error: error ? String(error) : null })
+                if (error) reject(error)
+                else resolve()
+              }))
+              await read({ label: "immediate read after clear was queued" })
+              await complete
+              await read({ label: "read after write completion" })
+              await Bun.sleep(250)
+              await read({ label: "read after diagnostic 250ms delay" })
+            }, out)
+            record({ event: "complete", qualification: false })
+          } catch (error) {
+            record({ event: "fatal", stage, error: String(error) })
+            throw error
+          } finally {
+            await owner?.dispose()
+            await new Promise<void>((resolve) => out.end(resolve))
+            closeSync(log)
+          }
+          TS
 
       - name: Install this job's terminal
         env:
@@ -196,7 +293,7 @@ jobs:
           NODE_DIR="$(cygpath -w "$(dirname "$(command -v node)")")"
           BUN_DIR="$(cygpath -w "$(dirname "$(command -v bun)")")"
           COLLECTOR_BUN="$(cygpath -w "$(command -v bun)")"
-          COLLECTOR="$(cygpath -w "$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs")"
+          DIAGNOSTIC="$(cygpath -w "$RUNNER_TEMP/native-readback.ts")"
           case "$APP_ID" in
             windows-terminal)
               APP_DIR="$(cygpath -w "$RUNNER_TEMP/windows-terminal")"
@@ -253,7 +350,7 @@ jobs:
             exit 1
           }
 
-          & "$COLLECTOR_BUN" "$COLLECTOR" test --output "$WIN_OUT\\run.json" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
+          & "$COLLECTOR_BUN" "$DIAGNOSTIC" "$WIN_OUT\\native-diagnostic.jsonl" *>&1 | Out-File -FilePath "$WIN_OUT\\collector.log" -Encoding utf8
           \$exitCode = \$LASTEXITCODE
           if (\$null -eq \$exitCode) { \$exitCode = 0 }
           Set-Content -Path "$WIN_OUT\\collector-exit" -Value \$exitCode -Encoding ascii
@@ -284,7 +381,7 @@ jobs:
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit" | tr -d '\r\n ')"
               test "$status" = 0 || { echo "$APP_ID collector failed ($status); see collector.log artifact" >&2; exit 1; }
-              test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
+              test -s "$OUT/native-diagnostic.jsonl" || { echo "$APP_ID diagnostic returned no native-diagnostic.jsonl" >&2; exit 1; }
               exit 0
             fi
             sleep 1
