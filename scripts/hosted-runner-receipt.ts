@@ -297,15 +297,17 @@ interface JobsLookup {
 }
 
 async function lookupJobId(input: { endpoint: string; name: string; token: string }): Promise<JobsLookup> {
-  const started = Date.now()
+  // One monotonic budget: performance.now() never steps with the wall clock, so an NTP correction or a
+  // VM suspend/resume cannot stretch or collapse the 30s window this lookup is allowed.
+  const started = performance.now()
   const deadline = started + JOBS_LOOKUP_BUDGET_MS
-  const remaining = (): number => deadline - Date.now()
+  const remaining = (): number => deadline - performance.now()
   const counts: number[] = []
   let scans = 0
   let pages = 0
-  const diagnose = (reason: string): Error =>
+  const diagnose = (reason: string, count = counts.at(-1) ?? 0): Error =>
     new Error(
-      `Hosted receipt requires exactly one jobs-API RUNNER_NAME match for ${JSON.stringify(input.name)} at ${input.endpoint}; found ${counts.at(-1) ?? 0} (${reason}; scans ${scans}, pages ${pages}, elapsed ${Date.now() - started}ms of ${JOBS_LOOKUP_BUDGET_MS}ms, match counts ${JSON.stringify(counts)}); refusing to guess the job id`,
+      `Hosted receipt requires exactly one jobs-API RUNNER_NAME match for ${JSON.stringify(input.name)} at ${input.endpoint}; found ${count} (${reason}; scans ${scans}, pages ${pages}, elapsed ${Math.round(performance.now() - started)}ms of ${JOBS_LOOKUP_BUDGET_MS}ms, match counts ${JSON.stringify(counts)}); refusing to guess the job id`,
     )
 
   for (;;) {
@@ -313,7 +315,9 @@ async function lookupJobId(input: { endpoint: string; name: string; token: strin
     pages = 0
     const ids: number[] = []
     for (let page = 1; ; page += 1) {
-      const budget = remaining()
+      // AbortSignal.timeout requires an integer delay and refuses a fractional one, so the monotonic
+      // remainder is rounded UP: never shorter than the budget left, and never passed as a fraction.
+      const budget = Math.ceil(remaining())
       if (budget <= 0) throw diagnose("the budget expired before this scan finished")
       pages += 1
       const url = `${input.endpoint}?per_page=100&page=${page}`
@@ -344,6 +348,10 @@ async function lookupJobId(input: { endpoint: string; name: string; token: strin
           )
         }
         ids.push(job.id)
+        // The approved rule is IMMEDIATE refusal: a second safe match is already ambiguity, so no further
+        // page is requested and no further scan happens. Waiting for the walk to finish would spend more
+        // of the budget to learn something this page already proved.
+        if (ids.length > 1) throw diagnose("several live jobs claim this runner name", ids.length)
       }
       if (body.jobs.length < 100) break
     }
@@ -351,7 +359,7 @@ async function lookupJobId(input: { endpoint: string; name: string; token: strin
     if (ids.length > 1) throw diagnose("several live jobs claim this runner name")
     const [onlyJobId] = ids
     if (onlyJobId !== undefined) return { jobId: onlyJobId, scans, pages }
-    const wait = Math.min(JOBS_LOOKUP_RESCAN_MS, remaining())
+    const wait = Math.min(JOBS_LOOKUP_RESCAN_MS, Math.ceil(remaining()))
     if (wait <= 0) throw diagnose("the runner name never appeared in the jobs API")
     await new Promise<void>((resolve) => {
       setTimeout(resolve, wait)
