@@ -168,6 +168,15 @@ jobs:
               powershell -NoProfile -Command "Expand-Archive -Path '$WEZTERM_ARCHIVE' -DestinationPath '$RUNNER_TEMP/wezterm_unpacked' -Force"
               mkdir -p "$WEZTERM_DIR"
               cp -r "$RUNNER_TEMP/wezterm_unpacked/WezTerm-windows-$WEZTERM_VERSION/"* "$WEZTERM_DIR/"
+              # Evidence-only apparatus: measure the default renderer with this pinned ZIP's Mesa.
+              WEZTERM_MESA_SHA256="d109ab0e8f7aa6f00992368b72c9a8aa0cf6d1b1563c3ab1caedbdba9c4476ba"
+              cp "$WEZTERM_DIR/mesa/opengl32.dll" "$WEZTERM_DIR/opengl32.dll"
+              WEZTERM_MESA_ACTUAL_SHA256="$(sha256_file "$WEZTERM_DIR/opengl32.dll")"
+              echo "placed WezTerm packaged Mesa opengl32.dll sha256: $WEZTERM_MESA_ACTUAL_SHA256"
+              test "$WEZTERM_MESA_ACTUAL_SHA256" = "$WEZTERM_MESA_SHA256" || {
+                echo "WezTerm packaged Mesa sha256 mismatch: expected $WEZTERM_MESA_SHA256, got $WEZTERM_MESA_ACTUAL_SHA256" >&2
+                exit 1
+              }
               cat > "$WEZTERM_DIR/wezterm.lua" <<'LUA'
           return {
             initial_cols = 100,
@@ -278,6 +287,39 @@ jobs:
           sleep 3
           export APP_EXECUTABLE="$WIN_EXECUTABLE" APP_SOURCE_ARTIFACT="$WIN_SOURCE_ARTIFACT"
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
+          if [ "$APP_ID" = wezterm ]; then
+            # This sidecar is diagnostic evidence, not a replacement launch receipt or admission.
+            cat > "$RUNNER_TEMP/wezterm-renderer-evidence.ps1" <<'PS1'
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'measurement-artifacts'
+          $expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
+          $guiProcesses = @(Get-CimInstance Win32_Process -Filter "Name='wezterm-gui.exe'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
+          if ($guiProcesses.Count -ne 1) { throw "WezTerm renderer evidence expected one live GUI at $($expected.FullName); found $($guiProcesses.Count)" }
+          $gui = $guiProcesses[0]
+          $config = Get-Item -LiteralPath (Join-Path $expected.DirectoryName 'wezterm.lua')
+          $process = Get-Process -Id $gui.ProcessId
+          $modules = @($process.Modules | ForEach-Object { [ordered]@{ name = $_.ModuleName; path = $_.FileName } })
+          $rendererModules = @($modules | Where-Object { $_.name -in @('opengl32.dll', 'libEGL.dll', 'libGLESv2.dll') } | ForEach-Object {
+            [ordered]@{ name = $_.name; path = $_.path; sha256 = (Get-FileHash -LiteralPath $_.path -Algorithm SHA256).Hash.ToLowerInvariant() }
+          })
+          $after = Get-CimInstance Win32_Process -Filter "ProcessId=$($gui.ProcessId)"
+          if ($null -eq $after -or $after.CreationDate -ne $gui.CreationDate -or $after.ExecutablePath -ine $gui.ExecutablePath) { throw 'WezTerm GUI identity changed during renderer evidence sampling' }
+          [ordered]@{
+            qualification = $false
+            purpose = 'packaged-Mesa default-configuration evidence only; portable-ZIP receipt is not admissible after the DLL copy'
+            sampledAt = [DateTime]::UtcNow.ToString('o')
+            processId = $gui.ProcessId
+            createdAt = $gui.CreationDate.ToUniversalTime().ToString('o')
+            executablePath = $gui.ExecutablePath
+            commandLine = $gui.CommandLine
+            config = [ordered]@{ path = $config.FullName; sha256 = (Get-FileHash -LiteralPath $config.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); bytesBase64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($config.FullName)) }
+            queriedModuleNames = @('opengl32.dll', 'libEGL.dll', 'libGLESv2.dll')
+            rendererModules = $rendererModules
+            allLoadedModules = $modules
+          } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $out 'wezterm-renderer-evidence.json') -Encoding utf8
+          PS1
+            powershell -NoProfile -ExecutionPolicy Bypass -File "$RUNNER_TEMP/wezterm-renderer-evidence.ps1" > "$OUT/wezterm-renderer-evidence.log" 2>&1
+          fi
           touch "$OUT/collector-ready"
 
           for attempt in {1..300}; do
