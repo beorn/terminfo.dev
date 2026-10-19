@@ -310,7 +310,7 @@ describe("App version diagnostics", () => {
     "WezTerm version comes from its executable: %j",
     async (reply) => {
       const output = vi.spyOn(console, "log").mockImplementation(() => {})
-      vi.mocked(execFileSync).mockImplementation((file, args) => {
+      vi.mocked(execFileSync).mockImplementation((file, args = []) => {
         if (String(file).endsWith("/wezterm") && args[0] === "--version") return reply
         return String(args.at(-1)).includes("WezTerm.app") ? "0.1.0\n" : "2.15\n"
       })
