@@ -56,6 +56,11 @@ test.each(["command failure", "missing output"])(
       )
       const details = JSON.parse(error.message.slice(error.message.indexOf("{")))
       expect(details).toMatchObject({
+        captureContext: {
+          measuredAppPid: 41,
+          selectedWindow: own,
+          preCaptureWindow: own,
+        },
         file: "/usr/sbin/screencapture",
         args: captureArgs,
         outputPath: captureArgs.at(-1),
@@ -63,6 +68,9 @@ test.each(["command failure", "missing output"])(
         stderr: "actual stderr",
       })
       expect(error.cause).toBeInstanceOf(Error)
+      if (failure === "command failure") {
+        expect((error.cause as Error).message).toBe("command exited 1")
+      }
     } finally {
       runner.mockRestore()
       rmSync(directory, { recursive: true, force: true })
