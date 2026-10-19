@@ -27,7 +27,7 @@ const ids = {
   expectedLaunchRunId: "b".repeat(32),
 }
 
-test("hostedDarwinAppFromExecutablePath maps the four hosted apps from the receipt executable", () => {
+test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt executable", () => {
   expect(
     hostedDarwinAppFromExecutablePath("/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"),
   ).toEqual({
@@ -46,8 +46,13 @@ test("hostedDarwinAppFromExecutablePath maps the four hosted apps from the recei
     id: "alacritty",
     comm: "alacritty",
   })
+  // WezTerm.app's CFBundleExecutable is wezterm-gui (run 39274899363); the CLI binary never appears here.
+  expect(hostedDarwinAppFromExecutablePath("/Applications/WezTerm.app/Contents/MacOS/wezterm-gui")).toEqual({
+    id: "wezterm",
+    comm: "wezterm-gui",
+  })
   expect(() => hostedDarwinAppFromExecutablePath("/usr/bin/script")).toThrow(
-    /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty/,
+    /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm/,
   )
 })
 

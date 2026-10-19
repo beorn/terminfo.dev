@@ -254,7 +254,7 @@ type WindowsBinding = {
   consoleIdentity: string
 }
 
-export type HostedDarwinAppId = "terminal-app" | "iterm2" | "ghostty" | "alacritty"
+export type HostedDarwinAppId = "terminal-app" | "iterm2" | "ghostty" | "alacritty" | "wezterm"
 export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
 export type AncestryRow = { pid: number; ppid: number; comm: string }
 
@@ -264,8 +264,10 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   ghostty: { id: "ghostty", comm: "ghostty" },
   alacritty: { id: "alacritty", comm: "alacritty" },
   Alacritty: { id: "alacritty", comm: "alacritty" },
+  // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
+  "wezterm-gui": { id: "wezterm", comm: "wezterm-gui" },
 }
-const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty"])
+const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty", "wezterm-gui"])
 
 /** macOS `ps -o comm=` prints a full executable path; match and stop on the last segment. */
 function hostedDarwinCommBase(comm: string): string {
@@ -274,13 +276,13 @@ function hostedDarwinCommBase(comm: string): string {
   return slash === -1 ? trimmed : trimmed.slice(slash + 1)
 }
 
-/** Map a github-hosted-runner appLaunch.executablePath to the four hosted Mac apps. */
+/** Map a github-hosted-runner appLaunch.executablePath to the hosted Mac apps. */
 export function hostedDarwinAppFromExecutablePath(executablePath: string): HostedDarwinApp {
   const base = executablePath.split("/").pop() ?? ""
   const app = HOSTED_DARWIN_EXECUTABLE[base]
   if (!app) {
     throw new Error(
-      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty: ${JSON.stringify(executablePath)}`,
+      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm: ${JSON.stringify(executablePath)}`,
     )
   }
   return app
