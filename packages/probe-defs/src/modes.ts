@@ -372,6 +372,20 @@ const DECSSCLS_LINES_PER_SECOND = 9
  */
 const DECSSCLS_OVERFLOW_ROWS = 16
 /**
+ * The marker band is authored this many lines before the burst's last line. The burst runs 16 lines
+ * past the screen and its trailing line feed leaves one blank row under the text, so seven lines
+ * before the last settles the band at screen row `rows - 8`: above the cursor, inside the witness.
+ */
+const DECSSCLS_MARKER_LINES_BEFORE_BURST_END = 7
+/**
+ * The second target frame is taken this long after the throttle window closes. A terminal that
+ * honours the rate has finished by then; one that is merely slow has not, and that grades
+ * inconclusive rather than unsupported.
+ */
+const DECSSCLS_SETTLE_MARGIN_MS = 500
+/** A full-width band whose pixels are identical wherever the row lands. */
+const decssclsBand = (cols: number): string => `\x1b[48;5;196m${" ".repeat(cols)}\x1b[0m`
+/**
  * Slack under the throttled window. At 9 lines per second one line takes 111 ms, so 150 ms is more
  * than a full line: a terminal that honours the rate moves at least one line between the first and
  * second target frame, while a capture that returns a few milliseconds either side of the bound
@@ -388,9 +402,18 @@ const DECSSCLM_SMOOTH = "\x1b[?4h"
 const DECSSCLM_JUMP = "\x1b[?4l"
 
 /** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
-function decssclsBurst(rows: number): { text: string; lines: number } {
+function decssclsBurst(rows: number, cols: number): { text: string; lines: number; markerLine: number } {
   const lines = rows + DECSSCLS_OVERFLOW_ROWS
-  return { text: Array.from({ length: lines }, (_, index) => `line ${index + 1}`).join("\r\n") + "\r\n", lines }
+  const markerLine = lines - DECSSCLS_MARKER_LINES_BEFORE_BURST_END
+  const band = decssclsBand(cols)
+  return {
+    text:
+      Array.from({ length: lines }, (_, index) => (index + 1 === markerLine ? band : `line ${index + 1}`)).join(
+        "\r\n",
+      ) + "\r\n",
+    lines,
+    markerLine,
+  }
 }
 
 /**
@@ -408,25 +431,39 @@ interface DecssclsPair {
   changed: boolean
   /** The two frames' region digests, in capture order, so a decided verdict can cite them. */
   digests: readonly [string, string]
+  /** When the witness capture completed, in ms. Reported; the band frame's time decides the window. */
   firstElapsedMs: number
+  /** When the first band capture completed, in ms: the decisive bound for "inside the window". */
+  firstBandElapsedMs: number
   screenshotRef: string
   rectangles: readonly [CaptureRectangle, CaptureRectangle]
+  /** Whether the marker band was found at its settled row in each frame. */
+  band: readonly [boolean, boolean]
+  bandDigests: readonly [string, string]
 }
 
 /**
  * DECSSCLS (CSI Ps SP p) sets presentation speed and has no query. The same-run control sets jump
  * scrolling; the target sets the documented 9-lines-per-second rate. Each phase takes two frames of
- * the same screen: the first as soon as the collector can after the burst, the second after the
- * settle delay. The burst overruns the MEASURED row count, so every context has to scroll; that
- * alone does not attribute a frame difference to scrolling.
+ * the same screen and a one-row capture at the marker's settled row: the first frame as soon as the
+ * collector can after the burst, the second after the settle delay (for the target, after the
+ * throttled window would have closed). The burst overruns the MEASURED row count, so every context
+ * has to scroll; that alone does not attribute a frame difference to scrolling.
  *
- * The comparison is raw-pixel region digests of ONE cells rectangle, never the encoded frame ref:
- * a repaint cannot move text through a crop that excludes the cursor row, so a changed region means
- * content moved. A target pair that changed while its jump control stayed identical is `supported`;
- * an identical pair whose first frame landed inside the throttled window is `unsupported`, because
- * a terminal honouring the rate would still have been scrolling. The pair grades nothing when the
- * two frames were cropped from different rectangles, when the jump control itself moved, or when
- * the first target frame landed after the window could have finished (`inconclusive`, named).
+ * The witness comparison is raw-pixel region digests of ONE cells rectangle, never the encoded frame
+ * ref: a repaint cannot move text through a crop that excludes the cursor row, so a changed region
+ * means content moved. The band is an independent witness: authored above the burst's last line, so
+ * a jump puts it at its settled row immediately, an honoured scroll brings it there after the
+ * window, and a slower scroll has not brought it there yet.
+ *
+ * A target is `supported` only when the band arrives (absent at the first band capture, present at
+ * the second) and the witness changed, while the jump control stayed identical. A band present in
+ * the target's first band capture, inside the throttled window, is `unsupported`: the terminal put
+ * the final content there without honouring the rate. The band capture's own time decides the
+ * window, so a slow witness read cannot smuggle a late band into an early bound. Everything else is
+ * `inconclusive` with a named reason: the band has not arrived, the band contradicts the witness,
+ * the control moved, the first band capture landed after the window could have finished, or the
+ * frames were cropped from different rectangles.
  */
 async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const captureCallback = ctx.capture
@@ -446,6 +483,12 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   if (rows < 2) {
     return notTestedResult(
       "DECSSCLS needs at least two rows: its witness sits ABOVE the cursor row, and a one-row screen has no row above it",
+      { rows },
+    )
+  }
+  if (rows < 10) {
+    return notTestedResult(
+      "DECSSCLS marker needs a measured screen of at least 10 rows to place a band above the cursor",
       { rows },
     )
   }
@@ -473,17 +516,24 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       : priorMode === "reset"
         ? "jump (CSI ?4l), as read before the probe"
         : "jump (CSI ?4l); prior DECSCLM unknown, restored reset"
-  const burst = decssclsBurst(rows)
+  const burst = decssclsBurst(rows, cols)
   // The clear and home fill the first `rows` lines without scrolling, so only the rest line-feeds
   // scroll. The window counts those scrolls, not the burst length.
   const scrolledLines = Math.max(1, burst.lines - rows + 1)
   const throttledDurationMs = Math.ceil((scrolledLines / DECSSCLS_LINES_PER_SECOND) * 1000)
   const witness = decssclsWitness(rows, cols)
-  const capture = async (
+  // The burst's last authored line settles on the cursor row, so the band's settled row is its
+  // authored line minus every line the burst scrolled off the top. That is `rows - 8` by design;
+  // deriving it from the bytes keeps the reference sample and the capture on the row the burst
+  // actually paints, including the trailing line feed's own scroll.
+  const markerRow = burst.markerLine - scrolledLines
+  const markerCells = { top: markerRow, left: 1, bottom: markerRow, right: cols }
+  const captureRegion = async (
     role: ObservationFrame["role"],
     label: string,
+    cells: CaptureCells,
   ): Promise<{ cells: string; rectangle: CaptureRectangle; ref: string }> => {
-    const frame = await captureCallback({ role, label, cells: witness, pixelGeometry: geometry })
+    const frame = await captureCallback({ role, label, cells, pixelGeometry: geometry })
     frames.push(frame)
     if (frame.kind === "text-cells") {
       throw new Error(
@@ -498,16 +548,27 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     }
     return { cells: digests.cells, rectangle: frame.regionRectangle, ref: frame.ref }
   }
-  const phase = async (role: ObservationFrame["role"], setting: string, label: string): Promise<DecssclsPair> => {
+  const capture = (role: ObservationFrame["role"], label: string) => captureRegion(role, label, witness)
+  const captureBand = (role: ObservationFrame["role"], label: string) => captureRegion(role, label, markerCells)
+  let markerRef = ""
+  const phase = async (
+    role: ObservationFrame["role"],
+    setting: string,
+    label: string,
+    settleMs: number,
+  ): Promise<DecssclsPair> => {
     ctx.write(DECSSCLM_SMOOTH)
     const startedAt = performance.now()
     ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
     const firstElapsedMs = performance.now() - startedAt
+    const firstBand = await captureBand(role, `${label} t0 band`)
+    const firstBandElapsedMs = performance.now() - startedAt
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, DECSSCLS_SETTLE_MS)
+      setTimeout(resolve, settleMs)
     })
     const second = await capture(role, `${label} t1`)
+    const secondBand = await captureBand(role, `${label} t1 band`)
     const sameRectangle =
       first.rectangle.x === second.rectangle.x &&
       first.rectangle.y === second.rectangle.y &&
@@ -518,23 +579,36 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       changed: first.cells !== second.cells,
       digests: [first.cells, second.cells],
       firstElapsedMs,
+      firstBandElapsedMs,
       screenshotRef: second.ref,
       rectangles: [first.rectangle, second.rectangle],
+      band: [firstBand.cells === markerRef, secondBand.cells === markerRef],
+      bandDigests: [firstBand.cells, secondBand.cells],
     }
   }
   const restored =
     "CSI 0 SP p, and DECSCLM restored to the mode read before the probe; the DECSSCLS speed itself is not queryable"
   try {
-    const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
-    const target = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
+    ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + "\r\n".repeat(markerRow - 1) + decssclsBand(cols) + "\r\n")
+    markerRef = (await captureBand("control", "DECSSCLS marker reference")).cells
+    const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control", DECSSCLS_SETTLE_MS)
+    const target = await phase(
+      "target",
+      DECSSCLS_SLOW,
+      "DECSSCLS 9 lines per second",
+      throttledDurationMs + DECSSCLS_SETTLE_MARGIN_MS,
+    )
     const timingBoundMs = throttledDurationMs - DECSSCLS_TIMING_MARGIN_MS
-    const insideWindow = target.firstElapsedMs <= timingBoundMs
+    const bandInsideWindow = target.firstBandElapsedMs <= timingBoundMs
     const observed = {
       controlChanged: control.changed,
       targetChanged: target.changed,
       controlFirstElapsedMs: control.firstElapsedMs,
       targetFirstElapsedMs: target.firstElapsedMs,
+      controlFirstBandElapsedMs: control.firstBandElapsedMs,
+      targetFirstBandElapsedMs: target.firstBandElapsedMs,
       settleMs: DECSSCLS_SETTLE_MS,
+      targetSettleMs: throttledDurationMs + DECSSCLS_SETTLE_MARGIN_MS,
       lines: burst.lines,
       scrolledLines,
       rows,
@@ -552,6 +626,16 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       rectangles: {
         control: control.rectangles,
         target: target.rectangles,
+      },
+      marker: {
+        settledRow: markerRow,
+        reference: markerRef,
+        control: control.band,
+        target: target.band,
+        digests: {
+          control: control.bandDigests,
+          target: target.bandDigests,
+        },
       },
       restored,
     }
@@ -572,9 +656,10 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         },
       }
     }
-    if (control.changed) {
-      const note =
-        "The jump control moved between two frames of the same screen: this arm's region digest is not stable across an unchanged screen, so no target pair can be read"
+    if (control.changed || !control.band[0] || !control.band[1]) {
+      const note = control.changed
+        ? "The jump control moved between two frames of the same screen: this arm's region digest is not stable across an unchanged screen, so no target pair can be read"
+        : "The marker band was not at its settled row in both jump-control frames: this arm's band capture is not stable across an unchanged screen, so no target pair can be read"
       return {
         pass: false,
         response,
@@ -588,8 +673,8 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         },
       }
     }
-    if (!insideWindow) {
-      const note = `The target's first frame landed after ${Math.round(target.firstElapsedMs)} ms, outside the ${throttledDurationMs} ms throttled window (-${DECSSCLS_TIMING_MARGIN_MS} ms margin), so a terminal that honours the rate could already have finished and the pair cannot grade it`
+    if (!bandInsideWindow) {
+      const note = `The target's marker band was first captured after ${Math.round(target.firstBandElapsedMs)} ms, outside the ${throttledDurationMs} ms throttled window (-${DECSSCLS_TIMING_MARGIN_MS} ms margin), so its arrival cannot be placed inside the window and the pair cannot grade it`
       return {
         pass: false,
         response,
@@ -603,8 +688,23 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         },
       }
     }
-    if (target.changed) {
-      const note = `Text moved through the witness region between the two target frames while the jump control stayed identical, and the first target frame landed inside the ${throttledDurationMs} ms window`
+    if (target.band[0]) {
+      const note = `The marker band was already at its settled row in the target's first band capture, ${Math.round(target.firstBandElapsedMs)} ms in and inside the ${throttledDurationMs} ms window a throttled scroll would still be running in; the terminal put the content there without honouring the rate`
+      return {
+        pass: false,
+        response,
+        observation: {
+          outcome: "unsupported",
+          evidence: "pixels",
+          screenshotRef: target.screenshotRef,
+          frames,
+          note,
+        },
+        assertions: [{ kind: "negative", expected: note, observed: response }],
+      }
+    }
+    if (target.band[1] && target.changed) {
+      const note = `The marker band reached its settled row between the two target frames and text moved through the witness region, while the jump control stayed identical and the band's first capture landed inside the ${throttledDurationMs} ms window`
       return {
         pass: true,
         response,
@@ -618,18 +718,20 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         assertions: [{ kind: "positive", expected: note, observed: response }],
       }
     }
-    const note = `The witness region was identical in both target frames although the first landed ${Math.round(target.firstElapsedMs)} ms in, inside the ${throttledDurationMs} ms window a throttled scroll would still be running in; the terminal scrolled regardless of the rate`
+    const note = target.band[1]
+      ? "The marker band was at its settled row in the second target frame but the witness region was identical, so the band and the region digest contradict each other and the pair cannot grade"
+      : `The marker band had not reached its settled row ${DECSSCLS_SETTLE_MARGIN_MS} ms after the ${throttledDurationMs} ms throttled window closed; a scroll slower than the requested rate is not evidence that the setting was ignored`
     return {
       pass: false,
       response,
       observation: {
-        outcome: "unsupported",
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
         evidence: "pixels",
         screenshotRef: target.screenshotRef,
         frames,
         note,
       },
-      assertions: [{ kind: "negative", expected: note, observed: response }],
     }
   } finally {
     ctx.write(DECSSCLS_SLOW + restoreMode + "\x1b[?1049l\x1b[0m")
