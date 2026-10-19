@@ -129,7 +129,6 @@ export function kittyOwnedProcess(window: KittyWindow): OwnedProcess {
   }
 }
 
-
 /** Every live pid that runs `executablePath` and carries the marker as an exact argv token. */
 export function findOwnerPids(executablePath: string, marker: ProcessMarker): number[] {
   const expected = realpathSync(executablePath)
@@ -178,7 +177,6 @@ export function resolveOwnedProcessByMarker(input: {
     tty: input.tty,
   }
 }
-
 
 /**
  * Recheck the recorded owner and signal only it. The pid is never re-resolved: close signals the one

@@ -194,45 +194,67 @@ export function persistSuiteManifest(
 }
 
 /**
- * Declaring a suite is authoring, so it may only run on a checkout carrying work that
- * is not yet on main: a declare on a shared-main checkout writes a manifest no commit will take.
- * `--check` still runs anywhere; validating a stored declaration is a read.
- *
- * ADMISSION PASSES THIS GUARD. `scripts/admit-run.ts` declares the run's manifest and admits the
- * run in one commit on a branch ahead of origin/main, so the guard holds unchanged. Do not weaken
- * it to "fix" admission; admission is authoring by construction.
+ * Declaring a suite is authoring, so it may only run on a checkout that can carry the commit it
+ * writes: a declare on a shared-main checkout writes a manifest no commit will take. The
+ * discriminator is the branch, not the commit, and not whether the branch is already ahead: a
+ * fresh branch cut at origin/main authors the commit the freeze or admission creates, while the
+ * default branch and a detached HEAD leave the write on nobody's commit. `--check` still runs
+ * anywhere; validating a stored declaration is a read.
  */
-function declarationCheckoutState(cwd: string): "authoring" | "on-main" {
-  const run = (args: string[]) => {
+type GitResult = { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }
+
+function declarationCheckoutState(cwd: string): { authoring: boolean; detail: string } {
+  const run = (args: string[]): GitResult => {
     const result = spawnSync("git", args, { cwd, encoding: "utf8" })
     if (result.error) throw new Error(`Cannot declare a suite: git ${args.join(" ")} failed`, { cause: result.error })
     return result
   }
-  const head = run(["rev-parse", "HEAD"])
-  if (head.status !== 0) throw new Error(`Cannot declare a suite outside a Git checkout (${cwd})`)
-  const declared = run(["rev-parse", "--verify", "origin/main^{commit}"])
-  if (declared.status !== 0) {
-    throw new Error(`Cannot declare a suite: ${cwd} offers no origin/main to compare the declared revision against`)
-  }
-  const ancestor = run(["merge-base", "--is-ancestor", head.stdout.trim(), declared.stdout.trim()])
-  if (ancestor.status === 0) return "on-main"
-  if (ancestor.status !== 1) {
+  // Any status we did not ask for, and any signal, is a fact we do not have; the guard must say which
+  // command failed and where, not fall back to a default branch set it could not read.
+  const failure = (args: string[], result: GitResult): never => {
+    const outcome = result.signal === null ? `exited ${result.status}` : `was killed by ${result.signal}`
+    const stderr = result.stderr.trim()
     throw new Error(
-      `Cannot declare a suite: git merge-base --is-ancestor failed (${ancestor.status}): ${ancestor.stderr.trim()}`,
+      `Cannot declare a suite: git ${args.join(" ")} in ${cwd} ${outcome}` + (stderr === "" ? "" : `: ${stderr}`),
     )
   }
-  return "authoring"
+  const headArgs = ["rev-parse", "HEAD"]
+  const head = run(headArgs)
+  if (head.status !== 0) return failure(headArgs, head)
+  const branchArgs = ["symbolic-ref", "--quiet", "--short", "HEAD"]
+  const branch = run(branchArgs)
+  if (branch.status === 1) return { authoring: false, detail: "its HEAD is detached" }
+  if (branch.status !== 0) return failure(branchArgs, branch)
+  const name = branch.stdout.trim()
+  // main is always a default branch here, whatever origin/HEAD names: a clone cut from an author
+  // branch can point origin/HEAD elsewhere, and a write on main is never the act this guard admits.
+  const originArgs = ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]
+  const originHead = run(originArgs)
+  const defaults = new Set(["main"])
+  if (originHead.status === 0) {
+    const remoteDefault = originHead.stdout.trim().replace(/^origin\//u, "")
+    if (remoteDefault === "") {
+      throw new Error(`Cannot declare a suite: git ${originArgs.join(" ")} in ${cwd} named no branch`)
+    }
+    defaults.add(remoteDefault)
+  } else if (originHead.status !== 1) {
+    // --quiet exits 1 when the optional ref is absent or names no branch (a direct ref); both are
+    // ordinary, because main is always a default here and a named task branch still authors its own
+    // commit. Any other exit, or a signal, is a failure we did not ask for and must be named.
+    return failure(originArgs, originHead)
+  }
+  if (defaults.has(name)) return { authoring: false, detail: `its HEAD is the default branch (${name})` }
+  return { authoring: true, detail: `it is on the non-default branch ${name}` }
 }
 
 export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void {
-  if (declarationCheckoutState(cwd) === "authoring") return
+  const state = declarationCheckoutState(cwd)
+  if (state.authoring) return
   const subject = suiteHash ? `Suite ${suiteHash}` : "This tree's suite"
   throw new Error(
-    `${subject} cannot be declared or admitted on this checkout (${cwd}): its HEAD is already on origin/main, so a ` +
-      "declaration or an admission written here lands on no commit.\n" +
-      "A collector authors nothing: the freeze act lands this suite's declaration on main, and admission runs from " +
-      "a branch with at least one commit ahead of origin/main (a fresh branch cut at the pin is NOT enough): bun " +
-      "scripts/admit-run.ts --for <run.json>",
+    `${subject} cannot be declared or admitted on this checkout (${cwd}): ${state.detail}, so a declaration or an ` +
+      "admission written here lands on no commit.\n" +
+      "Create or switch to a branch that is not the default (git switch -c task/<name> origin/main), then re-run.",
   )
 }
 

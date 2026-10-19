@@ -813,7 +813,7 @@ describe("private finite daemon startup", () => {
     }
   })
 
-  it.each(["capture", "refusal"])(
+  it.each(["capture", "pending-write", "write-error", "refusal"])(
     "a hosted Windows capture with a retention directory takes the %s branch without Linux provenance",
     (expectation) => {
       home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
@@ -826,7 +826,19 @@ describe("private finite daemon startup", () => {
       import assert from "node:assert/strict"
       import { readdirSync, readFileSync } from "node:fs"
       import { join } from "node:path"
-      const hosted = process.env.FIXTURE_EXPECT === "capture"
+      import { Writable } from "node:stream"
+      const expectation = process.env.FIXTURE_EXPECT
+      const hosted = expectation !== "refusal"
+      let reads = 0
+      let text = "stale"
+      let finishWrite
+      const out = new Writable({
+        write(chunk, encoding, done) {
+          if (chunk.toString() === "queued-clear") {
+            finishWrite = error => { if (!error) text = "hello"; done(error) }
+          } else done()
+        }
+      })
       Object.defineProperty(process, "platform", { value: "win32" })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
@@ -846,12 +858,12 @@ describe("private finite daemon startup", () => {
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           summary: "owned fixture",
-          readCells: async () => ({
+          readCells: async () => { reads += 1; return ({
             status: "read",
-            grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
+            grid: { cols: 80, rows: 24, text: [text], attributes: [[0, 0, 0, 0, 0]] },
             bufferOwner: { image: "OpenConsole.exe", pid: 1, ppid: 2, executablePath: "C:\\\\Windows\\\\System32\\\\OpenConsole.exe", executableSha256: "sha256:" + "a".repeat(64) },
             standIns: []
-          }),
+          }) },
           dispose: async () => {}
         })
       }))
@@ -867,8 +879,32 @@ describe("private finite daemon startup", () => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
           if (options.capture) {
-            await options.capture({ role: "witness", label: "fixture" })
-            captured = true
+            if (expectation === "pending-write" || expectation === "write-error") {
+              // Real Writable queues the adapter's completion behind this unfinished chunk.
+              options.out.write("queued-clear")
+              const pending = options.capture({ role: "witness", label: "fixture" })
+              pending.catch(() => {}) // The original promise is asserted below, including its error.
+              await Promise.resolve()
+              assert.equal(reads, 0, "text readback ran before the selected output completed")
+              assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).length, 0)
+              if (expectation === "write-error") {
+                const failure = new Error("selected output completion failed")
+                const errorSeen = new Promise(resolve => out.once("error", resolve))
+                finishWrite(failure)
+                await assert.rejects(pending, error => error === failure)
+                assert.equal(reads, 0)
+                assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).length, 0)
+                assert.equal(await errorSeen, failure)
+              } else {
+                finishWrite()
+                await pending
+                captured = true
+              }
+            } else {
+              text = "hello"
+              await options.capture({ role: "witness", label: "fixture" })
+              captured = true
+            }
           }
           return {
             rawReplies: {},
@@ -880,17 +916,20 @@ describe("private finite daemon startup", () => {
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       if (!hosted) {
         await assert.rejects(
-          collectProbeRun({ ids: ["device.xtversion"] }),
+          collectProbeRun({ ids: ["device.xtversion"], out }),
           /Controlled Linux collection requires runtime provenance/u,
         )
       } else {
-        await collectProbeRun({ ids: ["device.xtversion"] })
+        await collectProbeRun({ ids: ["device.xtversion"], out })
         assert.equal(captureKind, "text-cells")
         assert.equal(typeof capture, "function")
-        assert.equal(captured, true)
+        assert.equal(captured, expectation !== "write-error")
         const frames = readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt"))
-        assert.equal(frames.length, 1)
-        assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
+        assert.equal(frames.length, expectation === "write-error" ? 0 : 1)
+        if (expectation !== "write-error") {
+          assert.equal(reads, 1)
+          assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
+        }
       }
       `,
         ],
@@ -901,7 +940,7 @@ describe("private finite daemon startup", () => {
             HOME: home,
             FIXTURE_EXPECT: expectation,
             TERMINFO_CAPTURE_DIRECTORY: join(home, "capture"),
-            TERMINFO_DISPOSABLE_RECEIPT: expectation === "capture" ? "hardware-receipt-fixture" : "",
+            TERMINFO_DISPOSABLE_RECEIPT: expectation !== "refusal" ? "hardware-receipt-fixture" : "",
             TERMINFO_RUNTIME_PROVENANCE: "",
             TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
           },

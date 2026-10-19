@@ -110,10 +110,13 @@ is written at admission, never by hand and never by a standalone verb:
 bun scripts/admit-run.ts --for <collected-run.json> [--into <path>]
 ```
 
-- Required resources: a Git checkout whose HEAD is ahead of `origin/main` (admission is authoring), the
-  run file, and a tree whose live suite equals the run's `probeHash`.
+- Required resources: a Git checkout on a named branch that is not the default — a fresh branch cut at
+  `origin/main` authors, and so does one already ahead of it — the run file, and a tree whose live suite
+  equals the run's `probeHash`. The discriminator is the branch, never commit ancestry: the commit the
+  declaration lands on is the one the act itself creates.
 - Refusals are loud and named: a foreign suite refuses with "Admit from a tree at the run's suite"; a
-  checkout whose HEAD is on `origin/main` refuses; a partial or malformed run refuses.
+  checkout on the default branch (`main`, or whatever `refs/remotes/origin/HEAD` names) or on a detached
+  HEAD refuses and names `git switch -c task/<name> origin/main`; a partial or malformed run refuses.
 - Concurrent admission of the same run is success when the bytes match; different bytes at the same
   name refuse. Commit the run and its manifest together.
 
