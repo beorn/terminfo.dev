@@ -79,8 +79,9 @@ export function createClipboardTransaction(
     let failure: unknown
     try {
       await verify()
-      if ((await io.readText(trace, "clipboard-read", verify)) !== baseline)
+      if ((await io.readText(trace, "clipboard-read", verify)) !== baseline) {
         throw new Error("Owned clipboard baseline changed before callback")
+      }
       const fixture: ClipboardFixture = {
         readText: () => io.readText(trace, "clipboard-read", verify),
         writeText: (text) => io.writeText(text, trace, "clipboard-write", verify),
