@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest"
 import {
   cursorProbes,
   editingProbes,
+  modesProbes,
   type ObservationFrame,
   type ProbeSuiteManifest,
   type ProbeResult,
@@ -251,6 +252,31 @@ function parseCallback(id: string, result: ProbeResult, fixture: ReturnType<type
 }
 
 describe("in-run pixels verdicts", () => {
+  it("parses a decided DECSSCLS verdict whose assertion cites the region digests it compared", async () => {
+    const id = "modes.decsscls"
+    const probe = modesProbes.find((entry) => entry.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
+    const fixture = callbackFixture(id)
+    const result = await probe.term(fixture.context)
+    expect(result.observation?.outcome).toBe("supported")
+    // Every digest the assertion cites must be a frame's ref or its cell-aligned region digest.
+    const loaded = parseCallback(id, result, fixture)
+    expect(loaded.observations[0]?.outcome).toBe("supported")
+    expect(loaded.assertions[0]?.kind).toBe("positive")
+  })
+
+  it("refuses that same DECSSCLS verdict when its assertion cites no region digest", async () => {
+    const id = "modes.decsscls"
+    const probe = modesProbes.find((entry) => entry.id === id)
+    if (!probe?.term) throw new Error(`Missing ${id} terminal callback`)
+    const fixture = callbackFixture(id)
+    const result = await probe.term(fixture.context)
+    const assertion = result.assertions?.[0]
+    if (!assertion) throw new Error("Missing DECSSCLS assertion")
+    assertion.observed = "the target pair moved between two frames of the same rectangle"
+    expect(() => parseCallback(id, result, fixture)).toThrow(/must cite the frame digest it decided on/)
+  })
+
   it.each(["cursor.hide", "editing.decsace"])(
     "parses the real %s verdict when PNG, whole-frame and cell digests differ",
     async (id) => {
