@@ -265,13 +265,13 @@ function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[
   return contexts
 }
 
-/** Route the shared register after checking the collector's runtime engine resources. */
+/** Route the shared register after matching the collector's runtime engines to the catalog's own set. */
 export function release1Census(engineBackends: readonly string[], ledger: LinuxLedger): readonly CollectionContext[] {
-  if (engineBackends.length !== 11) {
-    throw new Error(`Expected 11 headless engines in the Termless manifest; found ${engineBackends.length}`)
-  }
   const census = fullContextCensus(CONTENT)
   const runtime = [...engineBackends].sort()
+  // The committed catalog is the authority on which engines exist; a literal count here refused a
+  // legitimate manifest change twice over (28385, area 15). Adding or dropping an engine still
+  // shows up by name below, which is the check that keeps a different family from being published.
   if (runtime.join("\n") !== census.engines.join("\n")) {
     throw new Error(
       `Catalog/Termless engine membership differs: catalog [${census.engines.join(", ")}], runtime [${runtime.join(", ")}]`,
