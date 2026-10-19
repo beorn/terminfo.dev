@@ -45,7 +45,8 @@ it.each(["tmux", "screen"])(
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true
+    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false
+    const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({target:suppliedTarget,outerApp}))
     write()
     mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:mux,version,os:"linux",osVersion:"fixture"})}))
@@ -55,14 +56,22 @@ it.each(["tmux", "screen"])(
       assert.deepEqual(options.linux.executable,{path:"/fixture/kitty",sha256:"cd".repeat(32)})
       const attachment={mux,captureRunId:options.captureRunId,launchRunId:"a".repeat(32),preflightCollector:{pid:95,startTicks:"115"},executable:{version},config:{path:"/out/mux.conf"}}
       return {geometryAtGrant:{status:"measured",rows:24,cols:80},summary:JSON.stringify({muxAttachment:attachment}),
-        clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:async()=>{},...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
+        clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
       assert.equal(options.target.kind,"mux");assert.equal(options.target.id,mux)
+      assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
+      inBatch=true
+      try{await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
       return {rawReplies:{},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
     const run=await collectProbeRun({ids:["device.xtversion"]})
+    assert.equal(verifierCalls,1)
+    custodyFailure=new Error("fixture mux custody revoked at batch")
+    await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),error=>error===custodyFailure)
+    assert.equal(verifierCalls,2)
+    custodyFailure=undefined
     assert.deepEqual(run.target,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)

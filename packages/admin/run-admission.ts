@@ -903,7 +903,7 @@ export function placeOwnershipReceipt(
 
 /** Host composition happens only after a completed Linux attach; bind those bytes to this run. */
 function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
-  if (run.target.kind !== "app" || !isLinux(run.target.os)) return
+  if ((run.target.kind !== "app" && run.target.kind !== "mux") || !isLinux(run.target.os)) return
   const hostPath = join(dirname(source), RECEIPT_BESIDE_RUN)
   let host: unknown
   try {

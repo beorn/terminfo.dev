@@ -4,7 +4,7 @@
  * @consumer Site, API, analysis, and reviewed census import.
  * @testonly none
  */
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -16,12 +16,14 @@ import {
   projectResults,
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
-import { assessRunAdmission } from "./admit-run.ts"
+import { assessRunAdmission, planAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
+import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
@@ -2958,6 +2960,69 @@ describe("identity self-admission", () => {
           { mode: "historical" },
         )
       expect(assessBound(boundSource)).toMatchObject({ accepted: true })
+      // Placement (unlike historical projection) must bind the completed host composition to
+      // these exact mux bytes. Reuse the accepted proof; unmeasured live probes stay not-tested.
+      const live = probeSuiteSnapshot()
+      const directory = mkdtempSync(join(tmpdir(), `terminfo-mux-completion-${mux}-`))
+      contentDirs.push(directory)
+      const path = join(directory, "run.json")
+      const destination = join(directory, "placed.json")
+      const placementSource = {
+        ...boundSource,
+        suiteId: live.probeHash,
+        probeHash: live.probeHash,
+        outerApp: {
+          ...boundSource.outerApp,
+          provenance: {
+            ...outerProvenance,
+            runtime: { ...outerProvenance.runtime, suiteHash: live.probeHash },
+          },
+        },
+        notTested: live.probes.mux
+          .filter((id) => !muxIdentity.featureIds.includes(id))
+          .map((featureId) => ({
+            featureId,
+            reason: "no-semantic-observable",
+            noObservable: "the retained identity specimen did not measure this probe",
+            rawReplyRef: featureId,
+          })),
+        rawReplies: {
+          ...boundSource.rawReplies,
+          ...Object.fromEntries(
+            live.probes.mux
+              .filter((id) => !muxIdentity.featureIds.includes(id))
+              .map((id) => [id, "fixture: not measured by the retained identity specimen"]),
+          ),
+        },
+      }
+      const bytes = JSON.stringify(placementSource)
+      writeFileSync(path, bytes)
+      const hostPath = join(directory, "host-measured.json")
+      writeFileSync(hostPath, receiptSource)
+      const completionPath = join(directory, "run-receipt.json")
+      const completion = {
+        probeRun: { runId: specimen.runId, sha256: createHash("sha256").update(bytes).digest("hex") },
+        receiptInputs: { hostSha256: createHash("sha256").update(receiptSource).digest("hex") },
+      }
+      // The authoring guard is independently exercised with real Git fixtures in admit-run.test;
+      // this case owns the real placement/receipt boundary, before that final branch check.
+      const authoring = vi.spyOn(suiteManifest, "assertDeclareIsAuthoring").mockImplementation(() => {})
+      try {
+        expect(() => planAdmission(path, destination)).toThrow(/missing run-receipt\.json/)
+        writeFileSync(
+          completionPath,
+          JSON.stringify({ ...completion, probeRun: { ...completion.probeRun, sha256: "0".repeat(64) } }),
+        )
+        expect(() => planAdmission(path, destination)).toThrow(/does not bind probeRun/)
+        writeFileSync(completionPath, JSON.stringify({ ...completion, receiptInputs: { hostSha256: "0".repeat(64) } }))
+        expect(() => planAdmission(path, destination)).toThrow(/does not bind receiptInputs/)
+        writeFileSync(completionPath, JSON.stringify(completion))
+        expect(planAdmission(path, destination)).toMatchObject({ target: { kind: "mux", id: mux } })
+        expect(existsSync(destination)).toBe(false)
+      } finally {
+        authoring.mockRestore()
+      }
+
       expect(
         assessBound({
           ...boundSource,
