@@ -905,8 +905,8 @@ describe("private finite daemon startup", () => {
     }
   })
 
-  it.each(["capture", "pending-write", "write-error", "refusal"])(
-    "a hosted Windows capture with a retention directory takes the %s branch without Linux provenance",
+  it.each(["capture", "pending-write", "write-error", "refusal", "timeout", "non-windows"])(
+    "a hosted text capture with a retention directory takes the %s branch without Linux provenance",
     (expectation) => {
       home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
       const result = spawnSync(
@@ -922,19 +922,39 @@ describe("private finite daemon startup", () => {
       const expectation = process.env.FIXTURE_EXPECT
       const hosted = expectation !== "refusal"
       let reads = 0
+      let queryWrites = 0
+      const writes = []
+      const darwin = ["pending-write", "write-error", "non-windows"].includes(expectation)
       let text = "stale"
       let finishWrite
       const out = new Writable({
         write(chunk, encoding, done) {
+          writes.push(chunk.toString())
           if (chunk.toString() === "queued-clear") {
             finishWrite = error => { if (!error) text = "hello"; done(error) }
-          } else done()
+          } else {
+            done()
+            if (chunk.toString() === "\\x1b[6n") {
+              queryWrites++
+              setImmediate(() => {
+                assert.equal(reads, 0, "console cells were read before the cursor acknowledgement arrived")
+                process.stdin.emit("data", Buffer.from(expectation === "timeout" ? "partial" : "\\x1b[1;1R"))
+              })
+            }
+          }
         }
       })
-      Object.defineProperty(process, "platform", { value: "win32" })
+      Object.defineProperty(process, "platform", { value: darwin ? "darwin" : "win32" })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const actualBatch = unified.runProbeBatch
+      const disposable = await import("./packages/terminfo.dev/src/disposable-receipt.ts")
+      // Receipt verification has its own owner suite; this case exercises the real probe catch.
+      mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...disposable,
+        readDisposableReceipt: () => ({ kind: "github-hosted-runner", runId: "a".repeat(32),
+          collectedAt: "2026-10-19T00:00:00Z", sha256: "d".repeat(64) })
+      }))
       let capture
       let captureKind = "absent"
       let captured = false
@@ -943,12 +963,13 @@ describe("private finite daemon startup", () => {
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
-        detectTerminal: () => ({ name: "windows-terminal", version: "", os: "windows", osVersion: "fixture" })
+        detectTerminal: () => ({ name: darwin ? "kitty" : "windows-terminal", version: "", os: darwin ? "macos" : "windows", osVersion: "fixture" })
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
+          readGeometry: async () => ({ status: "measured", rows: 24, cols: 80 }),
           summary: "owned fixture",
           readCells: async () => { reads += 1; return ({
             status: "read",
@@ -962,19 +983,22 @@ describe("private finite daemon startup", () => {
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
         withRawMode: async callback => callback(), drainStdin: async () => {},
         queryWithSentinelOutcome: async (sequence, pattern) => {
-          const raw = "\\x1b[8;24;80t"
+          const raw = sequence === "\\x1b[18t" ? "\\x1b[8;24;80t" : "\\x1bP>|kitty(0.49.2)\\x1b\\\\"
           return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: pattern.test(raw) ? "reply" : "sentinel" }
         }
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
         runProbeBatch: async options => {
+          if (expectation === "timeout") {
+            return actualBatch(options)
+          }
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
           if (options.capture) {
             if (expectation === "pending-write" || expectation === "write-error") {
               // Real Writable queues the adapter's completion behind this unfinished chunk.
               options.out.write("queued-clear")
-              const pending = options.capture({ role: "witness", label: "fixture" })
+              const pending = tty.withTTYOperation(() => options.capture({ role: "witness", label: "fixture" }), options.out)
               pending.catch(() => {}) // The original promise is asserted below, including its error.
               await Promise.resolve()
               assert.equal(reads, 0, "text readback ran before the selected output completed")
@@ -994,7 +1018,8 @@ describe("private finite daemon startup", () => {
               }
             } else {
               text = "hello"
-              await options.capture({ role: "witness", label: "fixture" })
+              options.out.write("probe-paint")
+              await tty.withTTYOperation(() => options.capture({ role: "witness", label: "fixture" }), options.out)
               captured = true
             }
           }
@@ -1012,7 +1037,19 @@ describe("private finite daemon startup", () => {
           /Controlled Linux collection requires runtime provenance/u,
         )
       } else {
-        await collectProbeRun({ ids: ["device.xtversion"], out })
+        const run = await collectProbeRun({ ids: [expectation === "timeout" ? "erase.character" : "device.xtversion"], out })
+        if (expectation === "timeout") {
+          assert.equal(reads, 0, "an unacknowledged capture must not read console cells")
+          assert.equal(queryWrites, 1, JSON.stringify({ observations: run.observations, diagnostics: run.ungradedDiagnostics }))
+          const row = run.observations.find(row => row.featureId === "erase.character")
+          assert.equal(row.outcome, "error")
+          assert.equal(row.evidence, "text")
+          assert.match(row.note, /timeout.*7 bytes/u)
+          const trace = JSON.parse(run.rawReplies[row.rawReplyRef])
+          assert.ok(trace.queries.some(query => query.sequence === "\\x1b[6n" && query.reason === "timeout" && query.raw === "partial"))
+          assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).length, 0)
+          process.exit(0)
+        }
         assert.equal(captureKind, "text-cells")
         assert.equal(typeof capture, "function")
         assert.equal(captured, expectation !== "write-error")
@@ -1022,6 +1059,8 @@ describe("private finite daemon startup", () => {
           assert.equal(reads, 1)
           assert.match(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, frames[0]), "utf8"), /hello/u)
         }
+        assert.equal(queryWrites, darwin ? 0 : 1)
+        if (!darwin) assert.ok(writes.indexOf("probe-paint") < writes.indexOf("\\x1b[6n"))
       }
       `,
         ],
