@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
+import { owningCheckout } from "./termless-root.ts"
 
 const TERMINFO_ROOT = realpathSync(resolve(import.meta.dir, "../.."))
 const VENDOR_ROOT = resolve(TERMINFO_ROOT, "..")
@@ -18,7 +19,6 @@ function ownedCheckout(path: string, name: string): string {
   }
 }
 
-const TERMLESS_ROOT = ownedCheckout(join(VENDOR_ROOT, "termless"), "Termless")
 const VTERM_ROOT = ownedCheckout(join(VENDOR_ROOT, "vterm"), "vterm")
 const CODE_ROOT = ownedCheckout(resolve(VENDOR_ROOT, ".."), "CODE workspace")
 const UPSTREAM_PACKAGES: Record<string, string> = {
@@ -90,12 +90,12 @@ export function registryIntegrity(name: string, version: string): { kind: "regis
 }
 
 /** bun's file: install materializes the package under node_modules/.bun; map that back via overrides. */
-function fileLinkWorkspace(name: string): string | undefined {
+function fileLinkWorkspace(name: string, termlessRoot: string): string | undefined {
   const override = readLock().overrides
   const entry = record(override) ? override[name] : undefined
   if (typeof entry !== "string" || !entry.startsWith("file:")) return undefined
   const workspace = realpathSync(resolve(CODE_ROOT, entry.slice("file:".length)))
-  if (!inside(workspace, VTERM_ROOT) && !inside(workspace, TERMLESS_ROOT)) {
+  if (!inside(workspace, VTERM_ROOT) && !inside(workspace, termlessRoot)) {
     throw new Error(`file: ${name} at ${workspace} is outside owned Termless/vterm checkouts`)
   }
   return workspace
@@ -141,6 +141,7 @@ export function fileLinkIntegrity(
   upstream: { path: string; directory: string; version: string },
   workspace: string,
   specifier: string,
+  termlessRoot: string,
 ): ReturnType<typeof sourceIntegrity> {
   const manifest: unknown = JSON.parse(readFileSync(join(workspace, "package.json"), "utf8"))
   if (!record(manifest) || manifest.name !== specifier || typeof manifest.version !== "string") {
@@ -156,12 +157,13 @@ export function fileLinkIntegrity(
   if (resolvedRel.startsWith("..") || resolvedRel.startsWith("/")) {
     throw new Error(`Resolved ${specifier} at ${upstream.path} is outside its installed package ${upstream.directory}`)
   }
-  return sourceIntegrity(join(workspace, "package.json"), workspace)
+  return sourceIntegrity(join(workspace, "package.json"), workspace, termlessRoot)
 }
 
 function sourceIntegrity(
   path: string,
   directory: string,
+  termlessRoot: string,
 ): {
   kind: "source"
   repository: string
@@ -169,7 +171,7 @@ function sourceIntegrity(
   treeOid: string
   cleanTree: boolean
 } {
-  const repo = inside(path, VTERM_ROOT) ? VTERM_ROOT : TERMLESS_ROOT
+  const repo = inside(path, VTERM_ROOT) ? VTERM_ROOT : termlessRoot
   if (!inside(path, repo) || !inside(directory, repo)) {
     throw new Error(`Loaded source ${path} is outside the expected Termless/vterm checkouts`)
   }
@@ -205,6 +207,7 @@ function sidecarIdentity(
   adapterDirectory: string,
   adapterVersion: string,
   termlessRevision: string,
+  termlessRoot: string,
 ): HeadlessRuntimeIdentity {
   const loadedBinary = loadedAddon(adapterDirectory)
   const receiptPath = `${loadedBinary.path}.receipt.json`
@@ -221,8 +224,8 @@ function sidecarIdentity(
   ) {
     throw new Error(`Native addon receipt missing or does not match loaded binary: ${receiptPath}`)
   }
-  const packagePath = relative(TERMLESS_ROOT, adapterDirectory)
-  const currentTreeOid = git(TERMLESS_ROOT, "rev-parse", `HEAD:${packagePath}/native`)
+  const packagePath = relative(termlessRoot, adapterDirectory)
+  const currentTreeOid = git(termlessRoot, "rev-parse", `HEAD:${packagePath}/native`)
   if (receipt.nativeTreeOid !== currentTreeOid) {
     throw new Error(`Native addon receipt source tree differs from current adapter: ${receiptPath}`)
   }
@@ -334,7 +337,7 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
   }
 }
 
-function libvtermVersion(wasmPath: string, wasmSha256: string, adapterDirectory: string): string {
+function libvtermVersion(wasmPath: string, wasmSha256: string, adapterDirectory: string, termlessRoot: string): string {
   const receiptPath = `${wasmPath}.receipt.json`
   const receipt: unknown = JSON.parse(readFileSync(receiptPath, "utf8"))
   const jsPath = join(adapterDirectory, "wasm", "libvterm.js")
@@ -346,7 +349,7 @@ function libvtermVersion(wasmPath: string, wasmSha256: string, adapterDirectory:
     typeof receipt.sourceCommit !== "string" ||
     typeof receipt.buildHash !== "string" ||
     typeof receipt.wrapperTreeOid !== "string" ||
-    receipt.wrapperTreeOid !== git(TERMLESS_ROOT, "rev-parse", "HEAD:packages/libvterm/build")
+    receipt.wrapperTreeOid !== git(termlessRoot, "rev-parse", "HEAD:packages/libvterm/build")
   ) {
     throw new Error(`libvterm build receipt is missing or does not match loaded WASM/JS: ${receiptPath}`)
   }
@@ -359,26 +362,26 @@ export async function headlessRuntimeIdentity(
   adapterType: string,
 ): Promise<HeadlessRuntimeIdentity> {
   const adapter = resolvedPackage(adapterSpecifier, import.meta.path)
-  if (!inside(adapter.path, TERMLESS_ROOT)) {
-    throw new Error(`${adapterSpecifier} resolved outside owned Termless: ${adapter.path}`)
-  }
-  const adapterRelative = relative(TERMLESS_ROOT, adapter.directory)
-  const dirtyAdapter = git(TERMLESS_ROOT, "status", "--porcelain", "--", adapterRelative)
+  const termlessRoot = owningCheckout(adapter.path, adapterSpecifier)
+  const adapterRelative = relative(termlessRoot, adapter.directory)
+  const dirtyAdapter = git(termlessRoot, "status", "--porcelain", "--", adapterRelative)
   if (dirtyAdapter) throw new Error(`${adapterSpecifier} has uncommitted adapter source:\n${dirtyAdapter}`)
-  const termlessRevision = git(TERMLESS_ROOT, "rev-parse", "HEAD")
+  const termlessRevision = git(termlessRoot, "rev-parse", "HEAD")
   if (name === "kitty") return kittyIdentity(adapter.version, termlessRevision)
-  if (adapterType === "native") return sidecarIdentity(adapter.directory, adapter.version, termlessRevision)
+  if (adapterType === "native") {
+    return sidecarIdentity(adapter.directory, adapter.version, termlessRevision, termlessRoot)
+  }
 
   const upstreamSpecifier = name === "libvterm" ? adapterSpecifier : UPSTREAM_PACKAGES[name]
   if (!upstreamSpecifier) throw new Error(`No upstream package identity for ${name}`)
   const upstream = name === "libvterm" ? adapter : resolvedPackage(upstreamSpecifier, adapter.path)
   const integrity = (() => {
-    if (inside(upstream.path, TERMLESS_ROOT) || inside(upstream.path, VTERM_ROOT)) {
-      return sourceIntegrity(upstream.path, upstream.directory)
+    if (inside(upstream.path, termlessRoot) || inside(upstream.path, VTERM_ROOT)) {
+      return sourceIntegrity(upstream.path, upstream.directory, termlessRoot)
     }
-    const workspace = fileLinkWorkspace(upstreamSpecifier)
+    const workspace = fileLinkWorkspace(upstreamSpecifier, termlessRoot)
     if (!workspace) return registryIntegrity(upstreamSpecifier, upstream.version)
-    return fileLinkIntegrity(upstream, workspace, upstreamSpecifier)
+    return fileLinkIntegrity(upstream, workspace, upstreamSpecifier, termlessRoot)
   })()
   const base = {
     kind: "js" as const,
@@ -405,7 +408,8 @@ export async function headlessRuntimeIdentity(
     const path = realpathSync(binary.path)
     const sha = sha256(readFileSync(path))
     if (binary.sha256 !== sha) throw new Error(`${name} WASM changed after loading: ${path}`)
-    const engineVersion = name === "libvterm" ? libvtermVersion(path, sha, adapter.directory) : upstream.version
+    const engineVersion =
+      name === "libvterm" ? libvtermVersion(path, sha, adapter.directory, termlessRoot) : upstream.version
     return { ...base, runtimeFormat: "wasm", engineVersion, loadedBinary: { path, sha256: sha } }
   }
   return { ...base, runtimeFormat: "js", engineVersion: upstream.version }
