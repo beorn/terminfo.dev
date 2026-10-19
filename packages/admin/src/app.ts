@@ -8,7 +8,7 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -59,7 +59,7 @@ interface AppDef {
   bundleId: string
   /** A GUI app whose CLI hands the window to an already-resolved owner process. The owner is proven by
    * the run-scoped marker in its argv, never by the CLI shim's pid, which may exit after the handoff.
-   * No app sets this until its marker is measured on a real host (28018). */
+   * No recipe lands until its marker is measured on that reviewed head on a real host (28018). */
   cliLaunch?: {
     /** The binary the launch spawns. A CLI that hands off and then execs into the GUI belongs here
      * (`wezterm` execs into `wezterm-gui`), so the spawn path and the owner path are separate. */
@@ -73,6 +73,8 @@ interface AppDef {
     markerValue: (run: ProbeRun) => string
     /** The launch arguments, given the serve script and the run-scoped marker value. */
     args: (script: string, markerValue: string) => string[]
+    /** App CLI configuration scoped to this launch, never the operator's profile. */
+    env?: Record<string, string>
     /** Run-scoped files the marker refers to, written once the marker is validated and before the
      * launch. A marker that names a config file needs that file to exist; no other app needs this. */
     prepare?: (run: ProbeRun, markerValue: string) => void
@@ -142,6 +144,68 @@ const APPS: AppDef[] = [
         "/bin/bash",
         script,
       ],
+    },
+  },
+  {
+    name: "Cursor",
+    id: "cursor",
+    appPath: "/Applications/Cursor.app",
+    binaryPath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+    launchArgs: () => [],
+    bundleId: "com.todesktop.230313mzl4w4u92",
+    cliLaunch: {
+      spawnPath: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+      executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      markerFlag: "--user-data-dir",
+      markerValue: (run) => join(run.directory, `cursor-${run.id}`),
+      env: { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" },
+      prepare: (run, markerValue) => {
+        const fixture = join(run.directory, "cursor-fixture")
+        for (const directory of [markerValue, join(run.directory, "cursor-extensions"), fixture]) {
+          mkdirSync(directory, { mode: 0o700 })
+        }
+        writeFileSync(
+          join(fixture, "package.json"),
+          JSON.stringify({
+            name: `terminfo-cursor-${run.id}`,
+            publisher: "terminfo",
+            version: "0.0.0",
+            engines: { vscode: "^1.74.0" },
+            main: "./extension.cjs",
+            activationEvents: ["onStartupFinished"],
+          }),
+          { flag: "wx", mode: 0o600 },
+        )
+        const terminal = {
+          name: `terminfo-${run.id}`,
+          shellPath: "/bin/bash",
+          shellArgs: [run.scriptPath],
+          cwd: run.directory,
+        }
+        writeFileSync(
+          join(fixture, "extension.cjs"),
+          `const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal(${JSON.stringify(terminal)});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`,
+          { flag: "wx", mode: 0o600 },
+        )
+      },
+      args: (_script, markerValue) => {
+        const directory = dirname(markerValue)
+        return [
+          "--new-window",
+          "--user-data-dir",
+          markerValue,
+          "--extensions-dir",
+          join(directory, "cursor-extensions"),
+          "--extensionDevelopmentPath",
+          join(directory, "cursor-fixture"),
+        ]
+      },
     },
   },
   {
@@ -232,7 +296,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
       detached: true,
       stdio: "ignore",
-      env: { ...process.env },
+      env: { ...process.env, ...app.cliLaunch.env },
     })
     child.unref()
     return {

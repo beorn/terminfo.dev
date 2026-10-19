@@ -6,7 +6,8 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn } from "node:child_process"
-import { writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
+import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp, stopLaunchedApp, type AppLaunch } from "./app.ts"
 import {
@@ -33,6 +34,7 @@ vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitR
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(() => true),
+  mkdirSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
   writeFileSync: vi.fn(),
 }))
@@ -212,6 +214,76 @@ describe("WezTerm cli-process arm", () => {
     })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
   })
+})
+
+// Cursor's recipe must deliver a terminal through the extension API without
+// workspace tasks or input synthesis. The WezTerm case cannot exercise that fixture.
+test("Cursor prepares a private editor fixture and forwards the existing GUI owner assertion", async () => {
+  const ownedWindow = {
+    provider: "cli-process" as const,
+    ownerPid: 778,
+    tty: "/dev/ttys009",
+    executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+    marker: { flag: "--user-data-dir", value: "/private/run/cursor-private-run" },
+  }
+  vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+  await handleApp("cursor", {})
+  expect(spawn).toHaveBeenCalledWith(
+    "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+    [
+      "--new-window",
+      "--user-data-dir",
+      ownedWindow.marker.value,
+      "--extensions-dir",
+      "/private/run/cursor-extensions",
+      "--extensionDevelopmentPath",
+      "/private/run/cursor-fixture",
+    ],
+    { detached: true, stdio: "ignore", env: expect.objectContaining({ CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" }) },
+  )
+  expect(mkdirSync).toHaveBeenCalledWith("/private/run/cursor-fixture", { mode: 0o700 })
+  expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
+    executablePath: ownedWindow.executablePath,
+    marker: ownedWindow.marker,
+    tty: ownedWindow.tty,
+  })
+  const writes = vi.mocked(writeFileSync).mock.calls
+  expect(writes.every(([path]) => String(path).startsWith("/private/run/"))).toBe(true)
+  const manifest = writes.find(([path]) => String(path).endsWith("cursor-fixture/package.json"))
+  expect(JSON.parse(String(manifest?.[1]))).toMatchObject({
+    main: "./extension.cjs",
+    activationEvents: ["onStartupFinished"],
+  })
+  const script = writes.find(([path]) => String(path).endsWith("cursor-fixture/extension.cjs"))
+  const terminal = { show: vi.fn(), dispose: vi.fn() }
+  const createTerminal = vi.fn(() => terminal)
+  const exported: { activate?: (context: { subscriptions: unknown[] }) => void } = {}
+  runInNewContext(String(script?.[1]), {
+    exports: exported,
+    require: (id: string) => {
+      if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
+      return { window: { createTerminal } }
+    },
+  })
+  const subscriptions: unknown[] = []
+  expect(typeof exported.activate).toBe("function")
+  exported.activate!({ subscriptions })
+  expect(createTerminal).toHaveBeenCalledWith({
+    name: "terminfo-private-run",
+    shellPath: "/bin/bash",
+    shellArgs: ["/private/run/serve.sh"],
+    cwd: "/private/run",
+  })
+  expect(terminal.show).toHaveBeenCalledOnce()
+  expect(subscriptions).toEqual([terminal])
+  expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+    process: expect.objectContaining({
+      ownerPid: 778,
+      executablePath: ownedWindow.executablePath,
+      marker: ownedWindow.marker,
+    }),
+  })
+  expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
 })
 
 describe("Terminal.app app collection", () => {
