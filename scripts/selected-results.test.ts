@@ -2819,6 +2819,48 @@ describe("identity self-admission", () => {
           expect.soft(assessment.reason).toBe(kind === "mux" ? "outer-app-proof-missing" : "native-provenance-missing")
         }
       }
+      const outerTarget = {
+        ...target,
+        os: specimen.target.os,
+        osVersion: specimen.target.osVersion,
+        permissions: specimen.target.permissions,
+      }
+      const outerProvenance = {
+        executable: { path: "/nix/store/kitty/bin/kitty", sha256: RECEIPT_EXECUTABLE_SHA256, version: target.version },
+        sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: RECEIPT_SOURCE_SHA256 },
+        runtime: {
+          imageId: `sha256:${RECEIPT_EXECUTABLE_SHA256}`,
+          imageTarSha256: RECEIPT_SOURCE_SHA256,
+          arch: "amd64",
+          nixLockRevision: "1".repeat(40),
+          sourceRevision: specimen.sourceRevision,
+          cleanTree: true,
+          suiteHash: specimen.probeHash,
+        },
+        fixture: {
+          definition: "fixture",
+          config: "fixture",
+          font: "fixture",
+          geometry: "100x30",
+          display: "fixture",
+          gl: "fixture",
+        },
+      }
+      // A well-formed app preflight is not an attached launch. No receipt is fabricated here.
+      const withoutAttachment = parseRunSource(
+        `unbound-${mux}.json`,
+        JSON.stringify({
+          ...specimen,
+          target: { ...specimen.target, kind: "mux", id: mux, version, outerTerminal: "kitty", mux },
+          outerApp: { target: outerTarget, rawReplies: identityReplies, provenance: outerProvenance },
+        }),
+        muxIdentity.featureIds,
+        new Map([[specimen.probeHash, projectedManifest]]),
+      )
+      expect(assessRunAdmission(withoutAttachment, [], { mode: "historical" })).toMatchObject({
+        accepted: false,
+        reason: "mux-attachment-missing",
+      })
     },
   )
 

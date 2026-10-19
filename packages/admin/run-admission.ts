@@ -37,6 +37,7 @@ import {
   bindReceiptToRun,
   HOSTED_IDENTITY_SOURCES,
   parseDisposableReceipt,
+  parseMuxAttachmentProof,
   type ReceiptTarget,
 } from "../terminfo.dev/src/disposable-receipt.ts"
 import {
@@ -89,6 +90,8 @@ export type AdmissionExclusionCode =
   | "outer-app-proof-missing"
   | "outer-app-identity-mismatch"
   | "mux-platform-unqualified"
+  | "mux-attachment-missing"
+  | "mux-attachment-invalid"
   | "source-uncommitted"
   | "community-unreviewed"
   | "suite-incomplete"
@@ -289,9 +292,34 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
       if (!protocolIdentityMatch(outer)) return "outer-app-identity-mismatch"
       if (outer.provenance && !outer.provenance.runtime.cleanTree) return "native-provenance-dirty"
       if (isLinux(outer.target.os) && !outer.provenance) return "native-provenance-missing"
-      const os = (outer.target.os ?? "").toLowerCase()
-      if ((os.startsWith("mac") || os.startsWith("darwin")) && !outer.appLaunch) {
-        return "ownership-receipt-app-launch-mismatch"
+      const ownershipSource = run.rawReplies["collector.terminalOwnership"]
+      if (ownershipSource === undefined) return "mux-attachment-missing"
+      let ownership: unknown
+      try {
+        ownership = JSON.parse(ownershipSource)
+      } catch (cause) {
+        if (!(cause instanceof SyntaxError)) throw cause
+        return "mux-attachment-invalid"
+      }
+      if (!isRecord(ownership)) return "mux-attachment-invalid"
+      if (ownership.muxAttachment === undefined) return "mux-attachment-missing"
+      let attachment: ReturnType<typeof parseMuxAttachmentProof>
+      try {
+        attachment = parseMuxAttachmentProof(ownership.muxAttachment)
+      } catch (cause) {
+        if (!(cause instanceof Error) || !cause.message.startsWith("Disposable ownership receipt (mux attachment")) {
+          throw cause
+        }
+        return "mux-attachment-invalid"
+      }
+      if (
+        attachment.captureRunId !== run.runId ||
+        attachment.mux !== run.target.id ||
+        attachment.mux !== run.target.mux ||
+        attachment.config.path !== run.target.config ||
+        attachment.executable.version !== run.target.version
+      ) {
+        return "mux-attachment-invalid"
       }
       return null
     }
