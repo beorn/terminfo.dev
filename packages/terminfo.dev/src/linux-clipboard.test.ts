@@ -91,8 +91,9 @@ mock.module("node:child_process", () => ({...cp,
   execFile(file,args,options,callback) {
     if (file === "xdotool") callback(null,"76\n")
     else if (file === exe("tmux")) {
+      const server = args.at(-1).includes("#{pid}") ? (variant === "foreign-server" ? "149" : "145") + "\t" : ""
       if (variant === "detached") callback(null,"")
-      else callback(null, "148\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? "150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
+      else callback(null, server + (variant === "client-changed" ? "150" : "148") + "\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? server+"150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
     } else {reads++;callback(null,baseline)}
     return {}
   },
@@ -111,6 +112,7 @@ try {
       [76,p(1,"100",0,exe("kitty"))],[92,p(76,"110",34816,"/bin/bash")],
       [95,p(92,"115",34816,process.execPath)],
       [145,p(92,"120",34816,exe("tmux"))],[148,p(92,"121",34816,exe("tmux"))],
+      [149,p(92,"122",34816,exe("tmux"))],[150,p(92,"123",34816,exe("tmux"))],
       [146,p(92,"120",34816,exe("screen"))],[147,p(146,"121",0,exe("screen"))],
       [process.pid,p(kind==="tmux"?145:147,"130",34817,process.execPath)],
       [419422,p(1,"80",0,"/usr/bin/Xvfb")],[419423,p(1,"90",0,exe("xclip"))]
@@ -146,10 +148,39 @@ try {
     await assert.rejects(adapter.withClipboardFixture(async()=>{throw Error("unowned callback ran")},()=>{}),/attached|display/i)
     assert.equal(reads,previousReads)
     await adapter.dispose()
-    for(const bad of ["detached","wrong-client-tty","outer-collector-tty","undeclared-executable","foreign-socket","second-client","recycled-shell"]) {
+    const refusals = {
+      detached: kind === "tmux" ? /exactly one attached client; found 0/ : /exactly one attached display/,
+      "wrong-client-tty": kind === "tmux" ? /attached client tty or shell parent differs/ : /attached client executable or tty differs/,
+      "outer-collector-tty": /collector tty must be a distinct inner PTY/,
+      "undeclared-executable": /ancestry contains an undeclared executable or no mux/,
+      "foreign-socket": kind === "tmux" ? /client reports a foreign socket, session or tty/ : /socket is absent or ambiguous in kernel table/,
+      "second-client": kind === "tmux" ? /exactly one attached client; found 2/ : /exactly one attached display/,
+      "recycled-shell": /outer shell PID\/start ticks differ/,
+    }
+    for(const [bad, message] of Object.entries(refusals)) {
       initialize(kind,bad)
-      await assert.rejects(factory(),/mux|socket|client|collector|shell|executable|attached|display/i,kind+" "+bad)
+      await assert.rejects(factory(),message,kind+" "+bad)
       assert.equal(reads,0,kind+" "+bad+" accessed clipboard before rejecting")
+    }
+    initialize(kind,"valid")
+    const changedChain=await factory()
+    table.get(kind === "tmux" ? 145 : 147).start="999"
+    const beforeChainRead=reads
+    await assert.rejects(changedChain.assertOwned(), /process chain changed since grant/)
+    assert.equal(reads,beforeChainRead)
+    await changedChain.dispose()
+    if (kind === "tmux") {
+      // A private socket with one valid client can still belong to a second server outside this collector's chain.
+      initialize(kind,"foreign-server")
+      await assert.rejects(factory(), /tmux socket server is absent from collector ancestry/)
+      assert.equal(reads,0,"foreign server accessed clipboard before rejecting")
+      initialize(kind,"valid")
+      const changedClient=await factory()
+      variant="client-changed"
+      const beforeClientRead=reads
+      await assert.rejects(changedClient.assertOwned(), /attached client PID\/start ticks differ/)
+      assert.equal(reads,beforeClientRead)
+      await changedClient.dispose()
     }
   }
 } finally {mock.restore();real.rmSync(root,{recursive:true,force:true})}

@@ -17,6 +17,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs"
@@ -204,15 +205,43 @@ mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-
     expect(result.status, result.stderr).toBe(0)
     const target = JSON.parse(result.stdout) as Pick<
       MuxAttachmentProof,
-      "preflightCollector" | "collector" | "outerShell" | "config" | "executable" | "bootId"
-    >
+      | "preflightCollector"
+      | "collector"
+      | "outerShell"
+      | "outerTerminal"
+      | "config"
+      | "executable"
+      | "bootId"
+      | "mux"
+      | "socketPath"
+      | "session"
+    > & { kind: "mux" }
+    const stat = readFileSync("/proc/self/stat", "utf8")
+    const parentFields = stat
+      .slice(stat.lastIndexOf(")") + 2)
+      .trim()
+      .split(/\s+/)
+    const shell = realpathSync(Bun.which("bash")!)
+    expect(target.kind).toBe("mux")
+    expect(target.mux).toBe("tmux")
     expect(target.preflightCollector).toEqual({ pid: 95, startTicks: "203389044" })
-    expect(target.collector.pid).not.toBe(95)
+    expect(target.collector.pid).toBe(result.pid)
     expect(target.collector.startTicks).toMatch(/^\d+$/)
-    expect(target.outerShell.pid).toBe(target.collector.pid)
-    expect(target.config.sha256).toBe(createHash("sha256").update("").digest("hex"))
-    expect(target.executable.version).toBe("3.7c")
-    expect(target.bootId).toMatch(/^[0-9a-f-]{36}$/)
+    expect(target.outerShell).toEqual({
+      pid: result.pid,
+      startTicks: target.collector.startTicks,
+      ttyRdev: Number(parentFields[4]),
+    })
+    expect(target.outerTerminal).toEqual({ pid: process.pid, startTicks: parentFields[19] })
+    expect(target.config).toEqual({ path: config, sha256: createHash("sha256").update("").digest("hex") })
+    expect(target.executable).toEqual({
+      path: shell,
+      sha256: createHash("sha256").update(readFileSync(shell)).digest("hex"),
+      version: "3.7c",
+    })
+    expect(target.bootId).toBe(readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim())
+    expect(target.socketPath).toBe(join(dir, "terminfo-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sock"))
+    expect(target.session).toBe("terminfo-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   },
 )
 

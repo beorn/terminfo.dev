@@ -343,7 +343,7 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
         "-t",
         target.session,
         "-F",
-        "#{client_pid}\t#{client_tty}\t#{session_name}\t#{socket_path}",
+        "#{pid}\t#{client_pid}\t#{client_tty}\t#{session_name}\t#{socket_path}",
       ])
       const rows = output.trim().split("\n").filter(Boolean)
       const row = rows[0]
@@ -351,9 +351,11 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
         throw new Error(`Owned mux requires exactly one attached client; found ${rows.length}`)
       }
       const fields = row.split("\t")
-      const [pid, ttyPath, session, socketPath] = fields
+      const [serverPid, pid, ttyPath, session, socketPath] = fields
       if (
-        fields.length !== 4 ||
+        fields.length !== 5 ||
+        typeof serverPid !== "string" ||
+        !/^\d+$/.test(serverPid) ||
         session !== target.session ||
         socketPath !== target.socketPath ||
         typeof pid !== "string" ||
@@ -362,6 +364,9 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
         !/^\/dev\/pts\/\d+$/.test(ttyPath)
       ) {
         throw new Error("Owned mux client reports a foreign socket, session or tty")
+      }
+      if (!intermediates.some((process) => process.pid === Number(serverPid))) {
+        throw new Error("Owned mux tmux socket server is absent from collector ancestry")
       }
       client = processIdentity(Number(pid))
       const tty = statSync(ttyPath)
