@@ -250,7 +250,9 @@ jobs:
                 "$APP_BUNDLE/Contents/MacOS/wezterm" --version
                 ls -la "$HOME/.config/wezterm"
               } >> "$OUT/launcher.log" 2>&1
-              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" --config front_end=Software start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              # --config evaluates its value as Lua: an unquoted Software is nil (run 39272494843), so the
+              # value carries its own quotes.
+              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" --config 'front_end="Software"' start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
