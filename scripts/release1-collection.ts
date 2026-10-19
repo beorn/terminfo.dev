@@ -979,6 +979,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
           `refusing to guess which run this row re-measures`,
       )
     }
+    if (picked !== undefined && "stale" in picked) throw new Error(picked.stale)
     const fallback = picked === undefined ? newestAdmittedLinuxRun(projection.history, id) : undefined
     if (picked === undefined && fallback === undefined) continue
     const runId = picked === undefined ? (fallback as SelectedVersion).runId : picked.run.runId

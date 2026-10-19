@@ -248,6 +248,7 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
         `Ambiguous current ${targetKey}: ${picked.ambiguous.join(", ")}; reviewed defaultContext row required`,
       )
     }
+    if ("stale" in picked) throw new Error(picked.stale)
     if (review && picked.selection !== "reviewed default-context row") {
       throw new Error(
         `${join(contentDir, "default-contexts.json")}: ${targetKey} chooses a noncurrent context ${review.contextKey}`,

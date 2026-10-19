@@ -29,7 +29,7 @@ import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion } from "../docs/data/public-results.ts"
-import type { SelectedProjection } from "../docs/data/selected-results.ts"
+import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */
@@ -406,7 +406,35 @@ describe("consumer selection", () => {
   it("requires a reviewed default row for two exact contexts of one terminal", () => {
     const mac = { target: { kind: "app", id: "kitty", os: "macos" } }
     const linux = { target: { kind: "app", id: "kitty", os: "linux" } }
-    const projection = stubProjection({ "app:kitty@mac": mac, "app:kitty@linux": linux })
+    const macKey = projectedContextKey(
+      {
+        kind: "app",
+        id: "kitty",
+        version: "0.48.2",
+        os: "macos",
+        osVersion: "26.6.2",
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      2,
+    )
+    const linuxKey = projectedContextKey(
+      {
+        kind: "app",
+        id: "kitty",
+        version: "0.49.2",
+        os: "linux",
+        osVersion: "7.0.0-34-generic",
+        outerTerminal: null,
+        mux: null,
+        config: "/nix/store/kitty/bin/kitty",
+        permissions: null,
+      },
+      2,
+    )
+    const projection = stubProjection({ [macKey]: mac, [linuxKey]: linux })
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
@@ -416,7 +444,7 @@ describe("consumer selection", () => {
         JSON.stringify({
           defaultContext: {
             "app:kitty": {
-              contextKey: "app:kitty@linux",
+              contextKey: linuxKey,
               reviewer: "reviewer",
               reason: "controlled Linux context selected for default view",
               sources: ["review://linux"],
@@ -424,7 +452,7 @@ describe("consumer selection", () => {
           },
         }),
       )
-      expect(compatibilityTargets(projection, content).get("kitty")?.contextKey).toBe("app:kitty@linux")
+      expect(compatibilityTargets(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

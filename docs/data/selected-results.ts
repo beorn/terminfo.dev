@@ -455,6 +455,65 @@ const contextKey = (t: ProbeTarget): string =>
     maskRunnerStorePath(t.config),
     t.permissions,
   ])
+
+/**
+ * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
+ * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
+ * behind an id-level key. `run-selection.ts` reads this shape back to tell a stale reviewed row from a
+ * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
+ */
+export function projectedContextKey(target: ProbeTarget, contextCount: number): string {
+  const stem = `${target.kind}:${target.id}`
+  return contextCount === 1 ? stem : `${stem}@${contextKey(target)}`
+}
+
+/** The eight fields `projectedContextKey` writes, in its order. */
+export type ProjectedContextKeyParts = readonly [
+  string,
+  string,
+  string,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+]
+
+/** Read `projectedContextKey` back. A bare `<kind>:<id>` — a ONE-context group's key — parses to undefined. */
+export function parseProjectedContextKey(key: string): ProjectedContextKeyParts | undefined {
+  const at = key.indexOf("@[")
+  if (at < 0) return undefined
+  let parts: unknown
+  try {
+    parts = JSON.parse(key.slice(at + 1))
+  } catch {
+    // silent-fallback-allow: the caller refuses this key loudly, naming it and the cure; undefined
+    // here is the parser's report, never a swallowed error.
+    return undefined
+  }
+  if (!Array.isArray(parts) || parts.length !== 8 || typeof parts[2] !== "string") return undefined
+  return parts as unknown as ProjectedContextKeyParts
+}
+
+/**
+ * The three shapes a context key can carry, recognized in ONE place: the full `<stem>@<context>` key,
+ * the bare `<kind>:<id>` stem a ONE-context group carries, and anything else — a key `projectedContextKey`
+ * never wrote, which every caller refuses by name rather than skipping.
+ */
+export type RecognizedProjectedContextKey =
+  | { shape: "full"; parts: ProjectedContextKeyParts }
+  | { shape: "bare-stem" }
+  | { shape: "unreadable" }
+
+/** The stems a bare key can name: exactly `ProbeTarget.kind` (`packages/probe-defs/src/types.ts`). */
+const BARE_STEM = /^(?:app|headless|mux):[^@/]+$/
+
+/** Read a context key as one of the shapes the builder writes; a bare stem is legitimate, not a defect. */
+export function recognizeProjectedContextKey(key: string): RecognizedProjectedContextKey {
+  const parts = parseProjectedContextKey(key)
+  if (parts !== undefined) return { shape: "full", parts }
+  return BARE_STEM.test(key) ? { shape: "bare-stem" } : { shape: "unreadable" }
+}
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
 export function projectResults(
@@ -516,7 +575,7 @@ export function projectResults(
   }
   const keyFor = (run: LoadedRun): string => {
     const stem = `${run.target.kind}:${run.target.id}`
-    return contextCounts.get(stem)?.size === 1 ? stem : `${stem}@${contextKey(run.target)}`
+    return projectedContextKey(run.target, contextCounts.get(stem)?.size ?? 0)
   }
   const current: SelectedProjection["current"] = {}
   const versions: SelectedProjection["versions"] = {}

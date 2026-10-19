@@ -325,6 +325,7 @@ export function barRowForContext(args: {
         `${picked.ambiguous.join(", ")}; a reviewed default-context row must choose one`,
     }
   }
+  if ("stale" in picked) return { context: args.context, measured: false, reason: picked.stale }
   return {
     context: args.context,
     measured: true,

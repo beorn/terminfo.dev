@@ -139,6 +139,7 @@ function buildRow(
       cause: `ambiguous current selection: ${picked.ambiguous.join(", ")}; a reviewed default-context row must choose one`,
     }
   }
+  if ("stale" in picked) return { ...base, collected: false, cause: picked.stale }
   if (picked.run.suiteId !== args.requiredSuiteId) {
     return {
       ...base,

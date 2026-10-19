@@ -47,6 +47,8 @@ import {
 } from "./decisive-share.ts"
 import { pickContextRun, type ContextCandidate } from "../docs/data/run-selection.ts"
 import { reviewedContextFor } from "../docs/data/current-results.ts"
+import { projectedContextKey } from "../docs/data/selected-results.ts"
+import type { ProbeTarget } from "@terminfo/probe-defs"
 import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import { classifyCells, d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
@@ -62,12 +64,39 @@ const cells = {
   "e.error": { outcome: "error" },
 }
 
+/**
+ * A REAL projected context key: the shape `selected-results.ts` builds and `run-selection.ts` reads
+ * back, never a hand-copied string. `contexts` is what the group carries, so 1 yields the bare stem.
+ */
+function key(
+  parts: Partial<
+    Pick<ProbeTarget, "kind" | "id" | "os" | "osVersion" | "outerTerminal" | "mux" | "config" | "permissions">
+  > = {},
+  contexts = 2,
+): string {
+  return projectedContextKey(
+    {
+      kind: "app",
+      id: "alacritty",
+      version: "0.17.0",
+      os: "linux",
+      osVersion: "7.0.0-34-generic",
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+      ...parts,
+    },
+    contexts,
+  )
+}
+
 function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate {
   // The run's states are the ONE classification of its cells: a fixture that overrides `cells` gets the
   // matching `states` for free, so a reader cutting a bar over `states` sees the run the fixture names.
   const runCells = overrides.cells ?? cells
   return {
-    key: "app:alacritty@[linux]",
+    key: key(),
     kind: "app",
     terminalId: "alacritty",
     os: "linux",
@@ -450,24 +479,32 @@ describe("release 1 decisive-count reader", () => {
 
   it("picks the default profile when a context has several selected entries, and reports a real tie", () => {
     const plain = candidate()
-    const allow = candidate({ key: "allow", permissions: "clipboard: read=allow,write=allow" })
-    const deny = candidate({ key: "deny", permissions: "clipboard: read=deny,write=allow" })
+    const allowKey = key({ permissions: "clipboard: read=allow,write=allow" })
+    const denyKey = key({ permissions: "clipboard: read=deny,write=allow" })
+    const allow = candidate({ key: allowKey, permissions: "clipboard: read=allow,write=allow" })
+    const deny = candidate({ key: denyKey, permissions: "clipboard: read=deny,write=allow" })
     expect(pickContextRun([plain])).toEqual({ run: plain, selection: "only current" })
     expect(pickContextRun([allow, plain, deny])).toEqual({ run: plain, selection: "default profile" })
-    expect(pickContextRun([allow, deny])).toEqual({ ambiguous: ["allow", "deny"] })
+    expect(pickContextRun([allow, deny])).toEqual({ ambiguous: [allowKey, denyKey] })
     expect(pickContextRun([])).toBeUndefined()
   })
 
   it("prefers the current-suite candidates for the fallbacks: kitty/linux's stale default cannot be the bar's row", () => {
     const staleDefault = candidate({
-      key: "config-none-old-suite",
+      key: key({ config: "kitty --config NONE" }),
       suiteId: "e81b6548c1c7",
       suiteFreshness: "older suite (1 probes)",
       suiteRelation: "older",
     })
-    const currentDefault = candidate({ key: "nix-store-kitty", suiteId: "4482b8eb5823" })
+    const currentDefault = candidate({
+      key: key({ config: "/nix/store/kitty/bin/kitty --config NONE" }),
+      suiteId: "4482b8eb5823",
+    })
     const currentOverride = candidate({
-      key: "clipboard-allow",
+      key: key({
+        config: "/nix/store/kitty/bin/kitty --config NONE",
+        permissions: "clipboard: read=allow,write=allow",
+      }),
       suiteId: "4482b8eb5823",
       permissions: "clipboard: read=allow,write=allow",
     })
@@ -486,39 +523,51 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("keeps two current-suite permissions-free candidates ambiguous, and leaves an all-stale set unchanged", () => {
-    const first = candidate({ key: "current-a" })
-    const second = candidate({ key: "current-b" })
-    expect(pickContextRun([first, second])).toEqual({ ambiguous: ["current-a", "current-b"] })
+    const firstKey = key({ config: "current-a" })
+    const secondKey = key({ config: "current-b" })
+    const first = candidate({ key: firstKey })
+    const second = candidate({ key: secondKey })
+    expect(pickContextRun([first, second])).toEqual({ ambiguous: [firstKey, secondKey] })
 
-    const staleA = candidate({ key: "stale-a", suiteFreshness: "older suite (1 probes)", suiteRelation: "older" })
-    const staleB = candidate({ key: "stale-b", suiteFreshness: "older suite (1 probes)", suiteRelation: "older" })
+    const staleAKey = key({ config: "stale-a" })
+    const staleBKey = key({ config: "stale-b" })
+    const staleA = candidate({ key: staleAKey, suiteFreshness: "older suite (1 probes)", suiteRelation: "older" })
+    const staleB = candidate({ key: staleBKey, suiteFreshness: "older suite (1 probes)", suiteRelation: "older" })
     // No current-suite candidate at all: the fallbacks see the whole set, exactly as before.
-    expect(pickContextRun([staleA, staleB])).toEqual({ ambiguous: ["stale-a", "stale-b"] })
+    expect(pickContextRun([staleA, staleB])).toEqual({ ambiguous: [staleAKey, staleBKey] })
     expect(pickContextRun([staleA])).toEqual({ run: staleA, selection: "only current" })
   })
 
   it("resolves the three-context xterm/linux tie by the reviewed default-context row, and names the tie without one", () => {
-    const store = (key: string) => candidate({ key, runId: `xterm-${key}` })
-    const three = [store("store-a"), store("store-b"), store("store-c")]
+    const stores = ["store-a", "store-b", "store-c"].map((config) => key({ id: "xterm", config }))
+    const three = stores.map((storeKey) =>
+      candidate({ key: storeKey, terminalId: "xterm", runId: `xterm-${storeKey}` }),
+    )
     const review = {
-      contextKey: "store-b",
+      contextKey: stores[1]!,
       reviewer: "@dev/3",
       reason: "the reviewed row for xterm/linux",
       sources: ["content/default-contexts.json"],
     }
     expect(pickContextRun(three, review)).toEqual({ run: three[1], selection: "reviewed default-context row" })
-    expect(pickContextRun(three)).toEqual({ ambiguous: ["store-a", "store-b", "store-c"] })
-    expect(pickContextRun(three, { ...review, contextKey: "store-z" })).toEqual({
-      ambiguous: ["store-a", "store-b", "store-c"],
+    expect(pickContextRun(three)).toEqual({ ambiguous: stores })
+    // A same-os key that names no candidate is the stale row 30112 refuses, not an ambiguous tie.
+    const vanished = key({ id: "xterm", config: "store-z" })
+    expect(pickContextRun(three, { ...review, contextKey: vanished })).toEqual({
+      stale: expect.stringContaining(vanished),
     })
   })
 
   it("does not apply a review that names another (terminal id, os) group's context", () => {
-    const mac = candidate({ key: "macos", os: "macos" })
-    const linuxDefault = candidate({ key: "linux-default" })
-    const linuxAllow = candidate({ key: "linux-allow", permissions: "clipboard: read=allow,write=allow" })
+    const macKey = key({ os: "macos", osVersion: "26.6.2" })
+    const mac = candidate({ key: macKey, os: "macos" })
+    const linuxDefault = candidate({ key: key({ config: "linux-default" }) })
+    const linuxAllow = candidate({
+      key: key({ config: "linux-allow", permissions: "clipboard: read=allow,write=allow" }),
+      permissions: "clipboard: read=allow,write=allow",
+    })
     const macReview = {
-      contextKey: "macos",
+      contextKey: macKey,
       reviewer: "@dev/3",
       reason: "the macOS row",
       sources: ["content/default-contexts.json"],
@@ -533,19 +582,23 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("reads the os-qualified row for the linux group and leaves the macOS group on its id-level row", () => {
-    const mac = candidate({ key: "macos", os: "macos" })
-    const linuxOct4 = candidate({ key: "linux-oct4" })
-    const linuxAllow = candidate({ key: "linux-allow", permissions: "clipboard: read=allow,write=allow" })
-    const linuxOct18 = candidate({ key: "linux-oct18" })
-    const review = (key: string) => ({
-      contextKey: key,
+    const macKey = key({ os: "macos", osVersion: "26.6.2" })
+    const linuxOct4Key = key({ config: "oct4" })
+    const linuxAllowKey = key({ config: "allow", permissions: "clipboard: read=allow,write=allow" })
+    const linuxOct18Key = key({ config: "oct18" })
+    const mac = candidate({ key: macKey, os: "macos" })
+    const linuxOct4 = candidate({ key: linuxOct4Key })
+    const linuxAllow = candidate({ key: linuxAllowKey, permissions: "clipboard: read=allow,write=allow" })
+    const linuxOct18 = candidate({ key: linuxOct18Key })
+    const reviewOf = (contextKey: string) => ({
+      contextKey,
       reviewer: "@dev/11",
-      reason: `the reviewed row for ${key}`,
+      reason: `the reviewed row for ${contextKey}`,
       sources: ["content/default-contexts.json"],
     })
     // `app:kitty` names the macOS context and stays the only row for that os; `app:kitty/linux` is read
     // for the linux os ONLY, so one review per group resolves the tie the id-level row cannot address.
-    const policy = { "app:kitty": review("macos"), "app:kitty/linux": review("linux-oct18") }
+    const policy = { "app:kitty": reviewOf(macKey), "app:kitty/linux": reviewOf(linuxOct18Key) }
     const linuxGroup = [linuxOct4, linuxAllow, linuxOct18]
     expect(pickContextRun(linuxGroup, reviewedContextFor(policy, "app", "kitty", "linux"))).toEqual({
       run: linuxOct18,
@@ -558,14 +611,15 @@ describe("release 1 decisive-count reader", () => {
     // The mutant this covers is the lookup that ignores the os key: it hands the linux group the macOS
     // row, and the tie comes back — RED, exactly as it was before the os-qualified row existed.
     expect(pickContextRun(linuxGroup, policy["app:kitty"])).toEqual({
-      ambiguous: ["linux-oct4", "linux-allow", "linux-oct18"],
+      ambiguous: [linuxOct4Key, linuxAllowKey, linuxOct18Key],
     })
   })
 
   it("leaves a context with no os-qualified row resolving exactly as it did before", () => {
-    const only = candidate({ key: "macos", os: "macos" })
+    const macKey = key({ os: "macos", osVersion: "26.6.2" })
+    const only = candidate({ key: macKey, os: "macos" })
     const review = {
-      contextKey: "macos",
+      contextKey: macKey,
       reviewer: "@dev/11",
       reason: "the id-level row",
       sources: ["content/default-contexts.json"],
@@ -579,15 +633,174 @@ describe("release 1 decisive-count reader", () => {
     })
   })
 
+  it("refuses a reviewed row whose kernel the group has superseded, naming the stale key, its successor and the cure", () => {
+    const oldKey = key({ osVersion: "7.0.0-34-generic" })
+    const newKey = key({ osVersion: "7.0.0-35-generic" })
+    const oldRun = candidate({ key: oldKey, measuredAt: "2026-10-17T18:10:00.000Z" })
+    const newRun = candidate({ key: newKey, measuredAt: "2026-10-18T23:40:00.000Z" })
+    const review = {
+      contextKey: oldKey,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    const picked = pickContextRun([oldRun, newRun], review)
+    expect(picked).toEqual({ stale: expect.stringContaining(oldKey) })
+    if (picked === undefined || !("stale" in picked)) throw new Error("expected a stale refusal")
+    expect(picked.stale).toContain(`superseded by ${newKey}`)
+    expect(picked.stale).toContain(`${oldKey}, ${newKey}`)
+    expect(picked.stale).toContain("re-record that row in content/default-contexts.json")
+  })
+
+  it("keeps a reviewed row whose only differing-osVersion sibling is the OLDER measurement", () => {
+    const reviewedKey = key({ osVersion: "7.0.0-34-generic" })
+    const olderSiblingKey = key({ osVersion: "7.0.0-33-generic" })
+    const reviewedRun = candidate({ key: reviewedKey, measuredAt: "2026-10-18T23:40:00.000Z" })
+    const olderSibling = candidate({ key: olderSiblingKey, measuredAt: "2026-10-17T18:10:00.000Z" })
+    const review = {
+      contextKey: reviewedKey,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    expect(pickContextRun([reviewedRun, olderSibling], review)).toEqual({
+      run: reviewedRun,
+      selection: "reviewed default-context row",
+    })
+  })
+
+  it("names the NEWEST successor across a chain of generations, in either candidate order", () => {
+    const oldest = key({ osVersion: "7.0.0-33-generic" })
+    const middle = key({ osVersion: "7.0.0-34-generic" })
+    const newest = key({ osVersion: "7.0.0-35-generic" })
+    const run = (contextKey: string, measuredAt: string) => candidate({ key: contextKey, measuredAt })
+    const old = run(oldest, "2026-10-16T10:00:00.000Z")
+    const mid = run(middle, "2026-10-17T10:00:00.000Z")
+    const fresh = run(newest, "2026-10-18T10:00:00.000Z")
+    const review = {
+      contextKey: oldest,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    for (const candidates of [
+      [old, mid, fresh],
+      [old, fresh, mid],
+    ]) {
+      const picked = pickContextRun(candidates, review)
+      if (picked === undefined || !("stale" in picked)) throw new Error("expected a stale refusal")
+      expect(picked.stale).toContain(`superseded by ${newest}`)
+    }
+  })
+
+  it("names every tied newest key, sorted, when two successors share the newest measurement", () => {
+    const reviewed = key({ osVersion: "7.0.0-34-generic" })
+    const olderSibling = key({ osVersion: "7.0.0-33-generic" })
+    const tieA = key({ osVersion: "7.0.0-35-generic" })
+    const tieB = key({ osVersion: "7.0.0-36-generic" })
+    const review = {
+      contextKey: reviewed,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    const picked = pickContextRun(
+      [
+        candidate({ key: reviewed, measuredAt: "2026-10-16T10:00:00.000Z" }),
+        candidate({ key: olderSibling, measuredAt: "2026-10-15T10:00:00.000Z" }),
+        candidate({ key: tieB, measuredAt: "2026-10-18T10:00:00.000Z" }),
+        candidate({ key: tieA, measuredAt: "2026-10-18T10:00:00.000Z" }),
+      ],
+      review,
+    )
+    if (picked === undefined || !("stale" in picked)) throw new Error("expected a stale refusal")
+    const sorted = [tieA, tieB].sort((left, right) => left.localeCompare(right))
+    expect(picked.stale).toContain(`superseded by ${sorted.join(", ")}`)
+  })
+
+  it("refuses an unreadable candidate key by name, never skipping it on the way to a successor", () => {
+    const reviewed = key({ osVersion: "7.0.0-34-generic" })
+    const malformed = "app:alacritty@[not-json"
+    const review = {
+      contextKey: reviewed,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    const picked = pickContextRun(
+      [
+        candidate({ key: reviewed, measuredAt: "2026-10-16T10:00:00.000Z" }),
+        candidate({ key: malformed, measuredAt: "2026-10-18T10:00:00.000Z" }),
+      ],
+      review,
+    )
+    if (picked === undefined || !("stale" in picked)) throw new Error("expected a refusal")
+    expect(picked.stale).toContain(malformed)
+    expect(picked.stale).toContain("unreadable")
+  })
+
+  it("says an unreadable reviewed key is unreadable, not that no candidate names it", () => {
+    const malformed = "app:alacritty@[not-json"
+    const review = {
+      contextKey: malformed,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    const picked = pickContextRun(
+      [candidate({ key: key({ config: "a" }) }), candidate({ key: key({ config: "b" }) })],
+      review,
+    )
+    if (picked === undefined || !("stale" in picked)) throw new Error("expected a refusal")
+    expect(picked.stale).toContain("unreadable")
+    expect(picked.stale).not.toContain("no current candidate names it")
+  })
+
+  it("refuses a bare stem once its group carries two contexts, and keeps it while the group has one", () => {
+    const stem = key({}, 1)
+    const review = {
+      contextKey: stem,
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    const only = candidate({ key: stem })
+    expect(pickContextRun([only], review)).toEqual({ run: only, selection: "reviewed default-context row" })
+    const firstKey = key({ config: "a" })
+    const secondKey = key({ config: "b" })
+    const picked = pickContextRun([candidate({ key: firstKey }), candidate({ key: secondKey })], review)
+    expect(picked).toEqual({ stale: expect.stringContaining(stem) })
+    if (picked === undefined || !("stale" in picked)) throw new Error("expected a stale refusal")
+    expect(picked.stale).toContain(firstKey)
+    expect(picked.stale).toContain(secondKey)
+    expect(picked.stale).toContain("re-record that row in content/default-contexts.json")
+  })
+
+  it("reads a one-context group's bare stem as a candidate, not a defect, when the review names a full key", () => {
+    const review = {
+      contextKey: key({ os: "linux" }),
+      reviewer: "@dev/11",
+      reason: "the reviewed row",
+      sources: ["content/default-contexts.json"],
+    }
+    const picked = pickContextRun([candidate({ key: key({}, 1) })], review)
+    if (picked === undefined || !("stale" in picked)) throw new Error("expected a stale refusal")
+    expect(picked.stale).toContain("no current candidate names it")
+    expect(picked.stale).toContain("re-record that row in content/default-contexts.json")
+    expect(picked.stale).not.toContain("unreadable")
+  })
+
   it("prints the reviewed row it used, and names both failures, on a bar row", () => {
-    const store = (key: string) => candidate({ key, runId: `xterm-${key}` })
-    const three = [store("store-a"), store("store-b"), store("store-c")]
+    const stores = ["store-a", "store-b", "store-c"].map((config) => key({ id: "xterm", config }))
+    const three = stores.map((storeKey) =>
+      candidate({ key: storeKey, terminalId: "xterm", runId: `xterm-${storeKey}` }),
+    )
     const args = { context: { terminalId: "xterm", os: "linux" }, candidates: three, tier62Ids: IDS, tier52Ids: IDS }
 
     const measured = barRowForContext({
       ...args,
       reviewed: {
-        contextKey: "store-b",
+        contextKey: stores[1]!,
         reviewer: "@dev/3",
         reason: "the reviewed row for xterm/linux",
         sources: ["content/default-contexts.json"],
@@ -595,28 +808,30 @@ describe("release 1 decisive-count reader", () => {
     })
     expect(measured.measured).toBe(true)
     if (!measured.measured) throw new Error("expected the reviewed xterm row to be measured")
-    expect(measured.run.key).toBe("store-b")
-    expect(formatBarRow(measured).join("\n")).toContain("selected by the reviewed default-context row · store-b")
+    expect(measured.run.key).toBe(stores[1])
+    expect(formatBarRow(measured).join("\n")).toContain(`selected by the reviewed default-context row · ${stores[1]}`)
 
     const tied = barRowForContext(args)
     expect(tied.measured).toBe(false)
     if (tied.measured) throw new Error("expected the unreviewed xterm row to be not measured")
     expect(tied.reason).toContain("ambiguous current selection for xterm/linux")
-    expect(tied.reason).toContain("store-a, store-b, store-c")
+    expect(tied.reason).toContain(stores.join(", "))
 
+    const vanished = key({ id: "xterm", config: "store-z" })
     const stale = barRowForContext({
       ...args,
       reviewed: {
-        contextKey: "store-z",
+        contextKey: vanished,
         reviewer: "@dev/3",
         reason: "a row that is no longer current",
         sources: ["content/default-contexts.json"],
       },
     })
     expect(stale.measured).toBe(false)
-    if (stale.measured) throw new Error("expected the stale review to fall back to not measured")
-    expect(stale.reason).toContain("ambiguous current selection for xterm/linux")
-    expect(stale.reason).toContain("store-a, store-b, store-c")
+    if (stale.measured) throw new Error("expected the stale review to be refused, not measured")
+    expect(stale.reason).toContain(vanished)
+    expect(stale.reason).toContain(stores.join(", "))
+    expect(stale.reason).toContain("re-record that row in content/default-contexts.json")
   })
 
   it("prints one not-measured label per refusal, never a doubled prefix on either branch", () => {
