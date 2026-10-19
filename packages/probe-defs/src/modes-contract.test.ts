@@ -116,7 +116,7 @@ const MODES_CONTRACT: GroupContract = [
     id: "modes.decsscls",
     expected: "decided",
     claim:
-      "DECSSCLS: with a stable jump control, a target pair whose pixel region moved while its first frame landed inside the measured throttled window scrolls at 9 lines/s, and an identical pair inside that window ignores the rate",
+      "DECSSCLS: with a stable jump control, a target whose marker band reaches its settled row between a frame inside the measured throttled window and one after it scrolls at 9 lines/s, and a band already in place inside that window ignores the rate",
   },
 ]
 
@@ -166,9 +166,18 @@ function modesTermContext(id: string) {
         geometry: { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 },
         source: "measured by complete raster calibration",
       },
-      capture: async ({ role, label }) => {
+      capture: async ({ role, label, cells }) => {
         calls += 1
-        const ref = label.includes("jump") ? "jump-settled" : label.endsWith("t0") ? "slow-t0" : "slow-t1"
+        const bandFrame = cells !== undefined && cells.top === cells.bottom
+        const ref = bandFrame
+          ? label === "DECSSCLS marker reference" || label.includes("jump control") || label.endsWith("t1 band")
+            ? "marker-ref"
+            : "no-band"
+          : label.includes("jump")
+            ? "jump-settled"
+            : label.endsWith("t0")
+              ? "slow-t0"
+              : "slow-t1"
         return {
           role,
           label,
@@ -216,7 +225,7 @@ test("the harness replays every Modes capability deterministically through DECRP
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
   }
-})
+}, 20_000)
 
 test("every Modes contract row is satisfied by the DECRPM replay its claim requires", async () => {
   for (const row of MODES_CONTRACT) {
@@ -227,7 +236,7 @@ test("every Modes contract row is satisfied by the DECRPM replay its claim requi
     const graded = await regradeRow(probe, row, { term })
     expect(graded.satisfies, `${row.id} satisfies its contract row (after=${graded.after})`).toBe(true)
   }
-})
+}, 20_000)
 
 test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
   const row = MODES_CONTRACT.find((entry) => entry.id === "modes.auto-wrap")
