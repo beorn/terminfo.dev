@@ -906,7 +906,7 @@ describe("private finite daemon startup", () => {
   })
 
   it.each(["capture", "pending-write", "write-error", "refusal", "timeout", "non-windows"])(
-    "a hosted Windows capture with a retention directory takes the %s branch without Linux provenance",
+    "a hosted text capture with a retention directory takes the %s branch without Linux provenance",
     (expectation) => {
       home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-capture-"))
       const result = spawnSync(
@@ -936,7 +936,10 @@ describe("private finite daemon startup", () => {
             done()
             if (chunk.toString() === "\\x1b[6n") {
               queryWrites++
-              process.stdin.emit("data", Buffer.from(expectation === "timeout" ? "partial" : "\\x1b[1;1R"))
+              setImmediate(() => {
+                assert.equal(reads, 0, "console cells were read before the cursor acknowledgement arrived")
+                process.stdin.emit("data", Buffer.from(expectation === "timeout" ? "partial" : "\\x1b[1;1R"))
+              })
             }
           }
         }
