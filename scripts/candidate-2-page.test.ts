@@ -317,25 +317,29 @@ describe("candidate-2 page: wiring", () => {
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
-  it("includes Editing and Character Sets on the four measured contexts that clear the bar, and names the rest", () => {
+  it("includes Editing and Character Sets on the Linux contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
-    // context held, and every context with no run on the required suite named not measured. Nine
-    // contexts are measured on the frozen suite c24025ea22fc: the five Linux ones plus, after the
-    // 2026-10-18 hosted collection, terminal-app/macos, ghostty/macos and alacritty/macos. Those
-    // three are held below the bar rather than dark, because darwin installs no capture adapter and
-    // every erase row they carry is inconclusive (28754). Two remain dark: iterm2/macos, whose
-    // hosted collect fails at capture-origin calibration, and kitty/macos, which has no workflow
-    // job and no run on c240. A new collection that moves these numbers must change this table
+    // context held, and every context with no run on the required suite named not measured.
+    // Linux-only until an all-platform collection lands on the live suite; see 30286. The required
+    // suite is now f9450b3bc56a, which carries the five Linux contexts admitted on 2026-10-19 (28023)
+    // and no macOS or Windows run at all, so the three darwin contexts that were held below the bar
+    // on c24025ea22fc are unmeasured here rather than held, and the held set shrinks to the Linux
+    // context that misses the bar. Charsets clears on all five Linux contexts; editing clears on four
+    // and holds ghostty/linux. A collection that moves these numbers must change this table
     // deliberately, never loosen it.
-    const clearing = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
-    const below = [
-      "ghostty/linux",
+    const clearing: Record<string, string[]> = {
+      editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
+      charsets: ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
+    }
+    const below: Record<string, string[]> = { editing: ["ghostty/linux"], charsets: [] }
+    const dark = [
       "terminal-app/macos",
+      "iterm2/macos",
       "ghostty/macos",
       "alacritty/macos",
+      "kitty/macos",
       "windows-terminal/windows",
     ]
-    const dark = ["iterm2/macos", "kitty/macos"]
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
@@ -344,11 +348,11 @@ describe("candidate-2 page: wiring", () => {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} is missing from the page`)
       expect(group.included, key).toBe(false)
-      expect(group.includedOn, key).toEqual(clearing)
+      expect(group.includedOn, key).toEqual(clearing[key])
       expect(
         group.heldBy.map((row) => row.context),
         key,
-      ).toEqual(below)
+      ).toEqual(below[key])
       // Every dark context is named, never counted, and carries its declared cause.
       expect(
         group.unmeasured.map((row) => row.context),
@@ -375,14 +379,19 @@ describe("candidate-2 page: wiring", () => {
     const editing = data.groups.find((group) => group.key === "editing")
     if (!editing) throw new Error("editing group missing from the page")
     expect(editing.included).toBe(false)
-    expect(editing.darkHeldBy.map((row) => row.context)).toEqual(["iterm2/macos", "kitty/macos"])
-    expect(editing.heldBy.map((row) => row.context)).toEqual([
-      "ghostty/linux",
+    // Linux-only until an all-platform collection lands on the live suite; see 30286. On f9450b3bc56a
+    // only the five Linux contexts have runs, so the three darwin contexts that were measured and held
+    // below the bar on c24025ea22fc are dark here, and the held set is the one Linux context that misses
+    // the bar. The invariant below is untouched: nothing dark is published and no claim improves.
+    expect(editing.darkHeldBy.map((row) => row.context)).toEqual([
       "terminal-app/macos",
+      "iterm2/macos",
       "ghostty/macos",
       "alacritty/macos",
+      "kitty/macos",
       "windows-terminal/windows",
     ])
+    expect(editing.heldBy.map((row) => row.context)).toEqual(["ghostty/linux"])
 
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain(
@@ -391,23 +400,26 @@ describe("candidate-2 page: wiring", () => {
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // Both ruled groups keep the ruling's six contexts: four included on c240 and the two macOS
-    // contexts the ruling names. Since the 2026-10-18 hosted collection those two macOS contexts are
-    // measured on c240 and held below the bar rather than dark, so the dark-ruled row is empty and
-    // the hold is named in heldBy above. ruledTotal carries the six either way, so the page still
-    // reads "ruled for six, included on four" instead of quietly shrinking to four (30033).
-    const four = ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"]
+    // Both ruled groups keep the ruling's six contexts: four included and the two macOS contexts the
+    // ruling names. Linux-only until an all-platform collection lands on the live suite; see 30286. On
+    // f9450b3bc56a those two macOS contexts have no run, so they are back to dark-ruled rather than held
+    // below the bar, and the page names them as ruled-but-unmeasured. ruledTotal still carries the six,
+    // so the page reads "ruled for six" instead of quietly shrinking to the contexts that clear (30033).
+    const cleared: Record<string, string[]> = {
+      editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
+      charsets: ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
+    }
     for (const key of ["editing", "charsets"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} missing from the page`)
-      expect(group.includedOn).toEqual(four)
-      expect(group.darkRuled).toEqual([])
+      expect(group.includedOn).toEqual(cleared[key])
+      expect(group.darkRuled).toEqual(["ghostty/macos", "alacritty/macos"])
       // The ruled basis is six whether those two contexts are dark or measured below the bar: the
       // count may not shrink to the contexts that clear it.
       expect(group.ruledTotal).toBe(6)
-      // Both ruled macOS contexts stay visible as held once measured below the bar; neither drops
-      // out of the page just because it stopped being dark.
-      expect(group.heldBy.map((row) => row.context)).toEqual(
+      // Both ruled macOS contexts stay visible: with no run on the live suite they are named as
+      // dark-ruled rather than held, and neither drops out of the page.
+      expect(group.darkHeldBy.map((row) => row.context)).toEqual(
         expect.arrayContaining(["ghostty/macos", "alacritty/macos"]),
       )
     }

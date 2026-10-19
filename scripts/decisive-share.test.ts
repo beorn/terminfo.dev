@@ -212,15 +212,15 @@ describe("release 1 decisive-count reader", () => {
         .digest("hex"),
     ).toBe("8169578733a75fabb8da1edf4e32fb37a35ea40de9287ea5c30851136b3a3ced")
     expect(cohort.scoredIds).toHaveLength(44)
-    // 29, not 30, on the frozen suite c24025ea22fc: that suite carries 260 probe ids to 67ad1f1d1580's
-    // 263, and modes.decsscls is one of the three it does not carry (with input.kitty-click-events and
-    // extensions.font-ligatures). The row is named unavailable rather than quietly disappearing.
-    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(29)
+    // 30, not 29, on the frozen suite f9450b3bc56a: that suite DECLARES modes.decsscls where c24025ea22fc
+    // did not (it runs as notTested, no-semantic-observable), so the row is decidable and is no longer
+    // named unavailable. Linux-only until an all-platform collection lands on the live suite; see 30286.
+    expect(cohort.decidableIds.filter((id) => id.startsWith("modes."))).toHaveLength(30)
     expect(cohort.decidableIds.filter((id) => id.startsWith("device."))).toHaveLength(5)
-    expect(cohort.unavailableIds).toHaveLength(10)
+    expect(cohort.unavailableIds).toHaveLength(9)
     expect(cohort.unavailableIds.filter((id) => id.startsWith("device.env-"))).toHaveLength(9)
-    expect(cohort.unavailableIds).toContain("modes.decsscls")
-    expect(cohort.decidableIds).not.toContain("modes.decsscls")
+    expect(cohort.unavailableIds).not.toContain("modes.decsscls")
+    expect(cohort.decidableIds).toContain("modes.decsscls")
     expect(cohort.libraryOnlyIds).toEqual([])
     expect(cohortHeaderLine(cohort)).toContain("frozen for candidate2, read here for candidate3 ids")
     expect(() => frozenSuiteIdFor(contentDir, "candidate3")).toThrow(
@@ -1446,7 +1446,21 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
       }
       writeFileSync(
         join(suites, `${requiredSuite}.json`),
-        JSON.stringify({ ...raw, probes: { ...raw.probes, app: [...probeIds] } }, null, 2),
+        // The reduced probe list has to carry its text claims with it: a suite manifest whose textClaims
+        // name a probe outside its own membership is refused by the parser, and that refusal is not the
+        // zero coverage this fixture is about. Linux-only until an all-platform collection lands on the
+        // live suite; see 30286.
+        JSON.stringify(
+          (() => {
+            const claims = (raw.textClaims ?? []).filter((id) => probeIds.includes(id))
+            const reduced: Record<string, unknown> = { ...raw, probes: { ...raw.probes, app: [...probeIds] } }
+            if (claims.length === 0) delete reduced.textClaims
+            else reduced.textClaims = claims
+            return reduced
+          })(),
+          null,
+          2,
+        ),
       )
       writeFileSync(join(contentDir, "categories.json"), readFileSync(join(real, "categories.json")))
       writeFileSync(join(contentDir, "features.json"), readFileSync(join(real, "features.json")))
