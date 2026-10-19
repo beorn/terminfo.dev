@@ -53,6 +53,7 @@ const statText = pid => {
 mock.module("node:os", () => ({...os,homedir:()=>root}))
 mock.module("node:fs", () => ({...fs,
   readFileSync(path,...args) {
+    if (variant === "status-io" && path === "/proc/"+process.pid+"/status") throw fsFault
     if (variant === "config-io" && path === exe("config")) throw fsFault
     if (path === "/proc/sys/kernel/random/boot_id") return bootId + "\n"
     if (path === "/proc/net/unix") return "Num RefCount Protocol Flags Type St Inode Path\n0000: 2 0 10000 1 01 12345 " + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n"
@@ -172,6 +173,7 @@ try {
     }
     // Filesystem faults must name the broken custody link and retain the original error.
     for(const [bad, message] of Object.entries({
+      "status-io": /process status/,
       "exe-io": /process executable/,
       "config-io": /mux config/,
       "socket-io": /mux socket/,

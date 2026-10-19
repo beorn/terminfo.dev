@@ -133,7 +133,12 @@ function ownedReceipt(path: string): string {
 
 function processExecutable(pid: number): string {
   if (!Number.isSafeInteger(pid) || pid < 2) throw new Error(`Invalid owned clipboard PID ${pid}`)
-  const status = readFileSync(`/proc/${pid}/status`, "utf8")
+  let status: string
+  try {
+    status = readFileSync(`/proc/${pid}/status`, "utf8")
+  } catch (cause) {
+    throw new Error(`Clipboard process status /proc/${pid}/status cannot be read`, { cause })
+  }
   const uid = Number(/^Uid:\s+(\d+)/m.exec(status)?.[1])
   if (uid !== process.getuid?.()) throw new Error(`Clipboard process ${pid} has another owner`)
   try {
@@ -538,38 +543,38 @@ export async function createLinuxClipboardAdapter(
       case "app":
         break
       case "mux": {
-      if (typeof captureRunId !== "string" || !/^[0-9a-f]{32}$/.test(captureRunId)) {
-        throw new Error("Owned mux capture run ID is missing")
-      }
-      const attachedClient = await assertMuxAttachment(target, chain)
-      const collector = chain[0]
-      if (!collector) throw new Error("Owned mux collector is absent from ancestry")
-      if (muxAttachmentProof) {
-        assertProcessIdentity(attachedClient, muxAttachmentProof.attachedClient, "attached client")
-      }
-      muxAttachmentProof = {
-        platform: "linux",
-        mux: target.mux,
-        bootId: target.bootId,
-        receiptSha256: digest(receiptBytes),
-        launchRunId: receipt.runId,
-        captureRunId,
-        preflightCollector: target.preflightCollector,
-        outerShell: target.outerShell,
-        outerTerminal: target.outerTerminal,
-        collector: { pid: collector.pid, startTicks: collector.startTicks, ttyRdev: collector.ttyRdev },
-        attachedClient: {
-          pid: attachedClient.pid,
-          startTicks: attachedClient.startTicks,
-          ttyRdev: attachedClient.ttyRdev,
-        },
-        chain: chain.map(({ ppid: _ppid, ...identity }) => identity),
-        executable: target.executable,
-        config: target.config,
-        socketPath: target.socketPath,
-        session: target.session,
-      }
-      break
+        if (typeof captureRunId !== "string" || !/^[0-9a-f]{32}$/.test(captureRunId)) {
+          throw new Error("Owned mux capture run ID is missing")
+        }
+        const attachedClient = await assertMuxAttachment(target, chain)
+        const collector = chain[0]
+        if (!collector) throw new Error("Owned mux collector is absent from ancestry")
+        if (muxAttachmentProof) {
+          assertProcessIdentity(attachedClient, muxAttachmentProof.attachedClient, "attached client")
+        }
+        muxAttachmentProof = {
+          platform: "linux",
+          mux: target.mux,
+          bootId: target.bootId,
+          receiptSha256: digest(receiptBytes),
+          launchRunId: receipt.runId,
+          captureRunId,
+          preflightCollector: target.preflightCollector,
+          outerShell: target.outerShell,
+          outerTerminal: target.outerTerminal,
+          collector: { pid: collector.pid, startTicks: collector.startTicks, ttyRdev: collector.ttyRdev },
+          attachedClient: {
+            pid: attachedClient.pid,
+            startTicks: attachedClient.startTicks,
+            ttyRdev: attachedClient.ttyRdev,
+          },
+          chain: chain.map(({ ppid: _ppid, ...identity }) => identity),
+          executable: target.executable,
+          config: target.config,
+          socketPath: target.socketPath,
+          session: target.session,
+        }
+        break
       }
       default:
         return target satisfies never
