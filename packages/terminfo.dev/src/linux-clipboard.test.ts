@@ -16,6 +16,153 @@ import { createClipboardTransaction, createLinuxClipboardAdapter, type Clipboard
 const originalCapture = process.env.TERMINFO_CAPTURE_DIRECTORY
 const measuredExecutable = { path: process.execPath, sha256: "0".repeat(64) }
 const directories: string[] = []
+
+// The direct-owner tests cannot witness mux attachment: both measured process shapes need
+// the same grant to reject detach, foreign sockets, changed identities and extra displays.
+test.runIf(process.platform === "linux")("mux clipboard grant checks the measured attachment before every read", () => {
+  const sourceRoot = dirname(fileURLToPath(import.meta.url))
+  const child = String.raw`
+import assert from "node:assert/strict"
+import { createHash } from "node:crypto"
+import * as fs from "node:fs"
+import * as os from "node:os"
+import * as cp from "node:child_process"
+import { join } from "node:path"
+import { pathToFileURL } from "node:url"
+import { mock } from "bun:test"
+const root = fs.mkdtempSync(join(os.tmpdir(), "terminfo-mux-owner-"))
+const hash = x => createHash("sha256").update(x).digest("hex")
+const launch = "a".repeat(32), capture = "b".repeat(32)
+const baseline = "terminfo-owned-clipboard-" + launch
+const bootId = "730f0ec0-707d-47f4-bf82-1a1e28ec4f10"
+const receiptPath = join(root, "clipboard-fixture.json")
+const exe = name => join(root, name)
+for (const [name, bytes] of Object.entries({kitty:"kitty-bytes",tmux:"tmux-bytes",screen:"screen-bytes",xclip:"xclip-bytes",config:"",baseline,display:"22"})) {
+  fs.writeFileSync(exe(name), bytes, {mode:0o600})
+}
+const real = {...fs}
+let mux, variant, table, socket, muxTarget, reads = 0
+const statText = pid => {
+  const p = table.get(pid)
+  if (!p) throw Error("fixture missing process " + pid)
+  const fields = ["S",p.ppid,pid,pid,p.tty,-1,0,0,0,0,0,0,0,0,0,20,0,1,0,p.start]
+  return pid + " (process name) " + fields.join(" ")
+}
+mock.module("node:os", () => ({...os,homedir:()=>root}))
+mock.module("node:fs", () => ({...fs,
+  readFileSync(path,...args) {
+    if (path === "/proc/sys/kernel/random/boot_id") return bootId + "\n"
+    if (path === "/proc/net/unix") return "Num RefCount Protocol Flags Type St Inode Path\n0000: 2 0 10000 1 01 12345 " + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n"
+    const m = /^\/proc\/(\d+)\/(stat|status|cmdline|exe)$/.exec(path)
+    if (m) {
+      const pid=Number(m[1]),p=table.get(pid)
+      if (!p) throw Error("fixture missing process " + pid)
+      if (m[2] === "stat") return statText(pid)
+      if (m[2] === "status") return "Uid:\t" + process.getuid() + "\n"
+      if (m[2] === "cmdline") return pid===76 ? "kitty\0--config\0NONE\0bun\0" : pid===419422 ? "Xvfb\0-displayfd\0" : "mux\0"
+      return real.readFileSync(p.exe,...args)
+    }
+    return real.readFileSync(path,...args)
+  },
+  realpathSync(path,...args) {
+    const m = /^\/proc\/(\d+)\/exe$/.exec(path)
+    if (m) return table.get(Number(m[1])).exe
+    return real.realpathSync(path,...args)
+  },
+  readdirSync(path,...args) {
+    if (path === "/proc/147/fd") return variant === "second-client" ? ["3","4","5","7"] : ["3","4","5"]
+    return real.readdirSync(path,...args)
+  },
+  readlinkSync(path,...args) {
+    if (path === "/proc/147/fd/3") return variant === "detached" ? "/dev/null" : "/dev/pts/0"
+    if (path === "/proc/147/fd/4") return "socket:[12345]"
+    if (path === "/proc/147/fd/5") return "/dev/pts/ptmx"
+    if (path === "/proc/147/fd/7") return "/dev/pts/2"
+    return real.readlinkSync(path,...args)
+  },
+  statSync(path,...args) {
+    if (path === socket) return {isSocket:()=>true,uid:process.getuid(),mode:0o140700}
+    if (path === "/dev/pts/0" || path === "/proc/147/fd/3") return {isCharacterDevice:()=>true,rdev:34816}
+    if (path === "/dev/pts/2" || path === "/proc/147/fd/7") return {isCharacterDevice:()=>true,rdev:34818}
+    return real.statSync(path,...args)
+  },
+}))
+mock.module("node:child_process", () => ({...cp,
+  execFile(file,args,options,callback) {
+    if (file === "xdotool") callback(null,"76\n")
+    else if (file === exe("tmux")) {
+      if (variant === "detached") callback(null,"")
+      else callback(null, "148\t/dev/pts/0\tterminfo-" + launch + "\t" + (variant === "foreign-socket" ? socket + "-foreign" : socket) + "\n" + (variant === "second-client" ? "150\t/dev/pts/2\tterminfo-"+launch+"\t"+socket+"\n" : ""))
+    } else {reads++;callback(null,baseline)}
+    return {}
+  },
+}))
+process.env.TERMINFO_CAPTURE_DIRECTORY=join(root,"artifacts")
+process.env.DISPLAY=":22"
+process.env.TERMINFO_CLIPBOARD_PROFILE="default"
+try {
+  const {createLinuxClipboardAdapter}=await import(pathToFileURL(process.env.TERMINFO_TEST_SOURCE_ROOT+"/linux-clipboard.ts").href)
+  const initialize = (kind, bad) => {
+    mux=kind;variant=bad;reads=0
+    const p=(ppid,start,tty,exe)=>({ppid,start,tty,exe})
+    // Faithful projection of measured-relations.json: tmux server keeps outer ctty;
+    // Screen server has none and is a child of its attached client.
+    table=new Map([
+      [76,p(1,"100",0,exe("kitty"))],[92,p(76,"110",34816,"/bin/bash")],
+      [95,p(92,"115",34816,process.execPath)],
+      [145,p(92,"120",34816,exe("tmux"))],[148,p(92,"121",34816,exe("tmux"))],
+      [146,p(92,"120",34816,exe("screen"))],[147,p(146,"121",0,exe("screen"))],
+      [process.pid,p(kind==="tmux"?145:147,"130",34817,process.execPath)],
+      [419422,p(1,"80",0,"/usr/bin/Xvfb")],[419423,p(1,"90",0,exe("xclip"))]
+    ])
+    socket=join(root,kind==="tmux"?"terminfo-"+launch+".sock":"147.terminfo-"+launch)
+    muxTarget={kind:"mux",mux:kind,bootId,
+      preflightCollector:{pid:95,startTicks:"115"},outerShell:{pid:92,startTicks:"110",ttyRdev:34816},
+      outerTerminal:{pid:76,startTicks:"100"},collector:{pid:process.pid,startTicks:"130"},
+      executable:{path:exe(kind),sha256:hash(kind+"-bytes"),version:kind==="tmux"?"3.7c":"5.0.2"},config:{path:exe("config"),sha256:hash("")},
+      socketPath:socket,session:"terminfo-"+launch}
+    if (bad==="wrong-client-tty") table.get(kind==="tmux"?148:146).tty=34818
+    if (bad==="outer-collector-tty") table.get(process.pid).tty=34816
+    if (bad==="undeclared-executable") table.get(kind==="tmux"?145:147).exe=exe("kitty")
+    if (bad==="recycled-shell") table.get(92).start="999"
+    real.writeFileSync(receiptPath,JSON.stringify({schemaVersion:1,runId:launch,profile:"default",target:muxTarget,
+      display:{name:":22",number:22,displayFdPath:exe("display"),xvfbPid:419422},
+      terminal:{pid:76,collectorPid:process.pid,windowId:"42",windowPid:76},
+      selection:{helperPid:419423,helperExecutable:{path:exe("xclip"),sha256:hash("xclip-bytes")},baselinePath:exe("baseline"),baselineSha256:hash(baseline),initialReadSha256:hash(baseline)},
+      config:"--config NONE",permissions:"clipboard: read=ask,write=allow; OSC52=not-run"}),{mode:0o600})
+  }
+  const factory=()=>createLinuxClipboardAdapter(receiptPath,launch,{path:exe("kitty"),sha256:hash("kitty-bytes")},capture)
+  for(const kind of ["tmux","screen"]) {
+    initialize(kind,"valid")
+    const adapter=await factory()
+    assert(adapter.muxAttachmentProof,kind+" attachment snapshot missing")
+    assert.equal(adapter.muxAttachmentProof.captureRunId,capture)
+    assert.equal(adapter.muxAttachmentProof.collector.ttyRdev,34817)
+    assert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
+    assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
+    // The same grant must notice detach before the next clipboard operation.
+    variant="detached"
+    const previousReads=reads
+    await assert.rejects(adapter.withClipboardFixture(async()=>{throw Error("unowned callback ran")},()=>{}),/attached|display/i)
+    assert.equal(reads,previousReads)
+    await adapter.dispose()
+    for(const bad of ["detached","wrong-client-tty","outer-collector-tty","undeclared-executable","foreign-socket","second-client","recycled-shell"]) {
+      initialize(kind,bad)
+      await assert.rejects(factory(),/mux|socket|client|collector|shell|executable|attached|display/i,kind+" "+bad)
+      assert.equal(reads,0,kind+" "+bad+" accessed clipboard before rejecting")
+    }
+  }
+} finally {mock.restore();real.rmSync(root,{recursive:true,force:true})}
+`
+  const result = spawnSync(process.execPath, ["-e", child], {
+    encoding: "utf8",
+    timeout: 20000,
+    env: { ...process.env, TERMINFO_TEST_SOURCE_ROOT: sourceRoot },
+  })
+  expect(result.error, result.stderr).toBeUndefined()
+  expect(result.status, result.stderr).toBe(0)
+})
+
 afterEach(() => {
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true })
   if (originalCapture === undefined) delete process.env.TERMINFO_CAPTURE_DIRECTORY

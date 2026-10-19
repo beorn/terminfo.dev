@@ -1616,6 +1616,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
         config: "fixture",
         permissions: "fixture",
         summary: "{}",
+        assertOwned: async () => {},
         dispose: async () => {},
         async withClipboardFixture(work, trace) {
           const at = new Date().toISOString()
@@ -1662,6 +1663,7 @@ it("records failed clipboard restoration as collector error rather than retainin
         config: "fixture",
         permissions: "fixture",
         summary: "{}",
+        assertOwned: async () => {},
         dispose: async () => {},
         async withClipboardFixture(_work, trace) {
           trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })

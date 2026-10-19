@@ -1,10 +1,23 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
-import { readFileSync, realpathSync, statSync } from "node:fs"
+import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
-import type { ClipboardFixture, ProbeResult, TermContext } from "@terminfo/probe-defs"
+import type { ClipboardFixture, MuxAttachmentProof, ProbeResult, TermContext } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
+
+type MuxReceiptTarget = Pick<
+  MuxAttachmentProof,
+  | "mux"
+  | "bootId"
+  | "preflightCollector"
+  | "outerShell"
+  | "outerTerminal"
+  | "executable"
+  | "config"
+  | "socketPath"
+  | "session"
+> & { kind: "mux"; collector: Pick<MuxAttachmentProof["collector"], "pid" | "startTicks"> }
 
 interface ClipboardReceipt {
   schemaVersion: 1
@@ -21,6 +34,7 @@ interface ClipboardReceipt {
   }
   config: string
   permissions: string
+  target?: { kind: "app" } | MuxReceiptTarget
 }
 
 export interface ClipboardTraceEvent {
@@ -37,6 +51,8 @@ export interface LinuxClipboardAdapter {
   readonly config: string
   readonly permissions: string
   readonly summary: string
+  readonly muxAttachmentProof?: MuxAttachmentProof
+  assertOwned(): Promise<void>
   withClipboardFixture(
     work: Parameters<NonNullable<TermContext["withClipboardFixture"]>>[0],
     trace: (event: ClipboardTraceEvent) => void,
@@ -123,14 +139,40 @@ function processExecutable(pid: number): string {
   return realpathSync(`/proc/${pid}/exe`)
 }
 
-function ancestorOfCollector(pid: number): boolean {
+type ProcessIdentity = MuxAttachmentProof["chain"][number] & { ppid: number }
+
+function processIdentity(pid: number): ProcessIdentity {
+  const executablePath = processExecutable(pid)
+  const stat = readFileSync(`/proc/${pid}/stat`, "utf8")
+  const fields = stat
+    .slice(stat.lastIndexOf(")") + 2)
+    .trim()
+    .split(/\s+/)
+  const ppid = Number(fields[1])
+  const tty = Number(fields[4])
+  const startTicks = fields[19]
+  if (
+    !Number.isSafeInteger(ppid) ||
+    ppid < 0 ||
+    !Number.isSafeInteger(tty) ||
+    typeof startTicks !== "string" ||
+    !/^\d+$/.test(startTicks)
+  ) {
+    throw new Error(`Owned clipboard process ${pid} has invalid parent, tty or start ticks`)
+  }
+  return { pid, ppid, startTicks, executablePath, ttyRdev: tty >>> 0 }
+}
+
+function ancestorOfCollector(pid: number): ProcessIdentity[] {
+  const chain: ProcessIdentity[] = []
   let current = process.pid
   for (let depth = 0; depth < 64 && current > 1; depth++) {
-    if (current === pid) return true
-    const stat = readFileSync(`/proc/${current}/stat`, "utf8")
-    current = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1])
+    const identity = processIdentity(current)
+    chain.push(identity)
+    if (current === pid) return chain
+    current = identity.ppid
   }
-  return false
+  throw new Error("Owned clipboard Kitty process no longer owns this collector ancestry")
 }
 
 function command(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise<string> {
@@ -142,12 +184,13 @@ function command(file: string, args: string[], env?: NodeJS.ProcessEnv): Promise
   })
 }
 
-function assertShape(value: unknown): ClipboardReceipt {
+export function parseLinuxClipboardReceipt(value: unknown): ClipboardReceipt {
   if (!value || typeof value !== "object") throw new Error("Invalid owned clipboard receipt")
   const r = value as Partial<ClipboardReceipt>
   if (
     r.schemaVersion !== 1 ||
-    !/^[0-9a-f]{32}$/.test(r.runId ?? "") ||
+    typeof r.runId !== "string" ||
+    !/^[0-9a-f]{32}$/.test(r.runId) ||
     !["default", "allow", "deny-read"].includes(r.profile ?? "") ||
     !r.display ||
     !r.terminal ||
@@ -183,7 +226,196 @@ function assertShape(value: unknown): ClipboardReceipt {
   ) {
     throw new Error("Owned clipboard receipt has invalid display, window, or digest")
   }
+  // Absent target is the existing direct-app receipt. A supplied discriminant is exhaustive.
+  if (r.target !== undefined) {
+    if (!r.target || typeof r.target !== "object") throw new Error("Owned clipboard receipt has invalid target")
+    switch (r.target.kind) {
+      case "app":
+        break
+      case "mux": {
+        const target = r.target
+        if (
+          !["tmux", "screen"].includes(target.mux) ||
+          !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(target.bootId ?? "") ||
+          typeof target.socketPath !== "string" ||
+          !target.socketPath.startsWith("/") ||
+          typeof target.session !== "string" ||
+          !/^[a-zA-Z0-9_-]+$/.test(target.session) ||
+          !target.socketPath.includes(r.runId) ||
+          !target.session.includes(r.runId)
+        ) {
+          throw new Error("Owned mux receipt has invalid kind, boot ID or run-scoped socket/session")
+        }
+        for (const identity of [target.preflightCollector, target.outerShell, target.outerTerminal, target.collector]) {
+          if (
+            !identity ||
+            !Number.isSafeInteger(identity.pid) ||
+            identity.pid < 2 ||
+            typeof identity.startTicks !== "string" ||
+            !/^\d+$/.test(identity.startTicks)
+          ) {
+            throw new Error("Owned mux receipt has invalid process identity")
+          }
+        }
+        if (
+          !Number.isSafeInteger(target.outerShell.ttyRdev) ||
+          target.outerShell.ttyRdev <= 0 ||
+          target.outerTerminal.pid !== r.terminal.pid ||
+          target.collector.pid !== r.terminal.collectorPid ||
+          target.preflightCollector.pid === target.collector.pid
+        ) {
+          throw new Error("Owned mux receipt has inconsistent shell, terminal or collector identity")
+        }
+        for (const file of [target.executable, target.config]) {
+          if (
+            !file ||
+            typeof file.path !== "string" ||
+            !file.path.startsWith("/") ||
+            !/^[0-9a-f]{64}$/.test(file.sha256 ?? "")
+          ) {
+            throw new Error("Owned mux receipt has invalid executable or config digest")
+          }
+        }
+        if (typeof target.executable.version !== "string" || !target.executable.version.trim()) {
+          throw new Error("Owned mux receipt has no measured executable version")
+        }
+        break
+      }
+      default:
+        throw new Error("Owned clipboard receipt has unknown target kind")
+    }
+  }
   return r as ClipboardReceipt
+}
+
+function assertProcessIdentity(
+  actual: ProcessIdentity,
+  expected: { pid: number; startTicks: string },
+  label: string,
+): void {
+  if (actual.pid !== expected.pid || actual.startTicks !== expected.startTicks) {
+    throw new Error(`Owned mux ${label} PID/start ticks differ from receipt`)
+  }
+}
+
+function isPtyDevice(rdev: number): boolean {
+  // Linux Unix98 PTY slave majors are 136..143; masters (/dev/ptmx) never count as displays.
+  const major = ((rdev >>> 8) & 0xfff) | ((rdev >>> 20) & 0xfffff000)
+  return major >= 136 && major <= 143
+}
+
+async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdentity[]): Promise<ProcessIdentity> {
+  if (readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim() !== target.bootId) {
+    throw new Error("Owned mux boot ID differs from receipt")
+  }
+  const collector = chain[0]
+  const terminal = chain.at(-1)
+  const shell = chain.at(-2)
+  if (!collector || !terminal || !shell) throw new Error("Owned mux outer shell is absent from ancestry")
+  assertProcessIdentity(collector, target.collector, "collector")
+  assertProcessIdentity(terminal, target.outerTerminal, "outer terminal")
+  assertProcessIdentity(shell, target.outerShell, "outer shell")
+  if (shell.ttyRdev !== target.outerShell.ttyRdev || !isPtyDevice(shell.ttyRdev)) {
+    throw new Error("Owned mux outer shell tty differs from receipt")
+  }
+  if (!isPtyDevice(collector.ttyRdev) || collector.ttyRdev === shell.ttyRdev) {
+    throw new Error("Owned mux collector tty must be a distinct inner PTY")
+  }
+  const intermediates = chain.slice(1, -2)
+  if (intermediates.length === 0 || intermediates.some((p) => p.executablePath !== target.executable.path)) {
+    throw new Error("Owned mux ancestry contains an undeclared executable or no mux")
+  }
+  for (const p of intermediates) assertLiveExecutable(p.pid, target.executable)
+  if (digest(readFileSync(target.config.path)) !== target.config.sha256) {
+    throw new Error("Owned mux config digest differs from receipt")
+  }
+  const socket = statSync(target.socketPath)
+  if (!socket.isSocket() || socket.uid !== process.getuid?.() || (socket.mode & 0o077) !== 0) {
+    throw new Error("Owned mux socket is not private and owned")
+  }
+  let client: ProcessIdentity
+  switch (target.mux) {
+    case "tmux": {
+      const output = await command(target.executable.path, [
+        "-S",
+        target.socketPath,
+        "list-clients",
+        "-t",
+        target.session,
+        "-F",
+        "#{client_pid}\t#{client_tty}\t#{session_name}\t#{socket_path}",
+      ])
+      const rows = output.trim().split("\n").filter(Boolean)
+      const row = rows[0]
+      if (rows.length !== 1 || !row) {
+        throw new Error(`Owned mux requires exactly one attached client; found ${rows.length}`)
+      }
+      const fields = row.split("\t")
+      const [pid, ttyPath, session, socketPath] = fields
+      if (
+        fields.length !== 4 ||
+        session !== target.session ||
+        socketPath !== target.socketPath ||
+        typeof pid !== "string" ||
+        !/^\d+$/.test(pid) ||
+        typeof ttyPath !== "string" ||
+        !/^\/dev\/pts\/\d+$/.test(ttyPath)
+      ) {
+        throw new Error("Owned mux client reports a foreign socket, session or tty")
+      }
+      client = processIdentity(Number(pid))
+      const tty = statSync(ttyPath)
+      if (!tty.isCharacterDevice() || tty.rdev !== client.ttyRdev || client.ppid !== shell.pid) {
+        throw new Error("Owned mux attached client tty or shell parent differs")
+      }
+      break
+    }
+    case "screen": {
+      const [server, attachedClient] = intermediates
+      if (
+        intermediates.length !== 2 ||
+        !server ||
+        !attachedClient ||
+        server.ppid !== attachedClient.pid ||
+        attachedClient.ppid !== shell.pid ||
+        basename(target.socketPath) !== `${server.pid}.${target.session}`
+      ) {
+        throw new Error("Owned mux Screen socket/server/client ancestry differs")
+      }
+      client = attachedClient
+      // Screen has no queryable displays command. Its live server owns the socket inode
+      // and one slave fd per display (measured on Screen 5.0.2, including a second client).
+      const sockets = readFileSync("/proc/net/unix", "utf8")
+        .trim()
+        .split("\n")
+        .map((row) => row.trim().split(/\s+/))
+        .filter((row) => row[7] === target.socketPath)
+      const inode = sockets[0]?.[6]
+      if (sockets.length !== 1 || typeof inode !== "string" || !/^\d+$/.test(inode)) {
+        throw new Error("Owned mux Screen socket is absent or ambiguous in kernel table")
+      }
+      const socketLink = `socket:[${inode}]`
+      let ownsSocket = false
+      const displays: number[] = []
+      for (const fd of readdirSync(`/proc/${server.pid}/fd`)) {
+        const path = `/proc/${server.pid}/fd/${fd}`
+        const link = readlinkSync(path)
+        if (link === socketLink) ownsSocket = true
+        if (/^\/dev\/pts\/\d+$/.test(link)) displays.push(statSync(path).rdev)
+      }
+      if (!ownsSocket) throw new Error("Owned mux Screen server does not own the declared socket")
+      if (displays.length !== 1 || displays[0] !== shell.ttyRdev) {
+        throw new Error("Owned mux Screen requires exactly one attached display on the outer tty")
+      }
+      break
+    }
+  }
+  if (client.executablePath !== target.executable.path || client.ttyRdev !== shell.ttyRdev) {
+    throw new Error("Owned mux attached client executable or tty differs from outer shell")
+  }
+  assertLiveExecutable(client.pid, target.executable)
+  assertProcessIdentity(processIdentity(client.pid), client, "attached client")
+  return client
 }
 
 /** Compare the actual Kitty argv, not a shell-escaped display string in the receipt. */
@@ -206,10 +438,11 @@ export async function createLinuxClipboardAdapter(
   receiptPath: string,
   expectedLaunchRunId: string,
   executable: LiveExecutable,
+  captureRunId?: string,
 ): Promise<LinuxClipboardAdapter> {
   if (process.platform !== "linux") throw new Error("Owned clipboard fixture requires Linux")
   const receiptBytes = readFileSync(ownedReceipt(receiptPath))
-  const receipt = assertShape(JSON.parse(receiptBytes.toString("utf8")) as unknown)
+  const receipt = parseLinuxClipboardReceipt(JSON.parse(receiptBytes.toString("utf8")) as unknown)
   if (
     receipt.runId !== expectedLaunchRunId ||
     process.env.DISPLAY !== receipt.display.name ||
@@ -241,11 +474,14 @@ export async function createLinuxClipboardAdapter(
     throw new Error("Owned xclip executable digest mismatch")
   }
   const env = { ...process.env, DISPLAY: receipt.display.name }
+  const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim()
+  let grantChain: ProcessIdentity[] | undefined
+  let muxAttachmentProof: MuxAttachmentProof | undefined
   async function assertOwned(): Promise<void> {
+    const chain = ancestorOfCollector(receipt.terminal.pid)
     if (
       basename(processExecutable(receipt.display.xvfbPid)) !== "Xvfb" ||
-      !readFileSync(`/proc/${receipt.display.xvfbPid}/cmdline`, "utf8").includes("-displayfd") ||
-      !ancestorOfCollector(receipt.terminal.pid)
+      !readFileSync(`/proc/${receipt.display.xvfbPid}/cmdline`, "utf8").includes("-displayfd")
     ) {
       throw new Error("Owned clipboard Xvfb or Kitty process no longer owns this collector")
     }
@@ -257,6 +493,50 @@ export async function createLinuxClipboardAdapter(
     )
     const owner = (await command("xdotool", ["getwindowpid", receipt.terminal.windowId], env)).trim()
     if (owner !== String(receipt.terminal.pid)) throw new Error("Clipboard window owner differs from receipt")
+    if (
+      bootId !== readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim() ||
+      (grantChain && JSON.stringify(chain) !== JSON.stringify(grantChain))
+    ) {
+      throw new Error("Owned clipboard process chain changed since grant")
+    }
+    if (receipt.target?.kind === "mux") {
+      if (typeof captureRunId !== "string" || !/^[0-9a-f]{32}$/.test(captureRunId)) {
+        throw new Error("Owned mux capture run ID is missing")
+      }
+      const target = receipt.target
+      const attachedClient = await assertMuxAttachment(target, chain)
+      const collector = chain[0]
+      if (!collector) throw new Error("Owned mux collector is absent from ancestry")
+      if (muxAttachmentProof) {
+        assertProcessIdentity(attachedClient, muxAttachmentProof.attachedClient, "attached client")
+      }
+      muxAttachmentProof = {
+        platform: "linux",
+        mux: target.mux,
+        bootId: target.bootId,
+        receiptSha256: digest(receiptBytes),
+        launchRunId: receipt.runId,
+        captureRunId,
+        preflightCollector: target.preflightCollector,
+        outerShell: target.outerShell,
+        outerTerminal: target.outerTerminal,
+        collector: { pid: collector.pid, startTicks: collector.startTicks, ttyRdev: collector.ttyRdev },
+        attachedClient: {
+          pid: attachedClient.pid,
+          startTicks: attachedClient.startTicks,
+          ttyRdev: attachedClient.ttyRdev,
+        },
+        chain: chain.map(({ ppid: _ppid, ...identity }) => identity),
+        executable: target.executable,
+        config: target.config,
+        socketPath: target.socketPath,
+        session: target.session,
+      }
+    }
+    if (JSON.stringify(ancestorOfCollector(receipt.terminal.pid)) !== JSON.stringify(chain)) {
+      throw new Error("Owned clipboard process chain changed during verification")
+    }
+    grantChain ??= chain
   }
   await assertOwned()
   if (processExecutable(receipt.selection.helperPid) !== helperExe) {
@@ -335,8 +615,14 @@ export async function createLinuxClipboardAdapter(
     profile: receipt.profile,
     config: receipt.config,
     permissions: receipt.permissions,
+    assertOwned,
+    get muxAttachmentProof() {
+      return muxAttachmentProof ? structuredClone(muxAttachmentProof) : undefined
+    },
     summary: JSON.stringify({
       receiptSha256: digest(receiptBytes),
+      receiptSource: receiptBytes.toString("utf8"),
+      ...(muxAttachmentProof && { muxAttachmentProof }),
       runId: receipt.runId,
       profile: receipt.profile,
       config: receipt.config,
