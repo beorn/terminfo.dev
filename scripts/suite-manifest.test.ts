@@ -290,6 +290,32 @@ test("declaring refuses the default branch and a detached HEAD, and allows a fre
   expect(existsSync(declared.path)).toBe(true)
 })
 
+/**
+ * origin/HEAD is optional, and `--quiet` reports an absent ref and a direct ref the same way: neither
+ * names a remote default. main stays the default and a named task branch still authors (30163).
+ */
+test("declaring treats a non-symbolic origin/HEAD as naming no remote default", () => {
+  const directory = authoringRepo("terminfo-suite-manifest-origin-head-direct-")
+  const git = (...args: string[]): string =>
+    execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+  git("branch", "main", git("rev-parse", "HEAD").trim())
+  git("update-ref", "refs/remotes/origin/HEAD", git("rev-parse", "HEAD").trim())
+  expect(() => assertDeclareIsAuthoring(directory)).not.toThrow()
+  git("switch", "-q", "main")
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(/default branch \(main\)/)
+})
+
+/** Any other exit from the same read is a failure the guard never asked for, never a reason to admit. */
+test("declaring throws and names the command when reading origin/HEAD fails unexpectedly", () => {
+  const directory = authoringRepo("terminfo-suite-manifest-origin-head-corrupt-")
+  writeFileSync(join(directory, ".git", "refs", "remotes", "origin", "HEAD"), "not a ref\n")
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(
+    /git symbolic-ref --quiet --short refs\/remotes\/origin\/HEAD/,
+  )
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(/exited /)
+  expect(() => assertDeclareIsAuthoring(directory)).toThrow(directory)
+})
+
 test("a freeze act writes the release pointer on a suite that admission already declared", () => {
   const directory = authoringRepo("terminfo-suite-freeze-")
   const snapshot = snapshotOf("b".repeat(12))
