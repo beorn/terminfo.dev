@@ -270,7 +270,13 @@ jobs:
               ;;
             wezterm)
               WIN_CONFIG="$(cygpath -w "$RUNNER_TEMP/wezterm/wezterm.lua")"
-              "$RUNNER_TEMP/wezterm/wezterm-gui.exe" --config-file "$WIN_CONFIG" start --always-new-process --no-auto-connect --cwd "$WIN_OUT" -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
+              # The run-scoped wezterm.lua alone does not take effect: the macOS arm kept choosing
+              # OpenGL from the file (run 39271193137) and only the command-line override moved it,
+              # where --config evaluates its value as Lua, so the value carries its own quotes.
+              # WebGpu is the setting that opened a macOS window at this same 20240203 build (run
+              # 39274899363); here it skips the glium/OpenGL window path that dies on this runner
+              # ("The OpenGL implementation is too old to work with glium", run 39275836868).
+              "$RUNNER_TEMP/wezterm/wezterm-gui.exe" --config-file "$WIN_CONFIG" --config 'front_end="WebGpu"' start --always-new-process --no-auto-connect --cwd "$WIN_OUT" -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
               ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
