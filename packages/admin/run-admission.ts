@@ -912,6 +912,7 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
     throw new Error(`Cannot read/parse Linux host-measured.json receipt ${hostPath}`, { cause })
   }
   const launcher =
+    run.target.kind === "app" &&
     isRecord(host) &&
     typeof host.preset === "string" &&
     SAFE_COMPONENT.test(host.preset) &&

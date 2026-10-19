@@ -155,6 +155,7 @@ describe("TTY transaction replies", () => {
             withTTYOperation(
               async () => {
                 expect(process.stdin.listenerCount("data")).toBe(listeners + 1)
+                expect(vi.getTimerCount()).toBe(1)
                 reply("a")
               },
               undefined,

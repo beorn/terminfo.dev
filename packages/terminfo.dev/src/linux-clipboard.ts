@@ -386,8 +386,8 @@ async function assertMuxAttachment(target: MuxReceiptTarget, chain: ProcessIdent
       ) {
         throw new Error("Owned mux client reports a foreign socket, session or tty")
       }
-      if (!intermediates.some((process) => process.pid === Number(serverPid))) {
-        throw new Error("Owned mux tmux socket server is absent from collector ancestry")
+      if (intermediates[0]?.pid !== Number(serverPid)) {
+        throw new Error("Owned mux tmux socket server differs from the collector's nearest tmux ancestor")
       }
       client = processIdentity(Number(pid))
       const tty = statSync(ttyPath)
@@ -577,7 +577,7 @@ export async function createLinuxClipboardAdapter(
         break
       }
       default:
-        return target satisfies never
+        throw new Error(`Unknown owned clipboard target: ${JSON.stringify(target satisfies never)}`)
     }
     if (JSON.stringify(ancestorOfCollector(receipt.terminal.pid)) !== JSON.stringify(chain)) {
       throw new Error("Owned clipboard process chain changed during verification")

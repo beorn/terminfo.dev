@@ -136,6 +136,10 @@ try {
     if (bad==="outer-collector-tty") table.get(process.pid).tty=34816
     if (bad==="undeclared-executable") table.get(kind==="tmux"?145:147).exe=exe("kitty")
     if (bad==="recycled-shell") table.get(92).start="999"
+    if (bad==="nested-server") {
+      table.get(process.pid).ppid=149
+      table.get(149).ppid=145
+    }
     real.writeFileSync(receiptPath,JSON.stringify({schemaVersion:1,runId:launch,profile:"default",target:muxTarget,
       display:{name:":22",number:22,displayFdPath:exe("display"),xvfbPid:419422},
       terminal:{pid:76,collectorPid:process.pid,windowId:"42",windowPid:76},
@@ -165,6 +169,7 @@ try {
       "foreign-socket": kind === "tmux" ? /client reports a foreign socket, session or tty/ : /socket is absent or ambiguous in kernel table/,
       "second-client": kind === "tmux" ? /exactly one attached client; found 2/ : /exactly one attached display/,
       "recycled-shell": /outer shell PID\/start ticks differ/,
+      ...(kind === "tmux" ? {"nested-server": /nearest tmux ancestor/} : {}),
     }
     for(const [bad, message] of Object.entries(refusals)) {
       initialize(kind,bad)
@@ -214,7 +219,7 @@ try {
     if (kind === "tmux") {
       // A private socket with one valid client can still belong to a second server outside this collector's chain.
       initialize(kind,"foreign-server")
-      await assert.rejects(factory(), /tmux socket server is absent from collector ancestry/)
+      await assert.rejects(factory(), /tmux socket server differs from the collector's nearest tmux ancestor/)
       assert.equal(reads,0,"foreign server accessed clipboard before rejecting")
       initialize(kind,"valid")
       const changedClient=await factory()

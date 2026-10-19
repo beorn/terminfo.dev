@@ -2998,17 +2998,19 @@ describe("identity self-admission", () => {
       const bytes = JSON.stringify(placementSource)
       writeFileSync(path, bytes)
       const hostPath = join(directory, "host-measured.json")
-      writeFileSync(hostPath, receiptSource)
+      const hostSource = JSON.stringify({ ...receipt, preset: "default", clipboardProfile: "default" })
+      writeFileSync(hostPath, hostSource)
       const completionPath = join(directory, "run-receipt.json")
       const completion = {
         probeRun: { runId: specimen.runId, sha256: createHash("sha256").update(bytes).digest("hex") },
-        receiptInputs: { hostSha256: createHash("sha256").update(receiptSource).digest("hex") },
+        receiptInputs: { hostSha256: createHash("sha256").update(hostSource).digest("hex") },
       }
       // The authoring guard is independently exercised with real Git fixtures in admit-run.test;
       // this case owns the real placement/receipt boundary, before that final branch check.
       const authoring = vi.spyOn(suiteManifest, "assertDeclareIsAuthoring").mockImplementation(() => {})
       try {
         expect(() => planAdmission(path, destination)).toThrow(/missing run-receipt\.json/)
+        expect(() => planAdmission(path, destination)).toThrow(/bun scripts\/release1-collection\.ts --plan/)
         writeFileSync(
           completionPath,
           JSON.stringify({ ...completion, probeRun: { ...completion.probeRun, sha256: "0".repeat(64) } }),
@@ -3149,6 +3151,7 @@ describe("identity self-admission", () => {
     for (const [version, da2, reason] of [
       [specimen.version, specimen.run.rawReplies["device.secondary-da"], "outer-app-proof-missing"],
       ["4.09.02", specimen.run.rawReplies["device.secondary-da"], "identity-replies-mismatch"],
+      [specimen.version, "\x1b[>83;9999999999999999;0c", "identity-replies-mismatch"],
       [specimen.version, "\x1b[>83;99999999999999999999;0c", "identity-replies-mismatch"],
     ]) {
       const parsed = parseRunSource(
