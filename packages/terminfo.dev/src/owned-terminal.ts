@@ -204,7 +204,8 @@ export interface OwnedTerminal {
   readonly summary: string
   /** The PID of the receipt-named hosted app, measured from this collector's process ancestry. */
   readonly hostedAppPid?: number
-  readonly hostedWindowsAppId?: HostedWindowsAppId
+  /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
+  readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   readonly clipboard?: LinuxClipboardAdapter
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
@@ -811,12 +812,13 @@ export async function createOwnedTerminal(options: {
         },
       }),
     })
+    const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const owner: OwnedTerminal = {
       geometryAtGrant,
       geometrySource: source,
       summary,
       ...(hostedAncestor && { hostedAppPid: hostedAncestor.pid }),
-      ...(hostedWindowsApp && { hostedWindowsAppId: hostedWindowsApp.id }),
+      ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
       async readGeometry() {
         if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned geometry read has no live bound capture")

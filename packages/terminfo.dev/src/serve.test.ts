@@ -293,7 +293,7 @@ describe("private finite daemon startup", () => {
         mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
           ownedTerminalVerifiedFor: () => true,
           createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture",
-            hostedAppPid: 42, summary: "owned fixture", readGeometry: async () => geometry, dispose: async () => {} })
+            hostedAppPid: 42, hostedAppId: "ghostty", summary: "owned fixture", readGeometry: async () => geometry, dispose: async () => {} })
         }))
         mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
           readDisposableReceipt: () => undefined
@@ -378,7 +378,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705, hostedAppId: "terminal-app",
           summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
@@ -464,7 +464,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 42,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 42, hostedAppId: "alacritty",
           summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
@@ -595,7 +595,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705,
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705, hostedAppId: "terminal-app",
           summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
@@ -713,7 +713,7 @@ describe("private finite daemon startup", () => {
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => terminal }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned, createOwnedTerminal: async () => ({
-        geometryAtGrant:{status:"measured",rows:24,cols:80},summary:"owned fixture",dispose:async()=>{disposed++}
+        geometryAtGrant:{status:"measured",rows:24,cols:80},hostedAppId:terminal.name,summary:"owned fixture",dispose:async()=>{disposed++}
       })}))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({...tty,
         withRawMode:async callback=>callback(),drainStdin:async()=>{},
@@ -835,6 +835,7 @@ describe("private finite daemon startup", () => {
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
+          hostedAppId: "kitty",
           summary: "owned fixture",
           readCells: async () => { reads += 1; return { status: "refused", reason: "no retention directory in this run" } },
           dispose: async () => {}
@@ -972,6 +973,7 @@ describe("private finite daemon startup", () => {
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           readGeometry: async () => ({ status: "measured", rows: 24, cols: 80 }),
+          hostedAppId: darwin ? "kitty" : "windows-terminal",
           summary: "owned fixture",
           readCells: async () => { reads += 1; return ({
             status: "read",
@@ -1086,38 +1088,47 @@ describe("private finite daemon startup", () => {
     },
   )
 
-  it("hosted Windows Alacritty requires detected terminal to match receipt appId and sets target.version from win32 appLaunch.productVersion", () => {
-    home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-alacritty-"))
-    const result = spawnSync(
-      process.execPath,
-      [
-        "-e",
-        `
+  // Extend the existing hosted consumer journey: its Windows-only case never exercised
+  // Darwin identity agreement or the absent receipt ID that previously skipped comparison.
+  it.each([
+    { id: "alacritty", platform: "win32", version: "0.17.0" },
+    { id: "cursor", platform: "darwin", version: "3.25.9" },
+    { id: "com.microsoft.VSCode", platform: "darwin", version: "1.142.0" },
+  ])(
+    "hosted $id requires matching receipt identity before collection and retains its existing version source",
+    (fixture) => {
+      home = mkdtempSync(join(tmpdir(), "terminfo-serve-hosted-identity-"))
+      const result = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
-      Object.defineProperty(process, "platform", { value: "win32" })
+      const fixture = ${JSON.stringify(fixture)}
+      Object.defineProperty(process, "platform", { value: fixture.platform })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
-      let detectedName = "alacritty"
+      let detectedName = fixture.id, receiptAppId = fixture.id, batchCalls = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
         manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
-        detectTerminal: () => ({ name: detectedName, version: "", os: "windows", osVersion: "fixture" })
+        detectTerminal: () => ({ name: detectedName, version: fixture.platform === "win32" ? "" : fixture.version, os: fixture.platform === "win32" ? "windows" : "macos", osVersion: "fixture" })
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
         createOwnedTerminal: async () => ({
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
-          hostedWindowsAppId: "alacritty",
-          summary: "owned alacritty fixture",
-          readCells: async () => ({
+          hostedAppId: receiptAppId,
+          summary: "owned " + fixture.id + " fixture",
+          readCells: fixture.platform === "win32" ? async () => ({
             status: "read",
             grid: { cols: 80, rows: 24, text: ["hello"], attributes: [[0, 0, 0, 0, 0]] },
             bufferOwner: { image: "conhost.exe", pid: 7216, ppid: 4684, executablePath: "C:\\\\Windows\\\\System32\\\\conhost.exe", executableSha256: "sha256:" + "b".repeat(64) }
-          }),
+          }) : undefined,
           dispose: async () => {}
         })
       }))
@@ -1129,9 +1140,9 @@ describe("private finite daemon startup", () => {
         }
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
-        runProbeBatch: async options => ({
+        runProbeBatch: async options => { batchCalls++; return ({
           rawReplies: {},
-          appLaunch: {
+          appLaunch: fixture.platform === "win32" ? {
             platform: "win32",
             executablePath: "D:\\\\a\\\\_temp\\\\alacritty\\\\alacritty.exe",
             productVersion: "0.17.0",
@@ -1141,40 +1152,48 @@ describe("private finite daemon startup", () => {
               path: "D:\\\\a\\\\_temp\\\\measurement-artifacts\\\\Alacritty-v0.17.0-portable.exe",
               sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
             }
-          },
+          } : undefined,
           observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
           assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
-        })
+        }) }
       }))
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const run = await collectProbeRun({ ids: ["device.xtversion"] })
-      assert.equal(run.target.id, "alacritty")
-      assert.equal(run.target.version, "0.17.0")
-      detectedName = "windows-terminal"
+      assert.equal(run.target.id, fixture.id)
+      assert.equal(run.target.version, fixture.version)
+      detectedName = fixture.id === "cursor" ? "com.microsoft.VSCode" : "cursor"
       await assert.rejects(
         collectProbeRun({ ids: ["device.xtversion"] }),
-        /Hosted Windows terminal detected "windows-terminal" while the receipt names alacritty/u,
+        error => error.message.includes(JSON.stringify(detectedName)) && error.message.includes("receipt names " + fixture.id),
       )
+      detectedName = fixture.id
+      receiptAppId = undefined
+      await assert.rejects(
+        collectProbeRun({ ids: ["device.xtversion"] }),
+        error => error.message.includes(JSON.stringify(fixture.id)) && error.message.includes("receipt app ID is missing"),
+      )
+      assert.equal(batchCalls, 1, "mismatch and missing identity must not enter collection")
       `,
-      ],
-      {
-        cwd: packageRoot,
-        env: {
-          ...process.env,
-          HOME: home,
-          TERMINFO_CAPTURE_DIRECTORY: join(home, "capture"),
-          TERMINFO_DISPOSABLE_RECEIPT: "hardware-receipt-fixture",
-          TERMINFO_RUNTIME_PROVENANCE: "",
-          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
-          TERMINFO_TARGET_VERSION: "",
+        ],
+        {
+          cwd: packageRoot,
+          env: {
+            ...process.env,
+            HOME: home,
+            TERMINFO_CAPTURE_DIRECTORY: fixture.platform === "win32" ? join(home, "capture") : "",
+            TERMINFO_DISPOSABLE_RECEIPT: "hardware-receipt-fixture",
+            TERMINFO_RUNTIME_PROVENANCE: "",
+            TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+            TERMINFO_TARGET_VERSION: "",
+          },
+          encoding: "utf8",
+          timeout: 10_000,
         },
-        encoding: "utf8",
-        timeout: 10_000,
-      },
-    )
-    expect(result.status, result.stderr).toBe(0)
-    expect(result.stderr).toBe("")
-  })
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(result.stderr).toBe("")
+    },
+  )
 
   it.each([undefined, '["cursor.hide","reset.decaln"]'])(
     "forwards startup selection %s once and preserves producer completeness",

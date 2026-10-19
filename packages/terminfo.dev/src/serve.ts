@@ -338,6 +338,19 @@ function ownedTerminalKind(input: {
   return undefined
 }
 
+/** Both hosted arms compare the detected subject with the existing receipt-derived owner identity. */
+function assertHostedIdentity(detected: string, owner: OwnedTerminal, platform: "Darwin" | "Windows"): void {
+  const appId = owner.hostedAppId
+  if (!appId) {
+    throw new Error(
+      `Hosted ${platform} terminal detected ${JSON.stringify(detected)} while the receipt app ID is missing`,
+    )
+  }
+  if (detected !== appId) {
+    throw new Error(`Hosted ${platform} terminal detected ${JSON.stringify(detected)} while the receipt names ${appId}`)
+  }
+}
+
 /** The same source-tree collector powers daemon and inline CLI entry points. */
 export async function collectProbeRun(
   options: {
@@ -543,6 +556,7 @@ export async function collectProbeRun(
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       darwinHosted: { receiptPath: hostedReceipt },
     })
+    assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
     // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
     // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
     // refuse by design, so preflight and the pixel install are skipped entirely.
@@ -671,11 +685,7 @@ export async function collectProbeRun(
       expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
       windowsHosted: { receiptPath: hostedReceipt },
     })
-    if (ownedTerminal.hostedWindowsAppId && terminal.name !== ownedTerminal.hostedWindowsAppId) {
-      throw new Error(
-        `Hosted Windows terminal detected ${JSON.stringify(terminal.name)} while the receipt names ${ownedTerminal.hostedWindowsAppId}`,
-      )
-    }
+    assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
     // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
     installTextCapture(ownedTerminal)
   }

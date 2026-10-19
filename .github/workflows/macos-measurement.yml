@@ -370,7 +370,7 @@ jobs:
               for await (const path of new Bun.Glob("**/*.log").scan({ cwd: run.directory })) selected.add(path);
               for (const path of selected) {
                 const source = join(run.directory, path);
-                if (!existsSync(source)) { console.error("Editor retained launch file missing: " + source); continue; }
+                if (!existsSync(source)) { console.log("::warning::Editor retained launch file missing: " + source); continue; }
                 const target = join(out, "editor-launch-files", path);
                 mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
                 copyFileSync(source, target);

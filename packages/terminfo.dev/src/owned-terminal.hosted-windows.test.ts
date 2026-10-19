@@ -213,7 +213,7 @@ test("windowsHosted grants ownership to an alacritty.exe ancestor from a portabl
     writeHostedReceipt(alacrittyPath),
     alacrittyTable,
     `
-      assert.equal(owner.hostedWindowsAppId, "alacritty")
+      assert.equal(owner.hostedAppId, "alacritty")
       assert.equal(owner.hostedAppPid, 4684)
       const summary = JSON.parse(owner.summary)
       assert.equal(summary.windowsHosted.appId, "alacritty")
