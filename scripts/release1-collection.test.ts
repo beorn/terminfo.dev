@@ -984,10 +984,24 @@ it("hands the identical probe argv to the ssh transport with environment-owned c
   ])
 })
 
-it("refuses an ssh transport with no stage rather than inventing one", () => {
-  expect(() =>
-    ownedAppCommand(ownedAppContext, "/private/kitty", { runner: "ssh:fixture@fixture.invalid" }, ownedAppRevision),
-  ).toThrow(/requires --owned-app-stage/)
+it("hands the ssh transport no stage when none is supplied, so the driver derives it on the host", () => {
+  const command = ownedAppCommand(
+    ownedAppContext,
+    "/private/kitty",
+    { runner: "ssh:fixture@fixture.invalid", knownHosts: "/home/fixture/.ssh/known_hosts" },
+    ownedAppRevision,
+  )
+  expect(command.argv).not.toContain("--stage")
+  expect(command.argv.slice(0, 8)).toEqual([
+    "bun",
+    "scripts/owned-app-remote-run.ts",
+    "--transport",
+    "ssh:fixture@fixture.invalid",
+    "--output",
+    "/private/kitty",
+    "--source-revision",
+    ownedAppRevision,
+  ])
 })
 
 it("refuses an ssh transport with no known-hosts file rather than inventing trust", () => {
