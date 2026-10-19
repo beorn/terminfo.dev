@@ -324,6 +324,28 @@ describe("Terminal.app app collection", () => {
     expect(removeProbeRun).toHaveBeenCalledOnce()
   })
 
+  test.each(["daemon startup", "owned close"])(
+    "retains the private launch directory after %s failure",
+    async (failure) => {
+      if (failure === "daemon startup") vi.mocked(findOwnedDaemon).mockResolvedValueOnce(null)
+      else {
+        vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
+          throw new Error("owned close failed")
+        })
+      }
+      const error = vi.spyOn(console, "error").mockImplementation(() => {})
+      try {
+        await expect(handleApp("terminal-app", {})).rejects.toThrow(
+          failure === "daemon startup" ? /Owned daemon did not register/ : /owned close failed/,
+        )
+        expect(removeProbeRun).not.toHaveBeenCalled()
+        expect(error.mock.calls.flat().join("\n")).toContain("/private/run")
+      } finally {
+        error.mockRestore()
+      }
+    },
+  )
+
   test("a failed receipt refuses raw write and closes only the newly owned window", async () => {
     vi.mocked(captureTerminalAppReceipt).mockImplementationOnce(() => {
       throw new Error("unsealed snapshot")
