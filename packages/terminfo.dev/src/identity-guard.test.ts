@@ -26,9 +26,14 @@ describe("measured multiplexer identity", () => {
     },
   )
 
-  it("measures Screen from preflight DA2 even when feature selection omitted identity probes", () => {
-    const replies = { "collector.xtversion": "\x1b[?1;2c", "collector.da2": "\x1b[>83;40901;0c\x1b[?1;2c" }
-    expect(resolveMeasuredAppVersion("screen", "", replies)).toBe("4.09.01")
+  // 4.09.01 is the host specimen; 5.0.2 is the declared Kitty image's actual Screen.
+  it.each([
+    ["40901", "4.09.01"],
+    ["50002", "5.0.2"],
+  ])("measures Screen %s from preflight DA2 without feature identity probes", (encoded, version) => {
+    const replies = { "collector.xtversion": "\x1b[?1;2c", "collector.da2": `\x1b[>83;${encoded};0c\x1b[?1;2c` }
+    expect(resolveMeasuredAppVersion("screen", "", replies)).toBe(version)
+    expect(resolveMeasuredAppVersion("screen", version, replies)).toBe(version)
     expect(verifyTerminalIdentity("screen", replies)).toEqual({ ok: true, checked: true })
     expect(verifyTerminalIdentity("screen", { ...replies, "device.primary-da": "\x1b[?1;2;4c" }).reason).toMatch(
       /DA1 mismatch/,

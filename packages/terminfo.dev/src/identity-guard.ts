@@ -182,7 +182,11 @@ export function resolveMeasuredAppVersion(
     if (!Number.isSafeInteger(numeric)) {
       throw new Error(`${terminal} identity mismatch: measured DA2 ${JSON.stringify(identity.da2)}`)
     }
-    const version = `${Math.floor(numeric / 10000)}.${String(Math.floor(numeric / 100) % 100).padStart(2, "0")}.${String(numeric % 100).padStart(2, "0")}`
+    const major = Math.floor(numeric / 10000)
+    // GNU Screen 5.0.0 changed screen.c's version format from %d.%.2d.%.2d to %d.%d.%d;
+    // the DA2 encoding stayed major*10000 + minor*100 + revision (also measured on 5.0.2).
+    const width = major < 5 ? 2 : 1
+    const version = `${major}.${String(Math.floor(numeric / 100) % 100).padStart(width, "0")}.${String(numeric % 100).padStart(width, "0")}`
     if (detectedVersion && detectedVersion !== version) {
       throw new Error(`${terminal} version mismatch: detected ${detectedVersion}, measured ${version}`)
     }
