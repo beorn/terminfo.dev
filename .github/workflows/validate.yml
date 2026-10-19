@@ -47,6 +47,13 @@ jobs:
 
       - uses: ./.github/actions/source-siblings
 
+      # Bootstrap Nix itself; a flake cannot supply the executable that evaluates it.
+      # The identity suite hashes local source trees without a daemon or VM support.
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31
+        with:
+          install_options: --no-daemon
+          enable_kvm: false
+
       - name: Run unit tests
         run: bun --bun vitest run --maxWorkers 2
 
@@ -61,6 +68,13 @@ jobs:
           bun-version-file: package.json
 
       - uses: ./.github/actions/source-siblings
+
+      # Bootstrap Nix itself; a flake cannot supply the executable that evaluates it.
+      # The identity suite hashes local source trees without a daemon or VM support.
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31
+        with:
+          install_options: --no-daemon
+          enable_kvm: false
 
       - name: Run validation
         id: validate
