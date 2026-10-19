@@ -699,6 +699,8 @@ describe("private finite daemon startup", () => {
       import assert from "node:assert/strict"
       import { parseRunProvenance } from "@terminfo/run-parser"
       import { parseAppLaunchReceipt } from "./packages/run-parser/src/app-launch.ts"
+      import { createHash } from "node:crypto"
+      const digest = seed => createHash("sha256").update(seed).digest("hex")
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
@@ -745,9 +747,9 @@ describe("private finite daemon startup", () => {
       assert.equal(query.sequence,"\\x1b[>0q")
       assert.equal(query.outbound,"\\x1b[>0q\\x1b[c")
       assert.equal(query.rawBase64,Buffer.from(raw).toString("base64"))
-      const provenance={executable:{path:"/fixture/kitty",sha256:"c".repeat(64),version:"kitty 0.49.2"},
-        sourceArtifact:{url:"https://example.invalid/kitty.txz",sha256:"d".repeat(64)},
-        runtime:{imageId:"sha256:"+"e".repeat(64),imageTarSha256:"f".repeat(64),arch:"amd64",nixLockRevision:"1".repeat(40),sourceRevision:"b".repeat(40),cleanTree:true,suiteHash:"a".repeat(12)},
+      const provenance={executable:{path:"/fixture/kitty",sha256:digest("fixture executable"),version:"kitty 0.49.2"},
+        sourceArtifact:{url:"https://example.invalid/kitty.txz",sha256:digest("fixture source artifact")},
+        runtime:{imageId:"sha256:"+"e".repeat(64),imageTarSha256:digest("fixture image tar"),arch:"amd64",nixLockRevision:"1".repeat(40),sourceRevision:"b".repeat(40),cleanTree:true,suiteHash:"a".repeat(12)},
         fixture:{definition:"fixture",config:"fixture",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}
       assert.equal(parseRunProvenance(provenance,run.target,{probeHash:run.probeHash,sourceRevision:run.sourceRevision},"fixture").executable.version,"kitty 0.49.2")
       const feature=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
