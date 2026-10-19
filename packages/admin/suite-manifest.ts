@@ -196,13 +196,12 @@ export function persistSuiteManifest(
 /**
  * Declaring a suite is authoring, so it may only run on a checkout carrying work that
  * is not yet on main: a declare on a shared-main checkout writes a manifest no commit will take.
- * `--check` still runs anywhere; validating a stored declaration is a read.
- *
- * ADMISSION PASSES THIS GUARD. `scripts/admit-run.ts` declares the run's manifest and admits the
- * run in one commit on a branch ahead of origin/main, so the guard holds unchanged. Do not weaken
- * it to "fix" admission; admission is authoring by construction.
+ * The discriminator is the branch, not the commit: a fresh branch cut at origin/main authors its
+ * own commit when the freeze or admission runs, while the default branch and a detached HEAD
+ * leave the write on nobody's commit. A branch ahead of origin/main is authoring for the same
+ * reason. `--check` still runs anywhere; validating a stored declaration is a read.
  */
-function declarationCheckoutState(cwd: string): "authoring" | "on-main" {
+function declarationCheckoutState(cwd: string): { authoring: boolean; detail: string } {
   const run = (args: string[]) => {
     const result = spawnSync("git", args, { cwd, encoding: "utf8" })
     if (result.error) throw new Error(`Cannot declare a suite: git ${args.join(" ")} failed`, { cause: result.error })
@@ -210,29 +209,26 @@ function declarationCheckoutState(cwd: string): "authoring" | "on-main" {
   }
   const head = run(["rev-parse", "HEAD"])
   if (head.status !== 0) throw new Error(`Cannot declare a suite outside a Git checkout (${cwd})`)
-  const declared = run(["rev-parse", "--verify", "origin/main^{commit}"])
-  if (declared.status !== 0) {
-    throw new Error(`Cannot declare a suite: ${cwd} offers no origin/main to compare the declared revision against`)
+  const branch = run(["symbolic-ref", "--quiet", "--short", "HEAD"])
+  if (branch.status === 1) return { authoring: false, detail: "its HEAD is detached" }
+  if (branch.status !== 0) {
+    throw new Error(`Cannot declare a suite: git symbolic-ref failed (${branch.status}): ${branch.stderr.trim()}`)
   }
-  const ancestor = run(["merge-base", "--is-ancestor", head.stdout.trim(), declared.stdout.trim()])
-  if (ancestor.status === 0) return "on-main"
-  if (ancestor.status !== 1) {
-    throw new Error(
-      `Cannot declare a suite: git merge-base --is-ancestor failed (${ancestor.status}): ${ancestor.stderr.trim()}`,
-    )
-  }
-  return "authoring"
+  const name = branch.stdout.trim()
+  const originHead = run(["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+  const defaultBranch = originHead.status === 0 ? originHead.stdout.trim().replace(/^origin\//, "") : "main"
+  if (name === defaultBranch) return { authoring: false, detail: `its HEAD is the default branch (${name})` }
+  return { authoring: true, detail: `it is on the non-default branch ${name}` }
 }
 
 export function assertDeclareIsAuthoring(cwd: string, suiteHash?: string): void {
-  if (declarationCheckoutState(cwd) === "authoring") return
+  const state = declarationCheckoutState(cwd)
+  if (state.authoring) return
   const subject = suiteHash ? `Suite ${suiteHash}` : "This tree's suite"
   throw new Error(
-    `${subject} cannot be declared or admitted on this checkout (${cwd}): its HEAD is already on origin/main, so a ` +
-      "declaration or an admission written here lands on no commit.\n" +
-      "A collector authors nothing: the freeze act lands this suite's declaration on main, and admission runs from " +
-      "a branch with at least one commit ahead of origin/main (a fresh branch cut at the pin is NOT enough): bun " +
-      "scripts/admit-run.ts --for <run.json>",
+    `${subject} cannot be declared or admitted on this checkout (${cwd}): ${state.detail}, so a declaration or an ` +
+      "admission written here lands on no commit.\n" +
+      "Create or switch to a branch that is not the default (git switch -c task/<name> origin/main), then re-run.",
   )
 }
 
