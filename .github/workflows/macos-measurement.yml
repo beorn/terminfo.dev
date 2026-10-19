@@ -244,7 +244,13 @@ jobs:
               # front end renders the same cells without a GPU context, so the window exists at all.
               mkdir -p "$HOME/.config/wezterm"
               printf "return { front_end = 'Software' }\n" > "$HOME/.config/wezterm/wezterm.lua"
-              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              # The file alone did not take effect (run 39271193137 still chose OpenGL), so the front end
+              # is also named on the command line, and the version and config path are retained beside it.
+              {
+                "$APP_BUNDLE/Contents/MacOS/wezterm" --version
+                ls -la "$HOME/.config/wezterm"
+              } >> "$OUT/launcher.log" 2>&1
+              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" --config front_end=Software start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
