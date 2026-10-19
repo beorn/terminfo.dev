@@ -5,7 +5,8 @@
  * @testonly none
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import { execFileSync, execSync } from "node:child_process"
+import { execFileSync, execSync, spawn } from "node:child_process"
+import { writeFileSync } from "node:fs"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp, stopLaunchedApp, type AppLaunch } from "./app.ts"
 import {
@@ -18,13 +19,23 @@ import {
   stopOwnedDaemon,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { assertOwnedTerminalWindow, closeOwnedTerminalWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import {
+  assertOwnedTerminalWindow,
+  closeOwnedTerminalWindow,
+  recordedOwnerTty,
+  resolveOwnedProcessByMarker,
+} from "../../terminfo.dev/src/terminal-app-window.ts"
+import { runScopedMarker } from "../../terminfo.dev/src/owned-process.ts"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
 vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
 
-vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn() }))
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(() => true),
+  readFileSync: vi.fn(() => "/dev/ttys009\n"),
+  writeFileSync: vi.fn(),
+}))
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(() => "2.15\n"),
   execSync: vi.fn(() => "2.15\n"),
@@ -55,6 +66,12 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   assertOwnedTerminalWindow: vi.fn(),
   closeOwnedTerminalWindow: vi.fn(),
   parseKittyIdentity: vi.fn(),
+  recordedOwnerTty: vi.fn((text: string) => text.trim()),
+  resolveOwnedProcessByMarker: vi.fn(),
+}))
+vi.mock("../../terminfo.dev/src/owned-process.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../terminfo.dev/src/owned-process.ts")>()),
+  runScopedMarker: vi.fn(({ flag, value }: { flag: string; value: string }) => ({ flag, value })),
 }))
 
 const window = { provider: "terminal-app" as const, windowId: 14, tty: "/dev/ttys003" }
@@ -133,6 +150,66 @@ beforeEach(() => {
     runId: "private-run",
   }))
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
+  vi.mocked(spawn).mockReturnValue({ unref: vi.fn() } as unknown as ReturnType<typeof spawn>)
+})
+
+describe("WezTerm cli-process arm", () => {
+  const ownedWindow = {
+    provider: "cli-process" as const,
+    ownerPid: 777,
+    tty: "/dev/ttys009",
+    executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+    marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
+  }
+
+  test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    await handleApp("wezterm", {})
+    expect(writeFileSync).toHaveBeenCalledWith("/private/run/wezterm-private-run.lua", "return {}\n", {
+      flag: "wx",
+      mode: 0o600,
+    })
+    expect(runScopedMarker).toHaveBeenCalledWith({
+      appName: "WezTerm",
+      runId: "private-run",
+      flag: "--config-file",
+      value: "/private/run/wezterm-private-run.lua",
+    })
+    expect(spawn).toHaveBeenCalledWith(
+      "/Applications/WezTerm.app/Contents/MacOS/wezterm",
+      [
+        "--config-file",
+        "/private/run/wezterm-private-run.lua",
+        "start",
+        "--always-new-process",
+        "--",
+        "/bin/bash",
+        "/private/run/serve.sh",
+      ],
+      { detached: true, stdio: "ignore", env: expect.any(Object) },
+    )
+    expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "wezterm")
+    expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
+      executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+      marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
+      tty: "/dev/ttys009",
+    })
+    expect(recordedOwnerTty).toHaveBeenCalledWith("/dev/ttys009\n")
+    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+      process: {
+        asserter: "terminfo-admin",
+        launchRunId: "private-run",
+        workerPid: 555,
+        provider: "cli-process",
+        ownerPid: 777,
+        executablePath: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui",
+        marker: { flag: "--config-file", value: "/private/run/wezterm-private-run.lua" },
+        tty: "/dev/ttys009",
+        intendedVersion: "2.15",
+      },
+    })
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
+  })
 })
 
 describe("Terminal.app app collection", () => {
