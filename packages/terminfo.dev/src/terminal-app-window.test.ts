@@ -14,7 +14,9 @@ import {
   closeOwnedTerminalWindow,
   descendToOwner,
   parseKittyIdentity,
+  recordedOwnerTty,
   resolveOwnedProcessByMarker,
+  runScopedMarker,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
 
@@ -250,6 +252,44 @@ describe("cli-process ownership", () => {
     }
   })
 
+  test("close escalates to SIGKILL once the owner survives the SIGTERM window", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    const signals: Array<string | number | undefined> = []
+    let killed = false
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0) {
+        if (killed) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+        return true
+      }
+      signals.push(signal)
+      if (signal === "SIGKILL") killed = true
+      return true
+    }) as typeof process.kill)
+    try {
+      closeOwnedTerminalWindow(owner)
+      expect(signals).toEqual(["SIGTERM", "SIGKILL"])
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("close does not SIGKILL a pid that lost this launch's marker during the SIGTERM window", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    const table = { comm: { [ownerPid]: executablePath }, command: { [ownerPid]: argv } }
+    fakeProcessTable(table)
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === "SIGTERM") table.command[ownerPid] = `${executablePath} --config-file someone-elses-run`
+      return true
+    }) as typeof process.kill)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/does not carry the launched marker/)
+      expect(kill).not.toHaveBeenCalledWith(ownerPid, "SIGKILL")
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
   test("kitty's close now re-checks its instance-group marker before signalling", () => {
     vi.mocked(realpathSync).mockImplementation((path) => String(path))
     const kitty: OwnedTerminalWindow = {
@@ -327,5 +367,55 @@ describe("marker token matching", () => {
     [[], false],
   ])("%j matches %s", (argv, expected) => {
     expect(argvCarriesMarker(argv as string[], { flag: "--flag", value: "value" })).toBe(expected)
+  })
+})
+
+describe("run-scoped marker derivation", () => {
+  const runId = "0f3c9a7d"
+
+  test("accepts a path-valued marker that carries the run id", () => {
+    // The measured WezTerm recipe: the marker value is a run-scoped config path, not a bare token.
+    expect(
+      runScopedMarker({
+        appName: "WezTerm",
+        runId,
+        flag: "--config-file",
+        value: `/tmp/terminfo-${runId}/wezterm.lua`,
+      }),
+    ).toEqual({ flag: "--config-file", value: `/tmp/terminfo-${runId}/wezterm.lua` })
+  })
+
+  test("accepts the one-token form a user-data-dir recipe uses", () => {
+    expect(
+      runScopedMarker({ appName: "VS Code", runId, flag: "--user-data-dir", value: `/tmp/terminfo-${runId}` }),
+    ).toEqual({ flag: "--user-data-dir", value: `/tmp/terminfo-${runId}` })
+  })
+
+  test.each([
+    ["a value without the run id", "--config-file", "/tmp/wezterm.lua"],
+    ["a value containing whitespace", "--config-file", `/tmp/terminfo-${runId} dir/wezterm.lua`],
+    ["an empty value", "--config-file", ""],
+    ["an empty flag", "", `/tmp/terminfo-${runId}`],
+    ["a flag containing whitespace", "--config file", `/tmp/terminfo-${runId}`],
+  ])("refuses %s", (_name, flag, value) => {
+    expect(() => runScopedMarker({ appName: "WezTerm", runId, flag, value })).toThrow(/cli-process marker/)
+  })
+})
+
+describe("recorded owner TTY", () => {
+  test("normalizes a device path", () => {
+    expect(recordedOwnerTty("/dev/ttys005\n")).toBe("/dev/ttys005")
+  })
+
+  test("accepts the bare device name a shell prints", () => {
+    expect(recordedOwnerTty("ttys005")).toBe("/dev/ttys005")
+  })
+
+  test('refuses the literal "not a tty" by name instead of fabricating /dev/not a tty', () => {
+    expect(() => recordedOwnerTty("not a tty")).toThrow(/"not a tty"/)
+  })
+
+  test("refuses an empty record", () => {
+    expect(() => recordedOwnerTty("  \n")).toThrow(/recorded no TTY/)
   })
 })

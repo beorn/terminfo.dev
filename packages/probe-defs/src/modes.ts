@@ -1,4 +1,12 @@
-import type { ObservationFrame, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type {
+  CaptureCells,
+  CaptureRectangle,
+  ObservationFrame,
+  ProbeDefinition,
+  ProbeResult,
+  TermContext,
+  TermlessContext,
+} from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
@@ -358,8 +366,26 @@ const DECSSCLS_JUMP = "\x1b[9 p"
 const DECSSCLS_SLOW = "\x1b[0 p"
 const DECSSCLS_SETTLE_MS = 300
 const DECSSCLS_LINES_PER_SECOND = 9
-/** Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry. */
-const DECSSCLS_OVERFLOW_ROWS = 8
+/**
+ * Rows the burst must overrun the measured screen by, so scrolling is forced at any geometry, and
+ * enough of the throttled window survives the capture latency for the timing bound to be decisive.
+ */
+const DECSSCLS_OVERFLOW_ROWS = 16
+/**
+ * Slack under the throttled window. At 9 lines per second one line takes 111 ms, so 150 ms is more
+ * than a full line: a terminal that honours the rate moves at least one line between the first and
+ * second target frame, while a capture that returns a few milliseconds either side of the bound
+ * cannot flip the verdict on its own.
+ */
+const DECSSCLS_TIMING_MARGIN_MS = 150
+/**
+ * DECSCLM smooth scrolling, the mode DECSSCLS's documented rate applies to. Both phases set it, and
+ * the probe reads DECSCLM before it starts (DECRQM 4) so the finally can put back exactly what it
+ * found. No run-level reset exists between probes, so a probe that leaves smooth scrolling on would
+ * change the timing of every later row that never asked for it.
+ */
+const DECSSCLM_SMOOTH = "\x1b[?4h"
+const DECSSCLM_JUMP = "\x1b[?4l"
 
 /** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
 function decssclsBurst(rows: number): { text: string; lines: number } {
@@ -367,9 +393,24 @@ function decssclsBurst(rows: number): { text: string; lines: number } {
   return { text: Array.from({ length: lines }, (_, index) => `line ${index + 1}`).join("\r\n") + "\r\n", lines }
 }
 
-/** Whole-screen digest when the frame carries one, else the frame ref: the comparison the capture returned. */
-function decssclsFrameDigest(frame: ObservationFrame): string {
-  return frameDigests(frame).whole ?? frame.ref
+/**
+ * The cell region a phase compares: the top rows of the text area, above the row the burst leaves
+ * the cursor on, so no cursor repaint reaches it and scrolling has to move text through it.
+ */
+function decssclsWitness(rows: number, cols: number): CaptureCells {
+  return { top: 1, left: 1, bottom: rows - 1, right: cols }
+}
+
+interface DecssclsPair {
+  /** True when the two frames were cropped from the same rectangle, so their digests compare. */
+  sameRectangle: boolean
+  /** The region digest changed between the pair: content moved through the witness region. */
+  changed: boolean
+  /** The two frames' region digests, in capture order, so a decided verdict can cite them. */
+  digests: readonly [string, string]
+  firstElapsedMs: number
+  screenshotRef: string
+  rectangles: readonly [CaptureRectangle, CaptureRectangle]
 }
 
 /**
@@ -379,19 +420,21 @@ function decssclsFrameDigest(frame: ObservationFrame): string {
  * settle delay. The burst overruns the MEASURED row count, so every context has to scroll; that
  * alone does not attribute a frame difference to scrolling.
  *
- * The frames are RETAINED, NOT ASSERTED. The normal capture route returns an opaque encoded-frame
- * ref rather than a raw whole-screen digest, and a repaint (cursor blink, window damage) during the
- * target pair can change that frame without any scrolling. Until an existing qualified observable
- * separates scroll movement from repaint, every result here is inconclusive by name; the control
- * timing and the first-frame elapsed time are recorded to qualify a future decision, never to
- * decide this one.
+ * The comparison is raw-pixel region digests of ONE cells rectangle, never the encoded frame ref:
+ * a repaint cannot move text through a crop that excludes the cursor row, so a changed region means
+ * content moved. A target pair that changed while its jump control stayed identical is `supported`;
+ * an identical pair whose first frame landed inside the throttled window is `unsupported`, because
+ * a terminal honouring the rate would still have been scrolling. The pair grades nothing when the
+ * two frames were cropped from different rectangles, when the jump control itself moved, or when
+ * the first target frame landed after the window could have finished (`inconclusive`, named).
  */
 async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const captureCallback = ctx.capture
   if (!captureCallback) {
-    return notTestedResult("DECSSCLS needs rendered frames; this context exposes no capture callback", {
-      capture: false,
-    })
+    return notTestedResult(
+      "DECSSCLS needs rendered frames; this context exposes no pixel capture callback (a text-only arm keeps its buffer, not its viewport)",
+      { capture: false },
+    )
   }
   const frames: ObservationFrame[] = []
   const rows = ctx.rows
@@ -400,36 +443,92 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       rows,
     })
   }
-  const burst = decssclsBurst(rows)
-  const throttledDurationMs = Math.ceil((burst.lines / DECSSCLS_LINES_PER_SECOND) * 1000)
-  const capture = async (role: ObservationFrame["role"], label: string): Promise<ObservationFrame> => {
-    const frame = await captureCallback({ role, label })
-    frames.push(frame)
-    return frame
+  if (rows < 2) {
+    return notTestedResult(
+      "DECSSCLS needs at least two rows: its witness sits ABOVE the cursor row, and a one-row screen has no row above it",
+      { rows },
+    )
   }
-  const phase = async (
+  const cols = ctx.cols
+  const geometry = ctx.captureGeometry?.geometry
+  if (!Number.isSafeInteger(cols) || cols < 1 || geometry === undefined) {
+    const refusal = ctx.captureGeometryRefusal
+    return notTestedResult(
+      refusal === undefined
+        ? "DECSSCLS needs a measured pixel geometry to digest a cell region"
+        : `DECSSCLS needs a measured pixel geometry to digest a cell region; this run refused capture geometry: ${refusal}`,
+      {
+        rows,
+        cols,
+        geometry: geometry !== undefined,
+        ...(refusal !== undefined && { captureGeometryRefusal: refusal }),
+      },
+    )
+  }
+  const priorMode = await ctx.queryMode(4)
+  const restoreMode = priorMode === "set" ? DECSSCLM_SMOOTH : DECSSCLM_JUMP
+  const restoredDecsclm =
+    priorMode === "set"
+      ? "smooth (CSI ?4h), as read before the probe"
+      : priorMode === "reset"
+        ? "jump (CSI ?4l), as read before the probe"
+        : "jump (CSI ?4l); prior DECSCLM unknown, restored reset"
+  const burst = decssclsBurst(rows)
+  // The clear and home fill the first `rows` lines without scrolling, so only the rest line-feeds
+  // scroll. The window counts those scrolls, not the burst length.
+  const scrolledLines = Math.max(1, burst.lines - rows + 1)
+  const throttledDurationMs = Math.ceil((scrolledLines / DECSSCLS_LINES_PER_SECOND) * 1000)
+  const witness = decssclsWitness(rows, cols)
+  const capture = async (
     role: ObservationFrame["role"],
-    setting: string,
     label: string,
-  ): Promise<{ changed: boolean; firstElapsedMs: number; screenshotRef: string }> => {
-    const startedAt = Date.now()
+  ): Promise<{ cells: string; rectangle: CaptureRectangle; ref: string }> => {
+    const frame = await captureCallback({ role, label, cells: witness, pixelGeometry: geometry })
+    frames.push(frame)
+    if (frame.kind === "text-cells") {
+      throw new Error(
+        `${label}: DECSSCLS reads presentation speed from pixels; the capture adapter returned a text-cells frame, whose buffer can jump while the viewport still scrolls`,
+      )
+    }
+    const digests = frameDigests(frame)
+    if (digests.cells === undefined || digests.whole === undefined || frame.regionRectangle === undefined) {
+      throw new Error(
+        `${label}: the capture adapter returned a pixels frame with no digest for the requested cells (cells ${String(digests.cells)}, whole ${String(digests.whole)}, rectangle ${String(frame.regionRectangle)})`,
+      )
+    }
+    return { cells: digests.cells, rectangle: frame.regionRectangle, ref: frame.ref }
+  }
+  const phase = async (role: ObservationFrame["role"], setting: string, label: string): Promise<DecssclsPair> => {
+    ctx.write(DECSSCLM_SMOOTH)
+    const startedAt = performance.now()
     ctx.write("\x1b[?1049h\x1b[2J\x1b[H" + setting + burst.text)
     const first = await capture(role, `${label} t0`)
-    const firstElapsedMs = Date.now() - startedAt
+    const firstElapsedMs = performance.now() - startedAt
     await new Promise<void>((resolve) => {
       setTimeout(resolve, DECSSCLS_SETTLE_MS)
     })
     const second = await capture(role, `${label} t1`)
+    const sameRectangle =
+      first.rectangle.x === second.rectangle.x &&
+      first.rectangle.y === second.rectangle.y &&
+      first.rectangle.width === second.rectangle.width &&
+      first.rectangle.height === second.rectangle.height
     return {
-      changed: decssclsFrameDigest(first) !== decssclsFrameDigest(second),
+      sameRectangle,
+      changed: first.cells !== second.cells,
+      digests: [first.cells, second.cells],
       firstElapsedMs,
       screenshotRef: second.ref,
+      rectangles: [first.rectangle, second.rectangle],
     }
   }
-  const restored = "CSI 0 SP p (documented default; the prior setting is not queryable)"
+  const restored =
+    "CSI 0 SP p, and DECSCLM restored to the mode read before the probe; the DECSSCLS speed itself is not queryable"
   try {
     const control = await phase("control", DECSSCLS_JUMP, "DECSSCLS jump control")
     const target = await phase("target", DECSSCLS_SLOW, "DECSSCLS 9 lines per second")
+    const timingBoundMs = throttledDurationMs - DECSSCLS_TIMING_MARGIN_MS
+    const insideWindow = target.firstElapsedMs <= timingBoundMs
     const observed = {
       controlChanged: control.changed,
       targetChanged: target.changed,
@@ -437,24 +536,103 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       targetFirstElapsedMs: target.firstElapsedMs,
       settleMs: DECSSCLS_SETTLE_MS,
       lines: burst.lines,
+      scrolledLines,
       rows,
       throttledDurationMs,
+      timingBoundMs,
+      decssclm: {
+        prior: priorMode ?? "none",
+        setForBothPhases: "CSI ?4h",
+        restored: restoredDecsclm,
+      },
+      regionDigests: {
+        control: control.digests,
+        target: target.digests,
+      },
+      rectangles: {
+        control: control.rectangles,
+        target: target.rectangles,
+      },
       restored,
     }
+    const response = JSON.stringify(observed)
+    if (!control.sameRectangle || !target.sameRectangle) {
+      const note =
+        "Frames were cropped from different rectangles, so their digests do not compare; the capture arm must place the same region for both frames"
+      return {
+        pass: false,
+        response,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.screenshotRef,
+          frames,
+          note,
+        },
+      }
+    }
+    if (control.changed) {
+      const note =
+        "The jump control moved between two frames of the same screen: this arm's region digest is not stable across an unchanged screen, so no target pair can be read"
+      return {
+        pass: false,
+        response,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.screenshotRef,
+          frames,
+          note,
+        },
+      }
+    }
+    if (!insideWindow) {
+      const note = `The target's first frame landed after ${Math.round(target.firstElapsedMs)} ms, outside the ${throttledDurationMs} ms throttled window (-${DECSSCLS_TIMING_MARGIN_MS} ms margin), so a terminal that honours the rate could already have finished and the pair cannot grade it`
+      return {
+        pass: false,
+        response,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "pixels",
+          screenshotRef: target.screenshotRef,
+          frames,
+          note,
+        },
+      }
+    }
+    if (target.changed) {
+      const note = `Text moved through the witness region between the two target frames while the jump control stayed identical, and the first target frame landed inside the ${throttledDurationMs} ms window`
+      return {
+        pass: true,
+        response,
+        observation: {
+          outcome: "supported",
+          evidence: "pixels",
+          screenshotRef: target.screenshotRef,
+          frames,
+          note,
+        },
+        assertions: [{ kind: "positive", expected: note, observed: response }],
+      }
+    }
+    const note = `The witness region was identical in both target frames although the first landed ${Math.round(target.firstElapsedMs)} ms in, inside the ${throttledDurationMs} ms window a throttled scroll would still be running in; the terminal scrolled regardless of the rate`
     return {
       pass: false,
-      response: JSON.stringify(observed),
+      response,
       observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
+        outcome: "unsupported",
         evidence: "pixels",
         screenshotRef: target.screenshotRef,
         frames,
-        note: "Frames retained without an assertion: the capture route returns an opaque encoded-frame ref, not a raw whole-screen digest, and a repaint during the target pair changes it without proving scroll movement",
+        note,
       },
+      assertions: [{ kind: "negative", expected: note, observed: response }],
     }
   } finally {
-    ctx.write(DECSSCLS_SLOW + "\x1b[?1049l\x1b[0m")
+    ctx.write(DECSSCLS_SLOW + restoreMode + "\x1b[?1049l\x1b[0m")
   }
 }
 

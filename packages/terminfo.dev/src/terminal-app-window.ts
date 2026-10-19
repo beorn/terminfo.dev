@@ -71,6 +71,52 @@ export function tty(value: string): string {
   return `/dev/${normalized}`
 }
 
+/** The marker a CLI-launched app must carry into its live owner's argv, derived from the run and refused
+ * by name BEFORE the launch if it could never be read back. argv is recovered from `ps` by splitting on
+ * whitespace, so a value containing a space can never match and would surface later as a misleading "no
+ * live process"; a value without the run id could match a process belonging to another run. */
+export function runScopedMarker(input: { appName: string; runId: string; flag: string; value: string }): ProcessMarker {
+  const where = `${input.appName} cli-process marker`
+  if (input.flag.length === 0) {
+    throw new Error(`${where} flag is empty; refusing a launch whose owner could not be proven`)
+  }
+  if (/\s/.test(input.flag)) {
+    throw new Error(
+      `${where} flag ${JSON.stringify(input.flag)} contains whitespace; argv is recovered by splitting ps output on spaces, so it could never match`,
+    )
+  }
+  if (input.value.length === 0) {
+    throw new Error(`${where} value is empty; refusing a launch whose owner could not be proven`)
+  }
+  if (/\s/.test(input.value)) {
+    throw new Error(
+      `${where} value ${JSON.stringify(input.value)} contains whitespace; argv is recovered by splitting ps output on spaces, so it could never match`,
+    )
+  }
+  if (!input.value.includes(input.runId)) {
+    throw new Error(
+      `${where} value ${JSON.stringify(input.value)} does not contain the run id ${input.runId}; a process from another run could match it`,
+    )
+  }
+  return { flag: input.flag, value: input.value }
+}
+
+/** The TTY a launched window recorded for itself, normalized and refused by name when it is unusable.
+ * A non-pty shell prints the literal "not a tty"; turning that into "/dev/not a tty" would record a TTY
+ * no live window can own. */
+export function recordedOwnerTty(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    throw new Error("cli-process launch recorded no TTY in its launched window; refusing to guess the owner's TTY")
+  }
+  if (trimmed === "not a tty") {
+    throw new Error(
+      'cli-process launch recorded "not a tty": the serve script did not run in a pty, so the window has no controlling TTY; refusing to fabricate one',
+    )
+  }
+  return tty(trimmed)
+}
+
 const positiveInteger = (value: string, name: string): number => {
   const parsed = Number(value)
   if (!/^[0-9]+$/.test(value) || !Number.isSafeInteger(parsed) || parsed < 1) {
@@ -332,7 +378,29 @@ function closeOwnedProcess(owned: OwnedProcess, who: string): void {
     if (!processAlive(owned.ownerPid)) return
     spawnSync("sleep", ["0.1"])
   }
-  throw new Error(`${who} owner close: pid ${owned.ownerPid} did not exit within 5000ms`)
+  // SIGTERM is a request, not a guarantee: kitty was measured surviving it for the whole window and
+  // exiting only on SIGKILL (run a9710c8a3f4e6abcfd53da1e147d9b4b, 2026-10-19). The pid was verified
+  // before SIGTERM, but it may have exited and been REUSED during those 5s, so both facts are checked
+  // again before escalating. A reused pid is never killed.
+  const escalatedExecutable = processExecutable(owned.ownerPid)
+  if (escalatedExecutable === null) return
+  if (escalatedExecutable !== realpathSync(owned.executablePath)) {
+    throw new Error(
+      `${who} owner close: pid ${owned.ownerPid} runs ${escalatedExecutable}, not the launched ${owned.executablePath}; not escalating to SIGKILL`,
+    )
+  }
+  const escalatedArgv = processCommand(owned.ownerPid)?.split(/\s+/) ?? []
+  if (!argvCarriesMarker(escalatedArgv, owned.marker)) {
+    throw new Error(
+      `${who} owner close: pid ${owned.ownerPid} does not carry the launched marker ${markerText(owned.marker)}; not escalating to SIGKILL`,
+    )
+  }
+  process.kill(owned.ownerPid, "SIGKILL")
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (!processAlive(owned.ownerPid)) return
+    spawnSync("sleep", ["0.1"])
+  }
+  throw new Error(`${who} owner close: pid ${owned.ownerPid} survived SIGTERM (5000ms) and SIGKILL (5000ms)`)
 }
 
 /** Refresh the owner's window assertion before handing the worker a claim. */

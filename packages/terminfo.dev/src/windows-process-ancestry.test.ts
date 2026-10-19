@@ -179,7 +179,7 @@ describe("windowsProcessAncestry", () => {
 })
 
 describe("hostedWindowsAppFromExecutablePath", () => {
-  it("maps only WindowsTerminal.exe and alacritty.exe and refuses wezterm-gui.exe or unknown binaries", () => {
+  it("maps the three hosted app executables and refuses unknown binaries", () => {
     expect(
       hostedWindowsAppFromExecutablePath(
         "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\windows-terminal\\WindowsTerminal.exe",
@@ -192,9 +192,10 @@ describe("hostedWindowsAppFromExecutablePath", () => {
       id: "alacritty",
       comm: "alacritty.exe",
     })
-    expect(() => hostedWindowsAppFromExecutablePath("C:\\Program Files\\WezTerm\\wezterm-gui.exe")).toThrow(
-      /Hosted Windows receipt executable is not one of WindowsTerminal\.exe, alacritty\.exe/,
-    )
+    expect(hostedWindowsAppFromExecutablePath("C:\\Program Files\\WezTerm\\wezterm-gui.exe")).toEqual({
+      id: "wezterm",
+      comm: "wezterm-gui.exe",
+    })
     expect(() => hostedWindowsAppFromExecutablePath("C:\\Windows\\System32\\cmd.exe")).toThrow(
       /Hosted Windows receipt executable is not one of WindowsTerminal\.exe, alacritty\.exe/,
     )
@@ -221,10 +222,14 @@ describe("requireHostedWindowsAppAncestor", () => {
     )
   })
 
-  it("refuses a competing hosted Windows terminal on the chain when expecting alacritty.exe", () => {
+  it("refuses a competing hosted Windows terminal on the chain", () => {
     const chain = windowsProcessAncestry(MEASURED_CHAIN, 8848)
     expect(() => requireHostedWindowsAppAncestor("alacritty.exe", chain)).toThrow(
       /Hosted Windows ancestry reached WindowsTerminal\.exe \(pid 5796\) while the receipt names alacritty\.exe/,
+    )
+    const weztermOuter = chain.map((row) => (row.pid === 5492 ? { ...row, comm: "wezterm-gui.exe" } : row))
+    expect(() => requireHostedWindowsAppAncestor("WindowsTerminal.exe", weztermOuter)).toThrow(
+      /Hosted Windows ancestry reached wezterm-gui\.exe \(pid 5492\) while the receipt names WindowsTerminal\.exe/,
     )
   })
 
