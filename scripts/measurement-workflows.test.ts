@@ -68,7 +68,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
     console: { log: (...args: unknown[]) => writes.set("console", JSON.stringify(args)) },
     Bun: { sleep: async () => {} },
     require: (id: string) => {
-      if (id === "node:fs")
+      if (id === "node:fs") {
         return {
           existsSync: () => true,
           readFileSync: () => "#!/bin/bash\nwait-for-collector-ready\ncollect-on-pty\n",
@@ -77,9 +77,11 @@ test("hosted editor caller writes the TTY command before launch and retains no i
             writes.set(path, content)
           },
         }
-      if (id.endsWith("/daemon-client.ts"))
+      }
+      if (id.endsWith("/daemon-client.ts")) {
         return { createProbeRun: () => run, shellQuote: (value: string) => JSON.stringify(value) }
-      if (id.endsWith("/app.ts"))
+      }
+      if (id.endsWith("/app.ts")) {
         return {
           prepareCliLaunch: () => {
             events.push("prepare")
@@ -94,6 +96,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
             return window
           },
         }
+      }
       throw new Error(`Unexpected workflow dependency: ${id}`)
     },
   })
@@ -122,7 +125,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
     },
     require: (id: string) => {
       if (id === "node:path") return { join, dirname }
-      if (id === "node:fs")
+      if (id === "node:fs") {
         return {
           existsSync: () => true,
           readFileSync: () => JSON.stringify(retained),
@@ -132,13 +135,15 @@ test("hosted editor caller writes the TTY command before launch and retains no i
             events.push("copy")
           },
         }
-      if (id.endsWith("/terminal-app-window.ts"))
+      }
+      if (id.endsWith("/terminal-app-window.ts")) {
         return {
           closeOwnedTerminalWindow: (owned: unknown) => {
             closed.push(owned)
             events.push("close")
           },
         }
+      }
       throw new Error(`Unexpected cleanup dependency: ${id}`)
     },
   })
