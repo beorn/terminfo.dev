@@ -12,6 +12,7 @@ import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
+import { resolveTermlessRoot } from "./termless-root.ts"
 
 const ROOT = resolve(import.meta.dir, "../..")
 // Match the existing Linux full-probe HTTP budget for one engine.
@@ -62,12 +63,7 @@ function trustedSuite() {
 
 /** The same collector runs in a fresh process for each engine: a native abort cannot hide another engine. */
 async function collectOne(name: string, directory: string): Promise<string> {
-  let termlessRoot: string
-  try {
-    termlessRoot = realpathSync(resolve(ROOT, "../termless"))
-  } catch (cause) {
-    throw new Error(`Local headless v2 collection requires the owned Termless checkout beside ${ROOT}`, { cause })
-  }
+  const termlessRoot = resolveTermlessRoot({ root: ROOT })
   const { headlessRuntimeIdentity } = await import("./headless-identity.ts")
   const entry = manifest().backends[name]
   if (!entry || entry.type === "os") throw new Error(`Unknown or OS-only headless backend ${name}`)
