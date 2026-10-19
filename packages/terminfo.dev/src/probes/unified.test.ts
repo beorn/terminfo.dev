@@ -1612,7 +1612,7 @@ it.each(["start", "read", "write"])(
     expect(probes).toHaveLength(2)
     const callbacks = vi.fn()
     const readGeometry = vi.fn(async () => measured(24, 80))
-  const originals = probes.map((probe) => ({ probe, term: probe.term }))
+    const originals = probes.map((probe) => ({ probe, term: probe.term }))
     try {
       probes[0]!.term = async (context) => {
         callbacks()
@@ -1666,8 +1666,8 @@ it.each(["start", "read", "write"])(
       // The catch must stop before the next probe's geometry callback, not only at the final check.
       expect(readGeometry).toHaveBeenCalledTimes(2)
     } finally {
-    originals.forEach(({ probe, term }) => {
-      probe.term = term
+      originals.forEach(({ probe, term }) => {
+        probe.term = term
       })
     }
   },
