@@ -516,7 +516,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const scrolledLines = Math.max(1, burst.lines - rows + 1)
   const throttledDurationMs = Math.ceil((scrolledLines / DECSSCLS_LINES_PER_SECOND) * 1000)
   const witness = decssclsWitness(rows, cols)
-  const markerRow = rows - DECSSCLS_MARKER_LINES_BEFORE_SETTLED
+  const markerRow = rows - (burst.lines - burst.markerLine)
   const markerCells = { top: markerRow, left: 1, bottom: markerRow, right: cols }
   const captureRegion = async (
     role: ObservationFrame["role"],
