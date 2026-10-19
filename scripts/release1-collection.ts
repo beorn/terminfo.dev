@@ -341,7 +341,6 @@ export function ownedAppCommand(
   if (transport.runner === "local") {
     return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
   }
-  if (!transport.stage) throw new Error(`${labelOf(context)}: an ssh owned-app transport requires --owned-app-stage`)
   if (!transport.knownHosts) {
     throw new Error(
       `${labelOf(context)}: an ssh owned-app transport requires --owned-app-known-hosts; trust is never invented`,
@@ -353,8 +352,7 @@ export function ownedAppCommand(
       "scripts/owned-app-remote-run.ts",
       "--transport",
       transport.runner,
-      "--stage",
-      transport.stage,
+      ...(transport.stage === undefined ? [] : ["--stage", transport.stage]),
       "--output",
       output,
       "--source-revision",
@@ -1103,7 +1101,7 @@ function usage(): never {
     "Usage: bun run release1-collection [--plan]\n" +
       "       bun run release1-collection --collect --development --output <private-directory>\n" +
       "       bun run release1-collection --collect --admit --frozen-suite <id> --output <private-directory>\n" +
-      "       [--owned-app-transport ssh:<user>@<host> --owned-app-stage <remote-dir>\n" +
+      "       [--owned-app-transport ssh:<user>@<host> [--owned-app-stage <remote-dir>]\n" +
       "        --owned-app-known-hosts <path> [--owned-app-remove-stage]]\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
       "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
@@ -1117,6 +1115,7 @@ function usage(): never {
       "           The host, stage and known-hosts file are environment configuration named here, never\n" +
       "           product content; the host's own authority is unchanged by the transport.\n" +
       "  --owned-app-stage  the persistent driver-owned remote subtree a staged run is checked out into.\n" +
+      "                     Omitted, the driver uses <remote-home>/.cache/terminfo.dev/owned-app-stage.\n" +
       "  --owned-app-known-hosts  the environment-owned known-hosts file host trust is pinned against.\n" +
       "  --owned-app-remove-stage  remove the remote stage after the run; the default keeps it.\n" +
       "  --admit  admit produced runs through scripts/admit-run.ts, then report admitted coverage\n" +
@@ -1172,9 +1171,6 @@ if (import.meta.main) {
     if (plan || admit === development || !outputDirectory || (development && frozenSuite) || runs.length) usage()
     try {
       if (admit && !frozenSuite) throw new Error("--collect --admit requires --frozen-suite <declared-id>")
-      if (ownedAppRunner !== "local" && !ownedAppStage) {
-        throw new Error("--owned-app-transport ssh requires --owned-app-stage")
-      }
       if (ownedAppRunner === "local" && (ownedAppStage || ownedAppRemoveStage || ownedAppKnownHosts)) {
         throw new Error(
           "--owned-app-stage/--owned-app-known-hosts/--owned-app-remove-stage require --owned-app-transport ssh:<user>@<host>",
