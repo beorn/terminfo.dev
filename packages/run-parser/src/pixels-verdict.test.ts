@@ -206,6 +206,28 @@ function callbackFixture(id: string) {
       requests.push(request)
       const { role, label } = request
       captureIndex++
+      if (id === "modes.decsscls") {
+        // Reference/control bands match; the target band arrives between its two captures.
+        const band = request.cells !== undefined && request.cells.top === request.cells.bottom
+        const region = band
+          ? role === "target" && label.endsWith("t0 band")
+            ? "absent-band"
+            : "marker-band"
+          : role === "control"
+            ? "control-witness"
+            : `target-witness-${captureIndex}`
+        return {
+          ...frame(
+            role,
+            label,
+            captureIndex,
+            digest(`png-${captureIndex}`),
+            digest(region),
+            digest(`whole-${captureIndex}`),
+          ),
+          regionRectangle: { x: 16, y: 16, width: 640, height: band ? 16 : 368 },
+        }
+      }
       return {
         ...frame(
           role,
