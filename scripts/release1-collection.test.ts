@@ -291,7 +291,7 @@ it.each([
         const artifacts = args[args.indexOf("--dir") + 1]
         if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
         for (const id of mac
-          ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]
+          ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode"]
           : ["windows-terminal", "alacritty"]) {
           const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
           mkdirSync(folder, { recursive: true })
@@ -473,7 +473,7 @@ it.each([
         (row) =>
           row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
       )
-      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 8 : 5)
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 10 : 7)
       expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
         inputChange === "blocked-hosted" ? 0 : 1,
@@ -487,7 +487,7 @@ it.each([
         expect.anything(),
       )
       const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-      expect(hosted).toHaveLength(os === "macos" ? 5 : 3)
+      expect(hosted).toHaveLength(os === "macos" ? 7 : 3)
       if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -585,7 +585,7 @@ describe("release 1 collection census", () => {
   })
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
-    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty/wezterm on macos and
+    // The workflow's matrix includes both editors alongside the existing five macOS apps and
     // windows-terminal/alacritty/wezterm on windows.
     // All remaining unresolved routes stay recorded as expected route work. kitty/macos is one of
     // them, with its own measured reason: the hosted runner has no usable OpenGL, so kitty opens no
@@ -598,9 +598,9 @@ describe("release 1 collection census", () => {
     expect(kitty?.sourceRun).toBe("39302236007")
     expect(kitty?.uncollectable).toMatch(/not measurable on the hosted runner.*39302236007/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(5)
-    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(4)
-    for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]) {
+    expect(missing).toHaveLength(3)
+    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(2)
+    for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
     for (const id of ["windows-terminal", "alacritty", "wezterm"]) {

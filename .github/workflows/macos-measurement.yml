@@ -30,6 +30,10 @@ jobs:
             bundle: /Applications/Alacritty.app
           - id: wezterm
             bundle: /Applications/WezTerm.app
+          - id: cursor
+            bundle: /Applications/Cursor.app
+          - id: com.microsoft.VSCode
+            bundle: /Applications/Visual Studio Code.app
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -112,6 +116,40 @@ jobs:
               ;;
             ghostty) brew install --cask ghostty ;;
             wezterm) brew install --cask wezterm ;;
+            cursor|com.microsoft.VSCode)
+              bun --eval "$(cat <<'HOSTED_EDITOR_INSTALL'
+          const { createHash } = require("node:crypto");
+          const { writeFileSync } = require("node:fs");
+          const app = process.env.APP_ID;
+          const artifacts = {
+            cursor: {
+              arm64: ["https://downloads.cursor.com/production/5d4df965746c5d09740842fc0f1331ba1c15783d/darwin/arm64/Cursor-darwin-arm64.zip", "03c6fb01e2200b17d2bf4259c7b66c08c9d505760d2a331e26ebfb3193bbf763"],
+              x64: ["https://downloads.cursor.com/production/5d4df965746c5d09740842fc0f1331ba1c15783d/darwin/x64/Cursor-darwin-x64.zip", "3e867c8661113c415949da73d0bc0ed00f85f5b1863cab0c3d381c17d6aec59a"]
+            },
+            "com.microsoft.VSCode": {
+              arm64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-darwin-arm64.zip", "099d3514fda308822a150d65ea36d4c4bfc565ee1b7fbc5a3fff97700f7af408"],
+              x64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-darwin.zip", "cbe7bfbfe576f4315ffd5d4ac67c8dd550972659b7f1785999ed96505f25a31a"]
+            }
+          };
+          const selected = artifacts[app]?.[process.arch];
+          if (!selected) throw new Error("No reviewed editor installer for " + app + "/" + process.arch);
+          const [url, expectedSha256] = selected;
+          const installer = process.env.RUNNER_TEMP + "/editor-installer.zip";
+          const out = process.env.RUNNER_TEMP + "/measurement-artifacts";
+          async function run(argv) {
+            const result = Bun.spawn(argv, { stdout: "inherit", stderr: "inherit" });
+            const status = await result.exited;
+            if (status !== 0) throw new Error(argv[0] + " exited " + status);
+          }
+          await run(["curl", "--location", "--fail", "--silent", "--show-error", "--connect-timeout", "15", "--max-time", "180", url, "--output", installer]);
+          const actualSha256 = createHash("sha256").update(new Uint8Array(await Bun.file(installer).arrayBuffer())).digest("hex");
+          writeFileSync(out + "/editor-installer.json", JSON.stringify({ app, arch: process.arch, url, expectedSha256, actualSha256 }));
+          if (actualSha256 !== expectedSha256) throw new Error("Editor installer checksum mismatch: expected " + expectedSha256 + ", actual " + actualSha256);
+          await run(["ditto", "-x", "-k", installer, "/Applications"]);
+          HOSTED_EDITOR_INSTALL
+          )"
+              cp "$RUNNER_TEMP/editor-installer.zip" "$RUNNER_TEMP/measurement-artifacts/editor-installer.zip"
+              ;;
             alacritty)
               curl --location --fail --silent --show-error \
                 https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
@@ -154,6 +192,10 @@ jobs:
             version_pattern='^alacritty[[:blank:]]+([^[:space:]]+)([[:blank:]]+\([^[:space:]]+\))?$'
             [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
             test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
+            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
+          elif [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ]; then
+            bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
+            test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
           fi
           cat > "$COMMAND_PATH" <<SCRIPT
@@ -258,6 +300,27 @@ jobs:
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
               ;;
+            cursor|com.microsoft.VSCode)
+              EDITOR_COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_EDITOR_START'
+          const { existsSync, readFileSync, writeFileSync } = require("node:fs");
+          const { createProbeRun, shellQuote } = require(process.cwd() + "/packages/terminfo.dev/src/daemon-client.ts");
+          const { prepareCliLaunch, launchPreparedCli, ownedCliProcessWindow } = require(process.cwd() + "/packages/admin/src/app.ts");
+          const run = createProbeRun();
+          const retained = process.env.RUNNER_TEMP + "/measurement-artifacts/editor-launch.json";
+          // Retain only named launch evidence. The prepared merged environment stays in memory.
+          writeFileSync(retained, JSON.stringify({ appId: process.env.APP_ID, run }), { mode: 0o600 });
+          const prepared = prepareCliLaunch(process.env.APP_ID, run);
+          const command = "#!/bin/bash\nprintf \"%s\\n\" \"$(tty)\" > " + shellQuote(prepared.identityPath) + "\n" + readFileSync(process.env.EDITOR_COMMAND_PATH, "utf8");
+          writeFileSync(run.scriptPath, command, { flag: "wx", mode: 0o700 });
+          console.log(JSON.stringify({ spawnPath: prepared.spawnPath, args: prepared.args, recipeEnvKeys: prepared.recipeEnvKeys }));
+          const launch = launchPreparedCli(prepared);
+          for (let attempt = 0; !existsSync(prepared.identityPath) && attempt < 150; attempt++) await Bun.sleep(1000);
+          const terminalWindow = ownedCliProcessWindow(launch);
+          if (!terminalWindow) throw new Error("Hosted editor launch has no resolved owned GUI");
+          writeFileSync(retained, JSON.stringify({ appId: process.env.APP_ID, run, terminalWindow }), { mode: 0o600 });
+          HOSTED_EDITOR_START
+          )" > "$OUT/launcher.log" 2>&1
+              ;;
             *) echo "Unknown Mac collection app: $APP_ID" >&2; exit 1 ;;
           esac
           sleep 3
@@ -286,6 +349,39 @@ jobs:
           echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
           if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
           exit 1
+
+      - name: Retain editor launch files and close only its owned GUI
+        if: always() && (matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')
+        run: |
+          bun --eval "$(cat <<'HOSTED_EDITOR_CLOSE'
+          const { existsSync, readFileSync, mkdirSync, copyFileSync } = require("node:fs");
+          const { join, dirname } = require("node:path");
+          const { closeOwnedTerminalWindow } = require(process.cwd() + "/packages/terminfo.dev/src/terminal-app-window.ts");
+          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
+          const installer = join(process.env.RUNNER_TEMP, "editor-installer.zip");
+          if (existsSync(installer)) copyFileSync(installer, join(out, "editor-installer.zip"));
+          const record = join(out, "editor-launch.json");
+          if (!existsSync(record)) { console.log("No editor launch was created; nothing owned to close"); }
+          else {
+            const { appId, run, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
+            try {
+              const prefix = appId === "cursor" ? "cursor" : "vscode";
+              const selected = new Set(["serve.sh", "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs"]);
+              for await (const path of new Bun.Glob("**/*.log").scan({ cwd: run.directory })) selected.add(path);
+              for (const path of selected) {
+                const source = join(run.directory, path);
+                if (!existsSync(source)) { console.error("Editor retained launch file missing: " + source); continue; }
+                const target = join(out, "editor-launch-files", path);
+                mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+                copyFileSync(source, target);
+              }
+            } finally {
+              if (terminalWindow) closeOwnedTerminalWindow(terminalWindow);
+              else console.error("Editor GUI ownership was not resolved; no process was signalled");
+            }
+          }
+          HOSTED_EDITOR_CLOSE
+          )"
 
       - name: Preserve iTerm launch failure evidence
         if: failure() && steps.collect.outputs.iterm_failure == 'true'
