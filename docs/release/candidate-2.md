@@ -148,7 +148,7 @@ function remainderLabel(row) {
 
 ## Rows in scope that are never scored in apps {#library-only}
 
-<p><strong>{{ data.libraryOnly.length }}</strong> rows in scope are decided by the parser surface only, never by an app run. They are left out of the app-observable fractions above, and a group that counts them includes them in its ruled acceptance basis (scrollback divides over 9, reset over 5). Whether the capability is <em>included</em> is its group's state, shown in the State cell:</p>
+<p><strong>{{ data.libraryOnly.length }}</strong> rows in scope are decided by the parser surface only, never by an app run. They are left out of the app-observable fractions above, and a group that counts them includes them in its ruled acceptance basis (scrollback divides over 9); a group whose ruling keeps them outside does not (Reset divides over 4, because reset.method is decided by the parser alone). Whether the capability is <em>included</em> is its group's state, shown in the State cell:</p>
 
 <ul>
   <li v-for="row in data.libraryOnly" :key="row.id"><code>{{ row.id }}</code> &mdash; {{ row.name }}</li>

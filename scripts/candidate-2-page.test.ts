@@ -470,6 +470,12 @@ describe("candidate-2 page: wiring", () => {
         expect(row.denominator, `${group.key} ${row.context}`).toBe(expected)
       }
     }
+    // The prose beside the basis must name the same numbers the rows carry: a page that still said
+    // "reset over 5" would tell a reader Reset counts its library-only row, which c67af756 forbids.
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain("scrollback divides over 9")
+    expect(page).toContain("Reset divides over 4")
+    expect(page).not.toContain("reset over 5")
   })
 
   it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
