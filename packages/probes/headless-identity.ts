@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
-import { readFileSync, readdirSync, realpathSync } from "node:fs"
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { dirname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
@@ -250,6 +250,31 @@ function sidecarIdentity(
   }
 }
 
+/**
+ * Source proof for a Kitty derivation's env.src. A file is a source archive and keeps its
+ * flat sha256; a directory is an unpacked source tree (nixpkgs kitty) and is proven by the
+ * NAR hash of that exact store path. Anything else fails loud, never a guessed digest.
+ */
+export function kittySourceProof(
+  sourcePath: string,
+): { kind: "archive"; sha256: string } | { kind: "directory"; narHash: string } {
+  let stat
+  try {
+    stat = statSync(sourcePath)
+  } catch {
+    throw new Error(`Kitty source path is neither an archive file nor a source directory: ${sourcePath}`)
+  }
+  if (stat.isFile()) return { kind: "archive", sha256: sha256(readFileSync(sourcePath)) }
+  if (stat.isDirectory()) {
+    const narHash = execFileSync("nix", ["hash", "path", sourcePath], { encoding: "utf8" }).trim()
+    if (!/^sha256-[A-Za-z0-9+/]{43}=$/.test(narHash)) {
+      throw new Error(`No NAR hash for Kitty source directory ${sourcePath}: ${narHash}`)
+    }
+    return { kind: "directory", narHash }
+  }
+  throw new Error(`Kitty source path is neither an archive file nor a source directory: ${sourcePath}`)
+}
+
 function kittyIdentity(adapterVersion: string, termlessRevision: string): HeadlessRuntimeIdentity {
   if (process.platform !== "linux" || process.arch !== "x64") {
     throw new Error("Pinned Kitty headless identity is available only on x86_64 Linux")
@@ -283,11 +308,15 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
   if (typeof sourcePath !== "string" || !sourcePath.startsWith("/nix/store/")) {
     throw new Error(`No source archive in Kitty Nix derivation ${storeInfo.deriver}`)
   }
-  const sourceArchiveSha256 = sha256(readFileSync(sourcePath))
+  const sourceProof = kittySourceProof(sourcePath)
+  const sourceTag =
+    sourceProof.kind === "archive"
+      ? `source archive ${sourcePath} sha256 ${sourceProof.sha256}`
+      : `source directory ${sourcePath} narHash ${sourceProof.narHash}`
   const binarySha256 = sha256(readFileSync(path))
   const lockSha256 = sha256(readFileSync(join(CODE_ROOT, "flake.lock")))
   const buildHash = sha256(
-    JSON.stringify({ storePath, narHash: storeInfo.narHash, sourceArchiveSha256, binarySha256, lockSha256 }),
+    JSON.stringify({ storePath, narHash: storeInfo.narHash, sourceProof, binarySha256, lockSha256 }),
   )
   return {
     kind: "native",
@@ -299,7 +328,7 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
       sha256: binarySha256,
       sourceCommit: termlessRevision,
       buildHash,
-      toolchain: `Nix ${storePath}; narHash ${storeInfo.narHash}; source ${sourcePath} sha256 ${sourceArchiveSha256}; kitty +runpy`,
+      toolchain: `Nix ${storePath}; narHash ${storeInfo.narHash}; ${sourceTag}; kitty +runpy`,
       lockSha256,
     },
   }
