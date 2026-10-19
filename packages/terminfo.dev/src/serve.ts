@@ -37,7 +37,7 @@ import {
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
-import { withRawMode, withTTYOperation, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
+import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture } from "./darwin-capture.ts"
@@ -441,14 +441,23 @@ export async function collectProbeRun(
     const artifactDirectory = captureDirectory
     mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
     capture = async (checkpoint) => {
-      // A queued clear is not yet visible to a synchronous console read. Wait for this selected
-      // stream's earlier writes; completion is not a paint witness or permission to weaken a frame.
-      await new Promise<void>((resolve, reject) => {
-        out.write("", (error) => {
-          if (error) reject(error)
-          else resolve()
+      if (process.platform === "win32") {
+        // The selected stream's completion can be synchronous while console cells remain stale.
+        // The existing operation lease puts this query after earlier writes on that same stream.
+        const outcome = await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 700)
+        if (!outcome.match) {
+          throw new Error(
+            `${checkpoint.label}: console read refused: cursor query ${outcome.reason}, ${Buffer.from(outcome.rawBase64, "base64").length} bytes`,
+          )
+        }
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          out.write("", (error) => {
+            if (error) reject(error)
+            else resolve()
+          })
         })
-      })
+      }
       const read = await readCells()
       const result = textCellsFrame(checkpoint, read, Date.now())
       // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
