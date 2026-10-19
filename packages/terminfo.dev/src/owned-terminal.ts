@@ -254,7 +254,7 @@ type WindowsBinding = {
   consoleIdentity: string
 }
 
-export type HostedDarwinAppId = "terminal-app" | "iterm2" | "ghostty" | "alacritty" | "wezterm"
+export type HostedDarwinAppId = "terminal-app" | "iterm2" | "ghostty" | "alacritty" | "wezterm" | "kitty"
 export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
 export type AncestryRow = { pid: number; ppid: number; comm: string }
 
@@ -266,8 +266,9 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   Alacritty: { id: "alacritty", comm: "alacritty" },
   // WezTerm.app's CFBundleExecutable is wezterm-gui; the `wezterm` CLI only starts it.
   "wezterm-gui": { id: "wezterm", comm: "wezterm-gui" },
+  kitty: { id: "kitty", comm: "kitty" },
 }
-const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty", "wezterm-gui"])
+const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty", "wezterm-gui", "kitty"])
 
 /** macOS `ps -o comm=` prints a full executable path; match and stop on the last segment. */
 function hostedDarwinCommBase(comm: string): string {
@@ -282,7 +283,7 @@ export function hostedDarwinAppFromExecutablePath(executablePath: string): Hoste
   const app = HOSTED_DARWIN_EXECUTABLE[base]
   if (!app) {
     throw new Error(
-      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm: ${JSON.stringify(executablePath)}`,
+      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm, kitty: ${JSON.stringify(executablePath)}`,
     )
   }
   return app

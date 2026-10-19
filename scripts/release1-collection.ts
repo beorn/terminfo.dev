@@ -184,11 +184,12 @@ const engineRow = (id: string): CollectionContext => ({
 })
 
 /**
- * macOS apps the admin launches and owns on this host. kitty is the first one: the launch
- * proves ownership through kitty's own exported identity plus live TTY and process descent, so the
- * pass runs the same admin entry point the local development route uses and classifies its output.
+ * macOS apps the admin launches and owns on this host instead of collecting through the hosted
+ * workflow. Empty since @cto ruled kitty onto the hosted matrix (2026-10-19): Option 2 keeps one
+ * macOS pixel path, and Option 1 returns only if a codimac-only app appears that the hosted runner
+ * cannot run. The route and its command stay live for that case.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set(["kitty"])
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>()
 
 const localOwnedAppRow = (id: string): CollectionContext => ({
   id,

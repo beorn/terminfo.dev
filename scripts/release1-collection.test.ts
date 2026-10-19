@@ -291,7 +291,7 @@ it.each([
         const artifacts = args[args.indexOf("--dir") + 1]
         if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
         for (const id of mac
-          ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]
+          ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "kitty"]
           : ["windows-terminal", "alacritty"]) {
           const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
           mkdirSync(folder, { recursive: true })
@@ -473,7 +473,7 @@ it.each([
         (row) =>
           row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
       )
-      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 8 : 5)
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 9 : 6)
       expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
         inputChange === "blocked-hosted" ? 0 : 1,
@@ -487,7 +487,7 @@ it.each([
         expect.anything(),
       )
       const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-      expect(hosted).toHaveLength(os === "macos" ? 5 : 3)
+      expect(hosted).toHaveLength(os === "macos" ? 6 : 3)
       if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -585,16 +585,16 @@ describe("release 1 collection census", () => {
   })
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
-    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty/wezterm on macos and
+    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty/wezterm/kitty on macos and
     // windows-terminal/alacritty/wezterm on windows.
     // All remaining unresolved routes stay recorded as expected route work. kitty/macos is no longer one of
-    // them: 15323 gives it an owned local launch on the host the pass runs on, and the run is still
-    // parsed and classified by this pass rather than by a second dispatcher.
+    // them: @cto ruled it onto the hosted macOS matrix on 2026-10-19 (Option 2), so the pass downloads
+    // its artifact like the other five and parses it the same way.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
-    expect(kitty?.route).toBe("local-owned-app")
-    expect(kitty?.command).toMatch(/probe app kitty --output/)
+    expect(kitty?.route).toBe("hosted-workflow")
+    expect(kitty?.command).toMatch(/gh workflow run macos-measurement\.yml/)
     expect(kitty?.uncollectable).toBeNull()
-    expect(kitty?.requires).toMatch(/owned app window launched by the admin/)
+    expect(kitty?.requires).toBeNull()
     const missing = census().filter((entry) => entry.route === null)
     expect(missing).toHaveLength(4)
     expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
@@ -897,9 +897,10 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
       { cwd: root, encoding: "utf8" },
     )
     expect(result.status, result.stderr).toBe(1)
-    // kitty/macos now runs the owned local route, so it fails by name through that route; a row that
-    // still has no route (warp) keeps the required-route-work refusal this test was written for.
-    expect(result.stdout).toMatch(/kitty\/macos: failed.*owned-app collection exited 1/)
+    // kitty/macos now runs the hosted route, so it fails by name through the dispatch this fixture
+    // refuses; a row that still has no route (warp) keeps the required-route-work refusal this test
+    // was written for.
+    expect(result.stdout).toMatch(/kitty\/macos: failed.*hosted source branch exited 1/)
     expect(result.stdout).toMatch(/warp\/macos: failed.*required route work/)
     const passName = readdirSync(join(directory, "output"))[0]!
     const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8")) as Awaited<
@@ -909,7 +910,7 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
       pass.contexts.find(
         (row: { context: { id: string; os: string } }) => row.context.id === "kitty" && row.context.os === "macos",
       ),
-    ).toMatchObject({ status: "failed", error: expect.stringContaining("owned-app collection exited 1") })
+    ).toMatchObject({ status: "failed", error: expect.stringContaining("hosted source branch exited 1") })
     expect(
       pass.contexts.find(
         (row: { context: { id: string; os: string } }) => row.context.id === "warp" && row.context.os === "macos",

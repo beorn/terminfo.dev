@@ -30,6 +30,8 @@ jobs:
             bundle: /Applications/Alacritty.app
           - id: wezterm
             bundle: /Applications/WezTerm.app
+          - id: kitty
+            bundle: /Applications/kitty.app
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -81,6 +83,8 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
           ITERM_DOWNLOAD_URL: https://iterm2.com/downloads/stable/iTerm2-3_6_11.zip
           ITERM_DOWNLOAD_SHA256: 36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7
+          KITTY_DOWNLOAD_URL: https://github.com/kovidgoyal/kitty/releases/download/v0.48.2/kitty-0.48.2.dmg
+          KITTY_DOWNLOAD_SHA256: f804f58ee4b69c76f84eb3281e140748269a63f3f4a816015a8dec2a06d2b195
         run: |
           set -euo pipefail
           brew install imagemagick
@@ -119,6 +123,37 @@ jobs:
               hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
               cp -R /Volumes/Alacritty/Alacritty.app /Applications/
               hdiutil detach /Volumes/Alacritty
+              ;;
+            kitty)
+              # Pinned to one exact release, and the downloaded bytes are checked before they are
+              # installed, the same contract iTerm2's zip carries. The .dmg itself is retained as the
+              # receipt's source artifact, so version and digest are measured from the installed bytes.
+              installer="$RUNNER_TEMP/kitty-0.48.2.dmg"
+              if ! curl --location --fail --silent --show-error \
+                --retry 2 --retry-max-time 120 --connect-timeout 15 --max-time 180 \
+                "$KITTY_DOWNLOAD_URL" --output "$installer"; then
+                echo "Install this job's terminal: kitty download failed; retained digest follows if bytes exist" >&2
+                if [ -f "$installer" ]; then shasum -a 256 "$installer" >&2; else echo "No downloaded archive bytes to hash" >&2; fi
+                exit 1
+              fi
+              checksum="$(shasum -a 256 "$installer")" || { echo "Install this job's terminal: cannot hash the downloaded kitty archive" >&2; exit 1; }
+              actual_sha256="${checksum%% *}"
+              printf "Install this job's terminal: downloaded kitty SHA-256 %s\n" "$actual_sha256"
+              test "$actual_sha256" = "$KITTY_DOWNLOAD_SHA256" || {
+                echo "Install this job's terminal: kitty checksum mismatch (actual $actual_sha256, expected $KITTY_DOWNLOAD_SHA256)" >&2
+                exit 1
+              }
+              hdiutil attach "$installer" -mountpoint /Volumes/kitty
+              cp -R /Volumes/kitty/kitty.app /Applications/
+              hdiutil detach /Volumes/kitty
+              version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")" || {
+                echo "Install this job's terminal: kitty bundle version read failed" >&2
+                exit 1
+              }
+              test "$version" = "0.48.2" || {
+                echo "Install this job's terminal: kitty version $version is not the pinned 0.48.2; renewed qualification required" >&2
+                exit 1
+              }
               ;;
             *) echo "Unknown Mac measurement app: $APP_ID" >&2; exit 1 ;;
           esac
@@ -257,6 +292,12 @@ jobs:
               ;;
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
+              ;;
+            kitty)
+              # --hold keeps the window and its PTY alive after the collector exits, so the capture
+              # adapter can read the same window the collector measured. kitty is the process that
+              # draws the window, which is the ancestry the receipt names.
+              "$APP_BUNDLE/Contents/MacOS/kitty" --hold /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
               ;;
             *) echo "Unknown Mac collection app: $APP_ID" >&2; exit 1 ;;
           esac
