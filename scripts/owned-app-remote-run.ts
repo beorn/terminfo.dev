@@ -92,7 +92,7 @@ const CONTEXT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
 export interface OwnedAppRemoteOptions {
   readonly transport: string
-  readonly stage: string
+  readonly stage?: string
   readonly output: string
   readonly sourceRevision: string
   readonly context: string
@@ -324,7 +324,7 @@ function parseArgs(argv: readonly string[]): Parsed {
   }
   const rest = argv.slice(index)
   const transport = values.transport ?? usage()
-  const rawStage = values.stage ?? usage()
+  const rawStage = values.stage
   const output = values.output ?? usage()
   const sourceRevision = values["source-revision"] ?? usage()
   const context = values.context ?? usage()
@@ -347,8 +347,8 @@ function parseArgs(argv: readonly string[]): Parsed {
       `context ${JSON.stringify(context)} is not a plain identifier (letters, digits, dot, underscore, dash; no separators)`,
     )
   }
-  const stage = rawStage.replace(/\/+$/, "")
-  validateStage(stage)
+  const stage = rawStage?.replace(/\/+$/, "")
+  if (stage !== undefined) validateStage(stage)
   return {
     transport,
     stage,
@@ -378,26 +378,40 @@ function limitOf(raw: string | undefined, fallback: number): number {
 
 /** A stage is a driver-owned directory: absolute, normalized, neither the root nor a path whose
  * deletion would take a parent with it. The remote home check happens once the host answers. */
-function validateStage(stage: string): void {
-  if (!stage.startsWith("/")) fail("invalid stage", `stage ${JSON.stringify(stage)} must be an absolute path`)
-  if (resolve(stage) !== stage) fail("invalid stage", `stage ${JSON.stringify(stage)} is not a normalized path`)
+function validateStage(stage: string, hint = ""): void {
+  if (!stage.startsWith("/")) fail("invalid stage", `stage ${JSON.stringify(stage)} must be an absolute path${hint}`)
+  if (resolve(stage) !== stage) fail("invalid stage", `stage ${JSON.stringify(stage)} is not a normalized path${hint}`)
   const segments = stage.split("/").filter(Boolean)
-  if (segments.length < 2) fail("invalid stage", `stage ${JSON.stringify(stage)} is too close to the root to own`)
+  if (segments.length < 2) {
+    fail("invalid stage", `stage ${JSON.stringify(stage)} is too close to the root to own${hint}`)
+  }
   // A stage travels into rsync's remote operand, so every segment is a plain name: no spaces, no
   // shell metacharacters, no separators beyond the path slashes already split on.
   if (segments.some((segment) => !/^[A-Za-z0-9._-]+$/.test(segment) || segment === ".." || segment === ".")) {
-    fail("invalid stage", `stage ${JSON.stringify(stage)} carries a segment that is not a plain name`)
+    fail("invalid stage", `stage ${JSON.stringify(stage)} carries a segment that is not a plain name${hint}`)
   }
 }
 
 function usage(): never {
   console.error(
-    "Usage: bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host> --stage <remote-dir>\n" +
+    "Usage: bun scripts/owned-app-remote-run.ts --transport ssh:<user>@<host> [--stage <remote-dir>]\n" +
       "         --output <local-output-dir> --source-revision <sha> --context <id>\n" +
       "         --known-hosts <path> [--remove-stage] [--ssh-timeout-ms <ms>]\n" +
-      "         [--rsync-timeout-ms <ms>] -- <owned-app argv starting with bun>",
+      "         [--rsync-timeout-ms <ms>] -- <owned-app argv starting with bun>\n" +
+      "       Without --stage the run uses <remote-home>/.cache/terminfo.dev/owned-app-stage.",
   )
   process.exit(2)
+}
+
+/** The stage a run uses when none is named: a fixed cache directory under the home the host answered. */
+function defaultStage(home: string): string {
+  const stage = `${home.replace(/\/+$/, "")}/.cache/terminfo.dev/owned-app-stage`
+  validateStage(
+    stage,
+    " (defaulted from the remote home; pass --owned-app-stage, or this driver's --stage, to choose one)",
+  )
+  console.error(`owned-app transport: no --stage given; using ${stage} on the remote host`)
+  return stage
 }
 
 /** The one ssh command every transfer uses. The known-hosts file is environment-owned input, named
@@ -605,8 +619,7 @@ function trackedExtract(entry: string, closure: string, recorded?: { repository:
 /** Removal renames the stage aside first, so an interrupted delete never leaves a half-deleted
  * directory at the stage path that the next run would read as a stranger's: the stage path is
  * either whole or gone, and only the aside can be partial. */
-function removeStage(options: Parsed): void {
-  const stage = options.stage
+function removeStage(options: Parsed, stage: string): void {
   sshRun(
     options,
     "stage removal",
@@ -652,9 +665,6 @@ function rsync(
 
 function main(options: Parsed): OwnedAppTransportProof {
   const userAndHost = options.transport.slice(4)
-  const stage = options.stage
-  const source = `${stage}/source`
-  const checkout = `${source}/${STAGED_FROM_BUNDLE}`
 
   // One verbose probe answers reachability, the remote home, and the key ssh verified.
   const reach = sshRun(options, "reachability probe", "host unreachable", `printf '%s\\n%s\\n' "$(hostname)" "$HOME"`, {
@@ -666,9 +676,12 @@ function main(options: Parsed): OwnedAppTransportProof {
   if (home === undefined || !home.startsWith("/")) {
     fail("invalid stage", `${hostname} answered no usable home directory; the stage cannot be checked against it`)
   }
+  const stage = options.stage ?? defaultStage(home)
   if (stage === home || home.startsWith(`${stage}/`)) {
     fail("invalid stage", `stage ${JSON.stringify(stage)} is the remote home or contains it`)
   }
+  const source = `${stage}/source`
+  const checkout = `${source}/${STAGED_FROM_BUNDLE}`
   if (!existsSync(options.knownHosts)) {
     fail("host key mismatch", `no environment-owned known-hosts file at ${options.knownHosts}; trust is never invented`)
   }
@@ -935,7 +948,7 @@ function main(options: Parsed): OwnedAppTransportProof {
 
     if (options.removeStage) {
       owned = false
-      removeStage(options)
+      removeStage(options, stage)
     }
 
     return {
@@ -949,7 +962,7 @@ function main(options: Parsed): OwnedAppTransportProof {
   } catch (error) {
     if (options.removeStage && owned && !isTimeout(error)) {
       try {
-        removeStage(options)
+        removeStage(options, stage)
       } catch (removal) {
         throw new Error(`${String((error as Error).message)}; ${String((removal as Error).message)}`)
       }

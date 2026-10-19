@@ -15,6 +15,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/probes/collect-headless.ts",
   "packages/probes/headless-batch.ts",
   "packages/probes/headless-identity.ts",
+  "packages/probes/termless-root.ts",
   "packages/admin/versions.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",

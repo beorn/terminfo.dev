@@ -240,7 +240,7 @@ function run(
   extraArgs: string[] = [],
   argv: string[] = ["bun", "packages/admin/src/index.ts", "probe", "app", "kitty"],
   context = "kitty",
-  stageArgument = stage,
+  stageArgument: string | null = stage,
 ) {
   const env = {
     ...process.env,
@@ -261,8 +261,7 @@ function run(
       driver,
       "--transport",
       "ssh:fixture@fixture.invalid",
-      "--stage",
-      stageArgument,
+      ...(stageArgument === null ? [] : ["--stage", stageArgument]),
       "--output",
       output,
       "--source-revision",
@@ -890,4 +889,47 @@ describe("owned-app ssh transport", () => {
     }
     expect(lines(sshLog)).toHaveLength(0)
   }, 60_000)
+})
+
+describe("default stage", () => {
+  it("derives the stage under the home the host answers and names it once", () => {
+    const home = join(root, "remote", "home")
+    mkdirSync(home, { recursive: true })
+    const result = run({ SHIM_SSH_HOME: home }, [], undefined, undefined, null)
+    expect(result.status, result.stderr).toBe(0)
+    const defaultStage = join(home, ".cache", "terminfo.dev", "owned-app-stage")
+    const mentions = result.stderr
+      .trim()
+      .split("\n")
+      .filter((line) => line.includes(defaultStage))
+    expect(mentions).toHaveLength(1)
+    const receipt = JSON.parse(readFileSync(join(output, "transport", "transport-receipt.json"), "utf8")) as {
+      stage: unknown
+    }
+    expect(receipt.stage).toEqual({ directory: defaultStage, marker: "owned-app-transport stage v1" })
+    expect(readFileSync(join(defaultStage, ".owned-app-transport-stage"), "utf8").trim()).toBe(
+      "owned-app-transport stage v1",
+    )
+  })
+
+  it("refuses a default stage that exists without the marker and leaves it untouched", () => {
+    const home = join(root, "remote", "home")
+    const defaultStage = join(home, ".cache", "terminfo.dev", "owned-app-stage")
+    mkdirSync(defaultStage, { recursive: true })
+    writeFileSync(join(defaultStage, "stranger.txt"), "not ours\n")
+    const result = run({ SHIM_SSH_HOME: home }, [], undefined, undefined, null)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toMatch(/stage not owned/)
+    expect(readFileSync(join(defaultStage, "stranger.txt"), "utf8")).toBe("not ours\n")
+  })
+
+  it("refuses a home whose path cannot carry a stage, naming the default and the flag", () => {
+    const home = join(root, "remote", "home with space")
+    mkdirSync(home, { recursive: true })
+    const result = run({ SHIM_SSH_HOME: home }, [], undefined, undefined, null)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toMatch(/invalid stage/)
+    expect(result.stderr).toContain("home with space")
+    expect(result.stderr).toMatch(/--owned-app-stage|--stage/)
+  })
 })

@@ -18,13 +18,17 @@ let fixture: ReturnType<typeof identityFixture>
 
 // Standalone CI has no sibling checkouts. Exercise the unchanged loader against real local
 // Git/package resolution and independent file-install bytes, never a fabricated identity receipt.
-function identityFixture() {
+function identityFixture({ termlessSubdir = join("vendor", "termless") }: { termlessSubdir?: string } = {}) {
   const root = mkdtempSync(join(tmpdir(), "headless-identity-"))
-  const termless = join(root, "vendor", "termless")
+  const termless = join(root, termlessSubdir)
   const vterm = join(root, "vendor", "vterm")
   const source = join(root, "vendor", "terminfo.dev", "packages", "probes", "headless-identity.ts")
   mkdirSync(join(root, "vendor", "terminfo.dev", "packages", "probes"), { recursive: true })
   cpSync(fileURLToPath(new URL("./headless-identity.ts", import.meta.url)), source)
+  cpSync(
+    fileURLToPath(new URL("./termless-root.ts", import.meta.url)),
+    join(root, "vendor", "terminfo.dev", "packages", "probes", "termless-root.ts"),
+  )
   const overrides: Record<string, string> = {}
   for (const name of ["vt100", "vt220", "vterm"]) {
     const workspace = join(vterm, "packages", name)
@@ -78,7 +82,7 @@ function runIdentity(name: string, pkg: string) {
       "-e",
       `import { headlessRuntimeIdentity } from ${JSON.stringify(fixture.identityHref)};
        const id = await headlessRuntimeIdentity(${JSON.stringify(name)}, ${JSON.stringify(pkg)}, "js");
-       process.stdout.write(JSON.stringify({ ok: true, integrityKind: id.integrity.kind, engineVersion: id.engineVersion }))`,
+       process.stdout.write(JSON.stringify({ ok: true, integrityKind: id.integrity.kind, engineVersion: id.engineVersion, revision: id.termlessRevision }))`,
     ],
     { encoding: "utf8" },
   )
@@ -161,6 +165,11 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
     const tree = join(tmp, "source")
     mkdirSync(join(tree, "src"), { recursive: true })
     writeFileSync(join(tree, "src", "main.c"), "int main(void);\n")
+    // nix hash writes its sentry cache under $HOME/.cache/nix; give the children their own
+    // home so the run's guard home stays clean (@i/17-test-system/25231).
+    const childHome = join(tmp, "home")
+    mkdirSync(childHome, { recursive: true })
+    const childEnv = { ...process.env, HOME: childHome, XDG_CACHE_HOME: join(childHome, ".cache") }
     const run = (path: string) =>
       spawnSync(
         process.execPath,
@@ -169,7 +178,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
           `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
            process.stdout.write(JSON.stringify(kittySourceProof(${JSON.stringify(path)})))`,
         ],
-        { encoding: "utf8" },
+        { encoding: "utf8", env: childEnv },
       )
     const archiveResult = run(archive)
     expect(archiveResult.status, archiveResult.stderr).toBe(0)
@@ -179,7 +188,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
     })
     const treeResult = run(tree)
     expect(treeResult.status, treeResult.stderr).toBe(0)
-    const nar = spawnSync("nix", ["hash", "path", tree], { encoding: "utf8" })
+    const nar = spawnSync("nix", ["hash", "path", tree], { encoding: "utf8", env: childEnv })
     expect(nar.status, nar.stderr).toBe(0)
     expect(JSON.parse(treeResult.stdout)).toEqual({ kind: "directory", narHash: nar.stdout.trim() })
     const missing = run(join(tmp, "absent"))
@@ -195,7 +204,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
         `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
          kittySourceProof(${JSON.stringify(tree)})`,
       ],
-      { encoding: "utf8", env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
+      { encoding: "utf8", env: { ...childEnv, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
     )
     expect(malformed.status).not.toBe(0)
     expect(malformed.stderr).toMatch(/No NAR hash for Kitty source directory/)
@@ -222,6 +231,7 @@ test("same name and version with different installed bytes is refused", () => {
            { path: ${JSON.stringify(target)}, directory: ${JSON.stringify(installed)}, version: "0.7.1" },
            ${JSON.stringify(workspace)},
            "vt100.js",
+           ${JSON.stringify(fixture.root)},
          )`,
       ],
       { encoding: "utf8" },
@@ -232,4 +242,25 @@ test("same name and version with different installed bytes is refused", () => {
     // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; tmp is this test's own mkdtemp scratch root
     rmSync(tmp, { recursive: true, force: true })
   }
+})
+
+/**
+ * @failure Identity reads the checkout beside the source tree instead of the one that loaded the
+ *   adapter, so a Termless checkout elsewhere is refused or its revision is recorded wrongly.
+ * @level l1
+ * @consumer packages/probes/headless-identity.ts owning checkout derivation
+ * @reach fs-walk <fixture-only: temporary Git checkouts>
+ * @testonly none
+ */
+test("a Termless checkout outside the sibling path is used, and its own revision is recorded", () => {
+  const elsewhere = join("elsewhere", "termless")
+  fixture = identityFixture({ termlessSubdir: elsewhere })
+  const result = runIdentity("vt100", "@termless/vt100")
+  expect(result.status, result.stderr).toBe(0)
+  const body = JSON.parse(result.stdout) as { ok: boolean; revision: string }
+  const revision = spawnSync("git", ["-C", join(fixture.root, elsewhere), "rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).stdout.trim()
+  expect(body.ok).toBe(true)
+  expect(body.revision).toBe(revision)
 })
