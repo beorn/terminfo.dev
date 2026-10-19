@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { describe, it, expect } from "vitest"
-import { resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
+import { deriveIdentity, resolveMeasuredAppVersion, verifyTerminalIdentity } from "./identity-guard.ts"
 import muxIdentity from "./fixtures/mux-identity.json"
 
 describe("measured multiplexer identity", () => {
@@ -402,5 +402,22 @@ describe("verifyTerminalIdentity", () => {
     // wezterm and alacritty have no identity rule at all: named-unavailable, never guessed.
     expect(resolveMeasuredAppVersion("wezterm", "", {})).toBe("unknown")
     expect(resolveMeasuredAppVersion("alacritty", "", {})).toBe("unknown")
+  })
+
+  it("accepts the ConPTY reply order, where the console's DA1 arrives before the XTVERSION DCS", () => {
+    // Run 39288137832, wezterm on Windows: OpenConsole answers the DA1 sentinel itself, so the
+    // collector reads the console's DA1 first and WezTerm's XTVERSION second. Accepting the order
+    // must not turn the console's DA1 into the app's witness: WezTerm's own DA1 is <?65;.
+    const conpty = "\x1b[?61;6;7;22;23;24;28;32;42c\x1bP>|WezTerm 20240203-110809-5046fc22\x1b\\"
+    expect(deriveIdentity({ "collector.xtversion": conpty })).toMatchObject({
+      source: "collector",
+      xtversionPayload: "WezTerm 20240203-110809-5046fc22",
+      da1: undefined,
+    })
+    expect(resolveMeasuredAppVersion("wezterm", "", { "collector.xtversion": conpty })).toBe("20240203-110809-5046fc22")
+    // The DCS-first order keeps its existing meaning: a trailing DA1 is the app's own witness.
+    expect(deriveIdentity({ "collector.xtversion": "\x1bP>|WezTerm 20240203\x1b\\\x1b[?65;4;6;18;22;52c" }).da1).toBe(
+      "\x1b[?65;4;6;18;22;52c",
+    )
   })
 })

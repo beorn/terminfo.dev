@@ -103,7 +103,10 @@ export interface VerificationResult {
 const DA1_GRAMMAR = String.raw`\x1b\[\?[0-9;]+c`
 const DA1_ONLY = new RegExp(`^${DA1_GRAMMAR}$`)
 export const COMPLETE_DA2 = new RegExp(String.raw`^\x1b\[>[0-9]+;[0-9]+;[0-9]+c(${DA1_GRAMMAR})?$`)
-export const COMPLETE_XTVERSION = new RegExp(String.raw`^\x1bP>\|([^\x1b]+)\x1b\\(${DA1_GRAMMAR})?$`)
+// A ConPTY host answers the DA1 sentinel itself, so the console's DA1 can arrive ahead of the app's
+// XTVERSION (run 39288137832). Accept that order as framing, never as the app's DA1 witness: the
+// payload and the trailing DA1 keep their captures, and the leading reply is deliberately dropped.
+export const COMPLETE_XTVERSION = new RegExp(String.raw`^(?:${DA1_GRAMMAR})?\x1bP>\|([^\x1b]+)\x1b\\(${DA1_GRAMMAR})?$`)
 
 /** Owned identity is independent of the selected feature and never falls back on failure. */
 export function deriveIdentity(responses: Record<string, string> | undefined): {
