@@ -27,7 +27,7 @@ const ids = {
   expectedLaunchRunId: "b".repeat(32),
 }
 
-test("hostedDarwinAppFromExecutablePath maps the four hosted apps from the receipt executable", () => {
+test("hostedDarwinAppFromExecutablePath maps the five hosted apps from the receipt executable", () => {
   expect(
     hostedDarwinAppFromExecutablePath("/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"),
   ).toEqual({
@@ -46,8 +46,12 @@ test("hostedDarwinAppFromExecutablePath maps the four hosted apps from the recei
     id: "alacritty",
     comm: "alacritty",
   })
+  expect(hostedDarwinAppFromExecutablePath("/Applications/WezTerm.app/Contents/MacOS/wezterm-gui")).toEqual({
+    id: "wezterm",
+    comm: "wezterm-gui",
+  })
   expect(() => hostedDarwinAppFromExecutablePath("/usr/bin/script")).toThrow(
-    /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty/,
+    /Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm-gui/,
   )
 })
 
@@ -96,6 +100,15 @@ test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps
   ]
   expect(() => requireHostedDarwinAppAncestor("iTerm2", wrong)).toThrow(
     /Hosted Darwin ancestry reached \/Applications\/Ghostty\.app\/Contents\/MacOS\/ghostty \(pid 90\) while the receipt names iTerm2/,
+  )
+
+  const weztermInstead = [
+    { pid: 1, ppid: 0, comm: "/sbin/launchd" },
+    { pid: 90, ppid: 1, comm: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui" },
+    { pid: 100, ppid: 90, comm: "/bin/zsh" },
+  ]
+  expect(() => requireHostedDarwinAppAncestor("iTerm2", weztermInstead)).toThrow(
+    /Hosted Darwin ancestry reached \/Applications\/WezTerm\.app\/Contents\/MacOS\/wezterm-gui \(pid 90\) while the receipt names iTerm2/,
   )
 })
 

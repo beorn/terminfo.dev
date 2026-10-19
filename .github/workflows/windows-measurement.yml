@@ -170,6 +170,12 @@ jobs:
               cp -r "$RUNNER_TEMP/wezterm_unpacked/WezTerm-windows-$WEZTERM_VERSION/"* "$WEZTERM_DIR/"
               cat > "$WEZTERM_DIR/wezterm.lua" <<'LUA'
           return {
+            -- The Windows hosted runner's OpenGL is too old for glium, and the default front end
+            -- refuses the window ("Failed to create window: The OpenGL implementation is too old to
+            -- work with glium", run 39275836868), leaving no process for the receipt to measure.
+            -- The software front end renders the same cells without a GPU context, so the window
+            -- exists at all. Same front_end setting as the macOS arm, one config shape for both.
+            front_end = 'Software',
             initial_cols = 100,
             initial_rows = 35,
             check_for_updates = false,
