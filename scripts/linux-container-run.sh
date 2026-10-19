@@ -65,6 +65,54 @@ compose_receipt() {
   mv "$output.partial" "$output"
 }
 
+# Write the host-measured facts once, before the container is created. Inputs below
+# are the image/build metadata measured by the host portion of this launcher.
+write_host_receipt() {
+  jq -n \
+    --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
+    --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
+    --arg root "$root_revision" --arg suite "$suite_hash" --arg bundle "$bundle_tar_sha" \
+    --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
+    --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
+    --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
+    --arg collectedAt "$(date -u +%FT%TZ)" \
+    --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
+    --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
+    --arg target "$target_id" --arg mux "$mux_kind" \
+    --arg url "$source_url" --arg sri "$source_sri" \
+    --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
+    --arg runnerUrl "file://$prep/runner-bundle.tar" \
+    '{kind:"app",id:$target,version:$version,os:"linux"} as $app |
+    {schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
+      declaredTarget:(if $mux == "" then $app else {kind:"mux",id:$mux,os:"linux"} end),
+      sourceArtifact:({url:$url,sri:$sri}
+        + (if $mux == "" then {} else {target:$app} end)
+        + (if $kind == "derived-source-tree"
+           then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
+      runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
+        frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
+        build:$build[0],rootBunLockSha256:$lock},
+      runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
+        sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
+      status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$1"
+}
+
+# Check the unchanged host receipt against the container's declared image metadata.
+validate_host_metadata() {
+  jq -e --arg preset "$target_preset" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
+    --arg version "$target_version" --arg url "$target_source_url" \
+    --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" \
+    '.preset == $preset and .clipboardProfile == $profile and
+     (if $mux == "" then .declaredTarget.version == $version
+      else .declaredTarget == {kind:"mux",id:$mux,os:"linux"} and
+        .sourceArtifact.target == {kind:"app",id:$target,version:$version,os:"linux"} end) and
+     .sourceArtifact.url == $url' \
+    "$1" >/dev/null || {
+      echo "Container preset, profile, or target metadata disagrees with host receipt" >&2
+      return 2
+    }
+}
+
 # SIGTERM, then SIGKILL after TERMINFO_STOP_GRACE_SEC (default 2). Unbounded `wait` after kill
 # is what kept a completed kitty batch inside the 180 s attach budget (#28552): one owned
 # process ignored TERM (kitten __atexit__ / collector) and attach died 143 with receipts on
@@ -164,10 +212,111 @@ verify_source_archive_hash() { # $1 measured sha256 hex, $2 declared sri, $3 lab
   }
 }
 
+# The producer records process identities, never grants authority. The existing live owner
+# independently checks the resulting receipt before every capture-side mutation/readback.
+process_identity() {
+  local pid=$1 value fields
+  [[ "$pid" =~ ^[0-9]+$ && -r "/proc/$pid/stat" ]] || {
+    echo "Receipt process $pid is not live" >&2; return 2;
+  }
+  value=$(cat "/proc/$pid/stat")
+  read -ra fields <<< "${value##*) }"
+  [[ "${fields[19]:-}" =~ ^[0-9]+$ && "${fields[4]:-}" =~ ^-?[0-9]+$ ]] || {
+    echo "Receipt process $pid has invalid start ticks or tty" >&2; return 2;
+  }
+  jq -n --argjson pid "$pid" --arg ticks "${fields[19]}" --argjson tty "$((fields[4] & 4294967295))" \
+    '{pid:$pid,startTicks:$ticks,ttyRdev:$tty}'
+}
+
+mux_receipt_target() {
+  local preflight=$1 shell_pid=$2 terminal_pid=$3 collector_pid=$4 mux=$5 executable=$6 version=$7 config=$8 socket=$9 session=${10}
+  local shell_identity terminal_identity collector_identity executable_sha config_sha boot_id
+  shell_identity=$(process_identity "$shell_pid") || return 2
+  terminal_identity=$(process_identity "$terminal_pid") || return 2
+  collector_identity=$(process_identity "$collector_pid") || return 2
+  executable=$(readlink -f "$executable")
+  executable_sha=$(sha256sum "$executable" | cut -d ' ' -f 1)
+  config_sha=$(sha256sum "$config" | cut -d ' ' -f 1)
+  read -r boot_id < /proc/sys/kernel/random/boot_id
+  jq -n --slurpfile preflight "$preflight" --argjson shell "$shell_identity" \
+    --argjson terminal "$terminal_identity" --argjson collector "$collector_identity" \
+    --arg mux "$mux" --arg boot "$boot_id" --arg executable "$executable" --arg executableSha "$executable_sha" \
+    --arg version "$version" --arg config "$config" --arg configSha "$config_sha" --arg socket "$socket" --arg session "$session" \
+    '{kind:"mux",mux:$mux,bootId:$boot,preflightCollector:($preflight[0]|{pid,startTicks}),outerShell:$shell,
+      outerTerminal:($terminal|{pid,startTicks}),collector:($collector|{pid,startTicks}),
+      executable:{path:$executable,sha256:$executableSha,version:$version},
+      config:{path:$config,sha256:$configSha},socketPath:$socket,session:$session}'
+}
+
+await_owned_daemon() {
+  local daemon_dir=$1 app_pid=$2 previous_pid=${3:-0} files candidate
+  for _ in $(seq 1 150); do
+    files=("$daemon_dir"/*.json)
+    if [[ "${#files[@]}" == 1 && -f "${files[0]}" ]]; then
+      candidate=$(jq -er '.pid' "${files[0]}") || return 2
+      if [[ "$candidate" != "$previous_pid" ]]; then
+        jq -e --arg run "$TERMINFO_RUN_ID" '.runId == $run and (.port | type == "number") and (.token | type == "string")' \
+          "${files[0]}" >/dev/null || { echo "Daemon registration has wrong run ID or invalid fields" >&2; return 2; }
+        printf '%s\n' "${files[0]}"
+        return 0
+      fi
+    fi
+    kill -0 "$app_pid" 2>/dev/null || { echo "Owned terminal exited before collector registration" >&2; return 2; }
+    sleep 0.1
+  done
+  echo "Expected exactly one live owned collector registration, different from $previous_pid" >&2
+  return 2
+}
+
 # The launcher uses this same function after Docker exits. Shell-level checks
 # can source it with owned temporary receipts without starting an image.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0
+fi
+
+if [[ "${1:-}" == "--mux-inner" ]]; then
+  unset TERM_PROGRAM TERM_PROGRAM_VERSION
+  exec bun "$TERMINFO_RUNNER" test --serve
+fi
+
+if [[ "${1:-}" == "--mux-shell" ]]; then
+  mux_output=$2
+  printf '%s\n' "$$" > "$mux_output/outer-shell.pid"
+  bun "$TERMINFO_RUNNER" test --serve <&0 2>"$mux_output/preflight-collector.stderr" &
+  preflight_pid=$!
+  preflight_status=0
+  wait "$preflight_pid" || preflight_status=$?
+  [[ "$preflight_status" == 0 || "$preflight_status" == 143 ]] || {
+    echo "Outer preflight collector failed: $preflight_status" >&2; exit "$preflight_status";
+  }
+  mux_session="terminfo-$TERMINFO_RUN_ID"
+  mux_config="$mux_output/mux-empty.conf"
+  : > "$mux_config"
+  chmod 600 "$mux_config"
+  case "$TERMINFO_MUX_KIND" in
+    tmux)
+      mux_socket="$HOME/$mux_session.sock"
+      printf '%s\n' "$mux_socket" > "$mux_output/mux-socket.txt"
+      tmux -D -S "$mux_socket" -f "$mux_config" </dev/null >"$mux_output/mux-server.log" 2>&1 &
+      mux_server=$!
+      for _ in $(seq 1 100); do
+        [[ -S "$mux_socket" ]] && break
+        kill -0 "$mux_server" || { echo "Owned tmux server exited" >&2; exit 2; }
+        sleep 0.05
+      done
+      [[ -S "$mux_socket" ]] || { echo "Owned tmux socket was not created" >&2; exit 2; }
+      tmux -S "$mux_socket" new-session -s "$mux_session" bash "$0" --mux-inner
+      tmux -S "$mux_socket" kill-server
+      wait "$mux_server"
+      ;;
+    screen)
+      export SCREENDIR="$HOME/.screen"
+      mkdir -m 700 "$SCREENDIR"
+      screen -S "$mux_session" -c "$mux_config" bash "$0" --mux-inner
+      ;;
+    *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;;
+  esac
+  exit 0
 fi
 
 if [[ "${1:-}" == "--inside" ]]; then
@@ -323,14 +472,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     *) echo "Unknown clipboard profile: $TERMINFO_CLIPBOARD_PROFILE" >&2; exit 2 ;;
   esac
 
-  jq -e --arg preset "$target_preset" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
-    --arg version "$target_version" --arg url "$target_source_url" \
-    '.preset == $preset and .clipboardProfile == $profile and
-     .declaredTarget.version == $version and .sourceArtifact.url == $url' \
-    /out/host-measured.json >/dev/null || {
-      echo "Container preset, profile, or target metadata disagrees with host receipt" >&2
-      exit 2
-    }
+  validate_host_metadata /out/host-measured.json
   [[ -d "$HOME" && -w "$HOME" ]] || { echo "HOME is not a writable private tmpfs" >&2; exit 2; }
 
   bun "$TERMINFO_RUNNER" --help >/out/import-smoke.txt 2>/out/import-smoke.err || {
@@ -461,32 +603,23 @@ if [[ "${1:-}" == "--inside" ]]; then
   export TERMINFO_CAPTURE_DIRECTORY=/out/artifacts
   export TERMINFO_RUNTIME_PROVENANCE=/out/runtime-provenance.json
   export TERMINFO_CLIPBOARD_FIXTURE_RECEIPT=/out/clipboard-fixture.json
+  collector_command=(bun "$TERMINFO_RUNNER" test --serve)
+  if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
+    [[ "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
+    case "$TERMINFO_MUX_KIND" in tmux|screen) ;; *) echo "Unknown owned multiplexer: $TERMINFO_MUX_KIND" >&2; exit 2 ;; esac
+    collector_command=(bash "$runner_dir/linux-container-run.sh" --mux-shell /out)
+  fi
   # The declared invocation: what the descriptor table launches, exactly and uniformly.
   printf -v target_config '%q ' "$target_binary" "${target_launch_args[@]}" \
-    "${target_clipboard_args[@]}" "${target_command_lead[@]}" bun "$TERMINFO_RUNNER" test --serve
+    "${target_clipboard_args[@]}" "${target_command_lead[@]}" "${collector_command[@]}"
   "$target_binary" "${target_launch_args[@]}" "${target_clipboard_args[@]}" "${target_command_lead[@]}" \
-    bun "$TERMINFO_RUNNER" test --serve >/out/daemon.log 2>&1 &
+    "${collector_command[@]}" >/out/daemon.log 2>&1 &
   daemon_pid=$!
   daemon_dir="$HOME/.terminfo-dev/daemons"
-  for _ in $(seq 1 150); do
-    daemon_files=("$daemon_dir"/*.json)
-    [[ -f "${daemon_files[0]}" ]] && break
-    kill -0 "$daemon_pid" 2>/dev/null || { cat /out/daemon.log >&2; exit 2; }
-    sleep 0.1
-  done
-  daemon_files=("$daemon_dir"/*.json)
-  [[ "${#daemon_files[@]}" == 1 && -f "${daemon_files[0]}" ]] || {
-    echo "Expected exactly one owned daemon registration" >&2
-    exit 2
-  }
-  jq -e --arg run "$TERMINFO_RUN_ID" '.runId == $run and (.port | type == "number") and (.token | type == "string")' \
-    "${daemon_files[0]}" >/dev/null || {
-      echo "Daemon registration has wrong run ID or invalid fields" >&2
-      exit 2
-    }
-  jq 'del(.token)' "${daemon_files[0]}" > /out/daemon-registration.json
+  daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid") || { cat /out/daemon.log >&2; exit 2; }
+  jq 'del(.token)' "$daemon_file" > /out/daemon-registration.json
   port=$(jq -er .port /out/daemon-registration.json)
-  token=$(jq -er .token "${daemon_files[0]}")
+  token=$(jq -er .token "$daemon_file")
   curl --fail-with-body --silent --show-error "http://127.0.0.1:$port/info" > /out/info.json
   jq -e --arg run "$TERMINFO_RUN_ID" '.runId == $run' /out/info.json >/dev/null || {
     echo "Daemon info has wrong run ID" >&2; exit 2;
@@ -537,6 +670,46 @@ if [[ "${1:-}" == "--inside" ]]; then
   }
   live_executable_sha=$(sha256sum "/proc/$daemon_pid/exe" | cut -d ' ' -f 1)
   printf '%s  %s\n' "$live_executable_sha" "$live_executable" > /out/live-executable.sha256
+  fixture_target='{"kind":"app"}'
+  if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
+    # No capture-authority receipt has been issued to this preflight collector.
+    process_identity "$collector_pid" | jq --arg run "$TERMINFO_RUN_ID" \
+      '{pid,startTicks,launchRunId:$run}' > /out/preflight-identity.json
+    preflight_pid=$collector_pid
+    read -r outer_shell_pid < /out/outer-shell.pid
+    kill "$preflight_pid"
+    daemon_file=$(await_owned_daemon "$daemon_dir" "$daemon_pid" "$preflight_pid") || { cat /out/daemon.log >&2; exit 2; }
+    jq 'del(.token)' "$daemon_file" > /out/mux-daemon-registration.json
+    collector_pid=$(jq -er .pid /out/mux-daemon-registration.json)
+    port=$(jq -er .port /out/mux-daemon-registration.json)
+    token=$(jq -er .token "$daemon_file")
+    curl --fail-with-body --silent --show-error "http://127.0.0.1:$port/info" > /out/mux-info.json
+    jq -e --arg run "$TERMINFO_RUN_ID" --argjson pid "$collector_pid" \
+      '.runId == $run and .pid == $pid' /out/mux-info.json >/dev/null || {
+      echo "Inner collector info differs from its launch registration" >&2; exit 2;
+    }
+    mux_executable=$(readlink -f "$(command -v "$TERMINFO_MUX_KIND")")
+    mux_session="terminfo-$TERMINFO_RUN_ID"
+    case "$TERMINFO_MUX_KIND" in
+      tmux)
+        read -r mux_socket < /out/mux-socket.txt
+        "$mux_executable" -V > /out/mux-version.txt
+        mux_version=$(sed -nE 's/^tmux ([0-9]+\.[0-9]+[a-z]?)$/\1/p' /out/mux-version.txt)
+        ;;
+      screen)
+        mux_sockets=("$HOME/.screen/"*."$mux_session")
+        [[ "${#mux_sockets[@]}" == 1 && -S "${mux_sockets[0]}" ]] || {
+          echo "Expected one owned Screen socket" >&2; exit 2;
+        }
+        mux_socket=${mux_sockets[0]}
+        "$mux_executable" --version > /out/mux-version.txt
+        mux_version=$(sed -nE 's/^Screen version ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' /out/mux-version.txt)
+        ;;
+    esac
+    [[ -n "$mux_version" ]] || { echo "Owned mux executable did not report its version" >&2; exit 2; }
+    fixture_target=$(mux_receipt_target /out/preflight-identity.json "$outer_shell_pid" "$daemon_pid" "$collector_pid" \
+      "$TERMINFO_MUX_KIND" "$mux_executable" "$mux_version" /out/mux-empty.conf "$mux_socket" "$mux_session")
+  fi
   jq -n --arg run "$TERMINFO_RUN_ID" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
     --arg display "$DISPLAY" --argjson number "$display_number" \
     --arg displayFdPath "$HOME/display-number" --argjson xvfbPid "$xvfb_pid" \
@@ -544,8 +717,8 @@ if [[ "${1:-}" == "--inside" ]]; then
     --arg windowId "$window_id" --argjson windowPid "$window_pid" \
     --argjson helperPid "$helper_pid" --arg helperPath "$xclip_binary" --arg helperSha "$xclip_sha" \
     --arg baselinePath "$baseline_path" --arg baselineSha "$baseline_sha" --arg initialSha "$initial_read_sha" \
-    --arg config "$target_config" --arg permissions "$clipboard_permissions" \
-    '{schemaVersion:1,runId:$run,profile:$profile,
+    --arg config "$target_config" --arg permissions "$clipboard_permissions" --argjson target "$fixture_target" \
+    '{schemaVersion:1,runId:$run,profile:$profile,target:$target,
       display:{name:$display,number:$number,displayFdPath:$displayFdPath,xvfbPid:$xvfbPid},
       terminal:{pid:$terminalPid,collectorPid:$collectorPid,windowId:$windowId,windowPid:$windowPid},
       selection:{helperPid:$helperPid,helperExecutable:{path:$helperPath,sha256:$helperSha},
@@ -574,6 +747,22 @@ if [[ "${1:-}" == "--inside" ]]; then
       fixture:{definition:"Shared ProbeDefinition callbacks; capture checkpoints retained in each raw trace",
         config:$config,font:$font,geometry:$geometry,display:$display,gl:$gl}
     }' > "$TERMINFO_RUNTIME_PROVENANCE"
+  if [[ -n "${TERMINFO_MUX_KIND:-}" ]]; then
+    jq -n --slurpfile provenance "$TERMINFO_RUNTIME_PROVENANCE" --slurpfile info /out/info.json \
+      --slurpfile da1 /out/da1-observation.json --slurpfile xtversion /out/xtversion-observation.json \
+      --slurpfile preflight /out/preflight-identity.json --arg app "$target_id" --arg appVersion "$target_version" \
+      --arg mux "$TERMINFO_MUX_KIND" --arg muxVersion "$mux_version" --arg muxConfig /out/mux-empty.conf \
+      --arg profile "$TERMINFO_CLIPBOARD_PROFILE" --arg permissions "$clipboard_permissions" '
+      (if $profile == "default" then null else $permissions end) as $permissions |
+      {target:{kind:"mux",id:$mux,version:$muxVersion,os:$info[0].os,osVersion:$info[0].osVersion,
+        outerTerminal:$app,mux:$mux,config:$muxConfig,permissions:$permissions},
+       outerApp:{target:{kind:"app",id:$app,version:$appVersion,os:$info[0].os,osVersion:$info[0].osVersion,
+         outerTerminal:null,mux:null,config:$provenance[0].fixture.config,permissions:$permissions},
+         rawReplies:{"device.primary-da":$da1[0].results[0].response,"collector.xtversion":$xtversion[0].results[0].response,
+           "collector.preflightIdentity":($preflight[0]|tojson)},provenance:$provenance[0]}}' \
+      > "$TERMINFO_RUNTIME_PROVENANCE.partial"
+    mv "$TERMINFO_RUNTIME_PROVENANCE.partial" "$TERMINFO_RUNTIME_PROVENANCE"
+  fi
   date -u +%FT%TZ > /out/batch-wall-start.txt
   batch_status=0
   curl --fail-with-body --silent --show-error --max-time "$PROBE_BATCH_TIMEOUT_SECONDS" --output /out/v2-run.json \
@@ -606,14 +795,15 @@ if [[ "${1:-}" == "--inside" ]]; then
     [[ "$frameless_ids" == "[]" ]] || echo "frame-less selected ids: $frameless_ids" >&2
   fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
-    --arg executableSha "$live_executable_sha" --arg target "$target_id" '
+    --arg executableSha "$live_executable_sha" --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" '
     .schemaVersion == 2 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
-    .target.kind == "app" and .target.id == $target and
+    (if $mux == "" then .target.kind == "app" and .target.id == $target and
+       .provenance.executable.path == $executablePath and .provenance.executable.sha256 == $executableSha
+     else .target.kind == "mux" and .target.id == $mux and .outerApp.target.id == $target and
+       .outerApp.provenance.executable.path == $executablePath and .outerApp.provenance.executable.sha256 == $executableSha end) and
     .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
-    .provenance.executable.path == $executablePath and
-    .provenance.executable.sha256 == $executableSha and
     (.suiteComplete | type == "boolean") and (.rawReplies | type == "object") and
     (.assertions | type == "array") and (.observations | type == "array") and
     (has("results") | not)' /out/v2-run.json >/dev/null || {
@@ -694,16 +884,23 @@ if [[ "${1:-}" == "--inside" ]]; then
 fi
 
 usage() {
-  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--ids ID,ID] OUTPUT_DIRECTORY" >&2
+  echo "Usage: $0 --target kitty|xterm|ghostty|wezterm|alacritty [--preset baseline|current|default] --clipboard-profile default|allow|deny-read [--mux tmux|screen] [--ids ID,ID] OUTPUT_DIRECTORY" >&2
   exit 2
 }
 target_id=
 preset=default
 clipboard_profile=
 probe_ids=null
+mux_kind=
 output_parent=
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
+    --mux)
+      [[ "$#" -ge 2 && -z "$mux_kind" ]] || usage
+      mux_kind=$2
+      case "$mux_kind" in tmux|screen) ;; *) echo "Unknown multiplexer: $mux_kind" >&2; exit 2 ;; esac
+      shift 2
+      ;;
     --target)
       [[ "$#" -ge 2 && -n "${2:-}" && "${2:-}" != --* ]] || usage
       target_id=$2
@@ -737,6 +934,7 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 [[ -n "$target_id" && -n "$clipboard_profile" && -n "$output_parent" ]] || usage
+[[ -z "$mux_kind" || "$target_id" == kitty ]] || { echo "Owned Linux mux outer must be Kitty" >&2; exit 2; }
 case "$target_id" in
   kitty|xterm|ghostty|wezterm|alacritty) ;;
   *) echo "Unknown target: $target_id" >&2; exit 2 ;;
@@ -902,31 +1100,7 @@ if [[ "$proof_kind" == derived-source-tree ]]; then
     exit 2
   }
 fi
-jq -n \
-  --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
-  --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
-  --arg root "$root_revision" --arg suite "$suite_hash" --arg bundle "$bundle_tar_sha" \
-  --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
-  --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
-  --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
-  --arg collectedAt "$(date -u +%FT%TZ)" \
-  --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
-  --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
-  --arg target "$target_id" \
-  --arg url "$source_url" --arg sri "$source_sri" \
-  --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
-  --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
-    declaredTarget:{kind:"app",id:$target,version:$version,os:"linux"},
-    sourceArtifact:({url:$url,sri:$sri}
-      + (if $kind == "derived-source-tree"
-         then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
-    runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
-      frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
-      build:$build[0],rootBunLockSha256:$lock},
-    runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
-      sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
-    status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$raw/host-measured.json"
+write_host_receipt "$raw/host-measured.json"
 
 # The collector reads its ownership receipt from a read-only copy: the container being measured
 # must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
@@ -972,6 +1146,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --env "LC_ALL=C.UTF-8" \
   --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
+  --env "TERMINFO_MUX_KIND=$mux_kind" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
   --env "TERMINFO_TARGET_BINARY=$target_binary" --env "TERMINFO_TARGET_VERSION=$target_version" \
   --env "TERMINFO_TARGET_SOURCE_URL=$source_url" --env "TERMINFO_TARGET_SOURCE_SRI=$source_sri" \

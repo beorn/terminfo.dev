@@ -16,6 +16,7 @@ import {
   parseDisposableReceipt,
   readDisposableReceipt,
   sampleOwnedHostIdentity,
+  parseMuxAttachmentProof,
 } from "./disposable-receipt.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
@@ -25,6 +26,66 @@ afterEach(() => {
 })
 
 const envelope = { schemaVersion: 1, runId: "b".repeat(32), collectedAt: "2026-10-06T22:00:00Z" }
+
+// A retained process snapshot is historical data, never a reason to query the current /proc tree.
+// The existing host-receipt cases cannot catch silently discarded mux custody fields.
+test("mux attachment preserves its measured chain and refuses malformed or mixed proof fields", () => {
+  const process = (pid: number) => ({ pid, startTicks: String(1000 + pid) })
+  const proof = {
+    platform: "linux",
+    mux: "tmux",
+    bootId: "11111111-2222-3333-4444-555555555555",
+    receiptSha256: digest("fixture"),
+    launchRunId: "12".repeat(16),
+    captureRunId: "34".repeat(16),
+    preflightCollector: process(95),
+    outerShell: { ...process(92), ttyRdev: 34816 },
+    outerTerminal: process(76),
+    collector: { ...process(149), ttyRdev: 34817 },
+    attachedClient: { ...process(148), ttyRdev: 34816 },
+    chain: [149, 145, 92, 76].map((pid) => ({
+      ...process(pid),
+      executablePath: "/nix/store/mux/bin/tmux",
+      ttyRdev: pid === 149 ? 34817 : 34816,
+    })),
+    executable: { path: "/nix/store/mux/bin/tmux", sha256: digest("tmux"), version: "3.7c" },
+    config: { path: "/tmp/run/mux.conf", sha256: digest("") },
+    socketPath: "/tmp/run/mux.sock",
+    session: "owned",
+  }
+  expect(parseMuxAttachmentProof(proof)).toEqual(proof)
+  for (const chain of [
+    proof.chain.filter((row) => row.pid !== 145),
+    [proof.chain[0], proof.chain[2], proof.chain[1], proof.chain[3]],
+  ]) {
+    expect.soft(() => parseMuxAttachmentProof({ ...proof, chain })).toThrow(/mux attachment/)
+  }
+  for (const invalid of [
+    { ...proof, extra: true },
+    { ...proof, platform: "darwin" },
+    { ...proof, mux: "other" },
+    { ...proof, receiptSha256: "missing" },
+    { ...proof, captureRunId: "missing" },
+    { ...proof, collector: { ...proof.collector, pid: 0 } },
+    { ...proof, collector: { ...proof.collector, startTicks: "1.5" } },
+    { ...proof, attachedClient: { ...proof.attachedClient, ttyRdev: -1 } },
+    { ...proof, chain: [] },
+    { ...proof, executable: { ...proof.executable, path: "relative" } },
+    { ...proof, executable: { ...proof.executable, version: "" } },
+    { ...proof, collector: { ...proof.collector, startTicks: "9999" } },
+    { ...proof, outerShell: { ...proof.outerShell, startTicks: "9999" } },
+    { ...proof, collector: { ...proof.collector, ttyRdev: proof.outerShell.ttyRdev } },
+    { ...proof, attachedClient: { ...proof.attachedClient, ttyRdev: proof.collector.ttyRdev } },
+    { ...proof, chain: proof.chain.slice(1) },
+    { ...proof, chain: [...proof.chain, proof.chain[0]] },
+    {
+      ...proof,
+      chain: proof.chain.map((row) => (row.pid === 145 ? { ...row, executablePath: "/usr/bin/foreign" } : row)),
+    },
+  ]) {
+    expect(() => parseMuxAttachmentProof(invalid)).toThrow(/mux attachment/)
+  }
+})
 
 const identity = (seed: string) => ({
   machineIdSha256: digest(`${seed}-machine`),

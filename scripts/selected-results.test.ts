@@ -4,7 +4,7 @@
  * @consumer Site, API, analysis, and reviewed census import.
  * @testonly none
  */
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -16,12 +16,15 @@ import {
   projectResults,
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
-import { assessRunAdmission } from "./admit-run.ts"
+import { assessRunAdmission, planAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
+import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
+import * as suiteManifest from "../packages/admin/suite-manifest.ts"
+import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 /** 28240: the app-launch receipt parser refuses a placeholder digest (one repeated character), so
@@ -2781,7 +2784,7 @@ describe("identity self-admission", () => {
     }
   })
 
-  it("refuses mux identities without an identity profile", () => {
+  it("refuses mux identities relayed from an outer app", () => {
     const parsed = parseRun(
       "mux.json",
       JSON.stringify(
@@ -2794,10 +2797,396 @@ describe("identity self-admission", () => {
     expect(project([parsed]).exclusions).toContainEqual(
       expect.objectContaining({
         runId: "mux-no-profile",
-        reason: "identity-no-profile",
+        reason: "identity-replies-mismatch",
       }),
     )
   })
+
+  // Mux identity must join the retained outer-app and launch evidence (30069).
+  it.each(muxIdentity.specimens)(
+    "admits $mux only as a mux with matching retained outer-app custody",
+    ({ mux, version, run: specimen }) => {
+      const projectedManifest = manifest(specimen.probeHash, muxIdentity.featureIds)
+      for (const kind of ["mux", "app"] as const) {
+        const parsed = parseRunSource(
+          `detached-${mux}-${kind}.json`,
+          JSON.stringify({ ...specimen, target: { ...specimen.target, kind, id: mux, version } }),
+          muxIdentity.featureIds,
+          new Map([[specimen.probeHash, projectedManifest]]),
+        )
+        const assessment = assessRunAdmission(parsed, [], { mode: "historical" })
+        expect.soft(assessment.accepted, `${mux}/${kind} must retain the outer-proof refusal`).toBe(false)
+        if (!assessment.accepted) {
+          expect.soft(assessment.reason).toBe(kind === "mux" ? "outer-app-proof-missing" : "identity-replies-mismatch")
+        }
+      }
+      const outerTarget = {
+        ...target,
+        os: specimen.target.os,
+        osVersion: specimen.target.osVersion,
+        permissions: specimen.target.permissions,
+      }
+      const outerProvenance = {
+        executable: { path: "/nix/store/kitty/bin/kitty", sha256: RECEIPT_EXECUTABLE_SHA256, version: target.version },
+        sourceArtifact: { url: "https://example.invalid/kitty.tar", sha256: RECEIPT_SOURCE_SHA256 },
+        runtime: {
+          imageId: `sha256:${RECEIPT_EXECUTABLE_SHA256}`,
+          imageTarSha256: RECEIPT_SOURCE_SHA256,
+          arch: "amd64",
+          nixLockRevision: "1".repeat(40),
+          sourceRevision: specimen.sourceRevision,
+          cleanTree: true,
+          suiteHash: specimen.probeHash,
+        },
+        fixture: {
+          definition: "fixture",
+          config: "fixture",
+          font: "fixture",
+          geometry: "100x30",
+          display: "fixture",
+          gl: "fixture",
+        },
+      }
+      // A well-formed app preflight is not an attached launch. No receipt is fabricated here.
+      const withoutAttachment = parseRunSource(
+        `unbound-${mux}.json`,
+        JSON.stringify({
+          ...specimen,
+          target: { ...specimen.target, kind: "mux", id: mux, version, outerTerminal: "kitty", mux },
+          outerApp: { target: outerTarget, rawReplies: identityReplies, provenance: outerProvenance },
+        }),
+        muxIdentity.featureIds,
+        new Map([[specimen.probeHash, projectedManifest]]),
+      )
+      expect(assessRunAdmission(withoutAttachment, [], { mode: "historical" })).toMatchObject({
+        accepted: false,
+        reason: "mux-attachment-missing",
+      })
+      // Controlled retained-byte fixtures exercise historical joins, not live launch authority.
+      const processIdentity = (pid: number) => ({ pid, startTicks: String(1000 + pid) })
+      const launchRunId = "12".repeat(16)
+      const attachment = {
+        platform: "linux",
+        mux,
+        bootId: "11111111-2222-3333-4444-555555555555",
+        receiptSha256: "",
+        launchRunId,
+        captureRunId: specimen.runId,
+        preflightCollector: processIdentity(95),
+        outerShell: { ...processIdentity(92), ttyRdev: 34816 },
+        outerTerminal: processIdentity(76),
+        collector: { ...processIdentity(149), ttyRdev: 34817 },
+        attachedClient: { ...processIdentity(148), ttyRdev: 34816 },
+        chain: [149, 145, 92, 76].map((pid) => ({
+          ...processIdentity(pid),
+          executablePath:
+            pid === 145 ? `/nix/store/mux/bin/${mux}` : pid === 76 ? outerProvenance.executable.path : "/bin/bash",
+          ttyRdev: pid === 149 ? 34817 : 34816,
+        })),
+        executable: { path: `/nix/store/mux/bin/${mux}`, sha256: RECEIPT_EXECUTABLE_SHA256, version },
+        config: { path: "/out/mux-empty.conf", sha256: RECEIPT_SOURCE_SHA256 },
+        socketPath: `/out/${launchRunId}.sock`,
+        session: `terminfo-${launchRunId}`,
+      }
+      const receipt = {
+        schemaVersion: 1,
+        runId: launchRunId,
+        profile: "default",
+        display: { name: ":22", number: 22, displayFdPath: "/out/display", xvfbPid: 200 },
+        terminal: { pid: 76, collectorPid: 149, windowId: "42", windowPid: 76 },
+        selection: {
+          helperPid: 201,
+          helperExecutable: { path: "/bin/xclip", sha256: RECEIPT_EXECUTABLE_SHA256 },
+          baselinePath: "/out/baseline",
+          baselineSha256: RECEIPT_SOURCE_SHA256,
+          initialReadSha256: RECEIPT_SOURCE_SHA256,
+        },
+        config: outerProvenance.fixture.config,
+        permissions: "default",
+        target: {
+          kind: "mux",
+          mux,
+          bootId: attachment.bootId,
+          preflightCollector: attachment.preflightCollector,
+          outerShell: attachment.outerShell,
+          outerTerminal: attachment.outerTerminal,
+          collector: processIdentity(149),
+          executable: attachment.executable,
+          config: attachment.config,
+          socketPath: attachment.socketPath,
+          session: attachment.session,
+        },
+      }
+      const receiptSource = JSON.stringify(receipt)
+      attachment.receiptSha256 = createHash("sha256").update(receiptSource).digest("hex")
+      const boundSource = {
+        ...specimen,
+        target: {
+          ...specimen.target,
+          kind: "mux",
+          id: mux,
+          version,
+          outerTerminal: "kitty",
+          mux,
+          config: attachment.config.path,
+        },
+        outerApp: {
+          target: { ...outerTarget, config: outerProvenance.fixture.config },
+          provenance: outerProvenance,
+          rawReplies: {
+            ...identityReplies,
+            "collector.preflightIdentity": JSON.stringify({ ...attachment.preflightCollector, launchRunId }),
+          },
+        },
+        rawReplies: {
+          ...specimen.rawReplies,
+          "collector.terminalOwnership": JSON.stringify({ muxAttachment: attachment }),
+          "collector.clipboardFixture": JSON.stringify({
+            receiptSource,
+            receiptSha256: attachment.receiptSha256,
+            muxAttachmentProof: attachment,
+          }),
+        },
+      }
+      const assessBound = (source: unknown) =>
+        assessRunAdmission(
+          parseRunSource(
+            `bound-${mux}.json`,
+            JSON.stringify(source),
+            muxIdentity.featureIds,
+            new Map([[specimen.probeHash, projectedManifest]]),
+          ),
+          [],
+          { mode: "historical" },
+        )
+      expect(assessBound(boundSource)).toMatchObject({ accepted: true })
+      // Placement (unlike historical projection) must bind the completed host composition to
+      // these exact mux bytes. Reuse the accepted proof; unmeasured live probes stay not-tested.
+      const live = probeSuiteSnapshot()
+      const directory = mkdtempSync(join(tmpdir(), `terminfo-mux-completion-${mux}-`))
+      contentDirs.push(directory)
+      const path = join(directory, "run.json")
+      const destination = join(directory, "placed.json")
+      const placementSource = {
+        ...boundSource,
+        suiteId: live.probeHash,
+        probeHash: live.probeHash,
+        outerApp: {
+          ...boundSource.outerApp,
+          provenance: {
+            ...outerProvenance,
+            runtime: { ...outerProvenance.runtime, suiteHash: live.probeHash },
+          },
+        },
+        notTested: live.probes.mux
+          .filter((id) => !muxIdentity.featureIds.includes(id))
+          .map((featureId) => ({
+            featureId,
+            reason: "no-semantic-observable",
+            noObservable: "the retained identity specimen did not measure this probe",
+            rawReplyRef: featureId,
+          })),
+        rawReplies: {
+          ...boundSource.rawReplies,
+          ...Object.fromEntries(
+            live.probes.mux
+              .filter((id) => !muxIdentity.featureIds.includes(id))
+              .map((id) => [id, "fixture: not measured by the retained identity specimen"]),
+          ),
+        },
+      }
+      const bytes = JSON.stringify(placementSource)
+      writeFileSync(path, bytes)
+      const hostPath = join(directory, "host-measured.json")
+      const hostSource = JSON.stringify({ ...receipt, preset: "default", clipboardProfile: "default" })
+      writeFileSync(hostPath, hostSource)
+      const completionPath = join(directory, "run-receipt.json")
+      const completion = {
+        probeRun: { runId: specimen.runId, sha256: createHash("sha256").update(bytes).digest("hex") },
+        receiptInputs: { hostSha256: createHash("sha256").update(hostSource).digest("hex") },
+      }
+      // The authoring guard is independently exercised with real Git fixtures in admit-run.test;
+      // this case owns the real placement/receipt boundary, before that final branch check.
+      const authoring = vi.spyOn(suiteManifest, "assertDeclareIsAuthoring").mockImplementation(() => {})
+      try {
+        expect(() => planAdmission(path, destination)).toThrow(/missing run-receipt\.json/)
+        expect(() => planAdmission(path, destination)).toThrow(/bun scripts\/release1-collection\.ts --plan/)
+        writeFileSync(
+          completionPath,
+          JSON.stringify({ ...completion, probeRun: { ...completion.probeRun, sha256: "0".repeat(64) } }),
+        )
+        expect(() => planAdmission(path, destination)).toThrow(/does not bind probeRun/)
+        writeFileSync(completionPath, JSON.stringify({ ...completion, receiptInputs: { hostSha256: "0".repeat(64) } }))
+        expect(() => planAdmission(path, destination)).toThrow(/does not bind receiptInputs/)
+        writeFileSync(completionPath, JSON.stringify(completion))
+        expect(planAdmission(path, destination)).toMatchObject({ target: { kind: "mux", id: mux } })
+        expect(existsSync(destination)).toBe(false)
+      } finally {
+        authoring.mockRestore()
+      }
+
+      expect(
+        assessBound({
+          ...boundSource,
+          rawReplies: { ...boundSource.rawReplies, "collector.clipboardFixture": "{broken" },
+        }),
+      ).toMatchObject({
+        accepted: false,
+        reason: "mux-attachment-invalid",
+        detail: expect.stringContaining("mux clipboard fixture"),
+      })
+      const ownership = boundSource.rawReplies["collector.terminalOwnership"]
+      expect(
+        assessBound({
+          ...boundSource,
+          rawReplies: {
+            ...boundSource.rawReplies,
+            "collector.terminalOwnership": ownership.replace("{", '{"muxAttachment":null,'),
+          },
+        }),
+      ).toMatchObject({
+        accepted: false,
+        reason: "mux-attachment-invalid",
+        detail: expect.stringContaining("duplicate"),
+      })
+      for (const [field, value] of Object.entries({
+        bootId: "99999999-2222-3333-4444-555555555555",
+        preflightCollector: processIdentity(96),
+        outerShell: { ...attachment.outerShell, startTicks: "9999" },
+        outerTerminal: processIdentity(77),
+        collector: processIdentity(150),
+        executable: { ...attachment.executable, sha256: "cd".repeat(32) },
+        config: { ...attachment.config, sha256: "cd".repeat(32) },
+        socketPath: `/out/other-${launchRunId}.sock`,
+        session: `other-${launchRunId}`,
+      })) {
+        const source = JSON.stringify({
+          ...receipt,
+          terminal: {
+            ...receipt.terminal,
+            ...(field === "outerTerminal" ? { pid: 77 } : {}),
+            ...(field === "collector" ? { collectorPid: 150 } : {}),
+          },
+          target: { ...receipt.target, [field]: value },
+        })
+        const changedProof = { ...attachment, receiptSha256: createHash("sha256").update(source).digest("hex") }
+        const changed = {
+          ...boundSource,
+          rawReplies: {
+            ...boundSource.rawReplies,
+            "collector.terminalOwnership": JSON.stringify({ muxAttachment: changedProof }),
+            "collector.clipboardFixture": JSON.stringify({
+              receiptSource: source,
+              receiptSha256: changedProof.receiptSha256,
+              muxAttachmentProof: changedProof,
+            }),
+          },
+        }
+        expect.soft(assessBound(changed), field).toMatchObject({ accepted: false, reason: "mux-attachment-invalid" })
+      }
+      for (const fixture of [
+        undefined,
+        { receiptSource, receiptSha256: attachment.receiptSha256 },
+        { receiptSource: receiptSource + " ", receiptSha256: attachment.receiptSha256 },
+        {
+          receiptSource,
+          receiptSha256: attachment.receiptSha256,
+          muxAttachmentProof: { ...attachment, launchRunId: "56".repeat(16) },
+        },
+      ]) {
+        expect
+          .soft(
+            assessBound({
+              ...boundSource,
+              rawReplies: {
+                ...boundSource.rawReplies,
+                "collector.clipboardFixture": fixture === undefined ? undefined : JSON.stringify(fixture),
+              },
+            }),
+          )
+          .toMatchObject({ accepted: false, reason: "mux-attachment-invalid" })
+      }
+      expect
+        .soft(
+          assessBound({
+            ...boundSource,
+            outerApp: {
+              ...boundSource.outerApp,
+              rawReplies: {
+                ...boundSource.outerApp.rawReplies,
+                "collector.preflightIdentity": JSON.stringify({
+                  ...attachment.preflightCollector,
+                  launchRunId: "56".repeat(16),
+                }),
+              },
+            },
+          }),
+        )
+        .toMatchObject({ accepted: false, reason: "mux-attachment-invalid" })
+      // App provenance must not turn a genuine mux into an app. The original missing-provenance
+      // case could reject for the wrong reason and miss this kind mismatch.
+      const labelledApp = parseRunSource(
+        `mislabelled-${mux}.json`,
+        JSON.stringify({
+          ...specimen,
+          target: { ...specimen.target, kind: "app", id: mux, version },
+          provenance: {
+            ...outerProvenance,
+            executable: { ...outerProvenance.executable, path: `/nix/store/mux/bin/${mux}`, version },
+          },
+        }),
+        muxIdentity.featureIds,
+        new Map([[specimen.probeHash, projectedManifest]]),
+      )
+      expect(assessRunAdmission(labelledApp, [], { mode: "historical" })).toMatchObject({
+        accepted: false,
+        reason: "identity-replies-mismatch",
+      })
+    },
+  )
+
+  it("matches Screen's retained DA2 version before applying native ownership requirements", () => {
+    const specimen = muxIdentity.specimens.find((entry) => entry.mux === "screen")!
+    const suites = new Map([[specimen.run.probeHash, manifest(specimen.run.probeHash, muxIdentity.featureIds)]])
+    for (const [version, da2, reason] of [
+      [specimen.version, specimen.run.rawReplies["device.secondary-da"], "outer-app-proof-missing"],
+      ["4.09.02", specimen.run.rawReplies["device.secondary-da"], "identity-replies-mismatch"],
+      [specimen.version, "\x1b[>83;9999999999999999;0c", "identity-replies-mismatch"],
+      [specimen.version, "\x1b[>83;99999999999999999999;0c", "identity-replies-mismatch"],
+    ]) {
+      const parsed = parseRunSource(
+        "screen-identity.json",
+        JSON.stringify({
+          ...specimen.run,
+          target: { ...specimen.run.target, kind: "mux", id: "screen", version },
+          rawReplies: { ...specimen.run.rawReplies, "device.secondary-da": da2 },
+        }),
+        muxIdentity.featureIds,
+        suites,
+      )
+      expect(assessRunAdmission(parsed, [], { mode: "historical" })).toMatchObject({ accepted: false, reason })
+    }
+  })
+
+  // Only the measured Linux owner is approved; the Linux corpus cannot witness a Darwin leak.
+  it.each(muxIdentity.specimens)(
+    "keeps macOS $mux admission held pending its measured owner",
+    ({ mux, version, run: specimen }) => {
+      const parsed = parseRunSource(
+        "darwin-mux.json",
+        JSON.stringify({
+          ...specimen,
+          target: { ...specimen.target, kind: "mux", id: mux, version, os: "darwin" },
+        }),
+        muxIdentity.featureIds,
+        new Map([[specimen.probeHash, manifest(specimen.probeHash, muxIdentity.featureIds)]]),
+      )
+      expect(assessRunAdmission(parsed, [], { mode: "historical" })).toMatchObject({
+        accepted: false,
+        reason: "mux-platform-unqualified",
+      })
+    },
+  )
 
   it("excludes a schema-v2 kitty run whose XTVERSION is missing", () => {
     const parsed = parseRun(

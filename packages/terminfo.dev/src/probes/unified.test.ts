@@ -1593,6 +1593,86 @@ it("does not use a headless-only marker to grade an app callback exception", asy
 })
 
 // A live fixture must bind its independent X11 events to the same feature trace, after pixel checkpoints.
+it.each(["start", "read", "write"])(
+  "keeps a transient clipboard %s custody refusal and stops the batch",
+  async (site) => {
+    verifiedBatchFixture()
+    const refusal = new Error(`clipboard ${site} custody lost once`)
+    let phase = "idle",
+      refused = false
+    const assertOwned = async () => {
+      if (phase === site && !refused) {
+        refused = true
+        throw refusal
+      }
+    }
+    const probes = ALL_PROBES.filter(
+      (probe) => probe.term && probe.termNeedsGeometry && !probe.termNeedsDisposable,
+    ).slice(0, 2)
+    expect(probes).toHaveLength(2)
+    const callbacks = vi.fn()
+    const readGeometry = vi.fn(async () => measured(24, 80))
+    const originals = probes.map((probe) => ({ probe, term: probe.term }))
+    try {
+      probes[0]!.term = async (context) => {
+        callbacks()
+        return context.withClipboardFixture!(async (fixture) => {
+          await fixture.readText()
+          await fixture.writeText("fixture")
+          return { pass: true, observation: { outcome: "supported", evidence: "behavior" } }
+        })
+      }
+      probes[1]!.term = async () => {
+        callbacks()
+        return { pass: true, observation: { outcome: "supported", evidence: "behavior" } }
+      }
+      await expect(
+        runProbeBatch({
+          ids: probes.map((probe) => probe.id),
+          ownedTerminal: {
+            ...geometryOwner(measured(24, 80)),
+            readGeometry,
+            clipboard: {
+              profile: "allow",
+              config: "fixture",
+              permissions: "fixture",
+              summary: "{}",
+              assertOwned,
+              dispose: async () => {},
+              async withClipboardFixture(work, _trace, verify) {
+                try {
+                  phase = "start"
+                  await verify()
+                  return await work({
+                    readText: async () => {
+                      phase = "read"
+                      await verify()
+                      return "fixture"
+                    },
+                    writeText: async () => {
+                      phase = "write"
+                      await verify()
+                    },
+                  })
+                } finally {
+                  phase = "idle"
+                }
+              },
+            },
+          },
+        }),
+      ).rejects.toBe(refusal)
+      expect(callbacks).toHaveBeenCalledTimes(1)
+      // The catch must stop before the next probe's geometry callback, not only at the final check.
+      expect(readGeometry).toHaveBeenCalledTimes(2)
+    } finally {
+      originals.forEach(({ probe, term }) => {
+        probe.term = term
+      })
+    }
+  },
+)
+
 it("runs owned OSC 52 after pixels and retains timestamped independent clipboard operations", async () => {
   verifiedBatchFixture()
   const writes: string[] = []
@@ -1616,6 +1696,7 @@ it("runs owned OSC 52 after pixels and retains timestamped independent clipboard
         config: "fixture",
         permissions: "fixture",
         summary: "{}",
+        assertOwned: async () => {},
         dispose: async () => {},
         async withClipboardFixture(work, trace) {
           const at = new Date().toISOString()
@@ -1662,6 +1743,7 @@ it("records failed clipboard restoration as collector error rather than retainin
         config: "fixture",
         permissions: "fixture",
         summary: "{}",
+        assertOwned: async () => {},
         dispose: async () => {},
         async withClipboardFixture(_work, trace) {
           trace({ kind: "clipboard-restore", at: new Date().toISOString(), sha256: "b".repeat(64), length: 8 })

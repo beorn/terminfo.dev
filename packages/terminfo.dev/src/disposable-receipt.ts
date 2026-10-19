@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { PLACEHOLDER, parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
-import type { AppLaunchReceipt } from "@terminfo/probe-defs"
+import type { AppLaunchReceipt, MuxAttachmentProof } from "@terminfo/probe-defs"
 
 /**
  * A disposable-ownership receipt is what authorizes mutate+readback against a terminal (27832).
@@ -278,6 +278,144 @@ function oneOf(source: Record<string, unknown>, key: string, allowed: readonly s
   const value = text(source, key, where)
   if (!allowed.includes(value)) fail(where, `${key} must be one of ${allowed.join(", ")}`)
   return value
+}
+
+/** Parse retained custody data only. Live process authority remains in the existing Linux owner. */
+export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
+  const where = "mux attachment"
+  const fields = (input: unknown, keys: readonly string[], subject: string): Record<string, unknown> => {
+    if (
+      !isRecord(input) ||
+      Object.keys(input).length !== keys.length ||
+      keys.some((key) => !Object.hasOwn(input, key))
+    ) {
+      fail(subject, "invalid fields")
+    }
+    return input
+  }
+  const integer = (input: unknown, minimum: number, subject: string): number => {
+    if (typeof input !== "number" || !Number.isSafeInteger(input) || input < minimum || input > 0xffffffff) {
+      fail(subject, "invalid process or tty number")
+    }
+    return input
+  }
+  const path = (source: Record<string, unknown>, key: string, subject: string): string => {
+    const result = text(source, key, subject)
+    if (!result.startsWith("/") || result.includes("\0")) fail(subject, `${key} must be an absolute path`)
+    return result
+  }
+  const process = (input: unknown, subject: string, extra: readonly string[] = []) => {
+    const row = fields(input, ["pid", "startTicks", ...extra], subject)
+    const startTicks = text(row, "startTicks", subject)
+    if (!/^[1-9][0-9]*$/.test(startTicks)) fail(subject, "startTicks must be positive decimal ticks")
+    return { pid: integer(row.pid, 2, subject), startTicks }
+  }
+  const ttyProcess = (key: string) => {
+    const row = object(source, key, where)
+    return { ...process(row, `${where} ${key}`, ["ttyRdev"]), ttyRdev: integer(row.ttyRdev, 0, `${where} ${key}`) }
+  }
+  const source = fields(
+    value,
+    [
+      "platform",
+      "mux",
+      "bootId",
+      "receiptSha256",
+      "launchRunId",
+      "captureRunId",
+      "preflightCollector",
+      "outerShell",
+      "outerTerminal",
+      "collector",
+      "attachedClient",
+      "chain",
+      "executable",
+      "config",
+      "socketPath",
+      "session",
+    ],
+    where,
+  )
+  if (source.platform !== "linux") fail(where, "platform must be linux")
+  const mux = oneOf(source, "mux", ["tmux", "screen"], where) as MuxAttachmentProof["mux"]
+  const bootId = text(source, "bootId", where)
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(bootId)) fail(where, "invalid bootId")
+  const id = (key: string) => {
+    const result = text(source, key, where)
+    if (!RUN_ID.test(result)) fail(where, `invalid ${key}`)
+    return result
+  }
+  if (!Array.isArray(source.chain) || source.chain.length < 2) fail(where, "chain must include collector and outer app")
+  const chain = source.chain.map((input, index) => {
+    const subject = `${where} chain[${index}]`
+    const row = fields(input, ["pid", "startTicks", "executablePath", "ttyRdev"], subject)
+    return {
+      ...process(row, subject, ["executablePath", "ttyRdev"]),
+      executablePath: path(row, "executablePath", subject),
+      ttyRdev: integer(row.ttyRdev, 0, subject),
+    }
+  })
+  const executable = fields(source.executable, ["path", "sha256", "version"], `${where} executable`)
+  const config = fields(source.config, ["path", "sha256"], `${where} config`)
+  const proof: MuxAttachmentProof = {
+    platform: "linux",
+    mux,
+    bootId,
+    receiptSha256: measured(source, "receiptSha256", where, { digest: true }),
+    launchRunId: id("launchRunId"),
+    captureRunId: id("captureRunId"),
+    preflightCollector: process(source.preflightCollector, `${where} preflightCollector`),
+    outerShell: ttyProcess("outerShell"),
+    outerTerminal: process(source.outerTerminal, `${where} outerTerminal`),
+    collector: ttyProcess("collector"),
+    attachedClient: ttyProcess("attachedClient"),
+    chain,
+    executable: {
+      path: path(executable, "path", `${where} executable`),
+      sha256: measured(executable, "sha256", where, { digest: true }),
+      version: text(executable, "version", where),
+    },
+    config: {
+      path: path(config, "path", `${where} config`),
+      sha256: measured(config, "sha256", where, { digest: true }),
+    },
+    socketPath: path(source, "socketPath", where),
+    session: text(source, "session", where),
+  }
+  const sameProcess = (a: { pid: number; startTicks: string }, b: { pid: number; startTicks: string }) =>
+    a.pid === b.pid && a.startTicks === b.startTicks
+  const first = chain[0]
+  const last = chain[chain.length - 1]
+  if (!first || !last) fail(where, "chain must include collector and outer app")
+  if (!sameProcess(first, proof.collector) || first.ttyRdev !== proof.collector.ttyRdev) {
+    fail(where, "chain collector identity or TTY differs from collector")
+  }
+  if (!sameProcess(last, proof.outerTerminal)) {
+    fail(where, "chain does not end at the declared outer terminal identity")
+  }
+  const shell = chain.at(-2)
+  if (!shell || !sameProcess(shell, proof.outerShell) || shell.ttyRdev !== proof.outerShell.ttyRdev) {
+    fail(where, "outer shell identity or TTY is absent immediately before the outer terminal")
+  }
+  if (new Set(chain.map((row) => row.pid)).size !== chain.length) fail(where, "chain repeats a process")
+  if (
+    proof.collector.ttyRdev === 0 ||
+    proof.outerShell.ttyRdev === 0 ||
+    proof.collector.ttyRdev === proof.outerShell.ttyRdev
+  ) {
+    fail(where, "collector and outer shell must name distinct PTYs")
+  }
+  if (proof.attachedClient.ttyRdev !== proof.outerShell.ttyRdev) {
+    fail(where, "attached client TTY differs from outer shell")
+  }
+  const muxProcesses = chain.slice(1, -2)
+  if (muxProcesses.length === 0) fail(where, "chain has no declared mux process between collector and outer shell")
+  for (const row of muxProcesses) {
+    if (row.executablePath !== proof.executable.path) {
+      fail(where, `chain process ${row.pid} does not name the declared mux executable`)
+    }
+  }
+  return proof
 }
 
 /** The Linux half the collector can actually read: /out/host-measured.json, authored by the host

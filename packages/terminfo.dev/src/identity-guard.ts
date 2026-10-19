@@ -1,5 +1,5 @@
 /**
- * Terminal identity guard — verifies that probed DA1 and XTVERSION responses
+ * Terminal identity guard — verifies that probed DA1, DA2 and XTVERSION responses
  * match the expected terminal before filing or accepting probe results.
  *
  * Prevents automated refreshes from filing results under the wrong terminal
@@ -8,15 +8,34 @@
 
 export interface TerminalIdentityRule {
   terminal: string
+  targetKind?: "mux"
   da1Pattern?: RegExp
   da1ForbiddenPattern?: RegExp
   da2Pattern?: RegExp
   xtversionPattern?: RegExp
-  requireXtversion?: boolean
+  requireXtversion?: boolean | "complete"
   forbidXtversion?: boolean
+  da2VersionEncoding?: "screen"
 }
 
 export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
+  // Detached Linux specimens: tmux 3.6 and Screen 4.09.01. Raw source hashes live in
+  // fixtures/mux-identity.json. Identity alone does not establish an owned outer context.
+  tmux: {
+    terminal: "tmux",
+    targetKind: "mux",
+    da1Pattern: /^\x1b\[\?1;2;4c$/,
+    xtversionPattern: /^tmux (?<version>\d+\.\d+[a-z]?)$/,
+    requireXtversion: "complete",
+  },
+  screen: {
+    terminal: "screen",
+    targetKind: "mux",
+    da1Pattern: /^\x1b\[\?1;2c$/,
+    da2Pattern: /^\x1b\[>83;(?<version>[1-9]\d{4,14});0c(?:\x1b\[\?[0-9;]+c)?$/,
+    da2VersionEncoding: "screen",
+    forbidXtversion: true,
+  },
   kitty: {
     terminal: "kitty",
     da1Pattern: /\?62;/,
@@ -83,6 +102,7 @@ export interface VerificationResult {
 
 const DA1_GRAMMAR = String.raw`\x1b\[\?[0-9;]+c`
 const DA1_ONLY = new RegExp(`^${DA1_GRAMMAR}$`)
+export const COMPLETE_DA2 = new RegExp(String.raw`^\x1b\[>[0-9]+;[0-9]+;[0-9]+c(${DA1_GRAMMAR})?$`)
 export const COMPLETE_XTVERSION = new RegExp(String.raw`^\x1bP>\|([^\x1b]+)\x1b\\(${DA1_GRAMMAR})?$`)
 
 /** Owned identity is independent of the selected feature and never falls back on failure. */
@@ -91,6 +111,7 @@ export function deriveIdentity(responses: Record<string, string> | undefined): {
   xtversionRaw?: string
   xtversionPayload?: string
   da1?: string
+  da2?: string
 } {
   const source = responses && Object.hasOwn(responses, "collector.xtversion") ? "collector" : "feature"
   const raw = responses?.[source === "collector" ? "collector.xtversion" : "device.xtversion"]
@@ -99,10 +120,23 @@ export function deriveIdentity(responses: Record<string, string> | undefined): {
   if (source === "collector" && raw && !complete && !da1Only) {
     throw new Error(`identity: XTVERSION preflight malformed, raw ${Buffer.from(raw).toString("base64")}`)
   }
-  const collectorDa1 = source === "collector" ? (complete?.[2] ?? (da1Only ? raw : undefined)) : undefined
+  const ownedDa2 = responses && Object.hasOwn(responses, "collector.da2")
+  const da2 = responses?.[ownedDa2 ? "collector.da2" : "device.secondary-da"]
+  const completeDa2 = da2 ? COMPLETE_DA2.exec(da2) : null
+  if (ownedDa2 && !completeDa2) {
+    throw new Error(
+      `identity: DA2 preflight ${da2 ? "malformed" : "silent"}, raw ${Buffer.from(da2 ?? "").toString("base64")}`,
+    )
+  }
+  const xtversionDa1 = source === "collector" ? (complete?.[2] ?? (da1Only ? raw : undefined)) : undefined
+  const da2Da1 = ownedDa2 ? completeDa2?.[1] : undefined
+  if (xtversionDa1 && da2Da1 && xtversionDa1 !== da2Da1) {
+    throw new Error(`identity: DA1 mismatch, XTVERSION ${JSON.stringify(xtversionDa1)}, DA2 ${JSON.stringify(da2Da1)}`)
+  }
+  const collectorDa1 = xtversionDa1 ?? da2Da1
   const explicitDa1 = responses && Object.hasOwn(responses, "device.primary-da")
   const da1 = explicitDa1 ? responses["device.primary-da"] : collectorDa1
-  if (explicitDa1 && source === "collector" && complete?.[2]) {
+  if (explicitDa1 && ((source === "collector" && complete?.[2]) || da2Da1)) {
     if (!DA1_ONLY.test(da1 ?? "")) {
       throw new Error(`identity: DA1 malformed, raw ${Buffer.from(da1 ?? "").toString("base64")}`)
     }
@@ -117,13 +151,13 @@ export function deriveIdentity(responses: Record<string, string> | undefined): {
     xtversionRaw: raw,
     xtversionPayload: complete ? complete[1] : da1Only || raw?.startsWith("\x1bP") ? undefined : raw,
     da1,
+    da2,
   }
 }
 
 /**
- * A rule opts into measured-version resolution by naming its version capture `version` in
- * xtversionPattern. A rule without that group keeps the detected version, so an id we have not
- * measured resolves exactly as it did before (27874 launcher-target-family, @cto 1101133).
+ * XTVERSION rules opt into measured-version resolution with a named `version` capture.
+ * Screen's encoded DA2 uses its explicit rule option in the same resolver below.
  */
 function measuredVersionPattern(rule: TerminalIdentityRule | undefined): RegExp | undefined {
   return rule?.xtversionPattern?.source.includes("(?<version>") ? rule.xtversionPattern : undefined
@@ -138,8 +172,32 @@ export function resolveMeasuredAppVersion(
   const normTerminal = terminal.toLowerCase().replace(/[^a-z0-9-]/g, "-")
   const rule = TERMINAL_IDENTITY_RULES[normTerminal] || TERMINAL_IDENTITY_RULES[terminal.toLowerCase()]
   const payloadPattern = measuredVersionPattern(rule)
-  if (!payloadPattern) return detectedVersion || "unknown"
+  if (!payloadPattern && !rule?.da2VersionEncoding) return detectedVersion || "unknown"
   const identity = deriveIdentity(responses)
+  if (rule?.da2VersionEncoding === "screen") {
+    if (identity.xtversionPayload && identity.xtversionPayload !== "No XTVERSION response") {
+      throw new Error(
+        `${terminal} identity mismatch: expected Screen DA2, received XTVERSION ${identity.xtversionPayload}`,
+      )
+    }
+    const encoded = rule.da2Pattern?.exec(identity.da2 ?? "")?.groups?.version
+    const numeric = encoded === undefined ? Number.NaN : Number(encoded)
+    if (!Number.isSafeInteger(numeric)) {
+      throw new Error(`${terminal} identity mismatch: measured DA2 ${JSON.stringify(identity.da2)}`)
+    }
+    const major = Math.floor(numeric / 10000)
+    // GNU Screen 5.0.0 changed screen.c's version format from %d.%.2d.%.2d to %d.%d.%d;
+    // the DA2 encoding stayed major*10000 + minor*100 + revision (also measured on 5.0.2).
+    const width = major < 5 ? 2 : 1
+    const version = `${major}.${String(Math.floor(numeric / 100) % 100).padStart(width, "0")}.${String(numeric % 100).padStart(width, "0")}`
+    if (detectedVersion && detectedVersion !== version) {
+      throw new Error(`${terminal} version mismatch: detected ${detectedVersion}, measured ${version}`)
+    }
+    return version
+  }
+  if (rule?.requireXtversion === "complete" && !COMPLETE_XTVERSION.test(identity.xtversionRaw ?? "")) {
+    throw new Error(`${terminal} identity mismatch: requires a complete XTVERSION DCS frame`)
+  }
   if (identity.source === "collector" && !identity.xtversionPayload) {
     throw new Error("identity: XTVERSION preflight silent")
   }
@@ -147,7 +205,7 @@ export function resolveMeasuredAppVersion(
   if (identity.source === "feature" && !identity.xtversionRaw?.startsWith("\x1bP")) return detectedVersion || "unknown"
   const payload = identity.xtversionPayload
   if (!payload) return detectedVersion || "unknown"
-  const version = payloadPattern.exec(payload)?.groups?.version
+  const version = payloadPattern?.exec(payload)?.groups?.version
   if (!version) throw new Error(`${terminal} identity mismatch: measured XTVERSION ${payload}`)
   if (detectedVersion && detectedVersion !== version) {
     throw new Error(`${terminal} version mismatch: detected ${detectedVersion}, measured ${version}`)
@@ -156,7 +214,7 @@ export function resolveMeasuredAppVersion(
 }
 
 /**
- * Verify that DA1 and XTVERSION probe responses match the expected terminal identity.
+ * Verify that DA1, DA2 and XTVERSION replies match the expected terminal identity.
  */
 export function verifyTerminalIdentity(
   terminal: string,
@@ -180,6 +238,9 @@ export function verifyTerminalIdentity(
     return { ok: false, checked: true, reason: (error as Error).message }
   }
   const { da1, xtversionRaw, xtversionPayload: xtversion } = identity
+  if (rule.requireXtversion === "complete" && !COMPLETE_XTVERSION.test(xtversionRaw ?? "")) {
+    return { ok: false, checked: true, reason: `Terminal "${terminal}" requires a complete XTVERSION DCS frame` }
+  }
   if (xtversionRaw?.startsWith("\x1bP") && !xtversion) {
     return { ok: false, checked: true, reason: `Terminal "${terminal}" returned an incomplete XTVERSION DCS frame` }
   }
@@ -238,7 +299,7 @@ export function verifyTerminalIdentity(
     }
   }
 
-  if (rule.da2Pattern && !rule.da2Pattern.test(responses?.["device.secondary-da"] ?? "")) {
+  if (rule.da2Pattern && !rule.da2Pattern.test(identity.da2 ?? "")) {
     return {
       ok: false,
       checked: true,
