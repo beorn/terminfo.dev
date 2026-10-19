@@ -357,7 +357,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
   })
   const executable = fields(source.executable, ["path", "sha256", "version"], `${where} executable`)
   const config = fields(source.config, ["path", "sha256"], `${where} config`)
-  return {
+  const proof: MuxAttachmentProof = {
     platform: "linux",
     mux,
     bootId,
@@ -382,6 +382,38 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     socketPath: path(source, "socketPath", where),
     session: text(source, "session", where),
   }
+  const sameProcess = (a: { pid: number; startTicks: string }, b: { pid: number; startTicks: string }) =>
+    a.pid === b.pid && a.startTicks === b.startTicks
+  const first = chain[0]
+  const last = chain[chain.length - 1]
+  if (!first || !last) fail(where, "chain must include collector and outer app")
+  if (!sameProcess(first, proof.collector) || first.ttyRdev !== proof.collector.ttyRdev) {
+    fail(where, "chain collector identity or TTY differs from collector")
+  }
+  if (!sameProcess(last, proof.outerTerminal)) {
+    fail(where, "chain does not end at the declared outer terminal identity")
+  }
+  const shell = chain.find((row) => sameProcess(row, proof.outerShell))
+  if (!shell || shell.ttyRdev !== proof.outerShell.ttyRdev) {
+    fail(where, "outer shell identity or TTY is absent from chain")
+  }
+  if (new Set(chain.map((row) => row.pid)).size !== chain.length) fail(where, "chain repeats a process")
+  if (
+    proof.collector.ttyRdev === 0 ||
+    proof.outerShell.ttyRdev === 0 ||
+    proof.collector.ttyRdev === proof.outerShell.ttyRdev
+  ) {
+    fail(where, "collector and outer shell must name distinct PTYs")
+  }
+  if (proof.attachedClient.ttyRdev !== proof.outerShell.ttyRdev) {
+    fail(where, "attached client TTY differs from outer shell")
+  }
+  for (const row of chain.slice(1, -1)) {
+    if (!sameProcess(row, proof.outerShell) && row.executablePath !== proof.executable.path) {
+      fail(where, `chain process ${row.pid} does not name the declared mux executable`)
+    }
+  }
+  return proof
 }
 
 /** The Linux half the collector can actually read: /out/host-measured.json, authored by the host

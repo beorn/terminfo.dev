@@ -66,6 +66,16 @@ test("mux attachment preserves its measured chain and refuses malformed or mixed
     { ...proof, chain: [] },
     { ...proof, executable: { ...proof.executable, path: "relative" } },
     { ...proof, executable: { ...proof.executable, version: "" } },
+    { ...proof, collector: { ...proof.collector, startTicks: "9999" } },
+    { ...proof, outerShell: { ...proof.outerShell, startTicks: "9999" } },
+    { ...proof, collector: { ...proof.collector, ttyRdev: proof.outerShell.ttyRdev } },
+    { ...proof, attachedClient: { ...proof.attachedClient, ttyRdev: proof.collector.ttyRdev } },
+    { ...proof, chain: proof.chain.slice(1) },
+    { ...proof, chain: [...proof.chain, proof.chain[0]] },
+    {
+      ...proof,
+      chain: proof.chain.map((row) => (row.pid === 145 ? { ...row, executablePath: "/usr/bin/foreign" } : row)),
+    },
   ]) {
     expect(() => parseMuxAttachmentProof(invalid)).toThrow(/mux attachment/)
   }
