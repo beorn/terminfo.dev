@@ -2816,7 +2816,7 @@ describe("identity self-admission", () => {
         const assessment = assessRunAdmission(parsed, [], { mode: "historical" })
         expect.soft(assessment.accepted, `${mux}/${kind} must retain the outer-proof refusal`).toBe(false)
         if (!assessment.accepted) {
-          expect.soft(assessment.reason).toBe(kind === "mux" ? "outer-app-proof-missing" : "native-provenance-missing")
+          expect.soft(assessment.reason).toBe(kind === "mux" ? "outer-app-proof-missing" : "identity-replies-mismatch")
         }
       }
       const outerTarget = {
@@ -2861,6 +2861,25 @@ describe("identity self-admission", () => {
         accepted: false,
         reason: "mux-attachment-missing",
       })
+      // App provenance must not turn a genuine mux into an app. The original missing-provenance
+      // case could reject for the wrong reason and miss this kind mismatch.
+      const labelledApp = parseRunSource(
+        `mislabelled-${mux}.json`,
+        JSON.stringify({
+          ...specimen,
+          target: { ...specimen.target, kind: "app", id: mux, version },
+          provenance: {
+            ...outerProvenance,
+            executable: { ...outerProvenance.executable, path: `/nix/store/mux/bin/${mux}`, version },
+          },
+        }),
+        muxIdentity.featureIds,
+        new Map([[specimen.probeHash, projectedManifest]]),
+      )
+      expect(assessRunAdmission(labelledApp, [], { mode: "historical" })).toMatchObject({
+        accepted: false,
+        reason: "identity-replies-mismatch",
+      })
     },
   )
 
@@ -2868,12 +2887,12 @@ describe("identity self-admission", () => {
     const specimen = muxIdentity.specimens.find((entry) => entry.mux === "screen")!
     const suites = new Map([[specimen.run.probeHash, manifest(specimen.run.probeHash, muxIdentity.featureIds)]])
     for (const [version, reason] of [
-      [specimen.version, "native-provenance-missing"],
+      [specimen.version, "outer-app-proof-missing"],
       ["4.09.02", "identity-replies-mismatch"],
     ]) {
       const parsed = parseRunSource(
         "screen-identity.json",
-        JSON.stringify({ ...specimen.run, target: { ...specimen.run.target, kind: "app", id: "screen", version } }),
+        JSON.stringify({ ...specimen.run, target: { ...specimen.run.target, kind: "mux", id: "screen", version } }),
         muxIdentity.featureIds,
         suites,
       )

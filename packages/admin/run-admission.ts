@@ -159,6 +159,7 @@ type ProtocolIdentitySubject = Pick<LoadedRun, "target" | "rawReplies" | "proven
 function protocolIdentityMatch(run: ProtocolIdentitySubject): IdentityAdmission | null {
   const rule = ADMISSION_IDENTITY_RULES[run.target.id]
   if (!rule) return null
+  if (run.target.kind !== (rule.targetKind ?? "app")) return null
   const verification = TERMINAL_IDENTITY_RULES[run.target.id]
     ? verifyTerminalIdentity(run.target.id, run.rawReplies, run.results)
     : { ok: true, checked: true }
