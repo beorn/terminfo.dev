@@ -200,12 +200,13 @@ function measureWindowsAppLaunch() {
   required("APP_EXECUTABLE")
   required("APP_SOURCE_ARTIFACT")
   let value: unknown
-  if (appId === "windows-terminal") {
+  if (appId === "windows-terminal" || appId === "wezterm") {
+    const expectedExecutable = appId === "windows-terminal" ? "WindowsTerminal.exe" : "wezterm-gui.exe"
     const script = `$ErrorActionPreference = 'Stop'
 $expected = Get-Item -LiteralPath $env:APP_EXECUTABLE
-if ($expected.PSIsContainer -or $expected.Name -cne 'WindowsTerminal.exe') { throw 'APP_EXECUTABLE must name WindowsTerminal.exe, not its wt.exe launcher' }
-$processes = @(Get-CimInstance Win32_Process -Filter "Name='WindowsTerminal.exe'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
-if ($processes.Count -ne 1) { throw "Expected exactly one launched WindowsTerminal.exe at $($expected.FullName); found $($processes.Count)" }
+if ($expected.PSIsContainer -or $expected.Name -cne '${expectedExecutable}') { throw 'APP_EXECUTABLE must name ${expectedExecutable}' }
+$processes = @(Get-CimInstance Win32_Process -Filter "Name='${expectedExecutable}'" | Where-Object { $_.ExecutablePath -ieq $expected.FullName })
+if ($processes.Count -ne 1) { throw "Expected exactly one launched ${expectedExecutable} at $($expected.FullName); found $($processes.Count)" }
 $executable = Get-Item -LiteralPath $processes[0].ExecutablePath
 $zip = Get-Item -LiteralPath $env:APP_SOURCE_ARTIFACT
 if ($zip.PSIsContainer -or $zip.Extension -ine '.zip' -or $zip.Length -eq 0 -or $executable.Length -eq 0) { throw 'Windows executable and retained portable ZIP must be nonempty files' }
@@ -219,7 +220,7 @@ if ([string]::IsNullOrWhiteSpace($productVersion)) { throw "No measured ProductV
   sourceArtifact = @{ kind = 'portable-zip'; path = $zip.FullName; sha256 = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 } | ConvertTo-Json -Compress -Depth 4`
     value = JSON.parse(
-      measured("launched WindowsTerminal.exe version and retained ZIP bytes", "powershell.exe", [
+      measured(`launched ${expectedExecutable} version and retained ZIP bytes`, "powershell.exe", [
         "-NoProfile",
         "-Command",
         script,
@@ -275,7 +276,7 @@ $dlls = @($dllFiles | ForEach-Object {
     value = { ...measuredLaunch, productVersion }
   } else {
     throw new Error(
-      `Hosted Windows receipt requires APP_ID=windows-terminal or APP_ID=alacritty; received ${JSON.stringify(appId)}`,
+      `Hosted Windows receipt requires APP_ID=windows-terminal, APP_ID=alacritty or APP_ID=wezterm; received ${JSON.stringify(appId)}`,
     )
   }
   const receipt = parseAppLaunchReceipt(value, "collector", "app", "Hosted Windows launch measurement")

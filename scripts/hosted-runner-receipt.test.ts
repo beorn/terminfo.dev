@@ -350,8 +350,9 @@ if (cmd.includes('Get-NetAdapter')) {
 } else if (cmd.includes('Win32_OperatingSystem')) {
   console.log('${raw.boot}');
 } else if (cmd.includes('ProductVersion')) {
-  const hash=(name)=>createHash('sha256').update(readFileSync(${JSON.stringify(dir)}+'/'+name)).digest('hex');
-  console.log(JSON.stringify({platform:'win32',executablePath:${JSON.stringify(executablePath)},productVersion:${JSON.stringify(productVersion)},executableSha256:hash('WindowsTerminal.exe'),sourceArtifact:{kind:'portable-zip',path:${JSON.stringify(zipPath)},sha256:hash('wt.zip')}}));
+  const hash=(file)=>createHash('sha256').update(readFileSync(file)).digest('hex');
+  const exe=process.env.APP_EXECUTABLE; const zip=process.env.APP_SOURCE_ARTIFACT;
+  console.log(JSON.stringify({platform:'win32',executablePath:exe,productVersion:process.env.FAKE_PRODUCT_VERSION||${JSON.stringify(productVersion)},executableSha256:hash(${JSON.stringify(dir)}+'/'+(process.env.FAKE_EXE_FILE||'WindowsTerminal.exe')),sourceArtifact:{kind:'portable-zip',path:zip,sha256:hash(${JSON.stringify(dir)}+'/'+(process.env.FAKE_ZIP_FILE||'wt.zip'))}}));
 } else {
   console.log('');
 }
@@ -369,6 +370,9 @@ if (cmd.includes('Get-NetAdapter')) {
       RUNNER_NAME: "win-runner",
       RUNNER_OS: "Windows",
       RUNNER_ARCH: "X64",
+      FAKE_PRODUCT_VERSION: "",
+      FAKE_EXE_FILE: "",
+      FAKE_ZIP_FILE: "",
       RUNNER_TRACKING_ID: "win-tracking",
       ImageOS: "win22",
       ImageVersion: "20261001.1",
@@ -412,6 +416,40 @@ if (cmd.includes('Get-NetAdapter')) {
     expect(decoded.vm.identityAtJobStart.machineIdSha256).toBe(createHash("sha256").update(raw.mac).digest("hex"))
     expect(decoded.vm.identityAtJobStart.productUuidSha256).toBe(createHash("sha256").update(raw.uuid).digest("hex"))
     expect(decoded.vm.identityAtJobStart.bootIdSha256).toBe(createHash("sha256").update(raw.boot).digest("hex"))
+
+    // 30197: the same portable-ZIP arm must carry WezTerm on Windows, whose owner process is
+    // wezterm-gui.exe — not the `wezterm` shim, exactly as wt.exe is not WindowsTerminal.exe. Before
+    // the arm knew this app id the producer refused the app by name at emit.
+    const weztermExe = String.raw`C:\runner\wezterm\wezterm-gui.exe`
+    const weztermZip = String.raw`C:\runner\wezterm.zip`
+    const weztermExeBytes = "fixture wezterm-gui executable bytes\n"
+    const weztermZipBytes = "fixture wezterm portable ZIP bytes\n"
+    await writeFile(join(dir, "wezterm-gui.exe"), weztermExeBytes)
+    await writeFile(join(dir, "wezterm.zip"), weztermZipBytes)
+    env.APP_ID = "wezterm"
+    env.APP_EXECUTABLE = weztermExe
+    env.APP_SOURCE_ARTIFACT = weztermZip
+    env.FAKE_PRODUCT_VERSION = "0.2026.10.14"
+    env.FAKE_EXE_FILE = "wezterm-gui.exe"
+    env.FAKE_ZIP_FILE = "wezterm.zip"
+    await run("emit", start, join(dir, "wezterm-host-measured.json"))
+    expect(parseDisposableReceipt(await readFile(join(dir, "wezterm-host-measured.json"), "utf8")).appLaunch).toEqual({
+      platform: "win32",
+      executablePath: weztermExe,
+      productVersion: "0.2026.10.14",
+      executableSha256: createHash("sha256").update(weztermExeBytes).digest("hex"),
+      sourceArtifact: {
+        kind: "portable-zip",
+        path: weztermZip,
+        sha256: createHash("sha256").update(weztermZipBytes).digest("hex"),
+      },
+    })
+    env.APP_ID = "windows-terminal"
+    env.APP_EXECUTABLE = executablePath
+    env.APP_SOURCE_ARTIFACT = zipPath
+    env.FAKE_PRODUCT_VERSION = ""
+    env.FAKE_EXE_FILE = ""
+    env.FAKE_ZIP_FILE = ""
 
     // Existing machine identity cases cannot catch a launch version silently omitted from emit.
     productVersion = ""
