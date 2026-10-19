@@ -184,11 +184,29 @@ const engineRow = (id: string): CollectionContext => ({
 })
 
 /**
- * macOS apps the admin launches and owns on this host. kitty is the first one: the launch
- * proves ownership through kitty's own exported identity plus live TTY and process descent, so the
- * pass runs the same admin entry point the local development route uses and classifies its output.
+ * macOS apps the admin launches and owns on this host. kitty is not one of them: its owned codimac
+ * run was unadmitted for the missing capture adapter, and @cto then recorded it as not measurable on
+ * the hosted runner (see UNMEASURABLE_MAC_APPS). The route stays live for a codimac-only app that
+ * the hosted runner cannot run and that qualifies.
  */
-const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set(["kitty"])
+const LOCAL_OWNED_MAC_APPS: ReadonlySet<string> = new Set<string>()
+
+/**
+ * A macOS row with a measured reason it cannot be collected at all, kept as a named fact instead of
+ * a silent gap. kitty's GLFW finds no NSGL pixel format on the GitHub-hosted runner, so no window
+ * opens and no collector runs: the receipt alone is not a read (@cto 2026-10-19, closing Option 2).
+ * Evidence at /hh/var/@dev/luna3/28021/kitty-hosted-39302236007/.
+ */
+const UNMEASURABLE_MAC_APPS: ReadonlyMap<string, { readonly runId: string; readonly reason: string }> = new Map([
+  [
+    "kitty",
+    {
+      runId: "39302236007",
+      reason:
+        'not measurable on the hosted runner: run 39302236007 failed at launch with "NSGL: Failed to find a suitable pixel format" / "Failed to create GLFWwindow ... requires working OpenGL 3.3 drivers", so no window opened and no collector ran (README sha256 6be5c15f..., launcher.log 5371bc9b...)',
+    },
+  ],
+])
 
 const localOwnedAppRow = (id: string): CollectionContext => ({
   id,
@@ -234,7 +252,19 @@ function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[
         uncollectable: null,
       })
     } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
-    else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
+    else if (os === "macos" && UNMEASURABLE_MAC_APPS.has(id)) {
+      const fact = UNMEASURABLE_MAC_APPS.get(id)!
+      contexts.push({
+        id,
+        os,
+        kind: "app",
+        route: null,
+        command: null,
+        requires: null,
+        sourceRun: fact.runId,
+        uncollectable: fact.reason,
+      })
+    } else if (os === "macos" && hosted.macos.has(id)) contexts.push(macRow(id))
     else if (os === "macos" && LOCAL_OWNED_MAC_APPS.has(id)) contexts.push(localOwnedAppRow(id))
     else if (os === "windows" && hosted.windows.has(id)) {
       contexts.push({

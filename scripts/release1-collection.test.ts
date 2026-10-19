@@ -587,17 +587,19 @@ describe("release 1 collection census", () => {
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
     // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty/wezterm on macos and
     // windows-terminal/alacritty/wezterm on windows.
-    // All remaining unresolved routes stay recorded as expected route work. kitty/macos is no longer one of
-    // them: 15323 gives it an owned local launch on the host the pass runs on, and the run is still
-    // parsed and classified by this pass rather than by a second dispatcher.
+    // All remaining unresolved routes stay recorded as expected route work. kitty/macos is one of
+    // them, with its own measured reason: the hosted runner has no usable OpenGL, so kitty opens no
+    // window there (run 39302236007), and its owned codimac run was unadmitted for the missing
+    // capture adapter. The reason is a fact, not a silent gap.
     const kitty = census().find((entry) => entry.id === "kitty" && entry.os === "macos")
-    expect(kitty?.route).toBe("local-owned-app")
-    expect(kitty?.command).toMatch(/probe app kitty --output/)
-    expect(kitty?.uncollectable).toBeNull()
-    expect(kitty?.requires).toMatch(/owned app window launched by the admin/)
+    expect(kitty?.route).toBeNull()
+    expect(kitty?.command).toBeNull()
+    expect(kitty?.requires).toBeNull()
+    expect(kitty?.sourceRun).toBe("39302236007")
+    expect(kitty?.uncollectable).toMatch(/not measurable on the hosted runner.*39302236007/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(4)
-    expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
+    expect(missing).toHaveLength(5)
+    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(4)
     for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
@@ -897,9 +899,9 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
       { cwd: root, encoding: "utf8" },
     )
     expect(result.status, result.stderr).toBe(1)
-    // kitty/macos now runs the owned local route, so it fails by name through that route; a row that
-    // still has no route (warp) keeps the required-route-work refusal this test was written for.
-    expect(result.stdout).toMatch(/kitty\/macos: failed.*owned-app collection exited 1/)
+    // kitty/macos now fails by name with its measured unmeasurable fact; a row that still has no
+    // route (warp) keeps the required-route-work refusal this test was written for.
+    expect(result.stdout).toMatch(/kitty\/macos: failed.*not measurable on the hosted runner/)
     expect(result.stdout).toMatch(/warp\/macos: failed.*required route work/)
     const passName = readdirSync(join(directory, "output"))[0]!
     const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8")) as Awaited<
@@ -909,7 +911,7 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
       pass.contexts.find(
         (row: { context: { id: string; os: string } }) => row.context.id === "kitty" && row.context.os === "macos",
       ),
-    ).toMatchObject({ status: "failed", error: expect.stringContaining("owned-app collection exited 1") })
+    ).toMatchObject({ status: "failed", error: expect.stringContaining("not measurable on the hosted runner") })
     expect(
       pass.contexts.find(
         (row: { context: { id: string; os: string } }) => row.context.id === "warp" && row.context.os === "macos",
