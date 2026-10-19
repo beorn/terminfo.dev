@@ -364,7 +364,9 @@ describe("candidate-2 page: wiring", () => {
     // The page must say all of it in the group's State cell, not only in its data.
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
-    expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
+    // The remainder only: a context that carries a dark hold is named in the hold clause with its
+    // fraction, so listing it here as well would print it twice in one cell (30286 fix 2).
+    expect(page).toContain("not measured: {{ unmeasuredWithoutHold(group).map((row) => row.context).join(', ') }}")
     for (const key of ["editing", "charsets", "reset"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} is missing from the page`)
@@ -640,6 +642,15 @@ describe("candidate-2 page: wiring", () => {
     if (!scrollback) throw new Error("scrollback group missing")
     expect(scrollback.heldBy.length).toBeGreaterThan(0)
     expect(scrollback.darkHeldBy.length).toBe(6)
+    // The "not measured" list is the remainder: a dark hold is always one of those contexts, so
+    // printing both lists unchanged names each held context twice in the same cell.
+    expect(page).toContain('v-if="unmeasuredWithoutHold(group).length > 0"')
+    for (const group of data.groups) {
+      const unmeasured = new Set(group.unmeasured.map((row) => row.context))
+      for (const hold of group.darkHeldBy) {
+        expect(unmeasured.has(hold.context), `${group.key} ${hold.context}`).toBe(true)
+      }
+    }
   })
 
   it("preserves global inclusion outside the per-context scope", () => {
