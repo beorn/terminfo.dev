@@ -1164,7 +1164,7 @@ describe("private finite daemon startup", () => {
       detectedName = fixture.id === "cursor" ? "com.microsoft.VSCode" : "cursor"
       await assert.rejects(
         collectProbeRun({ ids: ["device.xtversion"] }),
-        error => error.message.includes(JSON.stringify(detectedName)) && error.message.includes("receipt names " + fixture.id),
+        { message: "Hosted " + (fixture.platform === "win32" ? "Windows" : "Darwin") + " terminal detected " + JSON.stringify(detectedName) + " while the receipt names " + fixture.id },
       )
       detectedName = fixture.id
       receiptAppId = undefined
