@@ -165,6 +165,11 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
     const tree = join(tmp, "source")
     mkdirSync(join(tree, "src"), { recursive: true })
     writeFileSync(join(tree, "src", "main.c"), "int main(void);\n")
+    // nix hash writes its sentry cache under $HOME/.cache/nix; give the children their own
+    // home so the run's guard home stays clean (@i/17-test-system/25231).
+    const childHome = join(tmp, "home")
+    mkdirSync(childHome, { recursive: true })
+    const childEnv = { ...process.env, HOME: childHome, XDG_CACHE_HOME: join(childHome, ".cache") }
     const run = (path: string) =>
       spawnSync(
         process.execPath,
@@ -173,7 +178,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
           `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
            process.stdout.write(JSON.stringify(kittySourceProof(${JSON.stringify(path)})))`,
         ],
-        { encoding: "utf8" },
+        { encoding: "utf8", env: childEnv },
       )
     const archiveResult = run(archive)
     expect(archiveResult.status, archiveResult.stderr).toBe(0)
@@ -183,7 +188,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
     })
     const treeResult = run(tree)
     expect(treeResult.status, treeResult.stderr).toBe(0)
-    const nar = spawnSync("nix", ["hash", "path", tree], { encoding: "utf8" })
+    const nar = spawnSync("nix", ["hash", "path", tree], { encoding: "utf8", env: childEnv })
     expect(nar.status, nar.stderr).toBe(0)
     expect(JSON.parse(treeResult.stdout)).toEqual({ kind: "directory", narHash: nar.stdout.trim() })
     const missing = run(join(tmp, "absent"))
@@ -199,7 +204,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
         `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
          kittySourceProof(${JSON.stringify(tree)})`,
       ],
-      { encoding: "utf8", env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
+        { encoding: "utf8", env: { ...childEnv, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
     )
     expect(malformed.status).not.toBe(0)
     expect(malformed.stderr).toMatch(/No NAR hash for Kitty source directory/)
