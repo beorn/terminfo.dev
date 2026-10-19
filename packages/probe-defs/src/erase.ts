@@ -28,6 +28,7 @@ import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "erase.character",
+    textClaim: "characters",
     expected: "ECH erases the requested cells from the cursor, leaving the preceding column intact",
     seed: "\x1b[1;1HABCDE",
     before: [["A", "B", "C", "D", "E"]],
@@ -45,6 +46,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.line.right",
+    textClaim: "characters",
     expected: "EL0 erases from the cursor to the end of the row and preserves the adjacent row",
     seed: "\x1b[1;1HABCDE\x1b[2;1HKEEP!",
     before: [
@@ -68,6 +70,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.line.left",
+    textClaim: "characters",
     expected: "EL1 erases from the row start through the cursor",
     seed: "\x1b[1;1HABCDE\x1b[2;1HKEEP!",
     before: [
@@ -91,6 +94,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.line.all",
+    textClaim: "characters",
     expected: "EL2 erases the whole row and preserves the adjacent row",
     seed: "\x1b[1;1HABCDE\x1b[2;1HKEEP!",
     before: [
@@ -114,6 +118,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.screen.below",
+    textClaim: "characters",
     expected: "ED0 erases from the cursor to the end of the screen and preserves the row above",
     seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC",
     before: [
@@ -139,6 +144,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.screen.above",
+    textClaim: "characters",
     expected: "ED1 erases from the screen start through the cursor and preserves the row below",
     seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC",
     before: [
@@ -164,6 +170,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.screen.all",
+    textClaim: "characters",
     expected: "ED2 erases the whole screen",
     seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC",
     before: [
@@ -189,6 +196,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.selective",
+    textClaim: "characters",
     expected: "Selective erase clears unprotected cells and keeps the DECSCA-protected cell",
     seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDE',
     before: [["P", "A", "B", "C", "D", "E"]],
@@ -215,6 +223,7 @@ export const eraseReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "erase.ed-scroll-region",
+    textClaim: "characters",
     expected: "ED0 erases below the cursor inside a scroll region and preserves the preceding row",
     seed: "\x1b[1;1HKEEP!\x1b[3;1HERASE",
     before: [

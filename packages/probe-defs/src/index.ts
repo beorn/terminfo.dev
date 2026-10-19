@@ -29,6 +29,10 @@ export type {
   Observation,
   ConsoleBufferOwner,
   ObservationFrame,
+  TextCellsObservationFrame,
+  TextQualification,
+  TextQualificationShape,
+  TextQualificationSpec,
   ProbeTarget,
   ProbeSuiteManifest,
   RunOrigin,
@@ -55,6 +59,8 @@ export {
   utf8DecodingRefusal,
 } from "./helpers.ts"
 export {
+  beginCaptureLifecycle,
+  endCaptureLifecycle,
   captureRegionReadbackDecision,
   captureRegionVerdict,
   collectorRegionRead,
@@ -138,3 +144,5 @@ export type { DecidableBasis } from "./decidable-basis.ts"
 
 export { APP_UNOBSERVABLE_ROWS, appUnobservableIds, splitAppObservable } from "./app-unobservable.ts"
 export type { AppObservableSplit, AppUnobservableRow } from "./app-unobservable.ts"
+
+export { TEXT_QUALIFICATION_SPEC, TEXT_QUALIFICATION_SHAPES, textQualificationFixtures } from "./text-qualification.ts"

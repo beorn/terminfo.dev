@@ -89,7 +89,7 @@ export interface RegionReadbackBaseline {
  */
 export type RegionReadbackCell = string | { char: string; attributes: RegionReadbackAttributes }
 
-export interface RegionReadbackRow {
+export interface RegionReadbackRow extends Pick<ProbeDefinition, "textClaim"> {
   id: string
   /** The claim in words: the termless arm's `expected`, and the kind table test's row label. */
   expected: string
@@ -596,6 +596,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
     id: row.id,
     termNeedsGeometry: true,
     cellReadback: true,
+    ...(row.textClaim === undefined ? {} : { textClaim: row.textClaim }),
     termObservationEvidence: "pixels",
     termlessObservationEvidence: "parser-state",
     termless(ctx) {

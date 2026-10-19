@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
-import { ALL_PROBES, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { ALL_PROBES, TEXT_QUALIFICATION_SPEC, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(__dirname, "..", "..")
@@ -31,6 +31,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/darwin-capture.ts",
   "packages/terminfo.dev/src/darwin-terminal-text.ts",
   "packages/terminfo.dev/src/capture-calibration.ts",
+  "packages/terminfo.dev/src/text-qualification.ts",
   "packages/terminfo.dev/src/linux-input.ts",
   "packages/terminfo.dev/src/serve.ts",
   "packages/terminfo.dev/src/detect.ts",
@@ -62,6 +63,8 @@ export interface ProbeSuiteSnapshot {
   probeHash: string
   adapterVersion: string
   probes: ProbeSuiteManifest["probes"]
+  textClaims?: string[]
+  textQualification?: ProbeSuiteManifest["textQualification"]
   /** Paths whose committed bytes define this suite declaration. */
   sourcePaths: string[]
 }
@@ -105,7 +108,11 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
   const headless = ALL_PROBES.filter((probe) => probe.termless !== null)
     .map((probe) => probe.id)
     .sort()
+  const textClaims = ALL_PROBES.filter((probe) => probe.term !== null && probe.textClaim === "characters")
+    .map((probe) => probe.id)
+    .sort()
   return {
+    ...(textClaims.length === 0 ? {} : { textClaims, textQualification: TEXT_QUALIFICATION_SPEC }),
     probeHash: hash.digest("hex").slice(0, 12),
     adapterVersion,
     probes: { app, headless, mux: [...app] },
@@ -127,6 +134,8 @@ export function derivedSuiteManifest(
     probeHash: snapshot.probeHash,
     adapterVersion: snapshot.adapterVersion,
     probes: snapshot.probes,
+    ...(snapshot.textClaims === undefined ? {} : { textClaims: snapshot.textClaims }),
+    ...(snapshot.textQualification === undefined ? {} : { textQualification: snapshot.textQualification }),
     ...(freeze === undefined ? {} : { freeze: { release: freeze.release, at: freeze.at } }),
   }
 }

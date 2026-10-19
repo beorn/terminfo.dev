@@ -1271,6 +1271,7 @@ export const cursorProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
     cellReadback: true,
+    textClaim: "characters",
 
     termlessObservationEvidence: "parser-state",
   },

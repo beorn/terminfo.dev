@@ -13,6 +13,8 @@ import {
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
   isNonMeasuringEvidence,
+  TEXT_QUALIFICATION_SPEC,
+  textQualificationFixtures,
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
@@ -179,10 +181,80 @@ function observationRecord(run: LoadedRun, observation: Observation): SelectedCe
   }
 }
 
-function isConclusiveObservation(run: LoadedRun, observation: Observation): boolean {
+export interface TextQualificationAssessment {
+  qualified: boolean
+  reason?: string
+}
+
+/** Recompute once per loaded run from retained, already verified bytes. Never persist this verdict. */
+function assessTextQualification(
+  run: LoadedRun,
+  snapshots?: ReadonlyMap<string, Uint8Array>,
+): TextQualificationAssessment {
+  const rejected = (reason: string): TextQualificationAssessment => ({
+    qualified: false,
+    reason: `Run ${run.runId}: ${reason}`,
+  })
+  const qualification = run.textQualification
+  if (!qualification) return rejected("text qualification is absent")
+  const declaration = run.textQualificationSpec
+  if (
+    !declaration ||
+    declaration.version !== qualification.version ||
+    declaration.recipe !== qualification.recipe ||
+    qualification.version !== TEXT_QUALIFICATION_SPEC.version ||
+    qualification.recipe !== TEXT_QUALIFICATION_SPEC.recipe
+  ) {
+    return rejected("text qualification version or recipe does not match the cited suite declaration and reader")
+  }
+  const { rows, cols } = qualification.grid
+  const fixtures = textQualificationFixtures(rows, cols)
+  if (typeof fixtures === "string") return rejected(fixtures)
+  for (const fixture of fixtures) {
+    const witness = qualification.shapes.find(({ shape }) => shape === fixture.shape)
+    if (!witness) return rejected(`missing text qualification shape ${fixture.shape}`)
+    if (witness.reason !== undefined) return rejected(`text qualification shape ${fixture.shape}: ${witness.reason}`)
+    for (const role of ["control", "target"] as const) {
+      const frame = witness.frames.find((entry) => entry.role === role)
+      if (!frame) return rejected(`text qualification shape ${fixture.shape} has no ${role}`)
+      const rectangle = frame.cellRectangle
+      if (
+        rectangle.top !== 1 ||
+        rectangle.left !== 1 ||
+        rectangle.bottom !== rows ||
+        rectangle.right !== cols ||
+        frame.cellDigest !== frame.ref ||
+        frame.frameDigest !== frame.ref
+      ) {
+        return rejected(`text qualification shape ${fixture.shape} ${role} is not the full retained grid`)
+      }
+      const bytes = snapshots?.get(frame.ref)
+      if (!bytes) {
+        return rejected(
+          `text qualification shape ${fixture.shape} ${role} has no verified retained bytes for ${frame.ref}`,
+        )
+      }
+      const expected = role === "control" ? fixture.controlRows : fixture.targetRows
+      if (Buffer.from(bytes).toString("utf8") !== expected.join("\n")) {
+        return rejected(`text qualification shape ${fixture.shape} ${role} does not match the expected character grid`)
+      }
+    }
+  }
+  return { qualified: true }
+}
+
+function isConclusiveObservation(run: LoadedRun, observation: Observation, text: TextQualificationAssessment): boolean {
   return (
     !run.legacy &&
-    observation.evidence !== "text" &&
+    (observation.evidence !== "text" ||
+      (run.target.kind === "app" &&
+        run.target.os?.toLowerCase() === "macos" &&
+        observation.host === undefined &&
+        !run.observations.some(
+          (recorded) => recorded.featureId === observation.featureId && recorded.host !== undefined,
+        ) &&
+        text.qualified &&
+        run.textClaims?.includes(observation.featureId) === true)) &&
     !isNonMeasuringEvidence(observation.evidence) &&
     (observation.outcome === "supported" || observation.outcome === "unsupported")
   )
@@ -191,6 +263,7 @@ function isConclusiveObservation(run: LoadedRun, observation: Observation): bool
 function prepareRunCells(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
+  text: TextQualificationAssessment,
 ): { cells: Record<string, SelectedCell>; correctedFeatures: ReadonlySet<string> } {
   const cells: Record<string, SelectedCell> = {}
   const correctedFeatures = new Set<string>()
@@ -198,7 +271,7 @@ function prepareRunCells(
     cells[observation.featureId] = {
       ...observation,
       record: observationRecord(run, observation),
-      conclusive: isConclusiveObservation(run, observation),
+      conclusive: isConclusiveObservation(run, observation, text),
       chain: {
         origin: run.origin,
         method: observation.evidence,
@@ -285,7 +358,7 @@ function prepareRunCells(
     cells[entry.featureId] = {
       ...observation,
       record: observationRecord(run, observation),
-      conclusive: isConclusiveObservation(run, observation),
+      conclusive: isConclusiveObservation(run, observation, text),
       chain: {
         origin: run.origin,
         method: observation.evidence,
@@ -306,7 +379,7 @@ export function classifyDevelopmentRun(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
 ): { mode: "development"; runId: string; states: Record<string, CellState> } {
-  const { cells } = prepareRunCells(run, interpretations)
+  const { cells } = prepareRunCells(run, interpretations, assessTextQualification(run))
   return { mode: "development", runId: run.runId, states: classifyCells(cells) }
 }
 
@@ -317,8 +390,9 @@ function projectRun(
   currentProbeHash: string,
   releaseSuiteId: string | null,
   identityAdmission: IdentityAdmission | null,
+  text: TextQualificationAssessment,
 ): SelectedVersion {
-  const { cells, correctedFeatures } = prepareRunCells(run, interpretations)
+  const { cells, correctedFeatures } = prepareRunCells(run, interpretations, text)
   for (const entry of interpretations) {
     if (!hasPresentationDecision(entry) || !applies(entry, run)) continue
     const featureId = entry.featureId
@@ -461,7 +535,7 @@ export function projectResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
-  policy: { currentProbeHash: string; releaseSuiteId?: string | null },
+  policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null
@@ -477,10 +551,17 @@ export function projectResults(
   }
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
+  const textAssessments = new Map<string, TextQualificationAssessment>()
+  const textAssessmentFor = (run: LoadedRun): TextQualificationAssessment => {
+    const assessment = textAssessments.get(run.runId)
+    if (!assessment) throw new Error(`Missing text qualification assessment for run ${run.runId}`)
+    return assessment
+  }
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
     ids.add(run.runId)
     byRunId.set(run.runId, run)
+    textAssessments.set(run.runId, assessTextQualification(run, policy.textSnapshots))
   }
   const catalog = new Set(catalogIds)
   for (const entry of interpretations) {
@@ -530,7 +611,15 @@ export function projectResults(
     const assessment = assessRunAdmission(run, active, { mode: "historical" })
     assessments.set(run.runId, assessment)
     history[key].push(
-      projectRun(run, active, catalogIds, policy.currentProbeHash, releaseSuiteId, assessment.identityAdmission),
+      projectRun(
+        run,
+        active,
+        catalogIds,
+        policy.currentProbeHash,
+        releaseSuiteId,
+        assessment.identityAdmission,
+        textAssessmentFor(run),
+      ),
     )
     if (!assessment.accepted) {
       exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
@@ -565,7 +654,15 @@ export function projectResults(
       const assessment = assessments.get(chosen.runId)
       if (!assessment) throw new Error(`Missing admission assessment for selected run ${chosen.runId}`)
       versions[key].push(
-        projectRun(chosen, active, catalogIds, policy.currentProbeHash, releaseSuiteId, assessment.identityAdmission),
+        projectRun(
+          chosen,
+          active,
+          catalogIds,
+          policy.currentProbeHash,
+          releaseSuiteId,
+          assessment.identityAdmission,
+          textAssessmentFor(chosen),
+        ),
       )
     }
     const selected = versions[key][0]
@@ -649,6 +746,7 @@ export function loadSelectedResults(
   }
   const runs: LoadedRun[] = []
   const verifiedArtifacts = new Set<string>()
+  const textSnapshots = new Map<string, Uint8Array>()
   for (const dir of ["probes-apps", "probes-mux", "probes-libs"]) {
     const path = join(contentDir, dir)
     if (!existsSync(path)) fail(path, "missing required probe directory")
@@ -664,7 +762,7 @@ export function loadSelectedResults(
       }
       for (const ref of run.textSnapshotRefs ?? []) {
         if (verifiedArtifacts.has(`text-snapshot:${ref}`)) continue
-        readVerifiedArtifact(contentDir, ref, runPath, "text-snapshot")
+        textSnapshots.set(ref, readVerifiedArtifact(contentDir, ref, runPath, "text-snapshot"))
         verifiedArtifacts.add(`text-snapshot:${ref}`)
       }
       runs.push(run)
@@ -676,6 +774,7 @@ export function loadSelectedResults(
     : []
   return projectResults(runs, interpretations, catalog, {
     currentProbeHash,
+    textSnapshots,
     releaseSuiteId: options.releaseSuiteId ?? null,
   })
 }

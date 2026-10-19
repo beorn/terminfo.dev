@@ -160,6 +160,27 @@ export interface TextCellsObservationFrame extends ObservationFrameBase {
   cellRectangle: CaptureCells
 }
 
+/** Run-owned mapping witnesses, never a stored qualification verdict. */
+export type TextQualificationShape =
+  | "mid-line-gap"
+  | "trailing-gap"
+  | "soft-wrap"
+  | "prior-scrollback"
+  | "empty-last-row"
+
+export interface TextQualificationSpec {
+  version: number
+  recipe: string
+}
+
+export interface TextQualification extends TextQualificationSpec {
+  grid: { rows: number; cols: number }
+  shapes: Array<
+    | { shape: TextQualificationShape; frames: TextCellsObservationFrame[]; reason?: never }
+    | { shape: TextQualificationShape; reason: string; frames?: never }
+  >
+}
+
 /** One checkpoint, in the one kind it was actually read in. */
 export type ObservationFrame = PixelObservationFrame | TextCellsObservationFrame
 
@@ -315,6 +336,8 @@ export interface ProbeSuiteManifest {
   generatedAt?: string
   adapterVersion: string
   probes: Record<ProbeTarget["kind"], string[]>
+  textClaims?: string[]
+  textQualification?: TextQualificationSpec
   /**
    * Written only by a freeze act, never by a human: the release whose current suite this manifest
    * is. `frozenSuiteIdFor` reads this pointer, so a manifest that declares no freeze simply is not
@@ -422,6 +445,7 @@ export interface ProbeRun {
   /** Retained TEXT snapshots, the text-frame twin of `screenshotRefs` and a separate list because
    * every consumer of that one assumes a PNG. Absent in runs written before it existed. */
   textSnapshotRefs?: string[]
+  textQualification?: TextQualification
   observations: Observation[]
   /** Named coverage records for features with no applicable observable here; disjoint from observations. */
   notTested?: NotTestedCoverage[]
@@ -635,6 +659,8 @@ export interface ProbeDefinition {
   /** This callback decides at least one row through the region readback, so a text-cells run hands
    * it the cells adapter. Every other probe is handed nothing on such a run. */
   cellReadback?: true
+  /** Reviewed character-only claim; adapter routing alone never implies eligibility. */
+  textClaim?: "characters"
   /** Explicit opt-in for recording callback exceptions as observations. */
   termObservationEvidence?: ObservationEvidence
   /** Every observation this Termless callback returns names this method, or none for a refusal before measurement. */

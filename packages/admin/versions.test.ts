@@ -3,7 +3,7 @@
  * @level l1
  * @consumer Headless probe cache and selected-run suite identity
  * @testonly none
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/ vendor/terminfo.dev/packages/run-parser/src/ vendor/terminfo.dev/packages/admin/
+ * @reach fs-walk vendor/terminfo.dev/content/features.json vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/ vendor/terminfo.dev/packages/run-parser/src/ vendor/terminfo.dev/packages/admin/
  */
 import { readFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
@@ -24,7 +24,9 @@ vi.mock("node:fs", async (importOriginal) => {
   }
 })
 
-import { probeHash, probeSuiteSnapshot } from "./versions.ts"
+import { loadFeatures } from "@terminfo/catalog"
+import { ALL_PROBES } from "@terminfo/probe-defs"
+import { derivedSuiteManifest, probeHash, probeSuiteSnapshot } from "./versions.ts"
 
 test("suite hash changes when either imported mode or extension definitions change", () => {
   const baseline = probeHash()
@@ -164,4 +166,89 @@ test("28786: a source neither collector entry reaches does not move the suite ha
     "terminal-app-window.ts is unreached from the collector entries serve.ts and collect-headless.ts",
   ).toBe(baseline)
   changed.file = ""
+})
+
+// 30035: the writer must derive claims from explicit app definitions, and never backfill old snapshots.
+// Existing suite tests cover membership/hash, not the new trusted declaration relation.
+test("text claims derive only from explicitly eligible app definitions and survive the manifest writer", () => {
+  const app = ALL_PROBES.find((probe) => probe.term !== null)!
+  const headless = ALL_PROBES.find((probe) => probe.id !== app.id)!
+  const headlessTerm = headless.term
+  const baselineClaims = probeSuiteSnapshot().textClaims ?? []
+  const appClaim = app.textClaim
+  const headlessClaim = headless.textClaim
+  try {
+    app.textClaim = "characters"
+    headless.term = null
+    headless.textClaim = "characters"
+    const snapshot = probeSuiteSnapshot()
+    const expected = [...new Set([...baselineClaims.filter((id) => id !== headless.id), app.id])].sort()
+    expect(snapshot.textClaims).toEqual(expected)
+    expect(snapshot.textClaims).not.toContain(headless.id)
+    expect(derivedSuiteManifest(snapshot)).toMatchObject({
+      textClaims: expected,
+      textQualification: { version: 1, recipe: "macos-text-cells-v1" },
+    })
+    const { textClaims: _claims, textQualification: _spec, ...old } = snapshot
+    expect(derivedSuiteManifest(old)).not.toHaveProperty("textClaims")
+    expect(derivedSuiteManifest(old)).not.toHaveProperty("textQualification")
+  } finally {
+    headless.term = headlessTerm
+    if (appClaim === undefined) delete app.textClaim
+    else app.textClaim = appClaim
+    if (headlessClaim === undefined) delete headless.textClaim
+    else headless.textClaim = headlessClaim
+  }
+})
+
+// 30035 AC2/AC4: real suite declarations must retain the reviewed character-only boundary.
+// Synthetic forwarding tests cannot detect an unmarked or blanket-promoted production definition.
+test("the trusted manifest declares exactly the 37 reviewed character claims without expanding capabilities", () => {
+  const manifest = derivedSuiteManifest()
+  expect(manifest.textClaims).toEqual([
+    "charsets.dec-line-drawing",
+    "charsets.dec-special",
+    "charsets.g0-g1-switching",
+    "cursor.cup-scroll-region",
+    "editing.deccra",
+    "editing.decdc",
+    "editing.decera",
+    "editing.decfra",
+    "editing.decic",
+    "editing.decsera",
+    "editing.delete-chars",
+    "editing.delete-lines",
+    "editing.insert-chars",
+    "editing.insert-lines",
+    "editing.repeat-char",
+    "editing.sl",
+    "editing.sr",
+    "erase.character",
+    "erase.ed-scroll-region",
+    "erase.line.all",
+    "erase.line.left",
+    "erase.line.right",
+    "erase.screen.above",
+    "erase.screen.all",
+    "erase.screen.below",
+    "erase.selective",
+    "modes.origin",
+    "reset.decaln",
+    "scrollback.alt-screen",
+    "scrollback.decstbm",
+    "scrollback.decstbm-reset",
+    "scrollback.reverse-index",
+    "scrollback.scroll-down",
+    "scrollback.scroll-up",
+    "scrollback.set-region",
+    "text.overwrite",
+    "text.reverse-index-scroll",
+  ])
+  for (const id of ["charsets.utf8", "editing.deccara", "editing.decrara", "erase.el-with-attrs"]) {
+    expect(manifest.textClaims).not.toContain(id)
+    expect(ALL_PROBES.find((probe) => probe.id === id)?.textClaim).toBeUndefined()
+  }
+  expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(273)
+  expect(manifest.probes.app).toHaveLength(263)
+  expect(manifest.probes.headless).toHaveLength(252)
 })

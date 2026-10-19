@@ -32,6 +32,7 @@ import {
   type ProbeSuiteManifest,
   type TermContext,
   type TerminalQueryOutcome,
+  type TextQualification,
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
 import { COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
@@ -40,6 +41,7 @@ import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCaptur
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
+import { collectTextQualification } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
@@ -171,7 +173,13 @@ export function textCellsFrame(
           ? "the terminal's own text snapshot"
           : `the console host's buffer (${bufferOwner.image}); executable ${bufferOwner.executablePath} ${bufferOwner.executableSha256}`,
       ...(outside.length === 0 ? {} : { standIns: outside }),
-      ...(textGrid === undefined ? {} : { droppedLines: textGrid.droppedLines, paddedRows: textGrid.paddedRows }),
+      ...(textGrid === undefined
+        ? {}
+        : {
+            droppedLines: textGrid.droppedLines,
+            carriedHistory: textGrid.droppedLines > 0,
+            paddedRows: textGrid.paddedRows,
+          }),
       ...(bufferOwner === undefined ? {} : { bufferOwner }),
     },
     retained,
@@ -365,6 +373,7 @@ export async function collectProbeRun(
   let capture: ProbeCapture | undefined
   /** Set when `capture` above reads the terminal's own text rather than pixels. */
   let textCapture = false
+  let textQualification: TextQualification | undefined
   /**
    * The text-snapshot adapter: the terminal's own cells, for the arm whose pixels cannot be read at
    * all. It answers a checkpoint with a text-cells frame whose digests are computed from the cells —
@@ -401,6 +410,19 @@ export async function collectProbeRun(
       return { frame: result.frame, trace: result.trace }
     }
     textCapture = true
+    if (process.platform === "darwin") {
+      const textAdapter = capture
+      prepareCapture = async ({ context, featureId, recordCapture }) => {
+        textQualification = await collectTextQualification({
+          ctx: context,
+          capture: async (checkpoint) => {
+            const result = await textAdapter({ featureId, ...checkpoint })
+            recordCapture(result)
+            return result.frame
+          },
+        })
+      }
+    }
     return true
   }
   let prepareCapture:
@@ -726,6 +748,7 @@ export async function collectProbeRun(
     screenshotRefs: batch.screenshotRefs,
     // Absent rather than empty in runs with no text frames, so an old-shaped run stays old-shaped.
     ...((batch.textSnapshotRefs?.length ?? 0) > 0 && { textSnapshotRefs: batch.textSnapshotRefs }),
+    ...(textQualification === undefined ? {} : { textQualification }),
     observations: batch.observations,
     ...(batch.notTested?.length ? { notTested: batch.notTested } : {}),
     ungradedDiagnostics: batch.ungradedDiagnostics,

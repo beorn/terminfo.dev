@@ -17,6 +17,7 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
 export const charsetReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "charsets.dec-special",
+    textClaim: "characters",
     expected: "ASCII q controls flank DEC Special Graphics q mapped to U+2500",
     seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kqqq",
     before: [["q", "q", "q"]],
@@ -64,6 +65,7 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
   {
     // G0/G1 switching via SI/SO with independent ASCII flank controls.
     id: "charsets.g0-g1-switching",
+    textClaim: "characters",
     expected: "G0 ASCII l, SO-selected G1 DEC l\u2192U+250C, then SI-selected G0 ASCII l, within A/Z controls",
     seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2KAlllZ",
     before: [["A", "l", "l", "l", "Z"]],
@@ -85,6 +87,7 @@ export const charsetReadbackRows: readonly RegionReadbackRow[] = [
   {
     // DEC line drawing — six box-drawing samples.
     id: "charsets.dec-line-drawing",
+    textClaim: "characters",
     expected: "DEC jklmqx map exactly to \u2518\u2510\u250c\u2514\u2500\u2502 while trailing ASCII j remains unchanged",
     seed: "\x0f\x1b(B\x1b)B\x1b[1;1H\x1b[2Kjklmqxj",
     before: [["j", "k", "l", "m", "q", "x", "j"]],
