@@ -629,11 +629,7 @@ describe("candidate-2 page: wiring", () => {
     const perContext = data.groups.filter((group) => PER_CONTEXT_INCLUDED.has(group.key))
     expect(perContext.length).toBe(3)
     for (const group of perContext) {
-      const named = new Set([
-        ...group.includedOn,
-        ...group.heldBy.map((row) => row.context),
-        ...group.darkRuled,
-      ])
+      const named = new Set([...group.includedOn, ...group.heldBy.map((row) => row.context), ...group.darkRuled])
       expect([...named].sort(), group.key).toEqual([...ruled].sort())
       expect(group.ruledTotal, group.key).toBe(ruled.size)
     }
