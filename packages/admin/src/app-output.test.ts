@@ -52,7 +52,8 @@ vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
   launchTerminalWindow: vi.fn(),
 }))
-vi.mock("../../terminfo.dev/src/terminal-app-window.ts", () => ({
+vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../terminfo.dev/src/terminal-app-window.ts")>()),
   assertOwnedTerminalWindow: vi.fn(),
   closeOwnedTerminalWindow: vi.fn(),
   parseKittyIdentity: vi.fn(),
@@ -175,7 +176,7 @@ describe("kitty owned launch", () => {
     })
   })
 
-  test("launches detached, sends no Terminal.app owner claim, and records the owned pid", async () => {
+  test("launches detached, sends the shared process claim instead of a Terminal.app one, and records the owned pid", async () => {
     const spawn = vi.mocked(await import("node:child_process")).spawnSync
     spawn.mockReturnValueOnce({ status: 0, stdout: "", stderr: "" } as never)
     await handleApp("kitty", { output: "/private/out" })
@@ -184,7 +185,20 @@ describe("kitty owned launch", () => {
       ["--detach", "--instance-group", "terminfo-private-run", "-1", "--", "/bin/bash", "/private/run/serve.sh"],
       expect.anything(),
     )
-    expect(requestDaemonProbe).toHaveBeenCalledWith(expect.anything(), undefined)
+    const request = vi.mocked(requestDaemonProbe).mock.calls[0]?.[1]
+    expect(request).toEqual({
+      process: expect.objectContaining({
+        asserter: "terminfo-admin",
+        launchRunId: "private-run",
+        workerPid: 555,
+        provider: "kitty",
+        ownerPid: 900,
+        executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+        marker: { flag: "--instance-group", value: "terminfo-private-run" },
+        tty: "/dev/ttys004",
+      }),
+    })
+    expect(typeof (request as { process: { intendedVersion: unknown } }).process.intendedVersion).toBe("string")
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(
       {
         provider: "kitty",

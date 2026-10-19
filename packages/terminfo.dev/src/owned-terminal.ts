@@ -27,6 +27,7 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
+import { assertOwnedProcess, runScopedMarker, type ProcessMarker } from "./owned-process.ts"
 
 export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
 
@@ -61,6 +62,106 @@ export interface TerminalAppOwnerAssertion {
   windowId: number
   tabTty: string
   intendedVersion: string
+}
+
+/**
+ * The admin's claim for a process-backed Darwin arm, verified by the worker field by field. It names
+ * the ONE shared process proof's own observables (terminal-app-window.ts's OwnedProcess): the live pid,
+ * its realpath executable, the run-scoped argv marker and the window TTY. There is no window id: the
+ * worker cannot check one, and the ownership proof does not need it.
+ */
+export interface ProcessOwnerAssertion {
+  asserter: "terminfo-admin"
+  launchRunId: string
+  workerPid: number
+  provider: "kitty" | "cli-process"
+  ownerPid: number
+  executablePath: string
+  marker: ProcessMarker
+  tty: string
+  intendedVersion: string
+}
+
+/** The request is an admin assertion; the worker independently verifies every observable field. */
+export function parseProcessOwnerAssertion(value: unknown): ProcessOwnerAssertion {
+  const invalid = () => new Error("Invalid process owner assertion")
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalid()
+  const object = value as Record<string, unknown>
+  const keys = [
+    "asserter",
+    "launchRunId",
+    "workerPid",
+    "provider",
+    "ownerPid",
+    "executablePath",
+    "marker",
+    "tty",
+    "intendedVersion",
+  ]
+  if (Object.keys(object).length !== keys.length || keys.some((key) => !Object.hasOwn(object, key))) throw invalid()
+  const marker = object.marker
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) throw invalid()
+  const markerObject = marker as Record<string, unknown>
+  if (
+    Object.keys(markerObject).length !== 2 ||
+    !Object.hasOwn(markerObject, "flag") ||
+    !Object.hasOwn(markerObject, "value")
+  ) {
+    throw invalid()
+  }
+  if (
+    object.asserter !== "terminfo-admin" ||
+    typeof object.launchRunId !== "string" ||
+    !/^[0-9a-f]{32}$/.test(object.launchRunId) ||
+    typeof object.workerPid !== "number" ||
+    !Number.isSafeInteger(object.workerPid) ||
+    object.workerPid < 1 ||
+    (object.provider !== "kitty" && object.provider !== "cli-process") ||
+    typeof object.ownerPid !== "number" ||
+    !Number.isSafeInteger(object.ownerPid) ||
+    object.ownerPid < 1 ||
+    typeof object.executablePath !== "string" ||
+    !object.executablePath.startsWith("/") ||
+    typeof markerObject.flag !== "string" ||
+    markerObject.flag.length === 0 ||
+    /\s/.test(markerObject.flag) ||
+    typeof markerObject.value !== "string" ||
+    markerObject.value.length === 0 ||
+    /\s/.test(markerObject.value) ||
+    typeof object.tty !== "string" ||
+    !/^\/dev\/tty[a-zA-Z0-9._-]+$/.test(object.tty) ||
+    typeof object.intendedVersion !== "string" ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9.+_-]{0,79}$/.test(object.intendedVersion)
+  ) {
+    throw invalid()
+  }
+  return {
+    asserter: object.asserter,
+    launchRunId: object.launchRunId,
+    workerPid: object.workerPid,
+    provider: object.provider,
+    ownerPid: object.ownerPid,
+    executablePath: object.executablePath,
+    marker: { flag: markerObject.flag, value: markerObject.value },
+    tty: object.tty,
+    intendedVersion: object.intendedVersion,
+  }
+}
+
+/** Both Darwin claim arms bind the assertion to THIS worker: the launch run id it was started with,
+ * that same id in its environment, and its own pid. One check, so the two arms cannot drift. */
+function requireOwnWorker(
+  claim: { launchRunId: string; workerPid: number },
+  expectedLaunchRunId: string,
+  who: string,
+): void {
+  if (
+    claim.launchRunId !== expectedLaunchRunId ||
+    process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
+    claim.workerPid !== process.pid
+  ) {
+    throw new Error(`${who} owner assertion differs from this worker launch run or PID`)
+  }
 }
 
 /** The request is an admin assertion; the worker independently verifies every observable field. */
@@ -293,10 +394,11 @@ function linuxOutput(out: NodeJS.WriteStream): LinuxBinding {
   throw new Error(`Owned output device ${outputDevice.rdev} differs from controlling tty_nr ${controlling}`)
 }
 
-/** Darwin's ps name is paired with a same-read stat of that named PTY. */
-function darwinOutput(out: NodeJS.WriteStream, assertion: TerminalAppOwnerAssertion): DarwinBinding {
+/** Darwin's ps name is paired with a same-read stat of that named PTY. Both Darwin claim arms bind
+ * through this one function: they differ in how the TTY was proven, never in the device binding. */
+function darwinOutput(out: NodeJS.WriteStream, assertedTty: string): DarwinBinding {
   if (out !== process.stdout || (out as { fd?: unknown }).fd !== 1) {
-    throw new Error("Terminal.app owned output requires the daemon's real stdout PTY")
+    throw new Error("Owned Darwin output requires the daemon's real stdout PTY")
   }
   selectedFd(out)
   const controllingTty = execFileSync("/bin/ps", ["-p", String(process.pid), "-o", "tty="], {
@@ -305,18 +407,18 @@ function darwinOutput(out: NodeJS.WriteStream, assertion: TerminalAppOwnerAssert
     maxBuffer: 256,
   }).trim()
   if (!/^tty[a-zA-Z0-9._-]+$/.test(controllingTty)) {
-    throw new Error(`Terminal.app worker has no valid controlling TTY: ${JSON.stringify(controllingTty)}`)
+    throw new Error(`Owned Darwin worker has no valid controlling TTY: ${JSON.stringify(controllingTty)}`)
   }
-  if (`/dev/${controllingTty}` !== assertion.tabTty) {
-    throw new Error(`Terminal.app worker TTY /dev/${controllingTty} differs from asserted tab ${assertion.tabTty}`)
+  if (`/dev/${controllingTty}` !== assertedTty) {
+    throw new Error(`Owned Darwin worker TTY /dev/${controllingTty} differs from asserted tab ${assertedTty}`)
   }
   const inputDevice = device(fstatSync(0, { bigint: true }))
   const outputDevice = device(fstatSync(1, { bigint: true }))
-  const tabDevice = device(statSync(assertion.tabTty, { bigint: true }))
+  const tabDevice = device(statSync(assertedTty, { bigint: true }))
   if (!sameDevice(inputDevice, outputDevice) || !sameDevice(outputDevice, tabDevice)) {
-    throw new Error("Terminal.app input, selected stdout and asserted tab PTY device identities differ")
+    throw new Error("Owned Darwin input, selected stdout and asserted tab PTY device identities differ")
   }
-  return { platform: "darwin", selectedFd: 1, controllingTty, tabTty: assertion.tabTty, inputDevice, outputDevice }
+  return { platform: "darwin", selectedFd: 1, controllingTty, tabTty: assertedTty, inputDevice, outputDevice }
 }
 
 /** Hosted Darwin PTY bind: fd0, selected out, and ps-tty are one device. Never calls darwinOutput. */
@@ -510,13 +612,23 @@ export async function createOwnedTerminal(options: {
   expectedLaunchRunId: string
   linux?: { receiptPath: string; executable: LiveExecutable }
   terminalApp?: TerminalAppOwnerAssertion
+  process?: ProcessOwnerAssertion
   darwinHosted?: { receiptPath: string }
   windowsHosted?: { receiptPath: string }
 }): Promise<OwnedTerminal> {
-  const { captureRunId, out, expectedLaunchRunId, linux, terminalApp, darwinHosted, windowsHosted } = options
+  const {
+    captureRunId,
+    out,
+    expectedLaunchRunId,
+    linux,
+    terminalApp,
+    process: processOwner,
+    darwinHosted,
+    windowsHosted,
+  } = options
   if (!/^[0-9a-f]{32}$/.test(captureRunId)) throw new Error("Invalid capture run ID for owned terminal")
   if (!/^[0-9a-f]{32}$/.test(expectedLaunchRunId)) throw new Error("Invalid launch run ID for owned terminal")
-  const armCount = [linux, terminalApp, darwinHosted, windowsHosted].filter(Boolean).length
+  const armCount = [linux, terminalApp, processOwner, darwinHosted, windowsHosted].filter(Boolean).length
   if (armCount !== 1) throw new Error("Owned terminal requires exactly one platform receipt")
   let binding: OutputBinding
   let hostedApp: HostedDarwinApp | undefined
@@ -538,14 +650,28 @@ export async function createOwnedTerminal(options: {
   } else if (terminalApp) {
     if (process.platform !== "darwin") throw new Error("Terminal.app owner requires Darwin")
     const assertion = parseTerminalAppOwner(terminalApp)
-    if (
-      assertion.launchRunId !== expectedLaunchRunId ||
-      process.env.TERMINFO_RUN_ID !== expectedLaunchRunId ||
-      assertion.workerPid !== process.pid
-    ) {
-      throw new Error("Terminal.app owner assertion differs from this worker launch run or PID")
-    }
-    binding = darwinOutput(out, assertion)
+    requireOwnWorker(assertion, expectedLaunchRunId, "Terminal.app")
+    binding = darwinOutput(out, assertion.tabTty)
+  } else if (processOwner) {
+    if (process.platform !== "darwin") throw new Error("Owned process owner requires Darwin")
+    const assertion = parseProcessOwnerAssertion(processOwner)
+    requireOwnWorker(assertion, expectedLaunchRunId, assertion.provider)
+    // The marker must carry THIS launch run id, by runScopedMarker's own rule: a marker from another
+    // run would let a live process belonging to that run satisfy this one's proof.
+    const marker = runScopedMarker({
+      appName: assertion.provider,
+      runId: expectedLaunchRunId,
+      flag: assertion.marker.flag,
+      value: assertion.marker.value,
+    })
+    // The one process proof, not a second reading of ps/argv/ancestry: the same function the admin
+    // calls, with the daemon (this worker) as the process that must descend from the owner.
+    assertOwnedProcess(
+      { ownerPid: assertion.ownerPid, executablePath: assertion.executablePath, marker, tty: assertion.tty },
+      process.pid,
+      assertion.provider,
+    )
+    binding = darwinOutput(out, assertion.tty)
   } else if (darwinHosted) {
     if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")
     const receipt = readDisposableReceipt(darwinHosted.receiptPath)
@@ -641,6 +767,10 @@ export async function createOwnedTerminal(options: {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",
       }),
+      ...(processOwner && {
+        processOwnerAssertion: parseProcessOwnerAssertion(processOwner),
+        ownerAssertionSource: "authenticated-admin-request",
+      }),
       ...(hostedWindowsApp && {
         windowsHosted: {
           appId: hostedWindowsApp.id,
@@ -685,8 +815,10 @@ export async function createOwnedTerminal(options: {
         const current = linux
           ? linuxOutput(out)
           : terminalApp
-            ? darwinOutput(out, parseTerminalAppOwner(terminalApp))
-            : darwinHostedOutput(out)
+            ? darwinOutput(out, parseTerminalAppOwner(terminalApp).tabTty)
+            : processOwner
+              ? darwinOutput(out, parseProcessOwnerAssertion(processOwner).tty)
+              : darwinHostedOutput(out)
         if (
           current.platform !== binding.platform ||
           current.selectedFd !== binding.selectedFd ||

@@ -2,7 +2,8 @@ import { createHash } from "node:crypto"
 import { readFileSync, realpathSync } from "node:fs"
 import { join } from "node:path"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
-import { run, tty, runningTerminal, type TerminalAppWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import { runningTerminal, type TerminalAppWindow } from "../../terminfo.dev/src/terminal-app-window.ts"
+import { run, tty } from "../../terminfo.dev/src/owned-process.ts"
 
 export interface TerminalAppCapture {
   receipt: AppLaunchReceipt

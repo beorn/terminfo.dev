@@ -153,10 +153,11 @@ test("28786: the hashed adapter sources EQUAL the collector's static import clos
 
 /**
  * 28786, negative control: a source NEITHER collector entry reaches must not move the suite.
- * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts); neither
- * collector entry (serve.ts, collect-headless.ts) reaches it, so listing it would move the suite without
- * touching any observation those entries make. (The admin app collection DOES execute it — that is a
- * different entry, and it is not one of the entries this suite declares.)
+ * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts);
+ * neither collector entry (serve.ts, collect-headless.ts) reaches it, so listing it would move the suite
+ * without touching any observation those entries make. The collector's one process proof lives in
+ * owned-process.ts, which IS hashed. (The admin app collection DOES execute it — that is a different
+ * entry, and it is not one of the entries this suite declares.)
  */
 test("28786: a source neither collector entry reaches does not move the suite hash", () => {
   const baseline = probeHash()

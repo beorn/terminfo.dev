@@ -46,8 +46,10 @@ import { retain } from "./capture-core.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
   createOwnedTerminal,
+  parseProcessOwnerAssertion,
   parseTerminalAppOwner,
   type OwnedTerminal,
+  type ProcessOwnerAssertion,
   type TerminalAppOwnerAssertion,
 } from "./owned-terminal.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
@@ -275,7 +277,7 @@ export function frameUnavailableCapture(): ProbeCapture {
   }
 }
 
-type OwnedTerminalKind = "linux" | "terminalApp" | "darwinHosted" | "windowsHosted"
+type OwnedTerminalKind = "linux" | "terminalApp" | "process" | "darwinHosted" | "windowsHosted"
 
 /** One geometry query the capture pre-flight asked, kept with its raw reply. The refusal of a
  * terminal that cannot be calibrated is re-derivable from these bytes, never from a summary. */
@@ -313,17 +315,23 @@ function ownedTerminalKind(input: {
    * four Mac apps and the one Windows app — so the platform, not the variable, picks the arm. */
   hostedReceipt: string | undefined
   terminalAppOwner: unknown
+  processOwner: unknown
   platform: NodeJS.Platform
 }): OwnedTerminalKind | undefined {
-  const { clipboardReceipt, hostedReceipt, terminalAppOwner, platform } = input
-  if (clipboardReceipt && terminalAppOwner) {
-    throw new Error("Collection cannot have both Linux and Terminal.app owners")
+  const { clipboardReceipt, hostedReceipt, terminalAppOwner, processOwner, platform } = input
+  const claimed = Boolean(terminalAppOwner) && Boolean(processOwner)
+  if (claimed) {
+    throw new Error("Collection cannot have both Terminal.app and process owners")
   }
-  if (terminalAppOwner && hostedReceipt && (platform === "darwin" || platform === "win32")) {
-    throw new Error("Collection cannot have both Terminal.app and a hosted-runner owner")
+  if (clipboardReceipt && (terminalAppOwner || processOwner)) {
+    throw new Error("Collection cannot have both Linux and a Darwin claim owner")
+  }
+  if ((terminalAppOwner || processOwner) && hostedReceipt && (platform === "darwin" || platform === "win32")) {
+    throw new Error("Collection cannot have both a Darwin claim owner and a hosted-runner owner")
   }
   if (clipboardReceipt) return "linux"
   if (terminalAppOwner) return "terminalApp"
+  if (processOwner) return "process"
   if (platform === "darwin" && hostedReceipt) return "darwinHosted"
   if (platform === "win32" && hostedReceipt) return "windowsHosted"
   return undefined
@@ -335,6 +343,7 @@ export async function collectProbeRun(
     ids?: string[]
     out?: NodeJS.WriteStream
     terminalAppOwner?: TerminalAppOwnerAssertion
+    processOwner?: ProcessOwnerAssertion
     expectedLaunchRunId?: string
   } = {},
 ): Promise<ProbeRun> {
@@ -350,6 +359,7 @@ export async function collectProbeRun(
     clipboardReceipt,
     hostedReceipt,
     terminalAppOwner: options.terminalAppOwner,
+    processOwner: options.processOwner,
     platform: process.platform,
   })
   if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
@@ -478,6 +488,14 @@ export async function collectProbeRun(
       terminalApp: options.terminalAppOwner,
     })
     installTextCapture(ownedTerminal)
+  } else if (kind === "process") {
+    if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
+    ownedTerminal = await createOwnedTerminal({
+      captureRunId,
+      out,
+      expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+      process: options.processOwner,
+    })
   } else if (kind === "darwinHosted") {
     if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
     ownedTerminal = await createOwnedTerminal({
@@ -877,6 +895,7 @@ export function startDaemon(port = 0): void {
 
       if (url.pathname === "/probe") {
         let terminalAppOwner: TerminalAppOwnerAssertion | undefined
+        let processOwner: ProcessOwnerAssertion | undefined
         if (req.method === "POST") {
           try {
             const body: unknown = JSON.parse(await readBody(req))
@@ -884,20 +903,26 @@ export function startDaemon(port = 0): void {
               !body ||
               typeof body !== "object" ||
               Array.isArray(body) ||
-              Object.keys(body).some((key) => key !== "terminalAppOwner")
+              Object.keys(body).some((key) => key !== "terminalAppOwner" && key !== "processOwner") ||
+              ("terminalAppOwner" in body && "processOwner" in body)
             ) {
               throw new Error("Invalid probe request shape")
             }
-            if ("terminalAppOwner" in body) terminalAppOwner = parseTerminalAppOwner(body.terminalAppOwner)
-            if (
-              terminalAppOwner &&
-              (terminalAppOwner.launchRunId !== runId || terminalAppOwner.workerPid !== process.pid)
-            ) {
-              throw new Error("Terminal.app owner assertion differs from this daemon's launch run or PID")
+            if ("terminalAppOwner" in body) {
+              terminalAppOwner = parseTerminalAppOwner(body.terminalAppOwner)
+              if (terminalAppOwner.launchRunId !== runId || terminalAppOwner.workerPid !== process.pid) {
+                throw new Error("Terminal.app owner assertion differs from this daemon's launch run or PID")
+              }
+            }
+            if ("processOwner" in body) {
+              processOwner = parseProcessOwnerAssertion(body.processOwner)
+              if (processOwner.launchRunId !== runId || processOwner.workerPid !== process.pid) {
+                throw new Error("Process owner assertion differs from this daemon's launch run or PID")
+              }
             }
           } catch {
             res.statusCode = 400
-            res.end(JSON.stringify({ error: "Invalid or mismatched Terminal.app owner assertion" }))
+            res.end(JSON.stringify({ error: "Invalid or mismatched owned-terminal owner assertion" }))
             return
           }
         } else if (req.method !== "GET") {
@@ -906,7 +931,12 @@ export function startDaemon(port = 0): void {
           return
         }
         console.log(s.dim(`[${new Date().toISOString()}] Running ${ids?.length ?? ALL_PROBES.length} probes...`))
-        const run = await collectProbeRun({ ...(ids && { ids }), terminalAppOwner, expectedLaunchRunId: runId })
+        const run = await collectProbeRun({
+          ...(ids && { ids }),
+          terminalAppOwner,
+          processOwner,
+          expectedLaunchRunId: runId,
+        })
         console.log(
           s.dim(
             `Collected ${run.observations.length}/${ALL_PROBES.length} explicit observations; partial=${!run.suiteComplete}`,
