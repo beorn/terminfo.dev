@@ -5,358 +5,145 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# One authorized editor feasibility experiment. Never submit this reduced matrix to main.
 jobs:
   measure-macos:
-    name: macOS ${{ matrix.id }}
+    name: Editor discriminator ${{ matrix.id }}
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - id: terminal-app
-            bundle: /System/Applications/Utilities/Terminal.app
-          - id: iterm2
-            bundle: /Applications/iTerm.app
-          - id: ghostty
-            bundle: /Applications/Ghostty.app
-          - id: alacritty
-            bundle: /Applications/Alacritty.app
-          - id: wezterm
-            bundle: /Applications/WezTerm.app
+          - id: cursor
+            surface: Cursor classic workbench
+            bundle: /Applications/Cursor.app
+          - id: com.microsoft.VSCode
+            surface: VS Code
+            bundle: /Applications/Visual Studio Code.app
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APP_ID: ${{ matrix.id }}
+      APP_SURFACE: ${{ matrix.surface }}
+      APP_BUNDLE: ${{ matrix.bundle }}
     steps:
-      - name: Bootstrap the pinned producer and sample at job start
-        run: |
-          set -euo pipefail
-          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
-          OUT="$RUNNER_TEMP/measurement-artifacts"
-          # The ONE app-launch parser is fetched beside the two receipt files so the bootstrap
-          # shares exactly the parser run-parser validates with; a second copy is the drift this
-          # extraction exists to prevent (28216).
-          mkdir -p "$APPARATUS/scripts" "$APPARATUS/packages/terminfo.dev/src" "$APPARATUS/packages/run-parser/src" "$OUT"
-          for source in scripts/hosted-runner-receipt.ts packages/terminfo.dev/src/disposable-receipt.ts packages/run-parser/src/app-launch.ts; do
-            curl --fail --silent --show-error \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H 'Accept: application/vnd.github.raw+json' \
-              --output "$APPARATUS/$source" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/contents/$source?ref=$GITHUB_SHA"
-          done
-          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" start "$OUT/job-start.json"
-
-      # Suite declaration checks HEAD against origin/main; retain full refs/history on hosted runners.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.3
-
-      - name: Build and retain the current collector
-        run: |
-          set -euo pipefail
-          bun install --frozen-lockfile
-          bun scripts/build-cli.ts
-          bun packages/terminfo.dev/bin/terminfo.mjs --version
-          OUT="$RUNNER_TEMP/measurement-artifacts"
-          cp bun.lock "$OUT/collector-bun.lock"
-          cp packages/terminfo.dev/dist/terminfo.bundle.receipt.json "$OUT/collector-build.json"
-          cp packages/terminfo.dev/dist/terminfo.bundle.mjs "$OUT/collector-bundle.mjs"
-
-      - name: Install this job's terminal
-        env:
-          APP_ID: ${{ matrix.id }}
-          APP_BUNDLE: ${{ matrix.bundle }}
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-          HOMEBREW_NO_INSTALL_CLEANUP: "1"
-          ITERM_DOWNLOAD_URL: https://iterm2.com/downloads/stable/iTerm2-3_6_11.zip
-          ITERM_DOWNLOAD_SHA256: 36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7
-        run: |
-          set -euo pipefail
-          brew install imagemagick
-          case "$APP_ID" in
-            terminal-app) ;;
-            iterm2)
-              installer="$RUNNER_TEMP/iTerm2-3_6_11.zip"
-              if ! curl --location --fail --silent --show-error \
-                --retry 2 --retry-max-time 120 --connect-timeout 15 --max-time 120 \
-                "$ITERM_DOWNLOAD_URL" --output "$installer"; then
-                echo "Install this job's terminal: iTerm download failed; retained digest follows if bytes exist" >&2
-                if [ -f "$installer" ]; then shasum -a 256 "$installer" >&2; else echo "No downloaded archive bytes to hash" >&2; fi
-                exit 1
-              fi
-              if ! checksum="$(shasum -a 256 "$installer")"; then
-                echo "Install this job's terminal: cannot hash the downloaded iTerm archive" >&2
-                exit 1
-              fi
-              actual_sha256="${checksum%% *}"
-              printf "Install this job's terminal: downloaded iTerm SHA-256 %s\n" "$actual_sha256"
-              test "$actual_sha256" = "$ITERM_DOWNLOAD_SHA256" || {
-                echo "Install this job's terminal: iTerm checksum mismatch (actual $actual_sha256, expected $ITERM_DOWNLOAD_SHA256)" >&2
-                exit 1
-              }
-              if ! ditto -x -k "$installer" /Applications; then
-                echo "Install this job's terminal: iTerm extraction failed (archive SHA-256 $actual_sha256)" >&2
-                exit 1
-              fi
-              ;;
-            ghostty) brew install --cask ghostty ;;
-            wezterm) brew install --cask wezterm ;;
-            alacritty)
-              curl --location --fail --silent --show-error \
-                https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
-                --output "$RUNNER_TEMP/Alacritty.dmg"
-              hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
-              cp -R /Volumes/Alacritty/Alacritty.app /Applications/
-              hdiutil detach /Volumes/Alacritty
-              ;;
-            *) echo "Unknown Mac measurement app: $APP_ID" >&2; exit 1 ;;
-          esac
-          test -d "$APP_BUNDLE" || { echo "Required terminal bundle missing: $APP_BUNDLE" >&2; exit 1; }
-          if [ "$APP_ID" != terminal-app ]; then sudo xattr -cr "$APP_BUNDLE"; fi
-
-      - name: Launch, emit the receipt, and collect as the last mutating step
-        id: collect
-        env:
-          APP_ID: ${{ matrix.id }}
-          APP_BUNDLE: ${{ matrix.bundle }}
-        run: |
-          set -euo pipefail
-          OUT="$RUNNER_TEMP/measurement-artifacts"
-          mkdir -p "$OUT/artifacts"
-          APPARATUS="$RUNNER_TEMP/hosted-apparatus"
-          COMMAND_PATH="$RUNNER_TEMP/collect.command"
-          NODE_DIR="$(dirname "$(command -v node)")"
-          COLLECTOR="$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs"
-          COLLECTOR_BUN="$(command -v bun)"
-          BUN_DIR="$(dirname "$COLLECTOR_BUN")"
-          TARGET_VERSION_EXPORT=""
-          if [ "$APP_ID" = alacritty ]; then
-            bundle_status=0
-            bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")" || bundle_status=$?
-            printf 'Alacritty bundle version (raw): %s\n' "$bundle_version"
-            test "$bundle_status" = 0 || { echo "Alacritty bundle version read failed ($bundle_status)" >&2; exit 1; }
-            test -n "$bundle_version" || { echo "Alacritty bundle version is empty" >&2; exit 1; }
-            binary_status=0
-            binary_version="$("$APP_BUNDLE/Contents/MacOS/alacritty" --version)" || binary_status=$?
-            printf 'Alacritty binary --version (raw): %s\n' "$binary_version"
-            test "$binary_status" = 0 || { echo "Alacritty binary --version failed ($binary_status)" >&2; exit 1; }
-            version_pattern='^alacritty[[:blank:]]+([^[:space:]]+)([[:blank:]]+\([^[:space:]]+\))?$'
-            [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
-            test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
-            TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
-          fi
-          cat > "$COMMAND_PATH" <<SCRIPT
-          #!/bin/bash
-          $TARGET_VERSION_EXPORT
-          export PATH="$BUN_DIR:$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
-          export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
-          export TERMINFO_CAPTURE_DIRECTORY="$OUT/artifacts"
-          attempts=0
-          while [ ! -f "$OUT/collector-ready" ]; do
-            attempts=\$((attempts + 1))
-            if [ "\$attempts" -ge 180 ]; then echo "Receipt self-parse never succeeded; collection refused" >&2; exit 1; fi
-            sleep 1
-          done
-          # The owned Darwin terminal arms read TERMINFO_RUN_ID and refuse an empty launch id
-          # (owned-terminal.ts). The id only exists once the launched step emitted the receipt, so it is
-          # read here, after the readiness wait and before the collector (27917: hosted runs never set it).
-          TERMINFO_RUN_ID="\$(jq -er .runId "$OUT/host-measured.json")" || {
-            echo "Receipt has no launch run ID; collection refused" >&2
-            echo "Receipt has no launch run ID; collection refused" > "$OUT/collector.log"
-            printf '1\n' > "$OUT/collector-exit"
-            exit 1
-          }
-          export TERMINFO_RUN_ID
-          # stdout MUST stay on this terminal: the collector writes every probe query to
-          # process.stdout, and the owned-terminal arm binds fd0, stdout and the controlling tty as
-          # one PTY. Redirecting stdout to the log made that binding impossible and failed every
-          # hosted macOS job at collect (27917; cause b7580050 / 28533). Only stderr is logged.
-          "$COLLECTOR_BUN" "$COLLECTOR" test --output "$OUT/run.json" 2> "$OUT/collector.log"
-          status=\$?
-          printf '%s\n' "\$status" > "$OUT/collector-exit"
-          SCRIPT
-          chmod +x "$COMMAND_PATH"
-          case "$APP_ID" in
-            terminal-app) open -a "$APP_BUNDLE" "$COMMAND_PATH" ;;
-            iterm2)
-              printf 'iterm_launch_start=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-              test -d "$APP_BUNDLE" || {
-                echo "Required iTerm2 bundle missing: $APP_BUNDLE" >&2
-                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-                echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
-                exit 1
-              }
-              printf -v launch_command '/bin/bash %q' "$COMMAND_PATH"
-              if node - "$APP_BUNDLE" "--command=$launch_command" > "$OUT/launcher.log" 2>&1 <<'ITERM_STARTUP'
-          const { spawnSync } = require('node:child_process');
-          const [bundle, command] = process.argv.slice(2);
-          const run = (name, file, args, timeout = 5000) => {
-            const result = spawnSync(file, args, { encoding: 'utf8', timeout, killSignal: 'SIGKILL', maxBuffer: 262144 });
-            process.stdout.write(JSON.stringify({ name, file, args, status: result.status, signal: result.signal, error: result.error?.message, stdout: result.stdout, stderr: result.stderr, stdoutBytes: Buffer.byteLength(result.stdout || ''), stderrBytes: Buffer.byteLength(result.stderr || '') }) + '\n');
-            if (result.error || result.signal) throw new Error(`iTerm2 ${name} failed: ${result.error?.message || result.signal}`);
-            return result;
-          };
-          const plist = `${bundle}/Contents/Info.plist`;
-          const id = run('bundle identifier', '/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', plist]);
-          if (id.status !== 0 || id.stdout.trim() !== 'com.googlecode.iterm2') throw new Error('iTerm2 bundle identifier mismatch');
-          const version = run('version', '/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist]);
-          if (version.status !== 0 || version.stdout.trim() !== '3.6.11') throw new Error('iTerm2 version must be 3.6.11; renewed qualification required');
-          const existing = run('pgrep', '/usr/bin/pgrep', ['-x', 'iTerm2']);
-          if (existing.status === 0) throw new Error('iTerm2 already running; refusing to attach');
-          if (existing.status !== 1) throw new Error(`iTerm2 pgrep failed (${existing.status})`);
-          // Set the fresh runner's preference before launch: iTerm treats trailing YES as a file to run.
-          const policy = run('startup policy', '/usr/bin/defaults', ['write', 'com.googlecode.iterm2', 'OpenNoWindowsAtStartup', '-bool', 'true']);
-          if (policy.status !== 0) throw new Error(`iTerm2 startup policy failed (${policy.status})`);
-          const opened = run('open', '/usr/bin/open', ['-a', bundle, '--args', command], 10000);
-          if (opened.status !== 0) throw new Error(`iTerm2 open failed (${opened.status})`);
-          ITERM_STARTUP
-              then
-                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-                cat "$OUT/launcher.log"
-              else
-                printf 'iterm_launch_end=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
-                cat "$OUT/launcher.log" >&2
-                echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
-                exit 1
-              fi
-              ;;
-            ghostty)
-              mkdir -p "$HOME/.config/ghostty"
-              printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
-              nohup "$APP_BUNDLE/Contents/MacOS/ghostty" </dev/null >> "$OUT/launcher.log" 2>&1 &
-              ;;
-            wezterm)
-              # start --always-new-process keeps this run on its own GUI process instead of joining the mux,
-              # and the command after -- is the serve script WezTerm executes in the new window.
-              # The arm64 hosted runner has no OpenGL pixel format, and WezTerm's default front end refuses
-              # the window without one ("failed to create NSOpenGLPixelFormat", run 39245025212). The software
-              # front end renders the same cells without a GPU context, so the window exists at all.
-              mkdir -p "$HOME/.config/wezterm"
-              printf "return { front_end = 'Software' }\n" > "$HOME/.config/wezterm/wezterm.lua"
-              # The file alone did not take effect (run 39271193137 still chose OpenGL), so the front end
-              # is also named on the command line, and the version and config path are retained beside it.
-              {
-                "$APP_BUNDLE/Contents/MacOS/wezterm" --version
-                ls -la "$HOME/.config/wezterm"
-              } >> "$OUT/launcher.log" 2>&1
-              # --config evaluates its value as Lua: an unquoted value is nil (run 39272494843), so the value
-              # carries its own quotes. Software still builds an NSOpenGLPixelFormat on macOS (39273672349),
-              # so the front end named here is WebGpu, which uses Metal instead of the deprecated GL path.
-              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" --config 'front_end="WebGpu"' start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
-              ;;
-            alacritty)
-              "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
-              ;;
-            *) echo "Unknown Mac collection app: $APP_ID" >&2; exit 1 ;;
-          esac
-          sleep 3
-          node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
-          # The receipt exists before strict parsing. Release collection ONLY after producer success.
-          touch "$OUT/collector-ready"
-          for attempt in {1..300}; do
-            if [ -f "$OUT/collector-exit" ]; then
-              status="$(cat "$OUT/collector-exit")"
-              test "$status" = 0 || {
-                echo "$APP_ID collector failed ($status); see collector.log artifact" >&2
-                if [ "$APP_ID" = iterm2 ]; then
-                  echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
-                  if grep -q 'exactly one owned visible window.*found 2' "$OUT/collector.log"; then
-                    echo 'PID-owned window count 2, no second-window identity' >&2
-                  fi
-                  tail -n 30 "$OUT/collector.log" >&2
-                fi
-                exit 1
-              }
-              test -s "$OUT/run.json" || { echo "$APP_ID collector returned no run.json" >&2; exit 1; }
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
-          if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
-          exit 1
-
-      - name: Preserve iTerm launch failure evidence
-        if: failure() && steps.collect.outputs.iterm_failure == 'true'
-        env:
-          ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
-          ITERM_LAUNCH_END: ${{ steps.collect.outputs.iterm_launch_end }}
+      - name: Install existing source dependencies
+        run: bun install --frozen-lockfile
+      - name: Install the pinned editor artifact
         run: |
           bun --eval '
-          const { writeFile } = await import("node:fs/promises");
-          const { join } = await import("node:path");
-          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
-          // Bounded capture and CoreGraphics bridge from diagnostic59f65a57.
-          async function capture(stream) {
-            const chunks = []; let bytes = 0, kept = 0;
-            for await (const chunk of stream) {
-              bytes += chunk.length;
-              const count = Math.min(chunk.length, 262144 - kept);
-              if (count > 0) { chunks.push(chunk.slice(0, count)); kept += count; }
+          import { createHash } from "node:crypto";
+          import { mkdir, writeFile } from "node:fs/promises";
+          import { join } from "node:path";
+          const out = join(process.env.RUNNER_TEMP, "editor-discriminator");
+          await mkdir(out, { recursive: true });
+          const arch = process.arch;
+          const app = process.env.APP_ID;
+          const artifacts = {
+            cursor: {
+              arm64: ["https://downloads.cursor.com/production/5d4df965746c5d09740842fc0f1331ba1c15783d/darwin/arm64/Cursor-darwin-arm64.zip", "03c6fb01e2200b17d2bf4259c7b66c08c9d505760d2a331e26ebfb3193bbf763"],
+              x64: ["https://downloads.cursor.com/production/5d4df965746c5d09740842fc0f1331ba1c15783d/darwin/x64/Cursor-darwin-x64.zip", "3e867c8661113c415949da73d0bc0ed00f85f5b1863cab0c3d381c17d6aec59a"]
+            },
+            "com.microsoft.VSCode": {
+              arm64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-darwin-arm64.zip", "099d3514fda308822a150d65ea36d4c4bfc565ee1b7fbc5a3fff97700f7af408"],
+              x64: ["https://vscode.download.prss.microsoft.com/dbazure/download/stable/6d62b1d5dace93a33b3a6d3eca1317bd5e15bcb1/VSCode-darwin.zip", "cbe7bfbfe576f4315ffd5d4ac67c8dd550972659b7f1785999ed96505f25a31a"]
             }
-            return { text: Buffer.concat(chunks).toString("utf8"), bytes, omittedBytes: bytes - kept };
+          };
+          const selected = artifacts[app]?.[arch];
+          if (!selected) throw new Error("No reviewed editor artifact for " + app + "/" + arch);
+          const [url, expected] = selected;
+          const installer = join(out, "editor.zip");
+          async function run(args) {
+            const child = Bun.spawn(args, { stdout: "inherit", stderr: "inherit" });
+            const status = await child.exited;
+            if (status !== 0) throw new Error(args[0] + " exited " + status);
           }
-          async function run(label, argv, wallMs) {
-            const start = new Date();
-            const child = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", env: { ...process.env, TZ: "UTC" } });
-            let outerTimedOut = false;
-            const timer = setTimeout(() => { outerTimedOut = true; child.kill("SIGKILL"); }, wallMs);
-            try {
-              const [exitCode, stdout, stderr] = await Promise.all([child.exited, capture(child.stdout), capture(child.stderr)]);
-              const row = { label, argv, childPid: child.pid, start: start.toISOString(), end: new Date().toISOString(), wallMs, outerTimedOut, exitCode, stdout, stderr };
-              await writeFile(join(out, `iterm-${label}.json`), JSON.stringify(row, null, 2));
-              if (exitCode !== 0 || outerTimedOut) console.error(`iTerm failure evidence ${label} unmeasured; see iterm-${label}.json`);
-              return row;
-            } finally { clearTimeout(timer); }
-          }
-          // date(1) outputs whole seconds; include the entire final launch second.
-          const stamp = (iso, end = false) => new Date(Math.floor(Date.parse(iso) / 1000) * 1000 + (end ? 1000 : 0)).toISOString().slice(0, 19).replace("T", " ") + "+0000";
-          const launchEnd = process.env.ITERM_LAUNCH_END;
-          const failures = [];
-          for (const [label, argv, bound] of [
-            ["screen", ["/usr/sbin/screencapture", "-x", join(out, "iterm-screen.png")], 10000],
-            ["windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", `
-              ObjC.import("CoreGraphics"); ObjC.import("Foundation");
-              var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
-              if (!raw) throw new Error("CGWindowListCopyWindowInfo returned null");
-              function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
-              var rows = [], count = $.CFArrayGetCount(raw);
-              for (var i = 0; i < count; i++) {
-                var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
-                rows.push({ owner: value(w, "kCGWindowOwnerName"), pid: value(w, "kCGWindowOwnerPID"), layer: value(w, "kCGWindowLayer") });
-              }
-              JSON.stringify({ windows: rows });
-            `], 10000],
-            ["log", ["/usr/bin/log", "show", "--style", "json", "--start", stamp(process.env.ITERM_LAUNCH_START), "--end", stamp(launchEnd, true), "--predicate", `subsystem == "com.apple.TCC" OR subsystem CONTAINS[c] "appleevent" OR process == "appleeventsd"`], 20000],
-          ]) {
-            try {
-              const row = await run(label, argv, bound);
-              if (row.exitCode !== 0 || row.outerTimedOut) throw new Error(`${label} capture failed`);
-              if (label === "windows") {
-                const census = JSON.parse(row.stdout.text);
-                if (!Array.isArray(census.windows) || !census.windows.every(w => (typeof w.owner === "string" || w.owner === null) && typeof w.pid === "number" && typeof w.layer === "number")) throw new Error("Invalid CoreGraphics census");
-              }
-            } catch (error) { failures.push({ label, error: String(error) }); console.error("iTerm failure evidence incomplete", label, error); }
-          }
-          await writeFile(join(out, "iterm-failure-evidence.json"), JSON.stringify({ launchStart: process.env.ITERM_LAUNCH_START, launchEnd, failures }, null, 2));
-          if (failures.length) process.exitCode = 1;
+          await run(["curl", "--fail", "--location", "--silent", "--show-error", "--connect-timeout", "15", "--max-time", "180", url, "--output", installer]);
+          const actual = createHash("sha256").update(new Uint8Array(await Bun.file(installer).arrayBuffer())).digest("hex");
+          await writeFile(join(out, "installer.json"), JSON.stringify({ app, surface: process.env.APP_SURFACE, arch, url, expectedSha256: expected, actualSha256: actual, sourceRevision: process.env.GITHUB_SHA, githubRunId: process.env.GITHUB_RUN_ID, githubRunAttempt: process.env.GITHUB_RUN_ATTEMPT, runnerOS: process.env.RUNNER_OS, runnerArch: process.env.RUNNER_ARCH, runnerImage: process.env.ImageVersion }, null, 2));
+          if (actual !== expected) throw new Error("Downloaded editor artifact digest differs; retained installer.json");
+          await run(["ditto", "-x", "-k", installer, "/Applications"]);
+          await run(["sudo", "xattr", "-cr", process.env.APP_BUNDLE]);
+          const plist = join(process.env.APP_BUNDLE, "Contents", "Info.plist");
+          const measured = Bun.spawnSync(["plutil", "-convert", "json", "-o", "-", plist]);
+          if (measured.exitCode !== 0) throw new Error("Cannot measure installed editor Info.plist");
+          await writeFile(join(out, "installed-info.json"), measured.stdout);
           '
-
-      - name: Upload the receipt beside the exact collected run
+      - name: Launch through the existing recipe and retain activation evidence
+        run: |
+          bun --eval '
+          import { mkdir, readdir, copyFile, stat, writeFile } from "node:fs/promises";
+          import { join, relative, dirname } from "node:path";
+          const out = join(process.env.RUNNER_TEMP, "editor-discriminator");
+          const prefix = process.env.APP_ID === "cursor" ? "cursor" : "vscode";
+          const snapshots = join(out, "launch-snapshots");
+          const observedRoots = new Set();
+          const copied = new Map();
+          let missingDuringStartup = 0;
+          let observing = true;
+          async function copy(path, root) {
+            try {
+              const info = await stat(path);
+              if (copied.get(path) === info.mtimeMs) return;
+              const destination = join(snapshots, root.split("/").pop(), relative(root, path));
+              await mkdir(dirname(destination), { recursive: true });
+              await copyFile(path, destination);
+              copied.set(path, info.mtimeMs);
+            } catch (error) {
+              if (error.code !== "ENOENT") throw error;
+              missingDuringStartup++;
+            }
+          }
+          // Only this fresh jobs run-scoped launch directories, never an operator profile.
+          // Snapshot while the collector runs: its existing successful cleanup removes the source.
+          const observer = (async () => {
+            while (observing) {
+              for (const entry of await readdir("/tmp", { withFileTypes: true })) {
+                if (!entry.isDirectory() || !entry.name.startsWith("terminfo-run-")) continue;
+                const root = join("/tmp", entry.name);
+                observedRoots.add(root);
+                for (const file of ["serve.sh", "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs"]) await copy(join(root, file), root);
+                // The profile suffix is the random run id, not the temporary directory name.
+                for (const child of await readdir(root, { withFileTypes: true }).catch(error => {
+                  if (error.code !== "ENOENT") throw error;
+                  missingDuringStartup++; return [];
+                })) {
+                  if (!child.isDirectory() || !child.name.startsWith(prefix + "-") || child.name === prefix + "-fixture" || child.name === prefix + "-extensions") continue;
+                  const profileLogs = join(root, child.name, "logs");
+                  try {
+                    for await (const file of new Bun.Glob("**/*.log").scan({ cwd: profileLogs, absolute: true })) await copy(file, root);
+                  } catch (error) {
+                    if (error.code !== "ENOENT") throw error;
+                    missingDuringStartup++;
+                  }
+                }
+              }
+              await Bun.sleep(100);
+            }
+          })();
+          const env = { ...process.env };
+          delete env.TERMINFO_DISPOSABLE_RECEIPT;
+          delete env.TERMINFO_CAPTURE_DIRECTORY;
+          const child = Bun.spawn(["bun", "packages/admin/src/index.ts", "probe", "app", process.env.APP_ID, "--force", "--output", join(out, "private-runs")], { env, stdout: Bun.file(join(out, "collector.log")), stderr: Bun.file(join(out, "collector.stderr")) });
+          let status;
+          try { status = await child.exited; } finally { observing = false; await observer; }
+          await writeFile(join(out, "discriminator.json"), JSON.stringify({ app: process.env.APP_ID, surface: process.env.APP_SURFACE, sourceRevision: process.env.GITHUB_SHA, exitCode: status, observedRoots: [...observedRoots], copiedPaths: [...copied.keys()], missingDuringStartup, scope: "startup/fixture activation/terminal read only; no pixel qualification or admission", retained: "private-runs plus fixture, owner tty and extension-host/renderer log snapshots" }, null, 2));
+          process.exitCode = status;
+          '
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/measurement-artifacts
+          name: editor-discriminator-${{ matrix.id }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/editor-discriminator
           if-no-files-found: error
+          retention-days: 14
