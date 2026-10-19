@@ -21,6 +21,7 @@ import { homedir } from "node:os"
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto"
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
+import { isDeepStrictEqual } from "node:util"
 import {
   type CaptureCells,
   type ObservationFrame,
@@ -35,7 +36,7 @@ import {
   type TextQualification,
 } from "@terminfo/probe-defs"
 import { detectTerminal } from "./detect.ts"
-import { COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
+import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./identity-guard.ts"
 import { withRawMode, drainStdin, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
@@ -52,7 +53,7 @@ import {
 } from "./owned-terminal.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
-import { parseRunProvenance } from "@terminfo/run-parser"
+import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseTarget } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
 /**
@@ -366,7 +367,36 @@ export async function collectProbeRun(
     throw new Error("Runtime provenance requires owned capture or clipboard")
   }
   const provenanceSource: unknown = provenancePath ? JSON.parse(readFileSync(provenancePath, "utf8")) : undefined
-  const executable = provenanceSource ? measuredExecutable(provenanceSource) : undefined
+  const envelope =
+    provenanceSource &&
+    typeof provenanceSource === "object" &&
+    !Array.isArray(provenanceSource) &&
+    Object.hasOwn(provenanceSource, "outerApp")
+      ? (provenanceSource as Record<string, unknown>)
+      : undefined
+  if (envelope && Object.keys(envelope).some((key) => key !== "target" && key !== "outerApp")) {
+    throw new Error("Mux runtime provenance envelope has unexpected fields")
+  }
+  const muxTarget = envelope ? parseTarget(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
+  if (
+    muxTarget &&
+    (muxTarget.kind !== "mux" || muxTarget.os !== terminal.os || muxTarget.osVersion !== terminal.osVersion)
+  ) {
+    throw new Error("Mux runtime provenance target disagrees with the collector platform")
+  }
+  const outerApp = muxTarget
+    ? parseOuterApp(
+        envelope?.outerApp,
+        muxTarget,
+        "collector",
+        { probeHash, sourceRevision },
+        provenancePath ?? "mux runtime provenance",
+      )
+    : undefined
+  if (muxTarget && !outerApp?.provenance) throw new Error("Mux runtime provenance lacks outer app provenance")
+  const executableSource = outerApp?.provenance ?? provenanceSource
+  const executable = executableSource ? measuredExecutable(executableSource) : undefined
+  const measuredTerminal = muxTarget ? { name: muxTarget.id, version: muxTarget.version } : terminal
   if ((captureDirectory || clipboardReceipt) && !executable && !hostedCapture) {
     throw new Error("Controlled Linux collection lacks measured executable")
   }
@@ -615,13 +645,41 @@ export async function collectProbeRun(
     installTextCapture(ownedTerminal)
   }
   const clipboard = ownedTerminal?.clipboard
+  const attachment = clipboard?.muxAttachmentProof
   let batch: Awaited<ReturnType<typeof runProbeBatch>>
   try {
+    if (
+      muxTarget &&
+      (!attachment ||
+        attachment.captureRunId !== captureRunId ||
+        attachment.mux !== muxTarget.id ||
+        attachment.mux !== muxTarget.mux ||
+        attachment.executable.version !== muxTarget.version ||
+        attachment.config.path !== muxTarget.config)
+    ) {
+      throw new Error("Mux target differs from the verified mux attachment")
+    }
+    if (attachment && !muxTarget) {
+      throw new Error("Verified mux attachment requires its mux runtime provenance envelope")
+    }
+    if (attachment && outerApp) {
+      const source = outerApp.rawReplies["collector.preflightIdentity"]
+      if (
+        !source ||
+        !isDeepStrictEqual(parseJsonStrict("mux outer preflight", source), {
+          ...attachment.preflightCollector,
+          launchRunId: attachment.launchRunId,
+        })
+      ) {
+        throw new Error("Outer preflight differs from the verified mux attachment")
+      }
+    }
     batch = await withRawMode(async () => {
       let geometryCorroboration: GeometryCorroboration | undefined
       let identityQuery:
         | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
         | undefined
+      let da2Query: Awaited<ReturnType<typeof queryWithSentinelOutcome>> | undefined
       if (ownedTerminal) {
         const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
         const query = {
@@ -658,7 +716,12 @@ export async function collectProbeRun(
           raw: identity.raw,
           rawBase64: identity.rawBase64,
         }
-        resolveMeasuredAppVersion(terminal.name, terminal.version, { "collector.xtversion": identity.raw })
+        // Only Screen consumes DA2 for its measured version; ordinary apps keep their preflight.
+        if (measuredTerminal.name === "screen") da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
+        resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
+          "collector.xtversion": identity.raw,
+          ...(da2Query && { "collector.da2": da2Query.raw }),
+        })
       }
       // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
       // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
@@ -670,7 +733,7 @@ export async function collectProbeRun(
         out,
         captureRunId,
         // The run's own target, from the launched app: the receipt is bound to this before any write.
-        target: { kind: "app", id: terminal.name, os: terminal.os },
+        target: { kind: muxTarget?.kind ?? "app", id: measuredTerminal.name, os: terminal.os },
         ...(capture && { capture }),
         ...(textCapture && { captureKind: "text-cells" as const }),
         ...(input && { input }),
@@ -681,6 +744,10 @@ export async function collectProbeRun(
       if (identityQuery) {
         result.rawReplies["collector.xtversion"] = identityQuery.raw
         result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
+      }
+      if (da2Query) {
+        result.rawReplies["collector.da2"] = da2Query.raw
+        result.rawReplies["collector.da2Query"] = JSON.stringify({ sequence: "\x1b[>c", ...da2Query })
       }
       if (captureCalibration) {
         result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
@@ -696,35 +763,40 @@ export async function collectProbeRun(
   const measuredVersion =
     (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
       ? batch.appLaunch.productVersion
-      : resolveMeasuredAppVersion(terminal.name, terminal.version, batch.rawReplies)
+      : resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, batch.rawReplies)
   const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
-  const target: ProbeRun["target"] = {
-    kind: "app",
-    id: terminal.name,
-    // Windows Terminal uses its parsed launched-executable ProductVersion; other apps use terminal
-    // identity replies. alacritty reports none at all -
-    // XTVERSION answers with nothing and neither TERM_PROGRAM nor TERM_PROGRAM_VERSION is set - so
-    // it is "unknown" here, which provenance can never agree with. When the APPARATUS declared a
-    // version for this target (the launcher passes TERMINFO_TARGET_VERSION in the image
-    // environment; it is never read back out of the ownership receipt), write that declaration
-    // instead. The value is NOT a version the terminal reported - the raw replies show it reported
-    // none - and the provenance check still does its work: the binary's own `--version` must agree
-    // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
-    version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
-    os: terminal.os,
-    osVersion: terminal.osVersion,
-    outerTerminal: null,
-    mux: null,
-    config: null,
-    permissions: null,
+  const target: ProbeRun["target"] = muxTarget
+    ? { ...muxTarget, version: measuredVersion }
+    : {
+        kind: "app",
+        id: terminal.name,
+        // Windows Terminal uses its parsed launched-executable ProductVersion; other apps use terminal
+        // identity replies. alacritty reports none at all -
+        // XTVERSION answers with nothing and neither TERM_PROGRAM nor TERM_PROGRAM_VERSION is set - so
+        // it is "unknown" here, which provenance can never agree with. When the APPARATUS declared a
+        // version for this target (the launcher passes TERMINFO_TARGET_VERSION in the image
+        // environment; it is never read back out of the ownership receipt), write that declaration
+        // instead. The value is NOT a version the terminal reported - the raw replies show it reported
+        // none - and the provenance check still does its work: the binary's own `--version` must agree
+        // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
+        version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
+        os: terminal.os,
+        osVersion: terminal.osVersion,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      }
+  const provenance =
+    provenancePath && !muxTarget
+      ? parseRunProvenance(provenanceSource, target, { probeHash, sourceRevision }, provenancePath)
+      : undefined
+  if (provenancePath && !provenance && !outerApp?.provenance) {
+    throw new Error(`Missing runtime provenance in ${provenancePath}`)
   }
-  const provenance = provenancePath
-    ? parseRunProvenance(provenanceSource, target, { probeHash, sourceRevision }, provenancePath)
-    : undefined
-  if (provenancePath && !provenance) throw new Error(`Missing runtime provenance in ${provenancePath}`)
   if (provenance) target.config = provenance.fixture.config
   if (clipboard) {
-    if (!provenance || provenance.fixture.config !== clipboard.config) {
+    if ((outerApp?.provenance ?? provenance)?.fixture.config !== clipboard.config) {
       throw new Error("Owned clipboard profile config differs from runtime provenance")
     }
     if (clipboard.profile !== "default") target.permissions = clipboard.permissions
@@ -734,6 +806,7 @@ export async function collectProbeRun(
     runId: captureRunId,
     target,
     ...(provenance && { provenance }),
+    ...(outerApp && { outerApp }),
     identity: "unverified",
     suiteId: probeHash,
     probeHash,

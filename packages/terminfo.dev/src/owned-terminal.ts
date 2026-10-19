@@ -630,13 +630,21 @@ export async function createOwnedTerminal(options: {
   // a pid can be reused, but a 598-capture run has no reason to hash the same file 598 times.
   const windowsExecutableDigests = new Map<string, string>()
   try {
-    if (linux) clipboard = await createLinuxClipboardAdapter(linux.receiptPath, expectedLaunchRunId, linux.executable)
+    if (linux) {
+      clipboard = await createLinuxClipboardAdapter(
+        linux.receiptPath,
+        expectedLaunchRunId,
+        linux.executable,
+        captureRunId,
+      )
+    }
     const geometryAtGrant = await readBoundGeometry(binding, windowsKernel)
     const source = geometrySource(binding)
     const summary = JSON.stringify({
       platform: binding.platform,
       outputBinding: binding,
       geometryAtGrant,
+      ...(clipboard?.muxAttachmentProof && { muxAttachment: clipboard.muxAttachmentProof }),
       ...(terminalApp && {
         ownerAssertion: parseTerminalAppOwner(terminalApp),
         ownerAssertionSource: "authenticated-admin-request",

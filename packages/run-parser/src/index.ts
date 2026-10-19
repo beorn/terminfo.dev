@@ -201,7 +201,7 @@ export function parseJsonStrict(path: string, source: string): unknown {
   return parsed
 }
 
-function parseTarget(value: unknown, path: string): ProbeTarget {
+export function parseTarget(value: unknown, path: string): ProbeTarget {
   if (!object(value)) fail(path, "missing target")
   if (!["app", "headless", "mux"].includes(String(value.kind))) fail(path, "invalid target.kind")
   return {
@@ -1042,7 +1042,7 @@ function parseNotTested(
   return records
 }
 
-function parseOuterApp(
+export function parseOuterApp(
   value: unknown,
   target: ProbeTarget,
   originKind: RunOrigin["kind"],

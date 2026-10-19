@@ -102,7 +102,7 @@ export interface VerificationResult {
 
 const DA1_GRAMMAR = String.raw`\x1b\[\?[0-9;]+c`
 const DA1_ONLY = new RegExp(`^${DA1_GRAMMAR}$`)
-const COMPLETE_DA2 = new RegExp(String.raw`^\x1b\[>[0-9]+;[0-9]+;[0-9]+c(${DA1_GRAMMAR})?$`)
+export const COMPLETE_DA2 = new RegExp(String.raw`^\x1b\[>[0-9]+;[0-9]+;[0-9]+c(${DA1_GRAMMAR})?$`)
 export const COMPLETE_XTVERSION = new RegExp(String.raw`^\x1bP>\|([^\x1b]+)\x1b\\(${DA1_GRAMMAR})?$`)
 
 /** Owned identity is independent of the selected feature and never falls back on failure. */
