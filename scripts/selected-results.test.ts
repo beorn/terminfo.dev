@@ -2800,10 +2800,9 @@ describe("identity self-admission", () => {
     )
   })
 
-  // The identity profiles alone admit detached tmux/mux. This is deliberately RED on Slice 1;
-  // only the combined outer-proof implementation may make it green (CTO 9f1f9b8f, 30069).
+  // Mux identity must join the retained outer-app and launch evidence (30069).
   it.each(muxIdentity.specimens)(
-    "refuses detached $mux with either mux or app labelling",
+    "admits $mux only as a mux with matching retained outer-app custody",
     ({ mux, version, run: specimen }) => {
       const projectedManifest = manifest(specimen.probeHash, muxIdentity.featureIds)
       for (const kind of ["mux", "app"] as const) {
@@ -2861,6 +2860,177 @@ describe("identity self-admission", () => {
         accepted: false,
         reason: "mux-attachment-missing",
       })
+      // Controlled retained-byte fixtures exercise historical joins, not live launch authority.
+      const processIdentity = (pid: number) => ({ pid, startTicks: String(1000 + pid) })
+      const launchRunId = "12".repeat(16)
+      const attachment = {
+        platform: "linux",
+        mux,
+        bootId: "11111111-2222-3333-4444-555555555555",
+        receiptSha256: "",
+        launchRunId,
+        captureRunId: specimen.runId,
+        preflightCollector: processIdentity(95),
+        outerShell: { ...processIdentity(92), ttyRdev: 34816 },
+        outerTerminal: processIdentity(76),
+        collector: { ...processIdentity(149), ttyRdev: 34817 },
+        attachedClient: { ...processIdentity(148), ttyRdev: 34816 },
+        chain: [149, 145, 92, 76].map((pid) => ({
+          ...processIdentity(pid),
+          executablePath:
+            pid === 145 ? `/nix/store/mux/bin/${mux}` : pid === 76 ? outerProvenance.executable.path : "/bin/bash",
+          ttyRdev: pid === 149 ? 34817 : 34816,
+        })),
+        executable: { path: `/nix/store/mux/bin/${mux}`, sha256: RECEIPT_EXECUTABLE_SHA256, version },
+        config: { path: "/out/mux-empty.conf", sha256: RECEIPT_SOURCE_SHA256 },
+        socketPath: `/out/${launchRunId}.sock`,
+        session: `terminfo-${launchRunId}`,
+      }
+      const receipt = {
+        schemaVersion: 1,
+        runId: launchRunId,
+        profile: "default",
+        display: { name: ":22", number: 22, displayFdPath: "/out/display", xvfbPid: 200 },
+        terminal: { pid: 76, collectorPid: 149, windowId: "42", windowPid: 76 },
+        selection: {
+          helperPid: 201,
+          helperExecutable: { path: "/bin/xclip", sha256: RECEIPT_EXECUTABLE_SHA256 },
+          baselinePath: "/out/baseline",
+          baselineSha256: RECEIPT_SOURCE_SHA256,
+          initialReadSha256: RECEIPT_SOURCE_SHA256,
+        },
+        config: outerProvenance.fixture.config,
+        permissions: "default",
+        target: {
+          kind: "mux",
+          mux,
+          bootId: attachment.bootId,
+          preflightCollector: attachment.preflightCollector,
+          outerShell: attachment.outerShell,
+          outerTerminal: attachment.outerTerminal,
+          collector: processIdentity(149),
+          executable: attachment.executable,
+          config: attachment.config,
+          socketPath: attachment.socketPath,
+          session: attachment.session,
+        },
+      }
+      const receiptSource = JSON.stringify(receipt)
+      attachment.receiptSha256 = createHash("sha256").update(receiptSource).digest("hex")
+      const boundSource = {
+        ...specimen,
+        target: {
+          ...specimen.target,
+          kind: "mux",
+          id: mux,
+          version,
+          outerTerminal: "kitty",
+          mux,
+          config: attachment.config.path,
+        },
+        outerApp: {
+          target: { ...outerTarget, config: outerProvenance.fixture.config },
+          provenance: outerProvenance,
+          rawReplies: {
+            ...identityReplies,
+            "collector.preflightIdentity": JSON.stringify({ ...attachment.preflightCollector, launchRunId }),
+          },
+        },
+        rawReplies: {
+          ...specimen.rawReplies,
+          "collector.terminalOwnership": JSON.stringify({ muxAttachment: attachment }),
+          "collector.clipboardFixture": JSON.stringify({
+            receiptSource,
+            receiptSha256: attachment.receiptSha256,
+            muxAttachmentProof: attachment,
+          }),
+        },
+      }
+      const assessBound = (source: unknown) =>
+        assessRunAdmission(
+          parseRunSource(
+            `bound-${mux}.json`,
+            JSON.stringify(source),
+            muxIdentity.featureIds,
+            new Map([[specimen.probeHash, projectedManifest]]),
+          ),
+          [],
+          { mode: "historical" },
+        )
+      expect(assessBound(boundSource)).toMatchObject({ accepted: true })
+      for (const [field, value] of Object.entries({
+        bootId: "99999999-2222-3333-4444-555555555555",
+        preflightCollector: processIdentity(96),
+        outerShell: { ...attachment.outerShell, startTicks: "9999" },
+        outerTerminal: processIdentity(77),
+        collector: processIdentity(150),
+        executable: { ...attachment.executable, sha256: "cd".repeat(32) },
+        config: { ...attachment.config, sha256: "cd".repeat(32) },
+        socketPath: `/out/other-${launchRunId}.sock`,
+        session: `other-${launchRunId}`,
+      })) {
+        const source = JSON.stringify({
+          ...receipt,
+          terminal: {
+            ...receipt.terminal,
+            ...(field === "outerTerminal" ? { pid: 77 } : {}),
+            ...(field === "collector" ? { collectorPid: 150 } : {}),
+          },
+          target: { ...receipt.target, [field]: value },
+        })
+        const changedProof = { ...attachment, receiptSha256: createHash("sha256").update(source).digest("hex") }
+        const changed = {
+          ...boundSource,
+          rawReplies: {
+            ...boundSource.rawReplies,
+            "collector.terminalOwnership": JSON.stringify({ muxAttachment: changedProof }),
+            "collector.clipboardFixture": JSON.stringify({
+              receiptSource: source,
+              receiptSha256: changedProof.receiptSha256,
+              muxAttachmentProof: changedProof,
+            }),
+          },
+        }
+        expect.soft(assessBound(changed), field).toMatchObject({ accepted: false, reason: "mux-attachment-invalid" })
+      }
+      for (const fixture of [
+        undefined,
+        { receiptSource: receiptSource + " ", receiptSha256: attachment.receiptSha256 },
+        {
+          receiptSource,
+          receiptSha256: attachment.receiptSha256,
+          muxAttachmentProof: { ...attachment, launchRunId: "56".repeat(16) },
+        },
+      ]) {
+        expect
+          .soft(
+            assessBound({
+              ...boundSource,
+              rawReplies: {
+                ...boundSource.rawReplies,
+                "collector.clipboardFixture": fixture === undefined ? undefined : JSON.stringify(fixture),
+              },
+            }),
+          )
+          .toMatchObject({ accepted: false, reason: "mux-attachment-invalid" })
+      }
+      expect
+        .soft(
+          assessBound({
+            ...boundSource,
+            outerApp: {
+              ...boundSource.outerApp,
+              rawReplies: {
+                ...boundSource.outerApp.rawReplies,
+                "collector.preflightIdentity": JSON.stringify({
+                  ...attachment.preflightCollector,
+                  launchRunId: "56".repeat(16),
+                }),
+              },
+            },
+          }),
+        )
+        .toMatchObject({ accepted: false, reason: "mux-attachment-invalid" })
       // App provenance must not turn a genuine mux into an app. The original missing-provenance
       // case could reject for the wrong reason and miss this kind mismatch.
       const labelledApp = parseRunSource(

@@ -16,6 +16,7 @@ import type { Interpretation, ProbeSuiteManifest, ProbeTarget } from "@terminfo/
 import {
   decodeExactUtf8,
   measuredVersionTokens,
+  parseJsonStrict,
   parseRun,
   parseSuiteManifest,
   type LoadedRun,
@@ -29,6 +30,7 @@ import {
   type TerminalIdentityRule,
 } from "../terminfo.dev/src/identity-guard.ts"
 import { windowsCommBase } from "../terminfo.dev/src/windows-process-ancestry.ts"
+import { parseLinuxClipboardReceipt } from "../terminfo.dev/src/linux-clipboard.ts"
 import { activeInterpretations, applies, nonempty, parseInterpretations } from "../../scripts/interpretations.ts"
 import { loadFeatures } from "@terminfo/catalog"
 
@@ -277,7 +279,52 @@ function identityDecision(
   return identityAdmission ? null : "identity-replies-mismatch"
 }
 
-/** All target kinds pass through this one provenance decision. Attachment joins remain owner evidence. */
+/** Historical custody joins retained bytes only; it never inspects today's processes or files. */
+function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
+  const fixtureSource = run.rawReplies["collector.clipboardFixture"]
+  const preflightSource = run.outerApp?.rawReplies["collector.preflightIdentity"]
+  if (!fixtureSource || !preflightSource || !run.outerApp?.provenance) return false
+  try {
+    const fixture = parseJsonStrict("mux clipboard fixture", fixtureSource)
+    const preflight = parseJsonStrict("mux outer preflight", preflightSource)
+    if (!isRecord(fixture) || typeof fixture.receiptSource !== "string" || !isRecord(preflight)) return false
+    const receiptSha256 = createHash("sha256").update(fixture.receiptSource, "utf8").digest("hex")
+    if (receiptSha256 !== fixture.receiptSha256 || receiptSha256 !== attachment.receiptSha256) return false
+    if (fixture.muxAttachmentProof !== undefined && !isDeepStrictEqual(fixture.muxAttachmentProof, attachment)) {
+      return false
+    }
+    const receipt = parseLinuxClipboardReceipt(parseJsonStrict("mux clipboard receipt", fixture.receiptSource))
+    const target = receipt.target
+    if (!target || target.kind !== "mux") return false
+    return (
+      receipt.runId === attachment.launchRunId &&
+      target.mux === attachment.mux &&
+      target.bootId === attachment.bootId &&
+      isDeepStrictEqual(target.preflightCollector, attachment.preflightCollector) &&
+      isDeepStrictEqual(target.outerShell, attachment.outerShell) &&
+      isDeepStrictEqual(target.outerTerminal, attachment.outerTerminal) &&
+      isDeepStrictEqual(target.collector, {
+        pid: attachment.collector.pid,
+        startTicks: attachment.collector.startTicks,
+      }) &&
+      isDeepStrictEqual(target.executable, attachment.executable) &&
+      isDeepStrictEqual(target.config, attachment.config) &&
+      target.socketPath === attachment.socketPath &&
+      target.session === attachment.session &&
+      isDeepStrictEqual(preflight, { ...attachment.preflightCollector, launchRunId: attachment.launchRunId }) &&
+      attachment.chain.at(-1)?.executablePath === run.outerApp.provenance.executable.path &&
+      receipt.config === run.outerApp.provenance.fixture.config &&
+      run.outerApp.target.config === receipt.config &&
+      run.target.permissions === (receipt.profile === "default" ? null : receipt.permissions)
+    )
+  } catch (cause) {
+    // Malformed retained input is a named admission refusal, never an empty/default proof.
+    if (!(cause instanceof Error)) throw cause
+    return false
+  }
+}
+
+/** All target kinds pass through this one provenance decision. */
 function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
   if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
   switch (run.target.kind) {
@@ -318,7 +365,8 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
         attachment.mux !== run.target.id ||
         attachment.mux !== run.target.mux ||
         attachment.config.path !== run.target.config ||
-        attachment.executable.version !== run.target.version
+        attachment.executable.version !== run.target.version ||
+        !muxFixtureMatches(run, attachment)
       ) {
         return "mux-attachment-invalid"
       }
