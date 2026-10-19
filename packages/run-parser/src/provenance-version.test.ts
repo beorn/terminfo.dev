@@ -7,7 +7,8 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { parseRunProvenance } from "./index.ts"
+import { parseRun, parseRunProvenance } from "./index.ts"
+import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const target = {
   kind: "app" as const,
@@ -53,5 +54,53 @@ describe("parseRunProvenance version token", () => {
     expect(() => parseRunProvenance(provenance("XTerm(411) build 99887-2"), target, expected, "p")).toThrow(
       /differs from target.version/,
     )
+  })
+
+  // The inner mux version differs from the independently measured outer app version. Existing
+  // provenance-only coverage cannot catch dropping this namespace or validating it as the mux.
+  it("retains one app preflight on a mux and rejects conflicting subjects", () => {
+    const outerApp = { target, rawReplies: { "device.da1": "\u001b[?64;1;2c" }, provenance: provenance("XTerm(411)") }
+    const muxTarget = { ...target, kind: "mux", id: "tmux", version: "3.7c", outerTerminal: "xterm", mux: "tmux" }
+    const raw = {
+      schemaVersion: 2,
+      runId: "attached-mux",
+      target: muxTarget,
+      identity: "unverified",
+      suiteId: "test",
+      ...expected,
+      suiteComplete: true,
+      measuredAt: "2026-10-19T00:00:00Z",
+      origin: { kind: "collector" },
+      rawReplies: {},
+      assertions: [],
+      observations: [],
+      screenshotRefs: [],
+      outerApp,
+    }
+    const suites = new Map<string, ProbeSuiteManifest>([
+      [
+        expected.probeHash,
+        {
+          probeHash: expected.probeHash,
+          adapterVersion: "test",
+          probes: { app: [], headless: [], mux: [] },
+        },
+      ],
+    ])
+    const parse = (value: unknown) => parseRun("mux.json", JSON.stringify(value), [], suites)
+    expect(parse(raw)).toMatchObject({ outerApp })
+    expect(parse({ ...raw, outerApp: undefined })).not.toHaveProperty("outerApp")
+    for (const conflicting of [
+      { ...raw, target },
+      { ...raw, target: { ...muxTarget, outerTerminal: "kitty" } },
+      { ...raw, target: { ...muxTarget, mux: "screen" } },
+      { ...raw, outerApp: { ...outerApp, target: { ...target, os: "darwin" } } },
+      { ...raw, outerApp: { ...outerApp, target: { ...target, kind: "mux" } } },
+      { ...raw, outerApp: { ...outerApp, target: { ...target, version: "412" } } },
+      { ...raw, outerApp: { ...outerApp, rawReplies: { reply: 1 } } },
+      { ...raw, provenance: outerApp.provenance },
+    ]) {
+      expect(() => parse(conflicting)).toThrow(/outerApp|app target/)
+    }
   })
 })

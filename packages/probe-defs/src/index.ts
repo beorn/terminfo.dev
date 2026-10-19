@@ -46,6 +46,7 @@ export type {
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
   ProbeRun,
+  OuterAppProof,
   RunProvenance,
   Interpretation,
 } from "./types.ts"

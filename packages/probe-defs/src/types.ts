@@ -424,6 +424,14 @@ export type HeadlessRuntimeIdentity =
       }
     })
 
+/** One app preflight measured before attaching a mux. */
+export interface OuterAppProof {
+  target: ProbeTarget & { kind: "app" }
+  rawReplies: Record<string, string>
+  provenance?: RunProvenance
+  appLaunch?: AppLaunchReceipt
+}
+
 /** Raw run records are immutable; review decisions live in Interpretation. */
 export interface ProbeRun {
   schemaVersion: 2
@@ -433,6 +441,8 @@ export interface ProbeRun {
   runtimeIdentity?: HeadlessRuntimeIdentity
   /** Measured in the running native-app environment before the run is sealed. */
   provenance?: RunProvenance
+  /** Independently measured app preflight before attaching the mux; never another probe run. */
+  outerApp?: OuterAppProof
   suiteId: string
   probeHash: string
   suiteComplete: boolean
