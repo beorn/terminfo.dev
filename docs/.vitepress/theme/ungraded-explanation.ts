@@ -15,6 +15,7 @@ export interface TextEvidenceRead {
   readonly os: string
   /** The console host the cited run recorded, when it has one. */
   readonly host?: ConsoleBufferOwner
+  readonly textQualificationReason?: string
 }
 
 export function textEvidenceExplanation(read: TextEvidenceRead | undefined): string | undefined {
@@ -28,7 +29,10 @@ export function textEvidenceExplanation(read: TextEvidenceRead | undefined): str
     return "Read as text from the console host that owns the window’s buffer, not from the cells the terminal drew — shown, not counted. The host is recorded in the run artifact."
   }
   if (read.os === "macos") {
-    return "Read from the app’s own text snapshot, not from the cells it drew — ungraded until that app’s hosted run passes the five readback shapes."
+    if (read.textQualificationReason !== undefined) {
+      return `Read from the app’s own text snapshot — shown, not counted. ${read.textQualificationReason}`
+    }
+    return "Read from the app’s own text snapshot — shown, not counted. A conclusive text result requires a character-only claim declared by its suite and the same run’s five readback shapes."
   }
   return "Read as text rather than from the cells the terminal drew — shown, not counted."
 }

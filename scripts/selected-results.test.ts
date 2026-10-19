@@ -1792,7 +1792,7 @@ describe("selected results", () => {
     ).toThrow(/target.*capturedAt/)
   })
 
-  it("refuses to present a text-snapshot frame by name, because the site renders every frame as a PNG", () => {
+  it("presents a text-snapshot frame with its text kind and original TXT URL", () => {
     const content = temporaryContent()
     const snapshot = Buffer.from("ab \ncd \n", "utf8")
     const digest = createHash("sha256").update(snapshot).digest("hex")
@@ -1842,8 +1842,7 @@ describe("selected results", () => {
       { kind: "text-cells", url: undefined, sha256: digest },
     ])
     expect(cell?.conclusive).toBe(false)
-    // A presentation decision is where the site publishes frames, and that is where a text frame is
-    // refused BY NAME rather than failing the API build with a missing PNG.
+    // The presentation owner maps retained text to TXT while preserving its distinct kind.
     const present = {
       id: "present-text",
       runId: measured.runId,
@@ -1857,145 +1856,196 @@ describe("selected results", () => {
       presentsEvidence: true,
     }
     const presented = projectResults([measured], [present], catalog, { currentProbeHash: "current" })
-    expect(() => publicResults(presented, new Map())).toThrow(/run text-cells feature extensions\.graphics/u)
-    expect(() => publicResults(presented, new Map())).toThrow(
-      new RegExp(`cannot present text-snapshot frame sha256:${digest}`, "u"),
-    )
-    expect(() => publicResults(presented, new Map())).toThrow(/renders every frame as a PNG/u)
+    const published = publicResults(presented, new Map())
+    const publicCell = published.projection.history["app:kitty"]?.[0]?.cells["extensions.graphics"]
+    const expectedFrames = frames.map((frame) => ({
+      role: frame.role,
+      label: frame.label,
+      capturedAt: frame.capturedAt,
+      kind: "text-cells",
+      url: `/artifacts/${digest}.txt`,
+      sha256: digest,
+    }))
+    expect(publicCell?.record?.frames).toEqual(expectedFrames)
+    expect(publicCell?.record).not.toHaveProperty("screenshot")
+    expect(publicCell?.presentation.state).toBe("presented")
+    expect(published.documents.get(`/api/v2/evidence/${measured.sha256}/extensions.graphics.json`)?.document).toMatchObject({
+      record: { frames: expectedFrames },
+    })
   })
 
   // AC2–AC4: the public result reader must promote a reviewed character claim only from this
   // run's verified five-shape bytes. The old text test has no qualification and cannot catch it.
-  it.each([
-    { name: "all five", missing: undefined, os: "macos", declared: true, fault: undefined, expected: true },
-    ...["mid-line-gap", "trailing-gap", "soft-wrap", "prior-scrollback", "empty-last-row"].map((missing) => ({
-      name: `missing ${missing}`,
-      missing,
-      fault: undefined,
-      os: "macos",
-      declared: true,
-      expected: false,
-    })),
-    { name: "Windows", missing: undefined, os: "windows", declared: true, fault: undefined, expected: false },
-    { name: "undeclared claim", missing: undefined, os: "macos", declared: false, fault: undefined, expected: false },
-    ...["changed-bytes", "failed-shape", "wrong-rectangle", "wrong-version", "console-host"].map((fault) => ({
-      name: fault,
-      missing: undefined,
-      os: "macos",
-      declared: true,
-      fault,
-      expected: false,
-    })),
-  ])("qualifies a character text result: $name", ({ missing, os, declared, fault, expected }) => {
-    const content = temporaryContent()
-    const featureId = "text.overwrite"
-    const suiteId = "qualified-text"
-    const blank = "            "
-    const filled = ["CCCCCCCCCCCC", "CCCCCCCCCCCC", "CCCCCCCCCCCC", "CCCCCCCCCCCC"]
-    // Independently stated expected grids for R=4, C=12; do not call the recipe under test.
-    const prior = ["H2          ", "H3          ", "H4          ", "H5          "]
-    const grids = [
-      { shape: "mid-line-gap", control: filled, target: ["A       B   ", blank, blank, "Z           "] },
-      { shape: "trailing-gap", control: filled, target: ["A           ", "B           ", blank, "Z           "] },
-      { shape: "soft-wrap", control: filled, target: ["WWWWWWWWWWWW", "XY          ", blank, blank] },
-      {
-        shape: "prior-scrollback",
-        control: ["H0          ", "H1          ", "H2          ", "H3          "],
-        target: prior,
-      },
-      { shape: "empty-last-row", control: prior, target: ["H3          ", "H4          ", "H5          ", blank] },
-    ]
-    const refs = new Set<string>()
-    const textSnapshots = new Map<string, Buffer>()
-    let capturedAt = 0
-    const frame = (rows: readonly string[], role: "control" | "target"): ObservationFrame => {
-      const bytes = Buffer.from(
-        (fault === "changed-bytes" && role === "target" ? ["X           ", ...rows.slice(1)] : rows).join("\n"),
-        "utf8",
-      )
-      const digest = createHash("sha256").update(bytes).digest("hex")
-      const ref = `sha256:${digest}`
-      refs.add(ref)
-      writeFileSync(join(content, "artifacts", `${digest}.txt`), bytes)
-      textSnapshots.set(ref, readVerifiedArtifact(content, ref, "qualified-text.json", "text-snapshot"))
-      return {
-        kind: "text-cells",
-        role,
-        ref,
-        capturedAt: ++capturedAt,
-        label: `${role} grid`,
-        cellDigest: ref,
-        frameDigest: ref,
-        cellRectangle: { top: 1, left: 1, bottom: fault === "wrong-rectangle" ? 3 : 4, right: 12 },
+  it.each(
+    [
+      { name: "all five", missing: undefined, os: "macos", declared: true, fault: undefined, expected: true },
+      ...["mid-line-gap", "trailing-gap", "soft-wrap", "prior-scrollback", "empty-last-row"].map((missing) => ({
+        name: `missing ${missing}`,
+        missing,
+        fault: undefined,
+        os: "macos",
+        declared: true,
+        expected: false,
+      })),
+      { name: "Windows", missing: undefined, os: "windows", declared: true, fault: undefined, expected: false },
+      { name: "undeclared claim", missing: undefined, os: "macos", declared: false, fault: undefined, expected: false },
+      ...[
+        "changed-bytes",
+        "failed-shape",
+        "wrong-rectangle",
+        "wrong-version",
+        "suite-recipe-mismatch",
+        "console-host",
+      ].map((fault) => ({
+        name: fault,
+        missing: undefined,
+        os: "macos",
+        declared: true,
+        fault,
+        expected: false,
+      })),
+    ].flatMap((scenario) =>
+      (["supported", "unsupported"] as const).flatMap((outcome) =>
+        [false, true].map((interpreted) => ({ ...scenario, outcome, interpreted })),
+      ),
+    ),
+  )(
+    "qualifies a character text result: $name/$outcome/interpreted=$interpreted",
+    ({ missing, os, declared, fault, expected, outcome, interpreted }) => {
+      const content = temporaryContent()
+      const featureId = "text.overwrite"
+      const suiteId = "qualified-text"
+      const blank = "            "
+      const filled = ["CCCCCCCCCCCC", "CCCCCCCCCCCC", "CCCCCCCCCCCC", "CCCCCCCCCCCC"]
+      // Independently stated expected grids for R=4, C=12; do not call the recipe under test.
+      const prior = ["H2          ", "H3          ", "H4          ", "H5          "]
+      const grids = [
+        { shape: "mid-line-gap", control: filled, target: ["A       B   ", blank, blank, "Z           "] },
+        { shape: "trailing-gap", control: filled, target: ["A           ", "B           ", blank, "Z           "] },
+        { shape: "soft-wrap", control: filled, target: ["WWWWWWWWWWWW", "XY          ", blank, blank] },
+        {
+          shape: "prior-scrollback",
+          control: ["H0          ", "H1          ", "H2          ", "H3          "],
+          target: prior,
+        },
+        { shape: "empty-last-row", control: prior, target: ["H3          ", "H4          ", "H5          ", blank] },
+      ]
+      const refs = new Set<string>()
+      const textSnapshots = new Map<string, Buffer>()
+      let capturedAt = 0
+      const frame = (rows: readonly string[], role: "control" | "target"): ObservationFrame => {
+        const bytes = Buffer.from(
+          (fault === "changed-bytes" && role === "target" ? ["X           ", ...rows.slice(1)] : rows).join("\n"),
+          "utf8",
+        )
+        const digest = createHash("sha256").update(bytes).digest("hex")
+        const ref = `sha256:${digest}`
+        refs.add(ref)
+        writeFileSync(join(content, "artifacts", `${digest}.txt`), bytes)
+        textSnapshots.set(ref, readVerifiedArtifact(content, ref, "qualified-text.json", "text-snapshot"))
+        return {
+          kind: "text-cells",
+          role,
+          ref,
+          capturedAt: ++capturedAt,
+          label: `${role} grid`,
+          cellDigest: ref,
+          frameDigest: ref,
+          cellRectangle: { top: 1, left: 1, bottom: fault === "wrong-rectangle" ? 3 : 4, right: 12 },
+        }
       }
-    }
-    const shapes = grids
-      .filter(({ shape }) => shape !== missing)
-      .map(({ shape, control, target }) =>
-        fault === "failed-shape" && shape === "mid-line-gap"
-          ? { shape, reason: "terminal refused shape" }
-          : { shape, frames: [frame(control, "control"), frame(target, "target")] },
+      const shapes = grids
+        .filter(({ shape }) => shape !== missing)
+        .map(({ shape, control, target }) =>
+          fault === "failed-shape" && shape === "mid-line-gap"
+            ? { shape, reason: "terminal refused shape" }
+            : { shape, frames: [frame(control, "control"), frame(target, "target")] },
+        )
+      const observationFrames = [frame(filled, "control"), frame(["AX          ", blank, blank, blank], "target")]
+      const targetRef = observationFrames[1]?.ref
+      if (!targetRef) throw new Error("Missing target fixture")
+      const suite = Object.assign(manifest(suiteId, [featureId]), {
+        textClaims: declared ? [featureId] : [],
+        textQualification: {
+          version: 1,
+          recipe: fault === "suite-recipe-mismatch" ? "other-suite-recipe" : "macos-text-cells-v1",
+        },
+      })
+      const raw = run("qualified-text", {
+        target: { ...target, os },
+        probeHash: suiteId,
+        textSnapshotRefs: [...refs],
+        textQualification: {
+          version: fault === "wrong-version" ? 2 : 1,
+          recipe: "macos-text-cells-v1",
+          grid: { rows: 4, cols: 12 },
+          shapes,
+        },
+        rawReplies: { ...identityReplies, [featureId]: "retained character comparison" },
+        assertions: [
+          {
+            featureId,
+            kind: outcome === "supported" ? "positive" : "negative",
+            rawReplyRef: featureId,
+            expected: "the sampled character grid",
+            observed: targetRef,
+          },
+        ],
+        observations: [
+          {
+            featureId,
+            outcome,
+            evidence: "text",
+            rawReplyRef: featureId,
+            frames: observationFrames,
+            ...(fault === "console-host" && {
+              host: {
+                image: "OpenConsole.exe",
+                executablePath: "C:/Windows/OpenConsole.exe",
+                executableSha256: `sha256:${"a".repeat(64)}`,
+              },
+            }),
+          },
+        ],
+      })
+      const measured = parseRunSource(
+        "qualified-text.json",
+        JSON.stringify(raw),
+        [featureId],
+        new Map([[suiteId, suite]]),
       )
-    const observationFrames = [frame(filled, "control"), frame(["AX          ", blank, blank, blank], "target")]
-    const targetRef = observationFrames[1]?.ref
-    if (!targetRef) throw new Error("Missing target fixture")
-    const suite = Object.assign(manifest(suiteId, [featureId]), {
-      textClaims: declared ? [featureId] : [],
-      textQualification: { version: 1, recipe: "macos-text-cells-v1" },
-    })
-    const raw = run("qualified-text", {
-      target: { ...target, os },
-      probeHash: suiteId,
-      textSnapshotRefs: [...refs],
-      textQualification: {
-        version: fault === "wrong-version" ? 2 : 1,
-        recipe: "macos-text-cells-v1",
-        grid: { rows: 4, cols: 12 },
-        shapes,
-      },
-      rawReplies: { ...identityReplies, [featureId]: "retained character comparison" },
-      assertions: [
-        {
-          featureId,
-          kind: "positive",
-          rawReplyRef: featureId,
-          expected: "the sampled character grid",
-          observed: targetRef,
-        },
-      ],
-      observations: [
-        {
-          featureId,
-          outcome: "supported",
-          evidence: "text",
-          rawReplyRef: featureId,
-          frames: observationFrames,
-          ...(fault === "console-host" && {
-            host: {
-              image: "OpenConsole.exe",
-              executablePath: "C:/Windows/OpenConsole.exe",
-              executableSha256: `sha256:${"a".repeat(64)}`,
-            },
-          }),
-        },
-      ],
-    })
-    const measured = parseRunSource(
-      "qualified-text.json",
-      JSON.stringify(raw),
-      [featureId],
-      new Map([[suiteId, suite]]),
-    )
-    const projection = projectResults(
-      [measured],
-      [],
-      [featureId],
-      Object.assign({ currentProbeHash: suiteId }, { textSnapshots }),
-    )
-    const cell = projection.history["app:kitty"]?.[0]?.cells[featureId]
-    expect(cell?.outcome).toBe("supported")
-    expect(cell?.conclusive).toBe(expected)
-  })
+      const original = measured.observations.find((entry) => entry.featureId === featureId)!
+      // Deliberately omit the original console host: an interpretation cannot hide immutable host facts.
+      const { host: _host, ...reviewedObservation } = original
+      const correction = { ...reviewFor(measured), featureId, observation: reviewedObservation }
+      const projection = projectResults(
+        [measured],
+        interpreted ? [correction] : [],
+        [featureId],
+        Object.assign({ currentProbeHash: suiteId }, { textSnapshots }),
+      )
+      const version = projection.history["app:kitty"]?.[0]
+      const cell = version?.cells[featureId]
+      expect(cell?.outcome).toBe(outcome)
+      expect(cell?.conclusive).toBe(expected)
+      expect(version?.textQualification).toEqual(measured.textQualification)
+      const failedAssessment =
+        missing !== undefined ||
+        ["changed-bytes", "failed-shape", "wrong-rectangle", "wrong-version", "suite-recipe-mismatch"].includes(
+          fault ?? "",
+        )
+      if (failedAssessment) {
+        expect(cell?.textQualificationReason).toMatch(/Run qualified-text: /u)
+        if (missing) expect(cell?.textQualificationReason).toContain(missing)
+        if (fault === "suite-recipe-mismatch") {
+          expect(cell?.textQualificationReason).toContain("cited suite declaration")
+        }
+      } else {
+        expect(cell).not.toHaveProperty("textQualificationReason")
+      }
+      if (interpreted) expect(cell?.chain.correctionId).toBe(correction.id)
+    },
+  )
   it("keeps a supported raw text observation non-conclusive", () => {
     const content = temporaryContent()
     const snapshot = Buffer.from("ab \ncd \n", "utf8")
@@ -2045,6 +2095,8 @@ describe("selected results", () => {
     // trailing gap, a soft wrap, an empty last row, and prior scrollback.
     expect(cell?.outcome).toBe("supported")
     expect(cell?.conclusive).toBe(false)
+    expect(cell).not.toHaveProperty("textQualificationReason")
+    expect(projection.history["app:kitty"]?.[0]).not.toHaveProperty("textQualification")
   })
 
   // 30055 AC4: the public cell carries the host the observation recorded, and a pixels row carries

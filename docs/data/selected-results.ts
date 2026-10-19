@@ -12,6 +12,7 @@ import {
   type RunOrigin,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
+  type TextQualification,
   isNonMeasuringEvidence,
   TEXT_QUALIFICATION_SPEC,
   textQualificationFixtures,
@@ -45,6 +46,8 @@ export { parseInterpretations } from "../../scripts/interpretations.ts"
 
 export interface SelectedCell extends Observation {
   conclusive: boolean
+  /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
+  textQualificationReason?: string
   record: {
     rawReply?: string
     assertions: ProbeAssertion[]
@@ -91,6 +94,8 @@ export interface SelectedVersion {
   sourceRevision: string | null
   sha256: string
   identityAdmission?: IdentityAdmission
+  /** Immutable run-owned witnesses; no derived assessment is stored here. */
+  textQualification?: TextQualification
   cells: Record<string, SelectedCell>
   v1: Record<string, boolean>
   ungradedDiagnostics: {
@@ -272,6 +277,12 @@ function prepareRunCells(
       ...observation,
       record: observationRecord(run, observation),
       conclusive: isConclusiveObservation(run, observation, text),
+      ...(observation.evidence === "text" &&
+      run.textQualification !== undefined &&
+      !text.qualified &&
+      text.reason !== undefined
+        ? { textQualificationReason: text.reason }
+        : {}),
       chain: {
         origin: run.origin,
         method: observation.evidence,
@@ -359,6 +370,12 @@ function prepareRunCells(
       ...observation,
       record: observationRecord(run, observation),
       conclusive: isConclusiveObservation(run, observation, text),
+      ...(observation.evidence === "text" &&
+      run.textQualification !== undefined &&
+      !text.qualified &&
+      text.reason !== undefined
+        ? { textQualificationReason: text.reason }
+        : {}),
       chain: {
         origin: run.origin,
         method: observation.evidence,
@@ -472,6 +489,7 @@ function projectRun(
     sourceRevision: run.sourceRevision,
     sha256: run.sha256,
     ...(identityAdmission && { identityAdmission }),
+    ...(run.textQualification === undefined ? {} : { textQualification: run.textQualification }),
     cells,
     v1,
     ungradedDiagnostics: {

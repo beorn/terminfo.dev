@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationEvidence, ObservationReason } from "@terminfo/probe-defs"
-import type { EvidenceDocument, PublicCell, PublicVersion } from "../../data/public-results"
+import type { EvidenceDocument, PublicCell, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 
 const props = withDefaults(
@@ -43,6 +43,8 @@ const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
 const evidenceDocument = ref<EvidenceDocument | null>(null)
+const qualificationDocument = ref<TextQualificationDocument | null>(null)
+const textSnapshots = ref<Record<string, string>>({})
 const recordedQueries = ref<Array<{ sequence: string; raw?: string }>>([])
 const evidenceLoading = ref(false)
 const evidenceError = ref<string | null>(null)
@@ -128,6 +130,7 @@ const textExplanation = computed(() =>
           conclusive: props.cell.conclusive,
           os: props.version.target.os,
           host: props.cell.host,
+          textQualificationReason: props.cell.textQualificationReason,
         }
       : undefined,
   ),
@@ -140,7 +143,9 @@ const previewRecord = computed(() => (presentation.value?.state === "presented" 
 const previewScreenshot = computed(() => previewRecord.value?.screenshot)
 const screenshotUrl = computed(() => (previewScreenshot.value ? withBase(previewScreenshot.value.url) : undefined))
 const previewFrames = computed(() => previewRecord.value?.frames ?? [])
-const previewFrame = computed(() => previewFrames.value.find((frame) => frame.role === "target"))
+const previewFrame = computed(() =>
+  previewFrames.value.find((frame) => frame.role === "target" && frame.kind !== "text-cells"),
+)
 const previewImageUrl = computed(() => (previewFrame.value ? withBase(previewFrame.value.url) : screenshotUrl.value))
 const evidenceRecord = computed(() => evidenceDocument.value?.record)
 const evidenceFrames = computed(() => evidenceRecord.value?.frames ?? [])
@@ -202,6 +207,8 @@ function invalidateEvidence(): void {
   evidenceController?.abort()
   evidenceController = null
   evidenceDocument.value = null
+  qualificationDocument.value = null
+  textSnapshots.value = {}
   recordedQueries.value = []
   evidenceLoading.value = false
   evidenceError.value = null
@@ -209,6 +216,19 @@ function invalidateEvidence(): void {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+/** The existing evidence receipt check also verifies TXT bytes and the run-owned witness document. */
+async function verifiedBytes(url: string, sha256: string, signal: AbortSignal): Promise<ArrayBuffer> {
+  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error("Invalid evidence SHA-256 receipt")
+  const response = await fetch(withBase(url), { signal })
+  if (!response.ok) throw new Error(`Evidence request returned HTTP ${response.status}`)
+  const bytes = await response.arrayBuffer()
+  if (!globalThis.crypto?.subtle) throw new Error("SHA-256 verification is unavailable in this browser")
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
+  const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  if (actualSha256 !== sha256) throw new Error("Evidence SHA-256 mismatch")
+  return bytes
 }
 
 async function loadEvidence(): Promise<void> {
@@ -229,13 +249,7 @@ async function loadEvidence(): Promise<void> {
     if (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256) {
       throw new Error("Result and run identities disagree")
     }
-    const response = await fetch(withBase(approval.url), { signal: controller.signal })
-    if (!response.ok) throw new Error(`Evidence request returned HTTP ${response.status}`)
-    const bytes = await response.arrayBuffer()
-    if (!globalThis.crypto?.subtle) throw new Error("SHA-256 verification is unavailable in this browser")
-    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
-    const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
-    if (actualSha256 !== approval.sha256) throw new Error("Evidence SHA-256 mismatch")
+    const bytes = await verifiedBytes(approval.url, approval.sha256, controller.signal)
     const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
     if (
       !isRecord(parsed) ||
@@ -252,6 +266,38 @@ async function loadEvidence(): Promise<void> {
     ) {
       throw new Error("Evidence document identity or structure does not match this result")
     }
+    const document = parsed as unknown as EvidenceDocument
+    let qualification: TextQualificationDocument | null = null
+    if (document.textQualification) {
+      const reference = document.textQualification
+      const bytes = await verifiedBytes(reference.url, reference.sha256, controller.signal)
+      const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+      if (
+        !isRecord(value) ||
+        value.version !== 1 ||
+        value.runId !== version.runId ||
+        value.runSha256 !== version.sha256 ||
+        !isRecord(value.qualification) ||
+        !Array.isArray(value.qualification.shapes)
+      ) {
+        throw new Error("Text qualification document does not match this run")
+      }
+      qualification = value as unknown as TextQualificationDocument
+    }
+    const frames = [
+      ...(document.record.frames ?? []),
+      ...(qualification?.qualification.shapes.flatMap((shape) => shape.frames ?? []) ?? []),
+    ]
+    const snapshots: Record<string, string> = {}
+    const textFrames = [
+      ...new Map(frames.filter((frame) => frame.kind === "text-cells").map((frame) => [frame.sha256, frame])).values(),
+    ]
+    await Promise.all(
+      textFrames.map(async (frame) => {
+        const bytes = await verifiedBytes(frame.url, frame.sha256, controller.signal)
+        snapshots[frame.sha256] = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+      }),
+    )
     if (
       request !== evidenceRequest ||
       (!dialogVisible.value && !previewVisible.value) ||
@@ -278,7 +324,9 @@ async function loadEvidence(): Promise<void> {
       queries = trace.queries as Array<{ sequence: string; raw?: string }>
     }
     recordedQueries.value = queries
-    evidenceDocument.value = parsed as unknown as EvidenceDocument
+    evidenceDocument.value = document
+    qualificationDocument.value = qualification
+    textSnapshots.value = snapshots
   } catch (error) {
     if (
       request !== evidenceRequest ||
@@ -635,24 +683,50 @@ onBeforeUnmount(() => {
               </ul>
             </template>
             <template v-if="evidenceFrames.length">
-              <h4>Screenshots</h4>
+              <h4>
+                {{ evidenceFrames.some((frame) => frame.kind === "text-cells") ? "Captured text" : "Screenshots" }}
+              </h4>
               <div class="result-evidence__frames">
                 <figure v-for="(frame, index) in evidenceFrames" :key="index" class="result-evidence__image">
-                  <img :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
+                  <pre v-if="frame.kind === 'text-cells'" class="result-evidence__text">{{
+                    textSnapshots[frame.sha256]
+                  }}</pre>
+                  <img v-else :src="withBase(frame.url)" :alt="`${frame.role} frame: ${frame.label}`" />
                   <figcaption>
                     <strong>{{ frame.role === "control" ? "Control" : "Target" }}</strong> · {{ frame.label }}
                     <details>
-                      <summary>Image details</summary>
+                      <summary>{{ frame.kind === "text-cells" ? "Text details" : "Image details" }}</summary>
                       Captured {{ frameTime(frame.capturedAt) }} · SHA-256 {{ frame.sha256 }}
                     </details>
                   </figcaption>
                   <a :href="withBase(frame.url)" target="_blank" rel="noopener noreferrer"
-                    >Open original {{ frame.role }} image</a
+                    >Open original {{ frame.role }} {{ frame.kind === "text-cells" ? "text" : "image" }}</a
                   >
                 </figure>
               </div>
             </template>
-            <template v-else-if="evidenceScreenshotUrl">
+
+            <details
+              v-if="qualificationDocument && evidenceDocument.textQualification"
+              class="result-evidence__details"
+            >
+              <summary>Run’s five-shape text qualification</summary>
+              <p>
+                <a :href="withBase(evidenceDocument.textQualification.url)" target="_blank" rel="noopener noreferrer"
+                  >Open the shared run qualification record</a
+                >
+              </p>
+              <section v-for="shape in qualificationDocument.qualification.shapes" :key="shape.shape">
+                <h4>{{ shape.shape }}</h4>
+                <p v-if="shape.reason">{{ shape.reason }}</p>
+                <figure v-for="frame in shape.frames" :key="`${frame.role}:${frame.sha256}`">
+                  <figcaption>{{ frame.role }} · {{ frame.label }}</figcaption>
+                  <pre class="result-evidence__text">{{ textSnapshots[frame.sha256] }}</pre>
+                  <a :href="withBase(frame.url)" target="_blank" rel="noopener noreferrer">Open original text bytes</a>
+                </figure>
+              </section>
+            </details>
+            <template v-if="!evidenceFrames.length && evidenceScreenshotUrl">
               <figure class="result-evidence__image">
                 <img
                   :src="evidenceScreenshotUrl"
@@ -813,3 +887,11 @@ onBeforeUnmount(() => {
     </Teleport>
   </span>
 </template>
+
+<style scoped>
+.result-evidence__text {
+  white-space: pre;
+  overflow-x: auto;
+  user-select: text;
+}
+</style>

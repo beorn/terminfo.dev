@@ -47,6 +47,17 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
     expect(text).toContain("five readback shapes")
   })
 
+  // The generic macOS sentence cannot distinguish a carried qualification's actual missing or
+  // failed shape. CTO condition4 requires the reader's named cause to reach the page unchanged.
+  it.each([
+    "Run sample: missing text qualification shape empty-last-row",
+    "Run sample: text qualification shape soft-wrap target does not match the expected character grid",
+  ])("names the carried qualification cause: %s", (textQualificationReason) => {
+    const text = textEvidenceExplanation({ evidence: "text", conclusive: false, os: "macos", textQualificationReason })
+    expect(text).toContain(textQualificationReason)
+    expect(text).toContain("not counted")
+  })
+
   it("stays silent for a conclusive row, and for a read that is not text", () => {
     expect(textEvidenceExplanation({ evidence: "text", conclusive: true, os: "windows" })).toBeUndefined()
     expect(textEvidenceExplanation({ evidence: "pixels", conclusive: false, os: "windows" })).toBeUndefined()

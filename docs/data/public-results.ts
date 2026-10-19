@@ -7,14 +7,17 @@ import type {
   ProbeAssertion,
   ProbeTarget,
   RunOrigin,
+  TextQualification,
+  TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import type { CurrentResult } from "./current-results.ts"
 import { statesFor, type SelectedCell, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
-/** A published frame is always a rendered PNG: a text frame is refused before it is published. */
-type PublicFrame = {
+/** Missing kind retains the historical PNG shape byte for byte. */
+export type PublicFrame = {
+  kind?: "text-cells"
   role: ObservationFrame["role"]
   label: string
   capturedAt: number
@@ -31,12 +34,28 @@ export interface EvidenceDocument {
   observation: Pick<Observation, "featureId" | "outcome" | "reason" | "evidence" | "note">
   record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
   review: PublicReview
+  textQualification?: { url: string; sha256: string }
+}
+
+export interface TextQualificationDocument {
+  version: 1
+  runId: string
+  runSha256: string
+  qualification: Omit<TextQualification, "shapes"> & {
+    shapes: Array<{
+      shape: TextQualification["shapes"][number]["shape"]
+      frames?: Array<PublicFrame & Pick<TextCellsObservationFrame, "cellDigest" | "frameDigest" | "cellRectangle">>
+      reason?: string
+    }>
+  }
 }
 
 export interface PublicCell extends Pick<SelectedCell, "featureId" | "outcome" | "reason" | "evidence" | "conclusive"> {
   note?: string
   /** The console host the read returned; absent on a pixels row and on a text row that had none. */
   host?: ConsoleBufferOwner
+  textQualificationReason?: string
+  textQualification?: { url: string; sha256: string }
   chain: {
     origin: Pick<RunOrigin, "kind" | "url">
     method: Observation["evidence"]
@@ -52,7 +71,7 @@ export interface PublicCell extends Pick<SelectedCell, "featureId" | "outcome" |
     | { state: "presented"; review: PublicReview; url: string; sha256: string }
 }
 
-export interface PublicVersion extends Omit<SelectedVersion, "cells" | "ungradedDiagnostics"> {
+export interface PublicVersion extends Omit<SelectedVersion, "cells" | "ungradedDiagnostics" | "textQualification"> {
   cells: Record<string, PublicCell>
 }
 
@@ -83,27 +102,21 @@ function publicReview(review: PublicReview): PublicReview {
 }
 
 /**
- * The public view of a cell's retained images. A text frame is refused BY NAME: every consumer of
- * this record renders a frame as a PNG <img> and the evidence inventory admits only .png, so
- * publishing one would fail the API build instead of showing evidence. This refusal lifts when the
- * site can render a text snapshot; until then the frame is never presented.
+ * The one public frame mapping: text URLs retain their kind; historical PNG records retain their shape.
  */
 function images(record: SelectedCell["record"], where: string): PublicImages {
   return {
     ...(record.screenshot && { screenshot: { url: record.screenshot.url, sha256: record.screenshot.sha256 } }),
     ...(record.frames && {
       frames: record.frames.map((frame) => {
-        if (frame.kind === "text-cells" || frame.url === undefined) {
-          throw new Error(
-            `${where}: the site cannot present text-snapshot frame sha256:${frame.sha256} — its evidence cell renders every frame as a PNG and its artifact inventory admits only .png, so text frames are refused by name until the site can render one`,
-          )
-        }
+        if (frame.kind !== "text-cells" && frame.url === undefined) throw new Error(`${where}: pixel frame has no URL`)
         return {
           role: frame.role,
           label: frame.label,
           capturedAt: frame.capturedAt,
-          url: frame.url,
+          url: frame.kind === "text-cells" ? `/artifacts/${frame.sha256}.txt` : (frame.url as string),
           sha256: frame.sha256,
+          ...(frame.kind === "text-cells" && { kind: "text-cells" as const }),
         }
       }),
     }),
@@ -112,7 +125,55 @@ function images(record: SelectedCell["record"], where: string): PublicImages {
 
 /** One mapping also supplies the exact lazy documents that generate-api writes. */
 export function publicResults(projection: SelectedProjection, targets: ReadonlyMap<string, CurrentResult>) {
-  const documents = new Map<string, { bytes: string; document: EvidenceDocument }>()
+  const documents = new Map<string, { bytes: string; document: EvidenceDocument | TextQualificationDocument }>()
+  const qualificationFor = (version: SelectedVersion): { url: string; sha256: string } | undefined => {
+    if (!version.textQualification) return undefined
+    const qualification = version.textQualification
+    const document: TextQualificationDocument = {
+      version: 1,
+      runId: version.runId,
+      runSha256: version.sha256,
+      qualification: {
+        ...qualification,
+        shapes: qualification.shapes.map((shape) => {
+          if (shape.reason !== undefined) return { shape: shape.shape, reason: shape.reason }
+          const frames = images(
+            {
+              assertions: [],
+              frames: shape.frames.map((frame) => ({
+                role: frame.role,
+                label: frame.label,
+                capturedAt: frame.capturedAt,
+                kind: "text-cells",
+                sha256: frame.ref.slice(7),
+              })),
+            },
+            `run ${version.runId} qualification ${shape.shape}`,
+          ).frames
+          if (!frames) throw new Error(`Missing mapped qualification frames for ${version.runId}/${shape.shape}`)
+          return {
+            shape: shape.shape,
+            frames: frames.map((frame, index) => {
+              const raw = shape.frames[index]
+              if (!raw) throw new Error(`Missing original qualification frame for ${version.runId}/${shape.shape}`)
+              return {
+                ...frame,
+                cellDigest: raw.cellDigest,
+                frameDigest: raw.frameDigest,
+                cellRectangle: { ...raw.cellRectangle },
+              }
+            }),
+          }
+        }),
+      },
+    }
+    const url = `/api/v2/evidence/${version.sha256}/text-qualification.json`
+    const bytes = JSON.stringify(document, null, 2) + "\n"
+    const prior = documents.get(url)
+    if (prior && prior.bytes !== bytes) throw new Error(`Conflicting qualification document ${url}`)
+    documents.set(url, { bytes, document })
+    return { url, sha256: createHash("sha256").update(bytes).digest("hex") }
+  }
   const mapCell = (cell: SelectedCell, version: SelectedVersion): PublicCell => {
     const approved = cell.presentation?.decision.presentsEvidence === true
     const reviewedCorrection = cell.chain.correctionId !== undefined
@@ -124,6 +185,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       conclusive: cell.conclusive,
       ...(cell.reason && { reason: cell.reason }),
       ...(cell.host !== undefined && { host: cell.host }),
+      ...(cell.textQualificationReason !== undefined && { textQualificationReason: cell.textQualificationReason }),
       ...((reviewedCorrection || approved) && cell.note !== undefined && { note: cell.note }),
       chain: {
         origin: { kind: origin.kind, ...(origin.url && /^https?:\/\//.test(origin.url) && { url: origin.url }) },
@@ -143,6 +205,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       return result
     }
     const { observation, record } = original
+    const textQualification = cell.evidence === "text" ? qualificationFor(version) : undefined
     const document: EvidenceDocument = {
       version: 1,
       runId: version.runId,
@@ -169,6 +232,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
         })),
       },
       review,
+      ...(textQualification && { textQualification }),
     }
     const url = `/api/v2/evidence/${version.sha256}/${encodeURIComponent(cell.featureId)}.json`
     const bytes = JSON.stringify(document, null, 2) + "\n"
@@ -177,6 +241,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     documents.set(url, { bytes, document })
     result.presentation = { state: "presented", review, url, sha256: createHash("sha256").update(bytes).digest("hex") }
     result.record = images(record, `run ${version.runId} feature ${cell.featureId}`)
+    if (textQualification) result.textQualification = textQualification
     return result
   }
   const target = (value: ProbeTarget): ProbeTarget => ({
