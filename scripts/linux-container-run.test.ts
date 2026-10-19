@@ -24,6 +24,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import type { MuxAttachmentProof } from "@terminfo/probe-defs"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
 let dir: string
@@ -81,6 +82,47 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
+
+// Receipt issuance must identify the newly live collector, while preserving the preflight
+// identity. Existing compose tests only join already-produced host/container receipts.
+it.runIf(process.platform === "linux")(
+  "mux receipt producer measures the inner collector separately from preflight",
+  () => {
+    const config = join(dir, "empty.conf")
+    const preflight = join(dir, "preflight.json")
+    writeFileSync(config, "", { mode: 0o600 })
+    writeFileSync(preflight, JSON.stringify({ pid: 95, startTicks: "203389044" }))
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        String.raw`
+source "$1"
+TERMINFO_RUN_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-$TERMINFO_RUN_ID"
+`,
+        "_",
+        launcher,
+        preflight,
+        config,
+        join(dir, "terminfo-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sock"),
+      ],
+      { encoding: "utf8" },
+    )
+    expect(result.status, result.stderr).toBe(0)
+    const target = JSON.parse(result.stdout) as Pick<
+      MuxAttachmentProof,
+      "preflightCollector" | "collector" | "outerShell" | "config" | "executable" | "bootId"
+    >
+    expect(target.preflightCollector).toEqual({ pid: 95, startTicks: "203389044" })
+    expect(target.collector.pid).not.toBe(95)
+    expect(target.collector.startTicks).toMatch(/^\d+$/)
+    expect(target.outerShell.pid).toBe(target.collector.pid)
+    expect(target.config.sha256).toBe(createHash("sha256").update("").digest("hex"))
+    expect(target.executable.version).toBe("3.7c")
+    expect(target.bootId).toMatch(/^[0-9a-f-]{36}$/)
+  },
+)
 
 describe("container run receipt composition", () => {
   it("combines host image identity with the matching container measurements", () => {
