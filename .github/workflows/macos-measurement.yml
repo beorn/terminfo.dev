@@ -28,6 +28,8 @@ jobs:
             bundle: /Applications/Ghostty.app
           - id: alacritty
             bundle: /Applications/Alacritty.app
+          - id: wezterm
+            bundle: /Applications/WezTerm.app
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -109,6 +111,7 @@ jobs:
               fi
               ;;
             ghostty) brew install --cask ghostty ;;
+            wezterm) brew install --cask wezterm ;;
             alacritty)
               curl --location --fail --silent --show-error \
                 https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
@@ -232,6 +235,11 @@ jobs:
               mkdir -p "$HOME/.config/ghostty"
               printf 'command = /bin/bash %s\n' "$COMMAND_PATH" > "$HOME/.config/ghostty/config"
               nohup "$APP_BUNDLE/Contents/MacOS/ghostty" </dev/null >> "$OUT/launcher.log" 2>&1 &
+              ;;
+            wezterm)
+              # start --always-new-process keeps this run on its own GUI process instead of joining the mux,
+              # and the command after -- is the serve script WezTerm executes in the new window.
+              nohup "$APP_BUNDLE/Contents/MacOS/wezterm" start --always-new-process -- /bin/bash "$COMMAND_PATH" </dev/null >> "$OUT/launcher.log" 2>&1 &
               ;;
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &

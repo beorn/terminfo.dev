@@ -290,7 +290,9 @@ it.each([
       if (args[1] === "download") {
         const artifacts = args[args.indexOf("--dir") + 1]
         if (typeof artifacts !== "string") throw new Error("expected hosted artifact output directory")
-        for (const id of mac ? ["terminal-app", "iterm2", "ghostty", "alacritty"] : ["windows-terminal", "alacritty"]) {
+        for (const id of mac
+          ? ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]
+          : ["windows-terminal", "alacritty"]) {
           const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
           mkdirSync(folder, { recursive: true })
           writeFileSync(join(folder, "run.json"), "{}")
@@ -471,7 +473,7 @@ it.each([
         (row) =>
           row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
       )
-      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 6 : 4)
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 7 : 5)
       expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
         inputChange === "blocked-hosted" ? 0 : 1,
@@ -485,7 +487,7 @@ it.each([
         expect.anything(),
       )
       const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-      expect(hosted).toHaveLength(os === "macos" ? 4 : 2)
+      expect(hosted).toHaveLength(os === "macos" ? 5 : 2)
       if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -579,7 +581,8 @@ describe("release 1 collection census", () => {
   })
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
-    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty on macos and windows-terminal/alacritty on windows.
+    // The workflow's matrix is terminal-app/iterm2/ghostty/alacritty/wezterm on macos and
+    // windows-terminal/alacritty on windows.
     // All remaining unresolved routes stay recorded as expected route work. kitty/macos is no longer one of
     // them: 15323 gives it an owned local launch on the host the pass runs on, and the run is still
     // parsed and classified by this pass rather than by a second dispatcher.
@@ -589,9 +592,9 @@ describe("release 1 collection census", () => {
     expect(kitty?.uncollectable).toBeNull()
     expect(kitty?.requires).toMatch(/owned app window launched by the admin/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(6)
+    expect(missing).toHaveLength(5)
     expect(missing.every((entry) => entry.uncollectable?.includes("required route work"))).toBe(true)
-    for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty"]) {
+    for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm"]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
     for (const id of ["windows-terminal", "alacritty"]) {
