@@ -551,12 +551,16 @@ describe("release 1 collection census", () => {
     expect(command.stdout.split("\n")[0]).toContain("18 app, 4 mux, 11 headless")
   }, 30_000)
 
-  it("refuses a manifest that is not the eleven engines the collector asserts", () => {
-    expect(() => census(ENGINE_BACKENDS.slice(0, 10))).toThrow(/Expected 11 headless engines/)
-    expect(() => census([...ENGINE_BACKENDS, "extra"])).toThrow(/Expected 11 headless engines/)
+  it("compares the manifest's engine set with the catalog's instead of a hardcoded count", () => {
+    // The catalog is the authority on how many engines exist; a dropped or added engine still
+    // shows up by name, which is the check that prevents silently publishing a different family
+    // (28385, area 15).
+    expect(() => census(ENGINE_BACKENDS.slice(0, 10))).toThrow(/Catalog\/Termless engine membership differs/s)
+    expect(() => census([...ENGINE_BACKENDS, "extra"])).toThrow(/engine membership differs.*extra/s)
     expect(() => census([...ENGINE_BACKENDS.slice(0, -1), "not-in-catalog"])).toThrow(
       /engine membership differs.*not-in-catalog/s,
     )
+    expect(census([...ENGINE_BACKENDS])).toHaveLength(33)
   })
 
   it("names every context that has no route instead of dropping it", () => {
