@@ -76,6 +76,31 @@ test("a symlinked adapter resolves to the checkout it points at", () => {
   expect(owningCheckout(join(link, "packages", "xtermjs", "dist", "index.js"), "@termless/xtermjs")).toBe(termless.root)
 })
 
+test("a package at the checkout root resolves", () => {
+  const root = join(fixture, "root-package")
+  mkdirSync(root, { recursive: true })
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ name: "@termless/root", version: "0.1.0", main: "index.js" }),
+  )
+  writeFileSync(join(root, "index.js"), "export {}\n")
+  commit(root)
+  expect(owningCheckout(join(realpathSync(root), "index.js"), "@termless/root")).toBe(realpathSync(root))
+})
+
+test("an untracked package at the checkout root refuses", () => {
+  const root = join(fixture, "loose-root")
+  mkdirSync(root, { recursive: true })
+  writeFileSync(join(root, "README.md"), "a repository that never tracked a package\n")
+  commit(root)
+  writeFileSync(
+    join(root, "package.json"),
+    JSON.stringify({ name: "@termless/root", version: "0.1.0", main: "index.js" }),
+  )
+  writeFileSync(join(root, "index.js"), "export {}\n")
+  expect(() => owningCheckout(join(realpathSync(root), "index.js"), "@termless/root")).toThrow(/not tracked/)
+})
+
 test("an untracked package inside a parent repository refuses and names the path", () => {
   const parent = checkout("dev-repo")
   const untracked = join(parent.root, "node_modules", "@termless", "xtermjs")

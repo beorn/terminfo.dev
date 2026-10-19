@@ -52,11 +52,14 @@ export function owningCheckout(adapterPath: string, packageName: string): string
     )
   }
   const packagePath = relative(checkout, directory)
+  // A package at the checkout root has an empty relative path; joining keeps it repository-relative
+  // instead of producing an absolute "/package.json" that git rejects as outside the repository.
+  const packageFile = join(packagePath, "package.json")
   try {
-    git(checkout, "ls-files", "--error-unmatch", `${packagePath}/package.json`)
+    git(checkout, "ls-files", "--error-unmatch", packageFile)
   } catch (cause) {
     throw new Error(
-      `Termless adapter ${packageName} resolved to ${path}, but ${packagePath}/package.json is not tracked in ${checkout}; install the owned Termless source workspace`,
+      `Termless adapter ${packageName} resolved to ${path}, but ${packageFile} is not tracked in ${checkout}; install the owned Termless source workspace`,
       { cause },
     )
   }
