@@ -65,6 +65,54 @@ compose_receipt() {
   mv "$output.partial" "$output"
 }
 
+# Write the host-measured facts once, before the container is created. Inputs below
+# are the image/build metadata measured by the host portion of this launcher.
+write_host_receipt() {
+  jq -n \
+    --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
+    --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
+    --arg root "$root_revision" --arg suite "$suite_hash" --arg bundle "$bundle_tar_sha" \
+    --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
+    --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
+    --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
+    --arg collectedAt "$(date -u +%FT%TZ)" \
+    --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
+    --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
+    --arg target "$target_id" --arg mux "$mux_kind" \
+    --arg url "$source_url" --arg sri "$source_sri" \
+    --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
+    --arg runnerUrl "file://$prep/runner-bundle.tar" \
+    '{kind:"app",id:$target,version:$version,os:"linux"} as $app |
+    {schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
+      declaredTarget:(if $mux == "" then $app else {kind:"mux",id:$mux,os:"linux"} end),
+      sourceArtifact:({url:$url,sri:$sri}
+        + (if $mux == "" then {} else {target:$app} end)
+        + (if $kind == "derived-source-tree"
+           then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
+      runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
+        frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
+        build:$build[0],rootBunLockSha256:$lock},
+      runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
+        sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
+      status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$1"
+}
+
+# Check the unchanged host receipt against the container's declared image metadata.
+validate_host_metadata() {
+  jq -e --arg preset "$target_preset" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
+    --arg version "$target_version" --arg url "$target_source_url" \
+    --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" \
+    '.preset == $preset and .clipboardProfile == $profile and
+     (if $mux == "" then .declaredTarget.version == $version
+      else .declaredTarget == {kind:"mux",id:$mux,os:"linux"} and
+        .sourceArtifact.target == {kind:"app",id:$target,version:$version,os:"linux"} end) and
+     .sourceArtifact.url == $url' \
+    "$1" >/dev/null || {
+      echo "Container preset, profile, or target metadata disagrees with host receipt" >&2
+      return 2
+    }
+}
+
 # SIGTERM, then SIGKILL after TERMINFO_STOP_GRACE_SEC (default 2). Unbounded `wait` after kill
 # is what kept a completed kitty batch inside the 180 s attach budget (#28552): one owned
 # process ignored TERM (kitten __atexit__ / collector) and attach died 143 with receipts on
@@ -424,14 +472,7 @@ if [[ "${1:-}" == "--inside" ]]; then
     *) echo "Unknown clipboard profile: $TERMINFO_CLIPBOARD_PROFILE" >&2; exit 2 ;;
   esac
 
-  jq -e --arg preset "$target_preset" --arg profile "$TERMINFO_CLIPBOARD_PROFILE" \
-    --arg version "$target_version" --arg url "$target_source_url" \
-    '.preset == $preset and .clipboardProfile == $profile and
-     .declaredTarget.version == $version and .sourceArtifact.url == $url' \
-    /out/host-measured.json >/dev/null || {
-      echo "Container preset, profile, or target metadata disagrees with host receipt" >&2
-      exit 2
-    }
+  validate_host_metadata /out/host-measured.json
   [[ -d "$HOME" && -w "$HOME" ]] || { echo "HOME is not a writable private tmpfs" >&2; exit 2; }
 
   bun "$TERMINFO_RUNNER" --help >/out/import-smoke.txt 2>/out/import-smoke.err || {
@@ -1059,31 +1100,7 @@ if [[ "$proof_kind" == derived-source-tree ]]; then
     exit 2
   }
 fi
-jq -n \
-  --argjson ids "$probe_ids" --arg run "$run_id" --arg image "$image_id" --arg tar "$image_tar_sha" \
-  --arg arch "$image_arch" --arg nix "$nix_lock_revision" --arg source "$source_revision" \
-  --arg root "$root_revision" --arg suite "$suite_hash" --arg bundle "$bundle_tar_sha" \
-  --arg bundleNar "$bundle_sha" --arg lock "$root_lock_sha" \
-  --arg runnerSha "$frozen_runner_sha" --arg receiptSha "$build_receipt_sha" \
-  --arg sourceStatus "$source_status" --slurpfile build "$cli_receipt" \
-  --arg collectedAt "$(date -u +%FT%TZ)" \
-  --arg grace "${TERMINFO_SENTINEL_GRACE_MS:-250}" \
-  --arg preset "$preset" --arg profile "$clipboard_profile" --arg version "$target_version" \
-  --arg target "$target_id" \
-  --arg url "$source_url" --arg sri "$source_sri" \
-  --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
-  --arg runnerUrl "file://$prep/runner-bundle.tar" \
-  '{schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
-    declaredTarget:{kind:"app",id:$target,version:$version,os:"linux"},
-    sourceArtifact:({url:$url,sri:$sri}
-      + (if $kind == "derived-source-tree"
-         then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
-    runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
-      frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
-      build:$build[0],rootBunLockSha256:$lock},
-    runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,
-      sourceRevision:$source,sourceTreeStatus:$sourceStatus,rootRevision:$root,suiteHash:$suite},
-    status:"raw-unreviewed-history"} + (if $ids == null then {} else {selectedIDs:$ids} end)' > "$raw/host-measured.json"
+write_host_receipt "$raw/host-measured.json"
 
 # The collector reads its ownership receipt from a read-only copy: the container being measured
 # must not be able to rewrite the receipt that authorizes writing to the terminal it drives.
