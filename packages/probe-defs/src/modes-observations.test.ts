@@ -699,14 +699,15 @@ function decsscls() {
   return definition
 }
 
-/** Answer the four `performance.now()` reads of the two phases, so the first-frame timing is exact. */
+/** Answer the six `performance.now()` reads of the two phases, so each capture's timing is exact. */
 async function withDecssclsClock(
   controlFirstMs: number,
   targetFirstMs: number,
   work: () => Promise<void>,
+  targetBandMs = targetFirstMs,
 ): Promise<void> {
   const now = vi.spyOn(performance, "now")
-  const ticks = [0, controlFirstMs, 100_000, 100_000 + targetFirstMs]
+  const ticks = [0, controlFirstMs, controlFirstMs, 100_000, 100_000 + targetFirstMs, 100_000 + targetBandMs]
   now.mockImplementation(() => ticks.shift() ?? 0)
   try {
     await work()
@@ -752,6 +753,47 @@ test("modes.decsscls grades text moving through the witness region inside the wi
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
   expect(writes.some((write) => write.includes("line 40"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
+})
+
+test("modes.decsscls places the authored marker band on the row its reference sample reads", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const requests: CaptureRequest[] = []
+  const rows = 24
+  const result = await decsscls().term!(
+    decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, rows, {
+      cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      band: ["present", "present", "absent", "present"],
+      requests,
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "supported" })
+
+  const targetBurst = writes.find((write) => write.includes("\x1b[?1049h\x1b[2J\x1b[H\x1b[9 p"))
+  expect(targetBurst).toBeDefined()
+  const setting = "\x1b[9 p"
+  const authored = targetBurst!.slice(targetBurst!.indexOf(setting) + setting.length).split("\r\n")
+  expect(authored[authored.length - 1]).toBe("")
+  const lines = authored.slice(0, -1)
+  const markerIndex = lines.findIndex((line) => line.includes("\x1b[48;5;196m"))
+  expect(markerIndex).toBeGreaterThanOrEqual(0)
+  const markerLine = markerIndex + 1
+  const settledRow = markerLine - (lines.length - rows + 1)
+  // The ruled placement: authored seven lines before the burst's end, settled eight rows up.
+  expect(settledRow).toBe(rows - 8)
+
+  const reference = writes.find(
+    (write) => write.includes("\x1b[?1049h\x1b[2J\x1b[H\r\n") && write.includes("\x1b[48;5;196m"),
+  )
+  expect(reference).toBeDefined()
+  const beforeBand = reference!.slice(0, reference!.indexOf("\x1b[48;5;196m"))
+  const referenceRow = (beforeBand.match(/\r\n/g) ?? []).length + 1
+  expect(referenceRow).toBe(settledRow)
+
+  const bandRequest = requests.find(
+    (request) => request.cells !== undefined && request.cells.top === request.cells.bottom,
+  )
+  expect(bandRequest?.cells?.top).toBe(settledRow)
 })
 
 test("modes.decsscls grades an instant repaint with the marker band in place as unsupported", async () => {
@@ -838,23 +880,33 @@ test("modes.decsscls does not grade unsupported when an honoring first frame lan
   })
 })
 
-test("modes.decsscls stays inconclusive when the first target frame lands outside the throttled window", async () => {
+test("modes.decsscls stays inconclusive when only the target band capture lands outside the throttled window", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  await withDecssclsClock(40, 2400, async () => {
-    const result = await decsscls().term!(
-      decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
-        cells: ["jump", "jump", "slow-t0", "slow-t1"],
-      }),
-    )
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "pixels",
-    })
-    expect(result.observation?.note).toContain("outside the 1889 ms throttled window")
-    expect(result.assertions).toBeUndefined()
-  })
+  await withDecssclsClock(
+    40,
+    40,
+    async () => {
+      const result = await decsscls().term!(
+        decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+          cells: ["jump", "jump", "slow-t0", "slow-t1"],
+          band: ["present", "present", "present", "present"],
+        }),
+      )
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "pixels",
+      })
+      expect(result.observation?.note).toContain("outside the 1889 ms throttled window")
+      // The witness frame landed early; only the band capture is late, so a band present there
+      // cannot be placed inside the window and must not grade unsupported on the earlier time.
+      expect(result.response).toContain('"targetFirstElapsedMs":40')
+      expect(result.response).toContain('"targetFirstBandElapsedMs":2400')
+      expect(result.assertions).toBeUndefined()
+    },
+    2400,
+  )
 })
 
 test("modes.decsscls grades an identical target pair inside the window as unsupported", async () => {
@@ -867,7 +919,7 @@ test("modes.decsscls grades an identical target pair inside the window as unsupp
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
-  expect(result.observation?.note).toContain("already at its settled row in the target's first frame")
+  expect(result.observation?.note).toContain("already at its settled row in the target's first band capture")
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
 })
 

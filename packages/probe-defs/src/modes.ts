@@ -372,10 +372,11 @@ const DECSSCLS_LINES_PER_SECOND = 9
  */
 const DECSSCLS_OVERFLOW_ROWS = 16
 /**
- * The marker band is authored this many lines above the burst's last line, so once the burst has
- * settled it sits at screen row `rows - 8`, above the cursor row and inside the witness.
+ * The marker band is authored this many lines before the burst's last line. The burst runs 16 lines
+ * past the screen and its trailing line feed leaves one blank row under the text, so seven lines
+ * before the last settles the band at screen row `rows - 8`: above the cursor, inside the witness.
  */
-const DECSSCLS_MARKER_LINES_BEFORE_SETTLED = 8
+const DECSSCLS_MARKER_LINES_BEFORE_BURST_END = 7
 /**
  * The second target frame is taken this long after the throttle window closes. A terminal that
  * honours the rate has finished by then; one that is merely slow has not, and that grades
@@ -403,7 +404,7 @@ const DECSSCLM_JUMP = "\x1b[?4l"
 /** The burst overruns the measured screen by a fixed margin, so no context can absorb it without scrolling. */
 function decssclsBurst(rows: number, cols: number): { text: string; lines: number; markerLine: number } {
   const lines = rows + DECSSCLS_OVERFLOW_ROWS
-  const markerLine = lines - DECSSCLS_MARKER_LINES_BEFORE_SETTLED
+  const markerLine = lines - DECSSCLS_MARKER_LINES_BEFORE_BURST_END
   const band = decssclsBand(cols)
   return {
     text:
@@ -430,7 +431,10 @@ interface DecssclsPair {
   changed: boolean
   /** The two frames' region digests, in capture order, so a decided verdict can cite them. */
   digests: readonly [string, string]
+  /** When the witness capture completed, in ms. Reported; the band frame's time decides the window. */
   firstElapsedMs: number
+  /** When the first band capture completed, in ms: the decisive bound for "inside the window". */
+  firstBandElapsedMs: number
   screenshotRef: string
   rectangles: readonly [CaptureRectangle, CaptureRectangle]
   /** Whether the marker band was found at its settled row in each frame. */
@@ -452,12 +456,14 @@ interface DecssclsPair {
  * a jump puts it at its settled row immediately, an honoured scroll brings it there after the
  * window, and a slower scroll has not brought it there yet.
  *
- * A target is `supported` only when the band arrives (absent at the first frame, present at the
- * second) and the witness changed, while the jump control stayed identical. A band present in the
- * target's first frame, inside the throttled window, is `unsupported`: the terminal put the final
- * content there without honouring the rate. Everything else is `inconclusive` with a named reason:
- * the band has not arrived, the band contradicts the witness, the control moved, the first frame
- * landed after the window could have finished, or the frames were cropped from different rectangles.
+ * A target is `supported` only when the band arrives (absent at the first band capture, present at
+ * the second) and the witness changed, while the jump control stayed identical. A band present in
+ * the target's first band capture, inside the throttled window, is `unsupported`: the terminal put
+ * the final content there without honouring the rate. The band capture's own time decides the
+ * window, so a slow witness read cannot smuggle a late band into an early bound. Everything else is
+ * `inconclusive` with a named reason: the band has not arrived, the band contradicts the witness,
+ * the control moved, the first band capture landed after the window could have finished, or the
+ * frames were cropped from different rectangles.
  */
 async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const captureCallback = ctx.capture
@@ -516,7 +522,11 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
   const scrolledLines = Math.max(1, burst.lines - rows + 1)
   const throttledDurationMs = Math.ceil((scrolledLines / DECSSCLS_LINES_PER_SECOND) * 1000)
   const witness = decssclsWitness(rows, cols)
-  const markerRow = rows - (burst.lines - burst.markerLine)
+  // The burst's last authored line settles on the cursor row, so the band's settled row is its
+  // authored line minus every line the burst scrolled off the top. That is `rows - 8` by design;
+  // deriving it from the bytes keeps the reference sample and the capture on the row the burst
+  // actually paints, including the trailing line feed's own scroll.
+  const markerRow = burst.markerLine - scrolledLines
   const markerCells = { top: markerRow, left: 1, bottom: markerRow, right: cols }
   const captureRegion = async (
     role: ObservationFrame["role"],
@@ -553,6 +563,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
     const first = await capture(role, `${label} t0`)
     const firstElapsedMs = performance.now() - startedAt
     const firstBand = await captureBand(role, `${label} t0 band`)
+    const firstBandElapsedMs = performance.now() - startedAt
     await new Promise<void>((resolve) => {
       setTimeout(resolve, settleMs)
     })
@@ -568,6 +579,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       changed: first.cells !== second.cells,
       digests: [first.cells, second.cells],
       firstElapsedMs,
+      firstBandElapsedMs,
       screenshotRef: second.ref,
       rectangles: [first.rectangle, second.rectangle],
       band: [firstBand.cells === markerRef, secondBand.cells === markerRef],
@@ -587,12 +599,14 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       throttledDurationMs + DECSSCLS_SETTLE_MARGIN_MS,
     )
     const timingBoundMs = throttledDurationMs - DECSSCLS_TIMING_MARGIN_MS
-    const insideWindow = target.firstElapsedMs <= timingBoundMs
+    const bandInsideWindow = target.firstBandElapsedMs <= timingBoundMs
     const observed = {
       controlChanged: control.changed,
       targetChanged: target.changed,
       controlFirstElapsedMs: control.firstElapsedMs,
       targetFirstElapsedMs: target.firstElapsedMs,
+      controlFirstBandElapsedMs: control.firstBandElapsedMs,
+      targetFirstBandElapsedMs: target.firstBandElapsedMs,
       settleMs: DECSSCLS_SETTLE_MS,
       targetSettleMs: throttledDurationMs + DECSSCLS_SETTLE_MARGIN_MS,
       lines: burst.lines,
@@ -659,8 +673,8 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
         },
       }
     }
-    if (!insideWindow) {
-      const note = `The target's first frame landed after ${Math.round(target.firstElapsedMs)} ms, outside the ${throttledDurationMs} ms throttled window (-${DECSSCLS_TIMING_MARGIN_MS} ms margin), so a terminal that honours the rate could already have finished and the pair cannot grade it`
+    if (!bandInsideWindow) {
+      const note = `The target's marker band was first captured after ${Math.round(target.firstBandElapsedMs)} ms, outside the ${throttledDurationMs} ms throttled window (-${DECSSCLS_TIMING_MARGIN_MS} ms margin), so its arrival cannot be placed inside the window and the pair cannot grade it`
       return {
         pass: false,
         response,
@@ -675,7 +689,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       }
     }
     if (target.band[0]) {
-      const note = `The marker band was already at its settled row in the target's first frame, ${Math.round(target.firstElapsedMs)} ms in and inside the ${throttledDurationMs} ms window a throttled scroll would still be running in; the terminal put the content there without honouring the rate`
+      const note = `The marker band was already at its settled row in the target's first band capture, ${Math.round(target.firstBandElapsedMs)} ms in and inside the ${throttledDurationMs} ms window a throttled scroll would still be running in; the terminal put the content there without honouring the rate`
       return {
         pass: false,
         response,
@@ -690,7 +704,7 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
       }
     }
     if (target.band[1] && target.changed) {
-      const note = `The marker band reached its settled row between the two target frames and text moved through the witness region, while the jump control stayed identical and the first target frame landed inside the ${throttledDurationMs} ms window`
+      const note = `The marker band reached its settled row between the two target frames and text moved through the witness region, while the jump control stayed identical and the band's first capture landed inside the ${throttledDurationMs} ms window`
       return {
         pass: true,
         response,
