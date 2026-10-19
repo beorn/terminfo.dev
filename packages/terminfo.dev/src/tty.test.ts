@@ -142,6 +142,52 @@ describe("TTY transaction replies", () => {
     expect(await readResponse(/^a/, 50, async () => reply("a"))).toEqual(["a"])
   })
 
+  it("starts the input reply budget after nested custody verification and releases a refused listener", async () => {
+    const listeners = process.stdin.listenerCount("data")
+    vi.useFakeTimers()
+    try {
+      const verify = async () => {
+        await vi.advanceTimersByTimeAsync(75)
+      }
+      const received = await withTTYOperation(
+        () =>
+          readResponse(/^a/, 50, () =>
+            withTTYOperation(
+              async () => {
+                expect(process.stdin.listenerCount("data")).toBe(listeners + 1)
+                reply("a")
+              },
+              undefined,
+              verify,
+            ),
+          ),
+        undefined,
+        verify,
+      )
+      expect(received).toEqual(["a"])
+      expect(process.stdin.listenerCount("data")).toBe(listeners)
+      const failure = new Error("input custody changed")
+      let injected = false
+      await expect(
+        readResponse(/^a/, 50, () =>
+          withTTYOperation(
+            async () => {
+              injected = true
+            },
+            undefined,
+            async () => {
+              throw failure
+            },
+          ),
+        ),
+      ).rejects.toBe(failure)
+      expect(injected).toBe(false)
+      expect(process.stdin.listenerCount("data")).toBe(listeners)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("retains exact synchronous reply bytes across UTF-8 chunk boundaries", async () => {
     const chunks = [Buffer.from([0xff, 0xc3]), Buffer.from([0xa9, ...Buffer.from("\x1b[12;34R")])]
     process.stdout.write = (() => {

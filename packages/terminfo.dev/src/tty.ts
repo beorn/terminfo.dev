@@ -15,7 +15,12 @@ import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-
  * Must be called while stdin is in raw mode.
  */
 const ttyOperations = new WeakMap<typeof process.stdin, Promise<void>>()
-type TTYOperationLease = { active: boolean; out: NodeJS.WriteStream; verify?: () => Promise<void> }
+type TTYOperationLease = {
+  active: boolean
+  out: NodeJS.WriteStream
+  verify?: () => Promise<void>
+  startResponseTimer?: () => void
+}
 const operationContext = new AsyncLocalStorage<TTYOperationLease>()
 const collectorOpenedControllingOutputs = new WeakSet<NodeJS.WriteStream>()
 
@@ -71,6 +76,7 @@ export function withTTYOperation<T>(
     operationContext.run(lease, async () => {
       try {
         await lease.verify?.()
+        lease.startResponseTimer?.()
         return await fn()
       } finally {
         lease.active = false
@@ -80,7 +86,9 @@ export function withTTYOperation<T>(
   if (active?.active) {
     if (out && out !== active.out) throw new Error("Nested TTY operation changed output stream")
     const check = verify ?? active.verify
-    return check ? execute({ active: true, out: active.out, verify: check }) : fn()
+    return check || active.startResponseTimer
+      ? execute({ active: true, out: active.out, verify: check, startResponseTimer: active.startResponseTimer })
+      : fn()
   }
   const previous = ttyOperations.get(process.stdin) ?? Promise.resolve()
   const current = previous
@@ -110,13 +118,14 @@ function matchResponse(
   sentinel = false,
   sequence = "",
   graceMs: number = sentinelGraceMs(),
+  deferTimer?: (start: () => void, cancel: () => void) => void,
 ): Promise<QueryOutcome> {
   const trace = queryTraceContext.getStore()
   return new Promise((resolve) => {
     const chunks: Buffer[] = []
     let buf = ""
     let settled = false
-    let timer: ReturnType<typeof setTimeout>
+    let timer: ReturnType<typeof setTimeout> | undefined
     let writeAt = 0
     let sentinelFacts: { atMs: number; graceMs: number } | null = null
 
@@ -170,10 +179,19 @@ function matchResponse(
       if (match) finish([...match], "reply", sentinelFacts)
     }
 
-    timer = setTimeout(() => {
-      const match = buf.match(pattern)
-      finish(match ? [...match] : null, match ? "reply" : "timeout")
-    }, timeoutMs)
+    const startTimer = () => {
+      if (settled || timer !== undefined) return
+      timer = setTimeout(() => {
+        const match = buf.match(pattern)
+        finish(match ? [...match] : null, match ? "reply" : "timeout")
+      }, timeoutMs)
+    }
+    if (deferTimer) {
+      deferTimer(startTimer, () => {
+        settled = true
+        cleanup()
+      })
+    } else startTimer()
 
     process.stdin.on("data", onData)
     writeAt = Date.now()
@@ -192,9 +210,27 @@ export function readResponse(
   inject?: () => Promise<void>,
 ): Promise<string[] | null> {
   return withTTYOperation(async () => {
-    const outcome = matchResponse(pattern, timeoutMs)
-    if (inject) await inject()
-    return (await outcome).match
+    let start!: () => void
+    let cancel!: () => void
+    const outcome = matchResponse(pattern, timeoutMs, undefined, false, "", undefined, (arm, release) => {
+      start = arm
+      cancel = release
+    })
+    // withTTYOperation enters its context before invoking this body.
+    const lease = operationContext.getStore() as TTYOperationLease
+    const previous = lease.startResponseTimer
+    // The existing nested injection lease checks custody, then arms this already-listening reader.
+    lease.startResponseTimer = start
+    try {
+      if (inject) await inject()
+      start() // Direct inject callbacks and read-only waits have no nested lease.
+      return (await outcome).match
+    } catch (error) {
+      cancel()
+      throw error
+    } finally {
+      lease.startResponseTimer = previous
+    }
   })
 }
 
