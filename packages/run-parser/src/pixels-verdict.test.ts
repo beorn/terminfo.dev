@@ -206,21 +206,36 @@ function callbackFixture(id: string) {
       requests.push(request)
       const { role, label } = request
       captureIndex++
+      // 30290: DECSSCLS grades from a band witness as well as the region pair. Model both here:
+      // the band sits at its settled row in the reference and in every control capture, is absent
+      // in the target's first band capture and present in its second, the control's witness region
+      // is unchanged, and the target's witness moves.
+      const bandCapture = label.includes("band") || label === "DECSSCLS marker reference"
+      const cellsDigest =
+        id === "modes.decsscls"
+          ? bandCapture
+            ? role === "target" && label.includes("t0")
+              ? digest("marker-absent")
+              : digest("marker-cell")
+            : role === "control"
+              ? digest("control-cells")
+              : digest(label.includes("t0") ? "target-cells-t0" : "target-cells-t1")
+          : digest(
+              id === "cursor.hide"
+                ? captureIndex === 2
+                  ? "hidden-cell"
+                  : "shown-cell"
+                : captureIndex <= 2
+                  ? "seed-cell"
+                  : `extent-cell-${captureIndex}`,
+            )
       return {
         ...frame(
           role,
           label,
           captureIndex,
           digest(`png-${captureIndex}`),
-          digest(
-            id === "cursor.hide"
-              ? captureIndex === 2
-                ? "hidden-cell"
-                : "shown-cell"
-              : captureIndex <= 2
-                ? "seed-cell"
-                : `extent-cell-${captureIndex}`,
-          ),
+          cellsDigest,
           digest(id === "editing.decsace" && captureIndex <= 2 ? "seed-whole" : `whole-${captureIndex}`),
         ),
         regionRectangle: {
