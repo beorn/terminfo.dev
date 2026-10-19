@@ -36,6 +36,7 @@ import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
+import { textQualificationFixtures } from "@terminfo/probe-defs"
 import { classifyDevelopmentRun } from "../docs/data/selected-results.ts"
 import { buildReport } from "./decisive-share.ts"
 import {
@@ -201,6 +202,9 @@ it.each([
   ["matching", "remove"],
   ["matching", "blocked-hosted"],
   ["matching", "blocked-macos"],
+  ["matching", "text-qualified"],
+  ["matching", "text-missing"],
+  ["matching", "text-modified"],
   ["frozen", "none"],
 ] as const)("retains a private %s-suite pass after %s without admission", async (suite, inputChange) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
@@ -212,11 +216,21 @@ it.each([
   raw.sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim()
   const bytes = JSON.stringify(raw)
   const frozenSuite = suite === "frozen" ? frozenSuiteIdFor(CONTENT, "candidate2") : undefined
+  const textCase = inputChange.startsWith("text-")
   const manifestPath = join(CONTENT, "suites", `${frozenSuite ?? raw.probeHash}.json`)
   const snapshot =
     suite !== "different"
       ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
           ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
+          ...(textCase && {
+            probes: {
+              app: ["text.overwrite"],
+              headless: parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")).probes.headless,
+              mux: [],
+            },
+            textClaims: ["text.overwrite"],
+            textQualification: { version: 1, recipe: "macos-text-cells-v1" },
+          }),
           sourcePaths: [relative(dirname(CONTENT), input)],
         })
       : undefined
@@ -280,9 +294,79 @@ it.each([
           const folder = join(artifacts, `${mac ? "macos" : "win32"}-${id}-${args[2]}-1`)
           mkdirSync(folder, { recursive: true })
           writeFileSync(join(folder, "run.json"), "{}")
+          // 30035: exercise the actual development collection boundary, including its retained bytes.
+          // The recipe itself is tested independently; this case proves the caller passes verified context.
+          if (textCase && id === "terminal-app") {
+            const fixtureRows = textQualificationFixtures(4, 12)
+            if (typeof fixtureRows === "string") throw new Error(fixtureRows)
+            const artifactsDirectory = join(folder, "artifacts")
+            mkdirSync(artifactsDirectory)
+            const refs = new Set<string>()
+            let capturedAt = 0
+            const frame = (rows: readonly string[], role: "control" | "target") => {
+              const bytes = Buffer.from(rows.join("\n"), "utf8")
+              const ref = `sha256:${createHash("sha256").update(bytes).digest("hex")}`
+              refs.add(ref)
+              writeFileSync(join(artifactsDirectory, `${ref.slice(7)}.txt`), bytes)
+              return {
+                kind: "text-cells",
+                role,
+                ref,
+                capturedAt: ++capturedAt,
+                label: role,
+                cellDigest: ref,
+                frameDigest: ref,
+                cellRectangle: { top: 1, left: 1, bottom: 4, right: 12 },
+              }
+            }
+            const shapes = fixtureRows.map((entry) => ({
+              shape: entry.shape,
+              frames: [frame(entry.controlRows, "control"), frame(entry.targetRows, "target")],
+            }))
+            const frames = shapes[0]!.frames
+            const featureId = "text.overwrite"
+            const appRun = {
+              ...raw,
+              runId: "qualified-development-text",
+              target: {
+                kind: "app",
+                id,
+                version: "1.0.0",
+                os: "macos",
+                osVersion: null,
+                outerTerminal: null,
+                mux: null,
+                config: null,
+                permissions: null,
+              },
+              runtimeIdentity: undefined,
+              provenance: undefined,
+              identity: "unverified",
+              origin: { kind: "collector" },
+              rawReplies: { [featureId]: "retained comparison" },
+              notTested: [],
+              assertions: [
+                {
+                  featureId,
+                  kind: "positive",
+                  rawReplyRef: featureId,
+                  expected: "characters",
+                  observed: frames[1]!.ref,
+                },
+              ],
+              observations: [{ featureId, outcome: "supported", evidence: "text", rawReplyRef: featureId, frames }],
+              screenshotRefs: [],
+              textSnapshotRefs: [...refs],
+              textQualification: { version: 1, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
+            }
+            writeFileSync(join(folder, "run.json"), JSON.stringify(appRun))
+            const artifact = join(artifactsDirectory, `${[...refs][0]!.slice(7)}.txt`)
+            if (inputChange === "text-missing") rmSync(artifact)
+            if (inputChange === "text-modified") writeFileSync(artifact, "modified retained bytes")
+          }
           writeFileSync(
             join(folder, "collector-bun.lock"),
-            id === "terminal-app" ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
+            id === "terminal-app" && !textCase ? "wrong lock" : readFileSync(join(CONTENT, "../bun.lock")),
           )
           writeFileSync(
             join(folder, "collector-build.json"),
@@ -314,6 +398,20 @@ it.each([
     expect(pass.mode).toBe(frozenSuite ? "admit" : "development")
     if (frozenSuite) expect(pass.freeze?.id).toBe(frozenSuite)
     expect(pass.contexts).toHaveLength(33)
+    if (textCase) {
+      const terminal = pass.contexts.find(
+        (row) => row.context.kind === "app" && row.context.id === "terminal-app" && row.context.os === "macos",
+      )
+      if (inputChange === "text-qualified") {
+        expect(terminal?.status, terminal?.error).toBe("classified")
+        expect(terminal?.classification?.states["text.overwrite"]).toBe("supported")
+      } else {
+        expect(terminal?.status).toBe("failed")
+        expect(terminal?.error).toMatch(
+          inputChange === "text-missing" ? /missing text snapshot artifact.*artifacts/u : /Text snapshot.*hashes to/u,
+        )
+      }
+    }
     const engine = pass.contexts.find((row) => row.context.kind === "headless" && row.context.id === "xtermjs")
     if (suite === "different" || suite === "frozen") {
       expect(engine?.status).toBe("failed")
@@ -417,7 +515,7 @@ it.each([
         true,
       )
       const mac = pass.contexts.find((row) => row.context.id === "terminal-app")
-      expect(mac?.error).toMatch(/dependency lock/)
+      if (!textCase) expect(mac?.error).toMatch(/dependency lock/)
       const windows = pass.contexts.find((row) => row.context.id === "windows-terminal")
       expect(windows?.rawRun && readFileSync(windows.rawRun, "utf8")).toBe("{}")
       expect(windows?.error).toContain("run.json: missing backend/terminal")

@@ -395,8 +395,9 @@ function prepareRunCells(
 export function classifyDevelopmentRun(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
+  context: { textSnapshots?: ReadonlyMap<string, Uint8Array> } = {},
 ): { mode: "development"; runId: string; states: Record<string, CellState> } {
-  const { cells } = prepareRunCells(run, interpretations, assessTextQualification(run))
+  const { cells } = prepareRunCells(run, interpretations, assessTextQualification(run, context.textSnapshots))
   return { mode: "development", runId: run.runId, states: classifyCells(cells) }
 }
 

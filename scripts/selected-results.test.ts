@@ -1869,7 +1869,9 @@ describe("selected results", () => {
     expect(publicCell?.record?.frames).toEqual(expectedFrames)
     expect(publicCell?.record).not.toHaveProperty("screenshot")
     expect(publicCell?.presentation.state).toBe("presented")
-    expect(published.documents.get(`/api/v2/evidence/${measured.sha256}/extensions.graphics.json`)?.document).toMatchObject({
+    expect(
+      published.documents.get(`/api/v2/evidence/${measured.sha256}/extensions.graphics.json`)?.document,
+    ).toMatchObject({
       record: { frames: expectedFrames },
     })
   })
@@ -2028,6 +2030,8 @@ describe("selected results", () => {
       const cell = version?.cells[featureId]
       expect(cell?.outcome).toBe(outcome)
       expect(cell?.conclusive).toBe(expected)
+      const development = classifyDevelopmentRun(measured, interpreted ? [correction] : [], { textSnapshots })
+      expect(development.states[featureId]).toBe(classifyCell(cell!))
       expect(version?.textQualification).toEqual(measured.textQualification)
       const failedAssessment =
         missing !== undefined ||
