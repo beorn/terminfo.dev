@@ -136,10 +136,15 @@ const nullableString = (value: unknown, path: string, name: string): string | nu
 function rejectDuplicateKeys(source: string, path: string): void {
   let i = 0
   const ws = () => {
-    while (/\s/.test(source[i] ?? "")) i++
+    // JSON.parse has already checked syntax; JSON whitespace is exactly these four bytes.
+    while (i < source.length) {
+      const code = source.charCodeAt(i)
+      if (code !== 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) break
+      i++
+    }
   }
-  const quoted = (): string => {
-    const start = i++
+  const quoted = (): void => {
+    i++
     while (i < source.length) {
       if (source[i] === "\\") {
         i += 2
@@ -147,7 +152,6 @@ function rejectDuplicateKeys(source: string, path: string): void {
       }
       if (source[i++] === '"') break
     }
-    return JSON.parse(source.slice(start, i)) as string
   }
   const value = (): void => {
     ws()
@@ -156,7 +160,9 @@ function rejectDuplicateKeys(source: string, path: string): void {
       const keys = new Set<string>()
       ws()
       while (source[i] !== "}") {
-        const key = quoted()
+        const start = i
+        quoted()
+        const key = JSON.parse(source.slice(start, i)) as string
         if (keys.has(key)) fail(path, `duplicate key ${key}`)
         keys.add(key)
         ws()
