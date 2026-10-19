@@ -617,6 +617,31 @@ describe("candidate-2 page: wiring", () => {
     }
   })
 
+  it("prints a dark hold beside any head branch and never inside the measured denominator", () => {
+    // 30286 fix (2), @cto ruling on ball 52d66ef8: the State cell head stops at includedOn or heldBy
+    // for six of nine groups, so the history hold the reader already carries never reaches the page.
+    // The clause is a sibling of the branch chain rather than a fifth head, and the measured
+    // denominator never counts a context the same cell calls not measured.
+    const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
+    expect(page).toContain("holding it on an earlier suite of this release, not measured on this suite")
+    expect(page).toContain(
+      'v-if="group.darkHeldBy.length > 0 && (group.included || group.includedOn.length > 0 || group.heldBy.length > 0)"',
+    )
+    expect(page).toContain("below the bar on {{ group.heldBy.length }} of {{ published.length }} measured contexts")
+    expect(page).not.toContain("published.length + group.darkHeldBy")
+    // The live case: Editing is included on four contexts and carries six dark holds, so the clause
+    // has something to print exactly where the head stops at includedOn.
+    const editing = data.groups.find((group) => group.key === "editing")
+    if (!editing) throw new Error("editing group missing")
+    expect(editing.includedOn.length).toBe(4)
+    expect(editing.darkHeldBy.length).toBe(6)
+    // And the other head that used to hide them: Scrollback stops at heldBy and carries six too.
+    const scrollback = data.groups.find((group) => group.key === "scrollback")
+    if (!scrollback) throw new Error("scrollback group missing")
+    expect(scrollback.heldBy.length).toBeGreaterThan(0)
+    expect(scrollback.darkHeldBy.length).toBe(6)
+  })
+
   it("preserves global inclusion outside the per-context scope", () => {
     // The ruling names three groups (Reset joined at c67af756). A group outside it must not gain includedOn entries even where
     // its share clears the bar on a context: the page would then promote a held group.

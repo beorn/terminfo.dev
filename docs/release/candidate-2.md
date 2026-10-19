@@ -93,6 +93,7 @@ function remainderLabel(row) {
         <template v-if="!group.included && group.includedOn.length > 0"> &mdash; included on {{ group.includedOn.join(', ') }}</template>
         <template v-if="group.heldBy.length > 0">; below the bar: {{ group.heldBy.map((row) => row.context + ' ' + row.decisive + '/' + row.denominator + ' (' + row.decisivePct + '%)').join(', ') }}</template>
         <template v-if="group.unmeasured.length > 0">; not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}</template>
+        <template v-if="group.darkHeldBy.length > 0 && (group.included || group.includedOn.length > 0 || group.heldBy.length > 0)">; holding it on an earlier suite of this release, not measured on this suite: {{ group.darkHeldBy.map((row) => row.context + ' ' + row.decisive + '/' + row.denominator + ' (' + row.decisivePct + '%)').join(', ') }}</template>
       </td>
       <td v-for="context in published" :key="context.context" class="c2-share">
         <template v-if="groupShare(context, group.key)">{{ groupShare(context, group.key) }}</template>
