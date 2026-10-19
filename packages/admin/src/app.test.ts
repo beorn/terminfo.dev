@@ -270,7 +270,17 @@ test.each([
         env: expect.objectContaining(prefix === "cursor" ? { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" } : {}),
       },
     )
-    expect(mkdirSync).toHaveBeenCalledWith(`/private/run/${prefix}-fixture`, { mode: 0o700 })
+    const privateDirectories = [
+      `${prefix}-private-run`,
+      `${prefix}-extensions`,
+      `${prefix}-fixture`,
+      ...(prefix === "vscode"
+        ? ["vscode-shared", "vscode-agent-plugins", "vscode-agents-data", "vscode-agents-extensions", "vscode-crash"]
+        : []),
+    ]
+    expect(vi.mocked(mkdirSync).mock.calls).toEqual(
+      privateDirectories.map((directory) => [`/private/run/${directory}`, { mode: 0o700 }]),
+    )
     expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
       executablePath: ownedWindow.executablePath,
       marker: ownedWindow.marker,
@@ -279,6 +289,7 @@ test.each([
     const writes = vi.mocked(writeFileSync).mock.calls
     expect(writes.every(([path]) => String(path).startsWith("/private/run/"))).toBe(true)
     const manifest = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/package.json`))
+    expect(manifest?.[2]).toEqual({ flag: "wx", mode: 0o600 })
     expect(manifest?.[1]).toBe(
       JSON.stringify({
         name: `terminfo-${prefix}-private-run`,
@@ -290,6 +301,7 @@ test.each([
       }),
     )
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+    expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
     expect(script?.[1]).toBe(`const vscode = require("vscode");
 exports.activate = (context) => {
   const terminal = vscode.window.createTerminal({"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"});
