@@ -378,7 +378,29 @@ function closeOwnedProcess(owned: OwnedProcess, who: string): void {
     if (!processAlive(owned.ownerPid)) return
     spawnSync("sleep", ["0.1"])
   }
-  throw new Error(`${who} owner close: pid ${owned.ownerPid} did not exit within 5000ms`)
+  // SIGTERM is a request, not a guarantee: kitty was measured surviving it for the whole window and
+  // exiting only on SIGKILL (run a9710c8a3f4e6abcfd53da1e147d9b4b, 2026-10-19). The pid was verified
+  // before SIGTERM, but it may have exited and been REUSED during those 5s, so both facts are checked
+  // again before escalating. A reused pid is never killed.
+  const escalatedExecutable = processExecutable(owned.ownerPid)
+  if (escalatedExecutable === null) return
+  if (escalatedExecutable !== realpathSync(owned.executablePath)) {
+    throw new Error(
+      `${who} owner close: pid ${owned.ownerPid} runs ${escalatedExecutable}, not the launched ${owned.executablePath}; not escalating to SIGKILL`,
+    )
+  }
+  const escalatedArgv = processCommand(owned.ownerPid)?.split(/\s+/) ?? []
+  if (!argvCarriesMarker(escalatedArgv, owned.marker)) {
+    throw new Error(
+      `${who} owner close: pid ${owned.ownerPid} does not carry the launched marker ${markerText(owned.marker)}; not escalating to SIGKILL`,
+    )
+  }
+  process.kill(owned.ownerPid, "SIGKILL")
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (!processAlive(owned.ownerPid)) return
+    spawnSync("sleep", ["0.1"])
+  }
+  throw new Error(`${who} owner close: pid ${owned.ownerPid} survived SIGTERM (5000ms) and SIGKILL (5000ms)`)
 }
 
 /** Refresh the owner's window assertion before handing the worker a claim. */
