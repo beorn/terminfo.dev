@@ -204,7 +204,7 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
         `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
          kittySourceProof(${JSON.stringify(tree)})`,
       ],
-        { encoding: "utf8", env: { ...childEnv, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
+      { encoding: "utf8", env: { ...childEnv, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
     )
     expect(malformed.status).not.toBe(0)
     expect(malformed.stderr).toMatch(/No NAR hash for Kitty source directory/)
