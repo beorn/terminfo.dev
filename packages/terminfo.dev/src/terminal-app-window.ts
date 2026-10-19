@@ -2,6 +2,13 @@
 import { spawnSync } from "node:child_process"
 import { realpathSync } from "node:fs"
 
+/** How a run-scoped marker appears in a live process's argv: adjacent "--flag value", or one "--flag=value".
+ * It is always an exact token, never a substring, and its value carries the run id. */
+export interface ProcessMarker {
+  flag: string
+  value: string
+}
+
 /** A window this process launched and can still prove it owns. One authority, one assert, one close. */
 export type OwnedTerminalWindow =
   | { provider: "terminal-app"; windowId: number; tty: string }
@@ -15,9 +22,28 @@ export type OwnedTerminalWindow =
       /** The run-scoped instance group the launch passed; the live pid must still carry it. */
       instanceGroup: string
     }
+  | {
+      provider: "cli-process"
+      /** The live pid the launch resolved and recorded. Assert and close read this pid and no other. */
+      ownerPid: number
+      tty: string
+      /** The GUI owner's realpath, never the CLI shim's. */
+      executablePath: string
+      /** The run-scoped argv marker the launch passed; the live pid must still carry it. */
+      marker: ProcessMarker
+    }
 
 export type TerminalAppWindow = Extract<OwnedTerminalWindow, { provider: "terminal-app" }>
 export type KittyWindow = Extract<OwnedTerminalWindow, { provider: "kitty" }>
+export type CliProcessWindow = Extract<OwnedTerminalWindow, { provider: "cli-process" }>
+
+/** The one process proof both process-backed arms share. kitty is this with its instance group as the marker. */
+export interface OwnedProcess {
+  ownerPid: number
+  executablePath: string
+  marker: ProcessMarker
+  tty: string
+}
 
 /** The four fields the kitty serve script records, in order. */
 export interface KittyIdentity {
@@ -136,12 +162,17 @@ function processAlive(pid: number): boolean {
  * that ends at pid 1, at a vanished process, or that repeats a pid (a cycle the OS should not produce)
  * is a refusal that prints the chain it did walk.
  */
-export function descendToOwner(daemonPid: number, ownerPid: number, parentOf: (pid: number) => number | null): void {
+export function descendToOwner(
+  daemonPid: number,
+  ownerPid: number,
+  parentOf: (pid: number) => number | null,
+  who = "kitty",
+): void {
   if (!Number.isSafeInteger(daemonPid) || daemonPid < 1) {
-    throw new Error(`kitty owner assertion: daemon pid is not a positive integer: ${JSON.stringify(daemonPid)}`)
+    throw new Error(`${who} owner assertion: daemon pid is not a positive integer: ${JSON.stringify(daemonPid)}`)
   }
   if (daemonPid === ownerPid) {
-    throw new Error("kitty owner assertion: the daemon and the kitty process are the same pid")
+    throw new Error(`${who} owner assertion: the daemon and the ${who} process are the same pid`)
   }
   let pid = daemonPid
   const chain: number[] = [daemonPid]
@@ -154,52 +185,154 @@ export function descendToOwner(daemonPid: number, ownerPid: number, parentOf: (p
     if (parent === 1) break
     if (seen.has(parent)) {
       throw new Error(
-        `kitty owner assertion: parent chain from daemon pid ${daemonPid} cycles at pid ${parent}; chain ${chain.join(" -> ")}`,
+        `${who} owner assertion: parent chain from daemon pid ${daemonPid} cycles at pid ${parent}; chain ${chain.join(" -> ")}`,
       )
     }
     seen.add(parent)
     pid = parent
   }
   throw new Error(
-    `kitty owner assertion: daemon pid ${daemonPid} is not a descendant of kitty pid ${ownerPid}; chain ${chain.join(" -> ")}`,
+    `${who} owner assertion: daemon pid ${daemonPid} is not a descendant of ${who} pid ${ownerPid}; chain ${chain.join(" -> ")}`,
   )
 }
 
 /**
- * Require the live kitty pid to still be the launched binary carrying the run's instance group, the
- * daemon's controlling TTY to equal the launched window's TTY, and the daemon to descend from that
- * kitty process. Every check reads the live process table; the identity file supplies only the
+ * Does the live argv carry the marker as an EXACT token? Either adjacent `--flag value`, or one
+ * `--flag=value`. A prefix, suffix or substring hit is not a match: a marker whose value merely begins
+ * the recorded value proves nothing about which run this process belongs to.
+ */
+export function argvCarriesMarker(argv: readonly string[], marker: ProcessMarker): boolean {
+  const joined = `${marker.flag}=${marker.value}`
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === joined) return true
+    if (argv[index] === marker.flag && argv[index + 1] === marker.value) return true
+  }
+  return false
+}
+
+/** kitty's arm is the shared proof with its run-scoped instance group as the marker. */
+export function kittyOwnedProcess(window: KittyWindow): OwnedProcess {
+  return {
+    ownerPid: window.kittyPid,
+    executablePath: window.executablePath,
+    marker: { flag: "--instance-group", value: window.instanceGroup },
+    tty: window.tty,
+  }
+}
+
+function markerText(marker: ProcessMarker): string {
+  return `${marker.flag} ${marker.value}`
+}
+
+/** Every live pid that runs `executablePath` and carries the marker as an exact argv token. */
+export function findOwnerPids(executablePath: string, marker: ProcessMarker): number[] {
+  const expected = realpathSync(executablePath)
+  const owners: number[] = []
+  for (const line of run("/bin/ps", ["-ww", "-A", "-o", "pid=,command="]).stdout.split(/\r?\n/)) {
+    const match = /^\s*([0-9]+)\s+(\S.*)$/.exec(line)
+    if (match === null) continue
+    const rawPid = match[1]
+    const command = match[2]
+    if (rawPid === undefined || command === undefined) continue
+    if (!argvCarriesMarker(command.split(/\s+/), marker)) continue
+    const pid = Number(rawPid)
+    if (processExecutable(pid) === expected) owners.push(pid)
+  }
+  return owners
+}
+
+/**
+ * Resolve the one owner a launch record names, once, right after the daemon registers. Zero live
+ * matches means the marker vanished with the shim that carried it; several means the record cannot say
+ * which process this run owns. Both are refusals: a guess here would let assert and close act on a
+ * process the launch never created.
+ */
+export function resolveOwnedProcessByMarker(input: {
+  executablePath: string
+  marker: ProcessMarker
+  tty: string
+}): CliProcessWindow {
+  const owners = findOwnerPids(input.executablePath, input.marker)
+  const [onlyOwner] = owners
+  if (onlyOwner === undefined) {
+    throw new Error(
+      `cli-process owner resolution: no live process runs ${input.executablePath} carrying the run-scoped marker ${markerText(input.marker)}`,
+    )
+  }
+  if (owners.length > 1) {
+    throw new Error(
+      `cli-process owner resolution: ${owners.length} live processes run ${input.executablePath} carrying the run-scoped marker ${markerText(input.marker)}; the owner is ambiguous`,
+    )
+  }
+  return {
+    provider: "cli-process",
+    ownerPid: onlyOwner,
+    executablePath: input.executablePath,
+    marker: input.marker,
+    tty: input.tty,
+  }
+}
+
+/**
+ * The one process proof both process-backed arms share. The pid must still run the launched binary,
+ * still carry the run-scoped marker as an exact argv token, own the daemon's controlling TTY, and be an
+ * ancestor of the daemon. Every check reads the live process table; the launch record supplies only the
  * expectation. A pid that is gone, reused, or a different binary is a refusal, never a pass.
  */
-function assertOwnedKittyWindow(window: KittyWindow, daemonPid: number): void {
+function assertOwnedProcess(owned: OwnedProcess, daemonPid: number, who: string): void {
   if (!Number.isSafeInteger(daemonPid) || daemonPid < 1) {
-    throw new Error(`kitty owner assertion: daemon pid is not a positive integer: ${JSON.stringify(daemonPid)}`)
+    throw new Error(`${who} owner assertion: daemon pid is not a positive integer: ${JSON.stringify(daemonPid)}`)
   }
-  if (daemonPid === window.kittyPid) {
-    throw new Error("kitty owner assertion: the daemon and the kitty process are the same pid")
+  if (daemonPid === owned.ownerPid) {
+    throw new Error(`${who} owner assertion: the daemon and the ${who} process are the same pid`)
   }
   const daemonTty = tty(run("/bin/ps", ["-p", String(daemonPid), "-o", "tty="]).stdout)
-  if (daemonTty !== tty(window.tty)) {
-    throw new Error(`kitty owner assertion: daemon TTY ${daemonTty} differs from the launched window TTY ${window.tty}`)
+  if (daemonTty !== tty(owned.tty)) {
+    throw new Error(`${who} owner assertion: daemon TTY ${daemonTty} differs from the launched window TTY ${owned.tty}`)
   }
-  const liveExecutable = processExecutable(window.kittyPid)
+  const liveExecutable = processExecutable(owned.ownerPid)
   if (liveExecutable === null) {
-    throw new Error(`kitty owner assertion: recorded kitty pid ${window.kittyPid} is not a running process`)
+    throw new Error(`${who} owner assertion: recorded pid ${owned.ownerPid} is not a running process`)
   }
-  if (liveExecutable !== realpathSync(window.executablePath)) {
+  if (liveExecutable !== realpathSync(owned.executablePath)) {
     throw new Error(
-      `kitty owner assertion: pid ${window.kittyPid} runs ${liveExecutable}, not the launched ${window.executablePath}`,
+      `${who} owner assertion: pid ${owned.ownerPid} runs ${liveExecutable}, not the launched ${owned.executablePath}`,
     )
   }
-  const command = processCommand(window.kittyPid)
-  const argv = command?.split(/\s+/) ?? []
-  const groupAt = argv.indexOf("--instance-group")
-  if (groupAt < 0 || argv[groupAt + 1] !== window.instanceGroup) {
+  const argv = processCommand(owned.ownerPid)?.split(/\s+/) ?? []
+  if (!argvCarriesMarker(argv, owned.marker)) {
     throw new Error(
-      `kitty owner assertion: pid ${window.kittyPid} does not carry the launched instance group ${window.instanceGroup}`,
+      `${who} owner assertion: pid ${owned.ownerPid} does not carry the launched marker ${markerText(owned.marker)}`,
     )
   }
-  descendToOwner(daemonPid, window.kittyPid, parentOf)
+  descendToOwner(daemonPid, owned.ownerPid, parentOf, who)
+}
+
+/**
+ * Recheck the recorded owner and signal only it. The pid is never re-resolved: close signals the one
+ * process the launch recorded, and refuses when it no longer runs that binary or carries that marker,
+ * so a pid reused by another instance of the same app is never signalled. No process group is involved.
+ */
+function closeOwnedProcess(owned: OwnedProcess, who: string): void {
+  const liveExecutable = processExecutable(owned.ownerPid)
+  if (liveExecutable === null) return
+  if (liveExecutable !== realpathSync(owned.executablePath)) {
+    throw new Error(
+      `${who} owner close: pid ${owned.ownerPid} runs ${liveExecutable}, not the launched ${owned.executablePath}; not signaling it`,
+    )
+  }
+  const argv = processCommand(owned.ownerPid)?.split(/\s+/) ?? []
+  if (!argvCarriesMarker(argv, owned.marker)) {
+    throw new Error(
+      `${who} owner close: pid ${owned.ownerPid} does not carry the launched marker ${markerText(owned.marker)}; not signaling it`,
+    )
+  }
+  process.kill(owned.ownerPid, "SIGTERM")
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (!processAlive(owned.ownerPid)) return
+    spawnSync("sleep", ["0.1"])
+  }
+  throw new Error(`${who} owner close: pid ${owned.ownerPid} did not exit within 5000ms`)
 }
 
 /** Refresh the owner's window assertion before handing the worker a claim. */
@@ -210,7 +343,10 @@ export function assertOwnedTerminalWindow(window: OwnedTerminalWindow, daemonPid
       run("osascript", ["-e", ownedWindowScript(window, false)])
       return
     case "kitty":
-      assertOwnedKittyWindow(window, daemonPid)
+      assertOwnedProcess(kittyOwnedProcess(window), daemonPid, "kitty")
+      return
+    case "cli-process":
+      assertOwnedProcess(window, daemonPid, "cli-process")
       return
     default: {
       const unreachable: never = window
@@ -226,18 +362,12 @@ export function closeOwnedTerminalWindow(window: OwnedTerminalWindow): void {
       run("osascript", ["-e", ownedWindowScript(window, true)])
       return
     case "kitty": {
-      const liveExecutable = processExecutable(window.kittyPid)
-      if (liveExecutable !== null && liveExecutable !== realpathSync(window.executablePath)) {
-        throw new Error(
-          `kitty owner close: pid ${window.kittyPid} runs ${liveExecutable}, not the launched ${window.executablePath}; not signaling it`,
-        )
-      }
-      if (liveExecutable !== null) process.kill(window.kittyPid, "SIGTERM")
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        if (!processAlive(window.kittyPid)) return
-        spawnSync("sleep", ["0.1"])
-      }
-      throw new Error(`kitty owner close: pid ${window.kittyPid} did not exit within 5000ms`)
+      closeOwnedProcess(kittyOwnedProcess(window), "kitty")
+      return
+    }
+    case "cli-process": {
+      closeOwnedProcess(window, "cli-process")
+      return
     }
     default: {
       const unreachable: never = window

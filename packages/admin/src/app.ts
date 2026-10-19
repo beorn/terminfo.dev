@@ -34,6 +34,8 @@ import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
   parseKittyIdentity,
+  resolveOwnedProcessByMarker,
+  type ProcessMarker,
   type OwnedTerminalWindow,
   type KittyWindow,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
@@ -52,6 +54,17 @@ interface AppDef {
   binaryPath: string // direct path to the executable
   launchArgs: (cmd: string) => string[] // args to run a command inside the terminal
   bundleId: string
+  /** A GUI app whose CLI hands the window to an already-resolved owner process. The owner is proven by
+   * the run-scoped marker in its argv, never by the CLI shim's pid, which may exit after the handoff.
+   * No app sets this until its marker is measured on a real host (28018). */
+  cliLaunch?: {
+    /** The GUI owner binary the marker must be found on; never the CLI shim. */
+    executablePath: string
+    /** The argv flag whose value carries the run id. */
+    markerFlag: string
+    /** The launch arguments, given the serve script and the run-scoped marker value. */
+    args: (script: string, markerValue: string) => string[]
+  }
 }
 
 const BUN = process.execPath // use the same bun that's running us
@@ -127,17 +140,46 @@ interface AppLaunch {
   /** The run-scoped kitty instance group, and the detached launcher's retained stderr. */
   instanceGroup?: string
   launcherStderr?: string
+  /** The cli-process launch record: the owner binary and the marker its live argv must still carry. */
+  executablePath?: string
+  marker?: ProcessMarker
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
   const suite = sourceSuiteEnvironment()
   const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
-  const identityPath = app.id === "kitty" ? join(run.directory, "owner-identity.txt") : undefined
+  const identityPath =
+    app.id === "kitty"
+      ? join(run.directory, "owner-identity.txt")
+      : app.cliLaunch
+        ? join(run.directory, "owner-tty.txt")
+        : undefined
   const identityWrite =
     identityPath === undefined
       ? ""
-      : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
+      : app.cliLaunch
+        ? `printf '%s\\n' "$(tty)" > ${shellQuote(identityPath)}\n`
+        : `printf '%s\\n' "\${KITTY_WINDOW_ID:-}" "\${KITTY_PID:-}" "$(tty)" "\${TERM:-}" > ${shellQuote(identityPath)}\n`
   writeFileSync(run.scriptPath, `#!/bin/bash\n${identityWrite}${serveCmd}\n`, { flag: "wx", mode: 0o700 })
+
+  if (app.cliLaunch) {
+    // A CLI-launched GUI app owns its window, not the CLI shim: the shim may exit after handing the
+    // launch to an already-running instance. The marker is what survives, so the owner is resolved
+    // from it once the daemon has registered, never from this child handle.
+    const markerValue = `terminfo-${run.id}`
+    const child = spawn(app.cliLaunch.executablePath, app.cliLaunch.args(run.scriptPath, markerValue), {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env },
+    })
+    child.unref()
+    return {
+      proc: child,
+      identityPath,
+      executablePath: app.cliLaunch.executablePath,
+      marker: { flag: app.cliLaunch.markerFlag, value: markerValue },
+    }
+  }
 
   if (app.binaryPath && existsSync(app.binaryPath)) {
     if (app.id === "kitty") {
@@ -195,6 +237,9 @@ function stopLaunchedApp(app: AppDef, launch: AppLaunch): void {
     closeOwnedTerminalWindow(launch.terminalWindow)
     return
   }
+  // A cli-process launch whose owner was never resolved leaves only the CLI shim in hand. That shim is
+  // not the window we launched, so there is nothing here we may signal.
+  if (launch.marker !== undefined) return
   if (launch.proc) {
     launch.proc.kill("SIGTERM")
     return
@@ -300,6 +345,26 @@ function ownedKittyWindow(app: AppDef, launch: AppLaunch): KittyWindow {
   }
 }
 
+/**
+ * Build the cli-process window record once, after the daemon registers. The owner is resolved from the
+ * run-scoped marker at this single moment and recorded as the arm's pid; assert and close then read only
+ * that pid, so a later handoff or a reused pid can never move the owner underneath the run.
+ */
+function ownedCliProcessWindow(launch: AppLaunch): OwnedTerminalWindow | undefined {
+  if (launch.marker === undefined || launch.executablePath === undefined || launch.identityPath === undefined) {
+    return undefined
+  }
+  const recordedTty = readFileSync(launch.identityPath, "utf8").trim()
+  if (recordedTty.length === 0) {
+    throw new Error("cli-process launch recorded no TTY in its launched window; refusing to guess the owner's TTY")
+  }
+  return resolveOwnedProcessByMarker({
+    executablePath: launch.executablePath,
+    marker: launch.marker,
+    tty: recordedTty.startsWith("/dev/") ? recordedTty : `/dev/${recordedTty}`,
+  })
+}
+
 async function runApp(
   app: AppDef,
   opts: { force?: boolean; output?: string },
@@ -317,7 +382,7 @@ async function runApp(
   try {
     console.log(`  Launching ${app.name} v${version}...`)
     launch = launchWithServe(app, run)
-    if (launch.terminalWindow === undefined && app.id !== "kitty") {
+    if (launch.terminalWindow === undefined && app.id !== "kitty" && launch.marker === undefined) {
       throw new Error(
         `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
       )
@@ -325,7 +390,8 @@ async function runApp(
     console.log(`  Waiting for owned daemon...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR, app.id)
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
-    const ownedWindow = app.id === "kitty" ? ownedKittyWindow(app, launch) : launch.terminalWindow
+    const ownedWindow =
+      app.id === "kitty" ? ownedKittyWindow(app, launch) : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
     console.log(`  Probing on port ${daemon.registration.port}...`)

@@ -9,10 +9,12 @@ import { spawnSync } from "node:child_process"
 import { realpathSync } from "node:fs"
 import { describe, expect, test, vi } from "vitest"
 import {
+  argvCarriesMarker,
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
   descendToOwner,
   parseKittyIdentity,
+  resolveOwnedProcessByMarker,
   type OwnedTerminalWindow,
 } from "./terminal-app-window.ts"
 
@@ -130,5 +132,200 @@ describe("provider dispatch", () => {
   test("an unknown provider fails loudly instead of falling through", () => {
     const unknown = { provider: "ghostty", windowId: 1, tty: "/dev/ttys004" } as unknown as OwnedTerminalWindow
     expect(() => assertOwnedTerminalWindow(unknown, 99)).toThrow(/no provider arm/)
+  })
+})
+
+describe("cli-process ownership", () => {
+  const daemonPid = 7300
+  const ownerPid = 6200
+  const executablePath = "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui"
+  const marker = { flag: "--config-file", value: "/run/terminfo-abc9/app.toml" }
+  const owner: OwnedTerminalWindow = { provider: "cli-process", tty: "/dev/ttys009", ownerPid, executablePath, marker }
+  const argv = `${executablePath} start --always-new-process --config-file ${marker.value} -- /bin/bash run.sh`
+
+  /** Every ps read the authority makes, answered from one table so a case names only what it varies. */
+  function fakeProcessTable(table: {
+    command?: Record<number, string>
+    comm?: Record<number, string>
+    ppid?: Record<number, number>
+    tty?: Record<number, string>
+  }) {
+    vi.mocked(spawnSync).mockImplementation(((_command: string, args: readonly string[]) => {
+      const field = args[args.indexOf("-o") + 1]
+      const pid = Number(args[args.indexOf("-p") + 1])
+      const value =
+        field === "ppid="
+          ? table.ppid?.[pid]
+          : field === "comm="
+            ? table.comm?.[pid]
+            : field === "command="
+              ? table.command?.[pid]
+              : field === "tty="
+                ? table.tty?.[pid]
+                : undefined
+      return (
+        value === undefined ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: `${value}\n`, stderr: "" }
+      ) as ReturnType<typeof spawnSync>
+    }) as unknown as typeof spawnSync)
+  }
+
+  const descending = { tty: { [daemonPid]: "ttys009" }, ppid: { [daemonPid]: 7000, 7000: ownerPid } }
+  const liveOwner = { comm: { [ownerPid]: executablePath }, command: { [ownerPid]: argv } }
+
+  test("accepts the recorded owner when binary, marker, tty and descent all hold", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({ ...descending, ...liveOwner })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).not.toThrow()
+  })
+
+  test("accepts a one-token --flag=value marker as an exact argv token", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({
+      ...descending,
+      comm: { [ownerPid]: executablePath },
+      command: { [ownerPid]: `${executablePath} ${marker.flag}=${marker.value}` },
+    })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).not.toThrow()
+  })
+
+  test("refuses a marker that only appears as a substring, never as a whole token", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({
+      ...descending,
+      comm: { [ownerPid]: executablePath },
+      command: { [ownerPid]: `${executablePath} --config-file=${marker.value}.bak` },
+    })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).toThrow(/does not carry the launched marker/)
+  })
+
+  test("refuses an owner whose pid is now a different binary", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({ ...descending, comm: { [ownerPid]: "/usr/bin/other" }, command: { [ownerPid]: argv } })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).toThrow(/runs .*not the launched/)
+  })
+
+  test("refuses a daemon that is not a descendant of the recorded owner", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({
+      ...liveOwner,
+      tty: { [daemonPid]: "ttys009" },
+      ppid: { [daemonPid]: 9000, 9000: 1 },
+    })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).toThrow(/not a descendant/)
+  })
+
+  test("refuses a daemon TTY that is not the owned window's TTY", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({ ...liveOwner, ppid: descending.ppid, tty: { [daemonPid]: "ttys010" } })
+    expect(() => assertOwnedTerminalWindow(owner, daemonPid)).toThrow(/TTY/)
+  })
+
+  test("close signals the recorded owner only, and never a process group", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable(liveOwner)
+    // SIGTERM succeeds and the liveness probe (signal 0) then reports the pid gone, so close returns.
+    const kill = vi.spyOn(process, "kill").mockImplementation(((_pid: number, signal?: string | number) => {
+      if (signal === 0) throw Object.assign(new Error("gone"), { code: "ESRCH" })
+      return true
+    }) as typeof process.kill)
+    try {
+      closeOwnedTerminalWindow(owner)
+      const terminations = kill.mock.calls.filter(([, signal]) => signal === "SIGTERM")
+      expect(terminations).toEqual([[ownerPid, "SIGTERM"]])
+      expect(kill.mock.calls.every(([pid]) => pid > 0)).toBe(true)
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("close refuses a pid that no longer carries the marker instead of signalling it", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    fakeProcessTable({ comm: { [ownerPid]: executablePath }, command: { [ownerPid]: `${executablePath} --other` } })
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true)
+    try {
+      expect(() => closeOwnedTerminalWindow(owner)).toThrow(/does not carry the launched marker/)
+      expect(kill).not.toHaveBeenCalled()
+    } finally {
+      kill.mockRestore()
+    }
+  })
+
+  test("kitty's close now re-checks its instance-group marker before signalling", () => {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    const kitty: OwnedTerminalWindow = {
+      provider: "kitty",
+      windowId: 2,
+      tty: "/dev/ttys011",
+      kittyPid: 8100,
+      executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+      instanceGroup: "terminfo-abc9",
+    }
+    fakeProcessTable({
+      comm: { 8100: kitty.provider === "kitty" ? kitty.executablePath : "" },
+      command: { 8100: "/Applications/kitty.app/Contents/MacOS/kitty --detach --instance-group someone-elses" },
+    })
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true)
+    try {
+      expect(() => closeOwnedTerminalWindow(kitty)).toThrow(/does not carry the launched marker/)
+      expect(kill).not.toHaveBeenCalled()
+    } finally {
+      kill.mockRestore()
+    }
+  })
+})
+
+describe("owner resolution", () => {
+  const executablePath = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+  const marker = { flag: "--user-data-dir", value: "/run/terminfo-abc9" }
+
+  /** A `ps -A` listing whose pid, argv and executable agree, so only the count varies. */
+  function fakeListing(pids: readonly number[], executable = executablePath) {
+    vi.mocked(realpathSync).mockImplementation((path) => String(path))
+    vi.mocked(spawnSync).mockImplementation(((_command: string, args: readonly string[]) => {
+      if (args.includes("-A")) {
+        const rows = pids.map((pid) => `${pid} ${executable} ${marker.flag} ${marker.value} --new-window`)
+        return { status: 0, stdout: `${rows.join("\n")}\n`, stderr: "" } as ReturnType<typeof spawnSync>
+      }
+      return { status: 0, stdout: `${executable}\n`, stderr: "" } as ReturnType<typeof spawnSync>
+    }) as unknown as typeof spawnSync)
+  }
+
+  test("records exactly one live owner carrying the marker", () => {
+    fakeListing([5100])
+    expect(resolveOwnedProcessByMarker({ executablePath, marker, tty: "/dev/ttys012" })).toEqual({
+      provider: "cli-process",
+      ownerPid: 5100,
+      executablePath,
+      marker,
+      tty: "/dev/ttys012",
+    })
+  })
+
+  test("refuses when no live process carries the marker", () => {
+    fakeListing([])
+    expect(() => resolveOwnedProcessByMarker({ executablePath, marker, tty: "/dev/ttys012" })).toThrow(
+      /no live process runs/,
+    )
+  })
+
+  test("refuses an ambiguous owner rather than picking one of several", () => {
+    fakeListing([5100, 5200])
+    expect(() => resolveOwnedProcessByMarker({ executablePath, marker, tty: "/dev/ttys012" })).toThrow(
+      /2 live processes.*ambiguous/,
+    )
+  })
+})
+
+describe("marker token matching", () => {
+  test.each([
+    [["--flag", "value"], true],
+    [["--flag=value"], true],
+    [["--flag", "value2"], false],
+    [["--flag=value2"], false],
+    [["x--flag", "value"], false],
+    [["--flag"], false],
+    [[], false],
+  ])("%j matches %s", (argv, expected) => {
+    expect(argvCarriesMarker(argv as string[], { flag: "--flag", value: "value" })).toBe(expected)
   })
 })
