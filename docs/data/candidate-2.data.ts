@@ -176,6 +176,8 @@ export interface Candidate2Data {
   scoredCount: number
   /** The suite-covered base: the denominator of every per-group fraction. */
   decidableCount: number
+  /** The ruled contexts the cohort carries, measured or dark: the basis every per-context group counts. */
+  ruledContexts: string[]
   /** Newest measurement among the published rows, ISO 8601, or empty when nothing is published. */
   measuredAt: string
   libraryOnly: Candidate2Capability[]
@@ -379,12 +381,14 @@ export function loadCandidate2Data(): Candidate2Data {
   // Inclusion is MEASURED per group, never claimed page-wide: a group is included only when every
   // context we actually measured clears its pass bar, and the contexts that do not are named. A
   // context with no published run cannot hold a group, and cannot accept one either.
-  // The same ruling names SIX contexts for the groups it covers: the four Linux app rows measured on the
-  // required suite, plus Ghostty and Alacritty on macOS (27928). It is a RULING, not a measurement —
+  // The same ruling names SEVEN contexts for the groups it covers: the five Linux app rows measured on
+  // the required suite, plus Ghostty and Alacritty on macOS (27928, 30297). It is a RULING, not a
+  // measurement —
   // a ruled context stays in the basis while it is dark, even when its newest history run no longer
   // clears the bar, so moving the release pointer can never improve a public claim by shrinking it.
   const RULED_CONTEXTS = new Set([
     "kitty/linux",
+    "ghostty/linux",
     "wezterm/linux",
     "alacritty/linux",
     "xterm/linux",
@@ -394,7 +398,7 @@ export function loadCandidate2Data(): Candidate2Data {
   // The ruling's named contexts that this cohort actually carries, measured or dark. The count is
   // the ruled basis, so it is independent of publication: a ruled context that becomes measured
   // below the bar stays in it rather than shrinking the claim to the contexts that clear the bar.
-  const ruledContextsPresent = contexts.filter((row) => RULED_CONTEXTS.has(row.context)).length
+  const ruledContextsPresent = contexts.filter((row) => RULED_CONTEXTS.has(row.context)).map((row) => row.context)
   const groupsWithState: Candidate2Group[] = groups.map((group) => {
     const includedOn: string[] = []
     const heldBy: Candidate2HeldContext[] = []
@@ -489,7 +493,7 @@ export function loadCandidate2Data(): Candidate2Data {
       heldBy,
       darkHeldBy,
       darkRuled,
-      ruledTotal: PER_CONTEXT_INCLUDED.has(group.key) ? ruledContextsPresent : 0,
+      ruledTotal: PER_CONTEXT_INCLUDED.has(group.key) ? ruledContextsPresent.length : 0,
       unmeasured,
     }
   })
@@ -500,6 +504,7 @@ export function loadCandidate2Data(): Candidate2Data {
     ratifiedCount: cohort.measuredIds.length,
     scoredCount: cohort.scoredIds.length,
     decidableCount: cohort.decidableIds.length,
+    ruledContexts: ruledContextsPresent,
     measuredAt,
     libraryOnly: cohort.libraryOnlyIds.map(capability),
     unavailable: cohort.unavailableIds.map(capability),

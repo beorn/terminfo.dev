@@ -423,11 +423,12 @@ describe("candidate-2 page: wiring", () => {
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
     expect(page).toContain("{{ darkRuledSentence(group) }} not measured (30033)")
 
-    // Both ruled groups keep the ruling's six contexts: four included and the two macOS contexts the
-    // ruling names. Linux-only until an all-platform collection lands on the live suite; see 30286. On
-    // f9450b3bc56a those two macOS contexts have no run, so they are back to dark-ruled rather than held
-    // below the bar, and the page names them as ruled-but-unmeasured. ruledTotal still carries the six,
-    // so the page reads "ruled for six" instead of quietly shrinking to the contexts that clear (30033).
+    // Both ruled groups keep the ruling's seven contexts: the five Linux app rows plus the two macOS
+    // contexts the ruling names (30297 added ghostty/linux to the basis). Linux-only until an
+    // all-platform collection lands on the live suite; see 30286. On f9450b3bc56a those two macOS
+    // contexts have no run, so they are back to dark-ruled rather than held below the bar, and the page
+    // names them as ruled-but-unmeasured. ruledTotal still carries all seven, so the page reads
+    // "ruled for seven" instead of quietly shrinking to the contexts that clear (30033).
     const cleared: Record<string, string[]> = {
       editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
       charsets: ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
@@ -437,9 +438,9 @@ describe("candidate-2 page: wiring", () => {
       if (!group) throw new Error(`group ${key} missing from the page`)
       expect(group.includedOn).toEqual(cleared[key])
       expect(group.darkRuled).toEqual(["ghostty/macos", "alacritty/macos"])
-      // The ruled basis is six whether those two contexts are dark or measured below the bar: the
+      // The ruled basis is seven whether those two contexts are dark or measured below the bar: the
       // count may not shrink to the contexts that clear it.
-      expect(group.ruledTotal).toBe(6)
+      expect(group.ruledTotal).toBe(7)
       // Both ruled macOS contexts stay visible: with no run on the live suite they are named as
       // dark-ruled rather than held, and neither drops out of the page.
       expect(group.darkHeldBy.map((row) => row.context)).toEqual(
@@ -616,6 +617,25 @@ describe("candidate-2 page: wiring", () => {
       expect(scrollback.darkHeldBy.map((row) => row.context)).not.toContain("wezterm/linux")
     } finally {
       spy.mockRestore()
+    }
+  })
+
+  it("counts the contexts the page rules on, and names every one of them once", () => {
+    // @cto on 30297: the basis is the contexts the page rules on, not the four Linux app rows measured
+    // when the ruling was written. Ghostty on Linux is ruled in all three per-context groups, so it
+    // belongs in the basis; before this change each cell named seven contexts against a count of six.
+    const ruled = new Set(data.ruledContexts)
+    expect(ruled.size).toBe(7)
+    const perContext = data.groups.filter((group) => PER_CONTEXT_INCLUDED.has(group.key))
+    expect(perContext.length).toBe(3)
+    for (const group of perContext) {
+      const named = new Set([
+        ...group.includedOn,
+        ...group.heldBy.map((row) => row.context),
+        ...group.darkRuled,
+      ])
+      expect([...named].sort(), group.key).toEqual([...ruled].sort())
+      expect(group.ruledTotal, group.key).toBe(ruled.size)
     }
   })
 
