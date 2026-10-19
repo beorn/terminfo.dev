@@ -5,6 +5,7 @@ import {
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
+  TEXT_QUALIFICATION_SHAPES,
   frameDigests,
   isNonMeasuringEvidence,
   type ConsoleBufferOwner,
@@ -19,6 +20,10 @@ import {
   type RunProvenance,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
+  type TextQualification,
+  type TextQualificationSpec,
+  type TextQualificationShape,
+  type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTree } from "./app-launch.ts"
 
@@ -46,6 +51,9 @@ export interface LoadedRun {
   /** Retained text snapshots: the text-frame twin of `screenshotRefs`, kept separate
    * because every consumer of that list assumes a PNG. Absent in runs written before it exists. */
   textSnapshotRefs: string[]
+  textQualification?: TextQualification
+  textQualificationSpec?: TextQualificationSpec
+  textClaims?: string[]
   observations: Observation[]
   notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
@@ -412,6 +420,65 @@ export function parseObservationFrames(
   return frames
 }
 
+/** Structural ingestion only: completeness and recipe agreement belong to the selector. */
+function parseTextQualificationSpec(
+  value: unknown,
+  path: string,
+  fields: readonly string[] = ["version", "recipe"],
+): TextQualificationSpec {
+  if (!object(value)) fail(path, "invalid textQualification object")
+  const unknown = Object.keys(value).find((key) => !fields.includes(key))
+  if (unknown !== undefined) fail(path, `unknown textQualification field ${unknown}`)
+  if (typeof value.version !== "number" || !Number.isSafeInteger(value.version) || value.version <= 0) {
+    fail(path, "invalid textQualification version")
+  }
+  if (!nonempty(value.recipe) || !value.recipe.trim()) fail(path, "invalid textQualification recipe")
+  return { version: value.version, recipe: value.recipe }
+}
+
+function parseTextQualification(
+  value: unknown,
+  path: string,
+  textSnapshotRefs: readonly string[],
+): TextQualification | undefined {
+  if (value === undefined) return undefined
+  const spec = parseTextQualificationSpec(value, path, ["version", "recipe", "grid", "shapes"])
+  if (!object(value)) fail(path, "invalid textQualification object")
+  const grid = value.grid
+  if (
+    !object(grid) ||
+    Object.keys(grid).sort().join(",") !== "cols,rows" ||
+    ![grid.rows, grid.cols].every((edge) => typeof edge === "number" && Number.isSafeInteger(edge) && edge > 0)
+  ) {
+    fail(path, "invalid textQualification grid")
+  }
+  if (!Array.isArray(value.shapes)) fail(path, "invalid textQualification shapes")
+  const seen = new Set<string>()
+  const shapes: TextQualification["shapes"] = value.shapes.map((entry: unknown) => {
+    if (!object(entry) || !TEXT_QUALIFICATION_SHAPES.some((shape) => shape === entry.shape)) {
+      fail(path, "invalid textQualification shape")
+    }
+    const shape = entry.shape as TextQualificationShape
+    if (seen.has(shape)) fail(path, `duplicate textQualification shape ${shape}`)
+    seen.add(shape)
+    const context = `textQualification ${shape}`
+    const unknown = Object.keys(entry).find((key) => !["shape", "frames", "reason"].includes(key))
+    if (unknown !== undefined) fail(path, `unknown ${context} field ${unknown}`)
+    if (Object.hasOwn(entry, "frames") && Object.hasOwn(entry, "reason")) {
+      fail(path, `${context} cannot carry both frames and reason`)
+    }
+    if (Object.hasOwn(entry, "reason")) {
+      if (!nonempty(entry.reason) || !entry.reason.trim()) fail(path, `invalid ${context} reason`)
+      return { shape, reason: entry.reason }
+    }
+    const frames = parseObservationFrames(entry.frames, path, context, [], textSnapshotRefs, undefined, "text")
+    if (frames === undefined) fail(path, `${context} requires frames or reason`)
+    // The existing parser enforces text kind, roles and retained-reference membership.
+    return { shape, frames: frames as TextCellsObservationFrame[] }
+  })
+  return { ...spec, grid: { rows: grid.rows as number, cols: grid.cols as number }, shapes }
+}
+
 /** The console host a text read returned: its image, the executable this run opened, and that
  * executable's digest. The digest keeps the `sha256:` prefix the 30042 source emits, and the path
  * must be absolute as either platform writes it — the collector runs on Windows, the parser may not
@@ -710,7 +777,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   // corruption, so it refuses by name. Unknown fields are refused rather than silently accepted.
   const derivedKeys = ["adapterVersion", "probeHash", "probes"]
   const legacyKeys = ["generatedAt", "sourceRevision"]
-  const pointerKeys = ["freeze"]
+  const pointerKeys = ["freeze", "textClaims", "textQualification"]
   const known = new Set([...derivedKeys, ...legacyKeys, ...pointerKeys])
   const unknown = Object.keys(value)
     .filter((key) => !known.has(key))
@@ -752,6 +819,22 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     }
     probes[kind] = ids
   }
+  let textClaims: string[] | undefined
+  if ("textClaims" in value) {
+    if (
+      !Array.isArray(value.textClaims) ||
+      !value.textClaims.every(nonempty) ||
+      new Set(value.textClaims).size !== value.textClaims.length
+    ) {
+      fail(path, "invalid suite textClaims")
+    }
+    textClaims = value.textClaims
+    for (const id of textClaims) {
+      if (!probes.app.includes(id)) fail(path, `suite textClaims ${id} is outside app suite membership`)
+    }
+  }
+  const textQualification =
+    "textQualification" in value ? parseTextQualificationSpec(value.textQualification, path) : undefined
   let freeze: ParsedSuiteManifest["freeze"]
   if ("freeze" in value) {
     const raw = value.freeze
@@ -803,6 +886,8 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     probeHash,
     adapterVersion,
     probes,
+    ...(textClaims === undefined ? {} : { textClaims }),
+    ...(textQualification === undefined ? {} : { textQualification }),
     ...(sourceRevision === undefined ? {} : { sourceRevision }),
     ...(generatedAt === undefined ? {} : { generatedAt }),
     ...(freeze === undefined ? {} : { freeze }),
@@ -1005,6 +1090,7 @@ export function parseRun(
     // as a PNG on one path and as UTF-8 text on the other.
     const bothLists = textSnapshotRefs.filter((ref) => (raw.screenshotRefs as string[]).includes(ref))
     if (bothLists.length > 0) fail(path, `text snapshot ${bothLists[0]} is also listed as a screenshotRef`)
+    const textQualification = parseTextQualification(raw.textQualification, path, textSnapshotRefs)
     const assertions = raw.assertions as ProbeAssertion[]
     for (const assertion of assertions) {
       if (
@@ -1100,6 +1186,9 @@ export function parseRun(
       assertions,
       screenshotRefs: raw.screenshotRefs as string[],
       textSnapshotRefs,
+      ...(textQualification === undefined ? {} : { textQualification }),
+      ...(manifest.textQualification === undefined ? {} : { textQualificationSpec: manifest.textQualification }),
+      ...(manifest.textClaims === undefined ? {} : { textClaims: manifest.textClaims }),
       observations,
       notTested,
       ungradedDiagnostics,
@@ -1208,6 +1297,7 @@ export function decodeCollectorRun(
     assertions: measured.assertions,
     screenshotRefs: measured.screenshotRefs,
     ...(measured.textSnapshotRefs.length > 0 && { textSnapshotRefs: measured.textSnapshotRefs }),
+    ...(measured.textQualification === undefined ? {} : { textQualification: measured.textQualification }),
     observations: measured.observations,
     ...(measured.notTested.length > 0 && { notTested: measured.notTested }),
     ungradedDiagnostics: measured.ungradedDiagnostics,

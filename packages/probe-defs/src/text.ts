@@ -25,6 +25,7 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
 export const textReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "text.overwrite",
+    textClaim: "characters",
     expected: "writing X over the second cell overwrites B while A remains",
     seed: "\x1b[1;1HAB",
     before: [["A", "B"]],
@@ -37,6 +38,7 @@ export const textReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "text.reverse-index-scroll",
+    textClaim: "characters",
     expected: "reverse index at the top of a non-default scroll region scrolls only that region",
     // The scroll region is rows 3-10 (set by the seed) while the compared grid is rows 1-4. The
     // control row sits ABOVE the region, so a scroll that moved the whole screen would blank row 1

@@ -76,11 +76,9 @@ test("a same-hash declaration stays immutable and mismatched membership fails lo
   const snapshot = probeSuiteSnapshot()
   const path = join(directory, `${snapshot.probeHash}.json`)
   const first = {
-    probeHash: snapshot.probeHash,
+    ...derivedSuiteManifest(snapshot),
     sourceRevision: "a".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
-    adapterVersion: snapshot.adapterVersion,
-    probes: snapshot.probes,
   }
   expect(persistSuiteManifest(path, first, snapshot)).toBe("created")
   const originalBytes = readFileSync(path, "utf8")
@@ -108,7 +106,55 @@ test("only the explicit --check verb runs; a bare or --write invocation is usage
 /** The derived record is a pure function of the suite: no legacy provenance is ever written. */
 test("the declared manifest carries only the derived record", () => {
   const manifest = derivedSuiteManifest(probeSuiteSnapshot())
-  expect(Object.keys(manifest).sort()).toEqual(["adapterVersion", "probeHash", "probes"])
+  expect(Object.keys(manifest).sort()).toEqual([
+    "adapterVersion",
+    "probeHash",
+    "probes",
+    "textClaims",
+    "textQualification",
+  ])
+})
+
+// Same-hash declarations must not grant character evidence to an attribute-only probe.
+// Parser validity alone cannot establish parity with the executable suite's declarations.
+test("current suite verification and persistence reject altered text declarations", () => {
+  const snapshot: ProbeSuiteSnapshot = {
+    probeHash: "c".repeat(12),
+    adapterVersion: "1.0.0",
+    probes: { app: ["character", "attributes"], headless: [], mux: ["character", "attributes"] },
+    sourcePaths: [],
+    textClaims: ["character"],
+    textQualification: { version: 1, recipe: "macos-text-cells-v1" },
+  }
+  const valid = derivedSuiteManifest(snapshot)
+  const path = join(temp("terminfo-suite-text-declarations-"), `${snapshot.probeHash}.json`)
+  expect(persistSuiteManifest(path, valid, snapshot)).toBe("created")
+  expect(verifySuiteManifest(path, snapshot)).toEqual(valid)
+  const changes = [
+    { textClaims: undefined },
+    { textClaims: [] },
+    { textClaims: ["attributes", "character"] },
+    { textQualification: undefined },
+    { textQualification: { version: 2, recipe: "macos-text-cells-v1" } },
+    { textQualification: { version: 1, recipe: "another-recipe" } },
+  ]
+  for (const change of changes) {
+    const altered = { ...valid, ...change }
+    writeFileSync(path, JSON.stringify(altered))
+    expect(() => verifySuiteManifest(path, snapshot), JSON.stringify(change)).toThrow(/Suite text .* mismatch/)
+    expect(() => persistSuiteManifest(path, altered, snapshot), JSON.stringify(change)).toThrow(
+      /Suite text .* mismatch/,
+    )
+    expect(() => persistSuiteManifest(path, valid, snapshot), JSON.stringify(change)).toThrow(/Suite text .* mismatch/)
+  }
+  // Old snapshots have no opt-in declarations; they still verify without these optional fields.
+  const { textClaims: _claims, textQualification: _spec, ...historical } = snapshot
+  const legacy = derivedSuiteManifest(historical)
+  writeFileSync(path, JSON.stringify(legacy))
+  expect(verifySuiteManifest(path, historical)).toEqual(legacy)
+  expect(() => verifySuiteManifest(path, snapshot)).toThrow(/Suite text .* mismatch/)
+  writeFileSync(path, JSON.stringify(valid))
+  expect(() => verifySuiteManifest(path, historical)).toThrow(/Suite text .* mismatch/)
 })
 
 /** A manifest is legacy-complete (both) or new-minimal (neither); a half pair refuses by name. */

@@ -246,12 +246,26 @@ function writeEvidence(
   const expected = new Map<string, Buffer>()
   for (const [url, { bytes, document }] of documents) {
     expected.set(url.slice(1), Buffer.from(bytes))
-    const refs = [document.record.screenshot?.sha256, ...(document.record.frames ?? []).map((frame) => frame.sha256)]
-    for (const digest of refs) {
-      if (!digest) continue
-      const path = `artifacts/${digest}.png`
+    const frames =
+      "qualification" in document
+        ? document.qualification.shapes.flatMap((shape) => shape.frames ?? [])
+        : [
+            ...(document.record.screenshot ? [{ ...document.record.screenshot, kind: undefined }] : []),
+            ...(document.record.frames ?? []),
+          ]
+    for (const frame of frames) {
+      const text = frame.kind === "text-cells"
+      const path = `artifacts/${frame.sha256}.${text ? "txt" : "png"}`
       if (!expected.has(path)) {
-        expected.set(path, readVerifiedArtifact(contentDir, `sha256:${digest}`, document.runId))
+        expected.set(
+          path,
+          readVerifiedArtifact(
+            contentDir,
+            `sha256:${frame.sha256}`,
+            document.runId,
+            text ? "text-snapshot" : "screenshot",
+          ),
+        )
       }
     }
   }
@@ -259,7 +273,7 @@ function writeEvidence(
   const inventoryPath = join(out, "api", "v2", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.png|api\/v2\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v2\/runs\/[a-f0-9]{64}\.json)$/.test(
+    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v2\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v2\/runs\/[a-f0-9]{64}\.json)$/.test(
       path,
     )
   if (existsSync(inventoryPath)) {

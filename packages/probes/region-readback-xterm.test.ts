@@ -18,6 +18,84 @@ import { expect, test, vi } from "vitest"
 import { collectBatch } from "./headless-batch.ts"
 import { mapSnapshotToCells } from "../terminfo.dev/src/darwin-terminal-text.ts"
 import { textCellsFrame } from "../terminfo.dev/src/serve.ts"
+import { collectTextQualification } from "../terminfo.dev/src/text-qualification.ts"
+
+// AC1: the five recipe writes must reach a real parser, including overflow followed by a blank
+// last row. Existing region fixtures never exercise this once-per-run preparation or its restore.
+test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const)(
+  "text qualification retains real parser grids and proves restoration: %s",
+  async (fault) => {
+    const backend = createXtermBackend()
+    backend.init({ rows: 4, cols: 12 })
+    const encode = (value: string) => new TextEncoder().encode(value)
+    backend.feed(encode("\x1b[?25l\x1b[?7l"))
+    const retained = new Map<string, string>()
+    let modeQueries = 0
+    let capturedAt = 0
+    const ctx = {
+      rows: 4,
+      cols: 12,
+      write: (value: string) => backend.feed(encode(value)),
+      queryMode: async () => {
+        modeQueries += 1
+        return fault === "restore-mode" && modeQueries > 2 ? "set" : "reset"
+      },
+    } as unknown as probeDefs.TermContext
+    const measured = collectTextQualification({
+      ctx,
+      capture: async (checkpoint) => {
+        if (fault === "shape-refused" && checkpoint.label === "text qualification mid-line-gap target") {
+          throw new Error("terminal refused this shape")
+        }
+        // The native JXA read separates visible rows from carried history before strict mapping.
+        const history = backend.getLines().map((row) => row.map((cell) => cell.char || " ").join(""))
+        const lines = history.slice(-4)
+        if (fault === "restore-grid" && checkpoint.label === "text qualification restored blank grid") {
+          lines[0] = "X           "
+        }
+        const mapped = mapSnapshotToCells(lines, 12, 4, Math.max(history.length - 4, 0))
+        if (typeof mapped === "string") throw new Error(mapped)
+        const result = textCellsFrame(checkpoint, { status: "read", app: "iterm2", cells: mapped }, ++capturedAt)
+        retained.set(result.frame.ref, result.retained.toString("utf8"))
+        return result.frame
+      },
+    })
+    try {
+      if (fault === "restore-mode" || fault === "restore-grid") {
+        await expect(measured).rejects.toMatchObject({ name: "CaptureRestoreFailed" })
+        return
+      }
+      const qualification = await measured
+      const blank = "            "
+      const expected = [
+        ["A       B   ", blank, blank, "Z           "],
+        ["A           ", "B           ", blank, "Z           "],
+        ["WWWWWWWWWWWW", "XY          ", blank, blank],
+        ["H2          ", "H3          ", "H4          ", "H5          "],
+        ["H3          ", "H4          ", "H5          ", blank],
+      ]
+      expect(qualification.shapes).toHaveLength(5)
+      for (const [index, shape] of qualification.shapes.entries()) {
+        if (fault === "shape-refused" && index === 0) {
+          expect(shape).toMatchObject({ shape: "mid-line-gap", reason: "terminal refused this shape" })
+          continue
+        }
+        const frame = shape.frames?.find(({ role }) => role === "target")
+        if (!frame) throw new Error(`Missing target for ${shape.shape}`)
+        expect(retained.get(frame.ref), shape.shape).toBe(expected[index]?.join("\n"))
+      }
+      expect(
+        backend
+          .getLines()
+          .slice(-4)
+          .map((row) => row.map((cell) => cell.char || " ").join("")),
+      ).toEqual([blank, blank, blank, blank])
+      expect(modeQueries).toBe(4)
+    } finally {
+      backend.destroy()
+    }
+  },
+)
 
 // App callbacks share a screen; the fresh headless backends below cannot expose this failure.
 // Use the real parser and strict mapper so a previous Unicode probe cannot become an ASCII read.

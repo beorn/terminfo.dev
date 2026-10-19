@@ -94,6 +94,7 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
 export const editingReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "editing.insert-chars",
+    textClaim: "characters",
     expected: "ICH inserts a blank cell at column 3 and shifts measured text right; prefix stays intact",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEZQH",
@@ -110,6 +111,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.delete-chars",
+    textClaim: "characters",
     expected: "DCH deletes the cell at column 3 and shifts measured text left; prefix stays intact",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEZQH",
@@ -126,6 +128,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.insert-lines",
+    textClaim: "characters",
     expected: "IL inserts a blank row 2 and shifts measured rows down while row 1 stays intact",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
@@ -157,6 +160,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.delete-lines",
+    textClaim: "characters",
     expected: "DL removes row 2 and shifts measured rows up while row 1 stays intact",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HAAAAA\x1b[2;1HBBBBB\x1b[3;1HCCCCC\x1b[4;1HDDDDD",
@@ -188,6 +192,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.repeat-char",
+    textClaim: "characters",
     expected: "REP repeats the immediately preceding X into three target cells without changing flank controls",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HAX   Z",
@@ -206,6 +211,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.decfra",
+    textClaim: "characters",
     expected: "DECFRA fills the measured 3x5 area and preserves its measured right flank",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccW",
@@ -233,6 +239,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.decera",
+    textClaim: "characters",
     expected: "DECERA blanks measured 3x5 cells and preserves their measured right flank",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HaaaaaZ\x1b[2;1HbbbbbY\x1b[3;1HcccccX",
@@ -260,6 +267,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.decsera",
+    textClaim: "characters",
     expected: "DECSCA-protected P survives while selective erase clears ABCD",
     region: { top: 1, left: 1 },
     seed: '\x1b[1;1H\x1b[1"qP\x1b[0"qABCDZ',
@@ -287,6 +295,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.deccra",
+    textClaim: "characters",
     expected: "DECCRA copies measured 2x5 source cells to row 5 column 10 without changing the source",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDE.........\x1b[2;1HFGHIJ.........\x1b[5;1H.........12345\x1b[6;1H.........67890",
@@ -327,6 +336,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.sl",
+    textClaim: "characters",
     expected: "SL shifts the first nine observed cells of two rows left by two columns",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
@@ -348,6 +358,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.sr",
+    textClaim: "characters",
     expected: "SR shifts the first nine measured cells of two rows right by two columns",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEFGHI\x1b[2;1HJKLMNOPQR",
@@ -369,6 +380,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.decic",
+    textClaim: "characters",
     expected: "DECIC inserts two blank columns at column 3 on three measured rows",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEFGH\x1b[2;1HIJKLMNOP\x1b[3;1HQRSTUVWX",
@@ -399,6 +411,7 @@ export const editingReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "editing.decdc",
+    textClaim: "characters",
     expected: "DECDC deletes two columns at column 3 on three measured rows",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HABCDEFGHIJ\x1b[2;1HIJKLMNOPQR\x1b[3;1HQRSTUVWXab",

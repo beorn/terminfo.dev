@@ -26,6 +26,7 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
 export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "scrollback.scroll-up",
+    textClaim: "characters",
     expected: "Interior-region SU shifts the measured middle and bottom rows up, clearing the region bottom",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC\x1b[4;1HD\x1b[5;1HE\x1b[2;4r",
@@ -45,6 +46,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "scrollback.reverse-index",
+    textClaim: "characters",
     expected: "A blank row is inserted above the measured A marker, pushing it down one row",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HA\x1b[2;1HB\x1b[3;1HC",
@@ -60,6 +62,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "scrollback.scroll-down",
+    textClaim: "characters",
     expected: "A blank row is inserted above the measured LINE1 row, pushing the three measured lines down",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HLINE1\x1b[2;1HLINE2\x1b[3;1HLINE3",
@@ -83,6 +86,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "scrollback.set-region",
+    textClaim: "characters",
     expected: "DECSTBM sets the region: a marker on the requested top row scrolls out while the row above it stays",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HFIXED\x1b[5;1HA\x1b[6;1HB\x1b[7;1HC",
@@ -107,6 +111,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
     //  - clearing main on exit leaves main row 1 blank too.
     // Each differs from `after`, and `after` differs from the seed frame, so no survivor reads supported.
     id: "scrollback.alt-screen",
+    textClaim: "characters",
     expected: "ESC[?1049h swaps to a separate alt grid and ESC[?1049l restores the measured main grid",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HMAIN_SCREEN_MARKER",
@@ -140,6 +145,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "scrollback.decstbm",
+    textClaim: "characters",
     expected: "DECSTBM confines the scroll: the inner marker scrolls while the row above the region stays",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HFIXED\x1b[3;1HA\x1b[4;1HB\x1b[5;1HC",
@@ -156,6 +162,7 @@ export const scrollbackReadbackRows: readonly RegionReadbackRow[] = [
   },
   {
     id: "scrollback.decstbm-reset",
+    textClaim: "characters",
     expected: "After ESC[r the full screen scrolls again, lifting the row-3 marker onto the measured row 2",
     region: { top: 1, left: 1 },
     seed: "\x1b[1;1HA\x1b[3;1HA",

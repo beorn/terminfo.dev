@@ -31,7 +31,12 @@ import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-collected-run.ts"
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
-import { classifyDevelopmentRun, statesFor, type SelectedVersion } from "../docs/data/selected-results.ts"
+import {
+  classifyDevelopmentRun,
+  readVerifiedArtifact,
+  statesFor,
+  type SelectedVersion,
+} from "../docs/data/selected-results.ts"
 import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
@@ -624,7 +629,11 @@ export async function collectPass(
       if (run.sourceRevision !== sourceRevision) {
         throw new Error(`raw source ${run.sourceRevision} differs from pass source ${sourceRevision}`)
       }
-      row.classification = classifyDevelopmentRun(run, interpretations)
+      const textSnapshots = new Map<string, Uint8Array>()
+      for (const ref of run.textSnapshotRefs) {
+        textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
+      }
+      row.classification = classifyDevelopmentRun(run, interpretations, { textSnapshots })
       row.status = "classified"
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`

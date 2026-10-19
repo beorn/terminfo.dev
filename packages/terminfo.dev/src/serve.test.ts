@@ -692,19 +692,22 @@ describe("private finite daemon startup", () => {
     expect(result.status).toBe(0)
   })
 
-  it.each(["windowsHosted", "terminalApp"])(
-    "names the %s arm's missing retention directory once, and hands the batch no text adapter",
-    (arm) => {
-      home = mkdtempSync(join(tmpdir(), "terminfo-serve-windows-skip-"))
-      const result = spawnSync(
-        process.execPath,
-        [
-          "-e",
-          `
+  it.each([
+    { arm: "windowsHosted", retained: false },
+    { arm: "terminalApp", retained: false },
+    { arm: "darwinHosted", retained: true },
+  ])("handles $arm text retention: $retained", ({ arm, retained }) => {
+    home = mkdtempSync(join(tmpdir(), "terminfo-serve-windows-skip-"))
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       const arm = process.env.FIXTURE_ARM
-      Object.defineProperty(process, "platform", { value: arm === "terminalApp" ? "darwin" : "win32" })
+      const retained = process.env.FIXTURE_RETAINED === "yes"
+      Object.defineProperty(process, "platform", { value: arm === "windowsHosted" ? "win32" : "darwin" })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
@@ -738,6 +741,14 @@ describe("private finite daemon startup", () => {
         runProbeBatch: async options => {
           capture = options.capture
           captureKind = options.captureKind ?? "absent"
+          if (retained) {
+            assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
+            await options.prepareCapture({
+              context: { rows: 4, cols: 12, queryMode: async () => "unknown", write: () => { throw new Error("Paint before known mode state") } },
+              featureId: "collector.captureCalibration",
+              recordCapture: () => { throw new Error("Capture before known mode state") }
+            })
+          }
           return {
             rawReplies: {},
             observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
@@ -749,36 +760,42 @@ describe("private finite daemon startup", () => {
       const run = arm === "terminalApp"
         ? await collectProbeRun({ ids: ["device.xtversion"], terminalAppOwner: {} })
         : await collectProbeRun({ ids: ["device.xtversion"] })
-      assert.equal(capture, undefined)
-      assert.equal(captureKind, "absent")
+      assert.equal(typeof capture, retained ? "function" : "undefined")
+      assert.equal(captureKind, retained ? "text-cells" : "absent")
       assert.equal(reads, 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
       assert.equal(run.observations.filter(observation => observation.evidence === "text").length, 0)
+      if (retained) {
+        assert.equal(run.textQualification.shapes.length, 5)
+        assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
+      } else assert.equal(run.textQualification, undefined)
     `,
-        ],
-        {
-          cwd: packageRoot,
-          env: {
-            ...process.env,
-            HOME: home,
-            FIXTURE_ARM: arm,
-            TERMINFO_CAPTURE_DIRECTORY: "",
-            TERMINFO_DISPOSABLE_RECEIPT: arm === "windowsHosted" ? "hardware-receipt-fixture" : "",
-            TERMINFO_RUNTIME_PROVENANCE: "",
-            TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
-          },
-          encoding: "utf8",
-          timeout: 10_000,
+      ],
+      {
+        cwd: packageRoot,
+        env: {
+          ...process.env,
+          HOME: home,
+          FIXTURE_ARM: arm,
+          FIXTURE_RETAINED: retained ? "yes" : "no",
+          TERMINFO_CAPTURE_DIRECTORY: retained ? join(home, "capture") : "",
+          TERMINFO_DISPOSABLE_RECEIPT: arm !== "terminalApp" ? "hardware-receipt-fixture" : "",
+          TERMINFO_RUNTIME_PROVENANCE: "",
+          TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
         },
-      )
-      const lines = result.stderr.split("\n").filter(Boolean)
-      expect(result.status, result.stderr).toBe(0)
-      expect(lines).toHaveLength(1)
+        encoding: "utf8",
+        timeout: 10_000,
+      },
+    )
+    const lines = result.stderr.split("\n").filter(Boolean)
+    expect(result.status, result.stderr).toBe(0)
+    expect(lines).toHaveLength(retained ? 0 : 1)
+    if (!retained) {
       expect(lines[0]).toMatch(new RegExp(`^${arm}: this arm can read cells from the terminal's own text`, "u"))
       expect(lines[0]).toMatch(/no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in/u)
       expect(lines[0]).toMatch(/no-capture branch$/u)
-    },
-  )
+    }
+  })
 
   it.each(["capture", "refusal"])(
     "a hosted Windows capture with a retention directory takes the %s branch without Linux provenance",

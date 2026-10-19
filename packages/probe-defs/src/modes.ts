@@ -8,6 +8,7 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
 export const modesReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "modes.origin",
+    textClaim: "characters",
     expected: "DECOM makes CUP 1;1 address the top of the measured vertical margins",
     // LF proves rows 3–6 form a scroll region before testing origin-relative addressing.
     seed:
