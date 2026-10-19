@@ -53,7 +53,7 @@ const temp = (prefix: string): string => {
   return directory
 }
 
-/** A checkout one commit ahead of origin/main: the state a declaration is allowed to author in. */
+/** A checkout on a non-default branch, one commit ahead of origin/main: a declaration may author here. */
 const authoringRepo = (prefix: string): string => {
   const directory = temp(prefix)
   const git = (...args: string[]): string =>
