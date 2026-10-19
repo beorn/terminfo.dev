@@ -22,6 +22,7 @@ jobs:
         include:
           - id: windows-terminal
           - id: alacritty
+          - id: wezterm
     defaults:
       run:
         shell: bash
@@ -77,6 +78,9 @@ jobs:
           APP_ID: ${{ matrix.id }}
         run: |
           set -euo pipefail
+          sha256_file() {
+            sha256sum "$1" | awk '{sub(/^\\/, "", $1); print tolower($1)}'
+          }
           case "$APP_ID" in
             windows-terminal)
               WT_DIR="$RUNNER_TEMP/windows-terminal"
@@ -95,9 +99,6 @@ jobs:
               test -f "$WT_DIR/WindowsTerminal.exe" || { echo "Windows Terminal binary missing at $WT_DIR/WindowsTerminal.exe" >&2; exit 1; }
               ;;
             alacritty)
-              sha256_file() {
-                sha256sum "$1" | awk '{sub(/^\\/, "", $1); print tolower($1)}'
-              }
               ALACRITTY_DIR="$RUNNER_TEMP/alacritty"
               ALACRITTY_ARTIFACT="$RUNNER_TEMP/measurement-artifacts/Alacritty-v0.17.0-portable.exe"
               ALACRITTY_EXPECTED_SHA256="5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
@@ -148,6 +149,35 @@ jobs:
           TOML
               test -f "$ALACRITTY_DIR/alacritty.exe" || { echo "Alacritty binary missing at $ALACRITTY_DIR/alacritty.exe" >&2; exit 1; }
               ;;
+            wezterm)
+              WEZTERM_VERSION="20240203-110809-5046fc22"
+              WEZTERM_DIR="$RUNNER_TEMP/wezterm"
+              WEZTERM_ARCHIVE="$RUNNER_TEMP/measurement-artifacts/WezTerm-windows-$WEZTERM_VERSION.zip"
+              WEZTERM_EXPECTED_SHA256="57e5d03b585303d81e8b8e96d1230362852eb39aca92b3b29c7a42cfb82f9ac4"
+              if [ -e "$WEZTERM_DIR" ]; then
+                echo "Target directory $WEZTERM_DIR already exists; refusing reuse" >&2
+                exit 1
+              fi
+              curl -L -s -f "https://github.com/wezterm/wezterm/releases/download/$WEZTERM_VERSION/WezTerm-windows-$WEZTERM_VERSION.zip" -o "$WEZTERM_ARCHIVE"
+              WEZTERM_ACTUAL_SHA256="$(sha256_file "$WEZTERM_ARCHIVE")"
+              echo "WezTerm portable ZIP sha256: $WEZTERM_ACTUAL_SHA256 ($WEZTERM_ARCHIVE)"
+              test "$WEZTERM_ACTUAL_SHA256" = "$WEZTERM_EXPECTED_SHA256" || {
+                echo "WezTerm portable ZIP sha256 mismatch: expected $WEZTERM_EXPECTED_SHA256, got $WEZTERM_ACTUAL_SHA256" >&2
+                exit 1
+              }
+              powershell -NoProfile -Command "Expand-Archive -Path '$WEZTERM_ARCHIVE' -DestinationPath '$RUNNER_TEMP/wezterm_unpacked' -Force"
+              mkdir -p "$WEZTERM_DIR"
+              cp -r "$RUNNER_TEMP/wezterm_unpacked/WezTerm-windows-$WEZTERM_VERSION/"* "$WEZTERM_DIR/"
+              cat > "$WEZTERM_DIR/wezterm.lua" <<'LUA'
+          return {
+            initial_cols = 100,
+            initial_rows = 35,
+            check_for_updates = false,
+            window_close_confirmation = 'NeverPrompt',
+          }
+          LUA
+              test -f "$WEZTERM_DIR/wezterm-gui.exe" || { echo "WezTerm binary missing at $WEZTERM_DIR/wezterm-gui.exe" >&2; exit 1; }
+              ;;
             *) echo "Unknown Windows measurement app: $APP_ID" >&2; exit 1 ;;
           esac
 
@@ -180,6 +210,11 @@ jobs:
               export MESA_UPSTREAM="https://github.com/mmozeiko/build-mesa"
               export MESA_VERSION="26.2.5"
               export MESA_ARCHIVE_PATH="$(cygpath -w "$OUT/mesa-llvmpipe-x64-26.2.5.7z")"
+              ;;
+            wezterm)
+              APP_DIR="$(cygpath -w "$RUNNER_TEMP/wezterm")"
+              WIN_EXECUTABLE="$(cygpath -w "$RUNNER_TEMP/wezterm/wezterm-gui.exe")"
+              WIN_SOURCE_ARTIFACT="$(cygpath -w "$OUT/WezTerm-windows-20240203-110809-5046fc22.zip")"
               ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
@@ -232,6 +267,10 @@ jobs:
             alacritty)
               WIN_CONFIG="$(cygpath -w "$RUNNER_TEMP/alacritty/alacritty.toml")"
               WGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe "$RUNNER_TEMP/alacritty/alacritty.exe" -v --config-file "$WIN_CONFIG" --working-directory "$WIN_OUT" --command powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
+              ;;
+            wezterm)
+              WIN_CONFIG="$(cygpath -w "$RUNNER_TEMP/wezterm/wezterm.lua")"
+              "$RUNNER_TEMP/wezterm/wezterm-gui.exe" --config-file "$WIN_CONFIG" start --always-new-process --no-auto-connect --cwd "$WIN_OUT" -- powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_COMMAND" > "$OUT/launcher.log" 2>&1 &
               ;;
             *) echo "Unknown Windows collection app: $APP_ID" >&2; exit 1 ;;
           esac
