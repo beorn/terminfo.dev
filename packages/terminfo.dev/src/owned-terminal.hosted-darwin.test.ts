@@ -120,6 +120,15 @@ test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps
     /Hosted Darwin ancestry reached \/Applications\/Ghostty\.app\/Contents\/MacOS\/ghostty \(pid 90\) while the receipt names iTerm2/,
   )
 
+  const weztermInstead = [
+    { pid: 1, ppid: 0, comm: "/sbin/launchd" },
+    { pid: 90, ppid: 1, comm: "/Applications/WezTerm.app/Contents/MacOS/wezterm-gui" },
+    { pid: 100, ppid: 90, comm: "/bin/zsh" },
+  ]
+  expect(() => requireHostedDarwinAppAncestor("iTerm2", weztermInstead)).toThrow(
+    /Hosted Darwin ancestry reached \/Applications\/WezTerm\.app\/Contents\/MacOS\/wezterm-gui \(pid 90\) while the receipt names iTerm2/,
+  )
+
   for (const [comm, path, otherPath] of [
     [
       "Cursor",
