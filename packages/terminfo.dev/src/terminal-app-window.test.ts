@@ -324,7 +324,7 @@ describe("cli-process ownership", () => {
 })
 
 describe("owner resolution", () => {
-  const executablePath = "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+  const executablePath = "/Applications/Visual Studio Code.app/Contents/MacOS/Code"
   const marker = { flag: "--user-data-dir", value: "/run/terminfo-abc9" }
 
   /** A `ps -A` listing whose pid, argv and executable agree, so only the count varies. */
