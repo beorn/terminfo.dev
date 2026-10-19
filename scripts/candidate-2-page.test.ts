@@ -178,17 +178,19 @@ describe("candidate-2 page: the two bases", () => {
     }
   })
 
-  it("carries the ruled acceptance share wherever a group has library-only rows, and nowhere else", () => {
+  it("carries the ruled acceptance share only where a ruling puts library-only rows in the base", () => {
     const groupsByKey = new Map(data.groups.map((group) => [group.key, group]))
     for (const context of data.contexts.filter((row) => row.published)) {
       for (const share of context.groups) {
         const group = groupsByKey.get(share.key)
         if (!group) throw new Error(`${context.context} carries a group ${share.key} the page never claims`)
-        if (group.libraryOnly.length === 0) {
+        // The base is a RULING per group, not a rule over `libraryOnly.length`. Scrollback's two
+        // library-only rows are in its ruled 7/9 (chief 11cede0b); Reset's one is outside its
+        // denominator (chief 450d65e4 (b)), which is what makes kitty and xterm 4/4 included.
+        if (group.libraryOnly.length === 0 || !ACCEPTANCE_COUNTS_LIBRARY_ONLY.has(share.key)) {
           expect(share.acceptance, `${context.context} ${share.key}`).toBeNull()
           continue
         }
-        // The acceptance base is the ruled one: the decidable rows PLUS the defined library-only rows.
         expect(share.acceptance, `${context.context} ${share.key}`).not.toBeNull()
         expect(share.acceptance?.denominator, `${context.context} ${share.key}`).toBe(
           share.denominator + group.libraryOnly.length,
@@ -261,8 +263,19 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
   })
 })
 
-/** The two groups with per-context inclusion; other groups retain their global inclusion state. */
-const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets"])
+/**
+ * The groups with per-context inclusion; other groups retain their global inclusion state. Reset
+ * joined at @cto's c67af756 (2026-10-19): included per context on the contexts that clear 90, held
+ * by name on those that do not, exactly as Editing 28022 and Character Sets 28025 closed.
+ */
+const PER_CONTEXT_INCLUDED = new Set(["editing", "charsets", "reset"])
+
+/**
+ * The groups whose RULED acceptance base counts their library-only rows: chief 11cede0b for
+ * Scrollback (7/9). Reset is deliberately absent — @cto c67af756 (chief 450d65e4 (b)) keeps
+ * reset.method outside its denominator, so its four scored rows are the basis.
+ */
+const ACCEPTANCE_COUNTS_LIBRARY_ONLY = new Set(["scrollback"])
 
 describe("candidate-2 page: wiring", () => {
   // @chief cf1daa5a / review2 cd06b94c: the page may not claim a group included while a measured
@@ -317,7 +330,7 @@ describe("candidate-2 page: wiring", () => {
     expect(data.groups.some((group) => !group.included)).toBe(true)
   })
 
-  it("includes Editing and Character Sets on the Linux contexts that clear the bar, and names the rest", () => {
+  it("includes Editing, Character Sets and Reset on the contexts that clear the bar, and names the rest", () => {
     // Included per context on the measured contexts that clear 90 percent, every other measured
     // context held, and every context with no run on the required suite named not measured.
     // Linux-only until an all-platform collection lands on the live suite; see 30286. The required
@@ -327,11 +340,19 @@ describe("candidate-2 page: wiring", () => {
     // context that misses the bar. Charsets clears on all five Linux contexts; editing clears on four
     // and holds ghostty/linux. A collection that moves these numbers must change this table
     // deliberately, never loosen it.
+    // Reset joined at @cto's c67af756 (2026-10-19): four scored rows, reset.method named outside
+    // the denominator, so kitty and xterm read 4/4 included and the three contexts with an
+    // inconclusive row (ghostty reset.decaln; wezterm, alacritty reset.sgr) are held by name.
     const clearing: Record<string, string[]> = {
       editing: ["kitty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
       charsets: ["kitty/linux", "ghostty/linux", "wezterm/linux", "alacritty/linux", "xterm/linux"],
+      reset: ["kitty/linux", "xterm/linux"],
     }
-    const below: Record<string, string[]> = { editing: ["ghostty/linux"], charsets: [] }
+    const below: Record<string, string[]> = {
+      editing: ["ghostty/linux"],
+      charsets: [],
+      reset: ["ghostty/linux", "wezterm/linux", "alacritty/linux"],
+    }
     const dark = [
       "terminal-app/macos",
       "iterm2/macos",
@@ -344,7 +365,7 @@ describe("candidate-2 page: wiring", () => {
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("ruled for {{ group.ruledTotal }}, included on {{ group.includedOn.length }}")
     expect(page).toContain("not measured: {{ group.unmeasured.map((row) => row.context).join(', ') }}")
-    for (const key of ["editing", "charsets"]) {
+    for (const key of ["editing", "charsets", "reset"]) {
       const group = data.groups.find((entry) => entry.key === key)
       if (!group) throw new Error(`group ${key} is missing from the page`)
       expect(group.included, key).toBe(false)
@@ -438,7 +459,13 @@ describe("candidate-2 page: wiring", () => {
     // and Scrollback's to 12 on the dark history rows while the published rows read the correct 5 and 9.
     for (const group of data.groups) {
       if (group.libraryOnly.length === 0) continue
-      const expected = group.capabilities.length - group.unavailable.length
+      // The held row's denominator is the group's RULED basis: the app-decidable rows, plus the
+      // library-only rows only where a ruling puts them in the base (Scrollback 7/9). Reset divides
+      // over 4, never 5 (c67af756).
+      const expected =
+        group.capabilities.length -
+        group.unavailable.length -
+        (ACCEPTANCE_COUNTS_LIBRARY_ONLY.has(group.key) ? 0 : group.libraryOnly.length)
       for (const row of [...group.heldBy, ...group.darkHeldBy]) {
         expect(row.denominator, `${group.key} ${row.context}`).toBe(expected)
       }
@@ -584,17 +611,17 @@ describe("candidate-2 page: wiring", () => {
     }
   })
 
-  it("preserves global inclusion outside the two-group context scope", () => {
-    // The ruling names two groups. A group outside it must not gain includedOn entries even where
+  it("preserves global inclusion outside the per-context scope", () => {
+    // The ruling names three groups (Reset joined at c67af756). A group outside it must not gain includedOn entries even where
     // its share clears the bar on a context: the page would then promote a held group.
     const outside = data.groups.filter((group) => !PER_CONTEXT_INCLUDED.has(group.key))
     expect(outside.length).toBeGreaterThan(0)
     for (const group of outside) expect(group.includedOn, group.key).toEqual([])
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
-    expect(page).toContain("Per-context inclusion is ruled for Editing and Character Sets only")
+    expect(page).toContain("Per-context inclusion is ruled for Editing, Character Sets and Reset")
     // The bottom scope bullet must agree with the lede and the State cells, not keep the old
     // page-wide-only definition that the per-context ruling replaced.
-    expect(page).toContain("for Editing and Character Sets the page also says <strong>included on</strong>")
+    expect(page).toContain("for Editing, Character Sets and Reset the page also says <strong>included on</strong>")
     expect(page).not.toContain("cleared the bar in every measured context")
     // An empty includedOn is a SCOPE result, never a measurement: a held group may clear some
     // contexts, so the page may not say no context clears the bar, and an included group must not
