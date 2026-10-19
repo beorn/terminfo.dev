@@ -338,12 +338,13 @@ export async function runProbeBatch(
   // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
   const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
   const clipboard = ownsTerminal ? options.ownedTerminal?.clipboard : undefined
+  const assertOwned = clipboard?.assertOwned.bind(clipboard)
   const custody: { failure?: { error: unknown } } = {}
-  const verify = clipboard
+  const verify = assertOwned
     ? async () => {
         if (custody.failure) throw custody.failure.error
         try {
-          await clipboard.assertOwned()
+          await assertOwned()
         } catch (error) {
           custody.failure ??= { error }
           throw custody.failure.error
@@ -481,10 +482,9 @@ export async function runProbeBatch(
       captureGeometryRefusal,
     })
     if (captureGeometry) context.captureGeometry = captureGeometry
-    if (options.ownedTerminal?.clipboard && options.ownedTerminal.clipboard.profile !== "default") {
-      const clipboard = options.ownedTerminal.clipboard
+    if (clipboard && clipboard.profile !== "default" && verify) {
       context.withClipboardFixture = (work) =>
-        clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event))
+        clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event), verify)
     }
     if (options.input) {
       const input = options.input

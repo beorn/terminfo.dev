@@ -155,10 +155,26 @@ try {
     assert.equal(adapter.muxAttachmentProof.collector.ttyRdev,34817)
     assert.equal(adapter.muxAttachmentProof.attachedClient.ttyRdev,34816)
     assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
+    // The batch's verifier must own every existing transaction check, not only its outer boundary.
+    for (const [site, failAt] of [["start",1],["read",2],["write",3]]) {
+      let checks=0, callbacks=0
+      const refusal=new Error("transaction custody lost at "+site)
+      const verify=async()=>{
+        if (++checks >= failAt) throw refusal
+        await adapter.assertOwned()
+      }
+      await assert.rejects(adapter.withClipboardFixture(async fixture=>{
+        callbacks++
+        await fixture.writeText("must remain unowned")
+        return {pass:true}
+      },()=>{},verify),new RegExp("transaction custody lost at "+site))
+      assert.equal(callbacks,site==="write"?1:0)
+      assert.equal(checks,failAt+1,"restoration must use the same refused verifier")
+    }
     // The same grant must notice detach before the next clipboard operation.
     variant="detached"
     const previousReads=reads
-    await assert.rejects(adapter.withClipboardFixture(async()=>{throw Error("unowned callback ran")},()=>{}),/attached|display/i)
+    await assert.rejects(adapter.withClipboardFixture(async()=>{throw Error("unowned callback ran")},()=>{},adapter.assertOwned),/attached|display/i)
     assert.equal(reads,previousReads)
     await adapter.dispose()
     const refusals = {
@@ -202,7 +218,7 @@ try {
         variant="detached";afterLossReads=reads
         if(operation === "write") await fixture.writeText("unowned mutation")
         return {pass:true}
-      },event=>events.push(event)),/Owned clipboard restoration failed:.*(?:attached client|attached display)/)
+      },event=>events.push(event),revoked.assertOwned),/Owned clipboard restoration failed:.*(?:attached client|attached display)/)
       assert.equal(reads,afterLossReads)
       assert.equal(spawns,beforeSpawns)
       assert(events.some(event=>event.kind === "clipboard-restore" && event.status === "error"))
@@ -614,7 +630,6 @@ test("a nested transaction refuses and callback failure restores and verifies th
   let text = "baseline-nonce"
   const events: ClipboardTraceEvent[] = []
   const transaction = createClipboardTransaction("baseline-nonce", {
-    assertOwned: async () => {},
     readText: async (trace, kind = "clipboard-read") => {
       trace({ kind, at: new Date().toISOString(), sha256: "a".repeat(64), length: text.length })
       return text
@@ -635,11 +650,13 @@ test("a nested transaction refuses and callback failure restores and verifies th
               observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
             }),
             (event) => events.push(event),
+            async () => {},
           ),
         ).rejects.toThrow("cannot nest")
         throw new Error("query failed")
       },
       (event) => events.push(event),
+      async () => {},
     ),
   ).rejects.toThrow("query failed")
   expect(text).toBe("baseline-nonce")
@@ -654,7 +671,6 @@ test("a nested transaction refuses and callback failure restores and verifies th
 
 test("restoration failure overrides a supported callback result", async () => {
   const transaction = createClipboardTransaction("baseline-nonce", {
-    assertOwned: async () => {},
     readText: async () => "baseline-nonce",
     writeText: async () => {
       throw new Error("xclip exited")
@@ -664,6 +680,7 @@ test("restoration failure overrides a supported callback result", async () => {
     transaction(
       async () => ({ pass: true, observation: { outcome: "supported", evidence: "behavior" } }),
       () => {},
+      async () => {},
     ),
   ).rejects.toThrow("Owned clipboard restoration failed: xclip exited")
 })

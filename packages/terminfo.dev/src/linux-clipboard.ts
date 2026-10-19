@@ -56,6 +56,7 @@ export interface LinuxClipboardAdapter {
   withClipboardFixture(
     work: Parameters<NonNullable<TermContext["withClipboardFixture"]>>[0],
     trace: (event: ClipboardTraceEvent) => void,
+    verify: () => Promise<void>,
   ): Promise<ProbeResult>
   dispose(): Promise<void>
 }
@@ -66,31 +67,31 @@ type Trace = (event: ClipboardTraceEvent) => void
 export function createClipboardTransaction(
   baseline: string,
   io: {
-    assertOwned(): Promise<void>
-    readText(trace: Trace, kind?: ClipboardTraceEvent["kind"]): Promise<string>
-    writeText(text: string, trace: Trace, kind?: ClipboardTraceEvent["kind"]): Promise<void>
+    readText(trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<string>
+    writeText(text: string, trace: Trace, kind: ClipboardTraceEvent["kind"], verify: () => Promise<void>): Promise<void>
   },
 ): LinuxClipboardAdapter["withClipboardFixture"] {
   let busy = false
-  return async (work, trace) => {
+  return async (work, trace, verify) => {
     if (busy) throw new Error("Owned clipboard transaction cannot nest or overlap")
     busy = true
     let result: ProbeResult | undefined
     let failure: unknown
     try {
-      await io.assertOwned()
-      if ((await io.readText(trace)) !== baseline) throw new Error("Owned clipboard baseline changed before callback")
+      await verify()
+      if ((await io.readText(trace, "clipboard-read", verify)) !== baseline)
+        throw new Error("Owned clipboard baseline changed before callback")
       const fixture: ClipboardFixture = {
-        readText: () => io.readText(trace),
-        writeText: (text) => io.writeText(text, trace),
+        readText: () => io.readText(trace, "clipboard-read", verify),
+        writeText: (text) => io.writeText(text, trace, "clipboard-write", verify),
       }
       result = await work(fixture)
     } catch (error) {
       failure = error
     } finally {
       try {
-        await io.writeText(baseline, trace, "clipboard-restore")
-        if ((await io.readText(trace, "clipboard-verify")) !== baseline) {
+        await io.writeText(baseline, trace, "clipboard-restore", verify)
+        if ((await io.readText(trace, "clipboard-verify", verify)) !== baseline) {
           throw new Error("Owned clipboard restoration verification failed")
         }
       } catch (error) {
@@ -597,10 +598,14 @@ export async function createLinuxClipboardAdapter(
       length: Buffer.byteLength(text),
       ...(helperPid && { helperPid }),
     })
-  async function readText(trace: Trace, kind: ClipboardTraceEvent["kind"] = "clipboard-read"): Promise<string> {
+  async function readText(
+    trace: Trace,
+    kind: ClipboardTraceEvent["kind"],
+    verify: () => Promise<void>,
+  ): Promise<string> {
     const at = new Date().toISOString()
     try {
-      await assertOwned()
+      await verify()
       const text = await command(helperExe, ["-quiet", "-selection", "clipboard", "-o"], env)
       trace({ kind, at, sha256: digest(text), length: Buffer.byteLength(text) })
       return text
@@ -612,11 +617,12 @@ export async function createLinuxClipboardAdapter(
   async function writeText(
     text: string,
     trace: Trace,
-    kind: ClipboardTraceEvent["kind"] = "clipboard-write",
+    kind: ClipboardTraceEvent["kind"],
+    verify: () => Promise<void>,
   ): Promise<void> {
     const at = new Date().toISOString()
     try {
-      await assertOwned()
+      await verify()
     } catch (error) {
       trace({ kind, at, status: "error" })
       throw error
@@ -643,7 +649,7 @@ export async function createLinuxClipboardAdapter(
     for (let attempt = 0; attempt < 30; attempt++) {
       if (childError) throw childError
       try {
-        if ((await readText(trace)) === text) return
+        if ((await readText(trace, "clipboard-read", verify)) === text) return
       } catch (error) {
         if (attempt === 29) throw error
       }
@@ -653,10 +659,10 @@ export async function createLinuxClipboardAdapter(
     }
     throw new Error("Owned xclip writer did not acquire the clipboard selection")
   }
-  if ((await readText(() => {})) !== baseline) {
+  if ((await readText(() => {}, "clipboard-read", assertOwned)) !== baseline) {
     throw new Error("Initial owned clipboard readback differs from generated baseline")
   }
-  const withClipboardFixture = createClipboardTransaction(baseline, { assertOwned, readText, writeText })
+  const withClipboardFixture = createClipboardTransaction(baseline, { readText, writeText })
   const adapter: LinuxClipboardAdapter = {
     profile: receipt.profile,
     config: receipt.config,
