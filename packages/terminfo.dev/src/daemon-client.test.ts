@@ -86,6 +86,31 @@ afterEach(async () => {
   root = undefined
 })
 
+it("keeps the Darwin editor IPC path short despite a long per-user temporary directory", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const longTemporaryDirectory = join(root, "darwin-per-user-cache-".repeat(3))
+  mkdirSync(longTemporaryDirectory)
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!
+  const previousTmpdir = process.env.TMPDIR
+  let launch: ReturnType<typeof createProbeRun> | undefined
+  try {
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    process.env.TMPDIR = longTemporaryDirectory
+    expect(tmpdir()).toBe(longTemporaryDirectory)
+    launch = createProbeRun()
+    // Cursor 3.25.9 derives this socket beneath user-data-dir; Darwin rejects long Unix socket paths.
+    const socket = join(launch.directory, `cursor-${launch.id}`, "3.25-main.sock")
+    expect(Buffer.byteLength(socket)).toBeLessThan(103)
+    expect(launch.id).toMatch(/^[0-9a-f]{32}$/)
+    expect(lstatSync(launch.directory).mode & 0o077).toBe(0)
+  } finally {
+    if (launch) removeProbeRun(launch)
+    Object.defineProperty(process, "platform", platform)
+    if (previousTmpdir === undefined) delete process.env.TMPDIR
+    else process.env.TMPDIR = previousTmpdir
+  }
+})
+
 it("writes one immutable v2 capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run: CollectedProbeRun = {

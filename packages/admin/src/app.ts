@@ -8,7 +8,7 @@
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -59,7 +59,7 @@ interface AppDef {
   bundleId: string
   /** A GUI app whose CLI hands the window to an already-resolved owner process. The owner is proven by
    * the run-scoped marker in its argv, never by the CLI shim's pid, which may exit after the handoff.
-   * No app sets this until its marker is measured on a real host (28018). */
+   * No recipe lands until its marker is measured on that reviewed head on a real host (28018). */
   cliLaunch?: {
     /** The binary the launch spawns. A CLI that hands off and then execs into the GUI belongs here
      * (`wezterm` execs into `wezterm-gui`), so the spawn path and the owner path are separate. */
@@ -73,6 +73,8 @@ interface AppDef {
     markerValue: (run: ProbeRun) => string
     /** The launch arguments, given the serve script and the run-scoped marker value. */
     args: (script: string, markerValue: string) => string[]
+    /** App CLI configuration scoped to this launch, never the operator's profile. */
+    env?: Record<string, string>
     /** Run-scoped files the marker refers to, written once the marker is validated and before the
      * launch. A marker that names a config file needs that file to exist; no other app needs this. */
     prepare?: (run: ProbeRun, markerValue: string) => void
@@ -83,6 +85,50 @@ const BUN = process.execPath // use the same bun that's running us
 
 /** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
 const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
+
+function prepareEditorFixture(run: ProbeRun, markerValue: string, prefix: "cursor" | "vscode"): void {
+  const fixture = join(run.directory, `${prefix}-fixture`)
+  for (const directory of [markerValue, join(run.directory, `${prefix}-extensions`), fixture]) {
+    mkdirSync(directory, { mode: 0o700 })
+  }
+  writeFileSync(
+    join(fixture, "package.json"),
+    JSON.stringify({
+      name: `terminfo-${prefix}-${run.id}`,
+      publisher: "terminfo",
+      version: "0.0.0",
+      engines: { vscode: "^1.74.0" },
+      main: "./extension.cjs",
+      activationEvents: ["onStartupFinished"],
+    }),
+    { flag: "wx", mode: 0o600 },
+  )
+  const terminal = {
+    name: `terminfo-${run.id}`,
+    shellPath: "/bin/bash",
+    shellArgs: [run.scriptPath],
+    cwd: run.directory,
+  }
+  writeFileSync(
+    join(fixture, "extension.cjs"),
+    `const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal(${JSON.stringify(terminal)});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`,
+    { flag: "wx", mode: 0o600 },
+  )
+}
+
+const vscodeAdditionalStatePaths = [
+  ["--shared-data-dir", "vscode-shared"],
+  ["--agent-plugins-dir", "vscode-agent-plugins"],
+  ["--agents-user-data-dir", "vscode-agents-data"],
+  ["--agents-extensions-dir", "vscode-agents-extensions"],
+  ["--crash-reporter-directory", "vscode-crash"],
+] as const
 
 const APPS: AppDef[] = [
   {
@@ -142,6 +188,68 @@ const APPS: AppDef[] = [
         "/bin/bash",
         script,
       ],
+    },
+  },
+  {
+    name: "Cursor",
+    id: "cursor",
+    appPath: "/Applications/Cursor.app",
+    binaryPath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+    launchArgs: () => [],
+    bundleId: "com.todesktop.230313mzl4w4u92",
+    cliLaunch: {
+      spawnPath: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
+      executablePath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
+      markerFlag: "--user-data-dir",
+      markerValue: (run) => join(run.directory, `cursor-${run.id}`),
+      env: { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" },
+      prepare: (run, markerValue) => prepareEditorFixture(run, markerValue, "cursor"),
+      args: (_script, markerValue) => {
+        const directory = dirname(markerValue)
+        return [
+          "--new-window",
+          "--classic",
+          "--user-data-dir",
+          markerValue,
+          "--extensions-dir",
+          join(directory, "cursor-extensions"),
+          "--extensionDevelopmentPath",
+          join(directory, "cursor-fixture"),
+        ]
+      },
+    },
+  },
+  {
+    name: "VS Code",
+    id: "com.microsoft.VSCode",
+    appPath: "/Applications/Visual Studio Code.app",
+    binaryPath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+    launchArgs: () => [],
+    bundleId: "com.microsoft.VSCode",
+    cliLaunch: {
+      spawnPath: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+      executablePath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
+      markerFlag: "--user-data-dir",
+      markerValue: (run) => join(run.directory, `vscode-${run.id}`),
+      prepare: (run, markerValue) => {
+        prepareEditorFixture(run, markerValue, "vscode")
+        for (const [, directory] of vscodeAdditionalStatePaths) {
+          mkdirSync(join(run.directory, directory), { mode: 0o700 })
+        }
+      },
+      args: (_script, markerValue) => {
+        const directory = dirname(markerValue)
+        return [
+          "--new-window",
+          "--user-data-dir",
+          markerValue,
+          "--extensions-dir",
+          join(directory, "vscode-extensions"),
+          ...vscodeAdditionalStatePaths.flatMap(([flag, path]) => [flag, join(directory, path)]),
+          "--extensionDevelopmentPath",
+          join(directory, "vscode-fixture"),
+        ]
+      },
     },
   },
   {
@@ -232,7 +340,7 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     const child = spawn(app.cliLaunch.spawnPath, app.cliLaunch.args(run.scriptPath, marker.value), {
       detached: true,
       stdio: "ignore",
-      env: { ...process.env },
+      env: { ...process.env, ...app.cliLaunch.env },
     })
     child.unref()
     return {
@@ -522,10 +630,14 @@ async function runApp(
         cleanupErrors.push(`window: ${String(err)}`)
       }
     }
-    try {
-      removeProbeRun(run)
-    } catch (err) {
-      cleanupErrors.push(`script: ${String(err)}`)
+    if (outcome.success && cleanupErrors.length === 0) {
+      try {
+        removeProbeRun(run)
+      } catch (err) {
+        cleanupErrors.push(`script: ${String(err)}`)
+      }
+    } else {
+      console.error(`  Retained private failed ${app.name} launch directory: ${run.directory}`)
     }
     if (cleanupErrors.length > 0) {
       outcome = {
@@ -560,7 +672,7 @@ export async function handleApp(
   let appsToRun = APPS
   if (terminal) {
     const name = terminal.toLowerCase()
-    appsToRun = APPS.filter((app) => app.id === name || app.name.toLowerCase() === name)
+    appsToRun = APPS.filter((app) => app.id.toLowerCase() === name || app.name.toLowerCase() === name)
     if (appsToRun.length === 0) {
       throw new Error(`Unknown terminal. Available: ${APPS.map((a) => a.id).join(", ")}`)
     }

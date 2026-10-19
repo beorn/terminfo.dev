@@ -46,7 +46,8 @@ export interface ProbeRun {
 }
 
 export function createProbeRun(): ProbeRun {
-  const directory = mkdtempSync(join(tmpdir(), "terminfo-run-"))
+  // Darwin's per-user tmpdir can exceed an editor's Unix-socket budget once its run marker is appended.
+  const directory = mkdtempSync(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "terminfo-run-"))
   return { id: randomBytes(16).toString("hex"), directory, scriptPath: join(directory, "serve.sh") }
 }
 

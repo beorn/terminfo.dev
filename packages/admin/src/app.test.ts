@@ -6,7 +6,8 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn } from "node:child_process"
-import { writeFileSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
+import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp, stopLaunchedApp, type AppLaunch } from "./app.ts"
 import {
@@ -33,6 +34,7 @@ vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitR
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(() => true),
+  mkdirSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
   writeFileSync: vi.fn(),
 }))
@@ -214,6 +216,143 @@ describe("WezTerm cli-process arm", () => {
   })
 })
 
+// Editor recipes deliver a terminal through the extension API without workspace
+// tasks or input synthesis. The canonical mixed-case VS Code id also exercises selection.
+test.each([
+  { input: "cursor", prefix: "cursor", appPath: "/Applications/Cursor.app", executable: "Cursor", helper: "cursor" },
+  {
+    input: "com.microsoft.VSCode",
+    prefix: "vscode",
+    appPath: "/Applications/Visual Studio Code.app",
+    executable: "Code",
+    helper: "code",
+  },
+])(
+  "$input prepares a private editor fixture and forwards the GUI owner assertion",
+  async ({ input, prefix, appPath, executable, helper }) => {
+    const ownedWindow = {
+      provider: "cli-process" as const,
+      ownerPid: 778,
+      tty: "/dev/ttys009",
+      executablePath: `${appPath}/Contents/MacOS/${executable}`,
+      marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },
+    }
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    await handleApp(input, {})
+    expect(spawn).toHaveBeenCalledTimes(1)
+    const [spawnPath, args, options] = vi.mocked(spawn).mock.calls[0]!
+    expect(spawnPath).toBe(`${appPath}/Contents/Resources/app/bin/${helper}`)
+    expect(args).toEqual([
+      "--new-window",
+      ...(prefix === "cursor" ? ["--classic"] : []),
+      "--user-data-dir",
+      ownedWindow.marker.value,
+      "--extensions-dir",
+      `/private/run/${prefix}-extensions`,
+      ...(prefix === "vscode"
+        ? [
+            "--shared-data-dir",
+            "/private/run/vscode-shared",
+            "--agent-plugins-dir",
+            "/private/run/vscode-agent-plugins",
+            "--agents-user-data-dir",
+            "/private/run/vscode-agents-data",
+            "--agents-extensions-dir",
+            "/private/run/vscode-agents-extensions",
+            "--crash-reporter-directory",
+            "/private/run/vscode-crash",
+          ]
+        : []),
+      "--extensionDevelopmentPath",
+      `/private/run/${prefix}-fixture`,
+    ])
+    expect(options?.detached).toBe(true)
+    expect(options?.stdio).toBe("ignore")
+    const env = options?.env
+    expect(env?.HOME).toBe(process.env.HOME)
+    if (prefix === "cursor") expect(env?.CURSOR_CLI_BLOCK_CURSOR_AGENT).toBe("true")
+    if (prefix === "vscode") {
+      const cursorKeys = Object.keys(env ?? {})
+        .filter((key) => key.startsWith("CURSOR_"))
+        .sort()
+      expect(cursorKeys).toEqual(
+        Object.keys(process.env)
+          .filter((key) => key.startsWith("CURSOR_"))
+          .sort(),
+      )
+      expect(cursorKeys.filter((key) => env?.[key] !== process.env[key])).toEqual([])
+    }
+    const privateDirectories = [
+      `${prefix}-private-run`,
+      `${prefix}-extensions`,
+      `${prefix}-fixture`,
+      ...(prefix === "vscode"
+        ? ["vscode-shared", "vscode-agent-plugins", "vscode-agents-data", "vscode-agents-extensions", "vscode-crash"]
+        : []),
+    ]
+    expect(vi.mocked(mkdirSync).mock.calls).toEqual(
+      privateDirectories.map((directory) => [`/private/run/${directory}`, { mode: 0o700 }]),
+    )
+    expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
+      executablePath: ownedWindow.executablePath,
+      marker: ownedWindow.marker,
+      tty: ownedWindow.tty,
+    })
+    const writes = vi.mocked(writeFileSync).mock.calls
+    expect(writes.every(([path]) => String(path).startsWith("/private/run/"))).toBe(true)
+    const manifest = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/package.json`))
+    expect(manifest?.[2]).toEqual({ flag: "wx", mode: 0o600 })
+    expect(manifest?.[1]).toBe(
+      JSON.stringify({
+        name: `terminfo-${prefix}-private-run`,
+        publisher: "terminfo",
+        version: "0.0.0",
+        engines: { vscode: "^1.74.0" },
+        main: "./extension.cjs",
+        activationEvents: ["onStartupFinished"],
+      }),
+    )
+    const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
+    expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
+    expect(script?.[1]).toBe(`const vscode = require("vscode");
+exports.activate = (context) => {
+  const terminal = vscode.window.createTerminal({"name":"terminfo-private-run","shellPath":"/bin/bash","shellArgs":["/private/run/serve.sh"],"cwd":"/private/run"});
+  context.subscriptions.push(terminal);
+  terminal.show();
+};
+`)
+    const terminal = { show: vi.fn(), dispose: vi.fn() }
+    const createTerminal = vi.fn(() => terminal)
+    const exported: { activate?: (context: { subscriptions: unknown[] }) => void } = {}
+    runInNewContext(String(script?.[1]), {
+      exports: exported,
+      require: (id: string) => {
+        if (id !== "vscode") throw new Error(`Unexpected fixture import: ${id}`)
+        return { window: { createTerminal } }
+      },
+    })
+    const subscriptions: unknown[] = []
+    expect(typeof exported.activate).toBe("function")
+    exported.activate!({ subscriptions })
+    expect(createTerminal).toHaveBeenCalledWith({
+      name: "terminfo-private-run",
+      shellPath: "/bin/bash",
+      shellArgs: ["/private/run/serve.sh"],
+      cwd: "/private/run",
+    })
+    expect(terminal.show).toHaveBeenCalledOnce()
+    expect(subscriptions).toEqual([terminal])
+    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+      process: expect.objectContaining({
+        ownerPid: 778,
+        executablePath: ownedWindow.executablePath,
+        marker: ownedWindow.marker,
+      }),
+    })
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
+  },
+)
+
 describe("Terminal.app app collection", () => {
   test("attaches measured receipt and trace before the single exclusive raw write", async () => {
     await handleApp("terminal-app", {})
@@ -251,6 +390,28 @@ describe("Terminal.app app collection", () => {
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(window)
     expect(removeProbeRun).toHaveBeenCalledOnce()
   })
+
+  test.each(["daemon startup", "owned close"])(
+    "retains the private launch directory after %s failure",
+    async (failure) => {
+      if (failure === "daemon startup") vi.mocked(findOwnedDaemon).mockResolvedValueOnce(null)
+      else {
+        vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
+          throw new Error("owned close failed")
+        })
+      }
+      const error = vi.spyOn(console, "error").mockImplementation(() => {})
+      try {
+        await expect(handleApp("terminal-app", {})).rejects.toThrow(
+          failure === "daemon startup" ? /Owned daemon did not register/ : /owned close failed/,
+        )
+        expect(removeProbeRun).not.toHaveBeenCalled()
+        expect(error.mock.calls.flat().join("\n")).toContain("/private/run")
+      } finally {
+        error.mockRestore()
+      }
+    },
+  )
 
   test("a failed receipt refuses raw write and closes only the newly owned window", async () => {
     vi.mocked(captureTerminalAppReceipt).mockImplementationOnce(() => {
