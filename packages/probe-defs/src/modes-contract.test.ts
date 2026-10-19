@@ -114,9 +114,9 @@ const MODES_CONTRACT: GroupContract = [
   },
   {
     id: "modes.decsscls",
-    expected: "inconclusive",
+    expected: "decided",
     claim:
-      "DECSSCLS: the geometry-derived burst and both frame pairs are retained with their timing, but no assertion is made because an encoded frame ref cannot separate scrolling from repaint",
+      "DECSSCLS: with a stable jump control, a target pair whose pixel region moved while its first frame landed inside the measured throttled window scrolls at 9 lines/s, and an identical pair inside that window ignores the rate",
   },
 ]
 
@@ -160,11 +160,24 @@ function modesTermContext(id: string) {
   }
   if (id === "modes.decsscls") {
     let calls = 0
+    const rectangle = { x: 0, y: 0, width: 800, height: 440 }
     return replayContext(new Map(), {
+      captureGeometry: {
+        geometry: { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 },
+        source: "measured by complete raster calibration",
+      },
       capture: async ({ role, label }) => {
         calls += 1
         const ref = label.includes("jump") ? "jump-settled" : label.endsWith("t0") ? "slow-t0" : "slow-t1"
-        return { role, label, capturedAt: calls, ref }
+        return {
+          role,
+          label,
+          capturedAt: calls,
+          ref,
+          regionDigest: ref,
+          pixelsDigest: `whole:${ref}`,
+          regionRectangle: rectangle,
+        }
       },
     })
   }

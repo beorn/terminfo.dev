@@ -6,7 +6,7 @@
  */
 import { expect, test, vi } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
+import type { CaptureRectangle, CaptureRequest, ObservationFrame, TermContext, TermlessContext } from "./types.ts"
 
 function captureContext(rows: number, cols: number, writes: string[], frames: ObservationFrame[]): TermContext {
   return {
@@ -608,17 +608,59 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
   }
 })
 
+const DECSSCLS_GEOMETRY = { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 } as const
+const DECSSCLS_RECTANGLE = { x: 0, y: 0, width: 800, height: 440 } as const
+const DECSSCLS_WITNESS = { top: 1, left: 1, bottom: 22, right: 80 } as const
+
+interface DecssclsFixture {
+  /** Raw region digest per capture, in capture order; defaults to the frame ref. */
+  cells?: readonly (string | undefined)[]
+  /** The screen rectangle each capture was cropped from; defaults to one shared rectangle. */
+  rectangles?: readonly CaptureRectangle[]
+  /** Capture index that answers with a text-cells frame, as a text arm does. */
+  textCellsAt?: number
+  /** Capture index that answers with no digests at all, as a broken collector does. */
+  missingDigestAt?: number
+  /** The requests the probe handed the capture adapter, in capture order. */
+  requests?: CaptureRequest[]
+}
+
 function decssclsContext(
   refs: readonly string[],
   writes: string[],
   frames: ObservationFrame[],
   rows = 24,
+  fixture: DecssclsFixture = {},
 ): TermContext {
   const context = captureContext(rows, 80, writes, frames)
+  context.captureGeometry = {
+    geometry: { ...DECSSCLS_GEOMETRY },
+    source: "measured by complete raster calibration",
+  }
   let index = 0
-  context.capture = async ({ role, label }) => {
-    const frame = { role, label, capturedAt: index + 1, ref: refs[index] ?? "sha256:missing" }
+  context.capture = async (request) => {
+    fixture.requests?.push(request)
+    const position = index
     index += 1
+    const ref = refs[position] ?? "sha256:missing"
+    const base = { role: request.role, label: request.label, capturedAt: position + 1, ref }
+    const frame: ObservationFrame =
+      position === fixture.textCellsAt
+        ? {
+            ...base,
+            kind: "text-cells",
+            cellDigest: ref,
+            frameDigest: ref,
+            cellRectangle: { top: 1, left: 1, bottom: Math.max(1, rows - 2), right: 80 },
+          }
+        : position === fixture.missingDigestAt
+          ? base
+          : {
+              ...base,
+              regionDigest: fixture.cells?.[position] ?? ref,
+              pixelsDigest: `whole:${ref}`,
+              regionRectangle: fixture.rectangles?.[position] ?? DECSSCLS_RECTANGLE,
+            }
     frames.push(frame)
     return frame
   }
@@ -631,72 +673,193 @@ function decsscls() {
   return definition
 }
 
-test("modes.decsscls retains a changing target pair without asserting scrolling", async () => {
+/** Answer the four `performance.now()` reads of the two phases, so the first-frame timing is exact. */
+async function withDecssclsClock(
+  controlFirstMs: number,
+  targetFirstMs: number,
+  work: () => Promise<void>,
+): Promise<void> {
+  const now = vi.spyOn(performance, "now")
+  const ticks = [0, controlFirstMs, 100_000, 100_000 + targetFirstMs]
+  now.mockImplementation(() => ticks.shift() ?? 0)
+  try {
+    await work()
+  } finally {
+    now.mockRestore()
+  }
+}
+
+test("modes.decsscls grades text moving through the witness region inside the window as supported", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow-t0", "slow-t1"], writes, frames))
+  const requests: CaptureRequest[] = []
+  const result = await decsscls().term!(
+    decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+      cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      requests,
+    }),
+  )
   expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
+    outcome: "supported",
     evidence: "pixels",
     screenshotRef: "slow-t1",
   })
-  expect(result.assertions).toBeUndefined()
+  expect(result.observation?.note).toContain("moved through the witness region")
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
   expect(frames).toHaveLength(4)
+  // Every capture names the witness cells AND the measured geometry: pixels only, never ctx.cells.
+  for (const request of requests) {
+    expect(request.cells).toEqual(DECSSCLS_WITNESS)
+    expect(request.pixelGeometry).toEqual(DECSSCLS_GEOMETRY)
+  }
+  expect(writes.some((write) => write.includes("\x1b[?4h"))).toBe(true)
+  expect(writes.some((write) => write.includes("\x1b[?4l"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[9 p"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[0 p"))).toBe(true)
-  expect(writes.some((write) => write.includes("line 32"))).toBe(true)
+  expect(writes.some((write) => write.includes("line 40"))).toBe(true)
   expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
 })
 
 test("modes.decsscls overruns whatever height the context measured", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow-t0", "slow-t1"], writes, frames, 50))
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
-  expect(writes.some((write) => write.includes("line 58"))).toBe(true)
+  const result = await decsscls().term!(
+    decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 50, {
+      cells: ["jump", "jump", "slow-t0", "slow-t1"],
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(writes.some((write) => write.includes("line 66"))).toBe(true)
 })
 
-test("modes.decsscls stays inconclusive when the first target frame arrives after a throttled burst could finish", async () => {
+test("modes.decsscls does not grade unsupported when an honoring first frame lands at 1.5 s", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const now = vi.spyOn(Date, "now")
-  now.mockReturnValueOnce(0).mockReturnValueOnce(2).mockReturnValueOnce(1000).mockReturnValueOnce(6000)
-  try {
-    const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow", "slow"], writes, frames))
+  await withDecssclsClock(40, 1500, async () => {
+    const result = await decsscls().term!(
+      decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+        cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      }),
+    )
+    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+    // 24 rows leave 17 scrolled lines: ceil(17 / 9 * 1000) = 1889 ms, so 1.5 s is inside it.
+    expect(result.response).toContain('"timingBoundMs":1739')
+  })
+})
+
+test("modes.decsscls stays inconclusive when the first target frame lands outside the throttled window", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  await withDecssclsClock(40, 2400, async () => {
+    const result = await decsscls().term!(
+      decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+        cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      }),
+    )
     expect(result.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       evidence: "pixels",
     })
-    expect(result.assertions).toBeUndefined()
-  } finally {
-    now.mockRestore()
-  }
+    expect(result.observation?.note).toContain("outside the 1889 ms throttled window")
+    expect(result.assertions).toMatchObject([{ kind: "positive" }])
+  })
 })
 
-test("modes.decsscls keeps an identical target pair unasserted too", async () => {
+test("modes.decsscls grades an identical target pair inside the window as unsupported", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const result = await decsscls().term!(decssclsContext(["jump", "jump", "slow", "slow"], writes, frames))
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "pixels",
-  })
-  expect(result.assertions).toBeUndefined()
+  const result = await decsscls().term!(
+    decssclsContext(["jump-t0", "jump-t1", "slow", "slow"], writes, frames, 24, {
+      cells: ["jump", "jump", "slow", "slow"],
+    }),
+  )
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(result.observation?.note).toContain("scrolled regardless of the rate")
+  expect(result.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test("modes.decsscls stays inconclusive when the jump control is still painting", async () => {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const result = await decsscls().term!(decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames))
+  const result = await decsscls().term!(
+    decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+      cells: ["jump-t0", "jump-t1", "slow-t0", "slow-t1"],
+    }),
+  )
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "pixels",
   })
-  expect(result.assertions).toBeUndefined()
+  expect(result.observation?.note).toContain("jump control moved between two frames")
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+})
+
+test("modes.decsscls stays inconclusive when the pair was cropped from different rectangles", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const shifted = { ...DECSSCLS_RECTANGLE, y: DECSSCLS_RECTANGLE.y + 26 }
+  const result = await decsscls().term!(
+    decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, {
+      cells: ["jump", "jump", "slow-t0", "slow-t1"],
+      rectangles: [DECSSCLS_RECTANGLE, DECSSCLS_RECTANGLE, DECSSCLS_RECTANGLE, shifted],
+    }),
+  )
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "pixels",
+  })
+  expect(result.observation?.note).toContain("cropped from different rectangles")
+  expect(result.assertions).toMatchObject([{ kind: "positive" }])
+})
+
+test("modes.decsscls refuses a text-cells frame instead of grading a buffer", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  await expect(
+    decsscls().term!(
+      decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, { textCellsAt: 2 }),
+    ),
+  ).rejects.toThrow(/returned a text-cells frame/)
+  expect(writes.some((write) => write.includes("\x1b[?1049l"))).toBe(true)
+})
+
+test("modes.decsscls raises on a pixel frame with no digest for the requested cells", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  await expect(
+    decsscls().term!(
+      decssclsContext(["jump-t0", "jump-t1", "slow-t0", "slow-t1"], writes, frames, 24, { missingDigestAt: 0 }),
+    ),
+  ).rejects.toThrow(/no digest for the requested cells/)
+})
+
+test("modes.decsscls names the missing pixel capture on a text-only context", async () => {
+  const writes: string[] = []
+  const frames: ObservationFrame[] = []
+  const context = captureContext(24, 80, writes, frames)
+  // A text arm installs the cells adapter and no pixel capture at all.
+  context.capture = undefined
+  context.cells = async ({ role, label }) => {
+    const frame: ObservationFrame = {
+      kind: "text-cells",
+      role,
+      label,
+      capturedAt: 1,
+      ref: "sha256:text",
+      cellDigest: "cells",
+      frameDigest: "frame",
+      cellRectangle: { top: 1, left: 1, bottom: 22, right: 80 },
+    }
+    frames.push(frame)
+    return frame
+  }
+  const result = await decsscls().term!(context)
+  expect(result.notTested).toMatchObject({ reason: "no-semantic-observable" })
+  expect(result.note).toContain("no pixel capture callback")
+  expect(frames).toEqual([])
 })
 
 test("modes.decsscls names the missing capture instead of claiming presentation timing", async () => {
