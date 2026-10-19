@@ -42,7 +42,9 @@ test("hosted editor installer reports both digests before installing altered arc
     }),
   ).rejects.toThrow(`expected 03c6fb01e2200b17d2bf4259c7b66c08c9d505760d2a331e26ebfb3193bbf763, actual ${actual}`)
   expect(launched.map((argv) => argv[0])).toEqual(["curl"])
-  expect(JSON.parse(retained.get("/runner/measurement-artifacts/editor-installer.json")!).actualSha256).toBe(actual)
+  expect(JSON.parse(retained.get("/runner/measurement-artifacts/editor-installer.json")!)).toMatchObject({
+    actualSha256: actual,
+  })
 })
 
 // Existing source-launch tests cannot observe workflow command ordering or artifact retention.
@@ -108,7 +110,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   expect(command).toContain("collect-on-pty")
   expect(JSON.stringify([...writes])).not.toContain(secret)
   const retained = JSON.parse(writes.get("/runner/measurement-artifacts/editor-launch.json")!)
-  expect(retained.terminalWindow).toEqual(window)
+  expect(retained).toHaveProperty("terminalWindow", window)
   const cleanup = workflow.split("<<'HOSTED_EDITOR_CLOSE'\n")[1]?.split("\n          HOSTED_EDITOR_CLOSE")[0]
   expect(cleanup, "the production owned close caller exists").toBeDefined()
   const closed: unknown[] = []

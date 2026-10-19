@@ -161,11 +161,11 @@ const macRow = (id: string): CollectionContext => ({
   route: "hosted-workflow",
   // The workflow declares `on: workflow_dispatch:` with NO inputs, so a dispatch takes no -f:
   // the printed `-f cli_version=<ver>` named a flag the workflow does not accept (and the
-  // "macos-terminal-measurement-artifacts" upload never existed — the matrix uploads four
-  // per-app artifacts named macos-<app>-<run-id>-<attempt>, macos-measurement.yml:289).
+  // "macos-terminal-measurement-artifacts" upload never existed — the matrix uploads
+  // per-app artifacts named macos-<app>-<run-id>-<attempt>).
   command:
     "gh workflow run macos-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
-    "gh run download <run-id> --repo beorn/terminfo.dev for the four macos-<app>-<run-id>-<attempt> artifacts",
+    "gh run download <run-id> --repo beorn/terminfo.dev for the macos-<app>-<run-id>-<attempt> artifacts",
   requires: null,
   sourceRun: null,
   uncollectable: null,
