@@ -267,7 +267,9 @@ export function kittySourceProof(
   if (stat.isFile()) return { kind: "archive", sha256: sha256(readFileSync(sourcePath)) }
   if (stat.isDirectory()) {
     const narHash = execFileSync("nix", ["hash", "path", sourcePath], { encoding: "utf8" }).trim()
-    if (!narHash.startsWith("sha256-")) throw new Error(`No NAR hash for Kitty source directory ${sourcePath}`)
+    if (!/^sha256-[A-Za-z0-9+/]{43}=$/.test(narHash)) {
+      throw new Error(`No NAR hash for Kitty source directory ${sourcePath}: ${narHash}`)
+    }
     return { kind: "directory", narHash }
   }
   throw new Error(`Kitty source path is neither an archive file nor a source directory: ${sourcePath}`)

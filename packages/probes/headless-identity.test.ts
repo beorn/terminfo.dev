@@ -185,6 +185,20 @@ test("kitty source proof: archive file keeps flat sha256, directory yields its N
     const missing = run(join(tmp, "absent"))
     expect(missing.status).not.toBe(0)
     expect(missing.stderr).toMatch(/Kitty source path is neither/)
+    const fakeBin = join(tmp, "bin")
+    mkdirSync(fakeBin, { recursive: true })
+    writeFileSync(join(fakeBin, "nix"), "#!/bin/sh\necho sha256-not-a-real-hash\n", { mode: 0o755 })
+    const malformed = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `import { kittySourceProof } from ${JSON.stringify(fixture.identityHref)};
+         kittySourceProof(${JSON.stringify(tree)})`,
+      ],
+      { encoding: "utf8", env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ""}` } },
+    )
+    expect(malformed.status).not.toBe(0)
+    expect(malformed.stderr).toMatch(/No NAR hash for Kitty source directory/)
   } finally {
     // raw-delete-allow: this test's own mkdtemp scratch root
     rmSync(tmp, { recursive: true, force: true })
