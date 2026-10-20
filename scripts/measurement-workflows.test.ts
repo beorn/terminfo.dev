@@ -141,15 +141,26 @@ test.each(["warp", "iterm2"] as const)(
         screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof",
       })
       const census = JSON.parse(readFileSync(join(out, `${prefix}-windows.json`), "utf8"))
-      expect(JSON.parse(census.stdout.text).windows).toEqual([{ owner: "Warp", pid: 4242, layer: 0 }])
-      expect(census.stdout.omittedBytes).toBe(0)
+      expect(census).toHaveProperty(
+        "stdout.text",
+        JSON.stringify({ windows: [{ owner: "Warp", pid: 4242, layer: 0 }] }),
+      )
+      expect(census).toHaveProperty("stdout.omittedBytes", 0)
       if (appId === "warp") {
-        expect(JSON.parse(readFileSync(join(out, "warp-processes.json"), "utf8")).stdout.text).toContain("4242")
+        expect(JSON.parse(readFileSync(join(out, "warp-processes.json"), "utf8"))).toHaveProperty(
+          "stdout.text",
+          expect.stringContaining("4242"),
+        )
       }
       const log = JSON.parse(readFileSync(join(out, `${prefix}-log.json`), "utf8"))
-      expect(log.argv.at(-1)).toContain(appId === "warp" ? 'process == "stable"' : 'process == "appleeventsd"')
-      expect(log.stdout.text).toBe("[]")
-      expect(summary.failures).toEqual([])
+      expect(log).toHaveProperty(
+        "argv",
+        expect.arrayContaining([
+          expect.stringContaining(appId === "warp" ? 'process == "stable"' : 'process == "appleeventsd"'),
+        ]),
+      )
+      expect(log).toHaveProperty("stdout.text", "[]")
+      expect(summary).toHaveProperty("failures", [])
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
