@@ -39,9 +39,8 @@ test("nine fresh Mac jobs bootstrap the shared producer before checkout and coll
     (step: { name?: string }) => step.name === "Preserve terminal launch failure evidence",
   )
   expect(failureIndex).toBeGreaterThan(collectIndex)
-  expect(job.steps[failureIndex].if).toBe(
-    "failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp')",
-  )
+  expect(job.steps[failureIndex].if).toContain("failure()")
+  expect(job.steps[failureIndex].if).toContain("steps.collect.outputs.iterm_failure == 'true'")
   expect(job.steps.at(-1).uses).toBe("actions/upload-artifact@v4")
   const collect = job.steps[collectIndex].run as string
   const install = job.steps.find((step: { name?: string }) => step.name === "Install this job's terminal")

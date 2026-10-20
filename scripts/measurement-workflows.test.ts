@@ -206,12 +206,12 @@ test.each([
         )
       }
       const log = JSON.parse(readFileSync(join(out, `${prefix}-log.json`), "utf8"))
-      expect(log.argv).toContain("2026-10-20 02:00:00+0000")
+      expect(log).toHaveProperty("argv", expect.arrayContaining(["2026-10-20 02:00:00+0000"]))
       expect(log).toHaveProperty("stdout.text", "[]")
       if (editor && !missingLaunch) expect(summary).toHaveProperty("editorLaunch", editorLaunch)
       if (appId === "cmux") expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
       if (missingLaunch) {
-        expect(summary.failures).toEqual([expect.objectContaining({ label: "launch-record" })])
+        expect(summary).toHaveProperty("failures", [expect.objectContaining({ label: "launch-record" })])
       } else expect(summary).toHaveProperty("failures", [])
     } finally {
       rmSync(directory, { recursive: true, force: true })
