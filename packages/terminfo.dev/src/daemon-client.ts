@@ -1,5 +1,5 @@
 /** Shared request boundary for the CLI and admin daemon collectors. */
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import {
   lstatSync,
   mkdirSync,
@@ -174,7 +174,41 @@ export async function requestDaemonProbe(daemon: DaemonRegistration, request?: D
     signal: AbortSignal.timeout(120_000),
   })
   if (!response.ok) {
-    throw new Error(`Daemon on port ${daemon.port}: HTTP ${response.status}`)
+    const raw = Buffer.from(await response.arrayBuffer())
+    let cause: Error
+    try {
+      const body: unknown = JSON.parse(decodeExactUtf8(raw, "daemon /probe failure"))
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !("name" in body) ||
+        !("error" in body) ||
+        typeof body.name !== "string" ||
+        typeof body.error !== "string"
+      ) {
+        throw new Error("Collector failure response lacks its name and error")
+      }
+      cause = new Error(body.error)
+      cause.name = body.name
+    } catch (error) {
+      cause = new Error(
+        `Invalid collector failure response: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      )
+    }
+    const context = `Daemon on port ${daemon.port}: HTTP ${response.status}: ${cause.name}: ${cause.message}`
+    let retained: { path: string; sha256: string }
+    try {
+      retained = retainDaemonProbeBytes(raw)
+    } catch (error) {
+      throw new Error(
+        `${context}; cannot retain original HTTP response: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      )
+    }
+    throw new Error(`${context}; retained original HTTP response ${retained.path}; SHA256 ${retained.sha256}`, {
+      cause,
+    })
   }
   return response
 }
@@ -209,7 +243,23 @@ export async function readRetainedDaemonProbeResponse(
   } = {},
 ): Promise<{ run: CollectedProbeRun; path: string; sha256: string }> {
   const decoded = await readRawDaemonProbeResponse(response, options.receipt)
-  const directory = options.directory ?? join(homedir(), ".terminfo-dev", "http-responses")
+  const { path, sha256 } = retainDaemonProbeBytes(Buffer.from(decoded.raw, "utf8"), options.directory)
+  return {
+    run: {
+      ...decoded.run,
+      rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": sha256 },
+    },
+    path,
+    sha256,
+  }
+}
+
+/** The same immutable response writer retains successful runs and failed HTTP evidence. */
+function retainDaemonProbeBytes(
+  raw: Buffer,
+  directory = join(homedir(), ".terminfo-dev", "http-responses"),
+): { path: string; sha256: string } {
+  const sha256 = createHash("sha256").update(raw).digest("hex")
   const parent = dirname(directory)
   try {
     mkdirSync(parent, { recursive: true, mode: 0o700 })
@@ -233,9 +283,9 @@ export async function readRetainedDaemonProbeResponse(
   if (!directoryInfo.isDirectory() || (directoryInfo.mode & 0o077) !== 0) {
     throw new Error(`HTTP response directory ${directory} is not a private ordinary directory (mode 0700)`)
   }
-  const path = join(directory, decoded.sha256)
+  const path = join(directory, sha256)
   try {
-    writeFileSync(path, decoded.raw, { flag: "wx", mode: 0o600 })
+    writeFileSync(path, raw, { flag: "wx", mode: 0o600 })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw new Error(
@@ -248,16 +298,12 @@ export async function readRetainedDaemonProbeResponse(
   if (!info.isFile() || (info.mode & 0o077) !== 0) {
     throw new Error(`HTTP response artifact ${path} is not a private ordinary file (mode 0600)`)
   }
-  if (!readFileSync(path).equals(Buffer.from(decoded.raw, "utf8"))) {
-    throw new Error(`HTTP response artifact ${path} has different bytes for digest ${decoded.sha256}`)
+  if (!readFileSync(path).equals(raw)) {
+    throw new Error(`HTTP response artifact ${path} has different bytes for digest ${sha256}`)
   }
   return {
-    run: {
-      ...decoded.run,
-      rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
-    },
     path,
-    sha256: decoded.sha256,
+    sha256,
   }
 }
 

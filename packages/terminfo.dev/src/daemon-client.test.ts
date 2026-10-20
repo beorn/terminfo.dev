@@ -20,7 +20,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
@@ -34,6 +34,11 @@ import {
   saveDaemonProbeRun,
   stopOwnedDaemon,
 } from "./daemon-client.ts"
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>()
+  return { ...actual, homedir: vi.fn(actual.homedir) }
+})
 
 const trustedReceipt = {
   manifest: {
@@ -82,6 +87,7 @@ afterEach(async () => {
   if (server) await new Promise<void>((resolve, reject) => server!.close((err) => (err ? reject(err) : resolve())))
   if (root) rmSync(root, { recursive: true, force: true })
   vi.restoreAllMocks()
+  vi.mocked(homedir).mockReset()
   server = undefined
   root = undefined
 })
@@ -369,6 +375,51 @@ it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", a
   expect(decoded.raw).toBe(raw)
   expect(decoded.sha256).toBe(createHash("sha256").update(raw).digest("hex"))
   await expect(readRawDaemonProbeResponse(new Response(Buffer.from([0xff])), trustedReceipt)).rejects.toThrow(/UTF-8/i)
+})
+
+// Failed collectors have evidence too; malformed bytes must survive without becoming a ProbeRun.
+it.each([
+  {
+    raw: Buffer.from('{"name":"CaptureAcquisitionFailed","error":"owned window 32 could not create image"}\r\n'),
+    cause: "CaptureAcquisitionFailed",
+  },
+  { raw: Buffer.from([0xff, 0x00, 0x0a]), cause: undefined },
+])("retains a failed HTTP response without turning it into a run ($cause)", async ({ raw, cause }) => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  vi.mocked(homedir).mockReturnValue(root)
+  const registration = {
+    runId: "a".repeat(32),
+    pid: 222,
+    port: 0,
+    token: "private-token",
+    terminal: "kitty",
+    terminalVersion: "0.49.1",
+  }
+  const seen: string[] = []
+  server = createServer((req, res) => {
+    seen.push(req.url ?? "")
+    if (req.url === "/info") res.end(JSON.stringify(registration))
+    else {
+      res.statusCode = 500
+      res.end(raw)
+    }
+  })
+  server.listen(0, "127.0.0.1")
+  await once(server, "listening")
+  const address = server.address()
+  if (!address || typeof address === "string") throw new Error("fixture did not bind")
+  registration.port = address.port
+  const failure = await requestDaemonProbe(registration).catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(Error)
+  const message = (failure as Error).message
+  expect(message).toContain("HTTP 500")
+  if (cause) expect(message).toContain(cause)
+  const sha256 = createHash("sha256").update(raw).digest("hex")
+  const path = join(root, ".terminfo-dev", "http-responses", sha256)
+  expect(message).toContain(path)
+  expect(message).toContain(sha256)
+  expect(readFileSync(path)).toEqual(raw)
+  expect(seen).toEqual(["/info", "/probe"])
 })
 
 // The admin's second serialization cannot reconstruct the authenticated HTTP entity body.
