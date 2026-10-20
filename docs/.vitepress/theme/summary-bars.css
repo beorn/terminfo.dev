@@ -1,5 +1,26 @@
 /* Shared summary bar styles — used by home page, baseline pages, terminal pages */
 
+.unmeasured ul {
+  list-style: none;
+  padding: 0;
+}
+.unmeasured li {
+  display: inline;
+}
+.unmeasured li + li::before {
+  content: " · ";
+  color: var(--vp-c-text-3);
+}
+.unmeasured a {
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+}
+.unmeasured a:hover,
+.unmeasured a:focus-visible {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+}
+
 .summary-row {
   display: flex;
   align-items: center;

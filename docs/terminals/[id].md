@@ -114,7 +114,7 @@ const breadcrumbParent = (() => {
 <details class="unmeasured">
   <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
   <ul>
-    <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li>
+    <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id"><a :href="'/' + feature.id.split('.')[0] + '/' + (data.featureDescriptions[feature.id]?.slug ?? feature.id.replace(/\./g, '-'))">{{ feature.name }}</a></li>
   </ul>
 </details>
 
@@ -162,17 +162,8 @@ const breadcrumbParent = (() => {
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p v-if="data.suiteMove.treeMovedPastRelease" class="stale-line">The tree has moved past the release suite; a new collection would mint {{ data.suiteMove.treeSuiteId }}.</p>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
-  <p class="score-detail">Recorded suite: {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} results recorded. A recorded result does not mean its check ran. Results from different suites are not directly comparable.</p>
-  <div v-if="runs.length > 1" class="run-picker">
-    <label for="reviewed-run">Version and configuration</label>
-    <select id="reviewed-run" v-model="runSha">
-      <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
-    </select>
-    <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
-  </div>
   <p v-if="measuredVerdict" class="result-verdict">{{ measuredVerdict.text }} · <span class="result-verdict-detail">{{ measuredVerdict.pct }}% of the {{ measuredVerdict.denominator }} included capabilities read decisive</span></p>
   <p class="result-share-label">{{ measuredShare }} · measured per terminal</p>
-  <p v-if="libraryOnlyIds.length" class="score-detail">{{ libraryOnlyIds.length }} {{ libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ libraryOnlyIds.join(', ') }}.</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
@@ -180,16 +171,17 @@ const breadcrumbParent = (() => {
     <span v-if="measuredBar.counts.untested" class="result-share-not-tested" :style="{ width: `${measuredBar.counts.untested / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.error" class="result-share-error" :style="{ width: `${measuredBar.counts.error / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <ul class="result-counts">
+  <details class="result-counting">
+    <summary>Result counts and how to read them</summary>
+    <ul class="result-counts">
     <li><strong>{{ measuredBar.counts.supported }}</strong> supported <small>Positive evidence</small></li>
     <li><strong>{{ measuredBar.counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
     <li><strong>{{ measuredBar.counts.inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
     <li><strong>{{ measuredBar.counts.untested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
     <li><strong>{{ measuredBar.counts.error }}</strong> errors <small>Probe error</small></li>
-  </ul>
+    </ul>
   <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
-  <details class="result-counting">
-    <summary>How these results are counted</summary>
+    <p v-if="libraryOnlyIds.length" class="score-detail">{{ libraryOnlyIds.length }} {{ libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ libraryOnlyIds.join(', ') }}.</p>
     <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
     <p v-if="counts.conclusive">Of {{ counts.conclusive }} results that could be decided, {{ counts.supported }} were supported and {{ counts.unsupported }} were unsupported. Inconclusive, error and not-tested results are separate.</p>
     <p v-if="namedNotTested">{{ counts.tested }} measured + {{ namedNotTested }} named not-tested + {{ counts.notTested - namedNotTested }} unrecorded remainder = {{ counts.catalog }} catalog features; each feature is in exactly one bucket.</p>
@@ -198,7 +190,16 @@ const breadcrumbParent = (() => {
 </div>
 
 <details v-if="selectedRun" class="run-context">
-  <summary>Test environment</summary>
+  <summary>Test environment and recorded versions</summary>
+
+  <p>Recorded suite: {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} results recorded. A recorded result does not mean its check ran. Results from different suites are not directly comparable.</p>
+  <div v-if="runs.length > 1" class="run-picker">
+    <label for="reviewed-run">Version and configuration</label>
+    <select id="reviewed-run" v-model="runSha">
+      <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
+    </select>
+    <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
+  </div>
 
   <dl>
     <dt>Run</dt><dd><a href="/api/v2/data.json">{{ selectedRun.sha256 }}</a></dd>
@@ -217,8 +218,8 @@ const breadcrumbParent = (() => {
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
 </details>
 
-<div v-if="versions.length > 1 && selectedRun?.sha256 === defaultRun?.sha256" class="version-history">
-  <h2 id="version-history">Version History</h2>
+<details v-if="versions.length > 1 && selectedRun?.sha256 === defaultRun?.sha256" class="version-history">
+  <summary id="version-history">Version history</summary>
   <p>Scores summarize each version's reviewed suite; different suites are not a direct version-to-version comparison.</p>
   <table class="version-table">
     <thead>
@@ -242,7 +243,7 @@ const breadcrumbParent = (() => {
       </tr>
     </tbody>
   </table>
-</div>
+</details>
 
 <p v-if="selectedRun">Select a result to see its notes and evidence. Results marked “Images” include screenshots.</p>
 
@@ -409,7 +410,6 @@ const breadcrumbParent = (() => {
 .tier-line { margin: 0.75em 0 0.25em; font-weight: 600; }
 .stale-line { margin: 0 0 0.5em; color: var(--vp-c-text-2); }
 .unmeasured { margin: 1em 0; }
-.unmeasured ul { max-height: 16em; overflow: auto; }
 .selected-run { margin: 0.5em 0 1em; color: var(--vp-c-text-2); }
 .terminal-about summary, .analysis summary { cursor: pointer; font-weight: 600; }
 

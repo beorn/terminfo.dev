@@ -610,7 +610,6 @@ export default defineConfig({
     nav: [
       { text: "How it works", link: "/how-it-works/" },
       { text: "Matrix", link: "/" },
-      { text: "Candidate 2", link: "/release/candidate-2" },
       {
         text: "Features",
         items: [
@@ -660,10 +659,15 @@ export default defineConfig({
           { text: "Terminal Security", link: "/fundamentals/security" },
         ],
       },
-      { text: "About", link: "/about" },
-      { text: "Changelog", link: "/changelog" },
-      { text: "API", link: "/api" },
-      { text: "Glossary", link: "/glossary" },
+      {
+        text: "About",
+        items: [
+          { text: "About Terminfo.dev", link: "/about" },
+          { text: "Changelog", link: "/changelog" },
+          { text: "API", link: "/api" },
+          { text: "Glossary", link: "/glossary" },
+        ],
+      },
     ],
 
     // Sidebar on all pages except home (home uses layout: home, which hides sidebar)

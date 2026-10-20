@@ -309,7 +309,7 @@ function backendTooltip(name, version) {
 
 <details class="unmeasured release-details">
   <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
-  <ul><li v-for="feature in data.releaseScope.unmeasured" :key="feature.id">{{ feature.name }} · {{ feature.status }}</li></ul>
+  <ul><li v-for="feature in data.releaseScope.unmeasured" :key="feature.id"><a :href="'/' + feature.id.split('.')[0] + '/' + featureSlug(feature.id)">{{ feature.name }}</a></li></ul>
 </details>
 
 ## Terminal Baseline 2026 {#baselines}
@@ -1155,8 +1155,6 @@ strips, or mishandles.
 .problem-summary .unmeasured ul {
   margin: 0.5em 0 0;
   padding-left: 1.2em;
-  max-height: 16em;
-  overflow: auto;
 }
 
 /* Compact homepage comparison; terminal detail tables keep their own layout. */
@@ -1178,7 +1176,6 @@ strips, or mishandles.
 .support-legend .legend-inconclusive::before { background:#f59e0b; }
 .support-legend .legend-unmeasured::before { background:repeating-linear-gradient(135deg,transparent 0 2px,var(--vp-c-text-3) 2px 3px); }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
-.release-details ul { max-height:16em; overflow:auto; }
 @media (max-width:600px) {
  .VPHome .summary-row,.VPHome .summary-muted .summary-row { grid-template-columns:minmax(0,1fr) 18px 84px; gap:8px 10px; padding:14px 0; }
  .VPHome .summary-muted .summary-version { grid-column:3; }

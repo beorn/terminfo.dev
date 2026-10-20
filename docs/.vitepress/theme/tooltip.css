@@ -95,8 +95,8 @@ td:first-child [data-tooltip]:hover::after {
   display: none;
   top: 100%;
   bottom: auto;
-  width: min(400px, calc(100vw - 48px));
-  max-width: none;
+  width: max(100%, min(400px, calc(100vw - 48px)));
+  max-width: calc(100vw - 48px);
   max-height: min(55vh, 380px);
   overflow: auto;
   box-sizing: border-box;
