@@ -268,6 +268,13 @@ console.log(value);
     await expect(run("emit", join(dir, "absent.json"), join(dir, "missing.json"))).rejects.toThrow(/absent.json/)
     matches = 2
     await expect(run("start", join(dir, "ambiguous.json"))).rejects.toThrow(/exactly one.*RUNNER_NAME.*found 2/)
+    // AC1: the ambiguous case's two-match fixture state ends with it; the next case starts at one.
+    matches = 1
+    // AC2: the same registered-late case whose FIRST scan lands after the registration delay — the
+    // slow-machine ordering that used to inherit the ambiguous case's two-match fixture state.
+    matchAt = Date.now() - 1
+    await run("start", join(dir, "registered-late-delayed.json"))
+    matchAt = 0
     // A complete scan that matches nothing is re-observed inside the one budget, so a runner that
     // registers just after the job starts still resolves to exactly one job id.
     matchAt = Date.now() + 300
