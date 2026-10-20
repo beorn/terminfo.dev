@@ -18,7 +18,7 @@ import { expect, test } from "vitest"
 const root = join(import.meta.dirname, "..")
 
 // The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
-test("shared hosted DMG caller rejects altered Warp bytes before install and preserves Alacritty arguments", async () => {
+test("shared hosted DMG caller rejects altered pinned bytes before install and preserves Alacritty arguments", async () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const source = workflow.split("<<'HOSTED_DMG_INSTALL'\n")[1]?.split("\n          HOSTED_DMG_INSTALL")[0]
   expect(source, "the production shared DMG caller exists").toBeDefined()
@@ -50,15 +50,18 @@ test("shared hosted DMG caller rejects altered Warp bytes before install and pre
         throw new Error(`Unexpected DMG dependency: ${id}`)
       },
     })
-  await expect(run("warp")).rejects.toThrow(
-    `expected 866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1, actual ${actual}`,
-  )
-  expect(launched.map((argv) => argv[0])).toEqual(["curl"])
-  expect(JSON.parse(retained.get("/runner/measurement-artifacts/warp-installer.json")!)).toMatchObject({
-    expectedSha256: "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1",
-    actualSha256: actual,
-  })
-  launched.length = 0
+  for (const [app, expectedSha256] of [
+    ["warp", "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1"],
+    ["cmux", "2f4bd98df7514067408d89398f8f19059015a3bbae632d0474515d4b76d6ee36"],
+  ]) {
+    await expect(run(app!)).rejects.toThrow(`expected ${expectedSha256}, actual ${actual}`)
+    expect(launched.map((argv) => argv[0])).toEqual(["curl"])
+    expect(JSON.parse(retained.get(`/runner/measurement-artifacts/${app}-installer.json`)!)).toMatchObject({
+      expectedSha256,
+      actualSha256: actual,
+    })
+    launched.length = 0
+  }
   await run("alacritty")
   expect(launched).toEqual([
     [
@@ -75,6 +78,54 @@ test("shared hosted DMG caller rejects altered Warp bytes before install and pre
     ["cp", "-R", "/Volumes/Alacritty/Alacritty.app", "/Applications/"],
     ["hdiutil", "detach", "/Volumes/Alacritty"],
   ])
+})
+
+test("cmux hosted caller quotes the private command in normal config before one cold GUI open", async () => {
+  const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  const source = workflow.split("<<'HOSTED_CMUX_START'\n")[1]?.split("\n          HOSTED_CMUX_START")[0]
+  expect(source, "the production cmux launch caller exists").toBeDefined()
+  const command = "/runner/Alice's files/collect.command"
+  const writes = new Map<string, string>()
+  const events: string[] = []
+  const launches: string[][] = []
+  const run = (status: number) =>
+    runInNewContext(`(async () => {${source}\n})()`, {
+      process: { cwd: () => root, env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/cmux.app" } },
+      Bun: {
+        spawn: (argv: string[]) => {
+          events.push("launch")
+          launches.push(argv)
+          return { exited: Promise.resolve(status) }
+        },
+      },
+      require: (id: string) => {
+        if (id === "node:fs") {
+          return {
+            mkdirSync: () => {},
+            writeFileSync: (path: string, value: string) => {
+              events.push("config")
+              writes.set(path, value)
+            },
+          }
+        }
+        if (id === "node:path") return { join }
+        if (id === "node:os") return { homedir: () => "/Users/runner" }
+        if (id.endsWith("/daemon-client.ts")) return { shellQuote }
+        throw new Error(`Unexpected cmux launch dependency: ${id}`)
+      },
+    })
+  await run(0)
+  expect(events).toEqual(["config", "launch"])
+  expect(launches).toEqual([["open", "-a", "/Applications/cmux.app"]])
+  expect([...writes.keys()]).toEqual(["/Users/runner/.config/ghostty/config"])
+  const configured = writes
+    .get("/Users/runner/.config/ghostty/config")!
+    .trim()
+    .replace(/^command = /, "")
+  const argv = spawnSync("/bin/bash", ["-c", `set -- ${configured}; printf '%s\\0' "$@"`], { encoding: "utf8" })
+  expect(argv.status, argv.stderr).toBe(0)
+  expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
+  await expect(run(7)).rejects.toThrow(/open.*7/)
 })
 
 // A valid configuration must carry the real command path as ONE shell argument, not merely launch Warp.

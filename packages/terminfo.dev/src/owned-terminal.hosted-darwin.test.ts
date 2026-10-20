@@ -64,6 +64,10 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "warp",
     comm: "stable",
   })
+  expect(hostedDarwinAppFromExecutablePath("/Applications/cmux.app/Contents/MacOS/cmux")).toEqual({
+    id: "cmux",
+    comm: "cmux",
+  })
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
     "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
@@ -71,6 +75,9 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper",
     "/Applications/Warp.app/Contents/Resources/bin/warp",
     "/Applications/Warp.app/Contents/Frameworks/stable Helper.app/Contents/MacOS/stable Helper",
+    "/Applications/cmux.app/Contents/Resources/bin/cmux",
+    "/usr/local/bin/cmux",
+    "/Applications/Other.app/Contents/MacOS/cmux",
   ] as const) {
     expect(() => hostedDarwinAppFromExecutablePath(path)).toThrow(/Hosted Darwin receipt executable/)
   }
@@ -153,6 +160,36 @@ test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps
       `Hosted Darwin ancestry never reached ${comm}`,
     )
   }
+})
+
+test("cmux ancestry binds the receipt GUI path despite a same-basename CLI", () => {
+  const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
+  const gui = { pid: 90, ppid: 1, comm: executable }
+  const cli = { pid: 100, ppid: 90, comm: "/Applications/cmux.app/Contents/Resources/bin/cmux" }
+  expect(requireHostedDarwinAppAncestor("cmux", [cli, gui], executable)).toEqual(gui)
+  const paddedGui = { ...gui, comm: `  ${executable}  ` }
+  expect(requireHostedDarwinAppAncestor("cmux", [cli, paddedGui], executable)).toEqual(paddedGui)
+
+  for (const rows of [
+    [cli],
+    [{ ...gui, comm: "cmux" }],
+    [{ ...gui, comm: "/usr/local/bin/cmux" }],
+    [{ ...gui, comm: "/Applications/Other.app/Contents/MacOS/cmux" }],
+  ]) {
+    expect(() => requireHostedDarwinAppAncestor("cmux", rows, executable)).toThrow(/Hosted Darwin/)
+  }
+  expect(() => requireHostedDarwinAppAncestor("cmux", [gui, cli])).toThrow(/Hosted Darwin/)
+  const standalone = { ...gui, comm: "/usr/local/bin/cmux" }
+  expect(() => requireHostedDarwinAppAncestor("cmux", [standalone], standalone.comm)).toThrow(/Hosted Darwin/)
+  const iterm = { pid: 80, ppid: 1, comm: "iTerm2" }
+  expect(requireHostedDarwinAppAncestor("iTerm2", [cli, iterm])).toEqual(iterm)
+  expect(() =>
+    requireHostedDarwinAppAncestor(
+      "cmux",
+      [gui, { pid: 110, ppid: 100, comm: "/Applications/Ghostty.app/Contents/MacOS/ghostty" }],
+      executable,
+    ),
+  ).toThrow(/Hosted Darwin ancestry reached.*ghostty/)
 })
 
 test("darwinHosted is a third XOR arm: linux plus darwinHosted is refused", async () => {
