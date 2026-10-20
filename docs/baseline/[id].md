@@ -17,6 +17,13 @@ const appBackends = backends.filter(b => b.type === 'app')
 const headlessBackends = backends.filter(b => b.type === 'headless')
 const appScores = scores.filter(s => s.type === 'app')
 const headlessScores = scores.filter(s => s.type === 'headless')
+const barSegments = [
+  { id: 'supported', label: 'Supported', symbol: '✓' },
+  { id: 'unsupported', label: 'Unsupported', symbol: '✗' },
+  { id: 'inconclusive', label: 'Inconclusive', symbol: '?' },
+  { id: 'errors', label: 'Collector error', symbol: '!' },
+  { id: 'untested', label: 'Untested', symbol: '–' },
+]
 
 function featureTooltip(f) {
   const parts = [f.name]
@@ -26,7 +33,7 @@ function featureTooltip(f) {
 }
 
 function termTooltip(b) {
-  const parts = []
+  const parts = [coverageLabel(b)]
   if (b.description) parts.push(b.description)
   if (b.type) parts.push('Type: ' + b.type)
   if (b.version) parts.push('Version: ' + b.version)
@@ -34,14 +41,7 @@ function termTooltip(b) {
   return parts.join('\n') || b.label
 }
 
-function barTooltip(s, segment) {
-  const labels = {
-    supported: ['Supported', '✓'],
-    unsupported: ['Unsupported', '✗'],
-    inconclusive: ['Inconclusive', '?'],
-    errors: ['Collector error', '!'],
-    untested: ['Untested', '–'],
-  }
+function barSegmentItems(s, segment) {
   const items = []
   for (const f of features) {
     // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
@@ -51,10 +51,9 @@ function barTooltip(s, segment) {
     const status = state === 'error' ? 'errors' : state
     if (status !== segment) continue
     const note = entry?.selected.cells[f.id]?.note
-    items.push(note ? `  ${labels[segment][1]} ${f.name}: ${note}` : `  ${labels[segment][1]} ${f.name}`)
+    items.push({ id: f.id, name: f.name, href: `/${f.category}/${f.slug}`, note })
   }
-  if (items.length === 0) return ''
-  return labels[segment][0] + ' (' + items.length + '):\n' + items.join('\n')
+  return items
 }
 
 function barWidth(s, segment) {
@@ -118,11 +117,18 @@ function platformIcons(b) {
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
-      <div v-for="segment in ['supported', 'unsupported', 'inconclusive', 'errors', 'untested']" :key="segment"
-        :class="'bar-' + segment" :style="{ width: barWidth(s, segment) }" :data-tooltip="barTooltip(s, segment)"></div>
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
+        :class="'bar-' + segment.id" :style="{ width: barWidth(s, segment.id) }">
+        <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
+        <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
+          <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
+          <ul><li v-for="item in barSegmentItems(s, segment.id)" :key="item.id">
+            {{ segment.symbol }} <a :href="item.href">{{ item.name }}</a><template v-if="item.note">: {{ item.note }}</template>
+          </li></ul>
+        </div>
+      </div>
     </div>
     <span class="summary-pct">{{ s.pct == null ? 'No conclusive score' : `${s.pct}% of conclusive` }}</span>
-    <span class="summary-counts">{{ coverageLabel(s) }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -136,11 +142,18 @@ function platformIcons(b) {
     <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
-      <div v-for="segment in ['supported', 'unsupported', 'inconclusive', 'errors', 'untested']" :key="segment"
-        :class="'bar-' + segment" :style="{ width: barWidth(s, segment) }" :data-tooltip="barTooltip(s, segment)"></div>
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
+        :class="'bar-' + segment.id" :style="{ width: barWidth(s, segment.id) }">
+        <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
+        <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
+          <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
+          <ul><li v-for="item in barSegmentItems(s, segment.id)" :key="item.id">
+            {{ segment.symbol }} <a :href="item.href">{{ item.name }}</a><template v-if="item.note">: {{ item.note }}</template>
+          </li></ul>
+        </div>
+      </div>
     </div>
     <span class="summary-pct">{{ s.pct == null ? 'No conclusive score' : `${s.pct}% of conclusive` }}</span>
-    <span class="summary-counts">{{ coverageLabel(s) }}</span>
   </div>
 </div>
 
