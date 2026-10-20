@@ -473,7 +473,7 @@ it.each([
         (row) =>
           row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
       )
-      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 10 : 7)
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 11 : 8)
       expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
         inputChange === "blocked-hosted" ? 0 : 1,
@@ -487,7 +487,7 @@ it.each([
         expect.anything(),
       )
       const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-      expect(hosted).toHaveLength(os === "macos" ? 7 : 3)
+      expect(hosted).toHaveLength(os === "macos" ? 8 : 3)
       if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -585,7 +585,7 @@ describe("release 1 collection census", () => {
   })
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
-    // The workflow's matrix includes both editors alongside the existing five macOS apps and
+    // The workflow's matrix includes Warp and both editors alongside the existing five macOS apps and
     // windows-terminal/alacritty/wezterm on windows.
     // All remaining unresolved routes stay recorded as expected route work. kitty/macos is one of
     // them, with its own measured reason: the hosted runner has no usable OpenGL, so kitty opens no
@@ -598,9 +598,18 @@ describe("release 1 collection census", () => {
     expect(kitty?.sourceRun).toBe("39302236007")
     expect(kitty?.uncollectable).toMatch(/not measurable on the hosted runner.*39302236007/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(3)
-    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(2)
-    for (const id of ["terminal-app", "iterm2", "ghostty", "alacritty", "wezterm", "cursor", "com.microsoft.VSCode"]) {
+    expect(missing).toHaveLength(2)
+    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(1)
+    for (const id of [
+      "terminal-app",
+      "iterm2",
+      "ghostty",
+      "alacritty",
+      "wezterm",
+      "cursor",
+      "com.microsoft.VSCode",
+      "warp",
+    ]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
     for (const id of ["windows-terminal", "alacritty", "wezterm"]) {
@@ -900,9 +909,9 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     )
     expect(result.status, result.stderr).toBe(1)
     // kitty/macos now fails by name with its measured unmeasurable fact; a row that still has no
-    // route (warp) keeps the required-route-work refusal this test was written for.
+    // route (cmux) keeps the required-route-work refusal this test was written for.
     expect(result.stdout).toMatch(/kitty\/macos: failed.*not measurable on the hosted runner/)
-    expect(result.stdout).toMatch(/warp\/macos: failed.*required route work/)
+    expect(result.stdout).toMatch(/cmux\/macos: failed.*required route work/)
     const passName = readdirSync(join(directory, "output"))[0]!
     const pass = JSON.parse(readFileSync(join(directory, "output", passName, "pass.json"), "utf8")) as Awaited<
       ReturnType<typeof collectPass>
@@ -914,7 +923,7 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
     ).toMatchObject({ status: "failed", error: expect.stringContaining("not measurable on the hosted runner") })
     expect(
       pass.contexts.find(
-        (row: { context: { id: string; os: string } }) => row.context.id === "warp" && row.context.os === "macos",
+        (row: { context: { id: string; os: string } }) => row.context.id === "cmux" && row.context.os === "macos",
       ),
     ).toMatchObject({ status: "failed", error: expect.stringContaining("required route work") })
     expect(existsSync(admitted)).toBe(false)
