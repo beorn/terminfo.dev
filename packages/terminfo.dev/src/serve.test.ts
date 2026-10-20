@@ -271,6 +271,58 @@ function runHostedDarwinFixture(script: string) {
 }
 
 describe("private finite daemon startup", () => {
+  it("validates the process owner before Darwin capture and disposes once when capture setup fails", () => {
+    const result = runHostedDarwinFixture(`
+      import { mock } from "bun:test"
+      import assert from "node:assert/strict"
+      Object.defineProperty(process, "platform", { value: "darwin" })
+      delete process.env.TERMINFO_DISPOSABLE_RECEIPT
+      const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+      const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+      const owner = { asserter: "terminfo-admin", launchRunId: "a".repeat(32), workerPid: 123,
+        provider: "kitty", ownerPid: 42, executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+        marker: { flag: "--instance-group", value: "terminfo-" + "a".repeat(32) },
+        tty: "/dev/ttys009", intendedVersion: "0.48.2" }
+      const ownerFailure = new Error("worker no longer descends from owned GUI")
+      const captureFailure = Object.assign(new Error("owned window 32 could not create image"), { name: "CaptureAcquisitionFailed" })
+      const events = []
+      let rejectOwner = true
+      mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+        detectTerminal: () => ({ name: "kitty", version: "0.48.2", os: "macos", osVersion: "26.6.2" })
+      }))
+      mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+        createOwnedTerminal: async (input) => {
+          events.push("owner")
+          assert.deepEqual(input.process, owner)
+          assert.equal(input.expectedLaunchRunId, owner.launchRunId)
+          if (rejectOwner) throw ownerFailure
+          return { summary: "{}", dispose: async () => { events.push("dispose") } }
+        }
+      }))
+      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+        createDarwinCapture: async (directory, { appPid }) => {
+          events.push("capture")
+          assert.equal(directory, process.env.TERMINFO_CAPTURE_DIRECTORY)
+          assert.equal(appPid, owner.ownerPid)
+          throw captureFailure
+        }
+      }))
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
+        probes: { app: unified.ALL_PROBES.map((probe) => probe.id).sort() } }, collectorRevision: "b".repeat(40) }
+      const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+      const options = { ids: ["device.primary-da"], processOwner: owner,
+        expectedLaunchRunId: owner.launchRunId, out: { write() {} } }
+      await assert.rejects(collectProbeRun(options), error => error === ownerFailure)
+      assert.deepEqual(events, ["owner"])
+      events.length = 0
+      rejectOwner = false
+      await assert.rejects(collectProbeRun(options), error => error === captureFailure)
+      assert.deepEqual(events, ["owner", "capture", "dispose"])
+    `)
+    expect(result.stderr).toBe("")
+    expect(result.status).toBe(0)
+  })
+
   it("reports the same named capture refusal for the first and later probes when Darwin calibration fails", () => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
     const result = spawnSync(
