@@ -54,6 +54,18 @@ test("shared hosted DMG caller rejects altered Warp bytes before install and pre
     `expected 866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1, actual ${actual}`,
   )
   expect(launched.map((argv) => argv[0])).toEqual(["curl"])
+  // The brew redirect returned 404 for these pinned bytes. Existing checksum coverage did not
+  // inspect the real download destination; keep the verified static release, not a moving latest.
+  expect(launched[0]).toEqual([
+    "curl",
+    "--location",
+    "--fail",
+    "--silent",
+    "--show-error",
+    "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg",
+    "--output",
+    "/runner/Warp.dmg",
+  ])
   expect(JSON.parse(retained.get("/runner/measurement-artifacts/warp-installer.json")!)).toMatchObject({
     expectedSha256: "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1",
     actualSha256: actual,

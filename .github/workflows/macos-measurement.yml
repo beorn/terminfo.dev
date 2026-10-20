@@ -159,7 +159,7 @@ jobs:
           const app = process.env.APP_ID;
           const name = app === "warp" ? "Warp" : "Alacritty";
           const url = app === "warp"
-            ? "https://app.warp.dev/download/brew?version=v0.2026.10.14.08.27.stable_01&package=dmg"
+            ? "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg"
             : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
           const installer = process.env.RUNNER_TEMP + "/" + name + ".dmg";
           const mountpoint = "/Volumes/" + name;
