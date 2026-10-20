@@ -208,6 +208,7 @@ jobs:
           NODE_DIR="$(dirname "$(command -v node)")"
           COLLECTOR="$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs"
           COLLECTOR_BUN="$(command -v bun)"
+          printf 'collect_started_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
           BUN_DIR="$(dirname "$COLLECTOR_BUN")"
           TARGET_VERSION_EXPORT=""
           if [ "$APP_ID" = alacritty ]; then
@@ -471,6 +472,121 @@ jobs:
           if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
           exit 1
 
+      - name: Preserve terminal launch failure evidence
+        if: failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')
+        env:
+          APP_ID: ${{ matrix.id }}
+          ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
+          ITERM_LAUNCH_END: ${{ steps.collect.outputs.iterm_launch_end }}
+          COLLECT_STARTED_AT: ${{ steps.collect.outputs.collect_started_at }}
+        run: |
+          bun --eval '
+          const { readFile, writeFile, stat } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
+          const workspace = process.env.GITHUB_WORKSPACE;
+          if (!workspace) throw new Error("Failure evidence requires GITHUB_WORKSPACE from the checked-out Actions source");
+          const { CENSUS } = await import(join(workspace, "packages/terminfo.dev/src/darwin-capture.ts"));
+          const warp = process.env.APP_ID === "warp";
+          const editor = process.env.APP_ID === "cursor" || process.env.APP_ID === "com.microsoft.VSCode";
+          const additional = editor || process.env.APP_ID === "cmux";
+          const prefix = warp ? "warp" : process.env.APP_ID === "iterm2" ? "iterm" : process.env.APP_ID === "com.microsoft.VSCode" ? "vscode" : process.env.APP_ID;
+          // Bounded capture and CoreGraphics bridge from diagnostic59f65a57.
+          async function capture(stream) {
+            const chunks = []; let bytes = 0, kept = 0;
+            for await (const chunk of stream) {
+              bytes += chunk.length;
+              const count = Math.min(chunk.length, 262144 - kept);
+              if (count > 0) { chunks.push(chunk.slice(0, count)); kept += count; }
+            }
+            return { text: Buffer.concat(chunks).toString("utf8"), bytes, omittedBytes: bytes - kept };
+          }
+          async function run(label, argv, wallMs) {
+            const start = new Date();
+            const child = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", env: { ...process.env, TZ: "UTC" } });
+            let outerTimedOut = false;
+            const timer = setTimeout(() => { outerTimedOut = true; child.kill("SIGKILL"); }, wallMs);
+            try {
+              const [exitCode, stdout, stderr] = await Promise.all([child.exited, capture(child.stdout), capture(child.stderr)]);
+              const row = { label, argv, childPid: child.pid, start: start.toISOString(), end: new Date().toISOString(), wallMs, outerTimedOut, exitCode, stdout, stderr };
+              await writeFile(join(out, `${prefix}-${label}.json`), JSON.stringify(row, null, 2));
+              if (exitCode !== 0 || outerTimedOut) console.error(`${prefix} failure evidence ${label} unmeasured; see ${prefix}-${label}.json`);
+              return row;
+            } finally { clearTimeout(timer); }
+          }
+          // date(1) outputs whole seconds; include the entire final launch second.
+          const stamp = (iso, end = false) => new Date(Math.floor(Date.parse(iso) / 1000) * 1000 + (end ? 1000 : 0)).toISOString().slice(0, 19).replace("T", " ") + "+0000";
+          const failures = [];
+          let launchStart = additional ? process.env.COLLECT_STARTED_AT : process.env.ITERM_LAUNCH_START;
+          let launchEnd = additional ? new Date().toISOString() : process.env.ITERM_LAUNCH_END;
+          let childPid = null;
+          let editorLaunch = null, receiptRunId = null, appLaunch = null;
+          if (editor) {
+            try {
+              editorLaunch = JSON.parse(await readFile(join(out, "editor-launch.json"), "utf8"));
+              const owner = editorLaunch.terminalWindow;
+              if (editorLaunch.appId !== process.env.APP_ID || !/^[0-9a-f]{32}$/.test(editorLaunch.run?.id ?? "") ||
+                  !Number.isSafeInteger(owner?.ownerPid) || owner.ownerPid < 2 ||
+                  typeof owner.executablePath !== "string" || !owner.executablePath ||
+                  typeof owner.marker?.flag !== "string" || !owner.marker.flag || typeof owner.marker.value !== "string" || !owner.marker.value)
+                throw new Error("Editor launch record lacks its app, run marker or measured GUI owner");
+            } catch (error) {
+              failures.push({ label: "launch-record", error: String(error) });
+              console.error(`${prefix} launch identity unmeasured; see failure evidence`, error);
+            }
+          } else if (process.env.APP_ID === "cmux") {
+            try {
+              const receipt = JSON.parse(await readFile(join(out, "host-measured.json"), "utf8"));
+              if (!/^[0-9a-f]{32}$/.test(receipt.runId ?? "") || typeof receipt.appLaunch?.executablePath !== "string" || !receipt.appLaunch.executablePath)
+                throw new Error("cmux measured receipt lacks its launch ID or executable");
+              receiptRunId = receipt.runId;
+              appLaunch = receipt.appLaunch;
+            } catch (error) {
+              failures.push({ label: "launch-record", error: String(error) });
+              console.error("cmux launch identity unmeasured; see failure evidence", error);
+            }
+          }
+          if (warp) {
+            launchEnd = new Date().toISOString();
+            try {
+              const launch = JSON.parse(await readFile(join(out, "warp-launch-process.json"), "utf8"));
+              launchStart = launch.launchStart;
+              childPid = launch.childPid;
+              if (!Number.isInteger(childPid) || childPid <= 0) throw new Error("Spawned Warp PID unmeasured in warp-launch-process.json");
+            } catch (error) {
+              failures.push({ label: "launch-record", error: String(error) });
+              console.error("Warp launch identity unmeasured; see warp-failure-evidence.json", error);
+            }
+          }
+          const commands = [
+            ["screen", ["/usr/sbin/screencapture", "-x", join(out, `${prefix}-screen.png`)], 10000],
+            ["windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", CENSUS], 10000],
+          ];
+          if (warp || additional) commands.push(["processes", ["/bin/ps", "-axo", "pid,ppid,pgid,tty,comm"], 10000]);
+          if (Number.isFinite(Date.parse(launchStart)) && Number.isFinite(Date.parse(launchEnd))) {
+            const predicate = warp ? `process == "stable" OR subsystem CONTAINS[c] "warp" OR subsystem == "com.apple.TCC"`
+              : additional ? `subsystem == "com.apple.TCC" OR process == "WindowServer" OR process CONTAINS[c] "Code" OR process CONTAINS[c] "Cursor" OR process == "cmux"`
+              : `subsystem == "com.apple.TCC" OR subsystem CONTAINS[c] "appleevent" OR process == "appleeventsd"`;
+            commands.push(["log", ["/usr/bin/log", "show", "--style", "json", "--start", stamp(launchStart), "--end", stamp(launchEnd, true), "--predicate", predicate], 20000]);
+          } else {
+            failures.push({ label: "log", error: "Launch time unmeasured; no default log interval queried" });
+            console.error(`${prefix} log unmeasured: launch time unavailable`);
+          }
+          for (const [label, argv, bound] of commands) {
+            try {
+              const row = await run(label, argv, bound);
+              if (row.exitCode !== 0 || row.outerTimedOut) throw new Error(`${label} capture failed`);
+              if (label === "screen" && (await stat(join(out, `${prefix}-screen.png`))).size === 0) throw new Error("Display screenshot is empty");
+              if (label === "windows") {
+                const census = JSON.parse(row.stdout.text);
+                if (!Array.isArray(census) || !census.every(w => typeof w.id === "number" && typeof w.ownerPid === "number" && typeof w.layer === "number" && w.bounds && [w.bounds.x, w.bounds.y, w.bounds.width, w.bounds.height].every(v => typeof v === "number"))) throw new Error("Invalid CoreGraphics identity or point-bounds census");
+              }
+            } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
+          }
+          await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, ...(additional ? { intervalSource: "collect-step-start-through-failure-evidence", editorLaunch, receiptRunId, appLaunch } : {}), screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
+          if (failures.length) process.exitCode = 1;
+          '
+
       - name: Retain editor launch files and close only its owned GUI
         if: always() && (matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode')
         run: |
@@ -503,98 +619,6 @@ jobs:
           }
           HOSTED_EDITOR_CLOSE
           )"
-
-      - name: Preserve terminal launch failure evidence
-        if: failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp')
-        env:
-          APP_ID: ${{ matrix.id }}
-          ITERM_LAUNCH_START: ${{ steps.collect.outputs.iterm_launch_start }}
-          ITERM_LAUNCH_END: ${{ steps.collect.outputs.iterm_launch_end }}
-        run: |
-          bun --eval '
-          const { readFile, writeFile, stat } = await import("node:fs/promises");
-          const { join } = await import("node:path");
-          const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
-          const warp = process.env.APP_ID === "warp";
-          const prefix = warp ? "warp" : "iterm";
-          // Bounded capture and CoreGraphics bridge from diagnostic59f65a57.
-          async function capture(stream) {
-            const chunks = []; let bytes = 0, kept = 0;
-            for await (const chunk of stream) {
-              bytes += chunk.length;
-              const count = Math.min(chunk.length, 262144 - kept);
-              if (count > 0) { chunks.push(chunk.slice(0, count)); kept += count; }
-            }
-            return { text: Buffer.concat(chunks).toString("utf8"), bytes, omittedBytes: bytes - kept };
-          }
-          async function run(label, argv, wallMs) {
-            const start = new Date();
-            const child = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe", env: { ...process.env, TZ: "UTC" } });
-            let outerTimedOut = false;
-            const timer = setTimeout(() => { outerTimedOut = true; child.kill("SIGKILL"); }, wallMs);
-            try {
-              const [exitCode, stdout, stderr] = await Promise.all([child.exited, capture(child.stdout), capture(child.stderr)]);
-              const row = { label, argv, childPid: child.pid, start: start.toISOString(), end: new Date().toISOString(), wallMs, outerTimedOut, exitCode, stdout, stderr };
-              await writeFile(join(out, `${prefix}-${label}.json`), JSON.stringify(row, null, 2));
-              if (exitCode !== 0 || outerTimedOut) console.error(`${prefix} failure evidence ${label} unmeasured; see ${prefix}-${label}.json`);
-              return row;
-            } finally { clearTimeout(timer); }
-          }
-          // date(1) outputs whole seconds; include the entire final launch second.
-          const stamp = (iso, end = false) => new Date(Math.floor(Date.parse(iso) / 1000) * 1000 + (end ? 1000 : 0)).toISOString().slice(0, 19).replace("T", " ") + "+0000";
-          const failures = [];
-          let launchStart = process.env.ITERM_LAUNCH_START;
-          let launchEnd = process.env.ITERM_LAUNCH_END;
-          let childPid = null;
-          if (warp) {
-            launchEnd = new Date().toISOString();
-            try {
-              const launch = JSON.parse(await readFile(join(out, "warp-launch-process.json"), "utf8"));
-              launchStart = launch.launchStart;
-              childPid = launch.childPid;
-              if (!Number.isInteger(childPid) || childPid <= 0) throw new Error("Spawned Warp PID unmeasured in warp-launch-process.json");
-            } catch (error) {
-              failures.push({ label: "launch-record", error: String(error) });
-              console.error("Warp launch identity unmeasured; see warp-failure-evidence.json", error);
-            }
-          }
-          const commands = [
-            ["screen", ["/usr/sbin/screencapture", "-x", join(out, `${prefix}-screen.png`)], 10000],
-            ["windows", ["/usr/bin/osascript", "-l", "JavaScript", "-e", `
-              ObjC.import("CoreGraphics"); ObjC.import("Foundation");
-              var raw = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, $.kCGNullWindowID);
-              if (!raw) throw new Error("CGWindowListCopyWindowInfo returned null");
-              function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
-              var rows = [], count = $.CFArrayGetCount(raw);
-              for (var i = 0; i < count; i++) {
-                var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
-                rows.push({ owner: value(w, "kCGWindowOwnerName"), pid: value(w, "kCGWindowOwnerPID"), layer: value(w, "kCGWindowLayer") });
-              }
-              JSON.stringify({ windows: rows });
-            `], 10000],
-          ];
-          if (warp) commands.push(["processes", ["/bin/ps", "-axo", "pid,ppid,pgid,tty,comm"], 10000]);
-          if (Number.isFinite(Date.parse(launchStart)) && Number.isFinite(Date.parse(launchEnd))) {
-            const predicate = warp ? `process == "stable" OR subsystem CONTAINS[c] "warp" OR subsystem == "com.apple.TCC"` : `subsystem == "com.apple.TCC" OR subsystem CONTAINS[c] "appleevent" OR process == "appleeventsd"`;
-            commands.push(["log", ["/usr/bin/log", "show", "--style", "json", "--start", stamp(launchStart), "--end", stamp(launchEnd, true), "--predicate", predicate], 20000]);
-          } else {
-            failures.push({ label: "log", error: "Launch time unmeasured; no default log interval queried" });
-            console.error(`${prefix} log unmeasured: launch time unavailable`);
-          }
-          for (const [label, argv, bound] of commands) {
-            try {
-              const row = await run(label, argv, bound);
-              if (row.exitCode !== 0 || row.outerTimedOut) throw new Error(`${label} capture failed`);
-              if (label === "screen" && (await stat(join(out, `${prefix}-screen.png`))).size === 0) throw new Error("Display screenshot is empty");
-              if (label === "windows") {
-                const census = JSON.parse(row.stdout.text);
-                if (!Array.isArray(census.windows) || !census.windows.every(w => (typeof w.owner === "string" || w.owner === null) && typeof w.pid === "number" && typeof w.layer === "number")) throw new Error("Invalid CoreGraphics census");
-              }
-            } catch (error) { failures.push({ label, error: String(error) }); console.error(`${prefix} failure evidence incomplete`, label, error); }
-          }
-          await writeFile(join(out, `${prefix}-failure-evidence.json`), JSON.stringify({ appId: process.env.APP_ID, childPid, launchStart, launchEnd, screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof", failures }, null, 2));
-          if (failures.length) process.exitCode = 1;
-          '
 
       - name: Upload the receipt beside the exact collected run
         if: always()

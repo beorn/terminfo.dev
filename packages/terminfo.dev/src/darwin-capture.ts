@@ -74,7 +74,7 @@ export function requireDarwinScale(window: DarwinWindow, pixels: { width: number
   }
 }
 
-const CENSUS = `ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+export const CENSUS = `ObjC.import('CoreGraphics'); ObjC.import('Foundation');
 function value(dict, key) { var ref = dict.objectForKey(key); return ref ? ref.js : null; }
 function bounds(dict) {
   var b = dict.objectForKey('kCGWindowBounds');

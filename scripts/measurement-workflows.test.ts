@@ -97,15 +97,34 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
 
 // A successful display-capture command proves no app window. Exercise the existing evidence
 // block with platform command responses, keeping real subprocess capture and artifact writes.
-test.each(["warp", "iterm2"] as const)(
-  "%s failures retain bounded raw window evidence without claiming screenshot content",
-  (appId) => {
+test.each([
+  { appId: "warp", missingLaunch: false },
+  { appId: "iterm2", missingLaunch: false },
+  { appId: "cmux", missingLaunch: false },
+  { appId: "cursor", missingLaunch: false },
+  { appId: "com.microsoft.VSCode", missingLaunch: false },
+  { appId: "cursor", missingLaunch: true },
+])(
+  "$appId failures retain bounded evidence before cleanup (missing launch: $missingLaunch)",
+  ({ appId, missingLaunch }) => {
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
     const step = workflow.jobs["measure-macos"].steps.find(
       (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
     )
     expect(step, "existing failure owner includes Warp").toBeDefined()
     expect(step.if).toContain("matrix.id == 'warp'")
+    const editor = appId === "cursor" || appId === "com.microsoft.VSCode"
+    if (appId !== "iterm2") expect(step.if).toContain(`matrix.id == '${appId}'`)
+    if (editor) {
+      const close = workflow.jobs["measure-macos"].steps.find(
+        (row: { name?: string }) => row.name === "Retain editor launch files and close only its owned GUI",
+      )
+      expect(close).toBeDefined()
+      expect(workflow.jobs["measure-macos"].steps.indexOf(step)).toBeLessThan(
+        workflow.jobs["measure-macos"].steps.indexOf(close),
+      )
+      expect(close.if).toContain("always()")
+    }
     const source = (step.run as string).match(/^bun --eval '([\s\S]*)'\s*$/)?.[1]
     expect(source).toBeDefined()
     const directory = mkdtempSync(join(tmpdir(), "hosted-failure-"))
@@ -115,11 +134,43 @@ test.each(["warp", "iterm2"] as const)(
       join(out, "warp-launch-process.json"),
       JSON.stringify({ childPid: 4242, name: "fixture", launchStart: "2026-10-20T02:00:00Z" }),
     )
+    const editorLaunch = {
+      appId,
+      run: { id: "a".repeat(32), directory: "/fixture/owned-run" },
+      terminalWindow: {
+        provider: "cli-process",
+        ownerPid: 4242,
+        executablePath: "/Applications/Editor.app/Contents/MacOS/Editor",
+        marker: { flag: "--user-data-dir", value: "/fixture/owned-run/profile" },
+        tty: "/dev/ttys001",
+      },
+    }
+    if (!missingLaunch) writeFileSync(join(out, "editor-launch.json"), JSON.stringify(editorLaunch))
+    writeFileSync(
+      join(out, "host-measured.json"),
+      JSON.stringify({
+        runId: "b".repeat(32),
+        appLaunch: {
+          bundlePath: "/Applications/cmux.app",
+          executablePath: "/Applications/cmux.app/Contents/MacOS/cmux",
+        },
+      }),
+    )
+    const windows = [
+      {
+        id: 37,
+        ownerPid: 4242,
+        layer: 0,
+        bounds: { x: 282, y: 43, width: 460, height: 639 },
+        sharingState: 0,
+        memoryUsage: 2368,
+      },
+    ]
     const prelude = `const originalSpawn = Bun.spawn;
     Bun.spawn = (argv, options) => {
       const command = argv[0];
       if (command.endsWith("screencapture")) require("node:fs").writeFileSync(argv.at(-1), "fixture unclassified image bytes");
-      const output = command.endsWith("osascript") ? JSON.stringify({ windows: [{ owner: "Warp", pid: 4242, layer: 0 }] })
+      const output = command.endsWith("osascript") ? ${JSON.stringify(JSON.stringify(windows))}
         : command.endsWith("ps") ? "PID PPID PGID TTY COMM\\n4242 1 4242 ?? stable\\n"
         : command.endsWith("log") ? "[]" : "";
       return originalSpawn(["/bin/bash", "-c", "printf '%s' \\\"$1\\\"", "fixture", output], options);
@@ -131,12 +182,14 @@ test.each(["warp", "iterm2"] as const)(
           ...process.env,
           APP_ID: appId,
           RUNNER_TEMP: directory,
+          GITHUB_WORKSPACE: root,
+          COLLECT_STARTED_AT: "2026-10-20T02:00:00Z",
           ITERM_LAUNCH_START: "2026-10-20T02:00:00Z",
           ITERM_LAUNCH_END: "2026-10-20T02:00:01Z",
         },
       })
-      expect(result.status, result.stderr).toBe(0)
-      const prefix = appId === "warp" ? "warp" : "iterm"
+      expect(result.status, result.stderr).toBe(missingLaunch ? 1 : 0)
+      const prefix = appId === "iterm2" ? "iterm" : appId === "com.microsoft.VSCode" ? "vscode" : appId
       const summary = JSON.parse(readFileSync(join(out, `${prefix}-failure-evidence.json`), "utf8"))
       expect(summary).toMatchObject({
         appId,
@@ -144,26 +197,22 @@ test.each(["warp", "iterm2"] as const)(
         screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof",
       })
       const census = JSON.parse(readFileSync(join(out, `${prefix}-windows.json`), "utf8"))
-      expect(census).toHaveProperty(
-        "stdout.text",
-        JSON.stringify({ windows: [{ owner: "Warp", pid: 4242, layer: 0 }] }),
-      )
+      expect(census).toHaveProperty("stdout.text", JSON.stringify(windows))
       expect(census).toHaveProperty("stdout.omittedBytes", 0)
-      if (appId === "warp") {
-        expect(JSON.parse(readFileSync(join(out, "warp-processes.json"), "utf8"))).toHaveProperty(
+      if (appId !== "iterm2") {
+        expect(JSON.parse(readFileSync(join(out, `${prefix}-processes.json`), "utf8"))).toHaveProperty(
           "stdout.text",
           expect.stringContaining("4242"),
         )
       }
       const log = JSON.parse(readFileSync(join(out, `${prefix}-log.json`), "utf8"))
-      expect(log).toHaveProperty(
-        "argv",
-        expect.arrayContaining([
-          expect.stringContaining(appId === "warp" ? 'process == "stable"' : 'process == "appleeventsd"'),
-        ]),
-      )
+      expect(log.argv).toContain("2026-10-20 02:00:00+0000")
       expect(log).toHaveProperty("stdout.text", "[]")
-      expect(summary).toHaveProperty("failures", [])
+      if (editor && !missingLaunch) expect(summary).toHaveProperty("editorLaunch", editorLaunch)
+      if (appId === "cmux") expect(summary).toHaveProperty("receiptRunId", "b".repeat(32))
+      if (missingLaunch) {
+        expect(summary.failures).toEqual([expect.objectContaining({ label: "launch-record" })])
+      } else expect(summary).toHaveProperty("failures", [])
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
