@@ -83,6 +83,9 @@ interface AppDef {
 
 const BUN = process.execPath // use the same bun that's running us
 
+/** Ghostty's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
+const ghosttyConfigPath = (run: ProbeRun): string => join(run.directory, `ghostty-${run.id}`)
+
 /** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
 const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
 
@@ -138,6 +141,18 @@ const APPS: AppDef[] = [
     binaryPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
     launchArgs: (script) => ["-e", script],
     bundleId: "com.mitchellh.ghostty",
+    // The binary is the GUI process itself; the run-scoped config file in its argv is the marker the
+    // owner is resolved from, never the spawned handle, which a running instance can absorb.
+    cliLaunch: {
+      spawnPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      markerFlag: "--config-file",
+      markerValue: ghosttyConfigPath,
+      prepare: (_run, markerValue) => {
+        writeFileSync(markerValue, "", { flag: "wx", mode: 0o600 })
+      },
+      args: (script, markerValue) => ["--config-file", markerValue, "-e", script],
+    },
   },
   {
     name: "iTerm2",

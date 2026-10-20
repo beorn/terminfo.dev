@@ -250,6 +250,56 @@ describe("WezTerm cli-process arm", () => {
   })
 })
 
+describe("Ghostty cli-process arm", () => {
+  const ownedWindow = {
+    provider: "cli-process" as const,
+    ownerPid: 777,
+    tty: "/dev/ttys009",
+    executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
+  }
+
+  test("launches through the binary with the run-scoped config marker and owns the GUI process", async () => {
+    vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
+    await handleApp("ghostty", {})
+    expect(writeFileSync).toHaveBeenCalledWith("/private/run/ghostty-private-run", "", {
+      flag: "wx",
+      mode: 0o600,
+    })
+    expect(runScopedMarker).toHaveBeenCalledWith({
+      appName: "Ghostty",
+      runId: "private-run",
+      flag: "--config-file",
+      value: "/private/run/ghostty-private-run",
+    })
+    expect(spawn).toHaveBeenCalledWith(
+      "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      ["--config-file", "/private/run/ghostty-private-run", "-e", "/private/run/serve.sh"],
+      { detached: true, stdio: "ignore", env: expect.any(Object) },
+    )
+    expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "ghostty")
+    expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
+      executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
+      tty: "/dev/ttys009",
+    })
+    expect(requestDaemonProbe).toHaveBeenCalledWith(registration, {
+      process: {
+        asserter: "terminfo-admin",
+        launchRunId: "private-run",
+        workerPid: 555,
+        provider: "cli-process",
+        ownerPid: 777,
+        executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+        marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
+        tty: "/dev/ttys009",
+        intendedVersion: "2.15",
+      },
+    })
+    expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
+  })
+})
+
 // Editor recipes deliver a terminal through the extension API without workspace
 // tasks or input synthesis. The canonical mixed-case VS Code id also exercises selection.
 test.each([

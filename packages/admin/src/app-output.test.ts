@@ -228,13 +228,14 @@ describe("kitty owned launch", () => {
 })
 
 describe("unowned launch refusal", () => {
-  test("an app the probe launched without an owned window is refused by name before any probe", async () => {
+  test("an app whose launched window cannot be proven owned is refused by name before any probe", async () => {
     const child = { unref: vi.fn(), kill: vi.fn() }
     vi.mocked((await import("node:child_process")).spawn).mockReturnValueOnce(child as never)
+    // Ghostty now launches with a run-scoped marker, but this harness records no
+    // owner TTY for it, so ownership can never be proven and collection refuses.
     await expect(handleApp("ghostty", {})).rejects.toThrow(
-      /Ghostty has no owned-window assertion; refusing to collect a run this probe cannot prove it launched/,
+      /ghostty: cli-process launch recorded no TTY in its launched window; refusing to guess the owner's TTY/,
     )
-    expect(findOwnedDaemon).not.toHaveBeenCalled()
     expect(requestDaemonProbe).not.toHaveBeenCalled()
     expect(retainCollectedRun).not.toHaveBeenCalled()
   })
