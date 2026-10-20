@@ -299,25 +299,36 @@ test("the normalized blank is confirmed twice before the first calibration paint
   expect(run.reads.get("restore grid paint")).toBe(2)
 })
 
-test("failure to confirm the starting blank is fatal when restoration cannot be proven", async () => {
+test("capture failure stays primary when starting-blank restoration cannot be proven", async () => {
   const writes: string[] = []
-  const failure = new Error("Original owned window capture failed")
-  await expect(
-    calibrateCaptureOrigin({
-      ctx: {
-        rows: 4,
-        cols: 4,
-        write: (text: string) => writes.push(text),
-        queryMode: async () => "reset",
-        queryWithSentinelOutcome: async () => modeOutcome("2"),
-      } as unknown as TermContext,
-      timeoutMs: 100,
-      captureRaw: async () => {
-        throw failure
-      },
-    }),
-  ).rejects.toMatchObject({ name: "CaptureRestoreFailed", cause: failure })
+  // The retained hosted Cursor/VS Code failure occurs on the first baseline acquisition.
+  const failure = Object.assign(new Error("Darwin window server refused image of the selected window"), {
+    name: "DarwinCaptureCommandFailed",
+  })
+  const caught = await calibrateCaptureOrigin({
+    ctx: {
+      rows: 4,
+      cols: 4,
+      write: (text: string) => writes.push(text),
+      queryMode: async () => "reset",
+      queryWithSentinelOutcome: async () => modeOutcome("2"),
+    } as unknown as TermContext,
+    timeoutMs: 100,
+    captureRaw: async () => {
+      throw failure
+    },
+  }).catch((error: unknown) => error)
+  expect(caught).toBeInstanceOf(AggregateError)
+  const error = caught as AggregateError
+  expect(error).toMatchObject({ name: "CaptureRestoreFailed", cause: failure })
+  expect(error.message).toMatch(/^DarwinCaptureCommandFailed: Darwin window server refused/)
+  expect(error.errors).toHaveLength(2)
+  expect(error.errors[0]).toBe(failure)
+  // Bun prints these members separately, so the outer message alone cannot fix attribution.
+  expect(error.errors[1].message).toMatch(/^Secondary restoration unverified after DarwinCaptureCommandFailed/)
+  expect(error.errors[1].message).not.toContain("Starting blank was never confirmed")
   expect(writes.at(-2)).toContain("\x1b[0m\x1b[2J\x1b[H")
+  expect(writes.at(-1)).toBe("\x1b[?25l")
 })
 
 test("an initial partial write with unprovable restoration is a fatal run failure", async () => {

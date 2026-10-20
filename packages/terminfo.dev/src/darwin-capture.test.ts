@@ -29,15 +29,20 @@ test.each(["command failure", "missing output"])(
   async (failure) => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-diagnostic-"))
     const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
+    const selected = { ...own, sharingState: 1, memoryUsage: 4096 }
+    const preCapture = { ...own, sharingState: 0, memoryUsage: 0 }
+    let censuses = 0
     let captureArgs: string[] = []
     const runner = vi
       .spyOn(captureCore, "command")
       .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
-        if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+        if (file === "/usr/bin/osascript") {
+          return Buffer.from(JSON.stringify([censuses++ === 0 ? selected : preCapture]))
+        }
         if (file === "magick" && args[0] === "-version") return Buffer.from("test converter")
         if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected diagnostic command ${file}`)
         captureArgs = args
-        onStderr?.(Buffer.from("actual stderr"))
+        onStderr?.(Buffer.from("could not create image from window\n"))
         if (failure === "command failure") throw new Error("command exited 1")
         return Buffer.from("actual stdout")
       })
@@ -54,18 +59,19 @@ test.each(["command failure", "missing output"])(
       expect(error.name).toBe(
         failure === "command failure" ? "DarwinCaptureCommandFailed" : "DarwinCaptureOutputMissing",
       )
+      if (failure === "command failure") expect(error.message).toMatch(/^Darwin window server refused/)
       const details = JSON.parse(error.message.slice(error.message.indexOf("{")))
       expect(details).toMatchObject({
         captureContext: {
           measuredAppPid: 41,
-          selectedWindow: own,
-          preCaptureWindow: own,
+          selectedWindow: selected,
+          preCaptureWindow: preCapture,
         },
         file: "/usr/sbin/screencapture",
         args: captureArgs,
         outputPath: captureArgs.at(-1),
         stdout: failure === "command failure" ? null : "actual stdout",
-        stderr: "actual stderr",
+        stderr: "could not create image from window\n",
       })
       expect(error.cause).toBeInstanceOf(Error)
       if (failure === "command failure") {

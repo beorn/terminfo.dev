@@ -87,31 +87,40 @@ if (!raw) throw new Error('CGWindowListCopyWindowInfo returned null');
 var rows = [], count = $.CFArrayGetCount(raw);
 for (var i = 0; i < count; i++) {
   var w = ObjC.castRefToObject($.CFArrayGetValueAtIndex(raw, i));
-  rows.push({ id: value(w, 'kCGWindowNumber'), ownerPid: value(w, 'kCGWindowOwnerPID'), layer: value(w, 'kCGWindowLayer'), bounds: bounds(w) });
+  rows.push({ id: value(w, 'kCGWindowNumber'), ownerPid: value(w, 'kCGWindowOwnerPID'), layer: value(w, 'kCGWindowLayer'), bounds: bounds(w), sharingState: value(w, 'kCGWindowSharingState'), memoryUsage: value(w, 'kCGWindowMemoryUsage') });
 }
 JSON.stringify(rows);`
 
 /** One screenshot per request. Paint currency belongs to the collector's witness, not this adapter. */
 export async function createDarwinCapture(directory: string, { appPid }: { appPid: number }) {
-  const census = async (deadline?: number) =>
-    selectDarwinWindow(
-      JSON.parse(
-        (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
-      ),
-      appPid,
+  const census = async (deadline?: number) => {
+    const rows: unknown = JSON.parse(
+      (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
     )
-  const window = await census()
+    const window = selectDarwinWindow(rows, appPid)
+    // Selection above validates the census rows before their diagnostic fields are retained.
+    const observed = (rows as Record<string, unknown>[]).find(
+      (row) => row.id === window.id && row.ownerPid === appPid && row.layer === 0,
+    )
+    return {
+      window,
+      // Observations may change without changing window identity; null means the census did not return a value.
+      observations: { sharingState: observed?.sharingState ?? null, memoryUsage: observed?.memoryUsage ?? null },
+    }
+  }
+  const selected = await census()
+  const { window } = selected
   await command("magick", ["-version"])
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const assertOwned = async (deadline?: number) => {
     const current = await census(deadline)
-    if (JSON.stringify(current) !== JSON.stringify(window)) {
+    if (JSON.stringify(current.window) !== JSON.stringify(window)) {
       throw new Error(`Darwin owned window ${window.id} identity or bounds changed during capture`)
     }
     return current
   }
   const acquire = async (deadline?: number) => {
-    const preCaptureWindow = await assertOwned(deadline)
+    const preCapture = await assertOwned(deadline)
     const path = join(directory, `capture-${randomBytes(16).toString("hex")}.png`)
     const file = "/usr/sbin/screencapture"
     const args = ["-l", String(window.id), "-o", "-x", "-t", "png", path]
@@ -126,9 +135,17 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     } catch (cause) {
       const underlying =
         cause instanceof Error ? { name: cause.name, message: cause.message } : { message: String(cause) }
-      const captureContext = { measuredAppPid: appPid, selectedWindow: window, preCaptureWindow }
+      const captureContext = {
+        measuredAppPid: appPid,
+        selectedWindow: { ...window, ...selected.observations },
+        preCaptureWindow: { ...preCapture.window, ...preCapture.observations },
+      }
+      const summary =
+        stdout === undefined && stderr.toString().includes("could not create image from window")
+          ? "Darwin window server refused image of the selected window"
+          : "Darwin screenshot capture failed"
       const error = new Error(
-        `Darwin screenshot capture failed: ${JSON.stringify({ captureContext, file, args, outputPath: path, stdout: stdout?.toString() ?? null, stdoutBase64: stdout?.toString("base64") ?? null, stderr: stderr.toString(), stderrBase64: stderr.toString("base64"), cause: underlying })}`,
+        `${summary}: ${JSON.stringify({ captureContext, file, args, outputPath: path, stdout: stdout?.toString() ?? null, stdoutBase64: stdout?.toString("base64") ?? null, stderr: stderr.toString(), stderrBase64: stderr.toString("base64"), cause: underlying })}`,
         { cause },
       )
       error.name = stdout === undefined ? "DarwinCaptureCommandFailed" : "DarwinCaptureOutputMissing"
