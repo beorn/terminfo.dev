@@ -243,7 +243,14 @@ test("shared hosted DMG caller rejects altered Warp bytes before install and pre
 // detect a failed/mistyped preference write or an already-used host. Keep its real
 // YAML/quoting assertions in this caller test; no production injection seam is added.
 test.each([
-  "success", "wrong-domain", "running", "present", "before-error", "write-error", "wrong-value", "wrong-type",
+  "success",
+  "wrong-domain",
+  "running",
+  "present",
+  "before-error",
+  "write-error",
+  "wrong-value",
+  "wrong-type",
 ] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const source = workflow.split("<<'HOSTED_WARP_START'\n")[1]?.split("\n          HOSTED_WARP_START")[0]
@@ -310,11 +317,18 @@ childBoundary.spawn = (file, args, options) => {
         WARP_SETUP_SOURCE: prelude + source,
       },
     })
-    const events = readFileSync(journal, "utf8").trim().split("\n").map((line) => JSON.parse(line))
+    const events = readFileSync(journal, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line))
     const launches = events.filter((row) => row.event === "launch")
     const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8"))
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
-    expect(preferenceCalls.every((row) => row.args[1] === "dev.warp.Warp-Stable" && row.args[2] === "HasCompletedOnboarding")).toBe(true)
+    expect(
+      preferenceCalls.every(
+        (row) => row.args[1] === "dev.warp.Warp-Stable" && row.args[2] === "HasCompletedOnboarding",
+      ),
+    ).toBe(true)
     if (scenario !== "success") {
       expect(result.status, result.stderr).not.toBe(0)
       expect(result.stderr).toContain("Warp unattended setup failed")
@@ -348,11 +362,19 @@ childBoundary.spawn = (file, args, options) => {
     const argv = spawnSync("/bin/bash", ["-c", `set -- ${quoted}; printf '%s\\0' "$@"`], { encoding: "utf8" })
     expect(argv.status, argv.stderr).toBe(0)
     expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
-    expect(launches).toEqual([{
-      event: "launch", file: "/Applications/Warp.app/Contents/MacOS/stable",
-      args: ["warp://launch/" + config.name], options: { detached: true, stdio: "inherit" }, setupExists: true,
-    }])
-    expect(JSON.parse(readFileSync(join(out, "warp-launch-process.json"), "utf8"))).toMatchObject({name:config.name,childPid:4242})
+    expect(launches).toEqual([
+      {
+        event: "launch",
+        file: "/Applications/Warp.app/Contents/MacOS/stable",
+        args: ["warp://launch/" + config.name],
+        options: { detached: true, stdio: "inherit" },
+        setupExists: true,
+      },
+    ])
+    expect(JSON.parse(readFileSync(join(out, "warp-launch-process.json"), "utf8"))).toMatchObject({
+      name: config.name,
+      childPid: 4242,
+    })
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
