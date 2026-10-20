@@ -272,7 +272,7 @@ const args = process.argv.slice(2);
 const scenario = process.env.WARP_SETUP_SCENARIO;
 const marker = process.env.RUNNER_TEMP + "/written";
 if (name === "PlistBuddy") console.log(scenario === "wrong-domain" ? "dev.warp.Warp-Preview" : "dev.warp.Warp-Stable");
-else if (name === "ps") console.log("PID COMM\\n" + (scenario === "running" ? "4242 /Applications/Warp.app/Contents/MacOS/stable" : "1 /sbin/launchd"));
+else if (name === "ps") console.log("PID COMM\\n" + (scenario === "running" ? "4242 /Applications/Warp.app/Contents/MacOS/stable" : scenario === "success" ? "1 /usr/libexec/fixture-process\\n".repeat(3000) + "9999 /fixture/census-end" : "1 /sbin/launchd"));
 else if (name === "defaults") {
   if (args[0] === "write") {
     if (scenario === "write-error") { console.error("fixture write denied"); process.exit(9); }
@@ -296,7 +296,7 @@ childBoundary.spawnSync = (file, args, options) => {
 };
 childBoundary.spawn = (file, args, options) => {
   const setupPath = process.env.RUNNER_TEMP + "/measurement-artifacts/warp-onboarding-setup.json";
-  fsBoundary.appendFileSync(process.env.WARP_SETUP_JOURNAL, JSON.stringify({event:"launch", file, args, options, setupExists:fsBoundary.existsSync(setupPath)}) + "\\n");
+  fsBoundary.appendFileSync(process.env.WARP_SETUP_JOURNAL, JSON.stringify({event:"launch", file, args, options, setupExists:fsBoundary.existsSync(setupPath), commandExists:fsBoundary.existsSync(process.env.RUNNER_TEMP + "/measurement-artifacts/collect.command")}) + "\\n");
   return {pid:4242, unref() {}};
 };
 `
@@ -323,7 +323,10 @@ childBoundary.spawn = (file, args, options) => {
       .split("\n")
       .map((line) => JSON.parse(line) as CallerEvent)
     const launches = events.filter((row) => row.event === "launch")
-    const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8")) as { prepared: boolean }
+    const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8")) as {
+      prepared: boolean
+      commands: Array<{ label: string; stdout: string }>
+    }
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
     expect(
       preferenceCalls.every(
@@ -344,6 +347,7 @@ childBoundary.spawn = (file, args, options) => {
     }
     expect(result.status, result.stderr).toBe(0)
     expect(setup.prepared).toBe(true)
+    expect(setup.commands.find((row) => row.label === "processes")?.stdout).toContain("9999 /fixture/census-end")
     expect(preferenceCalls.map((row) => row.args)).toEqual([
       ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
       ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
@@ -370,6 +374,7 @@ childBoundary.spawn = (file, args, options) => {
         args: ["warp://launch/" + config.name],
         options: { detached: true, stdio: "inherit" },
         setupExists: true,
+        commandExists: true,
       },
     ])
     expect(JSON.parse(readFileSync(join(out, "warp-launch-process.json"), "utf8"))).toMatchObject({

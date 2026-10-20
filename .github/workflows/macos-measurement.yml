@@ -354,11 +354,12 @@ jobs:
               ["type", ["/usr/bin/defaults", "read-type", domain, key]],
             ]) {
               const started = new Date().toISOString();
-              const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", timeout: 10000, maxBuffer: 65536 });
+              const maxBuffer = label === "processes" ? 1024 * 1024 : 65536;
+              const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", timeout: 10000, maxBuffer });
               const stdout = result.stdout ?? "", stderr = result.stderr ?? "";
               setup.commands.push({ label, argv, started, ended: new Date().toISOString(), status: result.status,
                 signal: result.signal, error: result.error?.message ?? null,
-                stdout: stdout.slice(0, 65536), stderr: stderr.slice(0, 65536) });
+                stdout: stdout.slice(0, maxBuffer), stderr: stderr.slice(0, maxBuffer) });
               if (result.error || result.signal) throw new Error(label + ": " + (result.error?.message ?? result.signal));
               if (label === "before") {
                 if (result.status !== 1 || !stderr.includes("does not exist")) throw new Error("before: expected a fresh absent key, see raw command result");
