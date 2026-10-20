@@ -811,7 +811,7 @@ export async function collectProbeRun(
             return result
           },
           out,
-          clipboard ? () => clipboard.assertOwned() : undefined,
+          clipboard?.assertOwned.bind(clipboard),
         ),
       out,
     )
