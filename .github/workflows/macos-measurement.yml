@@ -36,6 +36,8 @@ jobs:
             bundle: /Applications/Visual Studio Code.app
           - id: warp
             bundle: /Applications/Warp.app
+          - id: cmux
+            bundle: /Applications/cmux.app
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -152,15 +154,17 @@ jobs:
           )"
               cp "$RUNNER_TEMP/editor-installer.zip" "$RUNNER_TEMP/measurement-artifacts/editor-installer.zip"
               ;;
-            alacritty|warp)
+            alacritty|warp|cmux)
               bun --eval "$(cat <<'HOSTED_DMG_INSTALL'
           const { createHash } = require("node:crypto");
           const { writeFileSync, copyFileSync } = require("node:fs");
           const app = process.env.APP_ID;
-          const name = app === "warp" ? "Warp" : "Alacritty";
+          const name = app === "warp" ? "Warp" : app === "cmux" ? "cmux" : "Alacritty";
           const url = app === "warp"
             ? "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg"
-            : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
+            : app === "cmux"
+              ? "https://github.com/manaflow-ai/cmux/releases/download/v0.65.2/cmux-macos.dmg"
+              : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
           const installer = process.env.RUNNER_TEMP + "/" + name + ".dmg";
           const mountpoint = "/Volumes/" + name;
           async function run(argv) {
@@ -169,13 +173,15 @@ jobs:
             if (status !== 0) throw new Error(argv[0] + " exited " + status);
           }
           await run(["curl", "--location", "--fail", "--silent", "--show-error", url, "--output", installer]);
-          if (app === "warp") {
-            const expectedSha256 = "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1";
+          if (app === "warp" || app === "cmux") {
+            const expectedSha256 = app === "warp"
+              ? "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1"
+              : "2f4bd98df7514067408d89398f8f19059015a3bbae632d0474515d4b76d6ee36";
             const actualSha256 = createHash("sha256").update(new Uint8Array(await Bun.file(installer).arrayBuffer())).digest("hex");
             const out = process.env.RUNNER_TEMP + "/measurement-artifacts";
-            writeFileSync(out + "/warp-installer.json", JSON.stringify({ app, url, expectedSha256, actualSha256 }));
-            if (actualSha256 !== expectedSha256) throw new Error("Warp installer checksum mismatch: expected " + expectedSha256 + ", actual " + actualSha256);
-            copyFileSync(installer, out + "/Warp.dmg");
+            writeFileSync(out + "/" + app + "-installer.json", JSON.stringify({ app, url, expectedSha256, actualSha256 }));
+            if (actualSha256 !== expectedSha256) throw new Error(name + " installer checksum mismatch: expected " + expectedSha256 + ", actual " + actualSha256);
+            copyFileSync(installer, out + "/" + name + ".dmg");
           }
           await run(["hdiutil", "attach", installer, "-mountpoint", mountpoint]);
           await run(["cp", "-R", mountpoint + "/" + name + ".app", "/Applications/"]);
@@ -218,7 +224,7 @@ jobs:
             [[ "$binary_version" =~ $version_pattern ]] || { echo "Alacritty binary --version has an unexpected shape" >&2; exit 1; }
             test "${BASH_REMATCH[1]}" = "$bundle_version" || { echo "Alacritty bundle and binary versions disagree" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
-          elif [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ]; then
+          elif [ "$APP_ID" = cursor ] || [ "$APP_ID" = com.microsoft.VSCode ] || [ "$APP_ID" = cmux ]; then
             bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_BUNDLE/Contents/Info.plist")"
             test -n "$bundle_version" || { echo "$APP_ID bundle version is empty" >&2; exit 1; }
             TARGET_VERSION_EXPORT="$(printf 'export TERMINFO_TARGET_VERSION=%q' "$bundle_version")"
@@ -360,6 +366,20 @@ jobs:
           writeFileSync(join(out, "warp-launch-process.json"), JSON.stringify({ name, childPid: child.pid ?? null, launchStart, launchEnd: new Date().toISOString() }), { flag: "wx", mode: 0o600 });
           child.unref();
           HOSTED_WARP_START
+          )" > "$OUT/launcher.log" 2>&1
+              ;;
+            cmux)
+              COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_CMUX_START'
+          const { mkdirSync, writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+          const { homedir } = require("node:os");
+          const { shellQuote } = require(process.cwd() + "/packages/terminfo.dev/src/daemon-client.ts");
+          const directory = join(homedir(), ".config", "ghostty");
+          mkdirSync(directory, { recursive: true });
+          writeFileSync(join(directory, "config"), "command = /bin/bash " + shellQuote(process.env.COMMAND_PATH) + "\n", { mode: 0o600 });
+          const status = await Bun.spawn(["open", "-a", process.env.APP_BUNDLE], { stdout: "inherit", stderr: "inherit" }).exited;
+          if (status !== 0) throw new Error("open exited " + status);
+          HOSTED_CMUX_START
           )" > "$OUT/launcher.log" 2>&1
               ;;
             cursor|com.microsoft.VSCode)

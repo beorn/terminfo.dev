@@ -1098,6 +1098,7 @@ describe("private finite daemon startup", () => {
     { id: "alacritty", platform: "win32", version: "0.17.0" },
     { id: "cursor", platform: "darwin", version: "3.25.9" },
     { id: "com.microsoft.VSCode", platform: "darwin", version: "1.142.0" },
+    { id: "cmux", platform: "darwin", version: "0.65.2" },
   ])(
     "hosted $id requires matching receipt identity before collection and retains its existing version source",
     (fixture) => {
@@ -1165,7 +1166,7 @@ describe("private finite daemon startup", () => {
       const run = await collectProbeRun({ ids: ["device.xtversion"] })
       assert.equal(run.target.id, fixture.id)
       assert.equal(run.target.version, fixture.version)
-      detectedName = fixture.id === "cursor" ? "com.microsoft.VSCode" : "cursor"
+      detectedName = fixture.id === "cmux" ? "ghostty" : fixture.id === "cursor" ? "com.microsoft.VSCode" : "cursor"
       await assert.rejects(
         collectProbeRun({ ids: ["device.xtversion"] }),
         { message: "Hosted " + (fixture.platform === "win32" ? "Windows" : "Darwin") + " terminal detected " + JSON.stringify(detectedName) + " while the receipt names " + fixture.id },
