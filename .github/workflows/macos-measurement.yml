@@ -339,7 +339,7 @@ jobs:
               ;;
             warp)
               COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_WARP_START'
-          const { mkdirSync, writeFileSync, copyFileSync, constants } = require("node:fs");
+          const { mkdirSync, writeFileSync, copyFileSync, statSync, constants } = require("node:fs");
           const { join } = require("node:path");
           const { homedir } = require("node:os");
           const { randomUUID } = require("node:crypto");
@@ -350,15 +350,24 @@ jobs:
           const setupPath = join(out, "warp-onboarding-setup.json");
           // The Warp completion writer stores JSON true as NSString in this private preference.
           const domain = "dev.warp.Warp-Stable", key = "HasCompletedOnboarding";
-          const setup = { domain, key, bundleId: null, prepared: false, commands: [] };
+          const setup = { domain, key, bundleId: null, prepared: false, commands: [],
+            settingsFile: { path: join(homedir(), ".warp", "settings.toml"), exists: null } };
           try {
+            // Observe existing state without deleting it or writing a second settings store.
+            setup.settingsFile.exists = statSync(setup.settingsFile.path, { throwIfNoEntry: false }) !== undefined;
             for (const [label, argv] of [
               ["bundle", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", process.env.APP_BUNDLE + "/Contents/Info.plist"]],
               ["processes", ["/bin/ps", "-axo", "pid,comm"]],
               ["before", ["/usr/bin/defaults", "read", domain, key]],
+              ["migration-marker", ["/usr/bin/defaults", "read", domain, "SettingsFileMigrationComplete"]],
+              ["restore-before", ["/usr/bin/defaults", "read", domain, "RestoreSession"]],
               ["write", ["/usr/bin/defaults", "write", domain, key, "-string", "true"]],
               ["readback", ["/usr/bin/defaults", "read", domain, key]],
               ["type", ["/usr/bin/defaults", "read-type", domain, key]],
+              // Public preferences are also NSString JSON; the app owns fresh TOML migration.
+              ["restore-write", ["/usr/bin/defaults", "write", domain, "RestoreSession", "-string", "false"]],
+              ["restore-readback", ["/usr/bin/defaults", "read", domain, "RestoreSession"]],
+              ["restore-type", ["/usr/bin/defaults", "read-type", domain, "RestoreSession"]],
             ]) {
               const started = new Date().toISOString();
               const maxBuffer = label === "processes" ? 1024 * 1024 : 65536;
@@ -370,6 +379,8 @@ jobs:
               if (result.error || result.signal) throw new Error(label + ": " + (result.error?.message ?? result.signal));
               if (label === "before") {
                 if (result.status !== 1 || !stderr.includes("does not exist")) throw new Error("before: expected a fresh absent key, see raw command result");
+              } else if (label === "migration-marker" || label === "restore-before") {
+                if (result.status !== 0 && !(result.status === 1 && stderr.includes("does not exist"))) throw new Error(label + ": command exited " + result.status);
               } else if (result.status !== 0) throw new Error(label + ": command exited " + result.status);
               if (label === "bundle") {
                 setup.bundleId = stdout.trim();
@@ -377,7 +388,8 @@ jobs:
               }
               if (label === "processes" && /\/Warp[^/]*\.app\/Contents\/MacOS\//.test(stdout)) throw new Error("processes: Warp is already running before preparation");
               if (label === "readback" && stdout.trim() !== "true") throw new Error("readback: expected exact string true");
-              if (label === "type" && stdout.trim() !== "Type is string") throw new Error("type: expected string preference");
+              if (label === "restore-readback" && stdout.trim() !== "false") throw new Error("restore-readback: expected exact string false");
+              if ((label === "type" || label === "restore-type") && stdout.trim() !== "Type is string") throw new Error(label + ": expected string preference");
             }
             setup.prepared = true;
           } catch (error) {
@@ -414,6 +426,35 @@ jobs:
           const { join } = require("node:path");
           const { homedir } = require("node:os");
           const { shellQuote } = require(process.cwd() + "/packages/terminfo.dev/src/daemon-client.ts");
+          const { spawnSync } = require("node:child_process");
+          const setupPath = join(process.env.RUNNER_TEMP, "measurement-artifacts", "cmux-launch-setup.json");
+          const setup = { domain: null, version: null, prepared: false, commands: [] };
+          const run = (label, argv) => {
+            const started = new Date().toISOString();
+            const result = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", timeout: 10000, maxBuffer: 65536 });
+            const stdout = result.stdout ?? "", stderr = result.stderr ?? "";
+            setup.commands.push({ label, argv, started, ended: new Date().toISOString(), status: result.status,
+              signal: result.signal ?? null, error: result.error?.message ?? null,
+              stdout: stdout.slice(0, 65536), stderr: stderr.slice(0, 65536) });
+            if (result.error || result.signal || result.status !== 0) throw new Error(label + ": " + (result.error?.message ?? result.signal ?? "command exited " + result.status));
+            return stdout.trim();
+          };
+          try {
+            const plist = join(process.env.APP_BUNDLE, "Contents", "Info.plist");
+            setup.domain = run("bundle", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", plist]);
+            setup.version = run("version", ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleShortVersionString", plist]);
+            if (!setup.domain || !setup.version) throw new Error("installed bundle identity/version is empty");
+            const key = "cmux.cloud.welcome.seenVersion";
+            run("write", ["/usr/bin/defaults", "write", setup.domain, key, "-string", "0.65.1"]);
+            if (run("readback", ["/usr/bin/defaults", "read", setup.domain, key]) !== "0.65.1") throw new Error("readback: expected campaign string 0.65.1");
+            if (run("type", ["/usr/bin/defaults", "read-type", setup.domain, key]) !== "Type is string") throw new Error("type: expected string preference");
+            setup.prepared = true;
+          } catch (error) {
+            setup.failure = String(error);
+            throw new Error("cmux unattended setup failed; see " + setupPath + ": " + error);
+          } finally {
+            writeFileSync(setupPath, JSON.stringify(setup, null, 2), { flag: "wx", mode: 0o600 });
+          }
           const directory = join(homedir(), ".config", "ghostty");
           mkdirSync(directory, { recursive: true });
           writeFileSync(join(directory, "config"), "command = /bin/bash " + shellQuote(process.env.COMMAND_PATH) + "\n", { mode: 0o600 });

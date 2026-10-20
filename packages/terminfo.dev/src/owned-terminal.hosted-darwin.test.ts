@@ -171,6 +171,19 @@ test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps
   }
 })
 
+test("hosted ancestry selects the outer app in the measured inner-to-outer chain without changing it", () => {
+  // The retained Warp run had this same-executable pair; the inner PID owned no CG window.
+  const rows = [
+    { pid: 13352, ppid: 13338, comm: "/Applications/Warp.app/Contents/MacOS/stable" },
+    { pid: 13338, ppid: 1, comm: "/Applications/Warp.app/Contents/MacOS/stable" },
+    { pid: 1, ppid: 0, comm: "/sbin/launchd" },
+  ]
+  const before = rows.map((row) => ({ ...row }))
+  Object.freeze(rows)
+  expect(requireHostedDarwinAppAncestor("stable", rows)).toBe(rows[1])
+  expect(rows).toEqual(before)
+})
+
 test("cmux ancestry binds the receipt GUI path despite a same-basename CLI", () => {
   const executable = "/Applications/cmux.app/Contents/MacOS/cmux"
   const gui = { pid: 90, ppid: 1, comm: executable }

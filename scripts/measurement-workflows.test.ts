@@ -303,9 +303,14 @@ test("cmux hosted caller quotes the private command in normal config before one 
   const writes = new Map<string, string>()
   const events: string[] = []
   const launches: string[][] = []
+  const native: string[][] = []
+  let setupFailure = ""
   const run = (status: number) =>
     runInNewContext(`(async () => {${source}\n})()`, {
-      process: { cwd: () => root, env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/cmux.app" } },
+      process: {
+        cwd: () => root,
+        env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/cmux.app", RUNNER_TEMP: "/runner" },
+      },
       Bun: {
         spawn: (argv: string[]) => {
           events.push("launch")
@@ -318,21 +323,64 @@ test("cmux hosted caller quotes the private command in normal config before one 
           return {
             mkdirSync: () => {},
             writeFileSync: (path: string, value: string) => {
-              events.push("config")
+              events.push(path.endsWith("/ghostty/config") ? "config" : "evidence")
               writes.set(path, value)
             },
           }
         }
         if (id === "node:path") return { join }
         if (id === "node:os") return { homedir: () => "/Users/runner" }
+        if (id === "node:child_process") {
+          return {
+            spawnSync: (file: string, args: string[]) => {
+              native.push([file, ...args])
+              events.push(`native:${args[0]}`)
+              if (setupFailure === "write" && args[0] === "write") {
+                return { status: 9, stdout: "", stderr: "fixture preference write denied" }
+              }
+              const stdout = file.endsWith("PlistBuddy")
+                ? args[1] === "Print :CFBundleIdentifier"
+                  ? "fixture.installed.cmux"
+                  : "0.65.2"
+                : args[0] === "read-type"
+                  ? setupFailure === "type"
+                    ? "Type is boolean"
+                    : "Type is string"
+                  : args[0] === "read"
+                    ? setupFailure === "value"
+                      ? "false"
+                      : "0.65.1"
+                    : ""
+              return { status: 0, stdout, stderr: "" }
+            },
+          }
+        }
         if (id.endsWith("/daemon-client.ts")) return { shellQuote }
         throw new Error(`Unexpected cmux launch dependency: ${id}`)
       },
     })
   await run(0)
-  expect(events).toEqual(["config", "launch"])
+  expect(native).toEqual([
+    ["/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", "/Applications/cmux.app/Contents/Info.plist"],
+    [
+      "/usr/libexec/PlistBuddy",
+      "-c",
+      "Print :CFBundleShortVersionString",
+      "/Applications/cmux.app/Contents/Info.plist",
+    ],
+    ["/usr/bin/defaults", "write", "fixture.installed.cmux", "cmux.cloud.welcome.seenVersion", "-string", "0.65.1"],
+    ["/usr/bin/defaults", "read", "fixture.installed.cmux", "cmux.cloud.welcome.seenVersion"],
+    ["/usr/bin/defaults", "read-type", "fixture.installed.cmux", "cmux.cloud.welcome.seenVersion"],
+  ])
+  expect(events.indexOf("native:write")).toBeLessThan(events.indexOf("launch"))
+  expect(events.indexOf("native:read-type")).toBeLessThan(events.indexOf("launch"))
+  expect(events.indexOf("evidence")).toBeLessThan(events.indexOf("launch"))
   expect(launches).toEqual([["open", "-a", "/Applications/cmux.app"]])
-  expect([...writes.keys()]).toEqual(["/Users/runner/.config/ghostty/config"])
+  expect(JSON.parse(writes.get("/runner/measurement-artifacts/cmux-launch-setup.json")!)).toMatchObject({
+    domain: "fixture.installed.cmux",
+    version: "0.65.2",
+    prepared: true,
+  })
   const configured = writes
     .get("/Users/runner/.config/ghostty/config")!
     .trim()
@@ -341,6 +389,15 @@ test("cmux hosted caller quotes the private command in normal config before one 
   expect(argv.status, argv.stderr).toBe(0)
   expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
   await expect(run(7)).rejects.toThrow(/open.*7/)
+  for (setupFailure of ["write", "type", "value"]) {
+    launches.length = 0
+    await expect(run(0)).rejects.toThrow(/cmux.*setup failed/)
+    expect(launches).toHaveLength(0)
+    expect(JSON.parse(writes.get("/runner/measurement-artifacts/cmux-launch-setup.json")!)).toHaveProperty(
+      "prepared",
+      false,
+    )
+  }
 })
 
 // Setup must finish before the cold GUI launch. The old VM-only YAML test could not
@@ -355,6 +412,10 @@ test.each([
   "write-error",
   "wrong-value",
   "wrong-type",
+  "restore-write-error",
+  "restore-wrong-value",
+  "restore-wrong-type",
+  "existing-settings",
 ] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const source = workflow.split("<<'HOSTED_WARP_START'\n")[1]?.split("\n          HOSTED_WARP_START")[0]
@@ -367,6 +428,11 @@ test.each([
   const command = join(directory, "Alice's files", "collect.command")
   for (const path of [out, home, bin, dirname(command)]) mkdirSync(path, { recursive: true })
   writeFileSync(command, "the actual generated command bytes")
+  const settingsPath = join(home, ".warp", "settings.toml")
+  if (scenario === "existing-settings") {
+    mkdirSync(dirname(settingsPath), { recursive: true })
+    writeFileSync(settingsPath, "retained existing settings")
+  }
   // Fixed absolute production commands are redirected to PATH shims only in this
   // subprocess's platform boundary. The journal retains the original absolute argv.
   const shim = `#!${process.execPath}
@@ -374,17 +440,19 @@ const fs = require("node:fs");
 const name = require("node:path").basename(process.argv[1]);
 const args = process.argv.slice(2);
 const scenario = process.env.WARP_SETUP_SCENARIO;
-const marker = process.env.RUNNER_TEMP + "/written";
+const key = args[2];
+const marker = process.env.RUNNER_TEMP + "/written-" + key;
 if (name === "PlistBuddy") console.log(scenario === "wrong-domain" ? "dev.warp.Warp-Preview" : "dev.warp.Warp-Stable");
 else if (name === "ps") console.log("PID COMM\\n" + (scenario === "running" ? "4242 /Applications/Warp.app/Contents/MacOS/stable" : scenario === "success" ? "1 /usr/libexec/fixture-process\\n".repeat(3000) + "9999 /fixture/census-end" : "1 /sbin/launchd"));
 else if (name === "defaults") {
   if (args[0] === "write") {
-    if (scenario === "write-error") { console.error("fixture write denied"); process.exit(9); }
-    fs.writeFileSync(marker, "true");
-  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" ? "Type is boolean" : "Type is string");
-  else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : "true");
+    if (scenario === "write-error" || (scenario === "restore-write-error" && key === "RestoreSession")) { console.error("fixture write denied"); process.exit(9); }
+    fs.writeFileSync(marker, args[4]);
+  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" || (scenario === "restore-wrong-type" && key === "RestoreSession") ? "Type is boolean" : "Type is string");
+  else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : scenario === "restore-wrong-value" && key === "RestoreSession" ? "true" : fs.readFileSync(marker, "utf8"));
+  else if (scenario === "existing-settings" && key === "SettingsFileMigrationComplete") console.log("true");
   else if (scenario === "present") console.log("true");
-  else { console.error(scenario === "before-error" ? "fixture permission denied" : "The domain/default pair of (dev.warp.Warp-Stable, HasCompletedOnboarding) does not exist"); process.exit(1); }
+  else { console.error(scenario === "before-error" ? "fixture permission denied" : "The domain/default pair of (dev.warp.Warp-Stable, " + key + ") does not exist"); process.exit(1); }
 } else throw new Error("Unexpected platform shim " + name);
 `
   for (const name of ["defaults", "PlistBuddy", "ps"]) writeFileSync(join(bin, name), shim, { mode: 0o700 })
@@ -430,14 +498,17 @@ childBoundary.spawn = (file, args, options) => {
     const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8")) as {
       prepared: boolean
       commands: Array<{ label: string; stdout: string }>
+      settingsFile: { path: string; exists: boolean }
     }
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
     expect(
       preferenceCalls.every(
-        (row) => row.args[1] === "dev.warp.Warp-Stable" && row.args[2] === "HasCompletedOnboarding",
+        (row) =>
+          row.args[1] === "dev.warp.Warp-Stable" &&
+          ["HasCompletedOnboarding", "RestoreSession", "SettingsFileMigrationComplete"].includes(row.args[2]!),
       ),
     ).toBe(true)
-    if (scenario !== "success") {
+    if (scenario !== "success" && scenario !== "existing-settings") {
       expect(result.status, result.stderr).not.toBe(0)
       expect(result.stderr).toContain("Warp unattended setup failed")
       expect(launches).toHaveLength(0)
@@ -451,12 +522,24 @@ childBoundary.spawn = (file, args, options) => {
     }
     expect(result.status, result.stderr).toBe(0)
     expect(setup.prepared).toBe(true)
-    expect(setup.commands.find((row) => row.label === "processes")?.stdout).toContain("9999 /fixture/census-end")
+    if (scenario === "success") {
+      expect(setup.commands.find((row) => row.label === "processes")?.stdout).toContain("9999 /fixture/census-end")
+    }
+    expect(setup.settingsFile).toEqual({ path: settingsPath, exists: scenario === "existing-settings" })
+    if (scenario === "existing-settings") {
+      expect(readFileSync(settingsPath, "utf8")).toBe("retained existing settings")
+      expect(setup.commands.find((row) => row.label === "migration-marker")?.stdout.trim()).toBe("true")
+    }
     expect(preferenceCalls.map((row) => row.args)).toEqual([
       ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+      ["read", "dev.warp.Warp-Stable", "SettingsFileMigrationComplete"],
+      ["read", "dev.warp.Warp-Stable", "RestoreSession"],
       ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
       ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
       ["read-type", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+      ["write", "dev.warp.Warp-Stable", "RestoreSession", "-string", "false"],
+      ["read", "dev.warp.Warp-Stable", "RestoreSession"],
+      ["read-type", "dev.warp.Warp-Stable", "RestoreSession"],
     ])
     expect(JSON.stringify(setup)).toContain("does not exist")
     expect(readFileSync(join(out, "collect.command"), "utf8")).toBe("the actual generated command bytes")

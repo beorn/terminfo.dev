@@ -314,7 +314,10 @@ export function hostedDarwinAppFromExecutablePath(executablePath: string): Hoste
   return app
 }
 
-/** Grant-time process identity: the probe's ancestry must reach the receipt's app, never a different terminal. */
+/**
+ * Grant-time process identity: the probe's ancestry must reach the receipt's app, never a different terminal.
+ * Rows follow the measured collector-to-launchd chain, so the last app match is its outermost ancestor.
+ */
 export function requireHostedDarwinAppAncestor(
   expectedComm: string,
   rows: AncestryRow[],
@@ -333,7 +336,7 @@ export function requireHostedDarwinAppAncestor(
       `Hosted Darwin ancestry reached ${other.comm} (pid ${other.pid}) while the receipt names ${expectedComm}`,
     )
   }
-  const named = rows.find((row) =>
+  const named = rows.findLast((row) =>
     expectedComm === "cmux"
       ? receiptExecutablePath === CMUX_GUI_EXECUTABLE_PATH && row.comm.trim() === receiptExecutablePath
       : hostedDarwinCommBase(row.comm) === expectedComm,
