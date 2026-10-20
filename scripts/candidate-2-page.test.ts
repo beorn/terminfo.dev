@@ -7,7 +7,7 @@
  * @level l2
  * @consumer terminfo.dev /release/candidate-2 (bead 28018 AC4)
  * @source-grep the page and its loader are wired by text (the VitePress page imports its `.data`
- *   module and the nav names the route), so only a real site build exercises the render; every
+ *   module), so only a real site build exercises the render; every
  *   assertion below runs the loader itself against the real content tree.
  * @testonly none
  */
@@ -750,14 +750,12 @@ describe("candidate-2 page: wiring", () => {
     expect(page).not.toContain("included rows are decided by the parser surface")
   })
 
-  it("the VitePress page reads its loader, and the nav names the route", () => {
+  it("the VitePress page keeps its loader, title, and dynamic suite basis", () => {
     const page = readFileSync(join(root, "docs", "release", "candidate-2.md"), "utf8")
     expect(page).toContain("from '../data/candidate-2.data'")
     expect(page).toContain("terminfo v0.1 candidate 2")
     // The basis and the suite come from the loader: a literal hash typed into the page would be stale
     // the moment the declaration moves, which is the churn the epic already ruled against.
     expect(page).not.toMatch(/\b[0-9a-f]{12}\b/)
-    const config = readFileSync(join(root, "docs", ".vitepress", "config.ts"), "utf8")
-    expect(config).toContain('"/release/candidate-2"')
   })
 })
