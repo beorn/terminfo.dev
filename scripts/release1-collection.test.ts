@@ -30,6 +30,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { afterAll, describe, expect, it, vi } from "vitest"
+import { parse, stringify } from "yaml"
 import * as admission from "./admit-run.ts"
 import * as catalog from "@terminfo/catalog"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
@@ -473,7 +474,7 @@ it.each([
         (row) =>
           row.context.route === "hosted-workflow" && (inputChange === "blocked-hosted" || row.context.os === "macos"),
       )
-      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 11 : 8)
+      expect(affected).toHaveLength(inputChange === "blocked-hosted" ? 12 : 9)
       expect(affected.every((row) => row.status === "failed" && row.error?.includes("EEXIST"))).toBe(true)
       expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(
         inputChange === "blocked-hosted" ? 0 : 1,
@@ -487,7 +488,7 @@ it.each([
         expect.anything(),
       )
       const hosted = pass.contexts.filter((row) => row.context.route === "hosted-workflow" && row.context.os === os)
-      expect(hosted).toHaveLength(os === "macos" ? 8 : 3)
+      expect(hosted).toHaveLength(os === "macos" ? 9 : 3)
       if (suite === "different") expect(hosted.every((row) => row.error?.includes("source revision"))).toBe(true)
     }
     expect(launcher.mock.calls.filter(([, args]) => Array.isArray(args) && args[0] === "workflow")).toHaveLength(2)
@@ -585,7 +586,7 @@ describe("release 1 collection census", () => {
   })
 
   it("retains every missing app route as required work, never inventing a hosted dispatch", () => {
-    // The workflow's matrix includes Warp and both editors alongside the existing five macOS apps and
+    // The workflow's matrix includes cmux, Warp and both editors alongside the existing five macOS apps and
     // windows-terminal/alacritty/wezterm on windows.
     // All remaining unresolved routes stay recorded as expected route work. kitty/macos is one of
     // them, with its own measured reason: the hosted runner has no usable OpenGL, so kitty opens no
@@ -598,8 +599,8 @@ describe("release 1 collection census", () => {
     expect(kitty?.sourceRun).toBe("39302236007")
     expect(kitty?.uncollectable).toMatch(/not measurable on the hosted runner.*39302236007/)
     const missing = census().filter((entry) => entry.route === null)
-    expect(missing).toHaveLength(2)
-    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(1)
+    expect(missing).toHaveLength(1)
+    expect(missing.filter((entry) => entry.uncollectable?.includes("required route work"))).toHaveLength(0)
     for (const id of [
       "terminal-app",
       "iterm2",
@@ -609,6 +610,7 @@ describe("release 1 collection census", () => {
       "cursor",
       "com.microsoft.VSCode",
       "warp",
+      "cmux",
     ]) {
       expect(census().find((entry) => entry.id === id && entry.os === "macos")?.route).toBe("hosted-workflow")
     }
@@ -877,6 +879,13 @@ it("fails collection by name and exit 1 for a required null route without admiss
   const preload = join(directory, "external-owners.ts")
   const admitted = join(directory, "admission-entered")
   const root = dirname(CONTENT)
+  const macosWorkflowPath = join(root, ".github/workflows/macos-measurement.yml")
+  const missingRoutePath = join(directory, "missing-cmux-workflow.yml")
+  const workflow = parse(readFileSync(macosWorkflowPath, "utf8"))
+  workflow.jobs["measure-macos"].strategy.matrix.include = workflow.jobs[
+    "measure-macos"
+  ].strategy.matrix.include.filter((row: { id: string }) => row.id !== "cmux")
+  writeFileSync(missingRoutePath, stringify(workflow))
   writeFileSync(
     preload,
     `
@@ -884,7 +893,7 @@ import { mock } from "bun:test";
 import { writeFileSync } from "node:fs";
 const fs = await import("node:fs");
 const readFingerprintFile = fs.readFileSync;
-const fingerprintFiles = ${JSON.stringify(fingerprintFixture.files)};
+const fingerprintFiles = ${JSON.stringify({ ...fingerprintFixture.files, [macosWorkflowPath]: missingRoutePath })};
 mock.module("node:fs", () => ({...fs, readFileSync: (path, ...args) => readFingerprintFile(typeof path === "string" ? fingerprintFiles[path] ?? path : path, ...args)}));
 const processes = await import("node:child_process");
 mock.module("node:child_process", () => ({...processes, spawnSync: () => ({ status: 1, stdout: "", stderr: "fixture external dispatch refused", signal: null })}));
@@ -908,8 +917,8 @@ mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, (
       { cwd: root, encoding: "utf8" },
     )
     expect(result.status, result.stderr).toBe(1)
-    // kitty/macos now fails by name with its measured unmeasurable fact; a row that still has no
-    // route (cmux) keeps the required-route-work refusal this test was written for.
+    // The explicit fixture omits cmux even though the real workflow supports it. Retain the
+    // required-route refusal and the independent kitty measured-uncollectable refusal.
     expect(result.stdout).toMatch(/kitty\/macos: failed.*not measurable on the hosted runner/)
     expect(result.stdout).toMatch(/cmux\/macos: failed.*required route work/)
     const passName = readdirSync(join(directory, "output"))[0]!

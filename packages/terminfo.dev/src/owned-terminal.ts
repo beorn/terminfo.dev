@@ -264,6 +264,7 @@ export type HostedDarwinAppId =
   | "cursor"
   | "com.microsoft.VSCode"
   | "warp"
+  | "cmux"
 export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
 export type AncestryRow = { pid: number; ppid: number; comm: string }
 
@@ -278,7 +279,9 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   Cursor: { id: "cursor", comm: "Cursor" },
   Code: { id: "com.microsoft.VSCode", comm: "Code" },
   stable: { id: "warp", comm: "stable" },
+  cmux: { id: "cmux", comm: "cmux" },
 }
+const CMUX_GUI_EXECUTABLE_PATH = "/Applications/cmux.app/Contents/MacOS/cmux"
 const HOSTED_DARWIN_COMMS = new Set([
   "Terminal",
   "iTerm2",
@@ -288,6 +291,7 @@ const HOSTED_DARWIN_COMMS = new Set([
   "Cursor",
   "Code",
   "stable",
+  "cmux",
 ])
 
 /** macOS `ps -o comm=` prints a full executable path; match and stop on the last segment. */
@@ -300,27 +304,40 @@ function hostedDarwinCommBase(comm: string): string {
 /** Map a github-hosted-runner appLaunch.executablePath to the hosted Mac apps. */
 export function hostedDarwinAppFromExecutablePath(executablePath: string): HostedDarwinApp {
   const base = executablePath.split("/").pop() ?? ""
-  const app = HOSTED_DARWIN_EXECUTABLE[base]
+  const app =
+    base === "cmux" && executablePath !== CMUX_GUI_EXECUTABLE_PATH ? undefined : HOSTED_DARWIN_EXECUTABLE[base]
   if (!app) {
     throw new Error(
-      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm, Cursor, Code, stable: ${JSON.stringify(executablePath)}`,
+      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm, Cursor, Code, stable, cmux: ${JSON.stringify(executablePath)}`,
     )
   }
   return app
 }
 
 /** Grant-time process identity: the probe's ancestry must reach the receipt's app, never a different terminal. */
-export function requireHostedDarwinAppAncestor(expectedComm: string, rows: AncestryRow[]): AncestryRow {
+export function requireHostedDarwinAppAncestor(
+  expectedComm: string,
+  rows: AncestryRow[],
+  receiptExecutablePath?: string,
+): AncestryRow {
   const other = rows.find((row) => {
     const base = hostedDarwinCommBase(row.comm)
-    return HOSTED_DARWIN_COMMS.has(base) && base !== expectedComm
+    return (
+      HOSTED_DARWIN_COMMS.has(base) &&
+      base !== expectedComm &&
+      (base !== "cmux" || row.comm.trim() === CMUX_GUI_EXECUTABLE_PATH)
+    )
   })
   if (other) {
     throw new Error(
       `Hosted Darwin ancestry reached ${other.comm} (pid ${other.pid}) while the receipt names ${expectedComm}`,
     )
   }
-  const named = rows.find((row) => hostedDarwinCommBase(row.comm) === expectedComm)
+  const named = rows.find((row) =>
+    expectedComm === "cmux"
+      ? receiptExecutablePath === CMUX_GUI_EXECUTABLE_PATH && row.comm.trim() === receiptExecutablePath
+      : hostedDarwinCommBase(row.comm) === expectedComm,
+  )
   if (!named) {
     const found = [...rows]
       .reverse()
@@ -709,7 +726,7 @@ export async function createOwnedTerminal(options: {
     }
     hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
     binding = darwinHostedOutput(out)
-    hostedAncestor = requireHostedDarwinAppAncestor(hostedApp.comm, readProcessAncestry(process.pid))
+    hostedAncestor = requireHostedDarwinAppAncestor(hostedApp.comm, readProcessAncestry(process.pid), executablePath)
     hostedReceiptSha256 = receipt.sha256
     hostedPid1Comm = execFileSync("/bin/ps", ["-p", "1", "-o", "comm="], {
       encoding: "utf8",
