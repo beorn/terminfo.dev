@@ -343,7 +343,7 @@ jobs:
           const name = "terminfo-" + randomUUID();
           const directory = join(homedir(), ".warp", "launch_configurations");
           mkdirSync(directory, { recursive: true });
-          const config = { windows: [{ tabs: [{ layout: {
+          const config = { name, windows: [{ tabs: [{ layout: {
             cwd: process.cwd(),
             commands: [{ exec: "/bin/bash " + shellQuote(process.env.COMMAND_PATH) }]
           } }] }] };

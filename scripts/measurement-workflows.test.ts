@@ -186,6 +186,7 @@ test("Warp hosted caller writes one legacy YAML pane before one cold GUI URI lau
     "/Users/runner/.warp/launch_configurations/terminfo-12345678-1234-1234-1234-123456789abc.yaml",
   ])
   const config = parse([...writes.values()][0]!)
+  expect(config.name).toBe("terminfo-12345678-1234-1234-1234-123456789abc")
   expect(config.windows).toHaveLength(1)
   expect(config.windows[0].tabs).toHaveLength(1)
   expect(config.windows[0].tabs[0].layout.cwd).toBe("/workspace")
