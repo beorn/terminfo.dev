@@ -31,8 +31,13 @@ import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
 vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
+vi.mock("./admit-collected-run.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./admit-collected-run.ts")>()),
+  retainCollectedRun: vi.fn(() => "/private/out/run.json"),
+}))
 
-vi.mock("node:fs", () => ({
+vi.mock("node:fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs")>()),
   existsSync: vi.fn(() => true),
   mkdirSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
@@ -202,7 +207,10 @@ describe("WezTerm cli-process arm", () => {
 
   test("launches through the CLI with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
-    await handleApp("wezterm", {})
+    await handleApp("wezterm", { output: "/private/out" })
+    expect(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1]).not.toContain(
+      "TERMINFO_CAPTURE_DIRECTORY",
+    )
     expect(writeFileSync).toHaveBeenCalledWith("/private/run/wezterm-private-run.lua", "return {}\n", {
       flag: "wx",
       mode: 0o600,
@@ -261,7 +269,10 @@ describe("Ghostty cli-process arm", () => {
 
   test("launches through the binary with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
-    await handleApp("ghostty", {})
+    await handleApp("ghostty", { output: "/private/out" })
+    expect(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1]).not.toContain(
+      "TERMINFO_CAPTURE_DIRECTORY",
+    )
     expect(writeFileSync).toHaveBeenCalledWith("/private/run/ghostty-private-run", "", {
       flag: "wx",
       mode: 0o600,
@@ -322,7 +333,10 @@ test.each([
       marker: { flag: "--user-data-dir", value: `/private/run/${prefix}-private-run` },
     }
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
-    await handleApp(input, {})
+    await handleApp(input, { output: "/private/out" })
+    expect(vi.mocked(writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1]).toContain(
+      "TERMINFO_CAPTURE_DIRECTORY='/private/out/artifacts'",
+    )
     expect(spawn).toHaveBeenCalledTimes(1)
     const [spawnPath, args, options] = vi.mocked(spawn).mock.calls[0]!
     expect(spawnPath).toBe(`${appPath}/Contents/Resources/app/bin/${helper}`)
@@ -374,9 +388,10 @@ test.each([
         ? ["vscode-shared", "vscode-agent-plugins", "vscode-agents-data", "vscode-agents-extensions", "vscode-crash"]
         : []),
     ]
-    expect(vi.mocked(mkdirSync).mock.calls).toEqual(
-      privateDirectories.map((directory) => [`/private/run/${directory}`, { mode: 0o700 }]),
-    )
+    expect(vi.mocked(mkdirSync).mock.calls).toEqual([
+      ["/private/out/artifacts", { recursive: true, mode: 0o700 }],
+      ...privateDirectories.map((directory) => [`/private/run/${directory}`, { mode: 0o700 }]),
+    ])
     expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
       executablePath: ownedWindow.executablePath,
       marker: ownedWindow.marker,
@@ -475,11 +490,16 @@ describe("Terminal.app app collection", () => {
     expect(removeProbeRun).toHaveBeenCalledOnce()
   })
 
-  test.each(["daemon startup", "owned close"])(
+  test.each(["daemon startup", "owned close", "capture HTTP"])(
     "retains the private launch directory after %s failure",
     async (failure) => {
       if (failure === "daemon startup") vi.mocked(findOwnedDaemon).mockResolvedValueOnce(null)
-      else {
+      else if (failure === "capture HTTP") {
+        vi.mocked(requestDaemonProbe).mockRejectedValueOnce(
+          new Error("HTTP 500: CaptureAcquisitionFailed: owned window 32; retained /private/response; SHA256 abc"),
+        )
+        vi.mocked(stopOwnedDaemon).mockRejectedValueOnce(new Error("daemon cleanup failed"))
+      } else {
         vi.mocked(closeOwnedTerminalWindow).mockImplementationOnce(() => {
           throw new Error("owned close failed")
         })
@@ -487,7 +507,11 @@ describe("Terminal.app app collection", () => {
       const error = vi.spyOn(console, "error").mockImplementation(() => {})
       try {
         await expect(handleApp("terminal-app", {})).rejects.toThrow(
-          failure === "daemon startup" ? /Owned daemon did not register/ : /owned close failed/,
+          failure === "daemon startup"
+            ? /Owned daemon did not register/
+            : failure === "capture HTTP"
+              ? /CaptureAcquisitionFailed.*retained \/private\/response.*daemon cleanup failed/
+              : /owned close failed/,
         )
         expect(removeProbeRun).not.toHaveBeenCalled()
         expect(error.mock.calls.flat().join("\n")).toContain("/private/run")

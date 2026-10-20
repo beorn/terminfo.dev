@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
   createProbeRun,
@@ -28,7 +28,7 @@ import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
-import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { admitCollectedRun, assertPrivateCollectionOutput, retainCollectedRun } from "./admit-collected-run.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import {
   assertOwnedTerminalWindow,
@@ -376,9 +376,10 @@ export function launchPreparedCli(prepared: PreparedCliLaunch): AppLaunch {
   }
 }
 
-function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
+function launchWithServe(app: AppDef, run: ProbeRun, captureDirectory?: string): AppLaunch {
   const suite = sourceSuiteEnvironment()
-  const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
+  const captureEnvironment = captureDirectory ? ` TERMINFO_CAPTURE_DIRECTORY=${shellQuote(captureDirectory)}` : ""
+  const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION}${captureEnvironment} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
   const identityPath =
     app.id === "kitty"
       ? join(run.directory, "owner-identity.txt")
@@ -622,13 +623,23 @@ async function runApp(
     return { success: false, error: "Run `terminfo probe server --start` in Warp manually, then use `probe server`" }
   }
 
+  let outputDirectory = opts.output
+  let captureDirectory: string | undefined
+  if (opts.output !== undefined && (app.id === "kitty" || app.id === "cursor" || app.id === "com.microsoft.VSCode")) {
+    assertPrivateCollectionOutput(opts.output)
+    outputDirectory = resolve(opts.output)
+    captureDirectory = join(outputDirectory, "artifacts")
+    assertPrivateCollectionOutput(captureDirectory)
+    mkdirSync(captureDirectory, { recursive: true, mode: 0o700 })
+  }
+
   const run = createProbeRun()
   let launch: AppLaunch | undefined
   let daemon: OwnedDaemon | null = null
   let outcome: { success: boolean; error?: string } = { success: false, error: "probe did not complete" }
   try {
     console.log(`  Launching ${app.name} v${version}...`)
-    launch = launchWithServe(app, run)
+    launch = launchWithServe(app, run, captureDirectory)
     if (launch.terminalWindow === undefined && app.id !== "kitty" && launch.marker === undefined) {
       throw new Error(
         `${app.name} has no owned-window assertion; refusing to collect a run this probe cannot prove it launched`,
@@ -646,7 +657,7 @@ async function runApp(
       appId: app.id,
       version,
       ownedWindow,
-      outputDirectory: opts.output,
+      outputDirectory,
       launcherStderr: launch.launcherStderr,
     })
     console.log(`  ${result.observed}/${result.total} explicit observations (${result.mode})`)

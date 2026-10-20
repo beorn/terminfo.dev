@@ -1,12 +1,15 @@
 /**
  * @failure probe app --output admits a run it was told to retain, or reports the wrong mode in its
- * success line, so a private development run is silently promoted or mislabeled.
+ * success line, or its capture path escapes private output or loses shell quoting.
  * @level l1
  * @consumer The private development route the collection pass runs for an owned macOS app.
  * @testonly none
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
+import { join, relative } from "node:path"
+import { tmpdir } from "node:os"
+import { fileURLToPath } from "node:url"
 import { handleApp } from "./app.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
@@ -25,7 +28,13 @@ import {
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 
-vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn(), readFileSync: vi.fn(() => "") }))
+vi.mock("node:fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs")>()),
+  existsSync: vi.fn(() => true),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn(() => ""),
+}))
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(() => "2.15\n"),
   execSync: vi.fn(() => "2.15\n"),
@@ -35,10 +44,12 @@ vi.mock("node:child_process", () => ({
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: vi.fn(() => ({ TERMINFO_PROBE_HASH: "suite", TERMINFO_SOURCE_REVISION: "source" })),
 }))
-vi.mock("../../terminfo.dev/src/identity-guard.ts", () => ({
+vi.mock("../../terminfo.dev/src/identity-guard.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../terminfo.dev/src/identity-guard.ts")>()),
   verifyTerminalIdentity: vi.fn(() => ({ checked: true, ok: true })),
 }))
-vi.mock("../../terminfo.dev/src/daemon-client.ts", () => ({
+vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../terminfo.dev/src/daemon-client.ts")>()),
   createProbeRun: vi.fn(),
   findOwnedDaemon: vi.fn(),
   readRetainedDaemonProbeResponse: vi.fn(),
@@ -46,7 +57,6 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", () => ({
   requestDaemonProbe: vi.fn(),
   saveDaemonProbeRun: vi.fn(),
   stopOwnedDaemon: vi.fn(),
-  shellQuote: vi.fn((text: string) => `'${text}'`),
 }))
 vi.mock("./terminal-app-receipt.ts", () => ({
   captureTerminalAppReceipt: vi.fn(),
@@ -58,7 +68,8 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   closeOwnedTerminalWindow: vi.fn(),
   parseKittyIdentity: vi.fn(),
 }))
-vi.mock("./admit-collected-run.ts", () => ({
+vi.mock("./admit-collected-run.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./admit-collected-run.ts")>()),
   admitCollectedRun: vi.fn(),
   retainCollectedRun: vi.fn(() => "/private/out/terminal-app.json"),
 }))
@@ -179,7 +190,25 @@ describe("kitty owned launch", () => {
   test("launches detached, sends the shared process claim instead of a Terminal.app one, and records the owned pid", async () => {
     const spawn = vi.mocked(await import("node:child_process")).spawnSync
     spawn.mockReturnValueOnce({ status: 0, stdout: "", stderr: "" } as never)
-    await handleApp("kitty", { output: "/private/out" })
+    const output = join(tmpdir(), "capture space's", "run")
+    await handleApp("kitty", { output: relative(process.cwd(), output) })
+    const fs = await import("node:fs")
+    expect(fs.mkdirSync).toHaveBeenCalledWith(join(output, "artifacts"), expect.anything())
+    const script = String(
+      vi.mocked(fs.writeFileSync).mock.calls.find(([path]) => path === "/private/run/serve.sh")?.[1],
+    )
+    const serve = script.split("\n").find((line) => line.includes(" probe server --start"))
+    if (!serve || !serve.includes(" exec ")) throw new Error("No generated collector command")
+    const assignments = serve.slice(0, serve.indexOf(" exec "))
+    const actualChild = await vi.importActual<typeof import("node:child_process")>("node:child_process")
+    // Execute only the generated assignments, printing one path; never launch the collector/app.
+    const captureDirectory = actualChild.execFileSync(
+      "/bin/sh",
+      ["-c", `${assignments} /bin/sh -c 'printf "%s" "$TERMINFO_CAPTURE_DIRECTORY"'`],
+      { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } },
+    )
+    expect(captureDirectory).toBe(join(output, "artifacts"))
+    expect(vi.mocked(retainCollectedRun).mock.calls[0]?.[3]).toBe(output)
     expect(spawn).toHaveBeenCalledWith(
       "/Applications/kitty.app/Contents/MacOS/kitty",
       ["--detach", "--instance-group", "terminfo-private-run", "-1", "--", "/bin/bash", "/private/run/serve.sh"],
@@ -224,6 +253,28 @@ describe("kitty owned launch", () => {
     })
     expect(JSON.parse(saved.rawReplies["collector.kittyLauncher"]!)).toEqual({ exitStatus: 0, stderr: "" })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(expect.objectContaining({ provider: "kitty" }))
+  })
+
+  test("rejects an artifacts child symlink into source before launch or write", async () => {
+    vi.mocked((await import("node:child_process")).spawnSync).mockReturnValueOnce({
+      status: 0,
+      stdout: "",
+      stderr: "",
+    } as never)
+    const actualFs = await vi.importActual<typeof import("node:fs")>("node:fs")
+    const fs = await import("node:fs")
+    const output = actualFs.mkdtempSync(join(tmpdir(), "terminfo-private-output-"))
+    actualFs.symlinkSync(fileURLToPath(new URL("../../../", import.meta.url)), join(output, "artifacts"), "dir")
+    try {
+      await expect(handleApp("kitty", { output })).rejects.toThrow(/outside the source repository/)
+      expect(createProbeRun).not.toHaveBeenCalled()
+      expect(fs.mkdirSync).not.toHaveBeenCalled()
+      expect(fs.writeFileSync).not.toHaveBeenCalled()
+      expect((await import("node:child_process")).spawnSync).not.toHaveBeenCalled()
+      expect(requestDaemonProbe).not.toHaveBeenCalled()
+    } finally {
+      actualFs.rmSync(output, { recursive: true, force: true })
+    }
   })
 })
 
