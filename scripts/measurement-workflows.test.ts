@@ -239,87 +239,123 @@ test("shared hosted DMG caller rejects altered Warp bytes before install and pre
   ])
 })
 
-// A valid configuration must carry the real command path as ONE shell argument, not merely launch Warp.
-test("Warp hosted caller writes one legacy YAML pane before one cold GUI URI launch", async () => {
+// Setup must finish before the cold GUI launch. The old VM-only YAML test could not
+// detect a failed/mistyped preference write or an already-used host. Keep its real
+// YAML/quoting assertions in this caller test; no production injection seam is added.
+test.each([
+  "success", "wrong-domain", "running", "present", "before-error", "write-error", "wrong-value", "wrong-type",
+] as const)("Warp hosted caller prepares only the fresh Stable domain: %s", (scenario) => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const source = workflow.split("<<'HOSTED_WARP_START'\n")[1]?.split("\n          HOSTED_WARP_START")[0]
   expect(source, "the production Warp launch caller exists").toBeDefined()
-  const command = "/runner/Alice's files/collect.command"
-  const writes = new Map<string, string>()
-  const events: string[] = []
-  const launches: Array<{ file: string; args: string[]; options: unknown }> = []
-  await runInNewContext(`(async () => {${source}\n})()`, {
-    process: {
-      cwd: () => "/workspace",
-      env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/Warp.app", RUNNER_TEMP: "/runner" },
-    },
-    console: { log: () => {} },
-    require: (id: string) => {
-      if (id === "node:fs") {
-        return {
-          mkdirSync: () => {},
-          constants: { COPYFILE_EXCL: 1 },
-          copyFileSync: (from: string, to: string, flags: number) => {
-            expect(from).toBe(command)
-            expect(flags).toBe(1)
-            events.push("command-retained")
-            writes.set(to, "the actual generated command bytes")
-          },
-          writeFileSync: (path: string, value: string, options: unknown) => {
-            expect(options).toMatchObject({ flag: "wx" })
-            events.push("config")
-            writes.set(path, value)
-          },
-        }
+  const directory = mkdtempSync(join(tmpdir(), "warp-setup-"))
+  const out = join(directory, "measurement-artifacts")
+  const home = join(directory, "home")
+  const bin = join(directory, "bin")
+  const journal = join(directory, "events.jsonl")
+  const command = join(directory, "Alice's files", "collect.command")
+  for (const path of [out, home, bin, dirname(command)]) mkdirSync(path, { recursive: true })
+  writeFileSync(command, "the actual generated command bytes")
+  // Fixed absolute production commands are redirected to PATH shims only in this
+  // subprocess's platform boundary. The journal retains the original absolute argv.
+  const shim = `#!${process.execPath}
+const fs = require("node:fs");
+const name = require("node:path").basename(process.argv[1]);
+const args = process.argv.slice(2);
+const scenario = process.env.WARP_SETUP_SCENARIO;
+const marker = process.env.RUNNER_TEMP + "/written";
+if (name === "PlistBuddy") console.log(scenario === "wrong-domain" ? "dev.warp.Warp-Preview" : "dev.warp.Warp-Stable");
+else if (name === "ps") console.log("PID COMM\\n" + (scenario === "running" ? "4242 /Applications/Warp.app/Contents/MacOS/stable" : "1 /sbin/launchd"));
+else if (name === "defaults") {
+  if (args[0] === "write") {
+    if (scenario === "write-error") { console.error("fixture write denied"); process.exit(9); }
+    fs.writeFileSync(marker, "true");
+  } else if (args[0] === "read-type") console.log(scenario === "wrong-type" ? "Type is boolean" : "Type is string");
+  else if (fs.existsSync(marker)) console.log(scenario === "wrong-value" ? "false" : "true");
+  else if (scenario === "present") console.log("true");
+  else { console.error(scenario === "before-error" ? "fixture permission denied" : "The domain/default pair of (dev.warp.Warp-Stable, HasCompletedOnboarding) does not exist"); process.exit(1); }
+} else throw new Error("Unexpected platform shim " + name);
+`
+  for (const name of ["defaults", "PlistBuddy", "ps"]) writeFileSync(join(bin, name), shim, { mode: 0o700 })
+  const prelude = `
+const fsBoundary = require("node:fs");
+const childBoundary = require("node:child_process");
+const nativeSpawnSync = childBoundary.spawnSync;
+require("node:os").homedir = () => process.env.WARP_SETUP_HOME;
+childBoundary.spawnSync = (file, args, options) => {
+  fsBoundary.appendFileSync(process.env.WARP_SETUP_JOURNAL, JSON.stringify({event:"command", file, args}) + "\\n");
+  if (!["/usr/bin/defaults", "/usr/libexec/PlistBuddy", "/bin/ps"].includes(file)) throw new Error("Unexpected setup executable " + file);
+  return nativeSpawnSync(require("node:path").basename(file), args, options);
+};
+childBoundary.spawn = (file, args, options) => {
+  const setupPath = process.env.RUNNER_TEMP + "/measurement-artifacts/warp-onboarding-setup.json";
+  fsBoundary.appendFileSync(process.env.WARP_SETUP_JOURNAL, JSON.stringify({event:"launch", file, args, options, setupExists:fsBoundary.existsSync(setupPath)}) + "\\n");
+  return {pid:4242, unref() {}};
+};
+`
+  try {
+    const result = spawnSync("/bin/bash", ["-c", 'exec "$WARP_SETUP_BUN" --eval "$WARP_SETUP_SOURCE"'], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        COMMAND_PATH: command,
+        APP_BUNDLE: "/Applications/Warp.app",
+        RUNNER_TEMP: directory,
+        WARP_SETUP_SCENARIO: scenario,
+        WARP_SETUP_HOME: home,
+        WARP_SETUP_JOURNAL: journal,
+        WARP_SETUP_BUN: process.execPath,
+        WARP_SETUP_SOURCE: prelude + source,
+      },
+    })
+    const events = readFileSync(journal, "utf8").trim().split("\n").map((line) => JSON.parse(line))
+    const launches = events.filter((row) => row.event === "launch")
+    const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8"))
+    const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
+    expect(preferenceCalls.every((row) => row.args[1] === "dev.warp.Warp-Stable" && row.args[2] === "HasCompletedOnboarding")).toBe(true)
+    if (scenario !== "success") {
+      expect(result.status, result.stderr).not.toBe(0)
+      expect(result.stderr).toContain("Warp unattended setup failed")
+      expect(launches).toHaveLength(0)
+      expect(setup.prepared).toBe(false)
+      if (["wrong-domain", "running", "present", "before-error"].includes(scenario)) {
+        expect(preferenceCalls.filter((row) => row.args[0] === "write")).toHaveLength(0)
       }
-      if (id === "node:path") return { join }
-      if (id === "node:os") return { homedir: () => "/Users/runner" }
-      if (id === "node:crypto") return { randomUUID: () => "12345678-1234-1234-1234-123456789abc" }
-      if (id === "yaml") return { stringify }
-      if (id.endsWith("/daemon-client.ts")) return { shellQuote }
-      if (id === "node:child_process") {
-        return {
-          spawn: (file: string, args: string[], options: unknown) => {
-            expect(writes.get("/runner/measurement-artifacts/collect.command")).toBe(
-              "the actual generated command bytes",
-            )
-            expect(writes.get("/runner/measurement-artifacts/warp-launch.yaml")).toBe(
-              writes.get(
-                "/Users/runner/.warp/launch_configurations/terminfo-12345678-1234-1234-1234-123456789abc.yaml",
-              ),
-            )
-            events.push("launch")
-            launches.push({ file, args, options })
-            return { pid: 4242, unref: () => events.push("unref") }
-          },
-        }
-      }
-      throw new Error(`Unexpected Warp launch dependency: ${id}`)
-    },
-  })
-  expect(events.indexOf("command-retained")).toBeLessThan(events.indexOf("launch"))
-  expect(events.at(-1)).toBe("unref")
-  expect(JSON.parse(writes.get("/runner/measurement-artifacts/warp-launch-process.json")!)).toMatchObject({
-    name: "terminfo-12345678-1234-1234-1234-123456789abc",
-    childPid: 4242,
-  })
-  const config = parse([...writes.values()][0]!)
-  expect(config.name).toBe("terminfo-12345678-1234-1234-1234-123456789abc")
-  expect(config.windows).toHaveLength(1)
-  expect(config.windows[0].tabs).toHaveLength(1)
-  expect(config.windows[0].tabs[0].layout.cwd).toBe("/workspace")
-  expect(config.windows[0].tabs[0].layout.commands).toHaveLength(1)
-  const quoted = config.windows[0].tabs[0].layout.commands[0].exec
-  const argv = spawnSync("/bin/bash", ["-c", `set -- ${quoted}; printf '%s\\0' "$@"`], { encoding: "utf8" })
-  expect(argv.status, argv.stderr).toBe(0)
-  expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
-  expect(launches).toEqual([
-    {
-      file: "/Applications/Warp.app/Contents/MacOS/stable",
-      args: ["warp://launch/terminfo-12345678-1234-1234-1234-123456789abc"],
-      options: { detached: true, stdio: "inherit" },
-    },
-  ])
+      if (scenario === "write-error") expect(JSON.stringify(setup)).toContain("fixture write denied")
+      if (scenario === "before-error") expect(JSON.stringify(setup)).toContain("fixture permission denied")
+      return
+    }
+    expect(result.status, result.stderr).toBe(0)
+    expect(setup.prepared).toBe(true)
+    expect(preferenceCalls.map((row) => row.args)).toEqual([
+      ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+      ["write", "dev.warp.Warp-Stable", "HasCompletedOnboarding", "-string", "true"],
+      ["read", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+      ["read-type", "dev.warp.Warp-Stable", "HasCompletedOnboarding"],
+    ])
+    expect(JSON.stringify(setup)).toContain("does not exist")
+    expect(readFileSync(join(out, "collect.command"), "utf8")).toBe("the actual generated command bytes")
+    const yaml = readFileSync(join(out, "warp-launch.yaml"), "utf8")
+    const config = parse(yaml)
+    expect(readFileSync(join(home, ".warp/launch_configurations", config.name + ".yaml"), "utf8")).toBe(yaml)
+    expect(config.windows).toHaveLength(1)
+    expect(config.windows[0].tabs).toHaveLength(1)
+    expect(config.windows[0].tabs[0].layout.cwd).toBe(root)
+    expect(config.windows[0].tabs[0].layout.commands).toHaveLength(1)
+    const quoted = config.windows[0].tabs[0].layout.commands[0].exec
+    const argv = spawnSync("/bin/bash", ["-c", `set -- ${quoted}; printf '%s\\0' "$@"`], { encoding: "utf8" })
+    expect(argv.status, argv.stderr).toBe(0)
+    expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
+    expect(launches).toEqual([{
+      event: "launch", file: "/Applications/Warp.app/Contents/MacOS/stable",
+      args: ["warp://launch/" + config.name], options: { detached: true, stdio: "inherit" }, setupExists: true,
+    }])
+    expect(JSON.parse(readFileSync(join(out, "warp-launch-process.json"), "utf8"))).toMatchObject({name:config.name,childPid:4242})
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 // Archive installation is irreversible within this job: changed downloaded bytes must never reach ditto.
