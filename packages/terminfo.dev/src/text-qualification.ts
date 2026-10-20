@@ -31,6 +31,10 @@ export async function collectTextQualification({
   const visibility = await ctx.queryMode(25)
   const autowrap = await ctx.queryMode(7)
   if ((visibility !== "set" && visibility !== "reset") || (autowrap !== "set" && autowrap !== "reset")) {
+    // Retain the alternate query form through the existing owned preparation trace. Even a valid
+    // diagnostic reply does not establish the prior state used by this qualification attempt.
+    await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;[0-4]\$y/, 5000)
+    await ctx.queryOutcome("\x1b[?7$p", /\x1b\[\?7;[0-4]\$y/, 5000)
     return unavailable(
       `Prior cursor visibility or autowrap state is unavailable (DECTCEM=${visibility}, DECAWM=${autowrap})`,
     )

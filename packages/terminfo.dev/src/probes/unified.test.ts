@@ -10,13 +10,14 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
 import { decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
 import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
+import { collectTextQualification } from "../text-qualification.ts"
 
 // 28752: the decode-context measurement is the ONE tty round trip this file must not perform; every
 // other tty export stays real, so the batch path under test is unchanged.
@@ -2239,5 +2240,82 @@ it.each(["unknown reply", "sentinel only"])(
     expect(captureRaw).not.toHaveBeenCalled()
     expect(capture).not.toHaveBeenCalled()
     expect(batch.ungradedDiagnostics).toEqual({})
+  },
+)
+
+// 30035: unknown prior modes must retain the plain diagnostic outcomes through the actual
+// preparation owner, without painting or promoting their replies into qualification state.
+// Existing raw-outcome tests do not exercise this callback or its run-owned retained trace.
+it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diagnostic) => ({ missing, diagnostic }))))(
+  "text preparation retains $diagnostic diagnostics when prior mode $missing is unavailable",
+  async ({ missing, diagnostic }) => {
+    verifiedBatchFixture()
+    vi.useFakeTimers()
+    const da1 = "\x1b[?62;4c"
+    const plain = ["\x1b[?25$p", "\x1b[?7$p"]
+    const raw =
+      diagnostic === "reply"
+        ? ["\x1b[?25;4$y", "\x1b[?7;0$y"]
+        : diagnostic === "malformed"
+          ? ["\x1b[?25;5$y", "\x1b[?70;1$y"]
+          : ["", ""]
+    const sentAt = new Map<string, number>()
+    vi.spyOn(process.stdout, "write").mockImplementation(((text: string) => {
+      sentAt.set(text, Date.now())
+      for (const mode of [25, 7]) {
+        if (text === `\x1b[?${mode}$p\x1b[c`) {
+          const prior = mode === missing ? (mode === 25 ? "" : `\x1b[?${mode};0$y`) : `\x1b[?${mode};1$y`
+          process.stdin.emit("data", Buffer.from(prior + da1))
+        }
+      }
+      const index = plain.indexOf(text)
+      if (index >= 0 && raw[index]) process.stdin.emit("data", Buffer.from(raw[index]!))
+      if (text === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
+      return true
+    }) as typeof process.stdout.write)
+    const capture = vi.fn(async () => {
+      throw new Error("unavailable prior modes must not capture")
+    })
+    let qualification: TextQualification | undefined
+    let preparedAt: number | undefined
+    try {
+      const pending = runProbeBatch({
+        ids: ["device.primary-da"],
+        ownedTerminal: geometryOwner(measured(24, 80)),
+        prepareCapture: async ({ context }) => {
+          qualification = await collectTextQualification({ ctx: context, capture })
+          preparedAt = Date.now()
+        },
+      })
+      const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+      const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
+      expect(trace.writes).toEqual([])
+      expect(trace.captures).toEqual([])
+      expect(trace.queries.slice(2)).toMatchObject(
+        plain.map((sequence, index) => ({
+          sequence,
+          raw: raw[index],
+          rawBase64: Buffer.from(raw[index]!).toString("base64"),
+          reason: diagnostic === "reply" ? "reply" : "timeout",
+        })),
+      )
+      expect(trace.queries).toHaveLength(4)
+      if (diagnostic !== "reply") {
+        expect(sentAt.get(plain[1]!)! - sentAt.get(plain[0]!)!).toBe(5000)
+        expect(preparedAt! - sentAt.get(plain[1]!)!).toBe(5000)
+      }
+      expect(qualification?.shapes).toEqual(
+        ["mid-line-gap", "trailing-gap", "soft-wrap", "prior-scrollback", "empty-last-row"].map((shape) => ({
+          shape,
+          reason: `Prior cursor visibility or autowrap state is unavailable (DECTCEM=${missing === 25 ? "null" : "set"}, DECAWM=${missing === 7 ? "unknown" : "set"})`,
+        })),
+      )
+      expect(capture).not.toHaveBeenCalled()
+      expect(batch.observations).toContainEqual(
+        expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", evidence: "query" }),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   },
 )
