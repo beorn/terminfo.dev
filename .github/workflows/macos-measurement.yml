@@ -347,7 +347,7 @@ jobs:
           const { shellQuote } = require(process.cwd() + "/packages/terminfo.dev/src/daemon-client.ts");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
           const setupPath = join(out, "warp-onboarding-setup.json");
-          // Warp's own completion writer stores JSON true as NSString in this private preference.
+          // The Warp completion writer stores JSON true as NSString in this private preference.
           const domain = "dev.warp.Warp-Stable", key = "HasCompletedOnboarding";
           const setup = { domain, key, bundleId: null, prepared: false, commands: [] };
           try {

@@ -26,6 +26,9 @@ test.each(["waiting", "bad-receipt", "collector"] as const)(
     const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
     const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
       .run as string
+    // The runner parses the whole step before reaching any extracted caller (30392).
+    const syntax = spawnSync("/bin/bash", ["-n"], { input: collect, encoding: "utf8" })
+    expect(syntax.status, syntax.stderr).toBe(0)
     const producer = collect.match(/cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/)
     expect(producer, "production command producer exists").not.toBeNull()
     const directory = mkdtempSync(join(tmpdir(), "hosted-entry-"))
