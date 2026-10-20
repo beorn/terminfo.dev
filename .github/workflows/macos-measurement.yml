@@ -34,6 +34,8 @@ jobs:
             bundle: /Applications/Cursor.app
           - id: com.microsoft.VSCode
             bundle: /Applications/Visual Studio Code.app
+          - id: warp
+            bundle: /Applications/Warp.app
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -150,13 +152,36 @@ jobs:
           )"
               cp "$RUNNER_TEMP/editor-installer.zip" "$RUNNER_TEMP/measurement-artifacts/editor-installer.zip"
               ;;
-            alacritty)
-              curl --location --fail --silent --show-error \
-                https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg \
-                --output "$RUNNER_TEMP/Alacritty.dmg"
-              hdiutil attach "$RUNNER_TEMP/Alacritty.dmg" -mountpoint /Volumes/Alacritty
-              cp -R /Volumes/Alacritty/Alacritty.app /Applications/
-              hdiutil detach /Volumes/Alacritty
+            alacritty|warp)
+              bun --eval "$(cat <<'HOSTED_DMG_INSTALL'
+          const { createHash } = require("node:crypto");
+          const { writeFileSync, copyFileSync } = require("node:fs");
+          const app = process.env.APP_ID;
+          const name = app === "warp" ? "Warp" : "Alacritty";
+          const url = app === "warp"
+            ? "https://app.warp.dev/download/brew?version=v0.2026.10.14.08.27.stable_01&package=dmg"
+            : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
+          const installer = process.env.RUNNER_TEMP + "/" + name + ".dmg";
+          const mountpoint = "/Volumes/" + name;
+          async function run(argv) {
+            const child = Bun.spawn(argv, { stdout: "inherit", stderr: "inherit" });
+            const status = await child.exited;
+            if (status !== 0) throw new Error(argv[0] + " exited " + status);
+          }
+          await run(["curl", "--location", "--fail", "--silent", "--show-error", url, "--output", installer]);
+          if (app === "warp") {
+            const expectedSha256 = "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1";
+            const actualSha256 = createHash("sha256").update(new Uint8Array(await Bun.file(installer).arrayBuffer())).digest("hex");
+            const out = process.env.RUNNER_TEMP + "/measurement-artifacts";
+            writeFileSync(out + "/warp-installer.json", JSON.stringify({ app, url, expectedSha256, actualSha256 }));
+            if (actualSha256 !== expectedSha256) throw new Error("Warp installer checksum mismatch: expected " + expectedSha256 + ", actual " + actualSha256);
+            copyFileSync(installer, out + "/Warp.dmg");
+          }
+          await run(["hdiutil", "attach", installer, "-mountpoint", mountpoint]);
+          await run(["cp", "-R", mountpoint + "/" + name + ".app", "/Applications/"]);
+          await run(["hdiutil", "detach", mountpoint]);
+          HOSTED_DMG_INSTALL
+          )"
               ;;
             *) echo "Unknown Mac measurement app: $APP_ID" >&2; exit 1 ;;
           esac
@@ -299,6 +324,30 @@ jobs:
               ;;
             alacritty)
               "$APP_BUNDLE/Contents/MacOS/alacritty" -e /bin/bash "$COMMAND_PATH" > "$OUT/launcher.log" 2>&1 &
+              ;;
+            warp)
+              COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_WARP_START'
+          const { mkdirSync, writeFileSync } = require("node:fs");
+          const { join } = require("node:path");
+          const { homedir } = require("node:os");
+          const { randomUUID } = require("node:crypto");
+          const { spawn } = require("node:child_process");
+          const { stringify } = require("yaml");
+          const { shellQuote } = require(process.cwd() + "/packages/terminfo.dev/src/daemon-client.ts");
+          const name = "terminfo-" + randomUUID();
+          const directory = join(homedir(), ".warp", "launch_configurations");
+          mkdirSync(directory, { recursive: true });
+          const config = { windows: [{ tabs: [{ layout: {
+            cwd: process.cwd(),
+            commands: [{ exec: "/bin/bash " + shellQuote(process.env.COMMAND_PATH) }]
+          } }] }] };
+          writeFileSync(join(directory, name + ".yaml"), stringify(config), { flag: "wx", mode: 0o600 });
+          const child = spawn(process.env.APP_BUNDLE + "/Contents/MacOS/stable", ["warp://launch/" + name], {
+            detached: true, stdio: "inherit"
+          });
+          child.unref();
+          HOSTED_WARP_START
+          )" > "$OUT/launcher.log" 2>&1
               ;;
             cursor|com.microsoft.VSCode)
               EDITOR_COMMAND_PATH="$COMMAND_PATH" bun --eval "$(cat <<'HOSTED_EDITOR_START'

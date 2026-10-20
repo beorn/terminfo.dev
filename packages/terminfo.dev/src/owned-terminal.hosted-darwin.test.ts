@@ -60,11 +60,17 @@ test("hostedDarwinAppFromExecutablePath maps the hosted apps from the receipt ex
     id: "com.microsoft.VSCode",
     comm: "Code",
   })
+  expect(hostedDarwinAppFromExecutablePath("/Applications/Warp.app/Contents/MacOS/stable")).toEqual({
+    id: "warp",
+    comm: "stable",
+  })
   for (const path of [
     "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
     "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
     "/Applications/Cursor.app/Contents/Frameworks/Cursor Helper.app/Contents/MacOS/Cursor Helper",
     "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper",
+    "/Applications/Warp.app/Contents/Resources/bin/warp",
+    "/Applications/Warp.app/Contents/Frameworks/stable Helper.app/Contents/MacOS/stable Helper",
   ] as const) {
     expect(() => hostedDarwinAppFromExecutablePath(path)).toThrow(/Hosted Darwin receipt executable/)
   }
@@ -130,6 +136,8 @@ test("requireHostedDarwinAppAncestor binds macOS-style full-path comms and keeps
   )
 
   for (const [comm, path, otherPath] of [
+    ["stable", "/Applications/Warp.app/Contents/MacOS/stable", "/Applications/Ghostty.app/Contents/MacOS/ghostty"],
+    ["ghostty", "/Applications/Ghostty.app/Contents/MacOS/ghostty", "/Applications/Warp.app/Contents/MacOS/stable"],
     [
       "Cursor",
       "/Applications/Cursor.app/Contents/MacOS/Cursor",

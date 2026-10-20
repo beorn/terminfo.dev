@@ -263,6 +263,7 @@ export type HostedDarwinAppId =
   | "wezterm"
   | "cursor"
   | "com.microsoft.VSCode"
+  | "warp"
 export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
 export type AncestryRow = { pid: number; ppid: number; comm: string }
 
@@ -276,8 +277,18 @@ const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   "wezterm-gui": { id: "wezterm", comm: "wezterm-gui" },
   Cursor: { id: "cursor", comm: "Cursor" },
   Code: { id: "com.microsoft.VSCode", comm: "Code" },
+  stable: { id: "warp", comm: "stable" },
 }
-const HOSTED_DARWIN_COMMS = new Set(["Terminal", "iTerm2", "ghostty", "alacritty", "wezterm-gui", "Cursor", "Code"])
+const HOSTED_DARWIN_COMMS = new Set([
+  "Terminal",
+  "iTerm2",
+  "ghostty",
+  "alacritty",
+  "wezterm-gui",
+  "Cursor",
+  "Code",
+  "stable",
+])
 
 /** macOS `ps -o comm=` prints a full executable path; match and stop on the last segment. */
 function hostedDarwinCommBase(comm: string): string {
@@ -292,7 +303,7 @@ export function hostedDarwinAppFromExecutablePath(executablePath: string): Hoste
   const app = HOSTED_DARWIN_EXECUTABLE[base]
   if (!app) {
     throw new Error(
-      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm, Cursor, Code: ${JSON.stringify(executablePath)}`,
+      `Hosted Darwin receipt executable is not one of Terminal, iTerm2, ghostty, alacritty, wezterm, Cursor, Code, stable: ${JSON.stringify(executablePath)}`,
     )
   }
   return app
