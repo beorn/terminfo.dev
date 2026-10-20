@@ -376,14 +376,13 @@ export async function collectProbeRun(
     processOwner: options.processOwner,
     platform: process.platform,
   })
-  if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
-    throw new Error("Darwin capture directory requires a verified hosted-runner terminal receipt")
+  if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted" && kind !== "process") {
+    throw new Error("Darwin capture directory requires a verified hosted-runner or process terminal owner")
   }
-  // A hosted capture is a runner-owned terminal, not a controlled Linux run: macOS names
-  // darwinHosted and Windows names windowsHosted, and neither can supply Linux runtime provenance.
-  const hostedCapture = Boolean(captureDirectory) && (kind === "darwinHosted" || kind === "windowsHosted")
+  // Runtime executable provenance is required for controlled Linux capture/clipboard collection.
+  const controlledLinux = process.platform === "linux" && Boolean(captureDirectory || clipboardReceipt)
   const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
-  if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedCapture) {
+  if (controlledLinux && !provenancePath) {
     throw new Error("Controlled Linux collection requires runtime provenance")
   }
   if (provenancePath && !captureDirectory && !clipboardReceipt) {
@@ -420,7 +419,7 @@ export async function collectProbeRun(
   const executableSource = outerApp?.provenance ?? provenanceSource
   const executable = executableSource ? measuredExecutable(executableSource) : undefined
   const measuredTerminal = muxTarget ? { name: muxTarget.id, version: muxTarget.version } : terminal
-  if ((captureDirectory || clipboardReceipt) && !executable && !hostedCapture) {
+  if (controlledLinux && !executable) {
     throw new Error("Controlled Linux collection lacks measured executable")
   }
   let capture: ProbeCapture | undefined
@@ -523,46 +522,69 @@ export async function collectProbeRun(
     capture = frameUnavailableCapture()
   }
   let ownedTerminal: OwnedTerminal | undefined
-  if (kind === "linux") {
-    if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      linux: { receiptPath: clipboardReceipt, executable },
-    })
-  } else if (kind === "terminalApp") {
-    if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-      terminalApp: options.terminalAppOwner,
-    })
-    installTextCapture(ownedTerminal)
-  } else if (kind === "process") {
-    if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-      process: options.processOwner,
-    })
-  } else if (kind === "darwinHosted") {
-    if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      darwinHosted: { receiptPath: hostedReceipt },
-    })
-    assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
-    // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
-    // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
-    // refuse by design, so preflight and the pixel install are skipped entirely.
-    if (!installTextCapture(ownedTerminal) && captureDirectory) {
-      const appPid = ownedTerminal.hostedAppPid
-      if (!appPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
+  let clipboard: OwnedTerminal["clipboard"]
+  let batch: Awaited<ReturnType<typeof runProbeBatch>>
+  let darwinAppPid: number | undefined
+  try {
+    if (kind === "linux") {
+      if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+        linux: { receiptPath: clipboardReceipt, executable },
+      })
+    } else if (kind === "terminalApp") {
+      if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+        terminalApp: options.terminalAppOwner,
+      })
+      installTextCapture(ownedTerminal)
+    } else if (kind === "process") {
+      if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+        process: options.processOwner,
+      })
+      if (process.platform === "darwin") darwinAppPid = options.processOwner.ownerPid
+    } else if (kind === "darwinHosted") {
+      if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+        darwinHosted: { receiptPath: hostedReceipt },
+      })
+      assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
+      // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
+      // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
+      // refuse by design, so preflight and the pixel install are skipped entirely.
+      if (!installTextCapture(ownedTerminal) && captureDirectory) {
+        darwinAppPid = ownedTerminal.hostedAppPid
+        if (!darwinAppPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
+      }
+    } else if (kind === "windowsHosted") {
+      if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
+      // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
+      // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
+      // an ancestor, and every geometry probe then reads the console it is actually writing to.
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+        windowsHosted: { receiptPath: hostedReceipt },
+      })
+      assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
+      // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
+      installTextCapture(ownedTerminal)
+    }
+    if (captureDirectory && darwinAppPid !== undefined) {
+      const appPid = darwinAppPid
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
@@ -674,25 +696,8 @@ export async function collectProbeRun(
         installCapture(report.geometry, queries)
       }
     }
-  } else if (kind === "windowsHosted") {
-    if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
-    // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
-    // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
-    // an ancestor, and every geometry probe then reads the console it is actually writing to.
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      windowsHosted: { receiptPath: hostedReceipt },
-    })
-    assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
-    // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
-    installTextCapture(ownedTerminal)
-  }
-  const clipboard = ownedTerminal?.clipboard
-  const attachment = clipboard?.muxAttachmentProof
-  let batch: Awaited<ReturnType<typeof runProbeBatch>>
-  try {
+    clipboard = ownedTerminal?.clipboard
+    const attachment = clipboard?.muxAttachmentProof
     if (
       muxTarget &&
       (!attachment ||

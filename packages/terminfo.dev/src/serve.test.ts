@@ -499,8 +499,10 @@ describe("private finite daemon startup", () => {
   // divides into a 6x13 cell — the derived basis the pre-flight must accept. Its rows must decide
   // exactly as they do when the terminal reports the same cell size itself, and the run records
   // WHICH basis the geometry rests on.
-  it("installs the capture on a derived alacritty cell size, deciding the same rows as a 16 t report", () => {
-    const result = runHostedDarwinFixture(`
+  it.each(["hosted", "process"])(
+    "installs derived raster calibration through the %s owner, deciding the same rows as a 16 t report",
+    (arm) => {
+      const result = runHostedDarwinFixture(`
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
       Object.defineProperty(process, "platform", { value: "darwin" })
@@ -511,13 +513,25 @@ describe("private finite daemon startup", () => {
       const geometry = { status: "measured", rows: 46, cols: 133, at: "2026-10-15T00:00:00.000Z", source: "fixture", stdout: "46 133\\n", stderr: "" }
       const silent = { match: null, reason: "timeout", raw: "", rawBase64: "" }
       let reportedCellSize = null, frames = 0, calibrations = 0, calibrationFailure
+      let ownedCalls = 0, disposals = 0
+      const processOwner = ${arm === "process"} ? { asserter: "terminfo-admin", launchRunId: "a".repeat(32), workerPid: 123,
+        provider: "cli-process", ownerPid: 42, executablePath: "/Applications/Alacritty.app/Contents/MacOS/alacritty",
+        marker: { flag: "--config-file", value: "/private/terminfo-" + "a".repeat(32) },
+        tty: "/dev/ttys009", intendedVersion: "0.17.0" } : undefined
+      if (processOwner) delete process.env.TERMINFO_DISPOSABLE_RECEIPT
+      const collectorOptions = processOwner ? { processOwner, expectedLaunchRunId: processOwner.launchRunId } : {}
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
         detectTerminal: () => ({ name: "alacritty", version: "0.17.0", os: "macos", osVersion: "26.6.2" })
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 42, hostedAppId: "alacritty",
-          summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
+        createOwnedTerminal: async (input) => {
+          ownedCalls++
+          if (processOwner) assert.deepEqual(input.process, processOwner)
+          return { geometryAtGrant: geometry, geometrySource: "fixture",
+            ...(processOwner ? {} : { hostedAppPid: 42, hostedAppId: "alacritty" }),
+            summary: "{}", readGeometry: async () => geometry, dispose: async () => { disposals++ } }
+        }
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
       mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
@@ -533,7 +547,11 @@ describe("private finite daemon startup", () => {
           return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: pattern.test(reply) ? "reply" : "sentinel" }
         }
       }))
-      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({
+      mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async (directory, { appPid }) => {
+        assert.equal(directory, process.env.TERMINFO_CAPTURE_DIRECTORY)
+        assert.equal(appPid, 42)
+        assert.equal(ownedCalls, disposals + 1)
+        return {
         capture: async (checkpoint) => {
           frames++
           // A fixture frame: byte-stable across two reads of one static frame, and painted exactly
@@ -549,7 +567,7 @@ describe("private finite daemon startup", () => {
             label: checkpoint.label, regionDigest: "sha256:" + "b".repeat(64), pixelsDigest: "sha256:" + "c".repeat(64) },
             trace: { captureCommand: "fixture" } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
         }
-      }) }))
+      } } }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry }) => {
         calibrations++
         if (calibrationFailure) throw calibrationFailure
@@ -559,16 +577,16 @@ describe("private finite daemon startup", () => {
       globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
-      const derived = await collectProbeRun({})
+      const derived = await collectProbeRun(collectorOptions)
       reportedCellSize = "\\x1b[6;13;6t"
-      const reported = await collectProbeRun({})
+      const reported = await collectProbeRun(collectorOptions)
       const originalTimeout = new Error("solid grid paint witness timeout")
       calibrationFailure = Object.assign(new Error("Capture calibration restore failed", { cause: originalTimeout }), { name: "CaptureRestoreFailed" })
-      await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
+      await assert.rejects(collectProbeRun(collectorOptions), error => error === calibrationFailure)
       calibrationFailure = new Error("Original capture adapter I/O failure", { cause: originalTimeout })
-      await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
+      await assert.rejects(collectProbeRun(collectorOptions), error => error === calibrationFailure)
       calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
-      const unseen = await collectProbeRun({})
+      const unseen = await collectProbeRun(collectorOptions)
       assert.equal(unseen.suiteComplete, true)
       assert.deepEqual(unseen.ungradedDiagnostics, {})
       assert.equal(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).outcome, "refused")
@@ -581,7 +599,7 @@ describe("private finite daemon startup", () => {
       calibrationFailure = undefined
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
       reportedCellSize = null
-      const bare = await collectProbeRun({})
+      const bare = await collectProbeRun(collectorOptions)
       const cell = { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }
       const derivedFact = JSON.parse(derived.rawReplies["collector.captureCalibration"])
       assert.equal(derivedFact.outcome, "installed")
@@ -593,6 +611,8 @@ describe("private finite daemon startup", () => {
       assert.equal(bare.rawReplies["collector.captureCalibration"], undefined)
       // The derived basis still calibrates, once per run, and its probes reach pixels.
       assert.equal(calibrations, 5)
+      assert.equal(ownedCalls, 6)
+      assert.equal(disposals, ownedCalls)
       assert.ok(frames > 0)
       const pixels = (run) => run.observations.filter((o) => o.evidence === "pixels")
       assert.ok(pixels(derived).length > 0)
@@ -603,9 +623,10 @@ describe("private finite daemon startup", () => {
       assert.deepEqual(derived.ungradedDiagnostics, {})
       assert.deepEqual(reported.ungradedDiagnostics, {})
     `)
-    expect(result.stderr).toBe("")
-    expect(result.status).toBe(0)
-  })
+      expect(result.stderr).toBe("")
+      expect(result.status).toBe(0)
+    },
+  )
 
   // @cto, 28785 REVISE round 2 must 2: pin EVERY classification site of queryPixelGeometry with
   // one table. A timeout - nothing answered at all, DA1 included - is the one transient cause, and
@@ -999,7 +1020,8 @@ describe("private finite daemon startup", () => {
           }
         }
       })
-      Object.defineProperty(process, "platform", { value: darwin ? "darwin" : "win32" })
+      // The non-hosted control proves the Linux provenance requirement on Linux itself.
+      Object.defineProperty(process, "platform", { value: !hosted ? "linux" : darwin ? "darwin" : "win32" })
       const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
