@@ -682,7 +682,13 @@ export async function calibrateCaptureOrigin({
       let surfaceFailure: unknown
       try {
         ctx.write("\x1b[0m\x1b[2J\x1b[H")
-        if (!baseline) throw new Error("Starting blank was never confirmed; restoration cannot be proven")
+        if (!baseline) {
+          throw new Error(
+            failure === undefined
+              ? "Starting blank was never confirmed; restoration cannot be proven"
+              : `Secondary restoration unverified after ${failure instanceof Error ? failure.name : String(failure)}: no confirmed baseline image; the original error remains primary`,
+          )
+        }
         const before = baseline
         await confirmedFrame("restore grid paint", (frame) => equal(frame, before), observedPaint)
       } catch (cause) {
@@ -703,10 +709,13 @@ export async function calibrateCaptureOrigin({
       }
       if (surfaceFailure !== undefined) throw surfaceFailure
     } catch (cause) {
-      const original = failure instanceof Error ? failure.message : String(failure)
+      const original = failure instanceof Error ? `${failure.name}: ${failure.message}` : String(failure)
+      const restoration = cause instanceof Error ? cause.message : String(cause)
       const error = new AggregateError(
         failure === undefined ? [cause] : [failure, cause],
-        `Capture calibration restore failed: ${cause instanceof Error ? cause.message : String(cause)}${failure === undefined ? "" : `; original calibration error: ${original}`}`,
+        failure === undefined
+          ? `Capture calibration restore failed: ${restoration}`
+          : `${original}; secondary capture restoration failure: ${restoration}`,
         { cause: failure ?? cause },
       )
       error.name = "CaptureRestoreFailed"
