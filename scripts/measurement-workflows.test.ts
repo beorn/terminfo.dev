@@ -56,6 +56,19 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
   ]) {
     await expect(run(app!)).rejects.toThrow(`expected ${expectedSha256}, actual ${actual}`)
     expect(launched.map((argv) => argv[0])).toEqual(["curl"])
+    // The pinned Warp bytes must use the verified static release locator; the old redirect returned 404.
+    if (app === "warp") {
+      expect(launched[0]).toEqual([
+        "curl",
+        "--location",
+        "--fail",
+        "--silent",
+        "--show-error",
+        "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg",
+        "--output",
+        "/runner/Warp.dmg",
+      ])
+    }
     expect(JSON.parse(retained.get(`/runner/measurement-artifacts/${app}-installer.json`)!)).toMatchObject({
       expectedSha256,
       actualSha256: actual,

@@ -161,7 +161,7 @@ jobs:
           const app = process.env.APP_ID;
           const name = app === "warp" ? "Warp" : app === "cmux" ? "cmux" : "Alacritty";
           const url = app === "warp"
-            ? "https://app.warp.dev/download/brew?version=v0.2026.10.14.08.27.stable_01&package=dmg"
+            ? "https://releases.warp.dev/stable/v0.2026.10.14.08.27.stable_01/Warp.dmg"
             : app === "cmux"
               ? "https://github.com/manaflow-ai/cmux/releases/download/v0.65.2/cmux-macos.dmg"
               : "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg";
