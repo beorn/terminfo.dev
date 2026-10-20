@@ -6,7 +6,8 @@
  * @reach fs-walk .github/workflows/macos-measurement.yml .github/workflows/windows-measurement.yml
  * @testonly none
  */
-import { readFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
 import { createHash } from "node:crypto"
@@ -16,6 +17,144 @@ import { shellQuote } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
+
+// Startup evidence must precede readiness, survive early errors and append collector stderr.
+// Existing argv/YAML tests never execute the generated shell, so they missed the empty archive.
+test.each(["waiting", "bad-receipt", "collector"] as const)(
+  "hosted command preserves startup evidence and PTY stdout through %s",
+  (scenario) => {
+    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+    const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
+      .run as string
+    const producer = collect.match(/cat > "\$COMMAND_PATH" <<SCRIPT\n[\s\S]*?\nSCRIPT\n/)
+    expect(producer, "production command producer exists").not.toBeNull()
+    const directory = mkdtempSync(join(tmpdir(), "hosted-entry-"))
+    const out = join(directory, "artifacts")
+    const command = join(directory, "collect.command")
+    const collector = join(directory, "collector.sh")
+    mkdirSync(out)
+    try {
+      writeFileSync(
+        collector,
+        "printf 'probe-stdout\\n'\nprintf 'collector-first\\n' >&2\nprintf 'collector-second\\n' >&2\nexit 7\n",
+      )
+      const generated = spawnSync("/bin/bash", ["-c", producer![0]], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          OUT: out,
+          COMMAND_PATH: command,
+          BUN_DIR: "/bin",
+          NODE_DIR: "/usr/bin",
+          COLLECTOR_BUN: "/bin/bash",
+          COLLECTOR: collector,
+          TARGET_VERSION_EXPORT: "",
+        },
+      })
+      expect(generated.status, generated.stderr).toBe(0)
+      if (scenario !== "waiting") {
+        writeFileSync(join(out, "collector-ready"), "")
+        writeFileSync(
+          join(out, "host-measured.json"),
+          JSON.stringify(scenario === "collector" ? { runId: "a".repeat(32) } : {}),
+        )
+      }
+      const result = spawnSync(
+        "/bin/bash",
+        ["-c", 'sleep() { printf "early-wait-error\\n" >&2; }; export -f sleep; /bin/bash "$1"', "fixture", command],
+        { encoding: "utf8" },
+      )
+      const log = readFileSync(join(out, "collector.log"), "utf8")
+      expect(log).toMatch(/phase=entry.*utc=.*pid=.*tty=/)
+      if (scenario === "waiting") {
+        expect(result.status).toBe(1)
+        expect(log).toContain("early-wait-error")
+        expect(log).toContain("Receipt self-parse never succeeded")
+        expect(log).not.toContain("phase=receipt-ready")
+      } else {
+        expect(log).toContain("phase=receipt-ready")
+        if (scenario === "bad-receipt") {
+          expect(result.status).toBe(1)
+          expect(log).toContain("Receipt has no launch run ID")
+          expect(log).not.toContain("phase=collector-invoked")
+        } else {
+          expect(log).toContain("phase=run-id-parsed")
+          expect(log).toContain("phase=collector-invoked")
+          expect(log).toContain("collector-first\ncollector-second\n")
+          expect(log).toContain("phase=collector-exited status=7")
+          expect(readFileSync(join(out, "collector-exit"), "utf8")).toBe("7\n")
+          expect(result.stdout).toBe("probe-stdout\n")
+        }
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+// A successful display-capture command proves no app window. Exercise the existing evidence
+// block with platform command responses, keeping real subprocess capture and artifact writes.
+test.each(["warp", "iterm2"] as const)(
+  "%s failures retain bounded raw window evidence without claiming screenshot content",
+  (appId) => {
+    const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+    const step = workflow.jobs["measure-macos"].steps.find(
+      (row: { name?: string }) => row.name === "Preserve terminal launch failure evidence",
+    )
+    expect(step, "existing failure owner includes Warp").toBeDefined()
+    expect(step.if).toContain("matrix.id == 'warp'")
+    const source = (step.run as string).match(/^bun --eval '([\s\S]*)'\s*$/)?.[1]
+    expect(source).toBeDefined()
+    const directory = mkdtempSync(join(tmpdir(), "hosted-failure-"))
+    const out = join(directory, "measurement-artifacts")
+    mkdirSync(out)
+    writeFileSync(
+      join(out, "warp-launch-process.json"),
+      JSON.stringify({ childPid: 4242, name: "fixture", launchStart: "2026-10-20T02:00:00Z" }),
+    )
+    const prelude = `const originalSpawn = Bun.spawn;
+    Bun.spawn = (argv, options) => {
+      const command = argv[0];
+      if (command.endsWith("screencapture")) require("node:fs").writeFileSync(argv.at(-1), "fixture unclassified image bytes");
+      const output = command.endsWith("osascript") ? JSON.stringify({ windows: [{ owner: "Warp", pid: 4242, layer: 0 }] })
+        : command.endsWith("ps") ? "PID PPID PGID TTY COMM\\n4242 1 4242 ?? stable\\n"
+        : command.endsWith("log") ? "[]" : "";
+      return originalSpawn(["/bin/bash", "-c", "printf '%s' \\\"$1\\\"", "fixture", output], options);
+    };\n`
+    try {
+      const result = spawnSync(process.execPath, ["--eval", prelude + source], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          APP_ID: appId,
+          RUNNER_TEMP: directory,
+          ITERM_LAUNCH_START: "2026-10-20T02:00:00Z",
+          ITERM_LAUNCH_END: "2026-10-20T02:00:01Z",
+        },
+      })
+      expect(result.status, result.stderr).toBe(0)
+      const prefix = appId === "warp" ? "warp" : "iterm"
+      const summary = JSON.parse(readFileSync(join(out, `${prefix}-failure-evidence.json`), "utf8"))
+      expect(summary).toMatchObject({
+        appId,
+        childPid: appId === "warp" ? 4242 : null,
+        screenContent: "unmeasured: inspect raw display for blank or desktop-only content; not owned-window proof",
+      })
+      const census = JSON.parse(readFileSync(join(out, `${prefix}-windows.json`), "utf8"))
+      expect(JSON.parse(census.stdout.text).windows).toEqual([{ owner: "Warp", pid: 4242, layer: 0 }])
+      expect(census.stdout.omittedBytes).toBe(0)
+      if (appId === "warp") {
+        expect(JSON.parse(readFileSync(join(out, "warp-processes.json"), "utf8")).stdout.text).toContain("4242")
+      }
+      const log = JSON.parse(readFileSync(join(out, `${prefix}-log.json`), "utf8"))
+      expect(log.argv.at(-1)).toContain(appId === "warp" ? 'process == "stable"' : 'process == "appleeventsd"')
+      expect(log.stdout.text).toBe("[]")
+      expect(summary.failures).toEqual([])
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
 
 // The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
 test("shared hosted DMG caller rejects altered Warp bytes before install and preserves Alacritty arguments", async () => {
@@ -99,12 +238,22 @@ test("Warp hosted caller writes one legacy YAML pane before one cold GUI URI lau
   const events: string[] = []
   const launches: Array<{ file: string; args: string[]; options: unknown }> = []
   await runInNewContext(`(async () => {${source}\n})()`, {
-    process: { cwd: () => "/workspace", env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/Warp.app" } },
+    process: {
+      cwd: () => "/workspace",
+      env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/Warp.app", RUNNER_TEMP: "/runner" },
+    },
     console: { log: () => {} },
     require: (id: string) => {
       if (id === "node:fs") {
         return {
           mkdirSync: () => {},
+          constants: { COPYFILE_EXCL: 1 },
+          copyFileSync: (from: string, to: string, flags: number) => {
+            expect(from).toBe(command)
+            expect(flags).toBe(1)
+            events.push("command-retained")
+            writes.set(to, "the actual generated command bytes")
+          },
           writeFileSync: (path: string, value: string, options: unknown) => {
             expect(options).toMatchObject({ flag: "wx" })
             events.push("config")
@@ -120,19 +269,29 @@ test("Warp hosted caller writes one legacy YAML pane before one cold GUI URI lau
       if (id === "node:child_process") {
         return {
           spawn: (file: string, args: string[], options: unknown) => {
+            expect(writes.get("/runner/measurement-artifacts/collect.command")).toBe(
+              "the actual generated command bytes",
+            )
+            expect(writes.get("/runner/measurement-artifacts/warp-launch.yaml")).toBe(
+              writes.get(
+                "/Users/runner/.warp/launch_configurations/terminfo-12345678-1234-1234-1234-123456789abc.yaml",
+              ),
+            )
             events.push("launch")
             launches.push({ file, args, options })
-            return { unref: () => events.push("unref") }
+            return { pid: 4242, unref: () => events.push("unref") }
           },
         }
       }
       throw new Error(`Unexpected Warp launch dependency: ${id}`)
     },
   })
-  expect(events).toEqual(["config", "launch", "unref"])
-  expect([...writes.keys()]).toEqual([
-    "/Users/runner/.warp/launch_configurations/terminfo-12345678-1234-1234-1234-123456789abc.yaml",
-  ])
+  expect(events.indexOf("command-retained")).toBeLessThan(events.indexOf("launch"))
+  expect(events.at(-1)).toBe("unref")
+  expect(JSON.parse(writes.get("/runner/measurement-artifacts/warp-launch-process.json")!)).toMatchObject({
+    name: "terminfo-12345678-1234-1234-1234-123456789abc",
+    childPid: 4242,
+  })
   const config = parse([...writes.values()][0]!)
   expect(config.name).toBe("terminfo-12345678-1234-1234-1234-123456789abc")
   expect(config.windows).toHaveLength(1)
@@ -314,25 +473,5 @@ test("hosted measurement workflows export the launch run id inside the collector
   expect(winCollectorAt, "Windows workflow invokes the collector").toBeGreaterThan(winExportAt)
 })
 
-/**
- * @failure The macOS workflow redirects the collector's stdout into collector.log, so the collector
- *   loses the terminal: serve.ts writes every probe query to process.stdout, and the darwinHosted arm
- *   binds fd0, stdout and the controlling tty as one PTY, so a redirected stdout makes that binding
- *   impossible and every hosted macOS job dies at collect with "Owned output is not a real TTY
- *   stream" or "Hosted Darwin input, selected output and controlling TTY device identities differ".
- * @level l2
- * @consumer The GitHub-hosted macOS measurement collector (27917 / cause b7580050, 28533).
- * @reach fs-walk .github/workflows/macos-measurement.yml
- * @testonly none
- */
-test("the macOS collector keeps stdout on the terminal and sends only stderr to the log", () => {
-  const macos = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
-  const line = macos.split("\n").find((candidate) => candidate.includes('"$COLLECTOR" test')) ?? ""
-  expect(line, "the macOS collector launch line exists").not.toBe("")
-  // A stdout redirect is the defect: the collector's probe queries go to stdout, and the owned-terminal
-  // arm verifies stdout is the same PTY as fd0 and the ps tty. Only stderr may go to collector.log.
-  expect(line, "stdout must stay on the terminal, never redirected to collector.log").not.toMatch(
-    /(^|[^0-9])>\s*"\$OUT\/collector\.log"/,
-  )
-  expect(line, "stderr still reaches the collector.log artifact").toMatch(/\b2>\s*"\$OUT\/collector\.log"/)
-})
+// The generated-command subprocess above owns the stdout/stderr contract (27917 / 28533).
+// It replaces the literal-redirection regex, which misclassified stderr append as stdout output.

@@ -35,10 +35,12 @@ test("eight fresh Mac jobs bootstrap the shared producer before checkout and col
   expect(job.steps[1].uses).toBe("actions/checkout@v4")
   const collectIndex = job.steps.findIndex((step: { id?: string }) => step.id === "collect")
   const failureIndex = job.steps.findIndex(
-    (step: { name?: string }) => step.name === "Preserve iTerm launch failure evidence",
+    (step: { name?: string }) => step.name === "Preserve terminal launch failure evidence",
   )
   expect(failureIndex).toBeGreaterThan(collectIndex)
-  expect(job.steps[failureIndex].if).toBe("failure() && steps.collect.outputs.iterm_failure == 'true'")
+  expect(job.steps[failureIndex].if).toBe(
+    "failure() && (steps.collect.outputs.iterm_failure == 'true' || matrix.id == 'warp')",
+  )
   expect(job.steps.at(-1).uses).toBe("actions/upload-artifact@v4")
   const collect = job.steps[collectIndex].run as string
   const install = job.steps.find((step: { name?: string }) => step.name === "Install this job's terminal")
