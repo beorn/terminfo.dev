@@ -46,7 +46,7 @@ export function selectDarwinWindow(rows: unknown, appPid: number): DarwinWindow 
   const owned = windows.filter((row) => row.ownerPid === appPid && row.layer === 0)
   if (owned.length !== 1) {
     throw new Error(
-      `Darwin capture requires exactly one owned visible window for app PID ${appPid}; found ${owned.length}`,
+      `Darwin capture requires exactly one owned visible window for app PID ${appPid}; found ${owned.length}; owned layer-0 window IDs and point bounds: ${JSON.stringify(owned)}`,
     )
   }
   const window = owned[0]
