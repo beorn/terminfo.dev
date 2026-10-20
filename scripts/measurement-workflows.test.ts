@@ -317,12 +317,13 @@ childBoundary.spawn = (file, args, options) => {
         WARP_SETUP_SOURCE: prelude + source,
       },
     })
+    type CallerEvent = { event: string; file: string; args: string[]; options?: unknown; setupExists?: boolean }
     const events = readFileSync(journal, "utf8")
       .trim()
       .split("\n")
-      .map((line) => JSON.parse(line))
+      .map((line) => JSON.parse(line) as CallerEvent)
     const launches = events.filter((row) => row.event === "launch")
-    const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8"))
+    const setup = JSON.parse(readFileSync(join(out, "warp-onboarding-setup.json"), "utf8")) as { prepared: boolean }
     const preferenceCalls = events.filter((row) => row.file === "/usr/bin/defaults")
     expect(
       preferenceCalls.every(
