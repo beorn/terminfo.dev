@@ -2289,17 +2289,20 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
       })
       const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
       const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
-      expect(trace.writes).toEqual([])
-      expect(trace.captures).toEqual([])
-      expect(trace.queries.slice(2)).toMatchObject(
-        plain.map((sequence, index) => ({
-          sequence,
-          raw: raw[index],
-          rawBase64: Buffer.from(raw[index]!).toString("base64"),
-          reason: diagnostic === "reply" ? "reply" : "timeout",
-        })),
-      )
-      expect(trace.queries).toHaveLength(4)
+      expect(trace).toMatchObject({
+        writes: [],
+        captures: [],
+        queries: [
+          { sequence: "\x1b[?25$p\x1b[c" },
+          { sequence: "\x1b[?7$p\x1b[c" },
+          ...plain.map((sequence, index) => ({
+            sequence,
+            raw: raw[index],
+            rawBase64: Buffer.from(raw[index]!).toString("base64"),
+            reason: diagnostic === "reply" ? "reply" : "timeout",
+          })),
+        ],
+      })
       if (diagnostic !== "reply") {
         expect(sentAt.get(plain[1]!)! - sentAt.get(plain[0]!)!).toBe(5000)
         expect(preparedAt! - sentAt.get(plain[1]!)!).toBe(5000)
