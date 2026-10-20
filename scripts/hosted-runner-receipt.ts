@@ -141,6 +141,12 @@ function measureAppLaunch(): Record<string, unknown> {
   } else if (appId === "alacritty") {
     const installer = join(required("RUNNER_TEMP"), "Alacritty.dmg")
     sourceArtifact = { path: installer, sha256: hashBytes("the installed Alacritty.dmg", installer) }
+  } else if (appId === "warp") {
+    const installer = join(required("RUNNER_TEMP"), "Warp.dmg")
+    sourceArtifact = { path: installer, sha256: hashBytes("the installed Warp.dmg", installer) }
+  } else if (appId === "cmux") {
+    const installer = join(required("RUNNER_TEMP"), "cmux.dmg")
+    sourceArtifact = { path: installer, sha256: hashBytes("the installed cmux.dmg", installer) }
   } else if (appId === "cursor" || appId === "com.microsoft.VSCode") {
     // The workflow installs this retained pinned ZIP directly; canonical editor IDs are not cask tokens.
     const installer = join(required("RUNNER_TEMP"), "editor-installer.zip")

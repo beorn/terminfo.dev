@@ -10,9 +10,185 @@ import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
 import { createHash } from "node:crypto"
+import { spawnSync } from "node:child_process"
+import { parse, stringify } from "yaml"
+import { shellQuote } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
+
+// The actual shared DMG caller must verify Warp before mount/copy, without changing Alacritty's operation.
+test("shared hosted DMG caller rejects altered pinned bytes before install and preserves Alacritty arguments", async () => {
+  const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  const source = workflow.split("<<'HOSTED_DMG_INSTALL'\n")[1]?.split("\n          HOSTED_DMG_INSTALL")[0]
+  expect(source, "the production shared DMG caller exists").toBeDefined()
+  const bytes = new TextEncoder().encode("altered Warp DMG")
+  const actual = createHash("sha256").update(bytes).digest("hex")
+  const launched: string[][] = []
+  const retained = new Map<string, string>()
+  const run = (app: string) =>
+    runInNewContext(`(async () => {${source}\n})()`, {
+      process: { env: { APP_ID: app, RUNNER_TEMP: "/runner" } },
+      Bun: {
+        spawn: (argv: string[]) => {
+          launched.push(argv)
+          return { exited: Promise.resolve(0) }
+        },
+        file: () => ({ arrayBuffer: async () => bytes.buffer }),
+      },
+      Uint8Array,
+      require: (id: string) => {
+        if (id === "node:crypto") return { createHash }
+        if (id === "node:fs") {
+          return {
+            writeFileSync: (path: string, value: string) => retained.set(path, value),
+            copyFileSync: () => {
+              throw new Error("altered bytes reached artifact copying")
+            },
+          }
+        }
+        throw new Error(`Unexpected DMG dependency: ${id}`)
+      },
+    })
+  for (const [app, expectedSha256] of [
+    ["warp", "866204c9583007b06c0e88e399fe57187150a9ab43ad4000c5935035794025c1"],
+    ["cmux", "2f4bd98df7514067408d89398f8f19059015a3bbae632d0474515d4b76d6ee36"],
+  ]) {
+    await expect(run(app!)).rejects.toThrow(`expected ${expectedSha256}, actual ${actual}`)
+    expect(launched.map((argv) => argv[0])).toEqual(["curl"])
+    expect(JSON.parse(retained.get(`/runner/measurement-artifacts/${app}-installer.json`)!)).toMatchObject({
+      expectedSha256,
+      actualSha256: actual,
+    })
+    launched.length = 0
+  }
+  await run("alacritty")
+  expect(launched).toEqual([
+    [
+      "curl",
+      "--location",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "https://github.com/alacritty/alacritty/releases/download/v0.17.0/Alacritty-v0.17.0.dmg",
+      "--output",
+      "/runner/Alacritty.dmg",
+    ],
+    ["hdiutil", "attach", "/runner/Alacritty.dmg", "-mountpoint", "/Volumes/Alacritty"],
+    ["cp", "-R", "/Volumes/Alacritty/Alacritty.app", "/Applications/"],
+    ["hdiutil", "detach", "/Volumes/Alacritty"],
+  ])
+})
+
+test("cmux hosted caller quotes the private command in normal config before one cold GUI open", async () => {
+  const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  const source = workflow.split("<<'HOSTED_CMUX_START'\n")[1]?.split("\n          HOSTED_CMUX_START")[0]
+  expect(source, "the production cmux launch caller exists").toBeDefined()
+  const command = "/runner/Alice's files/collect.command"
+  const writes = new Map<string, string>()
+  const events: string[] = []
+  const launches: string[][] = []
+  const run = (status: number) =>
+    runInNewContext(`(async () => {${source}\n})()`, {
+      process: { cwd: () => root, env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/cmux.app" } },
+      Bun: {
+        spawn: (argv: string[]) => {
+          events.push("launch")
+          launches.push(argv)
+          return { exited: Promise.resolve(status) }
+        },
+      },
+      require: (id: string) => {
+        if (id === "node:fs") {
+          return {
+            mkdirSync: () => {},
+            writeFileSync: (path: string, value: string) => {
+              events.push("config")
+              writes.set(path, value)
+            },
+          }
+        }
+        if (id === "node:path") return { join }
+        if (id === "node:os") return { homedir: () => "/Users/runner" }
+        if (id.endsWith("/daemon-client.ts")) return { shellQuote }
+        throw new Error(`Unexpected cmux launch dependency: ${id}`)
+      },
+    })
+  await run(0)
+  expect(events).toEqual(["config", "launch"])
+  expect(launches).toEqual([["open", "-a", "/Applications/cmux.app"]])
+  expect([...writes.keys()]).toEqual(["/Users/runner/.config/ghostty/config"])
+  const configured = writes
+    .get("/Users/runner/.config/ghostty/config")!
+    .trim()
+    .replace(/^command = /, "")
+  const argv = spawnSync("/bin/bash", ["-c", `set -- ${configured}; printf '%s\\0' "$@"`], { encoding: "utf8" })
+  expect(argv.status, argv.stderr).toBe(0)
+  expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
+  await expect(run(7)).rejects.toThrow(/open.*7/)
+})
+
+// A valid configuration must carry the real command path as ONE shell argument, not merely launch Warp.
+test("Warp hosted caller writes one legacy YAML pane before one cold GUI URI launch", async () => {
+  const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
+  const source = workflow.split("<<'HOSTED_WARP_START'\n")[1]?.split("\n          HOSTED_WARP_START")[0]
+  expect(source, "the production Warp launch caller exists").toBeDefined()
+  const command = "/runner/Alice's files/collect.command"
+  const writes = new Map<string, string>()
+  const events: string[] = []
+  const launches: Array<{ file: string; args: string[]; options: unknown }> = []
+  await runInNewContext(`(async () => {${source}\n})()`, {
+    process: { cwd: () => "/workspace", env: { COMMAND_PATH: command, APP_BUNDLE: "/Applications/Warp.app" } },
+    console: { log: () => {} },
+    require: (id: string) => {
+      if (id === "node:fs") {
+        return {
+          mkdirSync: () => {},
+          writeFileSync: (path: string, value: string, options: unknown) => {
+            expect(options).toMatchObject({ flag: "wx" })
+            events.push("config")
+            writes.set(path, value)
+          },
+        }
+      }
+      if (id === "node:path") return { join }
+      if (id === "node:os") return { homedir: () => "/Users/runner" }
+      if (id === "node:crypto") return { randomUUID: () => "12345678-1234-1234-1234-123456789abc" }
+      if (id === "yaml") return { stringify }
+      if (id.endsWith("/daemon-client.ts")) return { shellQuote }
+      if (id === "node:child_process") {
+        return {
+          spawn: (file: string, args: string[], options: unknown) => {
+            events.push("launch")
+            launches.push({ file, args, options })
+            return { unref: () => events.push("unref") }
+          },
+        }
+      }
+      throw new Error(`Unexpected Warp launch dependency: ${id}`)
+    },
+  })
+  expect(events).toEqual(["config", "launch", "unref"])
+  expect([...writes.keys()]).toEqual([
+    "/Users/runner/.warp/launch_configurations/terminfo-12345678-1234-1234-1234-123456789abc.yaml",
+  ])
+  const config = parse([...writes.values()][0]!)
+  expect(config.windows).toHaveLength(1)
+  expect(config.windows[0].tabs).toHaveLength(1)
+  expect(config.windows[0].tabs[0].layout.cwd).toBe("/workspace")
+  expect(config.windows[0].tabs[0].layout.commands).toHaveLength(1)
+  const quoted = config.windows[0].tabs[0].layout.commands[0].exec
+  const argv = spawnSync("/bin/bash", ["-c", `set -- ${quoted}; printf '%s\\0' "$@"`], { encoding: "utf8" })
+  expect(argv.status, argv.stderr).toBe(0)
+  expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])
+  expect(launches).toEqual([
+    {
+      file: "/Applications/Warp.app/Contents/MacOS/stable",
+      args: ["warp://launch/terminfo-12345678-1234-1234-1234-123456789abc"],
+      options: { detached: true, stdio: "inherit" },
+    },
+  ])
+})
 
 // Archive installation is irreversible within this job: changed downloaded bytes must never reach ditto.
 test("hosted editor installer reports both digests before installing altered archive bytes", async () => {

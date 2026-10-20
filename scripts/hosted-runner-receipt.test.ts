@@ -8,7 +8,7 @@
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
 import { realpathSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -70,6 +70,10 @@ const values = process.env.APP_ID === "iterm2"
   ? { CFBundleShortVersionString: "3.0.8", CFBundleVersion: "30211", CFBundleExecutable: "Cursor" }
   : process.env.APP_ID === "com.microsoft.VSCode"
   ? { CFBundleShortVersionString: "1.126.0", CFBundleVersion: "30212", CFBundleExecutable: "Code" }
+  : process.env.APP_ID === "warp"
+  ? { CFBundleShortVersionString: "0.2026.10.14.08.27.01", CFBundleVersion: "0.2026.10.14.08.27.01", CFBundleExecutable: "stable" }
+  : process.env.APP_ID === "cmux"
+  ? { CFBundleShortVersionString: "0.65.2", CFBundleVersion: "111", CFBundleExecutable: "cmux" }
   : { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
 const value = values[process.argv[3]];
 if (!value) { console.error("no fixture value for " + process.argv[3]); process.exit(1); }
@@ -81,7 +85,7 @@ console.log(value);
     // case name its own cached installer so two cask apps cannot silently share one artifact.
     await writeFile(
       join(dir, "brew"),
-      `#!${process.execPath}\nif (["cursor", "com.microsoft.VSCode"].includes(process.env.APP_ID)) { console.error("editor IDs must not reach cask lookup"); process.exit(1); }\nconsole.log(process.env.BREW_CASK_PATH || ${JSON.stringify(installer)});\n`,
+      `#!${process.execPath}\nif (["cursor", "com.microsoft.VSCode", "warp", "cmux"].includes(process.env.APP_ID)) { console.error("pinned installer IDs must not reach cask lookup"); process.exit(1); }\nconsole.log(process.env.BREW_CASK_PATH || ${JSON.stringify(installer)});\n`,
       { mode: 0o755 },
     )
     const address = server.address()
@@ -192,11 +196,12 @@ console.log(value);
         sha256: createHash("sha256").update(weztermInstallerBytes).digest("hex"),
       },
     })
-    // 30211: both canonical IDs bind the ZIP actually installed by their isolated job. Existing
-    // cask/iTerm cases cannot catch an editor using a cask token or hashing another cached archive.
-    for (const [appId, bundleName, executableName, version, build] of [
-      ["cursor", "Cursor.app", "Cursor", "3.0.8", "30211"],
-      ["com.microsoft.VSCode", "Visual Studio Code.app", "Code", "1.126.0", "30212"],
+    // 30211: pinned apps bind the exact retained installer, never another app's valid cask archive.
+    for (const [appId, bundleName, executableName, version, build, installerName] of [
+      ["cursor", "Cursor.app", "Cursor", "3.0.8", "30211", "editor-installer.zip"],
+      ["com.microsoft.VSCode", "Visual Studio Code.app", "Code", "1.126.0", "30212", "editor-installer.zip"],
+      ["warp", "Warp.app", "stable", "0.2026.10.14.08.27.01", "0.2026.10.14.08.27.01", "Warp.dmg"],
+      ["cmux", "cmux.app", "cmux", "0.65.2", "111", "cmux.dmg"],
     ] as const) {
       const editorBundle = join(dir, bundleName)
       await mkdir(join(editorBundle, "Contents", "MacOS"), { recursive: true })
@@ -204,8 +209,8 @@ console.log(value);
       const editorExecutable = join(editorBundle, "Contents", "MacOS", executableName)
       const editorExecutableBytes = `fixture ${appId} GUI executable\n`
       await writeFile(editorExecutable, editorExecutableBytes)
-      const editorInstaller = join(dir, "editor-installer.zip")
-      const editorInstallerBytes = `fixture ${appId} installed ZIP\n`
+      const editorInstaller = join(dir, installerName)
+      const editorInstallerBytes = `fixture ${appId} installed artifact\n`
       await writeFile(editorInstaller, editorInstallerBytes)
       env.APP_ID = appId
       env.APP_BUNDLE = editorBundle
@@ -439,7 +444,7 @@ test("a hosted macOS job that cannot measure its launch refuses by name, never w
     await writeFile(join(bundle, "Contents", "MacOS", "ghostty"), "fixture-ghostty-executable\n")
     const plutil = `#!${process.execPath}
 if (process.env.PLUTIL_EXITS === "1") { console.error("fixture plutil refusal"); process.exit(1); }
-const values = { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: "ghostty" };
+const values = { CFBundleShortVersionString: "1.3.1", CFBundleVersion: "1", CFBundleExecutable: process.env.PLUTIL_EXECUTABLE || "ghostty" };
 console.log(values[process.argv[3]] ?? "");
 `
     await writeFile(join(dir, "plutil"), plutil, { mode: 0o755 })
@@ -491,6 +496,12 @@ console.log(values[process.argv[3]] ?? "");
     await expect(run({ APP_ID: "alacritty" }, "emit", start, join(dir, "no-installer.json"))).rejects.toThrow(
       /cannot read the installed Alacritty\.dmg/,
     )
+    await expect(run({ APP_ID: "warp" }, "emit", start, join(dir, "no-warp-installer.json"))).rejects.toThrow(
+      /cannot read the installed Warp\.dmg/,
+    )
+    await expect(run({ APP_ID: "cmux" }, "emit", start, join(dir, "no-cmux-installer.json"))).rejects.toThrow(
+      /cannot read the installed cmux\.dmg/,
+    )
     await expect(run({ APP_ID: "iterm2" }, "emit", start, join(dir, "no-iterm-installer.json"))).rejects.toThrow(
       /cannot read the installed iTerm2-3_6_11\.zip/,
     )
@@ -500,9 +511,23 @@ console.log(values[process.argv[3]] ?? "");
       )
     }
     // An app with no measured installer route is refused, never described.
-    await expect(run({ APP_ID: "warp" }, "emit", start, join(dir, "no-route.json"))).rejects.toThrow(
-      /no measured source-artifact route for APP_ID="warp"/,
+    await expect(run({ APP_ID: "unknown-terminal" }, "emit", start, join(dir, "no-route.json"))).rejects.toThrow(
+      /no measured source-artifact route for APP_ID="unknown-terminal"/,
     )
+    const cmuxBundle = join(dir, "cmux.app")
+    await mkdir(join(cmuxBundle, "Contents", "MacOS"), { recursive: true })
+    await writeFile(join(cmuxBundle, "Contents", "Info.plist"), "fixture cmux plist\n")
+    const outsideExecutable = join(dir, "outside-cmux")
+    await writeFile(outsideExecutable, "outside GUI executable\n")
+    await symlink(outsideExecutable, join(cmuxBundle, "Contents", "MacOS", "cmux"))
+    await expect(
+      run(
+        { APP_ID: "cmux", APP_BUNDLE: cmuxBundle, PLUTIL_EXECUTABLE: "cmux" },
+        "emit",
+        start,
+        join(dir, "outside-cmux.json"),
+      ),
+    ).rejects.toThrow(/outside its resolved bundle/)
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
     await rm(dir, { recursive: true, force: true })

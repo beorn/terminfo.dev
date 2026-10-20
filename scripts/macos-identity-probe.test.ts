@@ -16,7 +16,7 @@ import { promisify } from "node:util"
 import { expect, test, vi } from "vitest"
 import { parse } from "yaml"
 
-test("seven fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
+test("nine fresh Mac jobs bootstrap the shared producer before checkout and collect after self-parse", async () => {
   const workflow = parse(await readFile(new URL("../.github/workflows/macos-measurement.yml", import.meta.url), "utf8"))
   expect(Object.keys(workflow.jobs)).toEqual(["measure-macos"])
   const job = workflow.jobs["measure-macos"]
@@ -28,6 +28,8 @@ test("seven fresh Mac jobs bootstrap the shared producer before checkout and col
     "wezterm",
     "cursor",
     "com.microsoft.VSCode",
+    "warp",
+    "cmux",
   ])
   expect(job["runs-on"]).toBe("macos-latest")
   const first = job.steps[0]
