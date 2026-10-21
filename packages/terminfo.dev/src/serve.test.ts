@@ -188,7 +188,7 @@ describe("daemon HTTP boundary", () => {
     if (!home || !registration.token) throw new Error("Diagnostic fixture lacks its private home or daemon token")
     const privateHome = home
     {
-      let failure: { message: string; status?: number; path?: string; sha256?: string } | undefined
+      let failure: unknown
       await vi.waitFor(
         () => {
           failure = JSON.parse(readFileSync(join(privateHome, "client-failure.json"), "utf8"))
@@ -207,12 +207,12 @@ describe("daemon HTTP boundary", () => {
       const bytes = readFileSync(path)
       const sha256 = createHash("sha256").update(bytes).digest("hex")
       expect(failure).toMatchObject({ path, sha256 })
-      expect(failure?.message).toContain("HTTP 500")
-      expect(failure?.message).toContain(path)
-      expect(failure?.message).toContain(sha256)
+      expect(failure).toHaveProperty("message", expect.stringContaining("HTTP 500"))
+      expect(failure).toHaveProperty("message", expect.stringContaining(path))
+      expect(failure).toHaveProperty("message", expect.stringContaining(sha256))
       expect(files[0]).toBe(sha256)
       const body = JSON.parse(bytes.toString())
-      expect(body.captureCommand).toMatchObject({
+      expect(body).toHaveProperty("captureCommand", {
         file: "/usr/bin/osascript",
         args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
         stdoutBase64: "",
