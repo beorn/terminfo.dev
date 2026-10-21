@@ -13,7 +13,7 @@ next:
 
 # How to read a result
 
-A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "TEST FAILURE: no reply to an attempted query". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". A probe that was not attempted is TEST TODO; an attempted probe without a result is TEST FAILURE.
+A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "TEST FAILURE: the attempted query produced no usable result". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". TEST TODO means required work remains, including an unattempted probe or a required review. TEST FAILURE means an attempted check broke or could not produce a valid result; a functioning oracle's documented negative result is Unsupported instead.
 
 ## Supported and Unsupported: verified in …
 
@@ -27,17 +27,18 @@ Supported: the effect happened. Unsupported: the same kind of check showed it di
 
 ## "Corrected after review"
 
-A program does not judge pictures, so every screenshot result is recorded as TEST TODO until a reviewer decides whether the screenshots establish support. A reviewer compares the two frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.
+Automated image checks can decide criteria with machine-readable comparisons. When a criterion requires independent visual review, only that result remains TEST TODO until the review is complete. The reviewer compares the frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.
 
 ## Untestable, TEST TODO and TEST FAILURE
 
-**Untestable** means a reviewer established that this context cannot expose the feature. **TEST TODO** means no attempt established a result. **TEST FAILURE** means an attempt did not establish Supported or Unsupported; it says the test failed, not that the feature failed.
+**Untestable** means a reviewer established that this context cannot expose the feature. **TEST TODO** means required work remains, including an unattempted probe or a pending review. **TEST FAILURE** means an attempted check broke or could not produce a valid result; it describes the test, not the terminal.
 
-- **TEST FAILURE: no reply** or **TEST FAILURE: no reply in time** — the query was attempted, but no result arrived before the deadline.
+- **TEST FAILURE: no usable reply** or **TEST FAILURE: no reply in time** — the query was attempted, but no result arrived before the deadline and no documented negative response established Unsupported.
 - **TEST FAILURE: the reply was not in the expected form** — we do not grade a reply we cannot parse.
-- **TEST FAILURE: the terminal refused permission** — it said no at run time, such as a denied clipboard read.
+- **TEST TODO: permission prevented the query from starting** — no measurement was attempted.
+- **TEST FAILURE: an attempted permission check did not produce a valid result** — a denial is a failure only when the attempted check did not establish a documented negative result.
 - **TEST TODO: the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
-- **TEST FAILURE: the terminal accepted the query, but nothing visible changed** — the terminal kept working, but we saw no effect to grade. An ignored sequence also keeps working, so this cannot tell acting from ignoring.
+- **TEST FAILURE: the terminal accepted the query, but nothing visible changed** — this is a failure when the required observation did not resolve the claim; a validated negative oracle can establish Unsupported instead.
 - **TEST FAILURE: the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.
 - **TEST TODO: screenshots await review** — the screenshots were taken, but no reviewer has confirmed the effect in them; see "Corrected after review" above.
 

@@ -481,7 +481,7 @@ function generateBaselineAnalysis(
   if (imperfect.length > 0) {
     const laggards = imperfect.slice(0, 3).map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} baseline features with a recorded Supported or Unsupported value)`
+      return `${s.name} (${baseline?.yes ?? 0} Supported among ${baseline?.total ?? 0} Supported/Unsupported results)`
     })
     parts.push(`Known unsupported results: ${laggards.join(", ")}`)
 
@@ -747,7 +747,7 @@ function generateFrameworkAnalysis(
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
-      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} selected targets have recorded Supported result for every required feature`,
+      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} selected targets have a recorded Supported result for every required feature`,
     )
   } else {
     parts.push(`${fw.label} requires the ${baselineLabel} baseline — support analysis awaiting verified measurements`)
@@ -761,7 +761,7 @@ function generateFrameworkAnalysis(
   if (incompatible.length > 0 && incompatible.length <= 5) {
     const laggards = incompatible.map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} baseline features with a recorded Supported or Unsupported value)`
+      return `${s.name} (${baseline?.yes ?? 0} Supported among ${baseline?.total ?? 0} Supported/Unsupported results)`
     })
     parts.push(`Known unsupported baseline results: ${laggards.join(", ")}`)
   }
