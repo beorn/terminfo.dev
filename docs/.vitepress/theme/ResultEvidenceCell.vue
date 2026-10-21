@@ -9,9 +9,18 @@ import type {
   PublicVersion,
   TextQualificationDocument,
 } from "../../data/public-results"
-import { readCellEvidence, type LoadedCellEvidence } from "../../data/evidence-reader"
+import {
+  describeTracePanes,
+  REASON_EXPLANATIONS,
+  readCellEvidence,
+  readCellTrace,
+  type LoadedCellEvidence,
+  type LoadedCellTrace,
+} from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { textEvidenceExplanation } from "./ungraded-explanation"
+
+const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
 
 const props = withDefaults(
   defineProps<{
@@ -58,6 +67,7 @@ const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
 const evidenceDocument = ref<LoadedCellEvidence | null>(null)
+const cellTrace = ref<LoadedCellTrace | null>(null)
 const qualificationDocument = ref<TextQualificationDocument | null>(null)
 const textSnapshots = ref<Record<string, string>>({})
 const recordedQueries = ref<Array<{ sequence: string; raw?: string }>>([])
@@ -69,15 +79,7 @@ const id = useId()
 const tooltipId = `${id}-preview`
 const dialogTitleId = `${id}-title`
 
-const reasonExplanations: Record<ObservationReason, string> = {
-  "no-response": "No terminal reply was recorded for this query.",
-  timeout: "The probe did not finish before its time limit.",
-  permission: "Required permission was not available for this probe.",
-  "policy-refused": "The configured policy declined to run or allow this probe.",
-  "collector-error": "The collector failed to complete this probe.",
-  "invalid-reply": "The recorded reply did not match this probe’s expected format.",
-  "insufficient-evidence": "The recorded observation does not establish support; more evidence is needed.",
-}
+const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
 const namedCoverage = computed(() =>
   historicalVersion.value?.notTestedCoverage.named.find((record) => record.featureId === props.featureId),
@@ -153,7 +155,9 @@ const textExplanation = computed(() =>
   ),
 )
 
-const probeGuidanceText = computed(() => props.probeGuidance?.replace(/<\/?code>/g, ""))
+const probeGuidanceText = computed(() =>
+  (props.probeGuidance ?? data.featureDescriptions[props.featureId]?.probe)?.replace(/<\/?code>/g, ""),
+)
 const presentation = computed(() => props.cell?.presentation)
 const correction = computed(() =>
   historicalVersion.value?.reviews.find((review) => review.id === historicalCell.value?.chain.correctionId),
@@ -178,8 +182,19 @@ const referenceImageUrl = computed(() => (referenceFrame.value ? withBase(refere
 const expectedIllustration = computed(() =>
   props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
 )
+const tracePaneCopy = computed(() => {
+  if (!cellTrace.value) return undefined
+  const featureMeta = data.featureDescriptions[props.featureId]
+  return describeTracePanes(cellTrace.value, {
+    sequence: featureMeta?.sequence,
+    probeGuidance: props.probeGuidance ?? featureMeta?.probe,
+    targetKind: props.version?.target.kind,
+    hasReferenceImage: Boolean(referenceImageUrl.value || expectedIllustration.value),
+  })
+})
 const compactCause = computed(() => {
   if (evidenceError.value) return evidenceError.value
+  if (evidenceLoading.value) return "Loading recorded evidence…"
   if (currentResult.value)
     return currentResult.value.reason ?? "Recorded details have not been approved for publication."
   if (historicalCell.value?.evidence === "text") return "our test could not capture text"
@@ -243,6 +258,7 @@ const evidenceIdentity = computed(() => {
     props.cell?.evidence,
     historicalCell.value?.note,
     presentation.value,
+    props.version?.trace,
   ])
 })
 
@@ -251,6 +267,7 @@ function invalidateEvidence(): void {
   evidenceController?.abort()
   evidenceController = null
   evidenceDocument.value = null
+  cellTrace.value = null
   qualificationDocument.value = null
   textSnapshots.value = {}
   recordedQueries.value = []
@@ -262,9 +279,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-/** The existing evidence receipt check also verifies TXT bytes and the run-owned witness document. */
-async function verifiedBytes(url: string, sha256: string, signal: AbortSignal): Promise<ArrayBuffer> {
-  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error("Invalid evidence SHA-256 receipt")
+/** The existing evidence receipt check also verifies TXT bytes, the run-owned witness document, and run traces. */
+async function verifiedBytes(
+  url: string,
+  sha256: string,
+  signal: AbortSignal,
+  failureMessage = "evidence failed its receipt",
+): Promise<ArrayBuffer> {
+  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error(failureMessage)
   const [resourcePath] = url.split("#")
   if (!resourcePath) throw new Error("Invalid evidence URL")
   const response = await fetch(withBase(resourcePath), { signal })
@@ -273,16 +295,83 @@ async function verifiedBytes(url: string, sha256: string, signal: AbortSignal): 
   if (!globalThis.crypto?.subtle) throw new Error("SHA-256 verification is unavailable in this browser")
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
   const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
-  if (actualSha256 !== sha256) throw new Error("evidence failed its receipt")
+  if (actualSha256 !== sha256) throw new Error(failureMessage)
   return bytes
 }
 
 async function loadEvidence(): Promise<void> {
-  if (evidenceLoading.value || evidenceDocument.value) return
+  if (evidenceLoading.value || evidenceDocument.value || cellTrace.value) return
   const approval = presentation.value
   const version = props.version
   const cell = props.cell
-  if (approval?.state !== "presented" || !version || !cell) return
+  if (!version || !cell) return
+  if (approval?.state === "not-reviewed") {
+    const traceReceipt = version.trace
+    if (!traceReceipt) {
+      evidenceError.value = "no trace stored for this cell"
+      repositionPreview()
+      return
+    }
+    const identity = evidenceIdentity.value
+    const request = ++evidenceRequest
+    const controller = new AbortController()
+    evidenceController = controller
+    evidenceLoading.value = true
+    evidenceError.value = null
+    cellTrace.value = null
+    try {
+      if ("chain" in cell && (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256)) {
+        throw new Error("Result and run identities disagree")
+      }
+      const cacheKey = `${traceReceipt.url}#${traceReceipt.sha256}`
+      let cached = verifiedTraceDocuments.get(cacheKey)
+      if (cached === undefined) {
+        const bytes = await verifiedBytes(
+          traceReceipt.url,
+          traceReceipt.sha256,
+          controller.signal,
+          "trace failed its receipt",
+        )
+        const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
+        const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+        const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+        cached = { parsed, actualSha256 }
+        verifiedTraceDocuments.set(cacheKey, cached)
+      }
+      const loaded = readCellTrace(cached.parsed, {
+        schemaVersion: version.schemaVersion,
+        runId: version.runId,
+        runSha256: version.sha256,
+        featureId: props.featureId,
+        expectedSha256: traceReceipt.sha256,
+        actualSha256: cached.actualSha256,
+      })
+      if (
+        request !== evidenceRequest ||
+        (!dialogVisible.value && !previewVisible.value) ||
+        identity !== evidenceIdentity.value
+      )
+        return
+      cellTrace.value = loaded
+      repositionPreview()
+    } catch (error) {
+      if (
+        request !== evidenceRequest ||
+        (!dialogVisible.value && !previewVisible.value) ||
+        identity !== evidenceIdentity.value
+      )
+        return
+      evidenceError.value = error instanceof Error ? error.message : String(error)
+      repositionPreview()
+    } finally {
+      if (request === evidenceRequest) {
+        evidenceLoading.value = false
+        evidenceController = null
+      }
+    }
+    return
+  }
+  if (approval?.state !== "presented") return
   const identity = evidenceIdentity.value
   const request = ++evidenceRequest
   const controller = new AbortController()
@@ -421,7 +510,7 @@ function repositionPreview(): void {
   previewPosition.value = {
     ...previewPosition.value,
     width: `${Math.min(420, window.innerWidth - 16)}px`,
-    maxHeight: `min(75vh, 520px, ${Math.max(above, below)}px)`,
+    maxHeight: `min(88vh, 680px, ${Math.max(above, below)}px)`,
   }
   void nextTick(positionPreview)
 }
@@ -553,13 +642,59 @@ onBeforeUnmount(() => {
             <pre v-else-if="assertions[0]?.observed" class="result-evidence__sample-text">{{
               assertions[0].observed
             }}</pre>
+            <div v-else-if="tracePaneCopy" class="result-evidence__trace-pane">
+              <p v-if="tracePaneCopy.tested.reasonLine" class="result-evidence__trace-p">
+                {{ readerSafeExplanation(tracePaneCopy.tested.reasonLine) }}
+              </p>
+              <template v-for="(item, index) in tracePaneCopy.tested.items" :key="index">
+                <div class="result-evidence__trace-label">{{ item.label }}</div>
+                <code v-if="item.code !== undefined" class="result-evidence__trace-seq">{{ item.code }}</code>
+                <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
+                <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
+              </template>
+              <p class="result-evidence__trace-src">{{ tracePaneCopy.tested.sourceLine }}</p>
+              <p class="result-evidence__trace-src">{{ tracePaneCopy.tested.identityLine }}</p>
+              <p class="result-evidence__trace-gap">{{ tracePaneCopy.tested.notKeptLine }}</p>
+            </div>
             <div v-else class="result-evidence__missing-image">
               <span>{{ readerSafeExplanation(compactCause) }}</span>
             </div>
           </figure>
           <figure>
             <figcaption>EXPECTED</figcaption>
-            <img v-if="referenceImageUrl" :src="referenceImageUrl" :alt="`Recorded reference for ${featureName}`" />
+            <div v-if="tracePaneCopy" class="result-evidence__trace-pane">
+              <template v-if="tracePaneCopy.expected.sequence">
+                <div class="result-evidence__trace-label">Sequence</div>
+                <code class="result-evidence__trace-seq">{{ tracePaneCopy.expected.sequence }}</code>
+              </template>
+              <div class="result-evidence__trace-label">Behavior</div>
+              <p class="result-evidence__trace-p">{{ tracePaneCopy.expected.behavior }}</p>
+              <img v-if="referenceImageUrl" :src="referenceImageUrl" :alt="`Recorded reference for ${featureName}`" />
+              <template v-else-if="expectedIllustration">
+                <img
+                  :src="expectedIllustration"
+                  :alt="'Illustrative expected Unicode cells; not a captured terminal result'"
+                />
+                <span class="result-evidence__illustrative">Illustration</span>
+              </template>
+              <div
+                v-else
+                class="result-evidence__noimg"
+                role="img"
+                :aria-label="tracePaneCopy.expected.referenceStatus"
+              >
+                <svg viewBox="0 0 40 28" aria-hidden="true">
+                  <rect x="1" y="1" width="38" height="26" rx="2" />
+                  <path d="M6 22l9-9 7 7 6-6 6 8" />
+                </svg>
+                <span>{{ tracePaneCopy.expected.referenceStatus }}</span>
+              </div>
+            </div>
+            <img
+              v-else-if="referenceImageUrl"
+              :src="referenceImageUrl"
+              :alt="`Recorded reference for ${featureName}`"
+            />
             <template v-else-if="expectedIllustration">
               <img
                 :src="expectedIllustration"
