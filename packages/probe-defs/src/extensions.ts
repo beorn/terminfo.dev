@@ -2419,8 +2419,11 @@ export const extensionsProbes: ProbeDefinition[] = [
       probe(
         "extensions.osc5522-clipboard",
         (ctx) => {
-          const reply = ctx.feedCapture("\x1b[?5522$p")
-          return decrpmResult(decrpmPs(decrpmReplyPattern(5522).exec(reply)?.[1]), 5522)
+          const pattern = decrpmReplyPattern(5522)
+          const reply = ctx.queryWithSentinelOutcome
+            ? ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern).raw
+            : ctx.feedCapture("\x1b[?5522$p")
+          return { ...decrpmResult(decrpmPs(pattern.exec(reply)?.[1]), 5522), response: reply }
         },
         async (ctx) => decrpmResult(await queryDecrpm(ctx, 5522), 5522),
         "query",

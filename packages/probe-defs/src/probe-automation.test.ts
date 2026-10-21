@@ -426,12 +426,21 @@ describe("Kitty protocol detection", () => {
       const p = probe("extensions.osc5522-clipboard")
       if (!p.term || !p.termless) throw new Error("OSC 5522 needs both probe methods")
       const response = ps === null ? "" : `\x1b[?5522;${ps}$y`
+      const sentinel = "\x1b[?1;2c"
       const queries: string[] = []
       const headless = p.termless(
         context({
-          feedCapture(text) {
-            queries.push(text)
-            return text === "\x1b[?5522$p" ? response : ""
+          feedCapture() {
+            throw new Error("The installed headless outcome owns its full reply window")
+          },
+          queryWithSentinelOutcome(sequence, pattern) {
+            queries.push(sequence)
+            return {
+              match: response.match(pattern),
+              reason: ps === null ? "sentinel" : "reply",
+              raw: response + sentinel,
+              rawBase64: btoa(response + sentinel),
+            }
           },
         }),
       )
@@ -460,7 +469,7 @@ describe("Kitty protocol detection", () => {
         expect(result.pass).toBe(pass)
         expect(result.observation).toMatchObject({ outcome, evidence: "query" })
         expect(result.observation?.reason).toBe(reason)
-        expect(result.response).toBe(reading)
+        expect(result.response).toBe(result === headless ? response + sentinel : reading)
         expect(result.assertions?.[0]?.observed).toBe(pass || ps === 4 ? reading : undefined)
       }
     },
