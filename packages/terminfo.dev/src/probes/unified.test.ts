@@ -962,11 +962,33 @@ it("keeps actual query evidence but downgrades its explicit result after a measu
         evidence: "query",
       },
     ])
-    expect(batch.assertions).toEqual([])
+    expect(batch.assertions).toMatchObject([
+      {
+        featureId: "device.primary-da",
+        kind: "positive",
+        observed: "\x1b[?62;4c",
+        note: expect.stringContaining("resized"),
+      },
+    ])
+    expect(JSON.parse(batch.rawReplies["device.primary-da.callbackObservation"]!)).toMatchObject({
+      outcome: "supported",
+      evidence: "query",
+    })
+    expect(batch.results.find((result) => result.featureId === "device.primary-da")).toMatchObject({
+      status: "test-failure",
+      criterionBranch: "resized-capture",
+      checks: [{ id: "geometry", status: "test-failure", assertionRefs: [0] }],
+    })
     expect(batch.rawReplies["device.primary-da"]).toBe("\x1b[?62;4c")
     expect(JSON.parse(batch.rawReplies["collector.geometry"]!)).toMatchObject({
       checks: [{ pre: { rows: 24, cols: 61 }, post: { rows: 31, cols: 73 } }],
     })
+    const decoded = decodeCollectorRun("resized.json", JSON.stringify(asRun(batch)), manifest, sourceRevision).run
+    expect(decoded.assertions).toEqual(batch.assertions)
+    expect(decoded.observations).toEqual(batch.observations)
+    expect(decoded.rawReplies["device.primary-da.callbackObservation"]).toBe(
+      batch.rawReplies["device.primary-da.callbackObservation"],
+    )
   } finally {
     definition.termNeedsGeometry = original
   }
