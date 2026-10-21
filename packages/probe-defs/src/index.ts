@@ -68,6 +68,7 @@ export {
   readHyperlinkMetadata,
   readSentinelReply,
   probe,
+  sentinelGraceMs,
   utf8DecodingRefusal,
   type SentinelRead,
 } from "./helpers.ts"

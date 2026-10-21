@@ -965,13 +965,16 @@ const DA1_ANSWER = /\x1b\[\?[0-9;]+c/
 export type SentinelRead =
   | { kind: "pending"; match: string[] | null }
   | { kind: "reply"; match: string[] }
+  | { kind: "unmatched"; match: string[] | null }
   | { kind: "answered"; match: string[] | null }
 
 /**
  * F1 (27832) has one reading rule for both collectors (#30554, @cto 452bc032 condition 3). Until the
  * DA1 answer arrives the read is `pending`; a frame ahead of it is a plain `reply` with no sentinel
- * facts; once DA1 came first the read is `answered`, carrying any frame that followed it. The live
- * collector applies this to every chunk; the headless member applies it once to its two captures.
+ * facts. Bytes ahead of it that match nothing are `unmatched`: the terminal said something, so it was
+ * not silent (@cto 67840412 R1). Only a DA1 answer with nothing before it is `answered`, carrying any
+ * frame that followed it. The live collector applies this to every chunk; the headless member applies
+ * it once to its two captures.
  */
 export function readSentinelReply(buffer: string, pattern: RegExp): SentinelRead {
   const found = buffer.match(pattern)
@@ -979,7 +982,41 @@ export function readSentinelReply(buffer: string, pattern: RegExp): SentinelRead
   const end = buffer.search(DA1_ANSWER)
   if (end < 0) return { kind: "pending", match }
   if (match && (found?.index ?? 0) < end) return { kind: "reply", match }
+  if (end > 0) return { kind: "unmatched", match }
   return { kind: "answered", match }
+}
+
+/**
+ * F1 (27832): how long the collector keeps reading after a DA1 sentinel before it calls a missing
+ * reply a measured negative. Sized by measurement, once: re-run the sentinel-fired features on every
+ * Release 1 terminal with a 1 s post-DA1 read and record any late reply and its delay, then
+ * grace = max(250 ms, 2 x the largest observed delay). 250 ms is the floor until that measurement
+ * lands; the issue names any terminal that answers late and the features it answers late for.
+ */
+const SENTINEL_GRACE_MS = 250
+
+/**
+ * The window is a measured value, so the one-time sizing pass may widen it without a code change:
+ * TERMINFO_SENTINEL_GRACE_MS sets the post-DA1 read for that pass only. An unset or empty value is
+ * the floor. Anything that is not a positive whole number of milliseconds falls back to the same
+ * floor and says so on stderr: a typo here must never be silent, and a mistyped sizing value does
+ * not justify refusing the pass (28385, 30255). The live and headless collectors read this one value
+ * (#30554).
+ */
+export function sentinelGraceMs(
+  raw: string | undefined = typeof process !== "undefined" ? process.env.TERMINFO_SENTINEL_GRACE_MS : undefined,
+  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): number {
+  if (raw === undefined || raw === "") return SENTINEL_GRACE_MS
+  const value = /^[0-9]+$/.test(raw) ? Number(raw) : Number.NaN
+  if (!Number.isSafeInteger(value) || value < 1) {
+    warn(
+      `TERMINFO_SENTINEL_GRACE_MS ${JSON.stringify(raw)} is not a positive whole number of milliseconds; ` +
+        `using the ${SENTINEL_GRACE_MS} ms floor for this run`,
+    )
+    return SENTINEL_GRACE_MS
+  }
+  return value
 }
 
 /** Initialize actual work before preflight; a callback-only schedule cannot stand in for the catalogue. */

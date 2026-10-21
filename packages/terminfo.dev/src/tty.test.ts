@@ -16,10 +16,10 @@ import {
   queryWithSentinel,
   queryWithSentinelOutcome,
   readResponse,
-  sentinelGraceMs,
   withRawMode,
   withTTYOperation,
 } from "./tty.ts"
+import { sentinelGraceMs } from "@terminfo/probe-defs"
 
 const originalWrite = process.stdout.write
 
