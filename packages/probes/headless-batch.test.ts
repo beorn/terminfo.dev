@@ -26,6 +26,23 @@ async function backend() {
   return createXtermBackend()
 }
 
+// The callback criterion can name the Ps while the collector must still keep the exact transport bytes.
+test("OSC 5522 retains its headless reply through the production batch recorder", async () => {
+  const id = "extensions.osc5522-clipboard"
+  const response = "\x1b[?5522;1$y"
+  const value = await backend()
+  const feed = value.feed.bind(value)
+  vi.spyOn(value, "feed").mockImplementation((bytes) => {
+    if (new TextDecoder().decode(bytes) === "\x1b[?5522$p") {
+      value.onResponse?.(new TextEncoder().encode(response))
+    } else feed(bytes)
+  })
+  const batch = await collectBatch(async () => value, "xtermjs", registryDefinitions([id]))
+  expect(batch.rawReplies[id]).toBe(response)
+  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "query" }])
+  expect(batch.assertions).toMatchObject([{ featureId: id, observed: "set (Ps 1)" }])
+})
+
 // Missing-input callback tests never exercised the production recorder, so these
 // OS-window criteria stayed generic TODOs with no review a collector could retain.
 test("requests review for headless OS-input criteria without fabricating app delivery", async () => {
