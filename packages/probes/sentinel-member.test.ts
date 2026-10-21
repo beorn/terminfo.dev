@@ -252,6 +252,8 @@ function replayingLive(outcomes: readonly TerminalQueryOutcome[]): TermContext {
     throw new Error(`the live arm asked for ${what}`)
   }
   return {
+    cols: 80,
+    rows: 24,
     write: () => {},
     queryCursorPosition: refused("a cursor report"),
     measureRenderedWidth: refused("a width"),
