@@ -12,6 +12,8 @@ import { expect, test, vi } from "vitest"
 import * as captureCore from "./capture-core.ts"
 import { createDarwinCapture, selectDarwinWindow, requireDarwinScale } from "./darwin-capture.ts"
 
+const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
+
 test("Darwin capture admits exactly one measured app window and scale one", () => {
   const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
   expect(selectDarwinWindow([own, { ...own, id: 8, ownerPid: 99 }], 41)).toEqual(own)
@@ -22,8 +24,103 @@ test("Darwin capture admits exactly one measured app window and scale one", () =
   expect(() => requireDarwinScale(own, { width: 160, height: 126 })).toThrow(/scale 1/)
 })
 
+// 30390: an app that keeps several layer-0 windows (cmux keeps two or three) measures its largest
+// onscreen opaque one; an offscreen or fully transparent window and another app's window never compete.
+test("Darwin capture selects the largest onscreen opaque layer-0 window among several owned windows", () => {
+  const main = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 12, y: 31, width: 1000, height: 677 } }
+  const rows = [
+    { id: 8, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 300, height: 200 }, alpha: 1, onscreen: true },
+    { id: 9, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 2000, height: 2000 }, alpha: 1, onscreen: false },
+    { ...main, alpha: 1, onscreen: true },
+    { id: 10, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 3000, height: 3000 }, alpha: 0, onscreen: true },
+    { id: 11, ownerPid: 41, layer: 25, bounds: { x: 0, y: 0, width: 4000, height: 4000 }, alpha: 1, onscreen: true },
+    { id: 12, ownerPid: 99, layer: 0, bounds: { x: 0, y: 0, width: 5000, height: 5000 }, alpha: 1, onscreen: true },
+  ]
+  expect(selectDarwinWindow(rows, 41)).toEqual(main)
+  const twin = { ...main, id: 13, alpha: 1, onscreen: true }
+  expect(() => selectDarwinWindow([{ ...main, alpha: 1, onscreen: true }, twin], 41)).toThrow(
+    /owned visible window.*sharing the largest area/i,
+  )
+  expect(() =>
+    selectDarwinWindow(
+      rows.filter((row) => row.id !== 7 && row.id !== 8),
+      41,
+    ),
+  ).toThrow(/owned visible window.*found 0 candidates/i)
+})
+
+// 30390: the window server refuses an image of a window without a backing store; the same bounds are
+// still on screen, so the frame comes from a region capture and the trace names both attempts.
+test("Darwin capture falls back to a region capture of the window bounds when the window image is refused", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "terminfo-darwin-region-"))
+  const own = {
+    id: 7,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 12, y: 31, width: 1000, height: 677 },
+    alpha: 1,
+    onscreen: true,
+  }
+  const calls: string[][] = []
+  const decoder = vi.spyOn(captureCore, "decodeCapture").mockImplementation(async ({ source }) => ({
+    width: source.width,
+    height: source.height,
+    rgba: Buffer.alloc(source.width * source.height * 4),
+  }))
+  const runner = vi
+    .spyOn(captureCore, "command")
+    .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
+      if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
+      if (file === "magick") return Buffer.from(args[0] === "-version" ? "test converter" : "1000x677")
+      if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected command ${file}`)
+      calls.push(args)
+      if (args[0] === "-l") {
+        onStderr?.(Buffer.from("could not create image from window\n"))
+        throw Object.assign(new Error("command exited 1"), {
+          captureCommand: { file, args, stdoutBase64: "", stderrBase64: "", code: 1, signal: null, killed: false },
+        })
+      }
+      writeFileSync(args.at(-1)!, PNG_STUB)
+      return Buffer.alloc(0)
+    })
+  try {
+    const adapter = await createDarwinCapture(directory, { appPid: 41 })
+    const { result } = await adapter.captureRaw({
+      featureId: "extensions.truecolor",
+      role: "control",
+      label: "diagnostic",
+    })
+    expect(calls.map((args) => args.slice(0, -1))).toEqual([
+      ["-l", "7", "-o", "-x", "-t", "png"],
+      ["-x", "-R", "12,31,1000,677", "-t", "png"],
+    ])
+    expect(calls[1]?.at(-1)).not.toBe(calls[0]?.at(-1))
+    expect(result.trace).toMatchObject({
+      platform: "darwin",
+      measuredAppPid: 41,
+      scale: 1,
+      captureCommand: ["/usr/sbin/screencapture", "-x", "-R", "12,31,1000,677", "-t", "png"],
+      refusedWindowCapture: {
+        captureCommand: ["/usr/sbin/screencapture", "-l", "7", "-o", "-x", "-t", "png"],
+        stderr: "could not create image from window\n",
+      },
+    })
+    expect(result.frame.pixelsDigest).toBe(
+      `sha256:${createHash("sha256")
+        .update(Buffer.alloc(1000 * 677 * 4))
+        .digest("hex")}`,
+    )
+  } finally {
+    decoder.mockRestore()
+    runner.mockRestore()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 // Selection tests cannot observe a successful command that creates no file. Exercise the actual
 // adapter acquisition and filesystem read; the shared core owns real subprocess stderr transport.
+// A refused window image is retried as a region capture, so "command failure" fails both attempts
+// and the error carries both; a command that exits 0 without a file is not a refusal and is not retried.
 test.each(["command failure", "missing output"])(
   "Darwin capture attributes %s to exact command output",
   async (failure) => {
@@ -32,7 +129,7 @@ test.each(["command failure", "missing output"])(
     const selected = { ...own, sharingState: 1, memoryUsage: 4096 }
     const preCapture = { ...own, sharingState: 0, memoryUsage: 0 }
     let censuses = 0
-    let captureArgs: string[] = []
+    const calls: string[][] = []
     const runner = vi
       .spyOn(captureCore, "command")
       .mockImplementation(async (file, args, _input, _deadline, onStderr) => {
@@ -41,7 +138,7 @@ test.each(["command failure", "missing output"])(
         }
         if (file === "magick" && args[0] === "-version") return Buffer.from("test converter")
         if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected diagnostic command ${file}`)
-        captureArgs = args
+        calls.push(args)
         onStderr?.(Buffer.from("could not create image from window\n"))
         if (failure === "command failure") {
           throw Object.assign(new Error("command exited 1"), {
@@ -71,8 +168,18 @@ test.each(["command failure", "missing output"])(
       expect(error.name).toBe(
         failure === "command failure" ? "DarwinCaptureCommandFailed" : "DarwinCaptureOutputMissing",
       )
-      if (failure === "command failure") expect(error.message).toMatch(/^Darwin window server refused/)
-      const details = JSON.parse(error.message.slice(error.message.indexOf("{")))
+      const captureArgs = calls.at(-1)!
+      if (failure === "command failure") {
+        expect(error.message).toMatch(/^Darwin window server refused .* region capture .* failed/)
+        expect(calls.map((args) => args.slice(0, -1))).toEqual([
+          ["-l", "7", "-o", "-x", "-t", "png"],
+          ["-x", "-R", "0,0,80,63", "-t", "png"],
+        ])
+      } else {
+        expect(error.message).toMatch(/^Darwin screenshot capture failed/)
+        expect(calls.map((args) => args.slice(0, -1))).toEqual([["-l", "7", "-o", "-x", "-t", "png"]])
+      }
+      const details = JSON.parse(error.message.slice(error.message.indexOf("{"))) as Record<string, unknown>
       expect(details).toMatchObject({
         captureContext: {
           measuredAppPid: 41,
@@ -88,6 +195,14 @@ test.each(["command failure", "missing output"])(
       expect(error.cause).toBeInstanceOf(Error)
       if (failure === "command failure") {
         expect((error.cause as Error).message).toBe("command exited 1")
+        expect(details.refusedWindowCapture).toMatchObject({
+          file: "/usr/sbin/screencapture",
+          args: calls[0],
+          outputPath: calls[0]?.at(-1),
+          stdout: null,
+          stderr: "could not create image from window\n",
+          cause: { message: "command exited 1" },
+        })
         expect(error).toHaveProperty("captureCommand", {
           file: "/usr/sbin/screencapture",
           args: captureArgs,
@@ -98,6 +213,7 @@ test.each(["command failure", "missing output"])(
           killed: false,
         })
       } else {
+        expect(details).not.toHaveProperty("refusedWindowCapture")
         expect(error).not.toHaveProperty("captureCommand")
       }
     } finally {
@@ -120,7 +236,7 @@ test("Darwin raw calibration decodes once and within the caller's deadline (3009
   const runner = vi.spyOn(captureCore, "command").mockImplementation(async (file, args, _input, deadline) => {
     if (file === "/usr/bin/osascript") return Buffer.from(JSON.stringify([own]))
     if (file === "/usr/sbin/screencapture") {
-      writeFileSync(args.at(-1)!, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]))
+      writeFileSync(args.at(-1)!, PNG_STUB)
       return Buffer.alloc(0)
     }
     if (file !== "magick") throw new Error(`Unexpected command ${file}`)
@@ -137,6 +253,10 @@ test("Darwin raw calibration decodes once and within the caller's deadline (3009
     expect(decodes).toEqual([{ featureId: "extensions.truecolor", deadline }])
     expect(decoded.width).toBe(own.bounds.width)
     expect(decoded.height).toBe(own.bounds.height)
+    expect(result.trace).toMatchObject({
+      captureCommand: ["/usr/sbin/screencapture", "-l", "7", "-o", "-x", "-t", "png"],
+    })
+    expect(result.trace).not.toHaveProperty("refusedWindowCapture")
     expect(result.frame.pixelsDigest).toBe(
       `sha256:${createHash("sha256")
         .update(Buffer.alloc(own.bounds.width * own.bounds.height * 4))
