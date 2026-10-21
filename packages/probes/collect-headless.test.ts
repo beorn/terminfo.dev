@@ -149,7 +149,7 @@ const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.m
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
-// draft and refuses admission, and the fourth decision seals through the same writer in-process.
+// draft and refuses admission, and the last pending decision seals through the same writer in-process.
 it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote through admit-run --review", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url))
   const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
@@ -172,8 +172,20 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
     .filter((row) => row.checks.some((check) => check.id === "review" && check.status === "test-todo"))
     .map((row) => row.featureId)
     .sort()
+  // #30547: xterm.js answers none of the colour reset/stack readbacks, so those eight wait on review too.
+  const colourReadback = [
+    "extensions.osc104-reset-palette",
+    "extensions.osc110-reset-fg",
+    "extensions.osc111-reset-bg",
+    "extensions.osc112-reset-cursor",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc30001-color-stack-push",
+    "extensions.osc30101-color-stack-pop",
+  ]
   expect(pending).toEqual([
     "extensions.clipboard-paste",
+    ...colourReadback,
     "input.button-event-mouse",
     "input.kitty-click-events",
     "input.modify-other-keys",
@@ -205,8 +217,11 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
       sources: [`collector.capture.${featureId}`],
       supersedes: [],
     })
+  // A colour decision names xterm.js's own missing observable (#30547), never the OS-input reason.
   const reason = (featureId: string) =>
-    `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+    colourReadback.includes(featureId)
+      ? `@xterm/headless keeps no colour state a reader can observe for ${featureId}, and the Termless backend exposes no colour getter`
+      : `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
   const reviewed = pending.slice(0, -1)
   const sealing = pending[pending.length - 1]!
   const reviewPaths = reviewed.map((featureId, index) => {

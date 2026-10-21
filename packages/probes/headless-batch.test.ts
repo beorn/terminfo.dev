@@ -9,6 +9,8 @@
 import { createXtermBackend } from "@termless/xtermjs"
 import { createVtermBackend } from "@termless/vterm"
 import { resolve as resolveLibvterm } from "@termless/libvterm"
+import { resolve as resolveVt100 } from "@termless/vt100"
+import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
@@ -77,6 +79,75 @@ test("requests review for headless OS-input criteria without fabricating app del
         reason: expect.any(String),
       }),
     )
+  }
+})
+
+// The no-response grade hid that no F4 engine can read a colour back headless (#30547, @cto D-B): a silent first
+// readback must ask for review with its raw query retained, while an engine that answers keeps its measured grade.
+const COLOR_READBACK_IDS = [
+  "extensions.osc104-reset-palette",
+  "extensions.osc110-reset-fg",
+  "extensions.osc111-reset-bg",
+  "extensions.osc112-reset-cursor",
+  "extensions.osc113-reset-pointer-fg",
+  "extensions.osc114-reset-pointer-bg",
+  "extensions.osc30001-color-stack-push",
+  "extensions.osc30101-color-stack-pop",
+]
+
+function registryDefinitions(ids: readonly string[]): ProbeDefinition[] {
+  return ids.map((id) => {
+    const found = ALL_PROBES.find((probe) => probe.id === id)
+    if (!found) throw new Error(`Missing registry definition ${id}`)
+    return found
+  })
+}
+
+test.each([
+  ["xtermjs", async () => createXtermBackend()],
+  ["libvterm", resolveLibvterm],
+  ["vt100", resolveVt100],
+  ["vt220", resolveVt220],
+] as const)(
+  "requests review for a silent headless colour readback on %s and retains its raw query",
+  async (engine, factory) => {
+    const batch = await collectBatch(factory, engine, registryDefinitions(COLOR_READBACK_IDS))
+    expect(batch.results).toHaveLength(COLOR_READBACK_IDS.length)
+    expect(batch.observations).toEqual([])
+    expect(batch.assertions).toEqual([])
+    for (const result of batch.results) {
+      expect(result.status, result.featureId).toBe("test-todo")
+      expect(result.criterionBranch, result.featureId).toBe("color-readback-review")
+      expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
+      const raw = JSON.parse(batch.rawReplies[result.featureId]!) as { query: string; originalRaw: string }
+      expect(raw.query, result.featureId).toMatch(/^\x1b\]1?\d;/)
+      expect(raw.originalRaw, result.featureId).toBe("")
+      expect(batch.notTested, result.featureId).toContainEqual({
+        featureId: result.featureId,
+        reason: "no-semantic-observable",
+        noObservable: expect.stringMatching(/answered nothing/),
+        rawReplyRef: result.featureId,
+      })
+      expect(result.checks, result.featureId).toContainEqual(
+        expect.objectContaining({ id: "review", status: "test-todo", rawReplyRef: result.featureId }),
+      )
+    }
+  },
+)
+
+test("keeps the measured grade when the engine answers its colour readback", async () => {
+  const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(COLOR_READBACK_IDS))
+  expect(batch.observations).toEqual(
+    COLOR_READBACK_IDS.map((featureId) =>
+      expect.objectContaining({ featureId, outcome: "supported", evidence: "behavior" }),
+    ),
+  )
+  expect(batch.assertions).toEqual(
+    COLOR_READBACK_IDS.map((featureId) => expect.objectContaining({ featureId, kind: "positive" })),
+  )
+  for (const result of batch.results) {
+    expect(result.criterionBranch, result.featureId).toBeUndefined()
+    expect(result.checks ?? [], result.featureId).not.toContainEqual(expect.objectContaining({ id: "review" }))
   }
 })
 

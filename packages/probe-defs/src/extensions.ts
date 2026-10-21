@@ -4,6 +4,7 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   notTestedResult,
   osInputReviewResult,
+  colorReadbackReviewResult,
   parserStateResult,
   probe,
   readHyperlinkMetadata,
@@ -378,6 +379,12 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     const originalRaw = ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
+      if (originalRaw === "") {
+        return colorReadbackReviewResult(
+          `OSC ${setCode} colour query before OSC ${resetCode} answered nothing, so the reset effect cannot be read back`,
+          { query, originalRaw },
+        )
+      }
       return oscReplyResult(originalRaw, null, `OSC ${setCode} color before reset`, new RegExp(`\\x1b\\]${setCode};`))
     }
     const requested = probeForeground(original)
@@ -661,6 +668,7 @@ function colorStackProbe(): ProbeDefinition["termless"] {
   return (ctx) => {
     let result: ProbeResult | undefined
     let primaryError: unknown
+    let originalRaw: string | undefined
     const queryForeground = (action: string): string | ProbeResult | null => {
       let response: string
       try {
@@ -669,6 +677,7 @@ function colorStackProbe(): ProbeDefinition["termless"] {
         primaryError = error
         return colorStackError("query", action, error)
       }
+      originalRaw ??= response
       return foregroundValue(response)
     }
     const feed = (sequence: string, action: string): ProbeResult | undefined => {
@@ -683,8 +692,15 @@ function colorStackProbe(): ProbeDefinition["termless"] {
     const before = queryForeground("Original foreground query")
     if (before !== null && typeof before !== "string") return before
     if (!before) {
+      if (originalRaw === "") {
+        return colorReadbackReviewResult(
+          "OSC 10 foreground query before the colour-stack push answered nothing, so the push and pop cannot be read back",
+          { query: foregroundQuery, originalRaw },
+        )
+      }
       return {
         pass: false,
+        response: JSON.stringify({ query: foregroundQuery, originalRaw }),
         note: "No original OSC 10 foreground reply",
         observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
       }
