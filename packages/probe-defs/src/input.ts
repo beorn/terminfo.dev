@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
-import { notTestedResult, probe } from "./helpers.ts"
+import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
 export const inputProbes: ProbeDefinition[] = [
@@ -16,9 +16,9 @@ export const inputProbes: ProbeDefinition[] = [
 
   probe("input.button-event-mouse", () => xtestCoverage("click injection"), buttonEventMouse, "interaction"),
 
-  probe("input.xtest-key", () => xtestCoverage("key injection"), xtestKey, "interaction"),
-  probe("input.xtest-click", () => xtestCoverage("click injection"), xtestClick, "interaction"),
-  probe("input.xtest-wheel", () => xtestCoverage("wheel injection"), xtestWheel, "interaction"),
+  probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "interaction"),
+  probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "interaction"),
+  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "interaction"),
   {
     ...probe("input.kitty-click-events", () => xtestCoverage("click injection"), kittyClickEvents, "interaction"),
     termlessObservationEvidence: "none",
@@ -65,6 +65,11 @@ const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
 function xtestCoverage(kind: string): ProbeResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
+}
+
+/** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
+function headlessXtestReview(kind: string): ProbeResult {
+  return osInputReviewResult(`OS-level XTEST ${kind}`, { input: false })
 }
 
 async function deliveryControl(

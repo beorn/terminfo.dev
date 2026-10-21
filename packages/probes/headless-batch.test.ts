@@ -22,6 +22,45 @@ import { collectBatch, createTermlessContext } from "./headless-batch.ts"
 async function backend() {
   return createXtermBackend()
 }
+
+// Missing-input callback tests never exercised the production recorder, so these
+// OS-window criteria stayed generic TODOs with no review a collector could retain.
+test("requests review for headless OS-input criteria without fabricating app delivery", async () => {
+  const ids = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel", "extensions.clipboard-paste"]
+  const definitions = ids.map((id) => {
+    const found = ALL_PROBES.find((probe) => probe.id === id)
+    if (!found) throw new Error(`Missing registry definition ${id}`)
+    return found
+  })
+  const batch = await collectBatch(backend, "xtermjs", definitions)
+  expect(batch.results).toHaveLength(ids.length)
+  expect(batch.observations).toEqual([])
+  expect(batch.assertions).toEqual([])
+  expect(batch.ungradedDiagnostics).toEqual({})
+  for (const result of batch.results) {
+    expect(result.status, result.featureId).toBe("test-todo")
+    expect(result.reason, result.featureId).toMatch(/OS-level XTEST/)
+    expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
+    expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject({ input: false })
+    expect(batch.notTested, result.featureId).toContainEqual({
+      featureId: result.featureId,
+      reason: "no-semantic-observable",
+      noObservable: expect.stringMatching(/OS-level XTEST/),
+      rawReplyRef: result.featureId,
+    })
+    expect(result.criterionBranch, result.featureId).toBe("os-input-review")
+    expect(result.checks, result.featureId).toContainEqual(
+      expect.objectContaining({
+        id: "review",
+        status: "test-todo",
+        attempt: { scope: "none" },
+        rawReplyRef: result.featureId,
+        reason: expect.any(String),
+      }),
+    )
+  }
+})
+
 // Final-return checks miss hard death during the active callback; its checkpoint must already exist.
 test("checkpoints a probe attempt before invoking the headless callback", async () => {
   let active: unknown

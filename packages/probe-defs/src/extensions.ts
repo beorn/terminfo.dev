@@ -3,6 +3,7 @@ import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, Termin
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   notTestedResult,
+  osInputReviewResult,
   parserStateResult,
   probe,
   readHyperlinkMetadata,
@@ -1974,7 +1975,7 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   probe(
     "extensions.clipboard-paste",
-    () => notTestedResult("OS-level XTEST paste injection", { input: false }),
+    () => osInputReviewResult("OS-level XTEST paste injection", { input: false }),
     clipboardPaste,
     "interaction",
   ),
