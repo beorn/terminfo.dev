@@ -275,6 +275,26 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
   expect(definition.termObservationEvidence).toBe("query")
 })
 
+test("DECAWM with null metadata rejects an ignored wrap", () => {
+  const probe = modesProbes.find((item) => item.id === "modes.auto-wrap")
+  if (!probe?.termless) throw new Error("missing auto-wrap callback")
+  const writes: string[] = []
+  const context = {
+    cols: 4,
+    getScrollback: () => ({ viewportOffset: 0, totalLines: 2, screenLines: 2 }),
+    feed: (sequence: string) => writes.push(sequence),
+    getMode: () => null,
+    getCell: (row: number, col: number) => ({ char: row === 1 && col === 0 ? " " : "X" }),
+  } as unknown as TermlessContext
+  const result = probe.termless(context)
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    evidence: "parser-state",
+  })
+  expect(writes).toContain("XXXXY")
+  expect(writes).not.toContain("\x1b[?7l")
+})
+
 test("DECAWM refuses one-row geometry before a second-row read and enables its own fixture", () => {
   const probe = modesProbes.find((item) => item.id === "modes.auto-wrap")
   if (!probe?.termless) throw new Error("missing auto-wrap callback")

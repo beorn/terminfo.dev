@@ -26,6 +26,36 @@ async function backend() {
   return createXtermBackend()
 }
 
+// libvterm exposes no mode getter; its real cell behavior still decides wrapping.
+test("null mode metadata retains measured wrapping and unknown cleanup/keypad state", async () => {
+  const writes: string[] = []
+  const factory = async () => {
+    const value = await resolveLibvterm()
+    expect(value.getMode("autoWrap")).toBeNull()
+    const feed = value.feed.bind(value)
+    vi.spyOn(value, "feed").mockImplementation((bytes) => {
+      writes.push(new TextDecoder().decode(bytes))
+      feed(bytes)
+    })
+    return value
+  }
+  const batch = await collectBatch(
+    factory,
+    "libvterm",
+    registryDefinitions(["modes.auto-wrap", "cursor.reverse-wrap", "modes.application-keypad"]),
+  )
+  expect.soft(batch.observations.find((row) => row.featureId === "modes.auto-wrap")).toMatchObject({
+    outcome: "supported",
+    evidence: "parser-state",
+  })
+  expect.soft(writes).not.toContain("\x1b[?7l")
+  expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({ on: null, off: null })
+  expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
+    status: "test-todo",
+    criterionBranch: "os-input-review",
+  })
+})
+
 // The callback criterion can name the Ps while the collector must still keep the exact transport bytes.
 test("OSC 5522 retains its headless reply through the production batch recorder", async () => {
   const id = "extensions.osc5522-clipboard"
