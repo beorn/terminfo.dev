@@ -448,6 +448,12 @@ export function publicResults(
           ...(frame.kind !== "text-cells" && { url: `/artifacts/${frame.ref.slice(7)}.png` }),
         })),
       }),
+      ...(result.screenshotRef && {
+        screenshot: {
+          url: `/artifacts/${result.screenshotRef.slice("sha256:".length)}.png`,
+          sha256: result.screenshotRef.slice("sha256:".length),
+        },
+      }),
     }
     const textQualification = result.evidence === "text" ? qualificationFor(version, documents, 3) : undefined
     const document: EvidenceDocument = {

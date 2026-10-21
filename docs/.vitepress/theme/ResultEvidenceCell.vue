@@ -725,7 +725,12 @@ onBeforeUnmount(() => {
           <p>{{ readerSafeExplanation(historicalCell?.note) }}</p>
         </details>
         <p v-else-if="historicalCell?.note">{{ readerSafeExplanation(historicalCell?.note) }}</p>
-        <p v-if="cell?.evidence === 'query' && historicalCell?.conclusive">
+        <p
+          v-if="
+            cell?.evidence === 'query' &&
+            (historicalCell?.conclusive || currentResult?.status === 'supported' || currentResult?.status === 'unsupported')
+          "
+        >
           This result is based on the query's recorded evidence, not every use of this feature.
         </p>
         <p v-else-if="cell?.evidence === 'query'">This query did not establish a yes-or-no result for the feature.</p>
@@ -978,7 +983,7 @@ onBeforeUnmount(() => {
             <dt>Run SHA-256</dt>
             <dd>{{ historicalCell?.chain.runSha256 ?? version?.sha256 ?? "Not recorded" }}</dd>
             <dt>Recorded method</dt>
-            <dd>{{ historicalCell?.chain.method ?? "Not recorded" }}</dd>
+            <dd>{{ historicalCell?.chain.method ?? currentResult?.evidence ?? "Not recorded" }}</dd>
             <dt>Suite</dt>
             <dd>
               {{ version?.suiteId ?? "Not recorded"

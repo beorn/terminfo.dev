@@ -189,6 +189,9 @@ vi.mock("../docs/data/current-results.ts", async () => {
   // classifies its own runs with the same function `loadFullProbes` would read from the real reader.
   const { classifyCells } = await import("../docs/data/release-scope.ts")
   const { loadFeatures } = await import("@terminfo/catalog")
+  const { loadDefaultContextPolicy, reviewedContextFor } = await vi.importActual<
+    typeof import("../docs/data/current-results.ts")
+  >("../docs/data/current-results.ts")
   const catalogIds = Object.keys(loadFeatures(join(import.meta.dirname, "..", "content")))
   // These are synthetic v3 fixtures, not a compatibility reader: production never promotes history.
   const sealedFixture = (run: SelectedVersion): CurrentSelectedVersion => {
@@ -277,6 +280,8 @@ vi.mock("../docs/data/current-results.ts", async () => {
     }
   }
   return {
+    loadDefaultContextPolicy,
+    reviewedContextFor,
     loadCurrentResults: () => ({ projection: build() }),
     compatibilityTargets: () => {
       const projection = build()
@@ -308,6 +313,8 @@ import categoryPaths from "../docs/[id].paths.ts"
 import featurePaths from "../docs/[category]/[id].paths.ts"
 import { generateApi, assertDeploymentLimits } from "./generate-api.ts"
 import { generateAnalysis } from "./generate-analysis.ts"
+import { loadFullProjectData } from "../docs/data/full-project.data.ts"
+import { probeHash } from "../packages/admin/versions.ts"
 
 it("keeps the retained corpus consistent across unmocked site, API and analysis consumers", () => {
   // Fixtures above replace selection. Only real retained inputs expose admission/default-context drift.
@@ -658,6 +665,9 @@ describe("selected-run consumer parity", () => {
 
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-"))
+    let selection: ReturnType<typeof vi.spyOn> | undefined
+    let policy: ReturnType<typeof vi.spyOn> | undefined
+    let imageReader: ReturnType<typeof vi.spyOn> | undefined
     try {
       const site = probesLoader.load()
       generateApi(out)
@@ -683,6 +693,16 @@ describe("selected-run consumer parity", () => {
       const result = current.results.find((result) => result.featureId === "sgr.bold")
       if (!result) throw new Error("Missing sealed privacy result")
       result.rawReplyRef = "bold-reply"
+      const screenshot = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
+        "base64",
+      )
+      const screenshotSha256 = createHash("sha256").update(screenshot).digest("hex")
+      result.screenshotRef = `sha256:${screenshotSha256}`
+      result.reason = "UNAPPROVED_CURRENT_REASON /home/fixture/private"
+      current.suiteId = probeHash()
+      selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
+      policy = vi.spyOn(currentResults, "loadDefaultContextPolicy").mockReturnValue({})
       current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
@@ -690,6 +710,9 @@ describe("selected-run consumer parity", () => {
       const targets = new Map([["kitty", { contextKey: "app:kitty", selected: current }]])
       const unpublished = publicResults(projection, targets)
       expect(JSON.stringify(unpublished.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
+      const privateFullProject = loadFullProjectData()
+      expect(privateFullProject.collected).toBe(1)
+      expect(JSON.stringify(privateFullProject).includes("UNAPPROVED_CURRENT_REASON")).toBe(false)
       current.presentations = {
         "sgr.bold": {
           id: "present-current-bold",
@@ -710,11 +733,29 @@ describe("selected-run consumer parity", () => {
         runId: current.runId,
         runSha256: current.sha256,
         result: { status: "supported" },
-        record: { rawReply: "RETAINED_CURRENT_REPLY", assertions: current.assertions },
+        record: {
+          rawReply: "RETAINED_CURRENT_REPLY",
+          assertions: current.assertions,
+          screenshot: { url: `/artifacts/${screenshotSha256}.png`, sha256: screenshotSha256 },
+        },
       })
       expect(createHash("sha256").update(document!.bytes).digest("hex")).toBe(approval.sha256)
       expect(JSON.stringify(presented.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
+      expect(JSON.stringify(loadFullProjectData()).includes("UNAPPROVED_CURRENT_REASON")).toBe(true)
+      imageReader = vi.spyOn(selectedResults, "readVerifiedArtifact").mockReturnValue(screenshot)
+      generateApi(out)
+      expect(imageReader).toHaveBeenCalledWith(
+        expect.any(String),
+        `sha256:${screenshotSha256}`,
+        current.runId,
+        "screenshot",
+      )
+      expect(readFileSync(join(out, "artifacts", `${screenshotSha256}.png`))).toEqual(screenshot)
+      expect(readFileSync(join(out, approval.url), "utf8")).toBe(document!.bytes)
     } finally {
+      imageReader?.mockRestore()
+      policy?.mockRestore()
+      selection?.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
   })
@@ -1076,6 +1117,8 @@ describe("selected-run consumer parity", () => {
       expect(analyses["features-index"]?.analysis).toContain("recorded support")
       expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 3")
       expect(analyses["framework/ink"]?.analysis).toContain("<strong>0</strong> of 3")
+      expect(analyses["framework/ink"]?.analysis).not.toContain("Known unsupported baseline results")
+      expect(analyses["framework/ink"]?.analysis).toContain("Less than full recorded support")
       expect(analyses["sgr/38-2-truecolor-fg"]?.analysis).toContain("recorded support")
       expect(analyses.cursor?.analysis).toContain("covers 22 features")
       expect(analyses.vt220?.analysis).toBeDefined()

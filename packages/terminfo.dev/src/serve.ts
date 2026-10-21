@@ -823,7 +823,7 @@ export async function collectProbeRun(
                 draft,
                 onCheckpoint: (progress) => {
                   Object.assign(draft, {
-                    rawReplies: progress.rawReplies,
+                    rawReplies: { ...draft.rawReplies, ...progress.rawReplies },
                     assertions: progress.assertions,
                     screenshotRefs: progress.screenshotRefs,
                     textSnapshotRefs: progress.textSnapshotRefs,
@@ -915,7 +915,7 @@ export async function collectProbeRun(
       identity: "unverified",
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector", ...(batch.appLaunch && { appLaunch: batch.appLaunch }) },
-      rawReplies: batch.rawReplies,
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
       assertions: batch.assertions,
       screenshotRefs: batch.screenshotRefs,
       ...((batch.textSnapshotRefs?.length ?? 0) > 0 && { textSnapshotRefs: batch.textSnapshotRefs }),

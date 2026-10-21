@@ -772,7 +772,7 @@ function generateFrameworkAnalysis(
       const baseline = s.baselineCompliance[baselineName]
       return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} frozen baseline positions supported)`
     })
-    parts.push(`Known unsupported baseline results: ${laggards.join(", ")}`)
+    parts.push(`Less than full recorded support: ${laggards.join(", ")}`)
   }
 
   // Compare with other frameworks in the same baseline tier

@@ -84,6 +84,9 @@ export function loadFullProjectData(): FullProjectData {
       )
     }
     evidenceVersions[row.context] = version
+    for (const observation of row.observations) {
+      observation.reason = version.results.find((result) => result.featureId === observation.id)?.reason ?? null
+    }
   }
   return {
     mode: "development",

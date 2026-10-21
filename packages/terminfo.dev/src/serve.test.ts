@@ -29,7 +29,7 @@ it.each(["tmux", "screen"])(
         String.raw`
     import {mock} from "bun:test"
     import assert from "node:assert/strict"
-    import {writeFileSync} from "node:fs"
+    import {readFileSync,writeFileSync} from "node:fs"
     import {join} from "node:path"
     const unified=await import("./packages/terminfo.dev/src/probes/unified.ts")
     const tty=await import("./packages/terminfo.dev/src/tty.ts")
@@ -46,7 +46,7 @@ it.each(["tmux", "screen"])(
         fixture:{definition:"callbacks",config:"--config NONE",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}}
     const path=join(process.env.HOME,"runtime.json")
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
-    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false
+    let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
     const write=()=>writeFileSync(path,JSON.stringify({target:suppliedTarget,outerApp}))
     write()
@@ -64,10 +64,22 @@ it.each(["tmux", "screen"])(
       assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
       inBatch=true
       try{await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
-      return {results:options.draft.results,rawReplies:{},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
+      // Batch-only coverage cannot see the producer overwrite its persisted collection custody.
+      const readDraft=()=>JSON.parse(readFileSync(join(process.env.HOME,".terminfo-dev","http-responses",options.captureRunId+".draft.json"),"utf8"))
+      collectionAttempt=readDraft().rawReplies["collector.collectionAttempt"]
+      const attempt=JSON.parse(collectionAttempt)
+      assert.deepEqual(attempt.ids,["device.xtversion"])
+      assert.ok(Number.isFinite(Date.parse(attempt.startedAt)))
+      const batch={results:options.draft.results,rawReplies:{"fixture.reply":"batch-reply"},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
+      options.onCheckpoint(batch)
+      assert.equal(readDraft().rawReplies["collector.collectionAttempt"],collectionAttempt)
+      assert.equal(readDraft().rawReplies["fixture.reply"],"batch-reply")
+      return batch
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
     const run=await collectProbeRun({ids:["device.xtversion"]})
+    assert.equal(run.rawReplies["collector.collectionAttempt"],collectionAttempt)
+    assert.equal(run.rawReplies["fixture.reply"],"batch-reply")
     assert.equal(verifierCalls,1)
     custodyFailure=new Error("fixture mux custody revoked at batch")
     await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),error=>error===custodyFailure)
