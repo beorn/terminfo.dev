@@ -455,7 +455,7 @@ export default defineConfig({
     if (rel === "backends.md") {
       pageData.title = "Parser Backends: Standalone Libraries and App Parser Engines"
       pageData.description =
-        "Terminal parser backends tested without a GUI \u2014 standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, Ghostty, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
+        "Terminal parser backends tested without a GUI \u2014 standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, libghostty-vt, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
     }
     if (rel === "terminals.md") {
       pageData.title = "Terminal Emulators: App Terminals, Parser Backends, and Multiplexers"

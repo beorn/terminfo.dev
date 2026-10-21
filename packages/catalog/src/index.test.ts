@@ -63,15 +63,22 @@ test("reads the live terminal catalog: 26 entries, each with the five required f
   expect(required(terminals, "xterm").manifestBackend).toBeUndefined()
   // Operator 2026-10-21: the headless Ghostty cores carry the library's name; "Ghostty" is the app only.
   expect(required(terminals, "ghostty-native").label).toBe("libghostty-vt (native)")
-  expect(required(terminals, "ghostty").headlessLabels).toEqual({ ghostty: "libghostty-vt (WASM)" })
+  expect(required(terminals, "ghostty").headlessLabel).toBe("libghostty-vt (WASM)")
 })
 
-test("refuses a headless label for a backend the entry does not measure, or a non-string label", () => {
+test("refuses a headless label the entry does not measure itself, or one that is not a non-empty string", () => {
   const entry = { label: "T", slug: "t", url: "u", description: "d", body: "b", headlessBackends: ["core"] }
-  const stray = fixture("headless-stray", { "terminals.json": { t1: { ...entry, headlessLabels: { other: "X" } } } })
-  expect(() => loadTerminals(stray)).toThrow(/t1.*labels "other".*headlessBackends/)
-  const typed = fixture("headless-typed", { "terminals.json": { t1: { ...entry, headlessLabels: { core: 7 } } } })
-  expect(() => loadTerminals(typed)).toThrow(/t1.*"headlessLabels\.core"/)
+  const stray = fixture("headless-stray", { "terminals.json": { t1: { ...entry, headlessLabel: "X" } } })
+  expect(() => loadTerminals(stray)).toThrow(/t1.*"headlessLabel".*does not list "t1"/)
+  for (const [name, value] of [
+    ["typed", 7],
+    ["empty", ""],
+    ["nulled", null],
+  ] as const) {
+    const own = { ...entry, headlessBackends: ["t1"], headlessLabel: value }
+    const path = fixture(`headless-${name}`, { "terminals.json": { t1: own } })
+    expect(() => loadTerminals(path)).toThrow(/t1.*"headlessLabel" that is not a non-empty string/)
+  }
 })
 
 test("drops $-prefixed comment keys and keeps the entry order of the file", () => {

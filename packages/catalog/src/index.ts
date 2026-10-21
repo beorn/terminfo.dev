@@ -76,8 +76,8 @@ export interface TerminalRecord {
   body: string
   kind?: string
   headlessBackends?: string[]
-  /** Display label per headless backend measured under this entry, keyed by a `headlessBackends` id. */
-  headlessLabels?: Record<string, string>
+  /** Label of the headless backend that shares this entry's id: the app's own core, measured without the app. */
+  headlessLabel?: string
   manifestBackend?: string
   platforms?: string[]
   repo?: string
@@ -131,26 +131,21 @@ function optionalStringArray(path: string, id: string, field: string, value: unk
   return value as string[]
 }
 
-/** Labels for this entry's own headless backends: every key must be one of its `headlessBackends`. */
-function optionalHeadlessLabels(
+/** The label of the headless backend sharing this entry's id, which the entry must itself list as measured. */
+function optionalHeadlessLabel(
   path: string,
   id: string,
   value: unknown,
   backends: string[] | undefined,
-): Record<string, string> | undefined {
+): string | undefined {
   if (value === undefined) return undefined
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${path}: entry "${id}" has a non-object "headlessLabels"`)
+  if (typeof value !== "string" || value === "") {
+    throw new Error(`${path}: entry "${id}" has a "headlessLabel" that is not a non-empty string`)
   }
-  for (const [backend, label] of Object.entries(value)) {
-    if (typeof label !== "string" || label === "") {
-      throw new Error(`${path}: entry "${id}" has a non-string "headlessLabels.${backend}"`)
-    }
-    if (!backends?.includes(backend)) {
-      throw new Error(`${path}: entry "${id}" labels "${backend}", which is not one of its "headlessBackends"`)
-    }
+  if (!backends?.includes(id)) {
+    throw new Error(`${path}: entry "${id}" has a "headlessLabel" but does not list "${id}" in "headlessBackends"`)
   }
-  return value as Record<string, string>
+  return value
 }
 
 function optionalBoolean(path: string, id: string, field: string, value: unknown): boolean | undefined {
@@ -216,7 +211,7 @@ function parseTerminal(path: string, id: string, raw: Record<string, unknown>): 
     body: requireString(path, id, "body", raw.body),
     kind: optionalString(path, id, "kind", raw.kind),
     headlessBackends,
-    headlessLabels: optionalHeadlessLabels(path, id, raw.headlessLabels, headlessBackends),
+    headlessLabel: optionalHeadlessLabel(path, id, raw.headlessLabel, headlessBackends),
     manifestBackend: optionalString(path, id, "manifestBackend", raw.manifestBackend),
     platforms: optionalStringArray(path, id, "platforms", raw.platforms),
     repo: optionalString(path, id, "repo", raw.repo),
@@ -241,6 +236,27 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
   const frozen = Object.freeze(catalog)
   cache.set(cacheKey, frozen)
   return frozen
+}
+
+type LabelSource = Readonly<Record<string, Pick<TerminalRecord, "label" | "kind" | "headlessLabel">>>
+
+/**
+ * The catalog's name for headless backend `id`: its entry's `headlessLabel`, else that entry's label
+ * when the entry is itself a headless engine. Undefined when the catalog does not name it.
+ */
+export function headlessName(terminals: LabelSource, id: string): string | undefined {
+  const entry = terminals[id]
+  return entry?.headlessLabel ?? (entry?.kind === "headless" ? entry.label : undefined)
+}
+
+/**
+ * The display name of catalog id `id` measured as `kind` on a page of its own: the catalog's headless
+ * name for a headless target, else the entry label (or `fallback`) qualified by the kind.
+ */
+export function targetLabel(terminals: LabelSource, id: string, kind: string, fallback: string = id): string {
+  return (
+    (kind === "headless" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
+  )
 }
 
 /** Load `content/terminals.json` from an absolute content directory. Cached per directory. */

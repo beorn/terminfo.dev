@@ -1474,7 +1474,8 @@ it("keeps a historical native parser on its own route without promoting it to cu
   native.runId = "native-historical"
   const projection = currentResults.loadCurrentResults("").projection
   projection.historical.table = { ...projection.historical.table, [native.runId]: classifyCells(native.cells) }
-  projection.historical.versions["headless:ghostty-native"] = [native]
+  // A fresh map: the mocked projection shares the fixture's version groups, so writing into them leaks to later tests.
+  projection.historical.versions = { ...projection.historical.versions, "headless:ghostty-native": [native] }
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const targets = vi
     .spyOn(currentResults, "historicalCompatibilityTargets")
@@ -1518,7 +1519,7 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
     // Public results cache mapped runs by run id, so each target needs its own sealed run and status row.
     selected.runId = `${base.runId}-${contextKey}`
     projection.current[contextKey] = selected
-    projection.table[selected.runId] = projection.table[base.runId] ?? {}
+    projection.table = { ...projection.table, [selected.runId]: projection.table[base.runId] ?? {} }
     return { contextKey, selected }
   }
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
@@ -1537,6 +1538,50 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
   } finally {
     targets.mockRestore()
     selection.mockRestore()
+  }
+})
+
+it("names historical-only headless Ghostty cores libghostty-vt on the site and in /api/v1", () => {
+  // @chief 2026-10-21 (30608): today every Ghostty run is historical-only, and /api/v1 names a headless
+  // core as the site does, so one name has one home.
+  const projection = currentResults.loadCurrentResults("").projection
+  const as = (contextKey: string, kind: SelectedVersion["target"]["kind"], id: string) => {
+    const selected = structuredClone(fixture.selected) as unknown as SelectedVersion
+    selected.target = { ...selected.target, kind, id }
+    // Run documents are keyed by run id and sha, so each target needs its own run, sha and status row.
+    selected.runId = `${selected.runId}-${contextKey}`
+    selected.sha256 = createHash("sha256").update(contextKey).digest("hex")
+    projection.historical.table = { ...projection.historical.table, [selected.runId]: classifyCells(selected.cells) }
+    return { contextKey, selected }
+  }
+  const historical = new Map([
+    ["ghostty", as("app:ghostty", "app", "ghostty")],
+    ["headless-ghostty", as("headless:ghostty", "headless", "ghostty")],
+    ["ghostty-native", as("headless:ghostty-native", "headless", "ghostty-native")],
+  ])
+  const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
+  const targets = vi.spyOn(currentResults, "historicalCompatibilityTargets").mockReturnValue(historical)
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+  const out = mkdtempSync(join(tmpdir(), "terminfo-api-labels-"))
+  try {
+    const { meta, selectedByBackend } = loadFullProbes()
+    expect(selectedByBackend["headless-ghostty"]).toBeUndefined()
+    // Name and slug only: the app entry's description and body describe the app, not its core.
+    expect(meta["headless-ghostty"]).toEqual({ label: "libghostty-vt (WASM)", slug: "headless-ghostty" })
+    expect(meta["ghostty-native"]?.label).toBe("libghostty-vt (native)")
+    expect(meta.ghostty?.label).toBe("Ghostty")
+    generateApi(out)
+    const v1 = JSON.parse(readFileSync(join(out, "api", "v1", "data.json"), "utf8")) as {
+      terminals: Record<string, { name: string }>
+    }
+    expect(v1.terminals["headless-ghostty"]?.name).toBe("libghostty-vt (WASM)")
+    expect(v1.terminals["ghostty-native"]?.name).toBe("libghostty-vt (native)")
+    expect(v1.terminals.ghostty?.name).toBe("Ghostty")
+  } finally {
+    warning.mockRestore()
+    targets.mockRestore()
+    selection.mockRestore()
+    rmSync(out, { recursive: true, force: true })
   }
 })
 

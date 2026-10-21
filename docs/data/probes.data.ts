@@ -11,7 +11,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadFeatures, loadTerminals, type FeatureCatalog } from "@terminfo/catalog"
+import { loadFeatures, loadTerminals, targetLabel, type FeatureCatalog } from "@terminfo/catalog"
 import { compatibilityTargets, historicalCompatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import {
   publicResults,
@@ -205,17 +205,14 @@ export function loadFullProbes(): ProbeData {
   for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
-  for (const [key, { selected }] of byTarget) {
+  // A target published apart from its catalog entry gets its own name and slug, current or historical-only.
+  // A historical-only one takes nothing else: its entry's prose describes the app, not this target.
+  const historicalOnly = Object.entries(published.historicalByBackend).filter(([key]) => !byTarget.has(key))
+  for (const [key, { selected }] of [...byTarget, ...historicalOnly]) {
     const id = selected.target.id
     if (key !== id) {
-      meta[key] = {
-        ...meta[id],
-        // A headless backend measured under an app entry takes that entry's declared label for it.
-        label:
-          (selected.target.kind === "headless" ? catalog[id]?.headlessLabels?.[id] : undefined) ??
-          `${meta[id]?.label ?? id} (${selected.target.kind})`,
-        slug: key,
-      }
+      const label = targetLabel(catalog, id, selected.target.kind, meta[id]?.label)
+      meta[key] = byTarget.has(key) ? { ...meta[id], label, slug: key } : { label, slug: key }
     }
   }
   const annotations = loadAnnotations()

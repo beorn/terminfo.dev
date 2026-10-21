@@ -7,7 +7,7 @@
     "description": "GPU-accelerated terminal by Mitchell Hashimoto. Metal on macOS and OpenGL on Linux.",
     "body": "<p><strong>Ghostty</strong> is a GPU-accelerated terminal created by <strong>Mitchell Hashimoto</strong>. Written in Zig, it renders with Metal on macOS and OpenGL on Linux.</p>\n<p>Its terminal emulation core is available through <strong>libghostty</strong>, which other applications can embed. cmux is a separate app built on that library. Termless measures separate native libghostty and ghostty-web WebAssembly backends; neither is an app-rendering test.</p>\n<p>Ghostty documents support for the Kitty keyboard and graphics protocols, OSC 8 hyperlinks, and Unicode grapheme clustering. Individual capabilities on this site are reported from selected app or parser runs.</p>",
     "headlessBackends": ["ghostty-native", "ghostty"],
-    "headlessLabels": { "ghostty": "libghostty-vt (WASM)" },
+    "headlessLabel": "libghostty-vt (WASM)",
     "manifestBackend": "ghostty",
     "platforms": ["macos", "linux"]
   },

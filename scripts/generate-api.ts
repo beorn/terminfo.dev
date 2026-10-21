@@ -22,7 +22,7 @@ import {
 } from "../docs/data/current-results.ts"
 import { CAPABILITY_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadFeatures } from "@terminfo/catalog"
+import { headlessName, loadFeatures, loadTerminals } from "@terminfo/catalog"
 import { readVerifiedArtifact, type SelectedVersion } from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 
@@ -370,6 +370,7 @@ export function generateApi(outDir?: string): {
 
   const featuresJson = loadFeaturesJson()
   const backendMeta = loadBackendMeta()
+  const catalog = loadTerminals(contentDir)
   const { projection } = loadCurrentResults(contentDir)
   const published = publicResults(
     projection,
@@ -470,7 +471,8 @@ export function generateApi(outDir?: string): {
     const { kind, id, os } = selected.target
     if (kind === "mux") continue // v1 terminal type only describes apps and headless engines; v2 carries mux targets.
     const meta = backendMeta[id]
-    const label = kind === "app" ? (appLabels[id] ?? id) : (meta?.label ?? id)
+    // A headless engine carries the catalog's name for it, as on the site; termless's label is the fallback.
+    const label = kind === "app" ? (appLabels[id] ?? id) : (headlessName(catalog, id) ?? meta?.label ?? id)
     if (terminals[key]) throw new Error(`Ambiguous API terminal key ${key}: multiple selected targets`)
     const { conclusive: total, supported: pass } = selected.counts
     const pct = Math.round((pass / total) * 100)
