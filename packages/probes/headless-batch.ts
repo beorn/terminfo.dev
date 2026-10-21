@@ -111,7 +111,9 @@ async function listenForLateReply(backend: TerminalBackend, graceMs: number): Pr
     late += decoder.decode(bytes)
   }
   try {
-    await new Promise((resolve) => setTimeout(resolve, graceMs))
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, graceMs)
+    })
     backend.getCursor()
   } finally {
     backend.onResponse = previous
