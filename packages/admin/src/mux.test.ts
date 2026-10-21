@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync,
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
-import { execSync } from "node:child_process"
+import { execSync, spawnSync } from "node:child_process"
 import { expect, it, vi } from "vitest"
 import type { CapturedRunDraft, HistoricalProbeRun } from "@terminfo/probe-defs"
 import { handleMux } from "./mux.ts"
@@ -27,7 +27,7 @@ vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitR
 vi.mock("../versions.ts", () => ({
   sourceSuiteEnvironment: () => ({ TERMINFO_PROBE_HASH: "fixture", TERMINFO_SOURCE_REVISION: "fixture" }),
 }))
-vi.mock("node:child_process", () => ({ execSync: vi.fn(() => "") }))
+vi.mock("node:child_process", () => ({ execSync: vi.fn(() => ""), spawnSync: vi.fn() }))
 vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../terminfo.dev/src/daemon-client.ts")>()),
   createProbeRun: vi.fn(),
@@ -84,6 +84,14 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
   vi.mocked(execSync).mockImplementation((command) =>
     command.toString().startsWith("which") ? "/usr/bin/tmux" : command.toString() === "tmux -V" ? "tmux 3.6a" : "",
   )
+  vi.mocked(spawnSync).mockReturnValue({
+    status: 0,
+    stdout: "tmux 3.6a\n",
+    stderr: "",
+    signal: null,
+    pid: 0,
+    output: [],
+  })
   vi.mocked(createProbeRun).mockReturnValue({
     id: "fixture-launch",
     directory: wrapper,
@@ -133,12 +141,62 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
     }
     expect(stopOwnedDaemon).toHaveBeenCalledWith(owned)
     expect(removeProbeRun).toHaveBeenCalledOnce()
-    expect(execSync).toHaveBeenCalledWith(expect.stringContaining("tmux kill-session"), expect.anything())
+    expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/tmux.*kill-session/), expect.anything())
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining("(admitted)"))
     expect(readFileSync(original, "utf8")).toBe(bytes)
   } finally {
     vi.resetAllMocks()
     vi.restoreAllMocks()
     rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// The existing listing boundary must distinguish usable Screen metadata from suppressed command failures.
+it.each([
+  { label: "status zero", status: 0, stdout: "Screen version 4.00.03 (FAU) 23-Oct-06\n", stderr: "", accepted: true },
+  {
+    label: "Screen status one convention",
+    status: 1,
+    stdout: "Screen version 4.00.03 (FAU) 23-Oct-06\n",
+    stderr: "",
+    accepted: true,
+  },
+  { label: "unexpected status", status: 2, stdout: "Screen version 4.00.03\n", stderr: "", accepted: false },
+  { label: "bad banner", status: 1, stdout: "screen failed\n", stderr: "", accepted: false },
+  { label: "extra output", status: 1, stdout: "Screen version 4.00.03\nfailed\n", stderr: "", accepted: false },
+  { label: "stderr failure", status: 1, stdout: "Screen version 4.00.03\n", stderr: "cannot execute", accepted: false },
+  { label: "spawn failure", status: null, stdout: "", stderr: "", accepted: false, error: new Error("ENOENT") },
+])("validates Darwin Screen preflight: $label", async ({ status, stdout, stderr, accepted, ...extra }) => {
+  const log = vi.spyOn(console, "log").mockImplementation(() => {})
+  vi.stubGlobal("process", { ...process, platform: "darwin" })
+  vi.mocked(execSync).mockImplementation((command) => {
+    if (command.toString().startsWith("which tmux")) throw new Error("not found")
+    if (command.toString().startsWith("which screen")) return "/ambient/screen"
+    return "Screen version 9.99.99\n"
+  })
+  vi.mocked(spawnSync).mockImplementation((binary, args = []) => {
+    const result = { status: 0, stdout: "", stderr: "", error: undefined, signal: null, pid: 0, output: [] }
+    if (binary === "/usr/libexec/path_helper") {
+      return { ...result, stdout: 'PATH="/usr/local/bin:/usr/bin:/bin"; export PATH;\n' }
+    }
+    if (binary === "/bin/sh") {
+      return args.at(-1) === "screen" ? { ...result, stdout: "/usr/bin/screen\n" } : { ...result, status: 1 }
+    }
+    if (binary === "/usr/bin/screen") return { ...result, status, stdout, stderr, ...extra }
+    throw new Error(`Unexpected preflight executable: ${binary}`)
+  })
+  try {
+    if (accepted) {
+      await handleMux(undefined, {})
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/GNU Screen\s+4\.00\.03/))
+    } else {
+      await expect(handleMux(undefined, {})).rejects.toThrow(/screen.*version|version.*screen/i)
+    }
+    expect(createProbeRun).not.toHaveBeenCalled()
+    expect(findOwnedDaemon).not.toHaveBeenCalled()
+  } finally {
+    vi.unstubAllGlobals()
+    vi.resetAllMocks()
+    vi.restoreAllMocks()
   }
 })
