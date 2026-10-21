@@ -251,7 +251,7 @@ function backendTooltip(name, version) {
 </div>
 
 <div v-if="appBackends.length > 0" class="summary">
-  <div v-for="b in appBackends" :key="b.name" class="summary-row">
+  <div v-for="b in appBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-platforms" :title="backendContextLabel(b.name)" v-html="platformIcons(b.name)"></span>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
@@ -266,6 +266,7 @@ function backendTooltip(name, version) {
         </div>
       </div>
     </div>
+    <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
     <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
@@ -284,11 +285,12 @@ function backendTooltip(name, version) {
     </div>
     <div class="baseline-desc">{{ bl === 'core' ? 'Every terminal should support these — SGR basics, cursor, erase, alt screen' : bl === 'modern' ? 'Expected by modern TUIs — truecolor, bracketed paste, focus events, mouse' : bl === 'rich' ? 'Advanced features — kitty keyboard, graphics, hyperlinks, semantic prompts' : 'Unicode correctness — wide chars, combining, emoji, grapheme clusters' }}</div>
     <div class="baseline-backends">
-      <div v-for="b in appBackends" :key="b.name" class="baseline-backend">
+      <div v-for="b in appBackends" :key="b.name" class="baseline-backend" :class="{ 'baseline-backend-historical': !data.selectedByBackend[b.name] }">
         <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
+        <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
         <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
       </div>
     </div>
@@ -365,7 +367,7 @@ function backendTooltip(name, version) {
 </div>
 
 <div class="summary summary-muted">
-  <div v-for="b in headlessBackends" :key="b.name" class="summary-row">
+  <div v-for="b in headlessBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -379,6 +381,7 @@ function backendTooltip(name, version) {
         </div>
       </div>
     </div>
+    <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
     <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
@@ -393,11 +396,12 @@ function backendTooltip(name, version) {
       <span class="baseline-count">{{ data.baselines[bl]?.length ?? 0 }} features</span>
     </div>
     <div class="baseline-backends">
-      <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend">
+      <div v-for="b in headlessBackends" :key="b.name" class="baseline-backend" :class="{ 'baseline-backend-historical': !data.selectedByBackend[b.name] }">
         <span class="baseline-backend-name">{{ backendContextLabel(b.name) }}</span>
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
+        <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
         <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
       </div>
     </div>
@@ -443,7 +447,7 @@ function backendTooltip(name, version) {
 <p class="section-subtitle">Which features survive tmux and screen? Pass-through testing shows what each multiplexer correctly relays.</p>
 
 <div class="summary summary-muted">
-  <div v-for="b in muxBackends" :key="b.name" class="summary-row">
+  <div v-for="b in muxBackends" :key="b.name" class="summary-row" :class="{ 'summary-row-historical': !data.selectedByBackend[b.name] }">
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
@@ -457,6 +461,7 @@ function backendTooltip(name, version) {
         </div>
       </div>
     </div>
+    <a v-if="!data.selectedByBackend[b.name]" class="summary-history" :href="'/terminals/' + termSlug(b.name)">Historical results →</a>
     <span class="summary-pct" :title="coverageLabel(b.name)">{{ supportFraction(b.name) }}</span>
   </div>
 </div>
@@ -1139,11 +1144,20 @@ strips, or mishandles.
 .support-legend .legend-unmeasured::before { background:#7c3aed; }
 .historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
+.summary-history,.baseline-history { display:none; }
 @media (max-width:600px) {
  .VPHome .summary-row,.VPHome .summary-muted .summary-row { grid-template-columns:minmax(0,1fr) 18px 84px; gap:8px 10px; padding:14px 0; }
  .VPHome .summary-muted .summary-version { grid-column:3; }
  .VPHome .summary-bar { grid-column:1 / -1; grid-row:2; order:initial; }
  .VPHome .summary-pct,.VPHome .baseline-backend-pct { display:none; }
+ .VPHome .summary-row-historical .summary-bar,.VPHome .baseline-backend-historical .baseline-backend-bar { display:none; }
+ .VPHome .summary-history { display:block; grid-column:1 / -1; font-size:13px; }
+ .VPHome .baseline-history { display:block; font-size:12px; color:var(--vp-c-text-2); }
+ .VPHome .baseline-backend-historical .baseline-backend-name { flex:1; width:auto; }
+ .VPHome .matrix .feature-col,.VPHome .matrix .feature-name { position:sticky; left:0; z-index:2; box-sizing:border-box; width:180px; min-width:180px; max-width:180px; white-space:normal; background:var(--vp-c-bg); }
+ .VPHome .matrix th.feature-col { z-index:11; background:var(--vp-c-bg-soft); }
+ .VPHome .matrix .feature-name > a { display:block; overflow-wrap:anywhere; }
+ .VPHome .matrix .category-header > a { position:sticky; left:12px; display:inline-block; }
  .VPHome .problem-summary { padding:0; font-size:15px; }
 }
 </style>
