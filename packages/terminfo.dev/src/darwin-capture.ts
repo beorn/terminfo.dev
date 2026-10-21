@@ -149,6 +149,9 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
         { cause },
       )
       error.name = stdout === undefined ? "DarwinCaptureCommandFailed" : "DarwinCaptureOutputMissing"
+      if (cause instanceof Error && "captureCommand" in cause) {
+        Object.assign(error, { captureCommand: cause.captureCommand })
+      }
       throw error
     } finally {
       try {

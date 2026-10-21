@@ -1159,6 +1159,7 @@ export function startDaemon(port = 0): void {
           JSON.stringify({
             name: err instanceof Error ? err.name : "Error",
             error: err instanceof Error ? err.message : String(err),
+            ...(err instanceof Error && "captureCommand" in err ? { captureCommand: err.captureCommand } : {}),
           }),
         )
       }

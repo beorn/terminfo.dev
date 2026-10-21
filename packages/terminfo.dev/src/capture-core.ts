@@ -43,8 +43,23 @@ export function command(
           reject(observerError)
           return
         }
-        if (error) reject(error)
-        else if (stdinError) reject(stdinError)
+        if (error) {
+          // Keep the native Error and its exit/deadline semantics; its message cannot carry
+          // arbitrary callback bytes. Only this private diagnostic crosses the HTTP boundary.
+          reject(
+            Object.assign(error, {
+              captureCommand: {
+                file,
+                args: [...args],
+                stdoutBase64: (Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout)).toString("base64"),
+                stderrBase64: (Buffer.isBuffer(stderr) ? stderr : Buffer.from(stderr)).toString("base64"),
+                code: error.code ?? null,
+                signal: error.signal ?? null,
+                killed: error.killed ?? null,
+              },
+            }),
+          )
+        } else if (stdinError) reject(stdinError)
         else resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout))
       },
     )

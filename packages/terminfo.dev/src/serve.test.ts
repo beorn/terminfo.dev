@@ -11,7 +11,6 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createHash } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { requestDaemonProbe } from "./daemon-client.ts"
 
 let child: ChildProcess | undefined
 let home: string | undefined
@@ -149,7 +148,7 @@ describe("daemon HTTP boundary", () => {
       String.raw`
         import {mock} from "bun:test"
         import assert from "node:assert/strict"
-        import {writeFileSync} from "node:fs"
+        import {writeFileSync,readFileSync,readdirSync,existsSync} from "node:fs"
         import {join} from "node:path"
         const cp = await import("node:child_process")
         const execFile = cp.execFile
@@ -166,6 +165,16 @@ describe("daemon HTTP boundary", () => {
         mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned,createOwnedTerminal:()=>createDarwinCapture(process.env.HOME,{appPid:41})}))
         const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
         await startDaemon()
+        const directory=join(process.env.HOME,".terminfo-dev","daemons")
+        while(!existsSync(directory)||!readdirSync(directory).length) await Bun.sleep(10)
+        const registration=JSON.parse(readFileSync(join(directory,readdirSync(directory)[0]),"utf8"))
+        const {requestDaemonProbe}=await import("./packages/terminfo.dev/src/daemon-client.ts")
+        const processOwner={asserter:"terminfo-admin",launchRunId:registration.runId,workerPid:registration.pid,
+          provider:"kitty",ownerPid:900,executablePath:"/Applications/kitty.app/Contents/MacOS/kitty",
+          marker:{flag:"--instance-group",value:"terminfo-"+registration.runId},tty:"/dev/ttys004",intendedVersion:"0.49.1"}
+        try {await requestDaemonProbe(registration,{process:processOwner})}
+        catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
+          message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
       `,
       {
         TERMINFO_PROBE_HASH: "",
@@ -178,28 +187,14 @@ describe("daemon HTTP boundary", () => {
     )
     if (!home || !registration.token) throw new Error("Diagnostic fixture lacks its private home or daemon token")
     const privateHome = home
-    vi.stubEnv("HOME", privateHome)
-    vi.stubEnv("USERPROFILE", privateHome)
-    try {
-      const processOwner = {
-        asserter: "terminfo-admin" as const,
-        launchRunId: registration.runId,
-        workerPid: registration.pid,
-        provider: "kitty" as const,
-        ownerPid: 900,
-        executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
-        marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` },
-        tty: "/dev/ttys004",
-        intendedVersion: "0.49.1",
-      }
-      const daemon = { ...registration, token: registration.token, terminal: "kitty", terminalVersion: "0.49.1" }
-      let failure: unknown
-      try {
-        await requestDaemonProbe(daemon, { process: processOwner })
-      } catch (error) {
-        failure = error
-      }
-      expect(failure).toBeInstanceOf(Error)
+    {
+      let failure: { message: string; status?: number; path?: string; sha256?: string } | undefined
+      await vi.waitFor(
+        () => {
+          failure = JSON.parse(readFileSync(join(privateHome, "client-failure.json"), "utf8"))
+        },
+        { timeout: 5000 },
+      )
       expect(JSON.parse(readFileSync(join(privateHome, "census-invocation.json"), "utf8"))).toMatchObject({
         file: "/usr/bin/osascript",
         args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
@@ -212,9 +207,9 @@ describe("daemon HTTP boundary", () => {
       const bytes = readFileSync(path)
       const sha256 = createHash("sha256").update(bytes).digest("hex")
       expect(failure).toMatchObject({ path, sha256 })
-      expect((failure as Error).message).toContain("HTTP 500")
-      expect((failure as Error).message).toContain(path)
-      expect((failure as Error).message).toContain(sha256)
+      expect(failure?.message).toContain("HTTP 500")
+      expect(failure?.message).toContain(path)
+      expect(failure?.message).toContain(sha256)
       expect(files[0]).toBe(sha256)
       const body = JSON.parse(bytes.toString())
       expect(body.captureCommand).toMatchObject({
@@ -227,8 +222,6 @@ describe("daemon HTTP boundary", () => {
         killed: false,
       })
       expect(bytes.toString()).not.toContain(registration.token)
-    } finally {
-      vi.unstubAllEnvs()
     }
   })
 

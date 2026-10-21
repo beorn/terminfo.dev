@@ -6,6 +6,7 @@
  * @reach fs-walk /tmp/terminfo-owned-*
  */
 import { createServer, type Server } from "node:http"
+import { spawn } from "node:child_process"
 import { createHash } from "node:crypto"
 import { once } from "node:events"
 import {
@@ -371,14 +372,42 @@ it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", a
   await expect(readRawDaemonProbeResponse(new Response(Buffer.from([0xff])), trustedReceipt)).rejects.toThrow(/UTF-8/i)
 })
 
+// The HTTP status must survive a body-read failure; the network custody cases below cannot
+// produce a Fetch stream error without aborting before the response headers arrive.
+it("preserves the failed HTTP status when its original body cannot be read", async () => {
+  const registration = {
+    runId: "a".repeat(32),
+    pid: 222,
+    port: 12345,
+    token: "fixture-token",
+    terminal: "kitty",
+    terminalVersion: "0.49.1",
+  }
+  const cause = new Error("fixture body interrupted")
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(Response.json(registration))
+    .mockResolvedValueOnce(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(cause)
+          },
+        }),
+        { status: 502 },
+      ),
+    )
+  const failure = await requestDaemonProbe(registration).catch((error: unknown) => error)
+  expect(failure).toMatchObject({ status: 502, cause, message: expect.stringContaining("fixture body interrupted") })
+  expect(failure).not.toHaveProperty("path")
+  expect(failure).not.toHaveProperty("sha256")
+})
+
 // A failed response is evidence, not a ProbeRun: invalid UTF-8 must not discard its original bytes.
 it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
   "retains failed daemon HTTP originals before rejecting collection (30412): %j",
   async (bytes) => {
     root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
-    vi.stubEnv("HOME", root)
-    vi.stubEnv("USERPROFILE", root)
-    try {
+    {
       const runId = "a".repeat(32)
       server = createServer((req, res) => {
         if (req.url === "/info") {
@@ -392,19 +421,34 @@ it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])
       await once(server, "listening")
       const address = server.address()
       if (!address || typeof address === "string") throw new Error("fixture did not bind")
-      let failure: unknown
-      try {
-        await requestDaemonProbe({
-          runId,
-          pid: 222,
-          port: address.port,
-          token: "fixture-token",
-          terminal: "kitty",
-          terminalVersion: "0.49.1",
-        })
-      } catch (error) {
-        failure = error
+      const requestFailure = async () => {
+        const client = spawn(
+          process.execPath,
+          [
+            "-e",
+            String.raw`
+          import {writeFileSync} from "node:fs"
+          import {join} from "node:path"
+          import {requestDaemonProbe} from "./packages/terminfo.dev/src/daemon-client.ts"
+          try {await requestDaemonProbe({runId:"a".repeat(32),pid:222,port:Number(process.env.TERMINFO_TEST_PORT),
+            token:"fixture-token",terminal:"kitty",terminalVersion:"0.49.1"})}
+          catch(error){writeFileSync(join(process.env.HOME,"client-failure.json"),JSON.stringify({
+            message:error.message,status:error.status,path:error.path,sha256:error.sha256}))}
+        `,
+          ],
+          {
+            cwd: join(import.meta.dirname, "../../.."),
+            env: { ...process.env, HOME: root, USERPROFILE: root, TERMINFO_TEST_PORT: String(address.port) },
+            stdio: ["ignore", "ignore", "pipe"],
+          },
+        )
+        const stderr: Buffer[] = []
+        client.stderr.on("data", (chunk) => stderr.push(chunk))
+        const [code] = await once(client, "exit")
+        expect(code, Buffer.concat(stderr).toString()).toBe(0)
+        return JSON.parse(readFileSync(join(root!, "client-failure.json"), "utf8"))
       }
+      const failure = await requestFailure()
       const sha256 = createHash("sha256").update(bytes).digest("hex")
       const directory = join(root, ".terminfo-dev", "http-responses")
       const path = join(directory, sha256)
@@ -412,8 +456,15 @@ it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])
       expect(readFileSync(path)).toEqual(bytes)
       expect(lstatSync(directory).mode & 0o077).toBe(0)
       expect(lstatSync(path).mode & 0o077).toBe(0)
-    } finally {
-      vi.unstubAllEnvs()
+      // A failed custody write must not erase the HTTP status or claim that a receipt was written.
+      chmodSync(directory, 0o755)
+      const retentionFailure = await requestFailure()
+      expect(retentionFailure).toMatchObject({
+        status: 500,
+        message: expect.stringContaining("cannot retain original response"),
+      })
+      expect(retentionFailure).not.toHaveProperty("path")
+      expect(retentionFailure).not.toHaveProperty("sha256")
     }
   },
 )

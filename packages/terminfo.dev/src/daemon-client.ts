@@ -1,5 +1,5 @@
 /** Shared request boundary for the CLI and admin daemon collectors. */
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import {
   lstatSync,
   mkdirSync,
@@ -174,7 +174,29 @@ export async function requestDaemonProbe(daemon: DaemonRegistration, request?: D
     signal: AbortSignal.timeout(120_000),
   })
   if (!response.ok) {
-    throw new Error(`Daemon on port ${daemon.port}: HTTP ${response.status}`)
+    const failure = `Daemon on port ${daemon.port}: HTTP ${response.status}`
+    let retained: { path: string; sha256: string }
+    try {
+      // A failure body is evidence even when it is not valid UTF-8 or a ProbeRun.
+      retained = retainDaemonResponseBytes(Buffer.from(await response.arrayBuffer()))
+    } catch (cause) {
+      throw Object.assign(
+        new Error(
+          `${failure}; cannot retain original response: ${cause instanceof Error ? cause.message : String(cause)}`,
+          {
+            cause,
+          },
+        ),
+        { status: response.status },
+      )
+    }
+    throw Object.assign(
+      new Error(`${failure}; retained original response ${retained.path}; SHA256 ${retained.sha256}`),
+      {
+        status: response.status,
+        ...retained,
+      },
+    )
   }
   return response
 }
@@ -197,19 +219,15 @@ export async function readRawDaemonProbeResponse(
 }
 
 /**
- * Keep validated response bytes outside the public run tree until a person removes them.
+ * One writer for validated runs and failed-response originals, outside the public run tree.
  * POSIX 0700/0600 limits access to this OS user, not to another seat with the same UID;
  * the directory is not a secret store and its files are never removed automatically.
  */
-export async function readRetainedDaemonProbeResponse(
-  response: Response,
-  options: {
-    directory?: string
-    receipt?: { manifest: ProbeSuiteManifest; collectorRevision: string }
-  } = {},
-): Promise<{ run: CollectedProbeRun; path: string; sha256: string }> {
-  const decoded = await readRawDaemonProbeResponse(response, options.receipt)
-  const directory = options.directory ?? join(homedir(), ".terminfo-dev", "http-responses")
+function retainDaemonResponseBytes(
+  bytes: Buffer,
+  directory = join(homedir(), ".terminfo-dev", "http-responses"),
+): { path: string; sha256: string } {
+  const sha256 = createHash("sha256").update(bytes).digest("hex")
   const parent = dirname(directory)
   try {
     mkdirSync(parent, { recursive: true, mode: 0o700 })
@@ -233,9 +251,9 @@ export async function readRetainedDaemonProbeResponse(
   if (!directoryInfo.isDirectory() || (directoryInfo.mode & 0o077) !== 0) {
     throw new Error(`HTTP response directory ${directory} is not a private ordinary directory (mode 0700)`)
   }
-  const path = join(directory, decoded.sha256)
+  const path = join(directory, sha256)
   try {
-    writeFileSync(path, decoded.raw, { flag: "wx", mode: 0o600 })
+    writeFileSync(path, bytes, { flag: "wx", mode: 0o600 })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
       throw new Error(
@@ -248,16 +266,28 @@ export async function readRetainedDaemonProbeResponse(
   if (!info.isFile() || (info.mode & 0o077) !== 0) {
     throw new Error(`HTTP response artifact ${path} is not a private ordinary file (mode 0600)`)
   }
-  if (!readFileSync(path).equals(Buffer.from(decoded.raw, "utf8"))) {
-    throw new Error(`HTTP response artifact ${path} has different bytes for digest ${decoded.sha256}`)
+  if (!readFileSync(path).equals(bytes)) {
+    throw new Error(`HTTP response artifact ${path} has different bytes for digest ${sha256}`)
   }
+  return { path, sha256 }
+}
+
+/** Preserve and validate successful response bytes before any public save. */
+export async function readRetainedDaemonProbeResponse(
+  response: Response,
+  options: {
+    directory?: string
+    receipt?: { manifest: ProbeSuiteManifest; collectorRevision: string }
+  } = {},
+): Promise<{ run: CollectedProbeRun; path: string; sha256: string }> {
+  const decoded = await readRawDaemonProbeResponse(response, options.receipt)
+  const retained = retainDaemonResponseBytes(Buffer.from(decoded.raw, "utf8"), options.directory)
   return {
     run: {
       ...decoded.run,
       rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
     },
-    path,
-    sha256: decoded.sha256,
+    ...retained,
   }
 }
 

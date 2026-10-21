@@ -43,7 +43,19 @@ test.each(["command failure", "missing output"])(
         if (file !== "/usr/sbin/screencapture") throw new Error(`Unexpected diagnostic command ${file}`)
         captureArgs = args
         onStderr?.(Buffer.from("could not create image from window\n"))
-        if (failure === "command failure") throw new Error("command exited 1")
+        if (failure === "command failure") {
+          throw Object.assign(new Error("command exited 1"), {
+            captureCommand: {
+              file,
+              args,
+              stdoutBase64: Buffer.from("failed stdout").toString("base64"),
+              stderrBase64: Buffer.from("could not create image from window\n").toString("base64"),
+              code: 1,
+              signal: null,
+              killed: false,
+            },
+          })
+        }
         return Buffer.from("actual stdout")
       })
     try {
@@ -76,6 +88,17 @@ test.each(["command failure", "missing output"])(
       expect(error.cause).toBeInstanceOf(Error)
       if (failure === "command failure") {
         expect((error.cause as Error).message).toBe("command exited 1")
+        expect(error).toHaveProperty("captureCommand", {
+          file: "/usr/sbin/screencapture",
+          args: captureArgs,
+          stdoutBase64: Buffer.from("failed stdout").toString("base64"),
+          stderrBase64: Buffer.from("could not create image from window\n").toString("base64"),
+          code: 1,
+          signal: null,
+          killed: false,
+        })
+      } else {
+        expect(error).not.toHaveProperty("captureCommand")
       }
     } finally {
       runner.mockRestore()
