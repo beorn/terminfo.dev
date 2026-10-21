@@ -20,6 +20,7 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/admin/versions.ts",
   "packages/admin/app-harness.ts",
   "packages/admin/src/terminal-app-receipt.ts",
+  "packages/admin/src/terminal-app-window.ts",
   "packages/terminfo.dev/src/probe-output.ts",
   "scripts/admit-run.ts",
   "packages/terminfo.dev/src/probes/unified.ts",

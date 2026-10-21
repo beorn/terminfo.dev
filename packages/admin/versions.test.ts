@@ -56,6 +56,7 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/probes/headless-identity.ts",
     "packages/admin/versions.ts",
     "packages/admin/src/terminal-app-receipt.ts",
+    "packages/admin/src/terminal-app-window.ts",
     "packages/terminfo.dev/src/probe-output.ts",
     "packages/terminfo.dev/src/probes/unified.ts",
     "packages/terminfo.dev/src/tty.ts",
