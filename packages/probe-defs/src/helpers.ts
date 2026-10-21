@@ -46,24 +46,45 @@ export function notTestedResult(noObservable: string, state: object): ProbeResul
 }
 
 /**
- * The headless arm of a criterion that needs OS-level input: the same coverage record and raw
- * state as notTestedResult, with the explicit branch selecting the existing review check. The
- * position stays TEST TODO with a required review pending; nothing here grades support, delivery
- * or Untestable, and an app context without an input adapter keeps its plain coverage record.
+ * A criterion this context has no observable for: the same coverage record and raw state as
+ * notTestedResult, with the explicit branch selecting the existing review check. The position
+ * stays TEST TODO with a required review pending; nothing here grades support, delivery or
+ * Untestable.
  */
-export function osInputReviewResult(noObservable: string, state: object): ProbeResult {
+function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeResult {
   return {
     ...notTestedResult(noObservable, state),
-    criterionBranch: "os-input-review",
-    checks: [
-      {
-        id: "review",
-        status: "test-todo",
-        reason:
-          "Headless context injects no OS-level input; required independent review of the retained raw state pending",
-      },
-    ],
+    criterionBranch: branch,
+    checks: [{ id: "review", status: "test-todo", reason }],
   }
+}
+
+/**
+ * The headless arm of a criterion that needs OS-level input. An app context without an input
+ * adapter keeps its plain coverage record.
+ */
+export function osInputReviewResult(noObservable: string, state: object): ProbeResult {
+  return reviewResult(
+    "os-input-review",
+    "Headless context injects no OS-level input; required independent review of the retained raw state pending",
+    noObservable,
+    state,
+  )
+}
+
+/**
+ * The headless arm of a colour reset or stack criterion whose first colour readback answered
+ * nothing (#30547, @cto D-B): the effect cannot be observed, so the reset, push or pop is never
+ * sent. Never a sentinel negative (C10) and never graded from a source read (C7); the reviewer
+ * names the engine's missing observable from its source audit row.
+ */
+export function colorReadbackReviewResult(noObservable: string, state: object): ProbeResult {
+  return reviewResult(
+    "color-readback-review",
+    "Headless context offers no colour readback; required independent review of the retained raw state pending",
+    noObservable,
+    state,
+  )
 }
 
 /**
