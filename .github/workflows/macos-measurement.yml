@@ -508,7 +508,7 @@ jobs:
                 echo "$APP_ID collector failed ($status); see collector.log artifact" >&2
                 if [ "$APP_ID" = iterm2 ]; then
                   echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"
-                  if grep -q 'exactly one owned visible window.*found 2' "$OUT/collector.log"; then
+                  if grep -q 'requires one owned visible window.*found 2 candidates' "$OUT/collector.log"; then
                     echo 'PID-owned window count 2, no second-window identity' >&2
                   fi
                   tail -n 30 "$OUT/collector.log" >&2

@@ -14,6 +14,7 @@ import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import { parse, stringify } from "yaml"
 import { shellQuote } from "../packages/terminfo.dev/src/daemon-client.ts"
+import { selectDarwinWindow } from "../packages/terminfo.dev/src/darwin-capture.ts"
 import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
@@ -734,6 +735,35 @@ test("hosted measurement workflows export the launch run id inside the collector
   expect(winReadyAt, "Windows workflow waits for the receipt").toBeGreaterThan(-1)
   expect(winExportAt, "Windows workflow sets TERMINFO_RUN_ID").toBeGreaterThan(winReadyAt)
   expect(winCollectorAt, "Windows workflow invokes the collector").toBeGreaterThan(winExportAt)
+})
+
+// 30624: the iTerm2 failure branch greps collector.log for the two-window census refusal and names the
+// count on stderr. The producer's wording changed (e9485c2fb) and the grep went stale silently, so the
+// pattern is read out of the workflow and matched against the message selectDarwinWindow actually throws.
+test("macOS workflow's two-window diagnostic grep matches the census refusal the capture throws", () => {
+  const workflow = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8"))
+  const collect = workflow.jobs["measure-macos"].steps.find((step: { id?: string }) => step.id === "collect")
+    .run as string
+  const grep = /grep -q '([^']+)' "\$OUT\/collector\.log"/.exec(collect)
+  if (!grep) throw new Error("the iTerm2 failure branch no longer greps collector.log for the window census")
+  const [, source] = grep
+  if (source === undefined) throw new Error("the collector.log grep carries no pattern")
+  // Plain grep reads a basic regular expression; only literal text and `.*` mean the same thing in
+  // JavaScript, so the translation below is honest only while the pattern stays inside that alphabet.
+  expect(source, "the grep pattern uses only literal text and .*").toMatch(/^[A-Za-z0-9 ;.*]+$/)
+  const pattern = new RegExp(source)
+  const twin = (id: number) => ({
+    id,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 12, y: 31, width: 1000, height: 677 },
+    alpha: 1,
+    onscreen: true,
+  })
+  expect(() => selectDarwinWindow([twin(7), twin(8)], 41)).toThrow(pattern)
+  // The diagnostic names a count of two; the no-window refusal must not trip it.
+  expect(() => selectDarwinWindow([], 41)).toThrow(/found 0 candidates/)
+  expect(() => selectDarwinWindow([], 41)).not.toThrow(pattern)
 })
 
 // The generated-command subprocess above owns the stdout/stderr contract (27917 / 28533).
