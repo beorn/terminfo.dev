@@ -68,7 +68,6 @@ export interface Probe {
 /** Build a TermContext from the tty.ts helpers */
 function createTermContext({
   out,
-  writes,
   events,
   probe,
   geometry,
@@ -76,7 +75,6 @@ function createTermContext({
   captureGeometryRefusal,
 }: {
   out: NodeJS.WriteStream
-  writes?: string[]
   events?: TTYTraceEvent[]
   probe: ProbeDefinition
   geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
@@ -93,7 +91,6 @@ function createTermContext({
   }
   return {
     write(text: string) {
-      writes?.push(text)
       events?.push({ kind: "write", sequence: text })
       out.write(text)
     },
@@ -102,17 +99,7 @@ function createTermContext({
       if (!result) return null
       return { row: result[0], col: result[1] }
     },
-    async measureRenderedWidth(text) {
-      const setup = "\x1b7\x1b[1G" + text
-      writes?.push(setup)
-      events?.push({ kind: "write", sequence: setup })
-      try {
-        return await measureRenderedWidth(text)
-      } finally {
-        writes?.push("\x1b8")
-        events?.push({ kind: "write", sequence: "\x1b8" })
-      }
-    },
+    measureRenderedWidth,
     query,
     queryOutcome,
     queryWithSentinel,
@@ -424,7 +411,6 @@ export async function runProbeBatch(
     if (!refs.includes(result.frame.ref)) refs.push(result.frame.ref)
   }
   for (const probe of selected) {
-    const writes: string[] = []
     const queries: TTYQueryTrace[] = []
     const events: TTYTraceEvent[] = []
     const clipboardEvents: ClipboardTraceEvent[] = []
@@ -447,7 +433,7 @@ export async function runProbeBatch(
         note: `Collector refused before sending bytes because ${refusedBecause}`,
         rawReplyRef: probe.id,
       })
-      batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
+      batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
       if (!pending) throw new Error(`Native prerequisite ${probe.id} is outside initialized catalogue`)
       pending.reason = `Required grant missing: ${refusedBecause}`
@@ -499,7 +485,7 @@ export async function runProbeBatch(
           note: diagnostic,
           rawReplyRef: probe.id,
         })
-        batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
+        batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
         const pending = batch.results.find((result) => result.featureId === probe.id)
         if (!pending) throw new Error(`Native geometry ${probe.id} is outside initialized catalogue`)
         const attempt = geometryStartedAt
@@ -518,7 +504,6 @@ export async function runProbeBatch(
     }
     const context = createTermContext({
       out,
-      writes,
       events,
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
@@ -571,7 +556,6 @@ export async function runProbeBatch(
       const declared = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       const reported = options.geometryCorroboration
       let preparationGrid: { rows: number; cols: number } | undefined
-      const calibrationWrites: string[] = []
       const calibrationQueries: TTYQueryTrace[] = []
       const calibrationEvents: TTYTraceEvent[] = []
       const calibrationCaptures: CapturedProbeFrame[] = []
@@ -630,7 +614,6 @@ export async function runProbeBatch(
         }
         const preparationContext = createTermContext({
           out,
-          writes: calibrationWrites,
           events: calibrationEvents,
           probe: { ...probe, termNeedsGeometry: true },
           geometry: preparationGrid,
@@ -660,7 +643,7 @@ export async function runProbeBatch(
           grid: preparationGrid,
           geometryCorroboration: reported,
           refusal: captureGeometryRefusal,
-          writes: calibrationWrites,
+          writes: calibrationEvents.filter((event) => event.kind === "write").map((event) => event.sequence),
           queries: calibrationQueries,
           events: calibrationEvents,
           captures: calibrationCaptures,
@@ -815,7 +798,7 @@ export async function runProbeBatch(
       }
     } finally {
       const trace = JSON.stringify({
-        writes,
+        writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
         queries,
         events,
         ...(clipboardEvents.length ? { clipboard: clipboardEvents } : {}),

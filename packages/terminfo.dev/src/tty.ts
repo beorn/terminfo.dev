@@ -112,6 +112,11 @@ function currentTTYOutput(): NodeJS.WriteStream {
   return lease?.active ? lease.out : process.stdout
 }
 
+function writeTTY(sequence: string): void {
+  queryTraceContext.getStore()?.events.push({ kind: "write", sequence })
+  currentTTYOutput().write(sequence)
+}
+
 function matchResponse(
   pattern: RegExp,
   timeoutMs: number,
@@ -320,25 +325,25 @@ export async function queryCursorPosition(): Promise<[number, number] | null> {
  */
 export async function measureRenderedWidth(text: string): Promise<number | null> {
   return withTTYOperation(async () => {
-    currentTTYOutput().write("\x1b7")
+    writeTTY("\x1b7")
     try {
-      currentTTYOutput().write("\x1b[2;1H")
+      writeTTY("\x1b[2;1H")
       const secondRow = await queryCursorPosition()
       if (secondRow?.[0] !== 2 || secondRow[1] !== 1) return null
 
-      currentTTYOutput().write("\x1b[1;1HA")
+      writeTTY("\x1b[1;1HA")
       const ascii = await queryCursorPosition()
       if (ascii?.[0] !== 1 || ascii[1] !== 2) return null
 
-      currentTTYOutput().write("\x1b[1;1H" + text)
+      writeTTY("\x1b[1;1H" + text)
       const pos = await queryCursorPosition()
       if (pos?.[0] !== 1 || !Number.isSafeInteger(pos[1]) || pos[1] <= 1) return null
 
-      currentTTYOutput().write("A")
+      writeTTY("A")
       const next = await queryCursorPosition()
       return next?.[0] === 1 && next[1] === pos[1] + 1 ? pos[1] - 1 : null
     } finally {
-      currentTTYOutput().write("\x1b8")
+      writeTTY("\x1b8")
     }
   })
 }
