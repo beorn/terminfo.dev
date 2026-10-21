@@ -939,6 +939,44 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
   expect(writes).toContain("\x1b[?2004$p\x1b[c")
 })
 
+// The width-helper trace must describe the actual output and retain every CPR reply, rather than an invented fixture.
+it("retains actual width-helper writes and all four CPR query outcomes", async () => {
+  verifiedBatchFixture()
+  vi.mocked(measureUtf8Decoding).mockResolvedValue("utf8")
+  const replies = ["\x1b[2;1R", "\x1b[1;2R", "\x1b[1;2R", "\x1b[1;3R"]
+  const pending = [...replies]
+  const emitted: string[] = []
+  process.stdout.write = ((sequence: string) => {
+    emitted.push(sequence)
+    if (sequence === "\x1b[6n") process.stdin.emit("data", Buffer.from(pending.shift()!))
+    return true
+  }) as typeof process.stdout.write
+  try {
+    const id = "unicode.east-asian-ambiguous"
+    const batch = await runProbeBatch({
+      ids: [id],
+      ownedTerminal: geometryOwner(measured(24, 61), async () => measured(24, 61)),
+    })
+    const trace = JSON.parse(batch.rawReplies[id]!)
+    expect(pending).toEqual([])
+    expect(trace.queries).toEqual(
+      replies.map((raw) => ({
+        sequence: "\x1b[6n",
+        match: [...raw.match(/\x1b\[(\d+);(\d+)R/)!],
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      })),
+    )
+    expect(trace.writes).toEqual(emitted.filter((sequence) => sequence !== "\x1b[6n"))
+    expect(trace.writes).toHaveLength(6)
+    expect(trace.events.map((event: { sequence: string }) => event.sequence)).toEqual(emitted)
+    expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "behavior" }])
+  } finally {
+    vi.mocked(measureUtf8Decoding).mockRestore()
+  }
+})
+
 it("keeps actual query evidence but downgrades its explicit result after a measured resize", async () => {
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
