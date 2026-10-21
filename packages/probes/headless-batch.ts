@@ -70,9 +70,10 @@ export function feedCapture(backend: TerminalBackend, text: string): string {
  * its own, read with the live collector's rule. Two captures keep the order a real terminal produces,
  * the query's replies before the DA1 answer, even where an adapter answers only after its engine has
  * run the whole feed (libvterm, vt100 and vt220 did for 14t and 18t until #30549). The capture is
- * synchronous, so a read that never saw the DA1 answer, or saw bytes ahead of it that match nothing,
- * has ended the way live's timeout does: no sentinel facts, and never the `sentinel` outcome (@cto
- * 67840412 R1).
+ * synchronous, so the read is decided once. A DA1 capture with no DA1 answer has ended the way live's
+ * timeout does: no sentinel facts, and never the `sentinel` outcome. Once DA1 answered, bytes ahead of
+ * its answer that match nothing end as live's do, in the `sentinel` outcome over those bytes, which
+ * the grader never calls silence (#30559, @cto 86260f80).
  */
 function sentinelOutcome(
   backend: TerminalBackend,
@@ -87,10 +88,9 @@ function sentinelOutcome(
   const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
   const read = readSentinelReply(raw, pattern)
   if (read.kind === "reply") return { match: read.match, reason: "reply", ...captured }
-  // Bytes in the query's own capture are the engine's reply to it, so a read with no frame is never
-  // silence even when those bytes are shaped like a DA1 answer: only a DA1 answer in a capture of its
-  // own ends a silent query (@dev/8 9ab12dbe S4).
-  if (read.kind !== "answered" || (reply !== "" && !read.match)) {
+  // Only a DA1 answer in a capture of its own ends the query: a DA1-shaped answer in the query's capture
+  // is the engine's reply to it (@dev/8 9ab12dbe S4, @cto 86260f80 rule 4).
+  if (readSentinelReply(answer, pattern).kind === "pending") {
     return { match: read.match, reason: read.match ? "reply" : "timeout", ...captured }
   }
   const sentinel = { atMs: Date.now() - writeAt, graceMs: proven.graceMs }

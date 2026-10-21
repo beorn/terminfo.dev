@@ -205,6 +205,33 @@ describe("device query observations", () => {
     }
   })
 
+  // #30559 (@cto 86260f80 rules 1 and 3): the sentinel's answer is the LAST DA1-shaped answer, and every byte before
+  // it is the query's reply. Terminal.app answers DA3 with a DA1-shaped reply, which is bytes, never silence.
+  test("a DA1-shaped reply ahead of the DA1 answer is no measured negative", async () => {
+    const da1 = "\x1b[?62;52;c"
+    for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
+      const result = await callback(item.id).terminal(terminal(da1 + da1, "sentinel", { atMs: 9, graceMs: 250 }))
+      expect(result.observation, item.id).toStrictEqual({
+        outcome: "inconclusive",
+        reason: "no-response",
+        evidence: "query",
+      })
+      expect(result.assertions, item.id).toBeUndefined()
+    }
+  })
+
+  test("a frame between a DA1-shaped reply and the DA1 answer arrived on time and grades by the frame", async () => {
+    const da1 = "\x1b[?62;52;c"
+    for (const item of replies.filter((candidate) => candidate.id !== "device.primary-da")) {
+      const raw = da1 + item.valid + da1
+      const result = await callback(item.id).terminal(terminal(raw))
+      expect(result.response, item.id).toBe(raw)
+      expect(result.observation, item.id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation?.note, item.id).toBeUndefined()
+      expect(result.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
+    }
+  })
+
   test("DA1 sentinel and one refused setting cannot establish facility support, late or early", async () => {
     const sentinel = "\x1b[?62;52;c"
     const measured = { atMs: 12, graceMs: 250 }

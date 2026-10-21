@@ -1,5 +1,5 @@
 /**
- * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a drifted version, bytes ahead of the DA1 answer or a late reply becomes a measured negative, or a refused late reply loses what was read.
+ * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a drifted version, bytes ahead of the DA1 answer or a late reply becomes a measured negative, or a read where DA1 answered is labelled a timeout, or a refused late reply loses what was read.
  * @level l1
  * @consumer The headless collector's sentinel member, its G1 listener and the proven reply-path table (#30554, @cto verdicts 452bc032 and 67840412).
  * @reach Builds the production context and batch from headless-batch.ts over real Termless backends and runs real probe arms from @terminfo/probe-defs through it, beside each arm's live twin fed the same outcomes; where a case needs a reply no engine gives on demand, the engine's replies are scripted behind the real backend.
@@ -101,14 +101,16 @@ test.each([
     reason: "reply",
     match: ["\x1b[3;7R", "3", "7"],
   },
+  // Only a DA1 answer in a capture of its own ends the query (@cto 86260f80 rule 4): a DA1-shaped reply in the
+  // query's capture is that query's reply, so without DA1's own answer nothing answered the sentinel.
+  { name: "a DA1-shaped reply while DA1 never answers", query: DA1, answer: "", reason: "timeout", match: null },
   {
-    name: "unmatched bytes, then DA1 → not sentinel",
-    query: "\x1b]11;rgb:0000/0000/0000\x1b\\",
-    answer: DA1,
-    reason: "timeout",
-    match: null,
+    name: "a DA1-shaped reply and a reply while DA1 never answers",
+    query: `${DA1}\x1b[3;7R`,
+    answer: "",
+    reason: "reply",
+    match: ["\x1b[3;7R", "3", "7"],
   },
-  { name: "a DA1-shaped reply to the query itself", query: DA1, answer: DA1, reason: "timeout", match: null },
   {
     name: "a DA2 answer is not taken for DA1",
     query: "",
@@ -128,17 +130,44 @@ test.each([
   expect(onSentinel).not.toHaveBeenCalled()
 })
 
-test("a reply after the DA1 answer grades by the reply and carries the sentinel facts", () => {
+// #30559 (@cto 86260f80 rules 1 and 2): DA1 answered in its own capture after bytes that match nothing. The
+// outcome is live's, `sentinel` with its facts, which arms G1; the grader refuses a negative over those bytes.
+test.each([
+  { name: "unmatched bytes, then DA1", query: "\x1b]11;rgb:0000/0000/0000\x1b\\", answer: DA1 },
+  { name: "a DA1-shaped reply to the query itself, then DA1", query: DA1, answer: DA1 },
+  { name: "unmatched bytes ahead of the answer in DA1's own capture", query: "", answer: `x${DA1}` },
+])("$name gives live's sentinel outcome and facts", ({ query, answer }) => {
   const onSentinel = vi.fn()
   const ctx = contextOf(
-    scripted((text) => (text === DA1_QUERY ? `${DA1}\x1b[3;7R` : "")),
+    scripted((text) => (text === DA1_QUERY ? answer : query)),
+    proven(onSentinel),
+  )
+  const raw = query + answer
+  expect(ctx.queryWithSentinelOutcome?.("\x1b[6n", CPR)).toStrictEqual({
+    match: null,
+    reason: "sentinel",
+    raw,
+    rawBase64: base64(raw),
+    sentinel: { atMs: expect.any(Number), graceMs: 250 },
+  })
+  expect(onSentinel).toHaveBeenCalledOnce()
+})
+
+test.each([
+  { name: "a reply after the DA1 answer", query: "" },
+  { name: "a reply after unmatched bytes and the DA1 answer", query: "\x1b]11;rgb:0000/0000/0000\x1b\\" },
+])("$name grades by the reply and carries the sentinel facts", ({ query }) => {
+  const onSentinel = vi.fn()
+  const answer = `${DA1}\x1b[3;7R`
+  const ctx = contextOf(
+    scripted((text) => (text === DA1_QUERY ? answer : query)),
     proven(onSentinel),
   )
   expect(ctx.queryWithSentinelOutcome?.("\x1b[6n", CPR)).toStrictEqual({
     match: ["\x1b[3;7R", "3", "7"],
     reason: "reply",
-    raw: `${DA1}\x1b[3;7R`,
-    rawBase64: base64(`${DA1}\x1b[3;7R`),
+    raw: query + answer,
+    rawBase64: base64(query + answer),
     sentinel: { atMs: expect.any(Number), graceMs: 250 },
   })
   expect(onSentinel).not.toHaveBeenCalled()
@@ -313,6 +342,24 @@ test.each(ARM_CASES)(
     expect(plain.observation?.outcome, id).toBe("inconclusive")
   },
 )
+
+// #30559 (@cto 86260f80): DA1 answers after bytes that match nothing, here an OSC reply and Terminal.app's DA1-shaped
+// answer to DA3. Both collectors give the sentinel outcome over those bytes and the grader refuses a negative over
+// them, so the headless arm publishes live's "no-response", never "timeout" where DA1 answered.
+test.each([
+  { id: "device.xtversion", query: "\x1b[>0q", reply: "\x1b]11;rgb:0000/0000/0000\x1b\\" },
+  { id: "device.tertiary-da", query: "\x1b[=c", reply: DA1 },
+])("$id: bytes ahead of the DA1 answer grade no-response, as live grades them", async ({ id, query, reply }) => {
+  const { termless, term } = armsOf(id)
+  const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : text === query ? reply : ""))
+  const headless = termless(ctx)
+  expect(
+    outcomes.map((outcome) => outcome.reason),
+    id,
+  ).toStrictEqual(["sentinel"])
+  expect(headless.observation, id).toStrictEqual({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
+})
 
 test("extensions.kitty-keyboard: once detection answers, a silent flags query grades as live grades it", async () => {
   const { termless, term } = armsOf("extensions.kitty-keyboard")

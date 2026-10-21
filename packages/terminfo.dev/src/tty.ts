@@ -172,21 +172,20 @@ function matchResponse(
       // The headless collector reads its captures with this same rule (#30554).
       const read = readSentinelReply(buf, pattern)
       if (read.kind === "pending") return
+      // A frame ahead of the sentinel's answer is final: a later DA1 answer only moves that answer later.
       if (read.kind === "reply") {
         finish(read.match, "reply")
         return
       }
-      // `unmatched` (bytes ahead of the DA1 answer, none matching) still takes the sentinel path here,
-      // as it always has; the headless collector never reads it as silence. #30559 decides live's rule
-      // from a census of live cells with bytes before the DA1 answer.
-      // DA1 answered and no reply preceded it. Keep reading for the grace window: a reply inside it
-      // still grades by the reply, carrying the ordering note; only silence through the window is the
-      // measured negative the grader records as "negative by sentinel", citing these numbers. The
-      // window bounds the wait, so the DA1 deadline replaces the outer one.
+      // DA1 answered and no reply preceded it. Keep reading for the grace window, then decide on the whole
+      // read (#30559, @cto 86260f80): a later DA1-shaped answer makes everything before it the reply. A
+      // reply inside the window still grades by the reply, carrying the ordering note; anything else,
+      // bytes ahead of the answer included, is the sentinel outcome, which the grader records as "negative
+      // by sentinel", citing these numbers, only when nothing preceded the answer. The window bounds the
+      // wait, so the DA1 deadline replaces the outer one, and each chunk restarts it.
       sentinelFacts ??= { atMs: Date.now() - writeAt, graceMs }
       clearTimeout(timer)
-      timer = setTimeout(() => finish(null, "sentinel", sentinelFacts), graceMs)
-      if (read.match) finish(read.match, "reply", sentinelFacts)
+      timer = setTimeout(() => finish(read.match, read.match ? "reply" : "sentinel", sentinelFacts), graceMs)
     }
 
     const startTimer = () => {
