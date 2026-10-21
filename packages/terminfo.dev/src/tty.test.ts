@@ -350,6 +350,26 @@ describe("TTY transaction replies", () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(50)
   })
 
+  // #30559 (@cto a40ae9b7): the facts time the sentinel's own answer, the LAST DA1-shaped one, never an earlier
+  // DA1-shaped reply in a chunk of its own, as Terminal.app sends for DA3.
+  it("times the sentinel facts by the last DA1-shaped answer when the two arrive in separate chunks", async () => {
+    let answer: ReturnType<typeof setTimeout> | undefined
+    process.stdout.write = (() => {
+      reply("\x1b[?1;2c")
+      answer = setTimeout(() => reply("\x1b[?1;2c"), 40)
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1b[=c", /\x1bP!\|([0-9A-Fa-f]{8})\x1b\\/, 1000, 100)
+    clearTimeout(answer)
+    expect(outcome).toMatchObject({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c\x1b[?1;2c",
+      sentinel: { graceMs: 100 },
+    })
+    expect(outcome.sentinel?.atMs).toBeGreaterThanOrEqual(35)
+  })
+
   it("releases the TTY queue when an operation throws", async () => {
     await expect(
       withRawMode(async () => {

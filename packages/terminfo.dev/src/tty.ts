@@ -2,7 +2,13 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
 import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-defs"
-import { decrpmReplyPattern, decrpmStatus, readSentinelReply, sentinelGraceMs } from "@terminfo/probe-defs"
+import {
+  decrpmReplyPattern,
+  decrpmStatus,
+  readSentinelReply,
+  sentinelAnswer,
+  sentinelGraceMs,
+} from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -134,6 +140,7 @@ function matchResponse(
     let timer: ReturnType<typeof setTimeout> | undefined
     let writeAt = 0
     let sentinelFacts: { atMs: number; graceMs: number } | null = null
+    let sentinelStart: number | undefined
 
     const cleanup = () => {
       clearTimeout(timer)
@@ -182,8 +189,13 @@ function matchResponse(
       // reply inside the window still grades by the reply, carrying the ordering note; anything else,
       // bytes ahead of the answer included, is the sentinel outcome, which the grader records as "negative
       // by sentinel", citing these numbers, only when nothing preceded the answer. The window bounds the
-      // wait, so the DA1 deadline replaces the outer one, and each chunk restarts it.
-      sentinelFacts ??= { atMs: Date.now() - writeAt, graceMs }
+      // wait, so the DA1 deadline replaces the outer one, and each chunk restarts it. The facts time the
+      // sentinel's own answer, so a later DA1-shaped answer re-stamps them (@cto a40ae9b7).
+      const start = sentinelAnswer(buf)?.start
+      if (sentinelFacts === null || start !== sentinelStart) {
+        sentinelStart = start
+        sentinelFacts = { atMs: Date.now() - writeAt, graceMs }
+      }
       clearTimeout(timer)
       timer = setTimeout(() => finish(read.match, read.match ? "reply" : "sentinel", sentinelFacts), graceMs)
     }

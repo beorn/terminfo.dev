@@ -68,6 +68,7 @@ export {
   readHyperlinkMetadata,
   readSentinelReply,
   probe,
+  sentinelAnswer,
   sentinelGraceMs,
   utf8DecodingRefusal,
   type SentinelRead,
