@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
 import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-defs"
+import { decrpmReplyPattern, decrpmStatus } from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -449,21 +450,9 @@ export async function measureUtf8Decoding(): Promise<Utf8DecodingReading> {
  * Returns "set", "reset", "unknown", or null (no response).
  */
 export async function queryMode(modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
-  const match = await queryWithSentinel(`\x1b[?${modeNumber}$p`, new RegExp(`\\x1b\\[\\?${modeNumber};([0-4])\\$y`))
+  const match = await queryWithSentinel(`\x1b[?${modeNumber}$p`, decrpmReplyPattern(modeNumber))
   if (!match) return null
-  const status = parseInt(match[1] ?? "", 10)
-  switch (status) {
-    case 1:
-    case 3:
-      return "set"
-    case 2:
-    case 4:
-      return "reset"
-    case 0:
-      return "unknown"
-    default:
-      return null
-  }
+  return decrpmStatus(match[1])
 }
 
 /**
