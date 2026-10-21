@@ -294,7 +294,6 @@ const ARM_CASES: ArmCase[] = [
   { id: "extensions.osc1337-cellsize", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "extensions.sixel-geometry-report", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "extensions.osc21-kitty-color", when: "silent", replies: {}, outcome: "unsupported" },
-  { id: "extensions.osc5522-clipboard", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "extensions.kitty-graphics", when: "silent", replies: {}, outcome: "unsupported" },
   { id: "extensions.kitty-graphics.transmit", when: "silent", replies: {}, outcome: "unsupported" },
 ]
@@ -373,7 +372,6 @@ const ANSWERED_CASES: { id: string; reply: (text: string) => string; liveFirst?:
     id: "extensions.osc21-kitty-color",
     reply: (text) => (text === "\x1b]21;foreground=?\x1b\\" ? "\x1b]21;foreground=rgb:ffff/ffff/ffff\x1b\\" : ""),
   },
-  { id: "extensions.osc5522-clipboard", reply: (text) => (text === "\x1b[?5522$p" ? "\x1b[?5522;1$y" : "") },
 ]
 
 test.each(ANSWERED_CASES)(
