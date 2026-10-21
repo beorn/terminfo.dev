@@ -310,6 +310,66 @@ describe("TTY transaction replies", () => {
     expect(await queryWithSentinel("\x1b[c", /\x1b\[\?([0-9;]+)c/, 20)).toMatchObject(["\x1b[?62;4c", "62;4"])
   })
 
+  // #30559 (@cto 86260f80 rule 1): the sentinel's answer is the LAST DA1-shaped answer, decided on the whole read.
+  it("reads a DA1-shaped reply ahead of the DA1 answer as the query's reply, with no sentinel facts", async () => {
+    const bytes = "\x1b[?62;4c\x1b[?1;2c"
+    let answer: ReturnType<typeof setTimeout> | undefined
+    process.stdout.write = (() => {
+      reply("\x1b[?62;4c")
+      answer = setTimeout(() => reply("\x1b[?1;2c"), 30)
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1bZ", /\x1b\[\?([0-9;]+)c/, 1000, 200)
+    // A read that ended before the DA1 answer must not leave that answer to land in the next test's query.
+    clearTimeout(answer)
+    expect(outcome).toStrictEqual({
+      match: ["\x1b[?62;4c", "62;4"],
+      reason: "reply",
+      raw: bytes,
+      rawBase64: Buffer.from(bytes).toString("base64"),
+    })
+  })
+
+  // #30559 (@cto 86260f80 rule 2): bytes ahead of the DA1 answer that match nothing end as the sentinel outcome, with
+  // its facts, after the grace window; the grader then refuses a negative over those bytes.
+  it.each([
+    { name: "unmatched bytes", bytes: "\x1b]11;rgb:0000/0000/0000\x1b\\\x1b[?1;2c" },
+    { name: "a DA1-shaped reply", bytes: "\x1b[?1;2c\x1b[?1;2c" },
+  ])("ends $name ahead of the DA1 answer as the sentinel outcome after the grace window", async ({ bytes }) => {
+    process.stdout.write = (() => {
+      reply(bytes)
+      return true
+    }) as typeof process.stdout.write
+    const started = Date.now()
+    expect(await queryWithSentinelOutcome("\x1b[=c", /\x1bP!\|([0-9A-Fa-f]{8})\x1b\\/, 1000, 60)).toMatchObject({
+      match: null,
+      reason: "sentinel",
+      raw: bytes,
+      sentinel: { graceMs: 60 },
+    })
+    expect(Date.now() - started).toBeGreaterThanOrEqual(50)
+  })
+
+  // #30559 (@cto a40ae9b7): the facts time the sentinel's own answer, the LAST DA1-shaped one, never an earlier
+  // DA1-shaped reply in a chunk of its own, as Terminal.app sends for DA3.
+  it("times the sentinel facts by the last DA1-shaped answer when the two arrive in separate chunks", async () => {
+    let answer: ReturnType<typeof setTimeout> | undefined
+    process.stdout.write = (() => {
+      reply("\x1b[?1;2c")
+      answer = setTimeout(() => reply("\x1b[?1;2c"), 40)
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1b[=c", /\x1bP!\|([0-9A-Fa-f]{8})\x1b\\/, 1000, 100)
+    clearTimeout(answer)
+    expect(outcome).toMatchObject({
+      match: null,
+      reason: "sentinel",
+      raw: "\x1b[?1;2c\x1b[?1;2c",
+      sentinel: { graceMs: 100 },
+    })
+    expect(outcome.sentinel?.atMs).toBeGreaterThanOrEqual(35)
+  })
+
   it("releases the TTY queue when an operation throws", async () => {
     await expect(
       withRawMode(async () => {

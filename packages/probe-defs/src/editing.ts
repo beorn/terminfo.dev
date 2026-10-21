@@ -12,6 +12,7 @@ import {
   parserStateResult,
   probe,
   REPLY_AFTER_SENTINEL_NOTE,
+  sentinelAnswer,
   sentinelNegativeResult,
   unmeasuredCellResult,
 } from "./helpers.ts"
@@ -869,7 +870,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             // frame and recorded with the ordering note. Only a measured sentinel proves that
             // ordering, so a late frame without it keeps its null and falls to the inconclusive grade.
             const frame = reply.match[0] ?? ""
-            const da1At = reply.raw.search(/\x1b\[\?[0-9;]*c/)
+            const da1At = sentinelAnswer(reply.raw)?.start ?? -1
             const unorderedLateFrame = da1At !== -1 && reply.raw.indexOf(frame) > da1At && !reply.sentinel
             if (!unorderedLateFrame) {
               reads.push({ raw: frame, frame: reply.sentinel ? REPLY_AFTER_SENTINEL_NOTE : "" })

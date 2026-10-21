@@ -638,8 +638,8 @@ export interface TermlessContext {
    * backend delivers every engine reply inside the capture (packages/probes proven-reply-paths.ts); an
    * arm that finds it absent keeps its plain capture, so a silent query stays inconclusive there. It
    * captures `sequence`, then a DA1 query in a capture of its own, and reads the two with the live
-   * collector's rule (readSentinelReply): a DA1 answer with nothing before it and no reply is the
-   * measured `sentinel` outcome live records.
+   * collector's rule (readSentinelReply): DA1 answered in its own capture with no reply is the
+   * `sentinel` outcome live records, a measured negative only when nothing preceded the answer.
    */
   queryWithSentinelOutcome?(sequence: string, pattern: RegExp): TerminalQueryOutcome
   getCell(
@@ -710,8 +710,9 @@ export interface TerminalQueryOutcome {
   /**
    * The DA1 sentinel's arrival, in ms measured from the query write, with the grace window that
    * followed it. Present exactly when DA1 was answered before this query's reply: a later reply is
-   * a late reply graded by the reply, and a silent grace window is the measured negative that the
-   * grader records as "negative by sentinel". Absent when nothing answered DA1.
+   * a late reply graded by the reply, and a grace window with nothing before the sentinel's answer
+   * and nothing after it is the measured negative that the grader records as "negative by
+   * sentinel". Absent when nothing answered DA1.
    */
   sentinel?: { atMs: number; graceMs: number }
 }

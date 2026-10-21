@@ -1,5 +1,12 @@
 import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
-import { REPLY_AFTER_SENTINEL_NOTE, parserStateResult, probe, replyFrame, sentinelNegativeResult } from "./helpers.ts"
+import {
+  REPLY_AFTER_SENTINEL_NOTE,
+  parserStateResult,
+  probe,
+  replyFrame,
+  sentinelAnswer,
+  sentinelNegativeResult,
+} from "./helpers.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -28,10 +35,10 @@ function deviceReplyResult(
   reason: TerminalQueryOutcome["reason"],
   sentinel?: { atMs: number; graceMs: number },
 ): ProbeResult {
-  // F1 (27832): a frame that lands after the DA1 answer is a late reply, graded by the frame and
-  // recorded as late. Only when `sentinel` carries the measured ordering is that certain, so a
+  // F1 (27832): a frame that lands after the sentinel's DA1 answer is a late reply, graded by the frame
+  // and recorded as late. Only when `sentinel` carries the measured ordering is that certain, so a
   // frame arriving after DA1 without the measurement keeps its null.
-  const da1At = raw.search(/\x1b\[\?[0-9;]*c/)
+  const da1At = sentinelAnswer(raw)?.start ?? -1
   if (matchedFrame && da1At !== -1 && raw.indexOf(matchedFrame) > da1At && !sentinel) matchedFrame = null
   const ordered = { ...(sentinel && { note: REPLY_AFTER_SENTINEL_NOTE }) }
   const valid = matchedFrame ? spec.valid.exec(matchedFrame) : null
@@ -173,7 +180,7 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeResult {
   const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
   if (graded.observation?.outcome === "supported") return graded
   if (refusedFrame(DECRQSS_DECSTBM, secondFrame)) {
-    const da1At = second.raw.search(/\x1b\[\?[0-9;]*c/)
+    const da1At = sentinelAnswer(second.raw)?.start ?? -1
     const late =
       Boolean(second.sentinel) && secondFrame !== null && da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
     const note = ["SGR refused; DECSTBM refused", late ? REPLY_AFTER_SENTINEL_NOTE : undefined]

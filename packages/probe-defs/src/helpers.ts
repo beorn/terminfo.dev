@@ -934,8 +934,21 @@ export function readHyperlinkMetadata(
   return hyperlink
 }
 
-/** Every complete answer a terminal gives to a DA1 query. */
-const DA1_REPLY = /\x1b\[\?[0-9;]*c/gu
+/** A complete DA1 answer, as the live collector has always matched it. */
+const DA1_ANSWER = /\x1b\[\?[0-9;]+c/gu
+
+/**
+ * F1 (27832): which DA1 answer in a read is the sentinel's (#30559, @cto 86260f80 rule 1). The sentinel
+ * is written after the query, so its answer is the LAST DA1-shaped answer in the read, and every byte
+ * before it is the query's reply, even a reply shaped like a DA1 answer (Terminal.app answers DA3 that
+ * way). Null until a DA1 answer has arrived. Every reader that asks which DA1 answer ends the query
+ * asks here.
+ */
+export function sentinelAnswer(raw: string): { start: number; end: number } | null {
+  let last: { start: number; end: number } | null = null
+  for (const found of raw.matchAll(DA1_ANSWER)) last = { start: found.index, end: found.index + found[0].length }
+  return last
+}
 
 /**
  * F1 (27832): a DA1 sentinel answered on time with nothing else said through the grace window is a
@@ -943,16 +956,18 @@ const DA1_REPLY = /\x1b\[\?[0-9;]*c/gu
  * carries the measured ordering (its arrival and the window that followed), which the negative cites
  * so a reader can tell it from an explicit negative reply without a new evidence member.
  *
- * Returns null when the collector measured no sentinel, or when `raw` carries anything besides the
- * DA1 answers (a partial frame is the site's own `invalid-reply`, not a silent terminal), so the
- * caller keeps its existing inconclusive grade.
+ * Returns null when the collector measured no sentinel, when any byte precedes the sentinel's own
+ * answer (a DA1-shaped reply included: the terminal said something, #30559), or when anything but
+ * whitespace follows it (a partial frame is the site's own `invalid-reply`, not a silent terminal),
+ * so the caller keeps its existing inconclusive grade.
  */
 export function sentinelNegativeResult(
   raw: string,
   sentinel: { atMs: number; graceMs: number } | undefined,
   expected: string,
 ): ProbeResult | null {
-  if (!sentinel || raw.replace(DA1_REPLY, "").trim() !== "") return null
+  const answer = sentinelAnswer(raw)
+  if (!sentinel || answer === null || answer.start > 0 || raw.slice(answer.end).trim() !== "") return null
   const observed = `DA1 answered at +${String(sentinel.atMs)}ms; no reply through the ${String(sentinel.graceMs)} ms window`
   return {
     pass: false,
@@ -970,9 +985,6 @@ export function replyFrame(outcome: TerminalQueryOutcome): string | null {
   return outcome.reason === "reply" ? (outcome.match?.[0] ?? null) : null
 }
 
-/** The DA1 answer that ends a sentinel query's reply, as the live collector has always matched it. */
-const DA1_ANSWER = /\x1b\[\?[0-9;]+c/
-
 /** What the bytes read so far say about a query that carried a DA1 sentinel. */
 export type SentinelRead =
   | { kind: "pending"; match: string[] | null }
@@ -981,20 +993,21 @@ export type SentinelRead =
   | { kind: "answered"; match: string[] | null }
 
 /**
- * F1 (27832) has one reading rule for both collectors (#30554, @cto 452bc032 condition 3). Until the
- * DA1 answer arrives the read is `pending`; a frame ahead of it is a plain `reply` with no sentinel
- * facts. Bytes ahead of it that match nothing are `unmatched`: the terminal said something, so it was
- * not silent (@cto 67840412 R1). Only a DA1 answer with nothing before it is `answered`, carrying any
- * frame that followed it. The live collector applies this to every chunk; the headless member applies
- * it once to its two captures.
+ * F1 (27832) has one reading rule for both collectors (#30554, @cto 452bc032 condition 3). Until a DA1
+ * answer arrives the read is `pending`. The sentinel's answer is the last DA1-shaped one
+ * (`sentinelAnswer`, #30559), and a frame ahead of it is a plain `reply` with no sentinel facts.
+ * Bytes ahead of it that match nothing are `unmatched`: the terminal said something, so it was not
+ * silent (@cto 67840412 R1). Only a DA1 answer with nothing before it is `answered`. Both of those
+ * carry any frame that followed the answer. The live collector reads every chunk this way and decides
+ * at the end of the grace window, on the whole read; the headless member reads its two captures once.
  */
 export function readSentinelReply(buffer: string, pattern: RegExp): SentinelRead {
   const found = buffer.match(pattern)
   const match = found ? [...found] : null
-  const end = buffer.search(DA1_ANSWER)
-  if (end < 0) return { kind: "pending", match }
-  if (match && (found?.index ?? 0) < end) return { kind: "reply", match }
-  if (end > 0) return { kind: "unmatched", match }
+  const answer = sentinelAnswer(buffer)
+  if (!answer) return { kind: "pending", match }
+  if (match && (found?.index ?? 0) < answer.start) return { kind: "reply", match }
+  if (answer.start > 0) return { kind: "unmatched", match }
   return { kind: "answered", match }
 }
 
