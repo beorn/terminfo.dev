@@ -370,15 +370,23 @@ function positionPreview(): void {
   const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8))
   const below = box.bottom + 8
   const above = box.top - height - 8
-  const top =
-    below + height <= window.innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, window.innerHeight - height - 8)
-  previewPosition.value = { left: `${left}px`, top: `${top}px`, width: `${width}px` }
+  const preferred = below + height <= window.innerHeight - 8 ? below : above
+  const top = Math.max(8, Math.min(preferred, window.innerHeight - height - 8))
+  previewPosition.value = { ...previewPosition.value, left: `${left}px`, top: `${top}px`, width: `${width}px` }
 }
 
 function repositionPreview(): void {
   keepPreview()
-  if (previewVisible.value)
-    previewPosition.value = { ...previewPosition.value, width: `${Math.min(420, window.innerWidth - 16)}px` }
+  if (!previewVisible.value || !trigger.value) return
+  const box = trigger.value.getBoundingClientRect()
+  const viewportSpace = window.innerHeight - 16
+  const above = Math.max(0, Math.min(box.top - 16, viewportSpace))
+  const below = Math.max(0, Math.min(window.innerHeight - box.bottom - 16, viewportSpace))
+  previewPosition.value = {
+    ...previewPosition.value,
+    width: `${Math.min(420, window.innerWidth - 16)}px`,
+    maxHeight: `min(75vh, 520px, ${Math.max(above, below)}px)`,
+  }
   void nextTick(positionPreview)
 }
 
