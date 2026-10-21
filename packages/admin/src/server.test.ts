@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 /**
  * @failure Daemon clients omit authorization and report failed collection as success.
  * @level l2
@@ -103,7 +104,7 @@ it("refuses an old registration without a token before sending any terminal comm
 
 // The daemon transport/parser and raw writer are real; the admission owner independently refuses
 // this retained historical collection's dirty provenance. The old canonical save bypassed it.
-it("retains a valid HTTP run privately and propagates real admission refusal before canonical placement", async () => {
+it("retains historical HTTP bytes privately and refuses to treat them as the current collector contract", async () => {
   const root = join(import.meta.dirname, "../../..")
   fixtures.raw = readFileSync(
     join(root, "content/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json"),
@@ -116,10 +117,11 @@ it("retains a valid HTTP run privately and propagates real admission refusal bef
     ) as ProbeSuiteManifest,
     collectorRevision: run.sourceRevision,
   }
-  await expect(handleServer("kitty", {})).rejects.toThrow(/native-provenance-dirty/)
-  const save = vi.mocked(saveDaemonProbeRun).mock.calls[0]
-  expect(save?.[1]).toBe(join(fixtures.home!, ".terminfo-dev", "http-responses"))
-  expect(existsSync(join(fixtures.home!, "collected"))).toBe(true)
+  await expect(handleServer("kitty", {})).rejects.toThrow(/schemaVersion 3 collector draft/)
+  expect(saveDaemonProbeRun).not.toHaveBeenCalled()
+  const digest = createHash("sha256").update(fixtures.raw).digest("hex")
+  expect(readFileSync(join(fixtures.home!, ".terminfo-dev", "http-responses", digest), "utf8")).toBe(fixtures.raw)
+  expect(existsSync(join(fixtures.home!, "collected"))).toBe(false)
   expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining("admitted to content"))
 })
 

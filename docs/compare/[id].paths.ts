@@ -2,8 +2,8 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
-import type { PublicVersion } from "../data/public-results"
-import type { CellState } from "../data/release-scope"
+import { publicResultFor, type PublicVersion } from "../data/public-results"
+import type { CapabilityStatus } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -12,14 +12,14 @@ const contentDir = join(__dirname, "..", "..", "content")
  * The reader's ONE classification, said in the compare page's own words. This is presentation over the
  * state, never a second chain over the raw cell (28792 item 1).
  */
-function resultFor(state: CellState): "yes" | "no" | "unknown" {
+function resultFor(state: CapabilityStatus | undefined): "yes" | "no" | "unknown" {
   if (state === "supported") return "yes"
   if (state === "unsupported") return "no"
   return "unknown"
 }
 
 /** The two states the reader calls decided; inconclusive, error and untested are all not decided. */
-function decided(state: CellState): boolean {
+function decided(state: CapabilityStatus | undefined): boolean {
   return state === "supported" || state === "unsupported"
 }
 
@@ -108,8 +108,8 @@ export default {
           targetB.os &&
           a.selected.probeHash &&
           b.selected.probeHash &&
-          a.selected.suite.complete &&
-          b.selected.suite.complete &&
+          a.selected.complete &&
+          b.selected.complete &&
           JSON.stringify(recordedScope(a.selected)) === JSON.stringify(recordedScope(b.selected)),
         )
 
@@ -118,10 +118,10 @@ export default {
           name: cat.name,
           label: cat.label,
           features: cat.features.map((f) => {
-            const cellA = a.selected.cells[f.id]
-            const cellB = b.selected.cells[f.id]
-            const stateA = a.states[f.id] ?? "untested"
-            const stateB = b.states[f.id] ?? "untested"
+            const cellA = publicResultFor(a.selected, f.id)
+            const cellB = publicResultFor(b.selected, f.id)
+            const stateA = a.states[f.id]
+            const stateB = b.states[f.id]
             const resultA = resultFor(stateA)
             const resultB = resultFor(stateB)
             const comparable = Boolean(
@@ -131,12 +131,13 @@ export default {
               cellA !== undefined &&
               cellB !== undefined &&
               // Evidence is a raw field, not a classification: the same-method check still reads it.
+              cellA.evidence !== undefined &&
               cellA.evidence === cellB.evidence &&
               resultA !== "unknown" &&
               resultB !== "unknown",
             )
-            const noteA = cellA?.note ?? ""
-            const noteB = cellB?.note ?? ""
+            const noteA = (cellA && "reason" in cellA ? cellA.reason : undefined) ?? ""
+            const noteB = (cellB && "reason" in cellB ? cellB.reason : undefined) ?? ""
             return {
               id: f.id,
               slug: f.slug,
@@ -203,13 +204,13 @@ export default {
             termBPermissions: targetB.permissions ?? "Not recorded",
             termASuite: a.selected.suiteId,
             termBSuite: b.selected.suiteId,
-            termASuiteComplete: String(a.selected.suite.complete),
-            termBSuiteComplete: String(b.selected.suite.complete),
+            termASuiteComplete: String(a.selected.complete),
+            termBSuiteComplete: String(b.selected.complete),
             comparableScope: String(comparableScope),
             termAPass: String(a.selected.counts.supported),
             termBPass: String(b.selected.counts.supported),
-            termATotal: String(a.selected.counts.conclusive),
-            termBTotal: String(b.selected.counts.conclusive),
+            termATotal: String(a.selected.score.all),
+            termBTotal: String(b.selected.score.all),
             jointConclusive: comparableScope ? String(jointConclusive) : "",
             supportedA: comparableScope ? String(supportedA) : "",
             supportedB: comparableScope ? String(supportedB) : "",

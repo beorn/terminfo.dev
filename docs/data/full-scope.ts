@@ -13,7 +13,8 @@
  *  - MISSING DEFINITIONS stay IN the denominator as open work and are named beside the score.
  * Overlapping exclusions are counted once. A missing definition can never be an exclusion.
  */
-import { aggregateCells, d3Verdict, type CellState, type D3Verdict } from "./release-scope.ts"
+import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import { aggregateCurrentResults, aggregateCells, d3Verdict, type CellState, type D3Verdict } from "./release-scope.ts"
 
 /**
  * The issued design-exclusion set: the ten manual rows plus the three rows the denominator ruling
@@ -105,7 +106,7 @@ const INSTRUMENT_LIMIT_CAUSES_SOURCE = [
   ],
 ] as const
 
-/** The reviewed limits in the shape `ScopeInput.instrumentLimits` takes; the one export callers use. */
+/** The reviewed limits in the shape `HistoricalScopeInput.instrumentLimits` takes; the one export callers use. */
 export const INSTRUMENT_LIMITS: readonly InstrumentLimit[] = INSTRUMENT_LIMIT_CAUSES_SOURCE.map(([id, cause]) => ({
   id,
   cause,
@@ -129,7 +130,7 @@ export interface InstrumentLimit {
   cause: string
 }
 
-export interface ScopeInput {
+export interface HistoricalScopeInput {
   /** The context name this scope is scored for, printed in every refusal. */
   scope: string
   /** Every catalog row, in the site's category order. Its length is N. */
@@ -142,7 +143,7 @@ export interface ScopeInput {
 }
 
 /** A group's slice of one context's score, carrying the same four facts as the context. */
-export interface ScopeGroup {
+export interface HistoricalScopeGroup {
   key: string
   catalogRows: number
   denominator: number
@@ -159,7 +160,7 @@ export interface ScopeGroup {
   included: boolean
 }
 
-export interface ScopeResult {
+export interface HistoricalScopeResult {
   scope: string
   /** N: every catalog row this scope scores over. */
   catalogRows: number
@@ -183,7 +184,7 @@ export interface ScopeResult {
   missingDefinitions: readonly string[]
   /** Excluded rows keep their observation; bar exclusion never erases an observed outcome. */
   excludedObservations: readonly { id: string; cause: Exclusion["cause"]; state: CellState }[]
-  groups: readonly ScopeGroup[]
+  groups: readonly HistoricalScopeGroup[]
 }
 
 /**
@@ -191,7 +192,7 @@ export interface ScopeResult {
  * an exclusion the catalog does not carry, a missing definition that was excluded, or a scope that
  * excludes every row would each produce a number that reads like a measurement but is not one.
  */
-export function scopeAggregate(input: ScopeInput): ScopeResult {
+export function historicalScopeAggregate(input: HistoricalScopeInput): HistoricalScopeResult {
   const catalogIds = uniqueCatalog(input.catalogIds, input.scope)
   const design = [...(input.designExclusions ?? DESIGN_EXCLUSION_IDS)]
   const instruments = [...(input.instrumentLimits ?? [])]
@@ -296,7 +297,7 @@ function groupsFor(
   catalogIds: readonly string[],
   excluded: ReadonlyMap<string, Exclusion["cause"]>,
   cells: Readonly<Record<string, CellState>>,
-): ScopeGroup[] {
+): HistoricalScopeGroup[] {
   const order: string[] = []
   const idsByGroup = new Map<string, string[]>()
   for (const id of catalogIds) {
@@ -348,4 +349,64 @@ function groupsFor(
       included: verdict.label === "pass",
     }
   })
+}
+
+/** Current execution score: every frozen capability stays in the denominator. */
+export interface ScopeResult {
+  scope: string
+  catalogRows: number
+  denominator: number
+  supported: number
+  counts: Record<CapabilityStatus, number>
+  fraction: string
+  pct: number
+  complete: boolean
+  groups: readonly {
+    key: string
+    catalogRows: number
+    supported: number
+    counts: Record<CapabilityStatus, number>
+    fraction: string
+    pct: number
+    complete: boolean
+  }[]
+}
+
+export function scopeAggregate(input: {
+  scope: string
+  catalogIds: readonly string[]
+  results: readonly CapabilityResult[]
+}): ScopeResult {
+  const aggregate = aggregateCurrentResults(input.results, input.catalogIds)
+  const grouped = new Map<string, string[]>()
+  for (const id of input.catalogIds) {
+    const key = id.split(".")[0] ?? id
+    grouped.set(key, [...(grouped.get(key) ?? []), id])
+  }
+  return {
+    scope: input.scope,
+    catalogRows: aggregate.denominator,
+    denominator: aggregate.denominator,
+    supported: aggregate.supported,
+    counts: aggregate.counts,
+    fraction: `${aggregate.supported}/${aggregate.denominator}`,
+    pct: Math.round((100 * aggregate.supported) / aggregate.denominator),
+    complete: aggregate.complete,
+    groups: [...grouped].map(([key, ids]) => {
+      const members = new Set(ids)
+      const group = aggregateCurrentResults(
+        input.results.filter((result) => members.has(result.featureId)),
+        ids,
+      )
+      return {
+        key,
+        catalogRows: group.denominator,
+        supported: group.supported,
+        counts: group.counts,
+        fraction: `${group.supported}/${group.denominator}`,
+        pct: Math.round((100 * group.supported) / group.denominator),
+        complete: group.complete,
+      }
+    }),
+  }
 }

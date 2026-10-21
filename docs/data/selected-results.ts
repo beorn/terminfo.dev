@@ -454,11 +454,28 @@ function prepareRunCells(
 }
 
 /** Classify one parsed development run with the projection's active corrections, without admission or selection. */
-export function classifyDevelopmentRun(
+export function classifyDevelopmentRun(run: LoadedRun): {
+  mode: "development"
+  runId: string
+  states: Record<string, CapabilityStatus>
+} {
+  if (run.schemaVersion !== 3 || !run.results)
+    throw new Error(
+      `Development run ${run.runId} requires current schema-3 recorded results; use the historical reader for old runs`,
+    )
+  return {
+    mode: "development",
+    runId: run.runId,
+    states: Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
+  }
+}
+
+export function classifyHistoricalDevelopmentRun(
   run: LoadedRun,
   interpretations: readonly Interpretation[],
   context: { textSnapshots?: ReadonlyMap<string, Uint8Array> } = {},
 ): { mode: "development"; runId: string; states: Record<string, CellState> } {
+  if (run.schemaVersion === 3) throw new Error(`Current run ${run.runId} cannot be graded by the historical reader`)
   const { cells } = prepareRunCells(run, interpretations, assessTextQualification(run, context.textSnapshots))
   return { mode: "development", runId: run.runId, states: classifyCells(cells) }
 }
@@ -838,6 +855,24 @@ export function projectResults(
   policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
+  for (const entry of interpretations) {
+    if (!hasPresentationDecision(entry)) continue
+    const run = runs.find((candidate) => candidate.runId === entry.runId)
+    if (!run) throw new Error(`presentation ${entry.id}: runId ${entry.runId} does not name a raw run`)
+    validatePresentationShape(
+      entry as unknown as Record<string, unknown>,
+      `interpretation ${entry.id}`,
+      new Set(run.catalogIds ?? catalogIds),
+    )
+    if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
+    if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
+    if (
+      !(run.schemaVersion === 3 ? run.results : run.observations)?.some(
+        (result) => result.featureId === entry.featureId,
+      )
+    )
+      throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
+  }
   const historical = projectHistoricalResults(
     runs.filter((run) => run.schemaVersion !== 3),
     interpretations.filter(

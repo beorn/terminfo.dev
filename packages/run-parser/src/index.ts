@@ -6,6 +6,8 @@ import {
   finalizeCapabilityResult,
   type CaptureDecision,
   type RunDraft,
+  type CapturedRunDraft,
+  type HistoricalProbeRun,
   type CapabilityResult,
   type CapabilityAttempt,
   type CheckResult,
@@ -1277,16 +1279,17 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
   }
   const reviewRef = `collector.review.${decision.id}`
   if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
-  const checks = result.checks.map((check): CheckResult =>
-    check.id === "review"
-      ? {
-          ...check,
-          status: decision.decision,
-          attempt: { scope: "probe", startedAt },
-          reviewRef,
-          reason: decision.reason,
-        }
-      : check,
+  const checks = result.checks.map(
+    (check): CheckResult =>
+      check.id === "review"
+        ? {
+            ...check,
+            status: decision.decision,
+            attempt: { scope: "probe", startedAt },
+            reviewRef,
+            reason: decision.reason,
+          }
+        : check,
   )
   draft.rawReplies[reviewRef] = source
   draft.results[index] = finalizeCapabilityResult({
@@ -1443,6 +1446,7 @@ export function parseRun(
   source: string,
   catalogIds: readonly string[],
   suites: ReadonlyMap<string, ProbeSuiteManifest> = new Map(),
+  options: { mode?: "sealed" | "capture" } = {},
 ): LoadedRun {
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
@@ -1508,7 +1512,11 @@ export function parseRun(
         fail(path, `missing assertion raw reply ${assertion.rawReplyRef}`)
       }
     }
-    if (current && (!date(raw.sealedAt) || new Date(raw.sealedAt).toISOString() !== raw.sealedAt)) {
+    if (
+      current &&
+      options.mode !== "capture" &&
+      (!date(raw.sealedAt) || new Date(raw.sealedAt).toISOString() !== raw.sealedAt)
+    ) {
       fail(path, "missing or invalid sealedAt; retain an unsealed run as a draft")
     }
     if (current && ["observations", "notTested", "ungradedDiagnostics"].some((key) => Object.hasOwn(raw, key))) {
@@ -1730,12 +1738,12 @@ export function decodeExactUtf8(bytes: Uint8Array, path: string): string {
 }
 
 /** One public/admin collector boundary over the same canonical run parser. */
-export function decodeCollectorRun(
+export function decodeHistoricalCollectorRun(
   path: string,
   raw: string,
   manifest: ProbeSuiteManifest,
   collectorRevision: string,
-): { run: ProbeRun; raw: string; sha256: string } {
+): { run: HistoricalProbeRun; raw: string; sha256: string } {
   const catalog = [...new Set(Object.values(manifest.probes).flat())]
   const measured = parseRun(path, raw, catalog, new Map([[manifest.probeHash, manifest]]))
   if (measured.schemaVersion !== 2) fail(path, "expected schemaVersion 2 collector run, not legacy boolean results")
@@ -1748,7 +1756,7 @@ export function decodeCollectorRun(
   if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
     fail(path, "public collector run must have unverified identity and collector origin")
   }
-  const run: ProbeRun = {
+  const run: HistoricalProbeRun = {
     schemaVersion: 2,
     runId: measured.runId,
     target: measured.target,
@@ -1772,4 +1780,48 @@ export function decodeCollectorRun(
     ungradedDiagnostics: measured.ungradedDiagnostics,
   }
   return { run, raw, sha256: measured.sha256 }
+}
+
+/** Canonical live collector transport is an unsealed schema-3 capture; final writer seals later. */
+export function decodeCollectorDraft(
+  path: string,
+  raw: string,
+  manifest: ProbeSuiteManifest,
+  collectorRevision: string,
+): { run: CapturedRunDraft; raw: string; sha256: string } {
+  const value = parseJsonStrict(path, raw)
+  if (!object(value) || value.schemaVersion !== 3 || Object.hasOwn(value, "sealedAt"))
+    fail(path, "expected unsealed schemaVersion 3 collector draft")
+  const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]), {
+    mode: "capture",
+  })
+  if (
+    measured.probeHash !== manifest.probeHash ||
+    measured.suiteId !== manifest.probeHash ||
+    measured.sourceRevision !== collectorRevision
+  )
+    fail(path, "collector draft differs from trusted suite/source")
+  if (measured.identity !== "unverified" || measured.origin.kind !== "collector")
+    fail(path, "collector draft requires unverified measured identity and collector origin")
+  return { run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
+}
+
+/** A final file is current only when sealed; historical files have their explicit historical decoder. */
+export function decodeCollectorRun(
+  path: string,
+  raw: string,
+  manifest: ProbeSuiteManifest,
+  collectorRevision: string,
+): { run: ProbeRun; raw: string; sha256: string } {
+  const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]))
+  if (measured.schemaVersion !== 3) fail(path, "expected sealed schemaVersion 3 collector run")
+  if (
+    measured.probeHash !== manifest.probeHash ||
+    measured.suiteId !== manifest.probeHash ||
+    measured.sourceRevision !== collectorRevision
+  )
+    fail(path, "collector run differs from trusted suite/source")
+  if (measured.identity !== "unverified" || measured.origin.kind !== "collector")
+    fail(path, "collector run requires unverified measured identity and collector origin")
+  return { run: parseJsonStrict(path, raw) as unknown as ProbeRun, raw, sha256: measured.sha256 }
 }

@@ -27,13 +27,10 @@ function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: st
     )
     .map((selected) => ({
       version: selected.target.version,
-      total: selected.counts.conclusive,
-      yes: selected.counts.supported,
+      total: selected.score.all,
+      yes: selected.score.supported,
       suiteFreshness: selected.suiteFreshness,
-      pct:
-        selected.counts.conclusive > 0
-          ? Math.round((selected.counts.supported / selected.counts.conclusive) * 100)
-          : null,
+      pct: selected.score.all > 0 ? Math.round((selected.score.supported / selected.score.all) * 100) : null,
     }))
   return versions.sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))
 }
@@ -43,10 +40,21 @@ export default {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
 
-    const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {
+    const historicalBackends = Object.entries(data.historicalByBackend)
+      .filter(([key]) => !data.selectedByBackend[key])
+      .map(([key, entry]) => ({
+        name: key,
+        version: entry.selected.target.version,
+        engine: "",
+        type: entry.selected.target.kind,
+        ...(entry.selected.target.os && { platforms: [entry.selected.target.os] }),
+      }))
+    const pages: Array<{ params: Record<string, string> }> = [...data.backends, ...historicalBackends].map((b) => {
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name]
-      if (!stats) throw new Error(`Missing site statistics for selected terminal ${b.name}`)
+      if (data.selectedByBackend[b.name] && !stats) {
+        throw new Error(`Missing site statistics for selected terminal ${b.name}`)
+      }
       const slug = terminalSlug(b.name, data.meta)
 
       // Build feature results grouped by category
@@ -68,7 +76,7 @@ export default {
       for (const [cat, features] of Object.entries(data.categories)) {
         const catFeatures = features.map((f) => {
           const result = data.results[b.name]?.[f.id] ?? "unknown"
-          const note = data.selectedByBackend[b.name]?.selected.cells[f.id]?.note ?? ""
+          const note = data.notes[b.name]?.[f.id] ?? ""
           const desc = data.featureDescriptions[f.id]
           return {
             id: f.id,
@@ -94,14 +102,14 @@ export default {
       // A parser and its app can share a public slug; measured analysis belongs to the selected run.
       const slugAnalysis = allAnalysis["terminals/" + slug]
       const a =
-        selected && selected.counts.conclusive > 0
+        selected && selected.score.all > 0
           ? Object.entries(allAnalysis).find(
               ([key, entry]) => key.startsWith("terminals/") && entry.runSha256 === selected.sha256,
             )?.[1]
           : slugAnalysis?.runSha256
             ? undefined
             : slugAnalysis
-      if (selected && selected.counts.conclusive > 0 && !a) {
+      if (selected && selected.score.all > 0 && !a) {
         throw new Error(`Missing terminal analysis for ${b.name} selected run ${selected.sha256}`)
       }
 
@@ -140,14 +148,22 @@ export default {
           generated: selected?.measuredAt ?? "",
           runSha256: selected?.sha256 ?? "",
           suiteFreshness: selected?.suiteFreshness ?? "",
-          total: String(stats.total),
-          yes: String(stats.yes),
-          no: String(stats.no),
-          partial: String(stats.partial),
-          pct: stats.pct === null ? "" : String(stats.pct),
+          total: stats ? String(stats.score.all) : "",
+          yes: stats ? String(stats.score.supported) : "",
+          no: stats ? String(stats.counts.unsupported) : "",
+          partial: "0",
+          pct: stats?.pct == null ? "" : String(stats.pct),
           categories: JSON.stringify(categories),
           versions: JSON.stringify(versions),
           otherRuns: JSON.stringify(otherRuns),
+          historicalRuns: JSON.stringify(
+            Object.values(data.selected.historical.versions)
+              .flat()
+              .filter((run) => {
+                const reference = selected?.target ?? data.historicalByBackend[b.name]?.selected.target
+                return reference && run.target.id === reference.id && run.target.kind === reference.kind
+              }),
+          ),
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",

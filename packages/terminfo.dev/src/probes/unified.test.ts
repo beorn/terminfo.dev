@@ -10,8 +10,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
-import { decodeCollectorRun } from "@terminfo/run-parser"
+import {
+  ALL_PROBES,
+  type HistoricalProbeRun as ProbeRun,
+  type ProbeSuiteManifest,
+  type TextQualification,
+} from "@terminfo/probe-defs"
+import { decodeHistoricalCollectorRun as decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"

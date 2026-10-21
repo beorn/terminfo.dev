@@ -302,7 +302,7 @@ export async function runProbeBatch(
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
     target?: ReceiptTarget
     draft?: Pick<RunDraft, "results">
-    onCheckpoint?: () => void
+    onCheckpoint?: (batch: ProbeBatch) => void
   } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
@@ -448,8 +448,23 @@ export async function runProbeBatch(
         rawReplyRef: probe.id,
       })
       batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
+      const pending = batch.results.find((result) => result.featureId === probe.id)
+      if (!pending) throw new Error(`Native prerequisite ${probe.id} is outside initialized catalogue`)
+      pending.reason = `Required grant missing: ${refusedBecause}`
+      pending.rawReplyRef = probe.id
+      pending.checks = [
+        {
+          id: "prerequisite",
+          status: "test-todo",
+          attempt: { scope: "none" },
+          reason: pending.reason,
+          rawReplyRef: probe.id,
+        },
+      ]
+      options.onCheckpoint?.(batch)
       continue
     }
+    let geometryStartedAt: string | undefined
     let preGeometry: GeometryMeasurement | undefined
     let geometryCheck: (typeof geometryChecks)[number] | undefined
     if (probe.termNeedsGeometry) {
@@ -457,6 +472,7 @@ export async function runProbeBatch(
       geometryChecks.push(geometryCheck)
       const grant = ownsTerminal ? options.ownedTerminal?.geometryAtGrant : undefined
       if (grant?.status === "measured") {
+        geometryStartedAt = new Date().toISOString()
         preGeometry = await readGeometry()
         geometryCheck.pre = preGeometry
       }
@@ -484,6 +500,19 @@ export async function runProbeBatch(
           rawReplyRef: probe.id,
         })
         batch.rawReplies[probe.id] = JSON.stringify({ writes, queries, events })
+        const pending = batch.results.find((result) => result.featureId === probe.id)
+        if (!pending) throw new Error(`Native geometry ${probe.id} is outside initialized catalogue`)
+        const attempt = geometryStartedAt
+          ? { scope: "probe" as const, startedAt: geometryStartedAt }
+          : { scope: "none" as const }
+        pending.status = geometryStartedAt ? "test-failure" : "test-todo"
+        pending.attempt = attempt
+        pending.reason = diagnostic
+        pending.rawReplyRef = probe.id
+        pending.checks = [
+          { id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id },
+        ]
+        options.onCheckpoint?.(batch)
         continue
       }
     }
@@ -781,7 +810,7 @@ export async function runProbeBatch(
         coverage: batch.notTested.find((entry) => entry.featureId === probe.id),
         assertions: batch.assertions,
       })
-      options.onCheckpoint?.()
+      options.onCheckpoint?.(batch)
     }
   }
   if (ownsTerminal && options.ownedTerminal) {

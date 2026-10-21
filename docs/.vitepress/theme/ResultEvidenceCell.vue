@@ -2,7 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
-import type { EvidenceDocument, PublicCell, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import type {
+  EvidenceDocument,
+  HistoricalEvidenceDocument,
+  PublicCapabilityResult,
+  HistoricalPublicCell,
+  HistoricalPublicVersion,
+  PublicVersion,
+  TextQualificationDocument,
+} from "../../data/public-results"
 import { data } from "../../data/probes.data"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 
@@ -12,12 +20,19 @@ const props = withDefaults(
     featureName: string
     probeGuidance?: string
     targetName: string
-    version?: PublicVersion
-    cell?: PublicCell
+    version?: PublicVersion | HistoricalPublicVersion
+    cell?: PublicCapabilityResult | HistoricalPublicCell
     display?: "compact" | "text"
   }>(),
   { display: "compact" },
 )
+
+const historicalVersion = computed(() =>
+  props.version && props.version.schemaVersion !== 3 ? props.version : undefined,
+)
+const historicalCell = computed(() => (props.cell && "outcome" in props.cell ? props.cell : undefined))
+const currentResult = computed(() => (props.cell && "status" in props.cell ? props.cell : undefined))
+const featureNote = computed(() => historicalCell.value?.note ?? currentResult.value?.reason)
 
 const isDecSampleResult = computed(
   () =>
@@ -28,12 +43,12 @@ const isDecSampleResult = computed(
     props.version.target.id === "kitty" &&
     props.version.target.version === "0.49.2" &&
     props.version.target.os === "linux" &&
-    props.cell?.outcome === "supported" &&
-    props.cell.conclusive === true &&
-    props.cell.evidence === "pixels" &&
-    props.cell.chain.correctionId === "pixels-e81b65484899493ffb9b5eacc3a6062d-charsets.dec-special" &&
-    props.cell.presentation.state === "presented" &&
-    props.cell.presentation.review.id === "present-e81b65484899493ffb9b5eacc3a6062d-charsets.dec-special",
+    historicalCell.value?.outcome === "supported" &&
+    historicalCell.value?.conclusive === true &&
+    historicalCell.value?.evidence === "pixels" &&
+    historicalCell.value?.chain.correctionId === "pixels-e81b65484899493ffb9b5eacc3a6062d-charsets.dec-special" &&
+    historicalCell.value?.presentation.state === "presented" &&
+    historicalCell.value?.presentation.review.id === "present-e81b65484899493ffb9b5eacc3a6062d-charsets.dec-special",
 )
 
 const trigger = ref<HTMLButtonElement | null>(null)
@@ -43,7 +58,7 @@ let previewHideTimer: ReturnType<typeof setTimeout> | undefined
 const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
-const evidenceDocument = ref<EvidenceDocument | null>(null)
+const evidenceDocument = ref<EvidenceDocument | HistoricalEvidenceDocument | null>(null)
 const qualificationDocument = ref<TextQualificationDocument | null>(null)
 const textSnapshots = ref<Record<string, string>>({})
 const recordedQueries = ref<Array<{ sequence: string; raw?: string }>>([])
@@ -66,19 +81,36 @@ const reasonExplanations: Record<ObservationReason, string> = {
 }
 
 const namedCoverage = computed(() =>
-  props.version?.notTestedCoverage.named.find((record) => record.featureId === props.featureId),
+  historicalVersion.value?.notTestedCoverage.named.find((record) => record.featureId === props.featureId),
 )
 
-const status = computed(
-  () =>
-    ({
-      supported: { text: "Supported", icon: "✓", tone: "yes" },
-      unsupported: { text: "Unsupported", icon: "✗", tone: "no" },
-      inconclusive: { text: "Untestable", icon: "–", tone: "ungraded" },
-      untested: { text: "TEST TODO", icon: "–", tone: "unknown" },
-      error: { text: "TEST FAILURE", icon: "!", tone: "error" },
-    })[(props.version && data.releaseTable[props.version.runId]?.[props.featureId]) || "untested"],
-)
+const status = computed(() => {
+  const historicalState = historicalVersion.value
+    ? (data.historicalTable[historicalVersion.value.runId]?.[props.featureId] ?? "untested")
+    : undefined
+  // Historical presentation reads its existing evidence-aware projection; it is never current v3 evidence.
+  const state =
+    currentResult.value?.status ??
+    (historicalState
+      ? (
+          {
+            supported: "supported",
+            unsupported: "unsupported",
+            inconclusive: "untestable",
+            error: "test-failure",
+            untested: "test-todo",
+          } as const
+        )[historicalState]
+      : undefined)
+  if (!state) return { text: "", icon: "–", tone: "unknown" }
+  return {
+    supported: { text: "Supported", icon: "✓", tone: "yes" },
+    unsupported: { text: "Unsupported", icon: "✗", tone: "no" },
+    untestable: { text: "Untestable", icon: "–", tone: "ungraded" },
+    "test-todo": { text: "TEST TODO", icon: "–", tone: "unknown" },
+    "test-failure": { text: "TEST FAILURE", icon: "!", tone: "error" },
+  }[state]
+})
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.evidence === "query"
@@ -96,18 +128,20 @@ const selectionExplanation = computed(() => {
   }
   return undefined
 })
-const reasonExplanation = computed(() => (props.cell?.reason ? reasonExplanations[props.cell.reason] : undefined))
+const reasonExplanation = computed(() =>
+  historicalCell.value?.reason ? reasonExplanations[historicalCell.value.reason] : currentResult.value?.reason,
+)
 // Why a text row is shown but not counted (30033 ruling f1f3c64b). The sentence lives in
 // ungraded-explanation.ts so the two arms' reasons are pinned by their own test.
 const textExplanation = computed(() =>
   textEvidenceExplanation(
-    props.cell && props.version
+    historicalCell.value && props.version
       ? {
-          evidence: props.cell.evidence,
-          conclusive: props.cell.conclusive,
+          evidence: historicalCell.value.evidence,
+          conclusive: historicalCell.value.conclusive,
           os: props.version.target.os,
-          host: props.cell.host,
-          textQualificationReason: props.cell.textQualificationReason,
+          host: historicalCell.value?.host,
+          textQualificationReason: historicalCell.value?.textQualificationReason,
         }
       : undefined,
   ),
@@ -115,7 +149,9 @@ const textExplanation = computed(() =>
 
 const probeGuidanceText = computed(() => props.probeGuidance?.replace(/<\/?code>/g, ""))
 const presentation = computed(() => props.cell?.presentation)
-const correction = computed(() => props.version?.reviews.find((review) => review.id === props.cell?.chain.correctionId))
+const correction = computed(() =>
+  historicalVersion.value?.reviews.find((review) => review.id === historicalCell.value?.chain.correctionId),
+)
 const previewRecord = computed(() => (presentation.value?.state === "presented" ? props.cell?.record : undefined))
 const previewScreenshot = computed(() => previewRecord.value?.screenshot)
 const screenshotUrl = computed(() => (previewScreenshot.value ? withBase(previewScreenshot.value.url) : undefined))
@@ -137,16 +173,11 @@ const expectedIllustration = computed(() =>
   props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
 )
 const compactCause = computed(() => {
-  if (status.value.text === "Supported" || status.value.text === "Unsupported") return "Reviewed capture not available."
-  if (status.value.text === "Untestable") return props.cell?.note || "reviewed context prevents this test"
-  if (status.value.text === "TEST TODO")
-    return props.cell?.evidence === "none" && props.cell.reason === "policy-refused"
-      ? "test did not start: prerequisite unmet"
-      : "rerun required"
-  if (props.cell?.evidence === "text") return "our test could not capture text"
-  if (props.cell?.evidence === "pixels") return "our test could not capture an image"
-  if (props.cell?.reason === "timeout") return "our test timed out"
-  return "our test could not produce a valid result"
+  if (currentResult.value)
+    return currentResult.value.reason ?? "Recorded details have not been approved for publication."
+  if (historicalCell.value?.evidence === "text") return "our test could not capture text"
+  if (historicalCell.value?.evidence === "pixels") return "Reviewed capture not available."
+  return historicalCell.value?.note ?? reasonExplanation.value ?? "No retained result for this selection."
 })
 
 const evidenceRecord = computed(() => evidenceDocument.value?.record)
@@ -164,9 +195,12 @@ const hasRecordedDetail = computed(
     evidenceFrames.value.length > 0 ||
     evidenceScreenshot.value !== undefined,
 )
+const originalObservation = computed(() =>
+  evidenceDocument.value?.version === 1 ? evidenceDocument.value.observation : undefined,
+)
 const originalDiffers = computed(() => {
-  const original = evidenceDocument.value?.observation
-  const current = props.cell
+  const original = originalObservation.value
+  const current = historicalCell.value
   return Boolean(
     original &&
     current &&
@@ -195,11 +229,12 @@ const evidenceIdentity = computed(() => {
     props.version?.runId,
     props.version?.sha256,
     props.version?.target.version,
-    props.cell?.chain,
-    props.cell?.outcome,
+    historicalCell.value?.chain,
+    historicalCell.value?.outcome,
+    currentResult.value?.status,
     props.cell?.reason,
     props.cell?.evidence,
-    props.cell?.note,
+    historicalCell.value?.note,
     presentation.value,
   ])
 })
@@ -248,19 +283,21 @@ async function loadEvidence(): Promise<void> {
   evidenceDocument.value = null
   try {
     if (!/^[0-9a-f]{64}$/.test(approval.sha256)) throw new Error("Invalid evidence SHA-256 receipt")
-    if (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256) {
+    if ("chain" in cell && (cell.chain.runId !== version.runId || cell.chain.runSha256 !== version.sha256)) {
       throw new Error("Result and run identities disagree")
     }
     const bytes = await verifiedBytes(approval.url, approval.sha256, controller.signal)
     const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    const payload = isRecord(parsed) ? (version.schemaVersion === 3 ? parsed.result : parsed.observation) : undefined
     if (
       !isRecord(parsed) ||
-      parsed.version !== 1 ||
+      parsed.version !== (version.schemaVersion === 3 ? 3 : 1) ||
       parsed.runId !== version.runId ||
       parsed.runSha256 !== version.sha256 ||
       parsed.featureId !== props.featureId ||
-      !isRecord(parsed.observation) ||
-      parsed.observation.featureId !== props.featureId ||
+      !isRecord(payload) ||
+      payload.featureId !== props.featureId ||
+      (currentResult.value !== undefined && payload.status !== currentResult.value.status) ||
       !isRecord(parsed.record) ||
       !Array.isArray(parsed.record.assertions) ||
       !isRecord(parsed.review) ||
@@ -268,7 +305,7 @@ async function loadEvidence(): Promise<void> {
     ) {
       throw new Error("Evidence document identity or structure does not match this result")
     }
-    const document = parsed as unknown as EvidenceDocument
+    const document = parsed as unknown as EvidenceDocument | HistoricalEvidenceDocument
     let qualification: TextQualificationDocument | null = null
     if (document.textQualification) {
       const reference = document.textQualification
@@ -498,6 +535,7 @@ onBeforeUnmount(() => {
         @toggle.capture="repositionPreview"
       >
         <strong
+          v-if="status.text"
           class="result-evidence__trigger result-evidence__verdict"
           :class="`result-evidence__trigger--${status.tone}`"
           ><span aria-hidden="true">{{ status.icon }}</span
@@ -545,13 +583,14 @@ onBeforeUnmount(() => {
         <details class="result-evidence__compact-details">
           <summary>Technical details</summary>
           <div>
+            <span v-if="historicalVersion">Historical evidence; rerun required for current schema-3 coverage.</span>
             <strong>Feature test</strong>
             <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
             <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
-            <span v-if="cell?.note">{{ cell.note }}</span>
-            <template v-if="cell?.textQualificationReason">
+            <span v-if="featureNote">{{ featureNote }}</span>
+            <template v-if="historicalCell?.textQualificationReason">
               <strong>Capture qualification</strong>
-              <span>{{ cell.textQualificationReason }}</span>
+              <span>{{ historicalCell?.textQualificationReason }}</span>
             </template>
             <span v-else-if="textExplanation">{{ textExplanation }}</span>
             <span v-if="evidenceLoading">Loading recorded evidence…</span>
@@ -674,12 +713,12 @@ onBeforeUnmount(() => {
           </ol>
           <p>This test recorded writes and two captures, with no terminal queries or automated assertion values.</p>
         </template>
-        <details v-if="isDecSampleResult && cell?.note" class="result-evidence__details">
+        <details v-if="isDecSampleResult && historicalCell?.note" class="result-evidence__details">
           <summary>Detailed review note</summary>
-          <p>{{ cell.note }}</p>
+          <p>{{ historicalCell?.note }}</p>
         </details>
-        <p v-else-if="cell?.note">{{ cell.note }}</p>
-        <p v-if="cell?.evidence === 'query' && cell?.conclusive">
+        <p v-else-if="historicalCell?.note">{{ historicalCell?.note }}</p>
+        <p v-if="cell?.evidence === 'query' && historicalCell?.conclusive">
           This result is based on the query's recorded evidence, not every use of this feature.
         </p>
         <p v-else-if="cell?.evidence === 'query'">This query did not establish a yes-or-no result for the feature.</p>
@@ -800,7 +839,7 @@ onBeforeUnmount(() => {
                   {{
                     isDecSampleResult
                       ? "Recorded test trace"
-                      : evidenceDocument.observation.evidence === "none"
+                      : originalObservation?.evidence === "none"
                         ? "Collector trace"
                         : "Raw reply"
                   }}
@@ -817,16 +856,14 @@ onBeforeUnmount(() => {
                 </p>
                 <h4>1. Original recorded result</h4>
                 <p>
-                  {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
-                  <template v-if="evidenceDocument.observation.reason">
-                    · {{ evidenceDocument.observation.reason }}</template
-                  >
+                  Recorded {{ originalObservation?.evidence }} method
+                  <template v-if="originalObservation?.reason"> · {{ originalObservation?.reason }}</template>
                 </p>
                 <p>
                   Inconclusive meant the images still needed review. Insufficient-evidence meant the collector had not
                   yet established a supported or unsupported result.
                 </p>
-                <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+                <p v-if="originalObservation?.note">{{ originalObservation?.note }}</p>
                 <h4>2. Support review</h4>
                 <p>
                   Sol, an AI image reviewer, changed the assessment from inconclusive to supported for this sample using
@@ -836,7 +873,7 @@ onBeforeUnmount(() => {
                 <details v-if="correction">
                   <summary>Support review record</summary>
                   <p>
-                    Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                    Review changed the historical observation; see its retained evidence document for the original fields.
                     Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
                   </p>
                 </details>
@@ -853,7 +890,7 @@ onBeforeUnmount(() => {
               </template>
               <template v-else>
                 <p v-if="correction">
-                  Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                  Review changed the historical observation; see its retained evidence document for the original fields.
                   Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
                 </p>
                 <details>
@@ -863,12 +900,10 @@ onBeforeUnmount(() => {
                 <template v-if="originalDiffers">
                   <h4>Original recorded observation</h4>
                   <p>
-                    {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
-                    <template v-if="evidenceDocument.observation.reason">
-                      · {{ evidenceDocument.observation.reason }}</template
-                    >
+                    Recorded {{ originalObservation?.evidence }} method
+                    <template v-if="originalObservation?.reason"> · {{ originalObservation?.reason }}</template>
                   </p>
-                  <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+                  <p v-if="originalObservation?.note">{{ originalObservation?.note }}</p>
                 </template>
               </template>
             </details>
@@ -916,23 +951,23 @@ onBeforeUnmount(() => {
             <dt>Measured at</dt>
             <dd>{{ version?.measuredAt ?? "Not recorded" }}</dd>
             <dt>Run ID</dt>
-            <dd>{{ cell?.chain.runId ?? version?.runId ?? "Not recorded" }}</dd>
+            <dd>{{ historicalCell?.chain.runId ?? version?.runId ?? "Not recorded" }}</dd>
             <dt>Run SHA-256</dt>
-            <dd>{{ cell?.chain.runSha256 ?? version?.sha256 ?? "Not recorded" }}</dd>
+            <dd>{{ historicalCell?.chain.runSha256 ?? version?.sha256 ?? "Not recorded" }}</dd>
             <dt>Recorded method</dt>
-            <dd>{{ cell?.chain.method ?? "Not recorded" }}</dd>
+            <dd>{{ historicalCell?.chain.method ?? "Not recorded" }}</dd>
             <dt>Suite</dt>
             <dd>
               {{ version?.suiteId ?? "Not recorded"
-              }}<template v-if="version">
-                · {{ version.suite.observed }}/{{ version.suite.expected ?? "?" }} probes ·
-                {{ version.suiteFreshness }}</template
+              }}<template v-if="historicalVersion">
+                · {{ historicalVersion.suite.observed }}/{{ historicalVersion.suite.expected ?? "?" }} historical
+                outcomes · {{ version.suiteFreshness }}</template
               >
             </dd>
             <dt>Source revision</dt>
             <dd>{{ version?.sourceRevision ?? "Not recorded" }}</dd>
             <dt>Correction</dt>
-            <dd>{{ cell?.chain.correctionId ?? "None" }}</dd>
+            <dd>{{ historicalCell?.chain.correctionId ?? "None" }}</dd>
           </dl>
         </details>
       </dialog>

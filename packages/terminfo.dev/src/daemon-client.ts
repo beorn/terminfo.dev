@@ -12,8 +12,14 @@ import {
 } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
-import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
-import { decodeCollectorRun, decodeExactUtf8 } from "@terminfo/run-parser"
+import {
+  sealRunDraft,
+  type CapturedRunDraft as CollectedProbeRun,
+  type CurrentProbeRun,
+  type ProbeSuiteManifest,
+  type ProbeTarget,
+} from "@terminfo/probe-defs"
+import { decodeCollectorDraft, decodeExactUtf8, retainCaptureBinding } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {
   parseProcessOwnerAssertion,
@@ -211,7 +217,7 @@ export async function readRawDaemonProbeResponse(
   sha256: string
 }> {
   const raw = decodeExactUtf8(Buffer.from(await response.arrayBuffer()), "daemon /probe")
-  const decoded = decodeCollectorRun("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
+  const decoded = decodeCollectorDraft("daemon /probe", raw, receipt.manifest, receipt.collectorRevision)
   if (decoded.run.target.kind !== "app" && decoded.run.target.kind !== "mux") {
     throw new Error(`Daemon /probe target kind ${decoded.run.target.kind} is not an app or mux`)
   }
@@ -280,8 +286,20 @@ export async function readRetainedDaemonProbeResponse(
     receipt?: { manifest: ProbeSuiteManifest; collectorRevision: string }
   } = {},
 ): Promise<{ run: CollectedProbeRun; path: string; sha256: string }> {
-  const decoded = await readRawDaemonProbeResponse(response, options.receipt)
-  const retained = retainDaemonResponseBytes(Buffer.from(decoded.raw, "utf8"), options.directory)
+  const bytes = Buffer.from(await response.arrayBuffer())
+  const retained = retainDaemonResponseBytes(bytes, options.directory)
+  let decoded: Awaited<ReturnType<typeof readRawDaemonProbeResponse>>
+  try {
+    decoded = await readRawDaemonProbeResponse(new Response(bytes), options.receipt)
+  } catch (cause) {
+    throw Object.assign(
+      new Error(
+        `Invalid collector capture; retained original response ${retained.path}; SHA256 ${retained.sha256}: ${cause instanceof Error ? cause.message : String(cause)}`,
+        { cause },
+      ),
+      retained,
+    )
+  }
   return {
     run: {
       ...decoded.run,
@@ -291,12 +309,15 @@ export async function readRetainedDaemonProbeResponse(
   }
 }
 
-/** Preserve one immutable raw capture under its measured identity. */
-export function saveDaemonProbeRun(
+/** Enrich the same capture before seal; pending review is a valid private draft. */
+export function finalizeCollectedDraft(
   run: CollectedProbeRun,
-  directory: string,
   intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
-): string {
+): CollectedProbeRun | CurrentProbeRun {
+  if (run.schemaVersion !== 3 || !Array.isArray(run.results))
+    throw new Error("Final writer requires the current schema-3 draft; historical runs are read-only")
+  if ("sealedAt" in run)
+    throw new Error(`Run ${run.runId} is already sealed; enrichment cannot change immutable results`)
   if (intended && run.target.id !== intended.id && run.target.id !== "unknown") {
     throw new Error(
       `Measured terminal ${run.target.id} differs from intended ${intended.id}; refusing to relabel capture`,
@@ -307,24 +328,40 @@ export function saveDaemonProbeRun(
       `Measured version ${run.target.version} differs from intended ${intended.version}; refusing to relabel capture`,
     )
   }
-  const captured: CollectedProbeRun = intended
-    ? {
-        ...run,
-        target: { ...run.target, kind: intended.kind },
-        rawReplies: {
-          ...run.rawReplies,
-          "collector.intent": JSON.stringify(intended),
-        },
-      }
-    : run
+  const captured = globalThis.structuredClone(run)
+  if (intended) {
+    captured.target.kind = intended.kind
+    captured.intendedContext = { ...captured.intendedContext, ...intended }
+    captured.rawReplies["collector.intent"] = JSON.stringify(intended)
+  }
+  for (const result of captured.results) {
+    if (result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+      retainCaptureBinding(captured, result.featureId)
+  }
+  if (
+    captured.results.some((result) =>
+      result.checks.some((check) => check.id === "review" && check.status === "test-todo"),
+    )
+  )
+    return captured
+  return sealRunDraft(captured)
+}
+
+/** Preserve one immutable final run, or explicit pending-review draft, under its measured identity. */
+export function saveDaemonProbeRun(
+  run: CollectedProbeRun,
+  directory: string,
+  intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
+): string {
+  const captured = finalizeCollectedDraft(run, intended)
   for (const value of [captured.target.id, captured.target.version, captured.target.os ?? "unknown", captured.runId]) {
     if (!/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`Unsafe capture filename component: ${value}`)
   }
   mkdirSync(directory, { recursive: true })
   const file = join(
     directory,
-    `${captured.target.id}-${captured.target.version}-${captured.target.os ?? "unknown"}-${captured.runId}.json`,
+    `${captured.target.id}-${captured.target.version}-${captured.target.os ?? "unknown"}-${captured.runId}${captured.sealedAt === undefined ? ".draft" : ""}.json`,
   )
-  writeFileSync(file, `${JSON.stringify(captured, null, 2)}\n`, { flag: "wx" })
+  writeFileSync(file, `${JSON.stringify(captured, null, 2)}\n`, { flag: "wx", mode: 0o600 })
   return file
 }

@@ -56,11 +56,6 @@ export default {
       // Compute per-backend scores for the required baseline
       const scores = sortedBackends.map((b) => {
         const bs = data.baselineStats[b.name]?.[fw.baseline]
-        // Count partial results for this baseline's features
-        let partial = 0
-        for (const fid of baselineFeatureIds) {
-          if (data.results[b.name]?.[fid] === "partial") partial++
-        }
         return {
           name: b.name,
           slug: terminalSlug(b.name, data.meta),
@@ -70,9 +65,9 @@ export default {
           version: b.version,
           type: b.type ?? "headless",
           platforms: b.platforms ?? [],
-          yes: bs?.yes ?? 0,
-          partial,
-          total: bs?.total ?? 0,
+          yes: bs?.score.supported ?? 0,
+          partial: 0,
+          total: bs?.score.all ?? 0,
           pct: bs?.pct ?? null,
         }
       })

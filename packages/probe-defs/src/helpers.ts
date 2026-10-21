@@ -900,3 +900,23 @@ export function recordExecutedCapability(input: {
     ...(reason && { reason }),
   })
 }
+
+/** The execution owner records an aborted collection against affected unfinished capabilities. */
+export function recordCollectionFailure(draft: RunDraft, startedAt: string, diagnostic: string): void {
+  const diagnosticRef = "collector.failure"
+  draft.rawReplies[diagnosticRef] = diagnostic
+  const attempt = { scope: "collection" as const, startedAt, diagnosticRef }
+  draft.results = draft.results.map((result) =>
+    result.status === "test-todo"
+      ? finalizeCapabilityResult({
+          ...result,
+          attempt,
+          reason: diagnostic,
+          checks: [
+            ...result.checks.filter((check) => check.id !== "collection"),
+            { id: "collection", status: "test-failure", attempt, reason: diagnostic },
+          ],
+        })
+      : result,
+  )
+}

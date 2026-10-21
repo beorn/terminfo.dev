@@ -2,6 +2,12 @@ name: macos-measurement
 
 on:
   workflow_dispatch:
+    inputs:
+      capture_run_ids:
+        description: "Existing coordinator draft run IDs by matrix target; empty object for standalone collection"
+        type: string
+        required: false
+        default: '{}'
 
 permissions:
   contents: read
@@ -40,6 +46,7 @@ jobs:
             bundle: /Applications/cmux.app
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CAPTURE_RUN_IDS: ${{ inputs.capture_run_ids }}
     steps:
       - name: Bootstrap the pinned producer and sample at job start
         run: |
@@ -205,6 +212,9 @@ jobs:
           mkdir -p "$OUT/artifacts"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.command"
+          CAPTURE_RUN_ID=""
+          if [[ -n "$CAPTURE_RUN_IDS" ]]; then CAPTURE_RUN_ID="$(jq -r --arg id "$APP_ID" '.[$id] // ""' <<< "$CAPTURE_RUN_IDS")"; fi
+          [[ -z "$CAPTURE_RUN_ID" || "$CAPTURE_RUN_ID" =~ ^[a-f0-9]{32}$ ]] || { echo "Invalid delegated capture run ID" >&2; exit 1; }
           NODE_DIR="$(dirname "$(command -v node)")"
           COLLECTOR="$GITHUB_WORKSPACE/packages/terminfo.dev/bin/terminfo.mjs"
           COLLECTOR_BUN="$(command -v bun)"
@@ -236,6 +246,7 @@ jobs:
           export PATH="$BUN_DIR:$NODE_DIR:/usr/local/bin:/opt/homebrew/bin:\$PATH"
           export TERMINFO_DISPOSABLE_RECEIPT="$OUT/host-measured.json"
           export TERMINFO_CAPTURE_DIRECTORY="$OUT/artifacts"
+          export TERMINFO_CAPTURE_RUN_ID="$CAPTURE_RUN_ID"
           printf 'phase=entry utc=%s pid=%s tty=%s\n' "\$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "\$\$" "\$(tty)" >> "$OUT/collector.log"
           exec 2>> "$OUT/collector.log"
           attempts=0

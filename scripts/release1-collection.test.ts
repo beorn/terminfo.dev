@@ -38,7 +38,7 @@ import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { textQualificationFixtures } from "@terminfo/probe-defs"
-import { classifyDevelopmentRun } from "../docs/data/selected-results.ts"
+import { classifyHistoricalDevelopmentRun as classifyDevelopmentRun } from "../docs/data/selected-results.ts"
 import { buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,

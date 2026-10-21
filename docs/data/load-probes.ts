@@ -134,7 +134,9 @@ export interface AnalysisEntry {
   changes?: string | null
   runSha256?: string
   measuredAt?: string
-  counts?: { conclusive: number; supported: number; unsupported: number }
+  score?: { supported: number; all: number }
+  counts?: Record<import("@terminfo/probe-defs").CapabilityStatus, number>
+  complete?: boolean
 }
 
 let _analysisCached: Record<string, AnalysisEntry> | null = null

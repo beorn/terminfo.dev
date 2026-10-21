@@ -5,8 +5,10 @@ next: false
 ---
 
 <script setup>
+import { publicResultFor } from '../data/public-results'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
+import { currentCoverageSentence } from '../data/release-scope'
 const { params } = useData()
 const p = params.value
 
@@ -20,9 +22,9 @@ const headlessScores = scores.filter(s => s.type === 'headless')
 const barSegments = [
   { id: 'supported', label: 'Supported', symbol: '✓' },
   { id: 'unsupported', label: 'Unsupported', symbol: '✗' },
-  { id: 'inconclusive', label: 'Untestable', symbol: '?' },
-  { id: 'untested', label: 'TEST TODO', symbol: '–' },
-  { id: 'errors', label: 'TEST FAILURE', symbol: '!' },
+  { id: 'untestable', label: 'Untestable', symbol: '?' },
+  { id: 'test-todo', label: 'TEST TODO', symbol: '–' },
+  { id: 'test-failure', label: 'TEST FAILURE', symbol: '!' },
 ]
 
 function featureTooltip(f) {
@@ -47,21 +49,20 @@ function barSegmentItems(s, segment) {
     // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
     // only (a raw field, not a classification), exactly as the compare page reads its evidence method.
     const entry = data.selectedByBackend[s.name]
-    const state = entry?.states[f.id] ?? 'untested'
-    const status = state === 'error' ? 'errors' : state
-    if (status !== segment) continue
-    const note = entry?.selected.cells[f.id]?.note
+    const state = entry?.states[f.id]
+    if (state !== segment) continue
+    const note = data.notes[s.name]?.[f.id]
     items.push({ id: f.id, name: f.name, href: `/${f.category}/${f.slug}`, note })
   }
   return items
 }
 
 function barWidth(s, segment) {
-  return s.catalog ? (s[segment] / s.catalog * 100) + '%' : '0%'
+  return s.score.all ? (s.counts[segment] / s.score.all * 100) + '%' : '0%'
 }
 
 function coverageLabel(s) {
-  return `${s.supported} supported · ${s.unsupported} unsupported · ${s.inconclusive} Untestable · ${s.untested} TEST TODO · ${s.errors} TEST FAILURE / ${s.catalog} capabilities`
+  return `${currentCoverageSentence(s)} / ${s.score.all} capabilities`
 }
 
 function platformIcon(os) {
@@ -79,6 +80,8 @@ function platformIcons(b) {
 </script>
 
 <div class="baseline-page">
+
+<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
 
 <nav class="breadcrumb">
   <span>Baselines</span>
@@ -118,7 +121,7 @@ function platformIcons(b) {
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + segment.id" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'test-todo': 'untested', 'test-failure': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -128,7 +131,7 @@ function platformIcons(b) {
         </div>
       </div>
     </div>
-    <span class="summary-pct">{{ s.supported }}/{{ s.catalog }} supported ({{ s.pct ?? 0 }}%)</span>
+    <span class="summary-pct">{{ s.score.supported }}/{{ s.score.all }} supported ({{ s.pct ?? 0 }}%)</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -143,7 +146,7 @@ function platformIcons(b) {
     <span class="summary-version">{{ s.version }}</span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
-        :class="'bar-' + segment.id" :style="{ width: barWidth(s, segment.id) }">
+        :class="'bar-' + ({ untestable: 'inconclusive', 'test-todo': 'untested', 'test-failure': 'errors' }[segment.id] || segment.id)" :style="{ width: barWidth(s, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + s.slug" :aria-label="s.label + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(s, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(s, segment.id).length }})</strong>
@@ -153,7 +156,7 @@ function platformIcons(b) {
         </div>
       </div>
     </div>
-    <span class="summary-pct">{{ s.supported }}/{{ s.catalog }} supported ({{ s.pct ?? 0 }}%)</span>
+    <span class="summary-pct">{{ s.score.supported }}/{{ s.score.all }} supported ({{ s.pct ?? 0 }}%)</span>
   </div>
 </div>
 
@@ -194,7 +197,7 @@ function platformIcons(b) {
       </td>
       <td v-for="b in appBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -225,7 +228,7 @@ function platformIcons(b) {
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>

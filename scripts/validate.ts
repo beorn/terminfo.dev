@@ -149,7 +149,7 @@ for (const [dir, files] of [
         throw new Error("expected a JSON object")
       }
       const probe = data as ProbeFile["data"]
-      if (probe.schemaVersion !== undefined && probe.schemaVersion !== 2) {
+      if (probe.schemaVersion !== undefined && probe.schemaVersion !== 2 && probe.schemaVersion !== 3) {
         throw new Error(`unsupported schemaVersion ${String(probe.schemaVersion)}`)
       }
       if (
@@ -170,7 +170,7 @@ for (const [dir, files] of [
         }
       }
       let backendName: string | undefined
-      if (probe.schemaVersion === 2) {
+      if (probe.schemaVersion === 2 || probe.schemaVersion === 3) {
         const target = probe.target
         if (target === null || typeof target !== "object" || Array.isArray(target)) {
           throw new Error("v2 target must be a JSON object")

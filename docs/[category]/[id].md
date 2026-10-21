@@ -5,6 +5,7 @@ next: false
 ---
 
 <script setup>
+import { publicResultFor } from '../data/public-results'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 const { params } = useData()
@@ -28,6 +29,8 @@ function termTooltip(r) {
 </script>
 
 <div class="feature-page">
+
+<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
 
 <nav class="breadcrumb">
   <a href="/features">Features</a>
@@ -77,9 +80,9 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> targets with conclusive results ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current targets in this catalog ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
-<p v-else class="feature-score">No conclusive results for this feature.</p>
+<p v-else class="feature-score">No current schema-3 results for this feature.</p>
 
 ## Terminal Applications
 
@@ -97,7 +100,7 @@ function termTooltip(r) {
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :target-name="r.label"
-        :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
+        :version="data.selectedByBackend[r.name]?.selected" :cell="publicResultFor(data.selectedByBackend[r.name]?.selected, p.featureId)" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
       </td>
@@ -126,7 +129,7 @@ function termTooltip(r) {
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
       <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :target-name="r.label"
-        :version="data.selectedByBackend[r.name]?.selected" :cell="data.selectedByBackend[r.name]?.selected.cells[p.featureId]" display="text" /></td>
+        :version="data.selectedByBackend[r.name]?.selected" :cell="publicResultFor(data.selectedByBackend[r.name]?.selected, p.featureId)" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
       </td>
@@ -153,7 +156,7 @@ function termTooltip(r) {
     <tr v-for="sf in subFeatures" :key="sf.id">
       <td><a :href="'/' + p.featureCategory + '/' + sf.slug">{{ sf.name }}</a></td>
       <td v-for="b in appBackends" :key="b.name" class="result-cell"><ResultEvidenceCell :feature-id="sf.id" :probe-guidance="data.featureDescriptions[sf.id]?.probe" :feature-name="sf.name" :target-name="b.label"
-        :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[sf.id]" /></td>
+        :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, sf.id)" /></td>
     </tr>
   </tbody>
 </table>

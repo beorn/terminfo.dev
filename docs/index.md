@@ -17,9 +17,10 @@ hero:
 ---
 
 <script setup>
+import { publicResultFor } from './data/public-results'
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { coverageSentence, visibleCategoryIds } from './data/release-scope.ts'
+import { currentCoverageSentence, visibleCategoryIds } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -134,84 +135,38 @@ function catLabel(cat) {
 }
 
 function barSegmentItems(backendName, segment) {
-  // The tooltip names the rows of the SEGMENT the reader is hovering, read over the bar's own basis:
-  // the scored rows, in their classified state. Every row of the basis is named exactly once, by its
-  // own state, so no row of the denominator is left unnamed — a red segment lists unsupported rows
-  // only, never the untested ones the old all-results tooltip swept in, and the error and untested
-  // rows the blank remainder holds are named by their own segment (@cto 2026-10-12).
   const selected = data.selectedByBackend[backendName]?.selected
-  const states = selected ? data.releaseTable[selected.runId] : undefined
-  if (!states) return []
-  const n = data.notes[backendName] ?? {}
-  const items = []
-  for (const id of data.releaseScope.scoredIds) {
-    const state = states[id] ?? 'untested'
-    const name = data.featureDescriptions[id]?.name ?? id
-    const feature = data.features.find(feature => feature.id === id)
-    const href = feature ? '/' + feature.category + '/' + featureSlug(id) : undefined
-    const item = (symbol, note) => ({ id, name, href, symbol, note })
-    if (segment === 'yes' && state === 'supported') {
-      items.push(item('✓'))
-    } else if (segment === 'partial' && state === 'inconclusive') {
-      const note = n[id]
-      items.push(item('~', note))
-    } else if (segment === 'fail' && state === 'unsupported') {
-      const note = n[id]
-      items.push(item('✗', note))
-    } else if (segment === 'remainder' && (state === 'error' || state === 'untested')) {
-      items.push(item(state === 'error' ? '!' : '·', state === 'error' ? 'error' : 'untested'))
-    }
-  }
-  return items
+  if (!selected) return []
+  return selected.results.filter(result => result.status === segment).map(result => {
+    const feature = data.features.find(feature => feature.id === result.featureId)
+    return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
+      href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
+      symbol: {supported:'✓',unsupported:'✗',untestable:'?', 'test-todo':'–', 'test-failure':'!'}[segment],
+      note: result.reason }
+  })
 }
 
 const barSegments = [
-  { id: 'yes', label: 'Supported' },
-  { id: 'partial', label: 'Inconclusive' },
-  { id: 'fail', label: 'Unsupported' },
-  { id: 'remainder', label: 'Error / untested' },
+  { id: 'supported', label: 'Supported', style: 'yes' },
+  { id: 'unsupported', label: 'Unsupported', style: 'fail' },
+  { id: 'untestable', label: 'Untestable', style: 'partial' },
+  { id: 'test-todo', label: 'TEST TODO', style: 'remainder' },
+  { id: 'test-failure', label: 'TEST FAILURE', style: 'remainder' },
 ]
 
 function segmentWidth(name, segment) {
-  return segment === 'fail' ? failBarWidth(name) : segment === 'remainder' ? remainderBarWidth(name) : barWidth(name, segment)
-}
-
-function failBarWidth(backendName) {
-  const bar = data.releaseBars[backendName]
-  if (!bar?.denominator) return '0%'
-  return (bar.counts.unsupported / bar.denominator * 100) + '%'
-}
-
-// The blank remainder: the scored rows that produced no verdict, an error or nothing measured. It is
-// its own segment so every row of the basis has a place that names it.
-function remainderBarWidth(backendName) {
-  const bar = data.releaseBars[backendName]
-  if (!bar?.denominator) return '0%'
-  return ((bar.counts.error + bar.counts.untested) / bar.denominator * 100) + '%'
-}
-
-function barWidth(backendName, segment) {
-  const bar = data.releaseBars[backendName]
-  if (!bar?.denominator) return '0%'
-  if (segment === 'yes') return (bar.counts.supported / bar.denominator * 100) + '%'
-  if (segment === 'partial') return (bar.counts.inconclusive / bar.denominator * 100) + '%'
-  return '0%'
+  const bar = data.releaseBars[name]
+  return bar ? (bar.counts[segment] / bar.denominator * 100) + '%' : '0%'
 }
 
 function scoreLabel(backendName) {
-  const bar = data.releaseBars[backendName]
-  if (!bar) return 'No conclusive score'
-  // The D3 verdict (pass / with gaps / fail) over the included 52 leads, with its fraction; the
-  // measured-62 SUPPORTED share follows as the secondary, differently-denominated readout.
-  const verdict = data.releaseVerdicts[backendName]
-  const share = data.releaseShares[backendName]
-  return verdict ? `${verdict.text} · ${share}` : share
+  return data.releaseShares[backendName] ?? 'No current schema-3 score'
 }
 
 function coverageLabel(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar) return 'No selected run'
-  return coverageSentence(bar)
+  return currentCoverageSentence(bar)
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
@@ -261,6 +216,8 @@ function backendTooltip(name, version) {
 </script>
 
 <div class="problem-summary">
+
+<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
   <p :title="data.releaseScope.line"><a href="/how-it-works/">{{ data.releaseScope.measuredCount }} of {{ data.releaseScope.catalogCount }} features measured</a></p>
 </div>
 
@@ -274,7 +231,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Inconclusive</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">Error / untested</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">TEST TODO / TEST FAILURE</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -292,7 +249,7 @@ function backendTooltip(name, version) {
     <span class="summary-platforms" :title="backendContextLabel(b.name)" v-html="platformIcons(b.name)"></span>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.id" :style="{ width: segmentWidth(b.name, segment.id) }">
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
@@ -330,7 +287,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} conclusive` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
       </div>
     </div>
   </a>
@@ -387,7 +344,7 @@ function backendTooltip(name, version) {
       </td>
       <td v-for="b in appBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -409,7 +366,7 @@ function backendTooltip(name, version) {
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.id" :style="{ width: segmentWidth(b.name, segment.id) }">
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
@@ -438,7 +395,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} conclusive` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
       </div>
     </div>
   </a>
@@ -467,7 +424,7 @@ function backendTooltip(name, version) {
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -486,7 +443,7 @@ function backendTooltip(name, version) {
     <a class="summary-name hover-link" :href="'/terminals/' + termSlug(b.name)" :data-tooltip="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
     <span class="summary-version" :title="b.version">{{ b.version }}</span>
     <div class="summary-bar">
-      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.id" :style="{ width: segmentWidth(b.name, segment.id) }">
+      <div v-for="segment in barSegments" :key="segment.id" class="bar-segment" :class="'bar-' + segment.style" :style="{ width: segmentWidth(b.name, segment.id) }">
         <a class="bar-segment-link" :href="'/terminals/' + termSlug(b.name)" :aria-label="backendLabel(b.name) + ': ' + segment.label + ' — view results'"></a>
         <div v-if="barSegmentItems(b.name, segment.id).length" class="tooltip-content">
           <strong>{{ segment.label }} ({{ barSegmentItems(b.name, segment.id).length }})</strong>
@@ -523,7 +480,7 @@ function backendTooltip(name, version) {
       </td>
       <td v-for="b in muxBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -572,7 +529,7 @@ function backendTooltip(name, version) {
 Data comes from three complementary sources:
 
 **Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
-the community CLI runs reviewed queries; checks that change terminal state remain inconclusive
+the community CLI runs reviewed queries; checks that change terminal state require retained evidence
 until a verified disposable test environment is available. Rendering and interaction require
 their own evidence, such as screenshots and input tests; a reply alone proves neither.
 

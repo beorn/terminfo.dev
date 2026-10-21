@@ -24,7 +24,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -42,6 +42,7 @@ const trustedReceipt = {
     sourceRevision: "b".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
     adapterVersion: "3.3.1",
+    catalogIds: ["device.primary-da"],
     probes: { app: ["device.primary-da"], headless: ["device.primary-da"], mux: ["device.primary-da"] },
   } satisfies ProbeSuiteManifest,
   collectorRevision: "a".repeat(40),
@@ -49,7 +50,8 @@ const trustedReceipt = {
 
 function collectorRun(): CollectedProbeRun {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
     target: {
       kind: "app",
@@ -65,15 +67,21 @@ function collectorRun(): CollectedProbeRun {
     identity: "unverified",
     suiteId: trustedReceipt.manifest.probeHash,
     probeHash: trustedReceipt.manifest.probeHash,
-    suiteComplete: false,
     sourceRevision: trustedReceipt.collectorRevision,
     measuredAt: "2026-09-28T12:00:00.000Z",
     origin: { kind: "collector" },
     rawReplies: {},
     assertions: [],
     screenshotRefs: [],
-    observations: [],
-    ungradedDiagnostics: {},
+    results: [
+      {
+        featureId: "device.primary-da",
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Not implemented",
+      },
+    ],
   }
 }
 
@@ -112,10 +120,11 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
   }
 })
 
-it("writes one immutable v2 capture and refuses a mismatched intended version", () => {
+it("writes one immutable current capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run: CollectedProbeRun = {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
     target: {
       kind: "app",
@@ -131,15 +140,13 @@ it("writes one immutable v2 capture and refuses a mismatched intended version", 
     identity: "unverified",
     suiteId: "abcdef123456",
     probeHash: "abcdef123456",
-    suiteComplete: false,
     sourceRevision: "a".repeat(40),
     measuredAt: "2026-09-28T00:00:00.000Z",
     origin: { kind: "collector" },
     rawReplies: { "device.primary-da": "\x1b[?62;4c" },
     assertions: [],
     screenshotRefs: [],
-    observations: [],
-    ungradedDiagnostics: {},
+    results: collectorRun().results,
   }
   const dir = join(root, "runs")
   expect(() => saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.48.0" })).toThrow(

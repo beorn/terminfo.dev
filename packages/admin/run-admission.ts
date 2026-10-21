@@ -467,7 +467,8 @@ export function planAdmission(
     throw new Error(`Cannot read the run to admit: ${source}`, { cause })
   }
   if (!isRecord(parsed)) throw new Error(`Run to admit is not an object: ${source}`)
-  if (parsed.schemaVersion !== 2) throw new Error(`Run to admit is not schema v2: ${source}`)
+  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3)
+    throw new Error(`Run to admit requires current schema 3 or historical schema 2: ${source}`)
   const target = parsed.target
   if (!isRecord(target) || !["app", "headless", "mux"].includes(String(target.kind))) {
     throw new Error(`Run to admit has no app|headless|mux target kind: ${source}`)

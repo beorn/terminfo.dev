@@ -46,6 +46,8 @@ export type {
   NotTestedCoverage,
   HeadlessRuntimeIdentity,
   ProbeRun,
+  HistoricalProbeRun,
+  CapturedRunDraft,
   OuterAppProof,
   MuxAttachmentProof,
   RunProvenance,
@@ -162,4 +164,4 @@ export type {
 } from "./types.ts"
 export { initializeRunDraft, finalizeCapabilityResult, sealRunDraft } from "./helpers.ts"
 
-export { recordExecutedCapability } from "./helpers.ts"
+export { recordExecutedCapability, recordCollectionFailure } from "./helpers.ts"

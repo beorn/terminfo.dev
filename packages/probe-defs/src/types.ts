@@ -84,6 +84,9 @@ export interface RunDraft {
   sealedAt?: never
 }
 
+/** Captured identity is present, but HTTP/intent/app-launch enrichment and review can still run. */
+export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "target" | "identity" | "measuredAt" | "origin">>
+
 /** Final status bytes are immutable after all legitimate enrichment and required review. */
 export interface CurrentProbeRun extends Omit<RunDraft, "target" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
   target: ProbeTarget
@@ -518,7 +521,7 @@ export interface MuxAttachmentProof {
 }
 
 /** Raw run records are immutable; review decisions live in Interpretation. */
-export interface ProbeRun {
+export interface HistoricalProbeRun {
   schemaVersion: 2
   runId: string
   target: ProbeTarget
@@ -782,3 +785,6 @@ export interface ProbeDefinition {
   /** Every observation this Termless callback returns names this method, or none for a refusal before measurement. */
   termlessObservationEvidence?: ObservationEvidence
 }
+
+/** The only live run contract; v1/v2 are historical reader inputs. */
+export type ProbeRun = CurrentProbeRun

@@ -10,15 +10,21 @@ PROBE_BATCH_TIMEOUT_SECONDS=600
 # The same file is copied into the content-addressed runner input and serves
 # as the container entry point. This is execution tooling, not a probe engine.
 compose_receipt() {
-  local host=$1 container=$2 output=$3
+  local host=$1 container=$2 output=$3 final_run=${4:-}
   [[ -r "$host" ]] || { echo "Missing host-measured receipt: $host" >&2; return 2; }
   [[ -r "$container" ]] || { echo "Missing container receipt: $container" >&2; return 2; }
   [[ ! -e "$output" ]] || { echo "Refusing to replace existing run receipt: $output" >&2; return 2; }
-  local host_sha container_sha
+  local host_sha container_sha final_run_json=null
+  if [[ -n "$final_run" ]]; then
+    [[ -r "$final_run" ]] || { echo "Missing final run bytes: $final_run" >&2; return 2; }
+    final_run_json=$(jq -e --arg sha "$(sha256sum "$final_run" | cut -d ' ' -f 1)" --arg path "$(basename "$final_run")" '
+      if .schemaVersion == 3 and (.sealedAt | type == "string") then {path:$path,runId:.runId,sha256:$sha}
+      else error("final completion receipt requires a sealed schema-3 run") end' "$final_run") || return 2
+  fi
   host_sha=$(sha256sum "$host" | cut -d ' ' -f 1)
   container_sha=$(sha256sum "$container" | cut -d ' ' -f 1)
   jq -e -n --slurpfile host "$host" --slurpfile container "$container" \
-    --arg hostSha "$host_sha" --arg containerSha "$container_sha" '
+    --arg hostSha "$host_sha" --arg containerSha "$container_sha" --argjson finalRun "$final_run_json" '
     ($host[0]) as $h | ($container[0]) as $c |
     if ($h.runId | type) != "string" or ($c.runId | type) != "string" then
       error("missing runId in host or container receipt")
@@ -36,7 +42,9 @@ compose_receipt() {
          $c.collector.buildReceiptSha256 != $h.runnerArtifact.buildReceiptSha256 then
       error("container collector bytes disagree with host runner receipt")
     elif ($c.probeRun.runId | type) != "string" or ($c.probeRun.sha256 | type) != "string" then
-      error("container v2 probe run identity is missing")
+      error("container schema-3 capture identity is missing")
+    elif $finalRun != null and $finalRun.runId != $c.probeRun.runId then
+      error("final runId differs from original captured runId")
     elif ($h.selectedIDs // null) != ($c.selectedIDs // null) then
       error("host/container probe selection mismatch")
     elif ($c.display.glxinfo | type) != "string" or ($c.display.geometry | type) != "string" then
@@ -51,7 +59,7 @@ compose_receipt() {
         sourceArtifact:(($h.sourceArtifact + $c.sourceArtifact)
           | if (.kind // null) == "derived-source-tree" then del(.sri) else . end),
         collector:$c.collector,
-        probeRun:$c.probeRun,
+        probeRun:(if $finalRun == null then $c.probeRun else $finalRun end),
         display:$c.display,
         clipboardFixture:$c.clipboardFixture,
         capture:$c.capture,
@@ -152,11 +160,11 @@ stop_owned_processes() {
 }
 
 # Host attach is `timeout "$PROBE_BATCH_TIMEOUT_SECONDS" docker start --attach`. 143 is SIGTERM of that budget. A completed
-# batch already wrote observed.json + container-receipt.json + v2-run.json; refusing those is
+# batch already wrote observed.json + container-receipt.json + v3-capture.json; refusing those is
 # how #28552 discarded a 7.5 s kitty run. Other non-zero exits still fail.
 completed_batch_survives_attach_timeout() {
   local exit_code=$1 raw=$2
-  [[ "$exit_code" == 143 && -f "$raw/observed.json" && -f "$raw/container-receipt.json" && -f "$raw/v2-run.json" ]]
+  [[ "$exit_code" == 143 && -f "$raw/observed.json" && -f "$raw/container-receipt.json" && -f "$raw/v3-capture.json" ]]
 }
 
 # A producer receipt is read by the host before any container starts. When the CLI launcher is
@@ -765,38 +773,21 @@ if [[ "${1:-}" == "--inside" ]]; then
   fi
   date -u +%FT%TZ > /out/batch-wall-start.txt
   batch_status=0
-  curl --fail-with-body --silent --show-error --max-time "$PROBE_BATCH_TIMEOUT_SECONDS" --output /out/v2-run.json \
+  curl --fail-with-body --silent --show-error --max-time "$PROBE_BATCH_TIMEOUT_SECONDS" --output /out/v3-capture.json \
     --write-out '%{time_total}\n' \
     -H "Authorization: Bearer $token" "http://127.0.0.1:$port/probe" > /out/batch-elapsed-seconds.txt || batch_status=$?
   date -u +%FT%TZ > /out/batch-wall-end.txt
   [[ "$batch_status" == 0 ]] || { echo "Probe batch HTTP request failed: $batch_status" >&2; exit "$batch_status"; }
   if [[ "$selected_ids" != null ]]; then
-    # A controlled-Linux run with NO capture directory cannot make a frame, so a probe that needs
-    # one reports FrameUnavailable by its own id and the selection is still honored (27875). Every
-    # other diagnostic is a defect, and so is a FrameUnavailable in a run that HAD a capture
-    # directory. This container always exports TERMINFO_CAPTURE_DIRECTORY, so inside it the
-    # permitted set is empty by construction and any diagnostic is still refused.
-    if [[ -z "${TERMINFO_CAPTURE_DIRECTORY:-}" ]]; then
-      frameless_ids=$(jq -c '[.ungradedDiagnostics | to_entries[] | select(.value.name == "FrameUnavailable") | .key]' /out/v2-run.json)
-    else
-      frameless_ids='[]'
-    fi
-    jq -e --argjson ids "$selected_ids" --argjson frameless "$frameless_ids" '
-      (.ungradedDiagnostics | to_entries) as $diag |
-      ($diag | map(select(.value.name == "FrameUnavailable") | .key) | sort) as $found |
-      ($diag | map(select(.value.name != "FrameUnavailable") | .key)) as $unnamed |
-      (.observations | map(.featureId) + $found) as $actual |
-      ($unnamed | length) == 0 and $found == ($frameless | sort) and
-      ($actual | length) == ($ids | length) and ($actual | unique | length) == ($ids | length) and
-      ($actual | sort) == ($ids | sort)' /out/v2-run.json >/dev/null || {
-      echo "Actual observation selection differs from requested IDs or has diagnostics: $(jq -c '[.ungradedDiagnostics | to_entries[] | "\(.key)=\(.value.name)"]' /out/v2-run.json)" >&2
-      exit 2;
+    jq -e --argjson ids "$selected_ids" '
+      (.rawReplies["collector.selection"] | fromjson | .ids | sort) == ($ids | sort)' /out/v3-capture.json >/dev/null || {
+      echo "Actual native selection differs from requested IDs; original capture retained" >&2
+      exit 2
     }
-    [[ "$frameless_ids" == "[]" ]] || echo "frame-less selected ids: $frameless_ids" >&2
   fi
   jq -e --slurpfile build "$build_receipt" --arg executablePath "$live_executable" \
     --arg executableSha "$live_executable_sha" --arg target "$target_id" --arg mux "${TERMINFO_MUX_KIND:-}" '
-    .schemaVersion == 2 and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
+    .schemaVersion == 3 and (has("sealedAt") | not) and (.runId | type == "string" and test("^[0-9a-f]{32}$")) and
     (if $mux == "" then .target.kind == "app" and .target.id == $target and
        .provenance.executable.path == $executablePath and .provenance.executable.sha256 == $executableSha
      else .target.kind == "mux" and .target.id == $mux and .outerApp.target.id == $target and
@@ -804,14 +795,13 @@ if [[ "${1:-}" == "--inside" ]]; then
     .identity == "unverified" and .origin.kind == "collector" and
     .probeHash == $build[0].probeHash and .suiteId == $build[0].probeHash and
     .sourceRevision == $build[0].collectorRevision and
-    (.suiteComplete | type == "boolean") and (.rawReplies | type == "object") and
-    (.assertions | type == "array") and (.observations | type == "array") and
-    (has("results") | not)' /out/v2-run.json >/dev/null || {
-    echo "Daemon returned an invalid v2 probe run, or named a target other than $target_id ($(jq -c '.target // null' /out/v2-run.json)); raw response retained" >&2
+    (.rawReplies | type == "object") and (.assertions | type == "array") and
+    (.results | type == "array") and (has("observations") | not)' /out/v3-capture.json >/dev/null || {
+    echo "Daemon returned an invalid schema-3 capture, or named a target other than $target_id ($(jq -c '.target // null' /out/v3-capture.json)); raw response retained" >&2
     exit 2
   }
-  probe_run_id=$(jq -er .runId /out/v2-run.json)
-  probe_run_sha=$(sha256sum /out/v2-run.json | cut -d ' ' -f 1)
+  probe_run_id=$(jq -er .runId /out/v3-capture.json)
+  probe_run_sha=$(sha256sum /out/v3-capture.json | cut -d ' ' -f 1)
 
   # The shared callbacks captured this daemon's own window before sealing the
   # run. Keep the original owned geometry in its receipt; a later window search
@@ -822,7 +812,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   # "no frame captured" and carry the run, instead of refusing it on a bare `jq -er` exit 2 that
   # named nothing. A probe that wanted a frame still fails by name in its own result, so the run's
   # results list exactly the frame-needing ids that were selected.
-  capture_frame=$(jq -c '[.observations[].frames[]? | select(.role == "target")][0] // null' /out/v2-run.json)
+  capture_frame=$(jq -c '[.results[].frames[]? | select(.role == "target")][0] // null' /out/v3-capture.json)
   if [[ "$capture_frame" == null ]]; then
     echo "no frame captured: no selected probe called ctx.capture" >&2
     capture_receipt=null
@@ -852,7 +842,7 @@ if [[ "${1:-}" == "--inside" ]]; then
   # silent: each state is named, rather than implying a decoding; a value that is present and
   # unparsable aborts the run instead of silently reporting the default.
   decoding=$(jq -r '(.rawReplies["collector.utf8Decoding"] // "{}") | fromjson |
-    if has("decoding") then (.decoding // "silent") else "not-measured" end' /out/v2-run.json)
+    if has("decoding") then (.decoding // "silent") else "not-measured" end' /out/v3-capture.json)
   jq -n --arg run "$TERMINFO_RUN_ID" --arg probe "$probe_run_id" --argjson capture "$capture_receipt" \
     --arg decoding "$decoding" \
     --arg render "${target_render_pin:-terminal-default}" \
@@ -875,7 +865,7 @@ if [[ "${1:-}" == "--inside" ]]; then
       invocation:{path:$invocationPath,sha256:$invocationSha},
       sourceArtifact:{path:$sourcePath,sha256:$sourceSha},
       collector:{frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha},
-      probeRun:{path:"v2-run.json",runId:$probeRun,sha256:$probeSha},
+      probeRun:{path:"v3-capture.json",runId:$probeRun,sha256:$probeSha},
       display:{glxinfo:$glxinfo,xdpyinfo:$xdpyinfo,font:$font,geometry:$geometry},
       clipboardFixture:{path:"clipboard-fixture.json",runId:$run,profile:$profile,sha256:$clipboardSha},
       capture:$capture} + (if $ids == null then {} else {selectedIDs:$ids} end)' \
@@ -1144,7 +1134,7 @@ container_id=$(docker create --user "$run_uid:$run_gid" --network none --read-on
   --mount "type=bind,src=$prep/passwd,dst=/etc/passwd,readonly" \
   --mount "type=bind,src=$prep/group,dst=/etc/group,readonly" \
   --env "LC_ALL=C.UTF-8" \
-  --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_IMAGE_ID=$image_id" \
+  --env "TERMINFO_RUN_ID=$run_id" --env "TERMINFO_CAPTURE_RUN_ID=${TERMINFO_CAPTURE_RUN_ID:-}" --env "TERMINFO_IMAGE_ID=$image_id" \
   --env "TERMINFO_CLIPBOARD_PROFILE=$clipboard_profile" "${selection_env[@]}" \
   --env "TERMINFO_MUX_KIND=$mux_kind" \
   --env "TERMINFO_TARGET_ID=$target_id" --env "TERMINFO_TARGET_PRESET=$preset" \
@@ -1194,18 +1184,18 @@ fi
 jq -e --arg run "$run_id" '.runId == $run' "$raw/observed.json" >/dev/null || {
   echo "Raw observation run ID differs from host run ID" >&2; exit 2;
 }
-probe_sha=$(sha256sum "$raw/v2-run.json" | cut -d ' ' -f 1)
+probe_sha=$(sha256sum "$raw/v3-capture.json" | cut -d ' ' -f 1)
 jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_sha" \
   '.probeRun.runId == $run and .probeRun.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
-  echo "Raw v2 run differs from container receipt" >&2; exit 2;
+  echo "Raw schema-3 capture differs from container receipt" >&2; exit 2;
 }
-jq -e --slurpfile run "$raw/v2-run.json" \
+jq -e --slurpfile run "$raw/v3-capture.json" \
   '($run[0] | if .target.kind == "mux" then .outerApp.provenance.executable
               else .provenance.executable end) as $executable |
    .executable.path == $executable.path and
    .executable.sha256 == $executable.sha256' \
   "$raw/container-receipt.json" >/dev/null || {
-  echo "Retained v2 run executable differs from measured container ELF" >&2; exit 2;
+  echo "Retained schema-3 capture executable differs from measured container ELF" >&2; exit 2;
 }
 source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")
@@ -1223,5 +1213,18 @@ jq -e --arg run "$run_id" --arg profile "$clipboard_profile" --arg sha "$clipboa
    .clipboardFixture.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
   echo "Container clipboard fixture differs from exact retained receipt" >&2; exit 2;
 }
-compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json"
+TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -e '
+  import {readFileSync,writeFileSync} from "node:fs";
+  import {join} from "node:path";
+  import {readRetainedDaemonProbeResponse,finalizeCollectedDraft} from "./packages/terminfo.dev/src/daemon-client.ts";
+  const directory=process.env.TERMINFO_CAPTURE_OUTPUT;
+  const retained=await readRetainedDaemonProbeResponse(new Response(readFileSync(process.env.TERMINFO_CAPTURE_RAW)),{directory:join(directory,"http-responses")});
+  const run=finalizeCollectedDraft(retained.run);
+  const path=join(directory,run.sealedAt===undefined?"v3-run.draft.json":"v3-run.json");
+  writeFileSync(path,JSON.stringify(run,null,2)+"\n",{flag:"wx",mode:0o600});
+  console.error(run.sealedAt===undefined?"Valid capture; required review pending (TEST TODO)":"Sealed current schema-3 run");
+'
+if [[ -f "$raw/v3-run.json" ]]; then
+  compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json" "$raw/v3-run.json"
+fi
 echo "$run_dir"

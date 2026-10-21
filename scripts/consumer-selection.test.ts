@@ -26,9 +26,13 @@ import probesLoader from "../docs/data/probes.data.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import {
+  compatibilityTargets,
+  historicalCompatibilityTargets,
+  loadCurrentResults,
+} from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import type { PublicVersion } from "../docs/data/public-results.ts"
+import type { HistoricalPublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
 
@@ -41,7 +45,7 @@ type StubRun = { target: { kind: string; id: string; os?: string; permissions?: 
  * no cells, and `compatibilityTargets` only needs a row to exist for every current run.
  */
 function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
-  const table: Record<string, Record<string, CellState>> = {}
+  const table: Record<string, Record<string, import("@terminfo/probe-defs").CapabilityStatus>> = {}
   for (const [key, run] of Object.entries(current)) {
     const runId = `run:${key}`
     ;(run as StubRun & { runId?: string }).runId = runId
@@ -51,7 +55,7 @@ function stubProjection(current: Record<string, StubRun>, history: Record<string
 }
 
 interface RunReference extends Pick<
-  PublicVersion,
+  HistoricalPublicVersion,
   | "runId"
   | "target"
   | "measuredAt"
@@ -114,7 +118,25 @@ describe("consumer selection", () => {
     const published = publicResults(projection, compatibilityTargets(projection, content))
     expect(published.projection.current).toEqual({})
     expect(Object.values(published.projection.historical.history).flat().length).toBeGreaterThan(0)
-  })
+    const out = mkdtempSync(join(tmpdir(), "terminfo-zero-current-"))
+    try {
+      const { dataPath } = generateApi(out)
+      const current = JSON.parse(readFileSync(dataPath, "utf8")) as {
+        currentRunCount: number
+        current: Record<string, unknown>
+        message: string
+      }
+      expect(current.currentRunCount).toBe(0)
+      expect(current.current).toEqual({})
+      expect(current.message).toContain("No current")
+      const historical = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
+        history: Record<string, unknown[]>
+      }
+      expect(Object.values(historical.history).flat().length).toBeGreaterThan(0)
+    } finally {
+      rmSync(out, { recursive: true, force: true })
+    }
+  }, 30_000)
 
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
@@ -279,14 +301,18 @@ describe("consumer selection", () => {
       generateApi(out)
       const contentDir = join(import.meta.dirname, "..", "content")
       const projection = loadCurrentResults(contentDir).projection
-      const expected = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
+      const expected = publicResults(
+        projection,
+        compatibilityTargets(projection, contentDir),
+        historicalCompatibilityTargets(projection.historical, contentDir),
+      ).projection.historical
       const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
         current: Record<string, RunReference>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
         exclusions: unknown[]
       }
-      const expectedRuns = new Map<string, PublicVersion>()
+      const expectedRuns = new Map<string, HistoricalPublicVersion>()
       const allExpectedVersions = [
         ...Object.values(expected.current),
         ...Object.values(expected.versions).flat(),
@@ -300,7 +326,7 @@ describe("consumer selection", () => {
 
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
-        expectedGroup: Record<string, PublicVersion> | Record<string, PublicVersion[]>,
+        expectedGroup: Record<string, HistoricalPublicVersion> | Record<string, HistoricalPublicVersion[]>,
       ) => {
         expect(Object.keys(actual).sort()).toEqual(Object.keys(expectedGroup).sort())
         for (const [key, expectedValue] of Object.entries(expectedGroup)) {
@@ -348,8 +374,8 @@ describe("consumer selection", () => {
       const site = probesLoader.load()
       const { dataPath } = generateApi(out)
       const api = JSON.parse(readFileSync(dataPath, "utf8")) as {
-        terminals: Record<string, { score?: { total: number } }>
-        results: Record<string, Record<string, string>>
+        current: Record<string, unknown>
+        currentRunCount: number
       }
       const v2Bytes = readFileSync(join(out, "api", "v2", "data.json"))
       // The full retained dataset must fit Cloudflare Pages' single-asset limit.
@@ -368,18 +394,18 @@ describe("consumer selection", () => {
       if (!site.selectedByBackend.kitty) {
         expect(site.results.kitty).toBeUndefined()
         expect(site.stats.kitty).toBeUndefined()
-        expect(api.results.kitty).toBeUndefined()
-        expect(api.terminals.kitty?.score).toBeUndefined()
-        expect(analysis["terminals/kitty"]?.analysis).toContain("awaiting verified measurements")
+        expect(api.currentRunCount).toBe(0)
+        expect(api.current).toEqual({})
+        expect(analysis["terminals/kitty"]?.analysis).toContain("No current schema-3")
       }
-      if (Object.keys(v2.current).length === 0) {
-        expect(analysis["baseline/core"]?.analysis).toContain("awaiting verified measurements")
+      if (api.currentRunCount === 0) {
+        expect(analysis["baseline/core"]?.analysis).toContain("No current schema-3")
       }
       expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })

@@ -29,7 +29,10 @@ import {
   queryPixelGeometry,
   type PixelGeometrySource,
   type PixelGeometry,
-  type ProbeRun,
+  type CapturedRunDraft,
+  type ProbeTarget,
+  initializeRunDraft,
+  recordCollectionFailure,
   type ProbeSuiteManifest,
   type TermContext,
   type TerminalQueryOutcome,
@@ -359,527 +362,567 @@ export async function collectProbeRun(
     terminalAppOwner?: TerminalAppOwnerAssertion
     processOwner?: ProcessOwnerAssertion
     expectedLaunchRunId?: string
+    captureRunId?: string
+    intendedContext?: Partial<ProbeTarget>
   } = {},
-): Promise<ProbeRun> {
+): Promise<CapturedRunDraft> {
   const out = options.out ?? process.stdout
-  const captureRunId = randomBytes(16).toString("hex")
-  const terminal = detectTerminal()
+  const captureRunId =
+    options.captureRunId ?? (process.env.TERMINFO_CAPTURE_RUN_ID || undefined) ?? randomBytes(16).toString("hex")
+  if (!/^[a-zA-Z0-9._-]+$/.test(captureRunId)) throw new Error("Unsafe capture runId")
   const { manifest, collectorRevision: sourceRevision } = getTrustedSuiteReceipt()
-  const probeHash = manifest.probeHash
-  const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
-  const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
-  const hostedReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
-  const kind = ownedTerminalKind({
-    clipboardReceipt,
-    hostedReceipt,
-    terminalAppOwner: options.terminalAppOwner,
-    processOwner: options.processOwner,
-    platform: process.platform,
+  const draft = initializeRunDraft({
+    runId: captureRunId,
+    sourceRevision,
+    manifest,
+    intendedContext: options.intendedContext ?? {
+      kind: "app",
+      ...(process.env.TERMINFO_TARGET_ID && { id: process.env.TERMINFO_TARGET_ID }),
+      ...(process.env.TERMINFO_TARGET_VERSION && { version: process.env.TERMINFO_TARGET_VERSION }),
+    },
   })
-  if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
-    throw new Error("Darwin capture directory requires a verified hosted-runner terminal receipt")
-  }
-  // A hosted capture is a runner-owned terminal, not a controlled Linux run: macOS names
-  // darwinHosted and Windows names windowsHosted, and neither can supply Linux runtime provenance.
-  const hostedCapture = Boolean(captureDirectory) && (kind === "darwinHosted" || kind === "windowsHosted")
-  const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
-  if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedCapture) {
-    throw new Error("Controlled Linux collection requires runtime provenance")
-  }
-  if (provenancePath && !captureDirectory && !clipboardReceipt) {
-    throw new Error("Runtime provenance requires owned capture or clipboard")
-  }
-  const provenanceSource: unknown = provenancePath ? JSON.parse(readFileSync(provenancePath, "utf8")) : undefined
-  const envelope =
-    provenanceSource &&
-    typeof provenanceSource === "object" &&
-    !Array.isArray(provenanceSource) &&
-    Object.hasOwn(provenanceSource, "outerApp")
-      ? (provenanceSource as Record<string, unknown>)
-      : undefined
-  if (envelope && Object.keys(envelope).some((key) => key !== "target" && key !== "outerApp")) {
-    throw new Error("Mux runtime provenance envelope has unexpected fields")
-  }
-  const muxTarget = envelope ? parseTarget(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
-  if (
-    muxTarget &&
-    (muxTarget.kind !== "mux" || muxTarget.os !== terminal.os || muxTarget.osVersion !== terminal.osVersion)
-  ) {
-    throw new Error("Mux runtime provenance target disagrees with the collector platform")
-  }
-  const outerApp = muxTarget
-    ? parseOuterApp(
-        envelope?.outerApp,
-        muxTarget,
-        "collector",
-        { probeHash, sourceRevision },
-        provenancePath ?? "mux runtime provenance",
-      )
-    : undefined
-  if (muxTarget && !outerApp?.provenance) throw new Error("Mux runtime provenance lacks outer app provenance")
-  const executableSource = outerApp?.provenance ?? provenanceSource
-  const executable = executableSource ? measuredExecutable(executableSource) : undefined
-  const measuredTerminal = muxTarget ? { name: muxTarget.id, version: muxTarget.version } : terminal
-  if ((captureDirectory || clipboardReceipt) && !executable && !hostedCapture) {
-    throw new Error("Controlled Linux collection lacks measured executable")
-  }
-  let capture: ProbeCapture | undefined
-  /** Set when `capture` above reads the terminal's own text rather than pixels. */
-  let textCapture = false
-  let textQualification: TextQualification | undefined
-  /**
-   * The text-snapshot adapter: the terminal's own cells, for the arm whose pixels cannot be read at
-   * all. It answers a checkpoint with a text-cells frame whose digests are computed from the cells —
-   * never from a raster — and it retains the snapshot in the run's artifact directory so admission
-   * can place it and re-hash it. A refused read throws: a row that asked for a frame must not be
-   * graded as if the screen were empty.
-   *
-   * Every arm that can read cells installs it — the hosted Darwin arm, the hosted Windows arm and
-   * the app arm — but only when the run supplies a retention directory. Without one the arm names
-   * that skip and every row keeps its own no-capture branch rather than grading an unretainable read.
-   */
-  const installTextCapture = (terminal: OwnedTerminal): boolean => {
-    const readCells = terminal.readCells?.bind(terminal)
-    if (!readCells) return false
-    if (!captureDirectory) {
-      // No retention directory, so no frame: the arm keeps exactly the behaviour it had, and the
-      // rows that need a frame name the absent adapter instead of grading an unretainable read.
-      process.stderr.write(
-        `${kind}: this arm can read cells from the terminal's own text, but the run has no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in, so every row takes its own no-capture branch\n`,
-      )
-      return false
-    }
-    // captureDirectory IS the artifact directory: the launch receipt hands the collector
-    // `<out>/artifacts`, and admission reads the bytes from there.
-    const artifactDirectory = captureDirectory
-    mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
-    capture = async (checkpoint) => {
-      if (process.platform === "win32") {
-        // The selected stream's completion can be synchronous while console cells remain stale.
-        // The existing operation lease puts this query after earlier writes on that same stream.
-        const outcome = await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 700)
-        if (!outcome.match) {
-          throw new Error(
-            `${checkpoint.label}: console read refused: cursor query ${outcome.reason}, ${Buffer.from(outcome.rawBase64, "base64").length} bytes`,
-          )
-        }
-      } else {
-        await new Promise<void>((resolve, reject) => {
-          out.write("", (error) => {
-            if (error) reject(error)
-            else resolve()
-          })
-        })
-      }
-      const read = await readCells()
-      const result = textCellsFrame(checkpoint, read, Date.now())
-      // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
-      // second write, and a digest that maps to different bytes is named instead of overwritten.
-      // The bytes are the ones the frame's ref hashed — never a re-encoded copy.
-      retain(artifactDirectory, result.retained, "txt")
-      return { frame: result.frame, trace: result.trace }
-    }
-    textCapture = true
-    if (process.platform === "darwin") {
-      const textAdapter = capture
-      prepareCapture = async ({ context, featureId, recordCapture }) => {
-        textQualification = await collectTextQualification({
-          ctx: context,
-          capture: async (checkpoint) => {
-            const result = await textAdapter({ featureId, ...checkpoint })
-            recordCapture(result)
-            return result.frame
-          },
-        })
-      }
-    }
-    return true
-  }
-  let prepareCapture:
-    | ((input: {
-        context: TermContext
-        featureId: string
-        recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
-      }) => Promise<void>)
-    | undefined
-  /**
-   * Read protocol geometry once before the batch, then witness the complete raster and restoration
-   * before its first callback. An intrinsic missing report does not prevent measurement; a transient
-   * query failure aborts. The recorded fact names the measured authority or the actual refusal.
-   */
-  let preflightDarwinCapture: (() => Promise<void>) | undefined
-  let captureCalibration: CaptureCalibrationFact | undefined
-  let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
-  if (captureDirectory && process.platform === "linux") {
-    if (!executable) throw new Error("Configured Linux capture lacks measured executable")
-    capture = await createLinuxCapture(captureDirectory, executable)
-    input = await createLinuxInput(executable)
-  } else if (provenancePath) {
-    // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
-    // one must fail BY NAME in its own result instead of reaching an absent callback (27875).
-    // The stub is installed ONLY here: every other run keeps no capture callback at all, so the
-    // probes' own absence branches (cursor, erase, charsets, helpers) still decide those rows
-    // exactly as they do today, and no non-container row changes.
-    capture = frameUnavailableCapture()
-  }
-  let ownedTerminal: OwnedTerminal | undefined
-  if (kind === "linux") {
-    if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      linux: { receiptPath: clipboardReceipt, executable },
-    })
-  } else if (kind === "terminalApp") {
-    if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-      terminalApp: options.terminalAppOwner,
-    })
-    installTextCapture(ownedTerminal)
-  } else if (kind === "process") {
-    if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
-      process: options.processOwner,
-    })
-  } else if (kind === "darwinHosted") {
-    if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      darwinHosted: { receiptPath: hostedReceipt },
-    })
-    assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
-    // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
-    // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
-    // refuse by design, so preflight and the pixel install are skipped entirely.
-    if (!installTextCapture(ownedTerminal) && captureDirectory) {
-      const appPid = ownedTerminal.hostedAppPid
-      if (!appPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
-      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
-      let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
-      let calibrationError: Error | undefined
-      const noGeometry = (message: string) => {
-        const error = new Error(`Darwin capture calibration refused: ${message}`)
-        error.name = "UndeclaredTerminalGeometry"
-        return error
-      }
-      // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
-      // already measured: the adapter never queries the terminal itself, so the geometry it checks a
-      // frame request against and the geometry the origin was calibrated on can never diverge.
-      const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
-        capture = async (checkpoint) => {
-          if (calibrationError) throw calibrationError
-          if (!checkpoint.cells && !checkpoint.pixelGeometry) {
-            const result = await darwinCapture.captureRaw(checkpoint)
-            return result.result
-          }
-          if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
-          const geometry = textOrigin.pixelGeometry
-          if (
-            checkpoint.pixelGeometry &&
-            (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
-              checkpoint.pixelGeometry.cellHeight !== geometry.cellHeight ||
-              checkpoint.pixelGeometry.textWidth !== geometry.textWidth ||
-              checkpoint.pixelGeometry.textHeight !== geometry.textHeight)
-          ) {
-            throw noGeometry("terminal pixel geometry changed after origin calibration")
-          }
-          return darwinCapture.capture(checkpoint, textOrigin)
-        }
-        prepareCapture = async ({ context, featureId, recordCapture }) => {
-          try {
-            textOrigin = await calibrateCaptureOrigin({
-              ctx: context,
-              pixelGeometry: reportedGeometry,
-              timeoutMs: DEFAULT_TIMEOUT_MS,
-              captureRaw: async (label, deadline) => {
-                const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
-                recordCapture(result.result)
-                return result.decoded
-              },
-            })
-            context.captureGeometry = {
-              geometry: textOrigin.pixelGeometry,
-              source: "measured by complete raster calibration",
-            }
-            captureCalibration = {
-              outcome: "installed",
-              basis: context.captureGeometry.source,
-              geometry: textOrigin.pixelGeometry,
-              queries,
-            }
-          } catch (cause) {
-            const error = cause instanceof Error ? cause : new Error(String(cause))
-            if (error.name !== "CaptureCalibrationRefused") throw error
-            calibrationError = error
-            context.captureGeometryRefusal = error.message
-            const causes: Array<{ name: string; message: string }> = []
-            const seen = new Set<Error>()
-            for (
-              let current: unknown = error;
-              current instanceof Error && !seen.has(current);
-              current = current.cause
-            ) {
-              seen.add(current)
-              causes.push({ name: current.name, message: current.message })
-            }
-            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
-          }
-        }
-      }
-      preflightDarwinCapture = async () => {
-        const queries: CaptureCalibrationQuery[] = []
-        const report = await queryPixelGeometry({
-          queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
-            const outcome = await queryWithSentinelOutcome(sequence, pattern, timeoutMs)
-            queries.push({
-              sequence,
-              reason: outcome.reason,
-              raw: outcome.raw,
-              rawBase64: outcome.rawBase64,
-            })
-            return outcome
-          },
-        })
-        if ("missing" in report) {
-          // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
-          // rounds 1-2). A TIMEOUT - nothing answered at all, DA1 included - is a property of THIS
-          // run, never of the terminal, so the batch aborts loudly, by name, carrying the replies it
-          // read: the failure itself is evidence, and the run is repeated. A sentinel is NOT this
-          // case: tty.ts measures it as DA1 answered and then silence, the terminal's own negative,
-          // so it completes below as a named refusal.
-          if (report.transient) {
-            const read = queries
-              .map((query) => `${query.sequence} = ${query.reason} (${JSON.stringify(query.raw)})`)
-              .join("; ")
-            const error = new Error(
-              `Darwin capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
-            )
-            error.name = "TerminalGeometryUnmeasurable"
-            throw error
-          }
-          // An intrinsic missing report is not a missing measurement: the existing calibration
-          // now measures the complete raster. A transient query failure still aborts above.
-          installCapture(undefined, queries)
-          return
-        }
-        installCapture(report.geometry, queries)
-      }
-    }
-  } else if (kind === "windowsHosted") {
-    if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
-    // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
-    // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
-    // an ancestor, and every geometry probe then reads the console it is actually writing to.
-    ownedTerminal = await createOwnedTerminal({
-      captureRunId,
-      out,
-      expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
-      windowsHosted: { receiptPath: hostedReceipt },
-    })
-    assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
-    // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
-    installTextCapture(ownedTerminal)
-  }
-  const clipboard = ownedTerminal?.clipboard
-  const attachment = clipboard?.muxAttachmentProof
-  let batch: Awaited<ReturnType<typeof runProbeBatch>>
+  const draftDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY ?? join(homedir(), ".terminfo-dev", "http-responses")
+  mkdirSync(draftDirectory, { recursive: true, mode: 0o700 })
+  const draftPath = join(draftDirectory, `${captureRunId}.draft.json`)
+  writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })
+  const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
+  let collectionStartedAt: string | undefined
   try {
+    const terminal = detectTerminal()
+    const probeHash = manifest.probeHash
+    const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
+    const clipboardReceipt = process.env.TERMINFO_CLIPBOARD_FIXTURE_RECEIPT
+    const hostedReceipt = process.env.TERMINFO_DISPOSABLE_RECEIPT
+    const kind = ownedTerminalKind({
+      clipboardReceipt,
+      hostedReceipt,
+      terminalAppOwner: options.terminalAppOwner,
+      processOwner: options.processOwner,
+      platform: process.platform,
+    })
+    if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
+      throw new Error("Darwin capture directory requires a verified hosted-runner terminal receipt")
+    }
+    // A hosted capture is a runner-owned terminal, not a controlled Linux run: macOS names
+    // darwinHosted and Windows names windowsHosted, and neither can supply Linux runtime provenance.
+    const hostedCapture = Boolean(captureDirectory) && (kind === "darwinHosted" || kind === "windowsHosted")
+    const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
+    if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedCapture) {
+      throw new Error("Controlled Linux collection requires runtime provenance")
+    }
+    if (provenancePath && !captureDirectory && !clipboardReceipt) {
+      throw new Error("Runtime provenance requires owned capture or clipboard")
+    }
+    const provenanceSource: unknown = provenancePath ? JSON.parse(readFileSync(provenancePath, "utf8")) : undefined
+    const envelope =
+      provenanceSource &&
+      typeof provenanceSource === "object" &&
+      !Array.isArray(provenanceSource) &&
+      Object.hasOwn(provenanceSource, "outerApp")
+        ? (provenanceSource as Record<string, unknown>)
+        : undefined
+    if (envelope && Object.keys(envelope).some((key) => key !== "target" && key !== "outerApp")) {
+      throw new Error("Mux runtime provenance envelope has unexpected fields")
+    }
+    const muxTarget = envelope ? parseTarget(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
     if (
       muxTarget &&
-      (!attachment ||
-        attachment.captureRunId !== captureRunId ||
-        attachment.mux !== muxTarget.id ||
-        attachment.mux !== muxTarget.mux ||
-        attachment.executable.version !== muxTarget.version ||
-        attachment.config.path !== muxTarget.config)
+      (muxTarget.kind !== "mux" || muxTarget.os !== terminal.os || muxTarget.osVersion !== terminal.osVersion)
     ) {
-      throw new Error("Mux target differs from the verified mux attachment")
+      throw new Error("Mux runtime provenance target disagrees with the collector platform")
     }
-    if (attachment && !muxTarget) {
-      throw new Error("Verified mux attachment requires its mux runtime provenance envelope")
-    }
-    if (attachment && outerApp) {
-      const source = outerApp.rawReplies["collector.preflightIdentity"]
-      if (
-        !source ||
-        !isDeepStrictEqual(parseJsonStrict("mux outer preflight", source), {
-          ...attachment.preflightCollector,
-          launchRunId: attachment.launchRunId,
-        })
-      ) {
-        throw new Error("Outer preflight differs from the verified mux attachment")
-      }
-    }
-    batch = await withRawMode(
-      () =>
-        withTTYOperation(
-          async () => {
-            let geometryCorroboration: GeometryCorroboration | undefined
-            let identityQuery:
-              | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
-              | undefined
-            let da2Query: Awaited<ReturnType<typeof queryWithSentinelOutcome>> | undefined
-            if (ownedTerminal) {
-              const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
-              const query = {
-                sequence: "\x1b[18t" as const,
-                outbound: "\x1b[18t\x1b[c" as const,
-                reason: response.reason,
-                raw: response.raw,
-                rawBase64: response.rawBase64,
-              }
-              if (response.match) {
-                const rows = Number(response.match[1])
-                const cols = Number(response.match[2])
-                const grant = ownedTerminal.geometryAtGrant
-                const status =
-                  !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)
-                    ? "malformed"
-                    : grant?.status !== "measured"
-                      ? "uncorroborated"
-                      : rows === grant.rows && cols === grant.cols
-                        ? "agree"
-                        : "conflict"
-                geometryCorroboration = { status, query, ...(status !== "malformed" ? { rows, cols } : {}) }
-              } else {
-                geometryCorroboration = {
-                  status: response.raw.includes("\x1b[8;") ? "malformed" : "silent",
-                  query,
-                }
-              }
-              const identity = await queryWithSentinelOutcome("\x1b[>0q", COMPLETE_XTVERSION, 700)
-              identityQuery = {
-                sequence: "\x1b[>0q",
-                outbound: "\x1b[>0q\x1b[c",
-                reason: identity.reason,
-                raw: identity.raw,
-                rawBase64: identity.rawBase64,
-              }
-              // Only Screen consumes DA2 for its measured version; ordinary apps keep their preflight.
-              if (measuredTerminal.name === "screen") {
-                da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
-              }
-              resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
-                "collector.xtversion": identity.raw,
-                ...(da2Query && { "collector.da2": da2Query.raw }),
-              })
-            }
-            // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
-            // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
-            // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
-            // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
-            if (preflightDarwinCapture) await preflightDarwinCapture()
-            const result = await runProbeBatch({
-              ids: options.ids,
-              out,
-              captureRunId,
-              // The run's own target, from the launched app: the receipt is bound to this before any write.
-              target: { kind: muxTarget?.kind ?? "app", id: measuredTerminal.name, os: terminal.os },
-              ...(capture && { capture }),
-              ...(textCapture && { captureKind: "text-cells" as const }),
-              ...(input && { input }),
-              ...(ownedTerminal && { ownedTerminal }),
-              ...(geometryCorroboration && { geometryCorroboration }),
-              ...(prepareCapture && { prepareCapture }),
-            })
-            if (identityQuery) {
-              result.rawReplies["collector.xtversion"] = identityQuery.raw
-              result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
-            }
-            if (da2Query) {
-              result.rawReplies["collector.da2"] = da2Query.raw
-              result.rawReplies["collector.da2Query"] = JSON.stringify({ sequence: "\x1b[>c", ...da2Query })
-            }
-            if (captureCalibration) {
-              result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
-            }
-            await drainStdin(1000)
-            return result
-          },
-          out,
-          clipboard ? () => clipboard.assertOwned() : undefined,
-        ),
-      out,
-    )
-  } finally {
-    await ownedTerminal?.dispose()
-  }
-  if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
-  if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
-  const measuredVersion =
-    (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
-      ? batch.appLaunch.productVersion
-      : resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, batch.rawReplies)
-  const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
-  const target: ProbeRun["target"] = muxTarget
-    ? { ...muxTarget, version: measuredVersion }
-    : {
-        kind: "app",
-        id: terminal.name,
-        // Windows Terminal uses its parsed launched-executable ProductVersion; other apps use terminal
-        // identity replies. alacritty reports none at all -
-        // XTVERSION answers with nothing and neither TERM_PROGRAM nor TERM_PROGRAM_VERSION is set - so
-        // it is "unknown" here, which provenance can never agree with. When the APPARATUS declared a
-        // version for this target (the launcher passes TERMINFO_TARGET_VERSION in the image
-        // environment; it is never read back out of the ownership receipt), write that declaration
-        // instead. The value is NOT a version the terminal reported - the raw replies show it reported
-        // none - and the provenance check still does its work: the binary's own `--version` must agree
-        // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
-        version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
-        os: terminal.os,
-        osVersion: terminal.osVersion,
-        outerTerminal: null,
-        mux: null,
-        config: null,
-        permissions: null,
-      }
-  const provenance =
-    provenancePath && !muxTarget
-      ? parseRunProvenance(provenanceSource, target, { probeHash, sourceRevision }, provenancePath)
+    const outerApp = muxTarget
+      ? parseOuterApp(
+          envelope?.outerApp,
+          muxTarget,
+          "collector",
+          { probeHash, sourceRevision },
+          provenancePath ?? "mux runtime provenance",
+        )
       : undefined
-  if (provenancePath && !provenance && !outerApp?.provenance) {
-    throw new Error(`Missing runtime provenance in ${provenancePath}`)
-  }
-  if (provenance) target.config = provenance.fixture.config
-  if (clipboard) {
-    if ((outerApp?.provenance ?? provenance)?.fixture.config !== clipboard.config) {
-      throw new Error("Owned clipboard profile config differs from runtime provenance")
+    if (muxTarget && !outerApp?.provenance) throw new Error("Mux runtime provenance lacks outer app provenance")
+    const executableSource = outerApp?.provenance ?? provenanceSource
+    const executable = executableSource ? measuredExecutable(executableSource) : undefined
+    const measuredTerminal = muxTarget ? { name: muxTarget.id, version: muxTarget.version } : terminal
+    if ((captureDirectory || clipboardReceipt) && !executable && !hostedCapture) {
+      throw new Error("Controlled Linux collection lacks measured executable")
     }
-    if (clipboard.profile !== "default") target.permissions = clipboard.permissions
-  }
-  return {
-    schemaVersion: 2,
-    runId: captureRunId,
-    target,
-    ...(provenance && { provenance }),
-    ...(outerApp && { outerApp }),
-    identity: "unverified",
-    suiteId: probeHash,
-    probeHash,
-    suiteComplete: batch.suiteComplete,
-    sourceRevision,
-    measuredAt: new Date().toISOString(),
-    // The launch receipt is COPIED from the parsed ownership receipt, never rebuilt here, so the
-    // apparatus measures and the collector only carries (28216).
-    origin: { kind: "collector", ...(batch.appLaunch && { appLaunch: batch.appLaunch }) },
-    rawReplies: batch.rawReplies,
-    assertions: batch.assertions,
-    screenshotRefs: batch.screenshotRefs,
-    // Absent rather than empty in runs with no text frames, so an old-shaped run stays old-shaped.
-    ...((batch.textSnapshotRefs?.length ?? 0) > 0 && { textSnapshotRefs: batch.textSnapshotRefs }),
-    ...(textQualification === undefined ? {} : { textQualification }),
-    observations: batch.observations,
-    ...(batch.notTested?.length ? { notTested: batch.notTested } : {}),
-    ungradedDiagnostics: batch.ungradedDiagnostics,
+    let capture: ProbeCapture | undefined
+    /** Set when `capture` above reads the terminal's own text rather than pixels. */
+    let textCapture = false
+    let textQualification: TextQualification | undefined
+    /**
+     * The text-snapshot adapter: the terminal's own cells, for the arm whose pixels cannot be read at
+     * all. It answers a checkpoint with a text-cells frame whose digests are computed from the cells —
+     * never from a raster — and it retains the snapshot in the run's artifact directory so admission
+     * can place it and re-hash it. A refused read throws: a row that asked for a frame must not be
+     * graded as if the screen were empty.
+     *
+     * Every arm that can read cells installs it — the hosted Darwin arm, the hosted Windows arm and
+     * the app arm — but only when the run supplies a retention directory. Without one the arm names
+     * that skip and every row keeps its own no-capture branch rather than grading an unretainable read.
+     */
+    const installTextCapture = (terminal: OwnedTerminal): boolean => {
+      const readCells = terminal.readCells?.bind(terminal)
+      if (!readCells) return false
+      if (!captureDirectory) {
+        // No retention directory, so no frame: the arm keeps exactly the behaviour it had, and the
+        // rows that need a frame name the absent adapter instead of grading an unretainable read.
+        process.stderr.write(
+          `${kind}: this arm can read cells from the terminal's own text, but the run has no TERMINFO_CAPTURE_DIRECTORY to retain a snapshot in, so every row takes its own no-capture branch\n`,
+        )
+        return false
+      }
+      // captureDirectory IS the artifact directory: the launch receipt hands the collector
+      // `<out>/artifacts`, and admission reads the bytes from there.
+      const artifactDirectory = captureDirectory
+      mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
+      capture = async (checkpoint) => {
+        if (process.platform === "win32") {
+          // The selected stream's completion can be synchronous while console cells remain stale.
+          // The existing operation lease puts this query after earlier writes on that same stream.
+          const outcome = await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 700)
+          if (!outcome.match) {
+            throw new Error(
+              `${checkpoint.label}: console read refused: cursor query ${outcome.reason}, ${Buffer.from(outcome.rawBase64, "base64").length} bytes`,
+            )
+          }
+        } else {
+          await new Promise<void>((resolve, reject) => {
+            out.write("", (error) => {
+              if (error) reject(error)
+              else resolve()
+            })
+          })
+        }
+        const read = await readCells()
+        const result = textCellsFrame(checkpoint, read, Date.now())
+        // Same discipline as the pixel path: a repeated identical screen is one artifact, not a
+        // second write, and a digest that maps to different bytes is named instead of overwritten.
+        // The bytes are the ones the frame's ref hashed — never a re-encoded copy.
+        retain(artifactDirectory, result.retained, "txt")
+        return { frame: result.frame, trace: result.trace }
+      }
+      textCapture = true
+      if (process.platform === "darwin") {
+        const textAdapter = capture
+        prepareCapture = async ({ context, featureId, recordCapture }) => {
+          textQualification = await collectTextQualification({
+            ctx: context,
+            capture: async (checkpoint) => {
+              const result = await textAdapter({ featureId, ...checkpoint })
+              recordCapture(result)
+              return result.frame
+            },
+          })
+        }
+      }
+      return true
+    }
+    let prepareCapture:
+      | ((input: {
+          context: TermContext
+          featureId: string
+          recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
+        }) => Promise<void>)
+      | undefined
+    /**
+     * Read protocol geometry once before the batch, then witness the complete raster and restoration
+     * before its first callback. An intrinsic missing report does not prevent measurement; a transient
+     * query failure aborts. The recorded fact names the measured authority or the actual refusal.
+     */
+    let preflightDarwinCapture: (() => Promise<void>) | undefined
+    let captureCalibration: CaptureCalibrationFact | undefined
+    let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
+    if (captureDirectory && process.platform === "linux") {
+      if (!executable) throw new Error("Configured Linux capture lacks measured executable")
+      capture = await createLinuxCapture(captureDirectory, executable)
+      input = await createLinuxInput(executable)
+    } else if (provenancePath) {
+      // A controlled Linux run with no capture directory cannot make a frame, so a probe that needs
+      // one must fail BY NAME in its own result instead of reaching an absent callback (27875).
+      // The stub is installed ONLY here: every other run keeps no capture callback at all, so the
+      // probes' own absence branches (cursor, erase, charsets, helpers) still decide those rows
+      // exactly as they do today, and no non-container row changes.
+      capture = frameUnavailableCapture()
+    }
+    let ownedTerminal: OwnedTerminal | undefined
+    if (kind === "linux") {
+      if (!clipboardReceipt || !executable) throw new Error("Owned clipboard receipt lacks measured executable")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+        linux: { receiptPath: clipboardReceipt, executable },
+      })
+    } else if (kind === "terminalApp") {
+      if (!options.terminalAppOwner) throw new Error("Owned Terminal.app collection lacks owner assertion")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+        terminalApp: options.terminalAppOwner,
+      })
+      installTextCapture(ownedTerminal)
+    } else if (kind === "process") {
+      if (!options.processOwner) throw new Error("Owned process collection lacks owner assertion")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
+        process: options.processOwner,
+      })
+    } else if (kind === "darwinHosted") {
+      if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+        darwinHosted: { receiptPath: hostedReceipt },
+      })
+      assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
+      // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
+      // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
+      // refuse by design, so preflight and the pixel install are skipped entirely.
+      if (!installTextCapture(ownedTerminal) && captureDirectory) {
+        const appPid = ownedTerminal.hostedAppPid
+        if (!appPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
+        const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
+        let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
+        let calibrationError: Error | undefined
+        const noGeometry = (message: string) => {
+          const error = new Error(`Darwin capture calibration refused: ${message}`)
+          error.name = "UndeclaredTerminalGeometry"
+          return error
+        }
+        // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
+        // already measured: the adapter never queries the terminal itself, so the geometry it checks a
+        // frame request against and the geometry the origin was calibrated on can never diverge.
+        const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
+          capture = async (checkpoint) => {
+            if (calibrationError) throw calibrationError
+            if (!checkpoint.cells && !checkpoint.pixelGeometry) {
+              const result = await darwinCapture.captureRaw(checkpoint)
+              return result.result
+            }
+            if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
+            const geometry = textOrigin.pixelGeometry
+            if (
+              checkpoint.pixelGeometry &&
+              (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
+                checkpoint.pixelGeometry.cellHeight !== geometry.cellHeight ||
+                checkpoint.pixelGeometry.textWidth !== geometry.textWidth ||
+                checkpoint.pixelGeometry.textHeight !== geometry.textHeight)
+            ) {
+              throw noGeometry("terminal pixel geometry changed after origin calibration")
+            }
+            return darwinCapture.capture(checkpoint, textOrigin)
+          }
+          prepareCapture = async ({ context, featureId, recordCapture }) => {
+            try {
+              textOrigin = await calibrateCaptureOrigin({
+                ctx: context,
+                pixelGeometry: reportedGeometry,
+                timeoutMs: DEFAULT_TIMEOUT_MS,
+                captureRaw: async (label, deadline) => {
+                  const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
+                  recordCapture(result.result)
+                  return result.decoded
+                },
+              })
+              context.captureGeometry = {
+                geometry: textOrigin.pixelGeometry,
+                source: "measured by complete raster calibration",
+              }
+              captureCalibration = {
+                outcome: "installed",
+                basis: context.captureGeometry.source,
+                geometry: textOrigin.pixelGeometry,
+                queries,
+              }
+            } catch (cause) {
+              const error = cause instanceof Error ? cause : new Error(String(cause))
+              if (error.name !== "CaptureCalibrationRefused") throw error
+              calibrationError = error
+              context.captureGeometryRefusal = error.message
+              const causes: Array<{ name: string; message: string }> = []
+              const seen = new Set<Error>()
+              for (
+                let current: unknown = error;
+                current instanceof Error && !seen.has(current);
+                current = current.cause
+              ) {
+                seen.add(current)
+                causes.push({ name: current.name, message: current.message })
+              }
+              captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
+            }
+          }
+        }
+        preflightDarwinCapture = async () => {
+          const queries: CaptureCalibrationQuery[] = []
+          const report = await queryPixelGeometry({
+            queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
+              const outcome = await queryWithSentinelOutcome(sequence, pattern, timeoutMs)
+              queries.push({
+                sequence,
+                reason: outcome.reason,
+                raw: outcome.raw,
+                rawBase64: outcome.rawBase64,
+              })
+              return outcome
+            },
+          })
+          if ("missing" in report) {
+            // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
+            // rounds 1-2). A TIMEOUT - nothing answered at all, DA1 included - is a property of THIS
+            // run, never of the terminal, so the batch aborts loudly, by name, carrying the replies it
+            // read: the failure itself is evidence, and the run is repeated. A sentinel is NOT this
+            // case: tty.ts measures it as DA1 answered and then silence, the terminal's own negative,
+            // so it completes below as a named refusal.
+            if (report.transient) {
+              const read = queries
+                .map((query) => `${query.sequence} = ${query.reason} (${JSON.stringify(query.raw)})`)
+                .join("; ")
+              const error = new Error(
+                `Darwin capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
+              )
+              error.name = "TerminalGeometryUnmeasurable"
+              throw error
+            }
+            // An intrinsic missing report is not a missing measurement: the existing calibration
+            // now measures the complete raster. A transient query failure still aborts above.
+            installCapture(undefined, queries)
+            return
+          }
+          installCapture(report.geometry, queries)
+        }
+      }
+    } else if (kind === "windowsHosted") {
+      if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
+      // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:
+      // the receipt names the launched WindowsTerminal.exe or alacritty.exe, the collector proves it is
+      // an ancestor, and every geometry probe then reads the console it is actually writing to.
+      ownedTerminal = await createOwnedTerminal({
+        captureRunId,
+        out,
+        expectedLaunchRunId: process.env.TERMINFO_RUN_ID ?? "",
+        windowsHosted: { receiptPath: hostedReceipt },
+      })
+      assertHostedIdentity(terminal.name, ownedTerminal, "Windows")
+      // The hosted Windows arm has no pixels at all, so its only frame source is the console buffer.
+      installTextCapture(ownedTerminal)
+    }
+    const clipboard = ownedTerminal?.clipboard
+    const attachment = clipboard?.muxAttachmentProof
+    let batch: Awaited<ReturnType<typeof runProbeBatch>>
+    try {
+      if (
+        muxTarget &&
+        (!attachment ||
+          attachment.captureRunId !== captureRunId ||
+          attachment.mux !== muxTarget.id ||
+          attachment.mux !== muxTarget.mux ||
+          attachment.executable.version !== muxTarget.version ||
+          attachment.config.path !== muxTarget.config)
+      ) {
+        throw new Error("Mux target differs from the verified mux attachment")
+      }
+      if (attachment && !muxTarget) {
+        throw new Error("Verified mux attachment requires its mux runtime provenance envelope")
+      }
+      if (attachment && outerApp) {
+        const source = outerApp.rawReplies["collector.preflightIdentity"]
+        if (
+          !source ||
+          !isDeepStrictEqual(parseJsonStrict("mux outer preflight", source), {
+            ...attachment.preflightCollector,
+            launchRunId: attachment.launchRunId,
+          })
+        ) {
+          throw new Error("Outer preflight differs from the verified mux attachment")
+        }
+      }
+      collectionStartedAt = new Date().toISOString()
+      draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({ startedAt: collectionStartedAt })
+      checkpoint()
+      batch = await withRawMode(
+        () =>
+          withTTYOperation(
+            async () => {
+              let geometryCorroboration: GeometryCorroboration | undefined
+              let identityQuery:
+                | { sequence: string; outbound: string; reason: string; raw: string; rawBase64: string }
+                | undefined
+              let da2Query: Awaited<ReturnType<typeof queryWithSentinelOutcome>> | undefined
+              if (ownedTerminal) {
+                const response = await queryWithSentinelOutcome("\x1b[18t", /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/, 700)
+                const query = {
+                  sequence: "\x1b[18t" as const,
+                  outbound: "\x1b[18t\x1b[c" as const,
+                  reason: response.reason,
+                  raw: response.raw,
+                  rawBase64: response.rawBase64,
+                }
+                if (response.match) {
+                  const rows = Number(response.match[1])
+                  const cols = Number(response.match[2])
+                  const grant = ownedTerminal.geometryAtGrant
+                  const status =
+                    !Number.isSafeInteger(rows) || !Number.isSafeInteger(cols)
+                      ? "malformed"
+                      : grant?.status !== "measured"
+                        ? "uncorroborated"
+                        : rows === grant.rows && cols === grant.cols
+                          ? "agree"
+                          : "conflict"
+                  geometryCorroboration = { status, query, ...(status !== "malformed" ? { rows, cols } : {}) }
+                } else {
+                  geometryCorroboration = {
+                    status: response.raw.includes("\x1b[8;") ? "malformed" : "silent",
+                    query,
+                  }
+                }
+                const identity = await queryWithSentinelOutcome("\x1b[>0q", COMPLETE_XTVERSION, 700)
+                identityQuery = {
+                  sequence: "\x1b[>0q",
+                  outbound: "\x1b[>0q\x1b[c",
+                  reason: identity.reason,
+                  raw: identity.raw,
+                  rawBase64: identity.rawBase64,
+                }
+                // Only Screen consumes DA2 for its measured version; ordinary apps keep their preflight.
+                if (measuredTerminal.name === "screen") {
+                  da2Query = await queryWithSentinelOutcome("\x1b[>c", COMPLETE_DA2, 700)
+                }
+                resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, {
+                  "collector.xtversion": identity.raw,
+                  ...(da2Query && { "collector.da2": da2Query.raw }),
+                })
+              }
+              // Before the batch, because the answer decides whether this run HAS a capture adapter at all:
+              // a terminal whose OWN cell size cannot be mapped is refused here and installs nothing, so no
+              // row is handed an adapter that can only throw: every probe takes its own no-capture branch,
+              // names the refusal in its row, and the suite completes (28785). Only a timeout aborts.
+              if (preflightDarwinCapture) await preflightDarwinCapture()
+              const result = await runProbeBatch({
+                ids: options.ids,
+                out,
+                captureRunId,
+                draft,
+                onCheckpoint: (progress) => {
+                  Object.assign(draft, {
+                    rawReplies: progress.rawReplies,
+                    assertions: progress.assertions,
+                    screenshotRefs: progress.screenshotRefs,
+                    textSnapshotRefs: progress.textSnapshotRefs,
+                  })
+                  checkpoint()
+                },
+                // The run's own target, from the launched app: the receipt is bound to this before any write.
+                target: { kind: muxTarget?.kind ?? "app", id: measuredTerminal.name, os: terminal.os },
+                ...(capture && { capture }),
+                ...(textCapture && { captureKind: "text-cells" as const }),
+                ...(input && { input }),
+                ...(ownedTerminal && { ownedTerminal }),
+                ...(geometryCorroboration && { geometryCorroboration }),
+                ...(prepareCapture && { prepareCapture }),
+              })
+              if (identityQuery) {
+                result.rawReplies["collector.xtversion"] = identityQuery.raw
+                result.rawReplies["collector.xtversionQuery"] = JSON.stringify(identityQuery)
+              }
+              if (da2Query) {
+                result.rawReplies["collector.da2"] = da2Query.raw
+                result.rawReplies["collector.da2Query"] = JSON.stringify({ sequence: "\x1b[>c", ...da2Query })
+              }
+              if (captureCalibration) {
+                result.rawReplies["collector.captureCalibration"] = JSON.stringify(captureCalibration)
+              }
+              await drainStdin(1000)
+              return result
+            },
+            out,
+            clipboard ? () => clipboard.assertOwned() : undefined,
+          ),
+        out,
+      )
+    } finally {
+      await ownedTerminal?.dispose()
+    }
+    batch.rawReplies["collector.selection"] = JSON.stringify({
+      ids: options.ids ?? manifest.probes[muxTarget ? "mux" : "app"],
+    })
+    if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
+    if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
+    const measuredVersion =
+      (terminal.name === "windows-terminal" || terminal.name === "alacritty") && batch.appLaunch?.platform === "win32"
+        ? batch.appLaunch.productVersion
+        : resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, batch.rawReplies)
+    const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
+    const target: ProbeTarget = muxTarget
+      ? { ...muxTarget, version: measuredVersion }
+      : {
+          kind: "app",
+          id: terminal.name,
+          // Windows Terminal uses its parsed launched-executable ProductVersion; other apps use terminal
+          // identity replies. alacritty reports none at all -
+          // XTVERSION answers with nothing and neither TERM_PROGRAM nor TERM_PROGRAM_VERSION is set - so
+          // it is "unknown" here, which provenance can never agree with. When the APPARATUS declared a
+          // version for this target (the launcher passes TERMINFO_TARGET_VERSION in the image
+          // environment; it is never read back out of the ownership receipt), write that declaration
+          // instead. The value is NOT a version the terminal reported - the raw replies show it reported
+          // none - and the provenance check still does its work: the binary's own `--version` must agree
+          // with the declaration. A non-apparatus run has no declaration, so "unknown" stays as before.
+          version: measuredVersion === "unknown" && declaredVersion ? declaredVersion : measuredVersion,
+          os: terminal.os,
+          osVersion: terminal.osVersion,
+          outerTerminal: null,
+          mux: null,
+          config: null,
+          permissions: null,
+        }
+    const provenance =
+      provenancePath && !muxTarget
+        ? parseRunProvenance(provenanceSource, target, { probeHash, sourceRevision }, provenancePath)
+        : undefined
+    if (provenancePath && !provenance && !outerApp?.provenance) {
+      throw new Error(`Missing runtime provenance in ${provenancePath}`)
+    }
+    if (provenance) target.config = provenance.fixture.config
+    if (clipboard) {
+      if ((outerApp?.provenance ?? provenance)?.fixture.config !== clipboard.config) {
+        throw new Error("Owned clipboard profile config differs from runtime provenance")
+      }
+      if (clipboard.profile !== "default") target.permissions = clipboard.permissions
+    }
+    const captured: CapturedRunDraft = {
+      ...draft,
+      target,
+      ...(provenance && { provenance }),
+      ...(outerApp && { outerApp }),
+      identity: "unverified",
+      measuredAt: new Date().toISOString(),
+      origin: { kind: "collector", ...(batch.appLaunch && { appLaunch: batch.appLaunch }) },
+      rawReplies: batch.rawReplies,
+      assertions: batch.assertions,
+      screenshotRefs: batch.screenshotRefs,
+      ...((batch.textSnapshotRefs?.length ?? 0) > 0 && { textSnapshotRefs: batch.textSnapshotRefs }),
+      ...(textQualification === undefined ? {} : { textQualification }),
+      results: batch.results,
+    }
+    Object.assign(draft, captured)
+    checkpoint()
+    return captured
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error)
+    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic)
+    else {
+      draft.rawReplies["collector.prerequisite"] = diagnostic
+      for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic
+    }
+    checkpoint()
+    throw error
   }
 }
 
@@ -1040,9 +1083,7 @@ export function startDaemon(port = 0): void {
           expectedLaunchRunId: runId,
         })
         console.log(
-          s.dim(
-            `Collected ${run.observations.length}/${ALL_PROBES.length} explicit observations; partial=${!run.suiteComplete}`,
-          ),
+          s.dim(`Captured ${run.results.length} explicit capability results; draft ${run.runId} awaits final writer`),
         )
         res.end(JSON.stringify(run))
         return

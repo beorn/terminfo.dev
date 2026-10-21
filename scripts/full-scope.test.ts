@@ -16,13 +16,13 @@ import {
   INSTRUMENT_LIMITS,
   MISSING_DEFINITION_IDS,
   notCollected,
-  scopeAggregate,
-  type ScopeInput,
+  historicalScopeAggregate as scopeAggregate,
+  type HistoricalScopeInput as ScopeInput,
 } from "../docs/data/full-scope.ts"
 
 const cells = (entries: Record<string, "supported" | "unsupported" | "inconclusive" | "error" | "untested">) => entries
 
-describe("full-catalog scope arithmetic", () => {
+describe("historical full-catalog scope arithmetic", () => {
   it("prints score, denominator, ceiling and inclusion together over the whole catalog", () => {
     const result = scopeAggregate({
       scope: "kitty/linux",

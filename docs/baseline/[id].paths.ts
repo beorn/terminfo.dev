@@ -58,7 +58,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
-          const note = data.selectedByBackend[b.name]?.selected.cells[fid]?.note ?? ""
+          const note = data.notes[b.name]?.[fid] ?? ""
           results[b.name] = { result, note }
         }
         return {
@@ -76,11 +76,6 @@ export default {
       const scores = sortedBackends.map((b) => {
         const bs = data.baselineStats[b.name]?.[id]
         if (!bs) throw new Error(`Missing ${id} baseline stats for ${b.name}`)
-        // Count partial results for this baseline's features
-        let partial = 0
-        for (const fid of featureIds) {
-          if (data.results[b.name]?.[fid] === "partial") partial++
-        }
         return {
           name: b.name,
           slug: terminalSlug(b.name, data.meta),
@@ -90,16 +85,10 @@ export default {
           version: b.version,
           type: b.type ?? "headless",
           platforms: b.platforms ?? [],
-          yes: bs.yes,
-          partial,
-          total: bs.total,
+          score: bs.score,
+          counts: bs.counts,
+          complete: bs.complete,
           pct: bs.pct,
-          catalog: bs.catalog,
-          supported: bs.supported,
-          unsupported: bs.unsupported,
-          inconclusive: bs.inconclusive,
-          errors: bs.errors,
-          untested: bs.untested,
         }
       })
 

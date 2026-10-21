@@ -7,7 +7,7 @@
  * tier-1 rows carry a `tier1` field, and the classics are the rows whose category slice is `classics`.
  *
  * It re-derives nothing. The numbers come from the ONE reader (`scripts/decisive-share.ts`
- * `buildReport`), which resolves the ONE selection (`docs/data/current-results.ts`) — so this page and
+ * `buildHistoricalReport`), which resolves the ONE selection (`docs/data/current-results.ts`) — so this page and
  * `bun run decisive-share --cohort candidate2` can never print two different shares for one run. The
  * two bases the reader keeps apart are kept apart here too:
  *
@@ -29,7 +29,7 @@ import { frozenSuiteLineage } from "./load-release-scope.ts"
 import type { ContextCandidate } from "./run-selection.ts"
 import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
-  buildReport,
+  buildHistoricalReport,
   candidate2Cohort,
   categoryShares,
   cohortCategories,
@@ -221,7 +221,7 @@ export function darkSuitesForLineage(lineage: readonly string[], readingSuiteId:
 }
 
 export function loadCandidate2Data(): Candidate2Data {
-  const report = buildReport({ contentDir, cohort: candidate2Cohort(contentDir) })
+  const report = buildHistoricalReport({ contentDir, cohort: candidate2Cohort(contentDir) })
   const cohort = report.cohort
   if (!cohort) throw new Error("candidate-2 report carried no cohort; the page has nothing to claim")
   const names = loadCatalogNames()

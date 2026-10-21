@@ -289,6 +289,7 @@ export async function collectBatch(
   backendName: string,
   definitions: readonly ProbeDefinition[],
   draft?: Pick<RunDraft, "results">,
+  onCheckpoint?: (batch: Batch) => void,
 ): Promise<Batch> {
   const batch: Batch = {
     results:
@@ -353,8 +354,17 @@ export async function collectBatch(
       try {
         backend?.destroy()
       } catch (cause) {
-        throw new Error(`headless ${backendName} probe ${probe.id}: backend cleanup failed`, { cause })
+        const reason = `headless ${backendName} probe ${probe.id}: backend cleanup failed`
+        batch.results[index] = {
+          ...result,
+          status: "test-failure",
+          reason,
+          checks: [...result.checks, { id: "cleanup", status: "test-failure", attempt, reason }],
+        }
+        onCheckpoint?.(batch)
+        throw new Error(reason, { cause })
       }
+      onCheckpoint?.(batch)
     }
   }
   return batch

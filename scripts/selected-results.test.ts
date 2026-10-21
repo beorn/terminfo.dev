@@ -10,22 +10,30 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
-  classifyDevelopmentRun,
-  loadSelectedResults,
+  classifyHistoricalDevelopmentRun as classifyDevelopmentRun,
+  loadSelectedResults as loadCurrentSelectedResults,
   parseInterpretations,
-  projectResults,
+  projectHistoricalResults as projectResults,
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission, planAdmission } from "./admit-run.ts"
-import { publicResults } from "../docs/data/public-results.ts"
+import { publicHistoricalResults as publicResults } from "../docs/data/public-results.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
-import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
+import {
+  decodeHistoricalCollectorRun as decodeCollectorRun,
+  decodeExactUtf8,
+  parseRun as parseRunSource,
+} from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { readRetainedDaemonProbeResponse, saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
+
+// These immutable v1/v2 fixtures exercise the explicit historical reader and historical public API.
+const loadSelectedResults = (...args: Parameters<typeof loadCurrentSelectedResults>) =>
+  loadCurrentSelectedResults(...args).historical
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 /** 28240: the app-launch receipt parser refuses a placeholder digest (one repeated character), so
@@ -37,6 +45,7 @@ const manifest = (probeHash: string, ids = ["extensions.graphics", "extensions.q
   sourceRevision: "1".repeat(40),
   generatedAt: "2026-09-28T00:00:00.000Z",
   adapterVersion: "3.3.1",
+  catalogIds: catalog,
   probes: { app: ids, headless: ids, mux: ids },
 })
 const manifests = new Map([
@@ -1350,49 +1359,49 @@ describe("selected results", () => {
     )
   })
 
-  it("keeps retained HTTP bodies outside selection and binds review to the enriched run", async () => {
+  it("keeps exact v3 HTTP draft bytes outside current selection and seals only after enrichment", async () => {
     const content = temporaryContent()
     const directory = `${content}-http-responses`
     contentDirs.push(directory)
     const receipt = { manifest: manifest("current"), collectorRevision: "a".repeat(40) }
-    const raw = `${JSON.stringify(
-      run("retained-http", {
-        suiteId: "current",
-        sourceRevision: receipt.collectorRevision,
-        identity: "unverified",
-      }),
-    )}\r\n`
-    const original = parseRun("original.json", raw, catalog)
-    const before = projectResults([original], [reviewFor(original)], catalog, { currentProbeHash: "current" })
+    const {
+      observations: _observations,
+      suiteComplete: _complete,
+      ...metadata
+    } = run("retained-current-http", {
+      suiteId: "current",
+      sourceRevision: receipt.collectorRevision,
+      identity: "unverified",
+      assertions: [],
+    })
+    const raw = `${JSON.stringify({
+      ...metadata,
+      schemaVersion: 3,
+      intendedContext: { kind: "app", id: "kitty" },
+      results: catalog.map((featureId) => ({
+        featureId,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Not started",
+      })),
+    })}\r\n`
     const retained = await readRetainedDaemonProbeResponse(new Response(raw), { directory, receipt })
+    expect(retained.run).not.toHaveProperty("sealedAt")
     const path = saveDaemonProbeRun(retained.run, join(content, "probes-apps"))
     const enriched = parseRun(path, readFileSync(path, "utf8"), catalog)
     expect(readFileSync(retained.path, "utf8")).toBe(raw)
-    expect(retained.sha256).toBe(original.sha256)
     expect(enriched.sha256).not.toBe(retained.sha256)
     expect(enriched.rawReplies["collector.httpResponseSha256"]).toBe(retained.sha256)
-    expect(enriched.observations).toEqual(original.observations)
-    expect(enriched.assertions).toEqual(original.assertions)
-
-    // Schema v2 matching replies admit the enriched run without a pin; a pin of the raw body SHA cannot review it.
-    expect(Object.keys(loadSelectedResults(content, "current").current)).toEqual(["app:kitty"])
-    expect(loadSelectedResults(content, "current").current["app:kitty"]!.reviews).toEqual([])
-    writeFileSync(join(content, "interpretations.json"), JSON.stringify([reviewFor(original)]))
-    expect(loadSelectedResults(content, "current").current["app:kitty"]!.reviews).toEqual([])
-    writeFileSync(join(content, "interpretations.json"), JSON.stringify([reviewFor(enriched)]))
-    const after = loadSelectedResults(content, "current")
-    expect(Object.keys(after.current)).toEqual(["app:kitty"])
-    expect(after.history["app:kitty"]).toHaveLength(1)
-    expect(after.versions["app:kitty"]).toHaveLength(1)
-    expect(after.exclusions).toEqual([])
+    expect(enriched.results).toEqual(retained.run.results)
+    const after = loadCurrentSelectedResults(content, "current")
     expect(after.current["app:kitty"]).toMatchObject({
-      runId: original.runId,
-      target: original.target,
+      runId: retained.run.runId,
       sha256: enriched.sha256,
-      counts: before.current["app:kitty"]!.counts,
-      v1: before.current["app:kitty"]!.v1,
+      score: { supported: 0, all: 3 },
+      complete: false,
     })
-    expect(after.current["app:kitty"]!.cells["extensions.query"]!.chain.runSha256).toBe(enriched.sha256)
+    expect(after.historical.current).toEqual({})
   })
 
   it("selects a reviewed Terminal.app run only with DA2 family and an exact launch receipt", () => {
@@ -2438,7 +2447,7 @@ describe("selected results", () => {
   it("rejects a future schema even when it also carries legacy fields", () => {
     const hybrid = {
       ...run("hybrid"),
-      schemaVersion: 3,
+      schemaVersion: 4,
       terminal: "kitty",
       terminalVersion: "0.46.2",
       generated: "2026-09-28T12:00:00.000Z",

@@ -43,7 +43,7 @@
  * passed EXPLICITLY and printed: that suite is frozen for candidate 2 and is being read for
  * candidate-4 ids, because no candidate-4 freeze exists yet. The report never falls back to a
  * manifest that does not name the cohort: a cohort with no manifest still refuses. Both cohorts run
- * the ONE buildReport path: the cohort is data (name, slices, suite ownership).
+ * the ONE buildHistoricalReport path: the cohort is data (name, slices, suite ownership).
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -57,7 +57,7 @@ import {
   reviewedContextFor,
   type DefaultContextReview,
 } from "../docs/data/current-results.ts"
-import { statesFor } from "../docs/data/selected-results.ts"
+import { historicalStatesFor as statesFor } from "../docs/data/selected-results.ts"
 import {
   frozenSuiteIdFor,
   loadReleaseScope,
@@ -78,7 +78,7 @@ import {
 import {
   candidateFromSelected,
   pickContextRun,
-  type ContextCandidate,
+  type HistoricalContextCandidate as ContextCandidate,
   type RunSelection,
   type ShareCells,
 } from "../docs/data/run-selection.ts"
@@ -510,7 +510,7 @@ export function cohortRowForSelected(row: BarRow, cohort: ScorableCohort, blocke
  * The whole report: bar rows from the site's current selection, and every admitted schema-v2 `app` run
  * (newest first per context key) for the by-run-id section.
  */
-export function buildReport(args: {
+export function buildHistoricalReport(args: {
   contentDir: string
   contexts?: readonly ReleaseContext[]
   cohort?: CohortSpec
@@ -563,7 +563,7 @@ export function buildReport(args: {
   const projection = loadCurrentResults(
     args.contentDir,
     args.cohort === undefined ? {} : { releaseSuiteId: args.cohort.suiteId },
-  ).projection
+  ).projection.historical
   const current = Object.entries(projection.current).map(([key, selected]) =>
     candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
   )
@@ -906,7 +906,7 @@ export const COHORT_FACTORIES: Readonly<Record<ReaderCohort, ((contentDir: strin
   candidate4: candidate4Cohort,
 }
 
-type ReaderReport = ReturnType<typeof buildReport>
+type ReaderReport = ReturnType<typeof buildHistoricalReport>
 type ReaderCohortReport = NonNullable<ReaderReport["cohort"]>
 
 /**
@@ -919,7 +919,9 @@ export function cohortReaderLines(
   terminalIds: readonly string[],
   contentDir: string,
 ): string[] {
-  const lines: string[] = []
+  const lines: string[] = [
+    "Historical schema-1/2 reading; current capability status/score/completion is available from API v3 and terminfo report.",
+  ]
   lines.push(cohortHeaderLine(cohort))
   lines.push(
     `read ${report.searched} through the published selection projection; skipped ${report.legacySkipped} legacy documents; ${report.rejected} rejected`,
@@ -958,7 +960,7 @@ function main(): void {
   const contentDir = join(import.meta.dirname ?? process.cwd(), "..", "content")
   const { cohort: selectedCohort, terminalIds } = parseReaderArgs(process.argv.slice(2))
   const cohortSpec = COHORT_FACTORIES[selectedCohort]?.(contentDir)
-  const report = buildReport({ contentDir, cohort: cohortSpec })
+  const report = buildHistoricalReport({ contentDir, cohort: cohortSpec })
   if (report.cohort) {
     for (const line of cohortReaderLines(report, report.cohort, terminalIds, contentDir)) console.log(line)
     return
@@ -968,7 +970,7 @@ function main(): void {
     : report.barRows
 
   console.log(
-    `Release 1 decisive-count reader · tier-1 rows: ${report.tier62Ids.length} declared / ` +
+    `Historical Release 1 decisive-count reader · tier-1 rows: ${report.tier62Ids.length} declared / ` +
       `${report.tier52Ids.length} included (62 minus the ten 27832 F2 movers) · verdict ON THE INCLUDED 52: ` +
       `>=${D3_VERDICT_BAR.passPct}% decisive = pass, >=${D3_VERDICT_BAR.gapsPct}% = with gaps, else fail`,
   )

@@ -259,7 +259,7 @@ export function aggregateCurrentResults(
   }
 }
 
-export function currentCoverageSentence(aggregate: CurrentAggregate): string {
+export function currentCoverageSentence(aggregate: Pick<CurrentAggregate, "counts">): string {
   const counts = aggregate.counts
   return `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["test-todo"]} TEST TODO · ${counts["test-failure"]} TEST FAILURE`
 }

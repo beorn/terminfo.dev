@@ -14,7 +14,7 @@ import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
 import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import * as versions from "../packages/admin/versions.ts"
-import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import { decodeHistoricalCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import {
@@ -164,10 +164,27 @@ test("daemon-saved enriched run names the launcher cure without content placemen
   if (!object(document) || typeof document.sourceRevision !== "string") {
     throw new Error("Collector fixture lacks source revision")
   }
-  const decoded = decodeCollectorRun(source, raw, derivedSuiteManifest(probeSuiteSnapshot()), document.sourceRevision)
+  const snapshot = probeSuiteSnapshot()
+  const decoded = decodeHistoricalCollectorRun(source, raw, derivedSuiteManifest(snapshot), document.sourceRevision)
+  const {
+    observations: _observations,
+    notTested: _notTested,
+    ungradedDiagnostics: _diagnostics,
+    suiteComplete: _complete,
+    ...metadata
+  } = decoded.run
   const staged = saveDaemonProbeRun(
     {
-      ...decoded.run,
+      ...metadata,
+      schemaVersion: 3,
+      intendedContext: { kind: metadata.target.kind, id: metadata.target.id },
+      results: snapshot.catalogIds.map((featureId) => ({
+        featureId,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Synthetic fresh TODO fixture; no old observation upgraded",
+      })),
       rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
     },
     dirname(source),

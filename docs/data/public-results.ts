@@ -522,3 +522,14 @@ export function publicResults(
   )
   return { projection: selected, selectedByBackend, historicalByBackend: historical.selectedByBackend, documents }
 }
+
+/** Read the existing versioned public result without manufacturing a legacy observation. */
+export function publicResultFor(
+  version: PublicVersion | HistoricalPublicVersion | undefined,
+  featureId: string,
+): PublicCapabilityResult | HistoricalPublicCell | undefined {
+  if (!version) return undefined
+  return version.schemaVersion === 3
+    ? version.results.find((result) => result.featureId === featureId)
+    : version.cells[featureId]
+}

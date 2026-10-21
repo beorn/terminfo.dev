@@ -49,7 +49,34 @@ export interface ContextCandidate {
   states: Readonly<Record<string, CellState | CapabilityStatus>>
 }
 
+export interface HistoricalContextCandidate extends ContextCandidate {
+  cells: ShareCells
+  results?: never
+  states: Readonly<Record<string, CellState>>
+}
+
+export interface CurrentContextCandidate extends ContextCandidate {
+  results: CapabilityResult[]
+  cells?: never
+  states: Readonly<Record<string, CapabilityStatus>>
+}
+
 /** The candidate for one context key, from the projection's own selected version. */
+export function candidateFromSelected(
+  key: string,
+  selected: SelectedVersion,
+  states: Readonly<Record<string, CellState>>,
+): HistoricalContextCandidate
+export function candidateFromSelected(
+  key: string,
+  selected: CurrentSelectedVersion,
+  states: Readonly<Record<string, CapabilityStatus>>,
+): CurrentContextCandidate
+export function candidateFromSelected(
+  key: string,
+  selected: SelectedVersion | CurrentSelectedVersion,
+  states: Readonly<Record<string, CellState | CapabilityStatus>>,
+): ContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
@@ -75,8 +102,8 @@ export function candidateFromSelected(
 /** How the one run for a context was chosen, printed with the row so the choice is auditable. */
 export type RunSelection = "only current" | "reviewed default-context row" | "default profile"
 
-export type PickedContextRun =
-  | { run: ContextCandidate; selection: RunSelection }
+export type PickedContextRun<T extends ContextCandidate = ContextCandidate> =
+  | { run: T; selection: RunSelection }
   | { ambiguous: string[] }
   /** A reviewed row this group cannot stand on any more; `stale` is the one sentence every caller prints. */
   | { stale: string }
@@ -159,10 +186,10 @@ function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
  * entry beside the current one and a current clipboard override, which read "ambiguous" until this
  * rule). With no current-suite candidate the fallbacks are unchanged.
  */
-export function pickContextRun(
-  candidates: readonly ContextCandidate[],
+export function pickContextRun<T extends ContextCandidate>(
+  candidates: readonly T[],
   reviewed?: { contextKey: string },
-): PickedContextRun | undefined {
+): PickedContextRun<T> | undefined {
   if (candidates.length === 0) return undefined
   if (reviewed !== undefined) {
     const reviewedKey = reviewed.contextKey
