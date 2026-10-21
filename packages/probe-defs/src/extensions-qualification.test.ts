@@ -121,6 +121,24 @@ test.each(directReplies)("%s only qualifies its complete, bound query frame", as
     expect(result.observation?.outcome, id).toBe("inconclusive")
     expect(result.assertions, id).toBeUndefined()
   }
+  if (id === "extensions.osc776-cell-size") {
+    for (const raw of ["\x1b]776;0;0;0\x1b\\", "\x1b]776;0;16;2\x07", "\x1b]776;8;0;2\x07"] as const) {
+      for (const result of await run(raw)) {
+        expect(result.pass, `${id}: ${raw}`).toBe(false)
+        expect(result.response, `${id}: ${raw}`).toBe(raw)
+        expect(result.observation, `${id}: ${raw}`).toMatchObject({
+          outcome: "inconclusive",
+          reason: "invalid-reply",
+          evidence: "query",
+        })
+        expect(result.assertions, `${id}: ${raw}`).toBeUndefined()
+      }
+    }
+    for (const result of await run("\x1b]776;8;16;0\x07")) {
+      expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.response, id).toBe("\x1b]776;8;16;0\x07")
+    }
+  }
   if (id === "extensions.sixel-da1") {
     // Kitty 0.49.1 replies with a trailing empty DA1 parameter.
     for (const [raw, outcome] of [

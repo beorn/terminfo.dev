@@ -2718,9 +2718,9 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscSimpleQueryProbe(
     "extensions.osc776-cell-size",
     "\x1b]776\x07",
-    /\x1b\]776;[0-9]+;[0-9]+;[0-9]+(?:\x07|\x1b\\)/,
+    /\x1b\]776;[1-9][0-9]*;[1-9][0-9]*;[0-9]+(?:\x07|\x1b\\)/,
     /\x1b\]776;/,
-    "Complete OSC 776 cell-size reply",
+    "Complete OSC 776 cell-size reply with positive width and height",
   ),
 
   // Sixel support advertised in DA1 response (attribute 4)
