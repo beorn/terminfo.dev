@@ -381,10 +381,19 @@ export async function runProbeBatch(
   // recorded fact and the answer each row grades against are always the same single attempt.
   let decodingAttempt: Promise<Utf8DecodingReading> | undefined
   const readUtf8Decoding = (): Promise<Utf8DecodingReading> => {
-    decodingAttempt ??= measureUtf8Decoding().then((reading) => {
-      batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({ decoding: reading })
-      return reading
-    })
+    if (!decodingAttempt) {
+      const queries: TTYQueryTrace[] = []
+      const events: TTYTraceEvent[] = []
+      decodingAttempt = withTTYQueryTrace(queries, events, measureUtf8Decoding).then((reading) => {
+        batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({
+          decoding: reading,
+          writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
+          queries,
+          events,
+        })
+        return reading
+      })
+    }
     return decodingAttempt
   }
   // Calibrate and prove restoration once before the first callback. The same measured geometry

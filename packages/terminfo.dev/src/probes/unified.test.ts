@@ -24,8 +24,8 @@ import { captureAdapterEligible, runProbeBatch } from "./unified.ts"
 import { calibrateCaptureOrigin } from "../capture-calibration.ts"
 import { collectTextQualification } from "../text-qualification.ts"
 
-// 28752: the decode-context measurement is the ONE tty round trip this file must not perform; every
-// other tty export stays real, so the batch path under test is unchanged.
+// Most cases stub only decode-context measurement; its evidence owner below exercises the real
+// round trip. Every other tty export stays real, so the batch path under test is unchanged.
 vi.mock("../tty.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../tty.ts")>()
   return { ...actual, measureUtf8Decoding: vi.fn(actual.measureUtf8Decoding) }
@@ -2038,7 +2038,16 @@ it("refuses a receipt that names a target when the caller supplied no run target
 // plain-written oracle assumes is measured, never inherited from whatever locale launched it.
 it("measures the decode context once per run and records it beside the other collector facts", async () => {
   verifiedBatchFixture()
-  vi.mocked(measureUtf8Decoding).mockResolvedValue("8-bit")
+  const actual = await vi.importActual<typeof import("../tty.ts")>("../tty.ts")
+  vi.mocked(measureUtf8Decoding).mockImplementation(actual.measureUtf8Decoding)
+  const replies = ["\x1b[2;1R", "\x1b[2;3R"]
+  const pending = [...replies]
+  const emitted: string[] = []
+  process.stdout.write = ((sequence: string) => {
+    emitted.push(sequence)
+    if (sequence === "\x1b[6n") process.stdin.emit("data", Buffer.from(pending.shift()!))
+    return true
+  }) as typeof process.stdout.write
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalTerm = definition.term
   const seen: Array<string | null> = []
@@ -2055,7 +2064,22 @@ it("measures the decode context once per run and records it beside the other col
     const batch = await runProbeBatch({ ids: [definition.id] })
     expect(seen).toEqual(["8-bit", "8-bit"])
     expect(vi.mocked(measureUtf8Decoding)).toHaveBeenCalledTimes(1)
-    expect(batch.rawReplies["collector.utf8Decoding"]).toBe(JSON.stringify({ decoding: "8-bit" }))
+    expect(pending).toEqual([])
+    const writes = emitted.filter((sequence) => sequence !== "\x1b[6n")
+    expect(writes).toEqual(["\x1b7", "\x1b[2;1H", "\x1b[0më", "\x1b[2;1H\x1b[2X", "\x1b8"])
+    expect(JSON.parse(batch.rawReplies["collector.utf8Decoding"]!)).toMatchObject({
+      decoding: "8-bit",
+      writes,
+      queries: replies.map((raw) => ({
+        sequence: "\x1b[6n",
+        match: [...raw.match(/\x1b\[(\d+);(\d+)R/)!],
+        reason: "reply",
+        raw,
+        rawBase64: Buffer.from(raw).toString("base64"),
+      })),
+      events: emitted.map((sequence) => ({ sequence })),
+    })
+    expect(batch.rawReplies[definition.id]).toBe("")
   } finally {
     definition.term = originalTerm
     vi.mocked(measureUtf8Decoding).mockRestore()
@@ -2093,7 +2117,12 @@ it("joins the in-flight attempt, so a row asking before it returns measures noth
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
     expect(attempts).toBe(1)
-    expect(batch.rawReplies["collector.utf8Decoding"]).toBe(JSON.stringify({ decoding: "8-bit" }))
+    expect(JSON.parse(batch.rawReplies["collector.utf8Decoding"]!)).toEqual({
+      decoding: "8-bit",
+      writes: [],
+      queries: [],
+      events: [],
+    })
   } finally {
     definition.term = originalTerm
     if (original) measured.mockImplementation(original)
