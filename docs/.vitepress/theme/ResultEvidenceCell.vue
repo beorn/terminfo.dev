@@ -864,7 +864,9 @@ onBeforeUnmount(() => {
                 <h4>1. Original recorded result</h4>
                 <p>
                   Recorded {{ originalObservation?.evidence }} method
-                  <template v-if="originalObservation?.reason"> · {{ readerSafeExplanation(originalObservation?.reason) }}</template>
+                  <template v-if="originalObservation?.reason">
+                    · {{ readerSafeExplanation(originalObservation?.reason) }}</template
+                  >
                 </p>
                 <p>
                   The automated check completed. The criterion requiring independent visual judgment remained TEST TODO
@@ -887,7 +889,8 @@ onBeforeUnmount(() => {
                 <details v-if="correction">
                   <summary>Support review record</summary>
                   <p>
-                    Review changed the historical displayed result to {{ status.text }}. Reviewed by {{ correction.reviewer }}. The original review rationale remains in the evidence record.
+                    Review changed the historical displayed result to {{ status.text }}. Reviewed by
+                    {{ correction.reviewer }}. The original review rationale remains in the evidence record.
                   </p>
                 </details>
                 <h4>3. Evidence presentation approval</h4>
@@ -908,7 +911,8 @@ onBeforeUnmount(() => {
               </template>
               <template v-else>
                 <p v-if="correction">
-                  Review changed the historical displayed result to {{ status.text }}. Reviewed by {{ correction.reviewer }}. The original review rationale remains in the evidence record.
+                  Review changed the historical displayed result to {{ status.text }}. Reviewed by
+                  {{ correction.reviewer }}. The original review rationale remains in the evidence record.
                 </p>
                 <details>
                   <summary>Evidence publication check</summary>
@@ -918,7 +922,9 @@ onBeforeUnmount(() => {
                   <h4>Original recorded observation</h4>
                   <p>
                     Recorded {{ originalObservation?.evidence }} method
-                    <template v-if="originalObservation?.reason"> · {{ readerSafeExplanation(originalObservation?.reason) }}</template>
+                    <template v-if="originalObservation?.reason">
+                      · {{ readerSafeExplanation(originalObservation?.reason) }}</template
+                    >
                   </p>
                   <p v-if="originalObservation?.note">{{ readerSafeExplanation(originalObservation?.note) }}</p>
                 </template>
