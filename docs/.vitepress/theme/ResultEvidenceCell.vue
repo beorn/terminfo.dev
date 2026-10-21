@@ -377,6 +377,17 @@ function showPreview(): void {
   void loadEvidence()
 }
 
+async function focusPreview(): Promise<void> {
+  showPreview()
+  await nextTick()
+  preview.value?.focus({ preventScroll: true })
+}
+
+function closePreview(): void {
+  trigger.value?.focus({ preventScroll: true })
+  hidePreview()
+}
+
 function outsidePreview(event: PointerEvent): void {
   if (event.target instanceof Node && (preview.value?.contains(event.target) || trigger.value?.contains(event.target)))
     return
@@ -435,8 +446,8 @@ onBeforeUnmount(() => {
       @pointerleave="scheduleHidePreview()"
       @focus="showPreview"
       @blur="scheduleHidePreview"
-      @keydown.esc.stop="hidePreview"
-      @click="showPreview"
+      @keydown.esc.stop="closePreview"
+      @click="focusPreview"
     >
       <span aria-hidden="true">{{ status.icon }}</span>
       <span v-if="display === 'text'" class="result-evidence__label"
@@ -451,13 +462,14 @@ onBeforeUnmount(() => {
         :id="tooltipId"
         class="result-evidence__preview"
         role="region"
+        tabindex="-1"
         aria-label="Result preview"
         :style="previewPosition"
         @pointerenter="keepPreview"
         @pointerleave="scheduleHidePreview()"
         @focusin="keepPreview"
         @focusout="scheduleHidePreview"
-        @keydown.esc.stop="hidePreview"
+        @keydown.esc.stop="closePreview"
       >
         <strong class="result-evidence__verdict">{{ status.text }}</strong>
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
