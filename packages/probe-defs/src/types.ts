@@ -546,6 +546,11 @@ export interface HistoricalProbeRun {
   sourceRevision: string
   measuredAt: string
   origin: RunOrigin
+  /**
+   * Raw replies and traces by feature id. In a headless run, a callback result the collector refuses
+   * still keeps its response here under its feature id; its refused observation and assertions survive
+   * only as text in the collector-error note or message, never as claims. A late reply adds `<id>.late`.
+   */
   rawReplies: Record<string, string>
   assertions: ProbeAssertion[]
   screenshotRefs: string[]

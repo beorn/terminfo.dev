@@ -451,8 +451,9 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
       reason: "collector-error",
       evidence: "query",
       note: expect.stringMatching(
-        /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms$/,
+        /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms; refused observation\(outcome=unsupported, evidence=query, .*\) and assertion\(kind=negative, .*\)$/,
       ),
+      rawReplyRef: "device.xtversion",
     },
   ])
   expect(batch.assertions).toStrictEqual([])

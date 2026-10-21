@@ -14,6 +14,7 @@ import { resolve as resolveVt220 } from "@termless/vt220"
 import { createKittyBackend, isKittyAvailable } from "@termless/kitty"
 import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
+import { validateObservation } from "@terminfo/run-parser"
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -574,7 +575,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
         outcome: "error",
         reason: "collector-error",
         evidence: "query",
-        note: "Termless callback wrong declares parser-state evidence but returned query",
+        note: "Termless callback wrong declares parser-state evidence but returned query; refused observation(outcome=inconclusive, reason=no-response, evidence=query)",
       },
       { featureId: "matching", outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state" },
       { featureId: "refused", outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
@@ -586,9 +587,20 @@ test("rejects a returned method that disagrees with the marker and preserves mat
   })
 })
 
-test.each(["supported", "error", "raw", "assertion"] as const)(
+test.each([
+  [
+    "supported",
+    'observation(outcome=supported, evidence=none) and assertion(kind=positive, expected="X", observed="X")',
+  ],
+  ["error", "observation(outcome=error, reason=insufficient-evidence, evidence=none)"],
+  ["raw", "observation(outcome=inconclusive, reason=insufficient-evidence, evidence=none)"],
+  [
+    "assertion",
+    'observation(outcome=inconclusive, reason=insufficient-evidence, evidence=none) and assertion(kind=positive, expected="X", observed="X")',
+  ],
+] as const)(
   "rejects a marked none result with %s instead of an unmeasured inconclusive refusal",
-  async (variant) => {
+  async (variant, refused) => {
     const batch = await collectBatch(backend, "xtermjs", [
       definition(
         "invalid-none",
@@ -615,20 +627,160 @@ test.each(["supported", "error", "raw", "assertion"] as const)(
       observations: [],
       assertions: [],
       notTested: [],
-      rawReplies: {},
       // `none` cannot carry an error: the canonical parser admits it only as an inconclusive
       // refusal, so this contradiction stays a named ungraded diagnostic.
       ungradedDiagnostics: {
         "invalid-none": {
           kind: "collector-error",
           name: "Error",
-          message:
-            "Termless callback invalid-none declares parser-state evidence but returned none without an unmeasured refusal",
+          message: `Termless callback invalid-none declares parser-state evidence but returned none without an unmeasured refusal; refused ${refused}`,
         },
       },
     })
+    // The refusal keeps the bytes the callback returned, beside its diagnostic, under the same id.
+    expect(batch.rawReplies).toStrictEqual(variant === "supported" || variant === "raw" ? { "invalid-none": "X" } : {})
   },
 )
+
+// 30581: a refused callback result keeps its response under its feature id and its refused observation and
+// assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
+test("an evidence kind that disagrees with the marker keeps the response and the refused claim", async () => {
+  const response = "\x1b[?1;2c"
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "wrong",
+      () => ({
+        pass: false,
+        response,
+        observation: { outcome: "unsupported", evidence: "query" },
+        assertions: [{ kind: "negative", expected: "no DA1 answer", observed: response }],
+      }),
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.observations).toStrictEqual([
+    {
+      featureId: "wrong",
+      outcome: "error",
+      reason: "collector-error",
+      evidence: "query",
+      note: `Termless callback wrong declares parser-state evidence but returned query; refused observation(outcome=unsupported, evidence=query) and assertion(kind=negative, expected="no DA1 answer", observed=${JSON.stringify(response)})`,
+      rawReplyRef: "wrong",
+    },
+  ])
+  expect(batch.assertions).toStrictEqual([])
+  expect(batch.rawReplies).toStrictEqual({ wrong: response })
+  validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
+})
+
+test.each([
+  {
+    name: "an assertion of the other kind",
+    response: "X",
+    observation: { outcome: "supported", evidence: "parser-state" },
+    assertions: [{ kind: "negative", expected: "X", observed: "X" }],
+    refused:
+      'observation(outcome=supported, evidence=parser-state) and assertion(kind=negative, expected="X", observed="X")',
+  },
+  {
+    name: "no assertion",
+    response: "X",
+    observation: { outcome: "supported", evidence: "parser-state" },
+    assertions: [],
+    refused: "observation(outcome=supported, evidence=parser-state)",
+  },
+  {
+    name: "a parser-state assertion that observed other bytes",
+    response: "X",
+    observation: { outcome: "unsupported", evidence: "parser-state" },
+    assertions: [{ kind: "negative", expected: "Y", observed: "Z" }],
+    refused:
+      'observation(outcome=unsupported, evidence=parser-state) and assertion(kind=negative, expected="Y", observed="Z")',
+  },
+  {
+    name: "no response",
+    response: undefined,
+    observation: { outcome: "supported", evidence: "parser-state" },
+    assertions: [{ kind: "positive", expected: "X", observed: "X" }],
+    refused:
+      'observation(outcome=supported, evidence=parser-state) and assertion(kind=positive, expected="X", observed="X")',
+  },
+] as const)("a conclusive result with $name keeps its response and refused claim", async (row) => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "unbound",
+      (() => ({
+        pass: row.observation.outcome === "supported",
+        ...(row.response !== undefined && { response: row.response }),
+        observation: row.observation,
+        assertions: row.assertions,
+      })) as unknown as ProbeDefinition["termless"],
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.observations).toStrictEqual([
+    {
+      featureId: "unbound",
+      outcome: "error",
+      reason: "collector-error",
+      evidence: "parser-state",
+      note: `Callback result lacks matching raw state and assertion; refused ${row.refused}`,
+      ...(row.response !== undefined && { rawReplyRef: "unbound" }),
+    },
+  ])
+  expect(batch.assertions).toStrictEqual([])
+  expect(batch.rawReplies).toStrictEqual(row.response !== undefined ? { unbound: row.response } : {})
+  validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
+})
+
+test("an inconclusive result without a reason keeps its response and refused claim", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "unreasoned",
+      (() => ({
+        pass: false,
+        response: "X",
+        observation: { outcome: "inconclusive", evidence: "parser-state" },
+      })) as unknown as ProbeDefinition["termless"],
+      { termlessObservationEvidence: "parser-state" },
+    ),
+  ])
+  expect(batch.observations).toStrictEqual([
+    {
+      featureId: "unreasoned",
+      outcome: "error",
+      reason: "collector-error",
+      evidence: "parser-state",
+      note: "Callback result lacks an inconclusive/error reason; refused observation(outcome=inconclusive, evidence=parser-state)",
+      rawReplyRef: "unreasoned",
+    },
+  ])
+  expect(batch.rawReplies).toStrictEqual({ unreasoned: "X" })
+  validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
+})
+
+test("a result with no observation keeps its response and refused assertions", async () => {
+  // The union makes this unreachable from a typed callback; an untyped caller still keeps what it returned.
+  const untyped = (() => ({
+    pass: true,
+    response: "X",
+    assertions: [{ kind: "positive", expected: "X", observed: "X" }],
+  })) as unknown as ProbeDefinition["termless"]
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition("legacy", untyped, { termlessObservationEvidence: "parser-state" }),
+  ])
+  expect(batch.observations).toStrictEqual([])
+  expect(batch.assertions).toStrictEqual([])
+  expect(batch.ungradedDiagnostics).toStrictEqual({
+    legacy: {
+      kind: "collector-error",
+      name: "Error",
+      message:
+        'Callback for legacy returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded; refused assertion(kind=positive, expected="X", observed="X")',
+    },
+  })
+  expect(batch.rawReplies).toStrictEqual({ legacy: "X" })
+})
 
 test("refuses a callback result that is neither a measurement nor a coverage record", async () => {
   // The union makes this unreachable from a typed callback; an untyped caller still gets a loud refusal.

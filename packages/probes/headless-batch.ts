@@ -237,6 +237,12 @@ function refusedClaimEvidence(result: ProbeResult): string {
   return parts.join(" and ")
 }
 
+/** A refusal's text names the claim it refused, so the run file keeps what the grader concluded. */
+function withRefusedClaim(message: string, result: ProbeResult): string {
+  const refused = refusedClaimEvidence(result)
+  return refused ? `${message}; refused ${refused}` : message
+}
+
 /** A callback conclusion without its raw state cannot become a support claim. */
 function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult): void {
   const id = probe.id
@@ -244,6 +250,7 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
     recordNotTested(batch, probe, result)
     return
   }
+  retainCallbackResponse(batch, id, result)
   // The union makes one of the two records mandatory, so a typed callback always lands here
   // with a measurement. An untyped caller that returns neither gets a loud collector error
   // instead of the old ungraded legacy-callback record.
@@ -253,7 +260,10 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
     batch.ungradedDiagnostics[id] = {
       kind: "collector-error",
       name: "Error",
-      message: `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+      message: withRefusedClaim(
+        `Callback for ${id} returned neither an observation nor a not-tested coverage record; its conclusion cannot be graded`,
+        result,
+      ),
     }
     return
   }
@@ -264,7 +274,10 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
     result.response === undefined &&
     !result.assertions?.length
   if (declared && !(explicit.evidence === "none" ? unmeasuredRefusal : explicit.evidence === declared)) {
-    const message = `Termless callback ${id} declares ${declared} evidence but returned ${explicit.evidence}${explicit.evidence === "none" ? " without an unmeasured refusal" : ""}`
+    const message = withRefusedClaim(
+      `Termless callback ${id} declares ${declared} evidence but returned ${explicit.evidence}${explicit.evidence === "none" ? " without an unmeasured refusal" : ""}`,
+      result,
+    )
     if (carriesError(explicit.evidence)) {
       batch.observations.push({
         featureId: id,
@@ -272,6 +285,7 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
         reason: "collector-error",
         evidence: explicit.evidence,
         note: message,
+        ...(result.response !== undefined ? { rawReplyRef: id } : {}),
       })
     } else {
       batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
@@ -299,11 +313,14 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeResult)
       outcome: "error",
       reason: "collector-error",
       evidence: explicit.evidence,
-      note: `Callback result lacks ${conclusive ? "matching raw state and assertion" : "an inconclusive/error reason"}`,
+      note: withRefusedClaim(
+        `Callback result lacks ${conclusive ? "matching raw state and assertion" : "an inconclusive/error reason"}`,
+        result,
+      ),
+      ...(result.response !== undefined ? { rawReplyRef: id } : {}),
     })
     return
   }
-  if (result.response !== undefined) batch.rawReplies[id] = result.response
   batch.observations.push({ featureId: id, ...explicit, ...(bound && { rawReplyRef: id }) })
   for (const assertion of result.assertions ?? []) {
     batch.assertions.push({ featureId: id, ...assertion, ...(bound && { rawReplyRef: id }) })
@@ -432,7 +449,10 @@ export async function collectBatch(
         retainCallbackResponse(batch, probe.id, callback)
         batch.rawReplies[`${probe.id}.late`] = late.bytes
         throw new Error(
-          `late reply after sentinel: ${String(late.bytes.length)} bytes ${JSON.stringify(late.bytes)} at +${String(late.firstAtMs)}ms`,
+          withRefusedClaim(
+            `late reply after sentinel: ${String(late.bytes.length)} bytes ${JSON.stringify(late.bytes)} at +${String(late.firstAtMs)}ms`,
+            callback,
+          ),
         )
       }
       callbackChecks = callback.checks
@@ -447,6 +467,7 @@ export async function collectBatch(
           reason: "collector-error",
           evidence: probe.termlessObservationEvidence,
           note: message,
+          ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
         })
       } else {
         batch.ungradedDiagnostics[probe.id] = {
