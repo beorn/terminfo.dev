@@ -164,13 +164,9 @@ async function collectOne(name: string, directory: string): Promise<string> {
         config: "80x24 default Termless backend",
         permissions: null,
       },
-      identity:
-        sourceDirty ||
-        (runtimeIdentity.kind === "js" &&
-          runtimeIdentity.integrity.kind === "source" &&
-          !runtimeIdentity.integrity.cleanTree)
-          ? "unverified"
-          : "verified",
+      // Every collector decoder requires an unverified collector draft; admission's identityMatch verifies
+      // headless identity from runtimeIdentity, so the collector never claims "verified" itself.
+      identity: "unverified",
       runtimeIdentity,
       suiteId: suite.probeHash,
       probeHash: suite.probeHash,
