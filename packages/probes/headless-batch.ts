@@ -68,10 +68,11 @@ export function feedCapture(backend: TerminalBackend, text: string): string {
 /**
  * F1 (27832) on a proven headless engine (#30554): the query in one capture, then DA1 in a capture of
  * its own, read with the live collector's rule. Two captures keep the order a real terminal produces,
- * the query's replies before the DA1 answer, even where an adapter appends its own reply after the
- * engine's (libvterm, vt100 and vt220 do for 14t and 18t). The capture is synchronous, so a read that
- * never saw the DA1 answer, or saw bytes ahead of it that match nothing, has ended the way live's
- * timeout does: no sentinel facts, and never the `sentinel` outcome (@cto 67840412 R1).
+ * the query's replies before the DA1 answer, even where an adapter answers only after its engine has
+ * run the whole feed (libvterm, vt100 and vt220 did for 14t and 18t until #30549). The capture is
+ * synchronous, so a read that never saw the DA1 answer, or saw bytes ahead of it that match nothing,
+ * has ended the way live's timeout does: no sentinel facts, and never the `sentinel` outcome (@cto
+ * 67840412 R1).
  */
 function sentinelOutcome(
   backend: TerminalBackend,

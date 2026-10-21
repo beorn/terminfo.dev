@@ -144,21 +144,22 @@ test("a reply after the DA1 answer grades by the reply and carries the sentinel 
   expect(onSentinel).not.toHaveBeenCalled()
 })
 
-// In one feed, libvterm's adapter appends its own 14t answer after the engine's DA1 answer; the
-// member's separate DA1 capture keeps the order a terminal gives, so the reply is never "late".
-test("libvterm's adapter-made 14t reply stays a reply because DA1 has a capture of its own", async () => {
-  const backend = await resolveLibvterm()
-  backend.init({ cols: 80, rows: 24 })
-  try {
-    const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`)
-    expect(together.indexOf("\x1b[4;")).toBeGreaterThan(together.indexOf(proofOf("libvterm").da1Answer))
-    const ctx = createTermlessContext(backend, { proof: proofOf("libvterm"), graceMs: 250, onSentinel: () => {} })
-    const outcome = ctx.queryWithSentinelOutcome?.("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
-    expect(outcome?.reason).toBe("reply")
-    expect(outcome?.sentinel).toBeUndefined()
-  } finally {
-    backend.destroy()
-  }
+// An adapter that answers a query only after its engine has run the whole feed puts that answer after the
+// engine's DA1 answer when both share one feed, as libvterm's 14t did until #30549. The member's separate DA1
+// capture keeps the order a terminal gives, so such a reply is never read as "after the sentinel".
+test("a reply an adapter makes after the whole feed stays a reply because DA1 has a capture of its own", () => {
+  const winops = "\x1b[4;408;640t"
+  const backend = scripted((text) => {
+    if (text === DA1_QUERY) return DA1
+    if (text === "\x1b[14t") return winops
+    return text === `\x1b[14t${DA1_QUERY}` ? `${DA1}${winops}` : ""
+  })
+  const ctx = contextOf(backend, proven())
+  const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`)
+  expect(together.indexOf(winops)).toBeGreaterThan(together.indexOf(DA1))
+  const outcome = ctx.queryWithSentinelOutcome?.("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
+  expect(outcome).toMatchObject({ reason: "reply", raw: `${winops}${DA1}` })
+  expect(outcome?.sentinel).toBeUndefined()
 })
 
 const engines: Record<string, () => Promise<TerminalBackend>> = {
