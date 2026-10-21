@@ -1,3 +1,5 @@
+import { CAPABILITY_STATUSES } from "./types.ts"
+import type { ProbeCheckResult } from "./types.ts"
 import type {
   CapabilityAttempt,
   Observation,
@@ -59,6 +61,14 @@ export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise
   if ((await ctx.utf8Decoding()) !== "8-bit") return null
   return {
     pass: false,
+    criterionBranch: "utf8-prerequisite",
+    checks: [
+      {
+        id: "utf8-context",
+        status: "test-todo",
+        reason: "Measured decoding is ISO-8859-1; correct the pinned locale and rerun this UTF-8 criterion",
+      },
+    ],
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
@@ -395,6 +405,18 @@ export async function sgrCaptureFrames(
   return {
     pass: false,
     response: JSON.stringify({ ...meta, control: controlFrame.label, target: targetFrame.label }),
+    criterionBranch: "visual-review",
+    checks: [
+      { id: "capture", status: "supported", assertionRefs: [0] },
+      { id: "review", status: "test-todo", reason: "Valid control and target capture; required visual review pending" },
+    ],
+    assertions: [
+      {
+        kind: "positive",
+        expected: `${targetLabel} compared with ${controlLabel}`,
+        observed: JSON.stringify({ control: controlFrame, target: targetFrame }),
+      },
+    ],
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
@@ -853,19 +875,19 @@ export function recordExecutedCapability(input: {
   diagnostic?: UngradedDiagnostic
   coverage?: NotTestedCoverage
   assertions: readonly ProbeAssertion[]
+  checks?: ProbeCheckResult[]
+  criterionBranch?: string
 }): CapabilityResult {
   const { featureId, attempt, observation, diagnostic, coverage } = input
   const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
-  const requiresReview =
-    observation?.outcome === "inconclusive" &&
-    (observation.evidence === "pixels" || observation.evidence === "text") &&
-    (observation.frames?.length ?? 0) >= 2
-  const status =
-    diagnostic || observation?.outcome === "error"
+  const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
+  const status = missingCapture
+    ? "test-todo"
+    : diagnostic || observation?.outcome === "error"
       ? "test-failure"
       : observation?.outcome === "supported" || observation?.outcome === "unsupported"
         ? observation.outcome
-        : coverage || observation?.evidence === "none" || observation?.evidence === "consumed" || requiresReview
+        : coverage || observation?.evidence === "none" || observation?.evidence === "consumed"
           ? "test-todo"
           : "test-failure"
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
@@ -874,29 +896,47 @@ export function recordExecutedCapability(input: {
   return finalizeCapabilityResult({
     featureId,
     attempt,
-    checks: requiresReview
-      ? [
-          { id: "capture", status: "supported", attempt, assertionRefs, ...(rawReplyRef && { rawReplyRef }) },
-          {
-            id: "review",
-            status: "test-todo",
-            attempt: { scope: "none" },
-            reason: "Valid capture; required review pending",
-          },
-        ]
-      : [
-          {
-            id: "criterion",
-            status,
-            attempt: status === "test-todo" ? { scope: "none" } : attempt,
-            assertionRefs,
-            ...(rawReplyRef && { rawReplyRef }),
-            ...(reason && { reason }),
-          },
-        ],
+    checks:
+      input.checks && !diagnostic && observation?.outcome !== "error"
+        ? input.checks.map((check) => {
+            if (!check.id || !CAPABILITY_STATUSES.includes(check.status))
+              throw new Error(`Invalid callback check for ${featureId}`)
+            const refs =
+              check.assertionRefs === undefined
+                ? check.status === "test-todo"
+                  ? []
+                  : assertionRefs
+                : check.assertionRefs.map((index) => {
+                    const globalIndex = assertionRefs[index]
+                    if (globalIndex === undefined)
+                      throw new Error(`Callback check ${featureId}/${check.id} names an absent assertion`)
+                    return globalIndex
+                  })
+            return {
+              id: check.id,
+              status: check.status,
+              attempt: check.status === "test-todo" ? { scope: "none" } : attempt,
+              assertionRefs: refs,
+              ...(rawReplyRef && { rawReplyRef }),
+              ...(check.reason && { reason: check.reason }),
+            }
+          })
+        : [
+            {
+              id: "criterion",
+              status,
+              attempt: status === "test-todo" ? { scope: "none" } : attempt,
+              assertionRefs,
+              ...(rawReplyRef && { rawReplyRef }),
+              ...(reason && { reason }),
+            },
+          ],
+    ...(input.criterionBranch && { criterionBranch: input.criterionBranch }),
     ...(observation?.evidence && { evidence: observation.evidence }),
     ...(rawReplyRef && { rawReplyRef }),
     ...(observation?.frames && { frames: observation.frames }),
+    ...(observation?.screenshotRef && { screenshotRef: observation.screenshotRef }),
+    ...(observation?.host && { host: observation.host }),
     ...(reason && { reason }),
   })
 }

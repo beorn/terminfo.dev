@@ -9,7 +9,7 @@ export interface NoSemanticObservable {
 /** A probe result is exactly one of two things: a measured observation, or a coverage record. */
 export type ProbeResult = MeasuredProbeResult | NotTestedCoverageResult
 
-export interface MeasuredProbeResult {
+export interface MeasuredProbeResult extends ProbeExecutionChecks {
   /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
   note?: string
@@ -20,7 +20,7 @@ export interface MeasuredProbeResult {
   notTested?: never
 }
 
-export interface NotTestedCoverageResult {
+export interface NotTestedCoverageResult extends ProbeExecutionChecks {
   pass: boolean
   note?: string
   response?: string
@@ -47,6 +47,13 @@ export interface CheckResult {
   reviewRef?: string
   reason?: string
 }
+/** Callback criterion facts; the producer supplies actual attempt timestamps and global evidence refs. */
+export type ProbeCheckResult = Pick<CheckResult, "id" | "status" | "reason" | "assertionRefs">
+interface ProbeExecutionChecks {
+  checks?: ProbeCheckResult[]
+  criterionBranch?: string
+}
+
 export interface CapabilityResult {
   featureId: string
   status: CapabilityStatus
@@ -57,6 +64,8 @@ export interface CapabilityResult {
   reviewRef?: string
   reason?: string
   frames?: ObservationFrame[]
+  screenshotRef?: string
+  host?: ConsoleBufferOwner
   evidence?: ObservationEvidence
 }
 

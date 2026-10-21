@@ -1202,8 +1202,15 @@ function captureBindingSource(
     if (bytes === undefined) throw new Error(`Capture ${featureId} missing raw bytes ${key}`)
     return { key, sha256: hash(bytes) }
   })
+  // Review assertions are derived from this immutable capture after review, and are bound
+  // separately by the retained typed decision. Capture assertions remain byte-for-byte bound.
+  const reviewAssertions = new Set(
+    result.checks.filter((check) => check.id === "review").flatMap((check) => check.assertionRefs ?? []),
+  )
   const assertionRefs = draft.assertions.flatMap((assertion, index) =>
-    assertion.featureId === featureId ? [{ index, sha256: hash(JSON.stringify(assertion)) }] : [],
+    assertion.featureId === featureId && !reviewAssertions.has(index)
+      ? [{ index, sha256: hash(JSON.stringify(assertion)) }]
+      : [],
   )
   return JSON.stringify({
     runId: draft.runId,
@@ -1279,6 +1286,22 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
   }
   const reviewRef = `collector.review.${decision.id}`
   if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
+  let assertionRefs: number[] | undefined
+  if (decision.decision !== "untestable") {
+    const captured = draft.assertions.filter((assertion) => assertion.featureId === decision.featureId)
+    if (!captured.length || captured.some((assertion) => !assertion.expected || !assertion.observed)) {
+      throw new Error(`Capture ${decision.featureId} review requires retained TESTED/EXPECTED assertions`)
+    }
+    assertionRefs = captured.map((assertion) => {
+      const index = draft.assertions.length
+      draft.assertions.push({
+        ...assertion,
+        kind: decision.decision === "supported" ? "positive" : "negative",
+        note: `Capture review ${decision.id}: ${decision.reason}`,
+      })
+      return index
+    })
+  }
   const checks = result.checks.map(
     (check): CheckResult =>
       check.id === "review"
@@ -1288,6 +1311,7 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
             attempt: { scope: "probe", startedAt },
             reviewRef,
             reason: decision.reason,
+            ...(assertionRefs && { assertionRefs }),
           }
         : check,
   )
@@ -1401,7 +1425,7 @@ export function parseCapabilityResults(
       // Reuse the existing raw/assertion/frame validator without persisting or deriving
       // another disposition. The result's recorded status remains authoritative.
       parseObservation(
-        { ...item, outcome: status },
+        { ...item, reason: undefined, outcome: status },
         path,
         new Set(expected),
         rawReplies,
@@ -1599,6 +1623,12 @@ export function parseRun(
         )
       : undefined
     if (current && results) {
+      if (
+        raw.sealedAt !== undefined &&
+        results.some((result) => result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+      ) {
+        fail(path, "required review pending; retain its unsealed capture")
+      }
       if (!object(raw.intendedContext)) fail(path, "current run requires intendedContext")
       const captureRun = {
         runId,

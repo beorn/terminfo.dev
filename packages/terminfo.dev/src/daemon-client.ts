@@ -19,7 +19,7 @@ import {
   type ProbeSuiteManifest,
   type ProbeTarget,
 } from "@terminfo/probe-defs"
-import { decodeCollectorDraft, decodeExactUtf8, retainCaptureBinding } from "@terminfo/run-parser"
+import { decodeCollectorDraft, decodeExactUtf8, retainCaptureBinding, applyCaptureDecision } from "@terminfo/run-parser"
 import { getTrustedSuiteReceipt } from "./serve.ts"
 import {
   parseProcessOwnerAssertion,
@@ -309,10 +309,16 @@ export async function readRetainedDaemonProbeResponse(
   }
 }
 
+export interface CaptureReviewInput {
+  source: string
+  startedAt: string
+}
+
 /** Enrich the same capture before seal; pending review is a valid private draft. */
 export function finalizeCollectedDraft(
   run: CollectedProbeRun,
   intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
+  reviews: readonly CaptureReviewInput[] = [],
 ): CollectedProbeRun | CurrentProbeRun {
   if (run.schemaVersion !== 3 || !Array.isArray(run.results))
     throw new Error("Final writer requires the current schema-3 draft; historical runs are read-only")
@@ -338,6 +344,7 @@ export function finalizeCollectedDraft(
     if (result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
       retainCaptureBinding(captured, result.featureId)
   }
+  for (const review of reviews) applyCaptureDecision(captured, review.source, review.startedAt)
   if (
     captured.results.some((result) =>
       result.checks.some((check) => check.id === "review" && check.status === "test-todo"),
@@ -352,8 +359,9 @@ export function saveDaemonProbeRun(
   run: CollectedProbeRun,
   directory: string,
   intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
+  reviews: readonly CaptureReviewInput[] = [],
 ): string {
-  const captured = finalizeCollectedDraft(run, intended)
+  const captured = finalizeCollectedDraft(run, intended, reviews)
   for (const value of [captured.target.id, captured.target.version, captured.target.os ?? "unknown", captured.runId]) {
     if (!/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`Unsafe capture filename component: ${value}`)
   }

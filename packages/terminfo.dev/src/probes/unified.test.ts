@@ -2359,3 +2359,64 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
     definition.term = original
   }
 })
+
+// Existing native tests retained framed observations but never distinguished an attempted broken
+// comparison from a still-unattempted required review at the callback-to-writer handoff.
+it("forwards explicit callback checks through the actual native batch attempt without inferring review from frames", async () => {
+  const { sgrCaptureFrames } = await import("../../../probe-defs/src/helpers.ts")
+  const { cropPositionRefusal } = await import("../../../probe-defs/src/region-readback.ts")
+  const id = "modes.bracketed-paste"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = definition.term
+  const frames = [
+    {
+      role: "control" as const,
+      label: "control",
+      ref: `sha256:${"a".repeat(64)}`,
+      capturedAt: 1,
+      regionRectangle: { x: 0, y: 0, width: 10, height: 20 },
+    },
+    {
+      role: "target" as const,
+      label: "target",
+      ref: `sha256:${"b".repeat(64)}`,
+      capturedAt: 2,
+      regionRectangle: { x: 0, y: 26, width: 10, height: 20 },
+    },
+  ]
+  try {
+    definition.term = async () =>
+      cropPositionRefusal({
+        id,
+        compared: frames.map((frame) => ({ role: frame.role, rectangle: frame.regionRectangle })),
+        response: "unequal crop positions",
+        frames,
+        screenshotRef: frames[1]!.ref,
+      })!
+    const failed = await runProbeBatch({ ids: [id] })
+    expect(failed.results.find((result) => result.featureId === id)).toMatchObject({
+      status: "test-failure",
+      criterionBranch: "same-crop-comparison",
+      checks: [{ id: "comparison", status: "test-failure", attempt: { scope: "probe" } }],
+    })
+    let next = 0
+    definition.term = async () =>
+      sgrCaptureFrames(
+        { write() {}, capture: async () => frames[next++]! } as unknown as import("@terminfo/probe-defs").TermContext,
+        "control",
+        "target",
+        "visual target",
+      )
+    const pending = await runProbeBatch({ ids: [id] })
+    const recorded = pending.results.find((result) => result.featureId === id)!
+    expect(recorded.status).toBe("test-todo")
+    expect(recorded.criterionBranch).toBe("visual-review")
+    expect(recorded.checks.find((check) => check.id === "review")).toMatchObject({
+      status: "test-todo",
+      attempt: { scope: "none" },
+    })
+    expect(pending.assertions.find((assertion) => assertion.featureId === id)?.expected).toContain("visual target")
+  } finally {
+    definition.term = original
+  }
+})

@@ -697,6 +697,17 @@ export async function collectPass(
       const header = JSON.parse(raw) as { schemaVersion?: unknown; sealedAt?: unknown }
       if (header.schemaVersion === 3 && header.sealedAt === undefined) {
         const decoded = decodeCollectorDraft(path, raw, derivedSuiteManifest(snapshot), sourceRevision)
+        if (decoded.run.runId !== handed.draft.runId)
+          throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
+        if (
+          decoded.run.target?.kind !== context.kind ||
+          decoded.run.target.id !== context.id ||
+          (context.kind !== "headless" && decoded.run.target.os !== context.os)
+        ) {
+          throw new Error(
+            `raw draft does not identify the expected current schema-3 ${context.kind}:${context.id} context`,
+          )
+        }
         if (
           decoded.run.results.some((result) =>
             result.checks.some((check) => check.id === "review" && check.status === "test-todo"),

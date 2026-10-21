@@ -672,6 +672,8 @@ export async function runProbeBatch(
       if (captureGeometryRefusal) context.capture = undefined
     }
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
+    let callbackChecks: ProbeResult["checks"]
+    let criterionBranch: string | undefined
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
@@ -688,6 +690,8 @@ export async function runProbeBatch(
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
+      callbackChecks = result.checks
+      criterionBranch = result.criterionBranch
       if (
         captureGeometryRefusal &&
         result.observation?.outcome === "inconclusive" &&
@@ -729,6 +733,16 @@ export async function runProbeBatch(
         const resized =
           preGeometry?.status === "measured" &&
           (post?.status !== "measured" || post.rows !== preGeometry.rows || post.cols !== preGeometry.cols)
+        if (resized) {
+          callbackChecks = [
+            {
+              id: "geometry",
+              status: "test-failure",
+              reason: `Measured geometry changed or became unavailable after ${probe.id}`,
+            },
+          ]
+          criterionBranch = "resized-capture"
+        }
         // The capture trace is where a text read records whose buffer it returned; the observation
         // carries that host so no consumer parses it out of a caption (30055 AC4).
         const host = captures.map((capture) => capturedConsoleHost(capture.trace)).find((value) => value !== undefined)
@@ -809,6 +823,8 @@ export async function runProbeBatch(
         diagnostic: batch.ungradedDiagnostics[probe.id],
         coverage: batch.notTested.find((entry) => entry.featureId === probe.id),
         assertions: batch.assertions,
+        checks: callbackChecks,
+        criterionBranch,
       })
       options.onCheckpoint?.(batch)
     }

@@ -387,6 +387,15 @@ export const cursorProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: observed,
+              criterionBranch: "cursor-visibility-visual-review",
+              checks: [
+                { id: "capture", status: "supported", assertionRefs: [0] },
+                {
+                  id: "review",
+                  status: "test-todo",
+                  reason: "Valid cursor control and target frames; required independent review pending",
+                },
+              ],
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",

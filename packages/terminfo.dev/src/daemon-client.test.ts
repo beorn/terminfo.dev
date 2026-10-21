@@ -24,6 +24,7 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
+import { parseRun } from "@terminfo/run-parser"
 import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   createProbeRun,
@@ -617,4 +618,49 @@ it("sends the process owner as processOwner, refused when it names another daemo
   } finally {
     server.close()
   }
+})
+
+// Existing immutable-write tests never resumed a genuinely pending capture with typed review bytes.
+it("resumes a retained pending capture through the final writer without changing the original draft", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const run = collectorRun()
+  run.results[0]!.checks = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+  ]
+  const path = saveDaemonProbeRun(run, root)
+  expect(path).toMatch(/draft.json$/)
+  const original = readFileSync(path, "utf8")
+  const pending = JSON.parse(original) as CollectedProbeRun
+  const capture = pending.rawReplies["collector.capture.device.primary-da"]!
+  const review = JSON.stringify({
+    id: "context-review",
+    runId: run.runId,
+    featureId: "device.primary-da",
+    captureSha256: createHash("sha256").update(capture).digest("hex"),
+    decision: "untestable",
+    reviewed: true,
+    reviewer: "reviewer",
+    reason: "This stream-only context cannot receive device-status replies",
+    scope: {
+      target: { kind: "app", id: "kitty" },
+      versions: ["0.49.1", "0.49.1"],
+      suites: [run.probeHash, run.probeHash],
+    },
+    sources: ["collector.capture.device.primary-da"],
+    supersedes: [],
+  })
+  const final = saveDaemonProbeRun(pending, root, undefined, [
+    { source: review, startedAt: "2026-10-21T05:00:00.000Z" },
+  ])
+  expect(final).not.toMatch(/draft.json$/)
+  expect(readFileSync(path, "utf8")).toBe(original)
+  const parsed = parseRun(
+    final,
+    readFileSync(final, "utf8"),
+    ["device.primary-da"],
+    new Map([[run.probeHash, trustedReceipt.manifest]]),
+  )
+  expect(parsed.runId).toBe(run.runId)
+  expect(parsed.results?.[0]?.status).toBe("untestable")
+  expect(parsed.rawReplies["collector.review.context-review"]).toBe(review)
 })

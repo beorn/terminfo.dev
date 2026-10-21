@@ -312,11 +312,16 @@ export async function collectBatch(
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     let backend: TerminalBackend | undefined
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
+    let callbackChecks: ProbeResult["checks"]
+    let criterionBranch: string | undefined
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
       const ctx = createTermlessContext(backend)
-      recordResult(batch, probe, probe.termless(ctx))
+      const callback = probe.termless(ctx)
+      callbackChecks = callback.checks
+      criterionBranch = callback.criterionBranch
+      recordResult(batch, probe, callback)
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
       if (carriesError(probe.termlessObservationEvidence)) {
@@ -345,6 +350,8 @@ export async function collectBatch(
         diagnostic,
         coverage,
         assertions: batch.assertions,
+        checks: callbackChecks,
+        criterionBranch,
       })
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
       if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)

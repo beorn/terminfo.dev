@@ -39,7 +39,7 @@ import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { textQualificationFixtures } from "@terminfo/probe-defs"
 import { classifyHistoricalDevelopmentRun as classifyDevelopmentRun } from "../docs/data/selected-results.ts"
-import { buildReport } from "./decisive-share.ts"
+import { buildHistoricalReport as buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,
   collectPass,

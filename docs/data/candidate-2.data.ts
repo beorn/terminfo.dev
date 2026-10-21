@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadCategories } from "./categories.ts"
 import { frozenSuiteLineage } from "./load-release-scope.ts"
-import type { ContextCandidate } from "./run-selection.ts"
+import type { HistoricalContextCandidate as ContextCandidate } from "./run-selection.ts"
 import { D3_VERDICT_BAR, type D3Label } from "./release-scope.ts"
 import {
   buildHistoricalReport,

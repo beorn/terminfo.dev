@@ -22,8 +22,8 @@ import {
   type ProbeSuiteManifest,
   type TextQualification,
   isNonMeasuringEvidence,
-  TEXT_QUALIFICATION_SPEC,
-  textQualificationFixtures,
+  assessTextQualification,
+  type TextQualificationAssessment,
 } from "@terminfo/probe-defs"
 import {
   type LoadedRun,
@@ -240,74 +240,7 @@ function observationRecord(run: LoadedRun, observation: Observation): SelectedCe
   }
 }
 
-export interface TextQualificationAssessment {
-  qualified: boolean
-  reason?: string
-}
-
-/** Recompute once per loaded run from retained, already verified bytes. Never persist this verdict. */
-function assessTextQualification(
-  run: LoadedRun,
-  snapshots?: ReadonlyMap<string, Uint8Array>,
-): TextQualificationAssessment {
-  const rejected = (reason: string): TextQualificationAssessment => ({
-    qualified: false,
-    reason: `Run ${run.runId}: ${reason}`,
-  })
-  const qualification = run.textQualification
-  if (!qualification) return rejected("text qualification is absent")
-  const declaration = run.textQualificationSpec
-  if (
-    !declaration ||
-    declaration.version !== qualification.version ||
-    declaration.recipe !== qualification.recipe ||
-    qualification.version !== TEXT_QUALIFICATION_SPEC.version ||
-    qualification.recipe !== TEXT_QUALIFICATION_SPEC.recipe
-  ) {
-    return rejected("text qualification version or recipe does not match the cited suite declaration and reader")
-  }
-  const { rows, cols } = qualification.grid
-  const fixtures = textQualificationFixtures(rows, cols)
-  if (typeof fixtures === "string") return rejected(fixtures)
-  for (const fixture of fixtures) {
-    const witness = qualification.shapes.find(({ shape }) => shape === fixture.shape)
-    if (!witness) return rejected(`missing text qualification shape ${fixture.shape}`)
-    if (witness.reason !== undefined) return rejected(`text qualification shape ${fixture.shape}: ${witness.reason}`)
-    if (
-      witness.frames.length !== 2 ||
-      witness.frames.filter((frame) => frame.role === "control").length !== 1 ||
-      witness.frames.filter((frame) => frame.role === "target").length !== 1
-    ) {
-      return rejected(`text qualification shape ${fixture.shape} requires exactly one control and one target frame`)
-    }
-    for (const role of ["control", "target"] as const) {
-      const frame = witness.frames.find((entry) => entry.role === role)
-      if (!frame) return rejected(`text qualification shape ${fixture.shape} has no ${role}`)
-      const rectangle = frame.cellRectangle
-      if (
-        rectangle.top !== 1 ||
-        rectangle.left !== 1 ||
-        rectangle.bottom !== rows ||
-        rectangle.right !== cols ||
-        frame.cellDigest !== frame.ref ||
-        frame.frameDigest !== frame.ref
-      ) {
-        return rejected(`text qualification shape ${fixture.shape} ${role} is not the full retained grid`)
-      }
-      const bytes = snapshots?.get(frame.ref)
-      if (!bytes) {
-        return rejected(
-          `text qualification shape ${fixture.shape} ${role} has no verified retained bytes for ${frame.ref}`,
-        )
-      }
-      const expected = role === "control" ? fixture.controlRows : fixture.targetRows
-      if (Buffer.from(bytes).toString("utf8") !== expected.join("\n")) {
-        return rejected(`text qualification shape ${fixture.shape} ${role} does not match the expected character grid`)
-      }
-    }
-  }
-  return { qualified: true }
-}
+export type { TextQualificationAssessment } from "@terminfo/probe-defs"
 
 function isConclusiveObservation(run: LoadedRun, observation: Observation, text: TextQualificationAssessment): boolean {
   return (

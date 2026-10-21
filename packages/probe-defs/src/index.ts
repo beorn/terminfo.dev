@@ -157,6 +157,7 @@ export type {
   CapabilityAttempt,
   CapabilityResult,
   CheckResult,
+  ProbeCheckResult,
   RunDraft,
   CurrentProbeRun,
   CaptureDecision,
@@ -165,3 +166,5 @@ export type {
 export { initializeRunDraft, finalizeCapabilityResult, sealRunDraft } from "./helpers.ts"
 
 export { recordExecutedCapability, recordCollectionFailure } from "./helpers.ts"
+
+export { assessTextQualification, type TextQualificationAssessment } from "./text-qualification.ts"
