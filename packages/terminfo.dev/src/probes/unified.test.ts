@@ -958,19 +958,20 @@ it("retains actual width-helper writes and all four CPR query outcomes", async (
       ownedTerminal: geometryOwner(measured(24, 61), async () => measured(24, 61)),
     })
     const trace = JSON.parse(batch.rawReplies[id]!)
+    const writes = emitted.filter((sequence) => sequence !== "\x1b[6n")
     expect(pending).toEqual([])
-    expect(trace.queries).toEqual(
-      replies.map((raw) => ({
+    expect(writes).toHaveLength(6)
+    expect(trace).toMatchObject({
+      writes,
+      queries: replies.map((raw) => ({
         sequence: "\x1b[6n",
         match: [...raw.match(/\x1b\[(\d+);(\d+)R/)!],
         reason: "reply",
         raw,
         rawBase64: Buffer.from(raw).toString("base64"),
       })),
-    )
-    expect(trace.writes).toEqual(emitted.filter((sequence) => sequence !== "\x1b[6n"))
-    expect(trace.writes).toHaveLength(6)
-    expect(trace.events.map((event: { sequence: string }) => event.sequence)).toEqual(emitted)
+      events: emitted.map((sequence) => ({ sequence })),
+    })
     expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "behavior" }])
   } finally {
     vi.mocked(measureUtf8Decoding).mockRestore()
