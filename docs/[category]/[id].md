@@ -5,7 +5,7 @@ next: false
 ---
 
 <script setup>
-import { publicResultFor } from '../data/public-results'
+import { publicResultFor } from '../data/release-scope'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 const { params } = useData()

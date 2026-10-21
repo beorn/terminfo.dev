@@ -1,4 +1,25 @@
-import { CAPABILITY_STATUSES, type CapabilityResult, type CapabilityStatus } from "@terminfo/probe-defs"
+import {
+  CAPABILITY_STATUSES,
+  type CapabilityResult,
+  type CapabilityStatus,
+} from "../../packages/probe-defs/src/types.ts"
+import type {
+  PublicVersion,
+  HistoricalPublicVersion,
+  PublicCapabilityResult,
+  HistoricalPublicCell,
+} from "./public-results.ts"
+
+/** Read the existing versioned public result without manufacturing a legacy observation. */
+export function publicResultFor(
+  version: PublicVersion | HistoricalPublicVersion | undefined,
+  featureId: string,
+): PublicCapabilityResult | HistoricalPublicCell | undefined {
+  if (!version) return undefined
+  return version.schemaVersion === 3
+    ? version.results.find((result) => result.featureId === featureId)
+    : version.cells[featureId]
+}
 
 /** Release 1 measurement claim: 62 query/reply features of the 270-feature catalog. */
 

@@ -5,10 +5,9 @@ next: false
 ---
 
 <script setup>
-import { publicResultFor } from '../data/public-results'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { currentCoverageSentence } from '../data/release-scope'
+import { currentCoverageSentence, publicResultFor } from '../data/release-scope'
 const { params } = useData()
 const p = params.value
 

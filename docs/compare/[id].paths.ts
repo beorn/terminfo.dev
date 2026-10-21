@@ -2,7 +2,8 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadFeatures } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
-import { publicResultFor, type PublicVersion } from "../data/public-results"
+import type { PublicVersion } from "../data/public-results"
+import { publicResultFor } from "../data/release-scope"
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))

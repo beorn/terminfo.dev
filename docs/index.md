@@ -17,10 +17,9 @@ hero:
 ---
 
 <script setup>
-import { publicResultFor } from './data/public-results'
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { currentCoverageSentence, visibleCategoryIds } from './data/release-scope.ts'
+import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
