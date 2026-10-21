@@ -396,15 +396,16 @@ describe("release 1 decisive-count reader", () => {
     }
   })
 
-  it("splits a fixture run into decisive, inconclusive and named remainder buckets", () => {
+  it("splits a fixture run into decisive and test failure or missing remainder buckets", () => {
     const share = decisiveShare(classifyCells(cells), IDS)
     expect(share.denominator).toBe(6)
     expect(share.decisive).toBe(3)
     expect(share.decisivePct).toBe(50)
-    expect(share.inconclusive).toBe(1)
-    expect(share.inconclusivePct).toBe(17)
-    expect(share.inconclusiveIds).toEqual(["d.inconclusive"])
+    expect(share.inconclusive).toBe(0)
+    expect(share.inconclusivePct).toBe(0)
+    expect(share.inconclusiveIds).toEqual([])
     expect(share.remainder).toEqual([
+      { featureId: "d.inconclusive", bucket: "error" },
       { featureId: "e.error", bucket: "error" },
       { featureId: "f.missing", bucket: "untested" },
     ])
@@ -421,13 +422,13 @@ describe("release 1 decisive-count reader", () => {
     expect(share.remainder.every((entry) => entry.bucket === "untested")).toBe(true)
   })
 
-  it("counts a supported outcome on non-measuring evidence as inconclusive, not decisive", () => {
+  it("counts an unverified supported outcome as a test failure, not decisive", () => {
     const share = decisiveShare(classifyCells({ "a.supported": { outcome: "supported", conclusive: false } }), [
       "a.supported",
     ])
     expect(share.decisive).toBe(0)
-    expect(share.inconclusive).toBe(1)
-    expect(share.remainder).toEqual([])
+    expect(share.inconclusive).toBe(0)
+    expect(share.remainder).toEqual([{ featureId: "a.supported", bucket: "error" }])
   })
 
   it("labels the D3 verdict: pass from 90% decisive of the included 52, with gaps from 70%, fail below, the fraction beside the label", () => {
@@ -873,11 +874,11 @@ describe("release 1 decisive-count reader", () => {
     const printed = formatBarRow(row).join("\n")
     expect(printed).toContain("suite c6ec4ee8f580")
     expect(printed).toContain("decisive/52     3/4 = 75%  (pass >= 90%)")
-    expect(printed).toContain("inconclusive/52 1/4 = 25%")
-    expect(printed).toContain("inconclusive    1 rows: d.inconclusive")
+    expect(printed).toContain("inconclusive/52 0/4 = 0%")
+    expect(printed).toContain("remainder    1 rows: d.inconclusive (error)")
     expect(printed).toContain("verdict         with gaps · 3/4  (75% decisive of the included 4)")
     expect(printed).toContain(
-      "context/62      decisive 3/6 = 50%, inconclusive 1/6 = 17%  (context only, not the verdict)",
+      "context/62      decisive 3/6 = 50%, inconclusive 0/6 = 0%  (context only, not the verdict)",
     )
     // The row verdict states the D3 rule's own truth and does not claim the reader excludes the named
     // exceptions; the header names them once, with their ruling ids, instead.
@@ -1123,11 +1124,13 @@ describe("per-category decisive share (28018 AC2)", () => {
     // not-tested erase row, which is exactly what a remainder row reports, so erase keeps one row
     // instead of the all-empty remainders the H-era run produced.
     expect(printed.filter((line) => line.includes("remainder"))).toEqual([
-      "    remainder    2 rows: erase.screen.scrollback (untested), scrollback.viewport-hold-output (untested)",
+      "    remainder    4 rows: erase.el-with-attrs (error), erase.screen.scrollback (untested), editing.decsace (untested), scrollback.viewport-hold-output (untested)",
       ...categories.map((category) =>
         category.key === "erase"
-          ? "      remainder    1 rows: erase.screen.scrollback (untested)"
-          : "      remainder    0 rows",
+          ? "      remainder    2 rows: erase.el-with-attrs (error), erase.screen.scrollback (untested)"
+          : category.key === "editing"
+            ? "      remainder    1 rows: editing.decsace (untested)"
+            : "      remainder    0 rows",
       ),
     ])
     // The block header states the basis ONCE (the 125 ratified cohort, the 121 decidable).
@@ -1155,7 +1158,7 @@ describe("per-category decisive share (28018 AC2)", () => {
     ).toBe(true)
     // Chief's nine-ID acceptance remains visible beside the app-only 7/7 projection.
     expect(text).toContain("Scrollback acceptance 7/9 = 78% · with gaps")
-    expect(text).toContain("2 inconclusive: scrollback.accumulate, scrollback.total-lines")
+    expect(text).toContain("0 inconclusive")
     expect(text).toContain("group stays open below 90%")
     expect(printed.some((line) => line.includes("Reset") && line.includes("4/4 = 100%"))).toBe(true)
     // The two RELEASE lines (decisive, inconclusive) are the only cohort-size fractions; every category

@@ -357,7 +357,7 @@ function computeBaselines(data: ProbeData, table: CellTable): void {
       backendStats[bl] = {
         total,
         yes: supported,
-        pct: total > 0 ? Math.round((supported / total) * 100) : null,
+        pct: ids.length > 0 ? Math.round((supported / ids.length) * 100) : null,
         catalog: ids.length,
         supported,
         unsupported,

@@ -1080,7 +1080,7 @@ describe("selected-run consumer parity", () => {
     expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     expect(JSON.parse(core?.params.scores ?? "[]")).toContainEqual(
-      expect.objectContaining({ name: "screen", total: 0, pct: null }),
+      expect.objectContaining({ name: "screen", total: 0, pct: 0 }),
     )
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
     expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "2" })
@@ -1168,14 +1168,14 @@ describe("selected-run consumer parity", () => {
     }
   })
 
-  it("separates conclusive baseline rate from full catalog coverage", () => {
+  it("scores baseline support over the full catalog and exposes test failures", () => {
     const site = probesLoader.load()
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
     expect(site.baselineStats.kitty?.core).toMatchObject({
       total: 1,
       yes: 1,
-      pct: 100,
+      pct: Math.round(100 / catalog),
       catalog,
       supported: 1,
       unsupported: 0,
@@ -1186,12 +1186,12 @@ describe("selected-run consumer parity", () => {
     expect(site.baselineStats.screen?.core).toMatchObject({
       total: 0,
       yes: 0,
-      pct: null,
+      pct: 0,
       catalog,
       supported: 0,
       unsupported: 0,
-      inconclusive: 1,
-      errors: 0,
+      inconclusive: 0,
+      errors: 1,
       untested: catalog - 1,
     })
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
@@ -1201,7 +1201,7 @@ describe("selected-run consumer parity", () => {
       catalog,
       supported: 1,
       untested: catalog - 1,
-      pct: 100,
+      pct: Math.round(100 / catalog),
     })
     const screenBold = fixture.screen.cells["sgr.bold"] as SelectedCell
     if (!screenBold) throw new Error("Missing screen error-count fixture cell")

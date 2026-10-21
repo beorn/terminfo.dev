@@ -20,9 +20,9 @@ const headlessScores = scores.filter(s => s.type === 'headless')
 const barSegments = [
   { id: 'supported', label: 'Supported', symbol: '✓' },
   { id: 'unsupported', label: 'Unsupported', symbol: '✗' },
-  { id: 'inconclusive', label: 'Inconclusive', symbol: '?' },
-  { id: 'errors', label: 'Collector error', symbol: '!' },
-  { id: 'untested', label: 'Untested', symbol: '–' },
+  { id: 'inconclusive', label: 'Untestable', symbol: '?' },
+  { id: 'untested', label: 'TEST TODO', symbol: '–' },
+  { id: 'errors', label: 'TEST FAILURE', symbol: '!' },
 ]
 
 function featureTooltip(f) {
@@ -61,7 +61,7 @@ function barWidth(s, segment) {
 }
 
 function coverageLabel(s) {
-  return `${s.supported} supported · ${s.unsupported} unsupported · ${s.inconclusive} inconclusive · ${s.errors} errors · ${s.untested} untested / ${s.catalog} features`
+  return `${s.supported} supported · ${s.unsupported} unsupported · ${s.inconclusive} Untestable · ${s.untested} TEST TODO · ${s.errors} TEST FAILURE / ${s.catalog} capabilities`
 }
 
 function platformIcon(os) {
@@ -128,7 +128,7 @@ function platformIcons(b) {
         </div>
       </div>
     </div>
-    <span class="summary-pct">{{ s.pct == null ? 'No conclusive score' : `${s.pct}% of conclusive` }}</span>
+    <span class="summary-pct">{{ s.supported }}/{{ s.catalog }} supported ({{ s.pct ?? 0 }}%)</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -153,7 +153,7 @@ function platformIcons(b) {
         </div>
       </div>
     </div>
-    <span class="summary-pct">{{ s.pct == null ? 'No conclusive score' : `${s.pct}% of conclusive` }}</span>
+    <span class="summary-pct">{{ s.supported }}/{{ s.catalog }} supported ({{ s.pct ?? 0 }}%)</span>
   </div>
 </div>
 
@@ -356,7 +356,7 @@ function platformIcons(b) {
 }
 
 .baseline-page .summary-pct {
-  width: 15ch;
+  width: 23ch;
   white-space: nowrap;
   font-weight: 600;
   font-size: 0.9em;

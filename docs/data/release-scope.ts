@@ -38,21 +38,27 @@ export interface ReleaseScope {
  */
 export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
 
-/** Classify one cell. A missing cell is untested; an error outranks a conclusive value. */
-export function classifyCell(cell: { outcome: string; conclusive?: boolean } | undefined): CellState {
+/**
+ * Presentation states retain their existing keys: inconclusive is reserved for reviewed Untestable
+ * claims, error is TEST FAILURE, and untested is TEST TODO. A missing cell or evidence "none" means
+ * no feature measurement started; an undecided attempt is a failed test, not terminal non-support.
+ * Existing refusals never establish that a capability is impossible to test in its context.
+ */
+export function classifyCell(
+  cell: { outcome: string; conclusive?: boolean; evidence?: string; reason?: string } | undefined,
+): CellState {
   if (!cell) return "untested"
   if (cell.outcome === "error") return "error"
+  if (cell.evidence === "none") return "untested"
   if (cell.conclusive && cell.outcome === "supported") return "supported"
   if (cell.conclusive && cell.outcome === "unsupported") return "unsupported"
-  return "inconclusive"
+  return "error"
 }
 
 /** Classify a whole prepared cell map with the ONE classifier. Its two callers live in
  * `selected-results.ts`: `projectResults` fills the product table, while `classifyDevelopmentRun`
  * returns private development states. Neither pages nor scripts classify raw cells (28792 item 1). */
-export function classifyCells(
-  cells: Record<string, { outcome: string; conclusive?: boolean } | undefined>,
-): Record<string, CellState> {
+export function classifyCells(cells: Record<string, Parameters<typeof classifyCell>[0]>): Record<string, CellState> {
   const states: Record<string, CellState> = {}
   for (const [featureId, cell] of Object.entries(cells)) states[featureId] = classifyCell(cell)
   return states
