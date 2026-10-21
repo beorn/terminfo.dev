@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto"
 import type { ProbeDefinition, ProbeResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
+  decrpmPs,
+  decrpmReplyPattern,
+  decrpmResult,
   notTestedResult,
   osInputReviewResult,
   colorReadbackReviewResult,
   parserStateResult,
   probe,
+  queryDecrpm,
   readHyperlinkMetadata,
   replyFrame,
   sentinelNegativeResult,
@@ -1323,39 +1327,6 @@ function textSizingResult(
   }
 }
 
-const CLIPBOARD_QUERY = "\x1b[?5522$p"
-const CLIPBOARD_REPLY = /\x1b\[\?5522;([0-4])\$y/
-
-/** Live's reading of the mode 5522 outcome, shared by both arms (#30554). */
-function clipboardOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
-  return matchedReplyResult(reply, "No DECRPM response for mode 5522", clipboardProtocolResult)
-}
-
-function clipboardProtocolResult(response: string): ProbeResult {
-  const match = CLIPBOARD_REPLY.exec(response)
-  if (!match) {
-    return unansweredQuery(
-      { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
-      "No DECRPM response for mode 5522",
-    )
-  }
-  const supported = match[1] !== "0" && match[1] !== "4"
-  const note = supported ? "Protocol recognized; clipboard access permissions not tested" : "Mode 5522 not supported"
-  return {
-    pass: supported,
-    note,
-    response,
-    observation: { outcome: supported ? "supported" : "unsupported", evidence: "query", note },
-    assertions: [
-      {
-        kind: supported ? "positive" : "negative",
-        expected: "DECRPM 5522 has Ps=1, 2 or 3; Ps=0 or 4 explicitly rejects support",
-        observed: response,
-      },
-    ],
-  }
-}
-
 /** Only an isolated headless backend may receive this disposable OSC 52 nonce. */
 function headlessClipboardRoundtrip(ctx: TermlessContext): ProbeResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
@@ -2447,11 +2418,11 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...queryOnly(
       probe(
         "extensions.osc5522-clipboard",
-        (ctx) =>
-          ctx.queryWithSentinelOutcome
-            ? clipboardOutcomeResult(ctx.queryWithSentinelOutcome(CLIPBOARD_QUERY, CLIPBOARD_REPLY))
-            : clipboardProtocolResult(ctx.feedCapture(CLIPBOARD_QUERY)),
-        async (ctx) => clipboardOutcomeResult(await ctx.queryWithSentinelOutcome(CLIPBOARD_QUERY, CLIPBOARD_REPLY)),
+        (ctx) => {
+          const reply = ctx.feedCapture("\x1b[?5522$p")
+          return decrpmResult(decrpmPs(decrpmReplyPattern(5522).exec(reply)?.[1]), 5522)
+        },
+        async (ctx) => decrpmResult(await queryDecrpm(ctx, 5522), 5522),
         "query",
       ),
     ),

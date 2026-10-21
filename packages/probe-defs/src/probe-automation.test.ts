@@ -413,39 +413,58 @@ describe("Kitty protocol detection", () => {
     }
   })
 
-  test("OSC 5522 detects protocol support with DECRQM, without reading the clipboard", async () => {
-    const p = probe("extensions.osc5522-clipboard")
-    if (!p.term || !p.termless) throw new Error("OSC 5522 needs both probe methods")
-    // The protocol explicitly treats Ps=0 and Ps=4 as unsupported.
-    for (const ps of [2, 0, 1, 3, 4]) {
-      const response = `\x1b[?5522;${ps}$y`
-      const expected = ps > 0 && ps < 4
+  test.each([
+    [0, false, "inconclusive", "insufficient-evidence", "not recognized (Ps 0)"],
+    [1, true, "supported", undefined, "set (Ps 1)"],
+    [2, true, "supported", undefined, "reset (Ps 2)"],
+    [3, true, "supported", undefined, "permanently set (Ps 3)"],
+    [4, false, "unsupported", undefined, "permanently reset (Ps 4)"],
+    [null, false, "inconclusive", "no-response", undefined],
+  ] as const)(
+    "OSC 5522 Ps %s uses the shared DECRPM reading on both arms",
+    async (ps, pass, outcome, reason, reading) => {
+      const p = probe("extensions.osc5522-clipboard")
+      if (!p.term || !p.termless) throw new Error("OSC 5522 needs both probe methods")
+      const response = ps === null ? "" : `\x1b[?5522;${ps}$y`
+      const queries: string[] = []
       const headless = p.termless(
         context({
           feedCapture(text) {
+            queries.push(text)
             return text === "\x1b[?5522$p" ? response : ""
           },
         }),
       )
-      expect(headless.pass).toBe(expected)
       const term = await p.term(
         terminalContext({
-          queryWithSentinel: async (sequence, pattern) =>
-            sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
-          queryWithSentinelOutcome: async (sequence, pattern) => ({
-            match: sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
-            reason: "reply",
-            raw: response,
-            rawBase64: btoa(response),
-          }),
+          queryMode: async () => {
+            throw new Error("OSC 5522 must retain the Ps, not its folded mode")
+          },
+          queryWithSentinel: async (sequence, pattern) => {
+            queries.push(sequence)
+            return sequence === "\x1b[?5522$p" ? response.match(pattern) : null
+          },
+          queryWithSentinelOutcome: async (sequence, pattern) => {
+            queries.push(sequence)
+            return {
+              match: sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
+              reason: ps === null ? "timeout" : "reply",
+              raw: response,
+              rawBase64: btoa(response),
+            }
+          },
         }),
       )
-      expect(term.pass).toBe(expected)
-      expect(term.response).toBe(response)
-      expect(term.observation).toMatchObject({ outcome: expected ? "supported" : "unsupported", evidence: "query" })
-    }
-    expect((await p.term(terminalContext({}))).pass).toBe(false)
-  })
+      expect(queries).toEqual(["\x1b[?5522$p", "\x1b[?5522$p"])
+      for (const result of [headless, term]) {
+        expect(result.pass).toBe(pass)
+        expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+        expect(result.observation?.reason).toBe(reason)
+        expect(result.response).toBe(reading)
+        expect(result.assertions?.[0]?.observed).toBe(pass || ps === 4 ? reading : undefined)
+      }
+    },
+  )
 
   // OSC 52 previously passed on any substring or on unrelated CPR, and left live clipboard writes behind.
   // No existing protocol test covers these three callbacks or the collector's no-clipboard policy.
