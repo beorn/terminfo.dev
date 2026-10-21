@@ -13,6 +13,7 @@ import {
   sealRunDraft,
   utf8DecodingRefusal,
 } from "./helpers.ts"
+import { extensionsProbes } from "./extensions.ts"
 import { cropPositionRefusal } from "./region-readback.ts"
 import type { ObservationFrame, ProbeResult, TermContext } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
@@ -154,4 +155,97 @@ it("keeps measured 8-bit decoding as unmet UTF-8 prerequisite TODO without inven
     expect.objectContaining({ id: "utf8-context", status: "test-todo", attempt: { scope: "none" } }),
   ])
   expect(result.checks.some((check) => check.id === "review")).toBe(false)
+})
+
+it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with rawReplyRef and no unreviewed Untestable", async () => {
+  const osc133a = extensionsProbes.find((entry) => entry.id === "extensions.osc133-a")
+  if (!osc133a?.term) throw new Error("Expected extensions.osc133-a app callback")
+  const recordC154 = (callback: ProbeResult) =>
+    recordExecutedCapability({
+      featureId: osc133a.id,
+      attempt,
+      ...(callback.observation && {
+        observation: { ...callback.observation, featureId: osc133a.id, rawReplyRef: osc133a.id },
+      }),
+      ...(callback.notTested && {
+        coverage: { featureId: osc133a.id, ...callback.notTested, rawReplyRef: osc133a.id },
+      }),
+      checks: callback.checks,
+      criterionBranch: callback.criterionBranch,
+      assertions: [],
+    })
+
+  // 1. Consumed-but-unqualified (home 1;1 -> target 1;2 -> control 1;2) stays TEST TODO, never Unsupported or Untestable.
+  const unqualifiedReads = [
+    { row: 1, col: 1 },
+    { row: 1, col: 2 },
+    { row: 1, col: 2 },
+  ]
+  let unqualifiedIndex = 0
+  const unqualifiedCallback = await osc133a.term({
+    write() {},
+    queryCursorPosition: async () => unqualifiedReads[unqualifiedIndex++] ?? null,
+  } as unknown as TermContext)
+  const unqualifiedRecorded = recordC154(unqualifiedCallback)
+  expect(unqualifiedRecorded.status).toBe("test-todo")
+  expect(unqualifiedRecorded.evidence).toBe("consumed")
+  expect(unqualifiedRecorded.rawReplyRef).toBe("extensions.osc133-a")
+  expect(unqualifiedRecorded.checks).toEqual([
+    expect.objectContaining({
+      id: "criterion",
+      status: "test-todo",
+      attempt: { scope: "none" },
+      rawReplyRef: "extensions.osc133-a",
+    }),
+  ])
+
+  // 2. Null CPR reply records TEST FAILURE with query evidence and rawReplyRef, never Unsupported or Untestable.
+  const nullCallback = await osc133a.term({
+    write() {},
+    queryCursorPosition: async () => null,
+  } as unknown as TermContext)
+  const nullRecorded = recordC154(nullCallback)
+  expect(nullRecorded.status).toBe("test-failure")
+  expect(nullRecorded.evidence).toBe("query")
+  expect(nullRecorded.rawReplyRef).toBe("extensions.osc133-a")
+  expect(nullRecorded.reason).toBe("No cursor reply after semantic prompt marker")
+  expect(nullRecorded.checks).toEqual([
+    expect.objectContaining({
+      id: "criterion",
+      status: "test-failure",
+      attempt,
+      rawReplyRef: "extensions.osc133-a",
+      reason: "No cursor reply after semantic prompt marker",
+    }),
+  ])
+
+  // 3. Qualified home/target/control sequence emits no-semantic-observable coverage, which records as TEST TODO
+  // (never automatic Untestable without a downstream resolved reviewRef).
+  const qualifiedReads = [
+    { row: 1, col: 1 },
+    { row: 1, col: 2 },
+    { row: 1, col: 1 },
+  ]
+  let qualifiedIndex = 0
+  const qualifiedCallback = await osc133a.term({
+    write() {},
+    queryCursorPosition: async () => qualifiedReads[qualifiedIndex++] ?? null,
+  } as unknown as TermContext)
+  expect(qualifiedCallback.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "OSC 133;A prompt-start mark registration",
+  })
+  const qualifiedRecorded = recordC154(qualifiedCallback)
+  expect(qualifiedRecorded.status).toBe("test-todo")
+  expect(qualifiedRecorded.rawReplyRef).toBe("extensions.osc133-a")
+  expect(qualifiedRecorded.reason).toBe("OSC 133;A prompt-start mark registration")
+  expect(qualifiedRecorded.checks).toEqual([
+    expect.objectContaining({
+      id: "criterion",
+      status: "test-todo",
+      attempt: { scope: "none" },
+      rawReplyRef: "extensions.osc133-a",
+      reason: "OSC 133;A prompt-start mark registration",
+    }),
+  ])
 })
