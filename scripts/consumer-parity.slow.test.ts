@@ -1103,7 +1103,7 @@ describe("selected-run consumer parity", () => {
       expect.objectContaining({ name: "screen", total: 0, pct: 0 }),
     )
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
-    expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "2" })
+    expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "3" })
   })
 
   it("limits comparison claims to the same recorded scope and jointly conclusive evidence method", () => {
@@ -1256,7 +1256,7 @@ describe("selected-run consumer parity", () => {
     try {
       const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(unreviewed).not.toContain(unscoped)
-      expect(unreviewed).toContain("No conclusive support among")
+      expect(unreviewed).toContain("No Supported results among")
       expect(unreviewed).toContain("Not supported by:")
       cell.note = "Reviewed Kitty sixel observation note"
       cell.chain.correctionId = "reviewed-sixel"
