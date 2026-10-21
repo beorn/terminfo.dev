@@ -11,13 +11,13 @@ import { manifest, type TerminalBackend } from "@termless/core"
 import {
   ALL_PROBES,
   initializeRunDraft,
-  sealRunDraft,
   recordCollectionFailure,
   type RunDraft,
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
+import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
 import { owningCheckout } from "./termless-root.ts"
 
@@ -350,11 +350,14 @@ export async function collectHeadlessRuns(
       }
       if (parsed.runId !== delegated.runId) throw new Error(`Worker ${name} changed runId during capture handoff`)
       const captured = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
-      const sealed = sealRunDraft(captured)
-      const finalPath = join(directory, `${name}-${sealed.runId}.json`)
-      const bytes = `${JSON.stringify(sealed, null, 2)}\n`
-      parseRun(finalPath, bytes, suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
-      writeFileSync(finalPath, bytes, { flag: "wx" })
+      const finalPath = saveDaemonProbeRun(captured, directory)
+      parseRun(
+        finalPath,
+        readFileSync(finalPath, "utf8"),
+        suite.catalogIds ?? [],
+        new Map([[suite.probeHash, suite]]),
+        finalPath.endsWith(".draft.json") ? { mode: "capture" } : undefined,
+      )
       runs.push(finalPath)
     } catch (error) {
       retainFailure(errorMessage(error))

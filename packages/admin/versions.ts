@@ -52,6 +52,7 @@ const ADAPTER_SOURCE_PATHS = [
   "scripts/owned-app-remote-run.ts",
   "scripts/hosted-runner-receipt.ts",
   "packages/terminfo.dev/src/daemon-client.ts",
+  "packages/terminfo.dev/src/capture-writer.ts",
   "packages/terminfo.dev/src/index.tsx",
   "packages/terminfo.dev/src/submit.ts",
   "packages/admin/src/admit-collected-run.ts",
