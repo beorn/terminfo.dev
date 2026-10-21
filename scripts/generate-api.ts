@@ -44,9 +44,22 @@ function writeAsset(path: string, data: string | Buffer): void {
   writeFileSync(path, data)
 }
 
-/** Check the complete deployment tree, including files written by VitePress after API generation. */
-export function assertDeploymentLimits(dir: string): { fileCount: number; fileLimit: number; fileHeadroom: number } {
+/**
+ * Check the complete deployment tree, including files written by VitePress after API generation. It also
+ * reports the run trace documents, which stay out of data.json, and each data.json's size.
+ */
+export function assertDeploymentLimits(dir: string): {
+  fileCount: number
+  fileLimit: number
+  fileHeadroom: number
+  traceFiles: number
+  traceBytes: number
+  dataJsonBytes: Record<string, number>
+} {
   let fileCount = 0
+  let traceFiles = 0
+  let traceBytes = 0
+  const dataJsonBytes: Record<string, number> = {}
   const visit = (current: string): void => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const path = join(current, entry.name)
@@ -59,6 +72,11 @@ export function assertDeploymentLimits(dir: string): { fileCount: number; fileLi
           throw new Error(`${path}: ${bytes} bytes exceeds the ${maxAssetBytes}-byte Cloudflare Pages asset limit`)
         }
         fileCount++
+        const relative = path.slice(dir.length + 1)
+        if (/^api\/v[23]\/traces\//.test(relative)) {
+          traceFiles++
+          traceBytes += bytes
+        } else if (/^api\/v[123]\/data\.json$/.test(relative)) dataJsonBytes[relative] = bytes
       } else {
         throw new Error(`${path}: unexpected deployment output type`)
       }
@@ -70,7 +88,7 @@ export function assertDeploymentLimits(dir: string): { fileCount: number; fileLi
   }
   if (fileCount === 0) throw new Error(`${dir}: deployment output contains no files`)
   const fileHeadroom = maxOutputFiles - fileCount
-  return { fileCount, fileLimit: maxOutputFiles, fileHeadroom }
+  return { fileCount, fileLimit: maxOutputFiles, fileHeadroom, traceFiles, traceBytes, dataJsonBytes }
 }
 
 // --- Types ---
@@ -253,13 +271,16 @@ function writeEvidence(
   const expected = new Map<string, Buffer>()
   for (const [url, { bytes, document }] of documents) {
     expected.set(url.slice(1), Buffer.from(bytes))
+    // A run's trace holds no captures: they stay behind presentation review.
     const frames =
-      "qualification" in document
-        ? document.qualification.shapes.flatMap((shape) => shape.frames ?? [])
-        : [
-            ...(document.record.screenshot ? [{ ...document.record.screenshot, kind: undefined }] : []),
-            ...(document.record.frames ?? []),
-          ]
+      "cells" in document
+        ? []
+        : "qualification" in document
+          ? document.qualification.shapes.flatMap((shape) => shape.frames ?? [])
+          : [
+              ...(document.record.screenshot ? [{ ...document.record.screenshot, kind: undefined }] : []),
+              ...(document.record.frames ?? []),
+            ]
     for (const frame of frames) {
       const text = frame.kind === "text-cells"
       const path = `artifacts/${frame.sha256}.${text ? "txt" : "png"}`
@@ -280,7 +301,7 @@ function writeEvidence(
   const inventoryPath = join(out, "api", "v2", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v[23]\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v[23]\/runs\/[a-f0-9]{64}\.json)$/.test(
+    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v[23]\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v[23]\/(?:runs|traces)\/[a-f0-9]{64}\.json)$/.test(
       path,
     )
   if (existsSync(inventoryPath)) {
@@ -321,8 +342,10 @@ function writeEvidence(
   visit("artifacts")
   visit("api/v2/evidence")
   visit("api/v2/runs")
+  visit("api/v2/traces")
   visit("api/v3/evidence")
   visit("api/v3/runs")
+  visit("api/v3/traces")
   // Check the complete population before performing any replacement or withdrawal.
   for (const [relative, bytes] of existing) {
     if (expected.get(relative)?.equals(bytes)) continue

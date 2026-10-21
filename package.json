@@ -20,7 +20,7 @@
     "analysis": "bun scripts/generate-analysis.ts",
     "analysis:validate": "bun scripts/generate-analysis.ts --validate",
     "dev": "vitepress dev docs",
-    "build": "bun scripts/generate-analysis.ts && bun scripts/suite-manifest.ts --check && bun scripts/site-build.ts && bun -e 'import { assertDeploymentLimits } from \"./scripts/generate-api.ts\"; import { siteDistDir } from \"./scripts/site-out.ts\"; const { fileCount, fileLimit, fileHeadroom } = assertDeploymentLimits(siteDistDir(process.cwd())); console.log(`Cloudflare Pages Free-plan file count: ${fileCount}/${fileLimit} (${fileHeadroom} remaining; account tier unverified)`);'",
+    "build": "bun scripts/generate-analysis.ts && bun scripts/suite-manifest.ts --check && bun scripts/site-build.ts && bun -e 'import { assertDeploymentLimits } from \"./scripts/generate-api.ts\"; import { siteDistDir } from \"./scripts/site-out.ts\"; const { fileCount, fileLimit, fileHeadroom, traceFiles, traceBytes, dataJsonBytes } = assertDeploymentLimits(siteDistDir(process.cwd())); console.log(`Cloudflare Pages Free-plan file count: ${fileCount}/${fileLimit} (${fileHeadroom} remaining; account tier unverified)`); console.log(`Run traces: ${traceFiles} files, ${traceBytes} bytes; data.json bytes: ${JSON.stringify(dataJsonBytes)}`);'",
     "preview": "vitepress preview docs",
     "landed-serve": "bun scripts/landed-serve.ts",
     "validate": "bun scripts/validate.ts && bun scripts/suite-manifest.ts --check",
