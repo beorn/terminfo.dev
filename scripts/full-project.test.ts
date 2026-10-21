@@ -170,15 +170,12 @@ describe("full-scope rows", () => {
   // The old excluded-denominator fixtures cannot prove the strengthened 33 × 273 finish rule.
   it("requires all 9009 recorded positions and zero TODO/failure in every context", () => {
     const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
-    const census = Array.from(
-      { length: 33 },
-      (_, index): CensusContext => ({
-        context: `terminal-${index}/linux`,
-        terminalId: `terminal-${index}`,
-        os: "linux",
-        kind: "app",
-      }),
-    )
+    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
+      context: `terminal-${index}/linux`,
+      terminalId: `terminal-${index}`,
+      os: "linux",
+      kind: "app",
+    }))
     const candidates = census.map((context) =>
       candidate({
         kind: context.kind,

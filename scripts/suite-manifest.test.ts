@@ -204,7 +204,7 @@ const snapshotOf = (probeHash: string): ProbeSuiteSnapshot => ({
   sourcePaths: [],
 })
 
-function citedFixture(): string {
+function citedFixture(schemaVersion: 2 | 3 = 2): string {
   const directory = temp("terminfo-cited-")
   for (const dir of ["probes-apps", "probes-libs", "probes-mux"]) {
     mkdirSync(join(directory, "content", dir), { recursive: true })
@@ -212,7 +212,7 @@ function citedFixture(): string {
   mkdirSync(join(directory, "content", "suites"), { recursive: true })
   writeFileSync(
     join(directory, "content", "probes-apps", "kitty-0.49.2-linux-run1.json"),
-    JSON.stringify({ schemaVersion: 2, probeHash: CITED }),
+    JSON.stringify({ schemaVersion, probeHash: CITED }),
   )
   writeFileSync(
     join(directory, "content", "suites", `${CITED}.json`),
@@ -222,21 +222,27 @@ function citedFixture(): string {
 }
 
 /** The compose regression: a non-fast-forward merge produces a suite hash nobody cited. */
-test("the composed-tree check is green when the tree's own suite is uncited", () => {
-  const directory = citedFixture()
-  // RED BEFORE: the old gate demanded the tree's own suite be declared, so a composed tree threw.
-  expect(() =>
-    verifySuiteManifest(join(directory, "content", "suites", `${COMPOSED}.json`), snapshotOf(COMPOSED)),
-  ).toThrow(/Cannot read suite manifest/)
-  // GREEN AFTER: nothing cites COMPOSED, so its absence is correct, not an error.
-  expect(checkCitedSuiteManifests(directory, snapshotOf(COMPOSED))).toEqual({ cited: 1, manifests: 1 })
-})
+test.each([2, 3] as const)(
+  "the composed-tree check retains schema-%s citations when the tree's own suite is uncited",
+  (schemaVersion) => {
+    const directory = citedFixture(schemaVersion)
+    // RED BEFORE: the old gate demanded the tree's own suite be declared, so a composed tree threw.
+    expect(() =>
+      verifySuiteManifest(join(directory, "content", "suites", `${COMPOSED}.json`), snapshotOf(COMPOSED)),
+    ).toThrow(/Cannot read suite manifest/)
+    // GREEN AFTER: nothing cites COMPOSED, so its absence is correct, not an error.
+    expect(checkCitedSuiteManifests(directory, snapshotOf(COMPOSED))).toEqual({ cited: 1, manifests: 1 })
+  },
+)
 
-test("the check is red when a cited run has no committed declaration", () => {
-  const directory = citedFixture()
-  rmSync(join(directory, "content", "suites", `${CITED}.json`))
-  expect(() => checkCitedSuiteManifests(directory, snapshotOf(COMPOSED))).toThrow(/no committed suite manifest/)
-})
+test.each([2, 3] as const)(
+  "the check is red when a cited schema-%s run has no committed declaration",
+  (schemaVersion) => {
+    const directory = citedFixture(schemaVersion)
+    rmSync(join(directory, "content", "suites", `${CITED}.json`))
+    expect(() => checkCitedSuiteManifests(directory, snapshotOf(COMPOSED))).toThrow(/no committed suite manifest/)
+  },
+)
 
 test("the check is red when a declaration is not named for the hash it declares", () => {
   const directory = citedFixture()

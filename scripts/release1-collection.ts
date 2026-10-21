@@ -737,7 +737,6 @@ export async function collectPass(
         row.rawRun = path
       }
       const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
-      if (run.runId !== handed.draft.runId) throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
       if (
         run.schemaVersion !== 3 ||
         run.target.kind !== context.kind ||
@@ -746,6 +745,7 @@ export async function collectPass(
       ) {
         throw new Error(`raw run does not identify the expected current schema-3 ${context.kind}:${context.id} context`)
       }
+      if (run.runId !== handed.draft.runId) throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
       if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
       if (run.sourceRevision !== sourceRevision) {
         throw new Error(`raw source ${run.sourceRevision} differs from pass source ${sourceRevision}`)

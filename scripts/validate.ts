@@ -549,7 +549,7 @@ heading("Warnings (fix soon)")
   for (const { file, dir, backendName, data } of probeFiles) {
     // A v2 run states its target (kind + id) and is checked against the catalog by section 8b below;
     // this looser name check covers legacy runs, whose backend naming predates the catalog.
-    if (data.schemaVersion === 2) continue
+    if (data.schemaVersion === 2 || data.schemaVersion === 3) continue
     if (backendName && !knownBackends.has(backendName)) {
       warn(`Probe file "${dir}/${file}" references "${backendName}" — no matching terminal in terminals.json`)
       warnings++
@@ -559,7 +559,7 @@ heading("Warnings (fix soon)")
   if (count === 0) info("All legacy probe files match a terminal in terminals.json")
 }
 
-// 8b. Every v2 run names a target declared in terminals.json
+// 8b. Every schema-2/3 run names a target declared in terminals.json
 {
   // compatibilityTargets (docs/data/current-results.ts) derives every published v1 and site key from
   // (target.kind, target.id) against terminals.json alone, and throws "Undeclared compatibility target"
@@ -580,7 +580,7 @@ heading("Warnings (fix soon)")
 
   let count = 0
   for (const { file, dir, data } of probeFiles) {
-    if (data.schemaVersion !== 2) continue
+    if (data.schemaVersion !== 2 && data.schemaVersion !== 3) continue
     const target = data.target as { kind?: unknown; id?: unknown } | undefined
     const kind = target?.kind
     const id = target?.id
@@ -591,7 +591,7 @@ heading("Warnings (fix soon)")
       count++
     }
   }
-  if (count === 0) info("Every v2 run names a target declared in terminals.json")
+  if (count === 0) info("Every schema-2/3 run names a target declared in terminals.json")
 }
 
 // 9. Features missing body text

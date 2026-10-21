@@ -1,4 +1,4 @@
-import type { TextQualification, TextQualificationShape } from "./types.ts"
+import type { TextQualification, TextQualificationSpec, TextQualificationShape } from "./types.ts"
 
 /** This recipe describes retained mapping witnesses, never a stored pass decision. */
 export const TEXT_QUALIFICATION_SPEC = { version: 1, recipe: "macos-text-cells-v1" } as const
@@ -96,7 +96,7 @@ export interface TextQualificationAssessment {
 
 /** Assess retained mapping witnesses. Execution records this check; history uses it only for historical grading. */
 export function assessTextQualification(
-  run: { runId: string; textQualification?: TextQualification; textQualificationSpec?: typeof TEXT_QUALIFICATION_SPEC },
+  run: { runId: string; textQualification?: TextQualification; textQualificationSpec?: TextQualificationSpec },
   snapshots?: ReadonlyMap<string, Uint8Array>,
 ): TextQualificationAssessment {
   const rejected = (reason: string): TextQualificationAssessment => ({

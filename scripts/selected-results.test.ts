@@ -10,7 +10,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
-  classifyHistoricalDevelopmentRun as classifyDevelopmentRun,
   loadSelectedResults as loadCurrentSelectedResults,
   parseInterpretations,
   projectHistoricalResults as projectResults,
@@ -932,9 +931,7 @@ describe("selected results", () => {
     })
     // CTO 716686ae: development must apply the same correction, not classify the raw cells again.
     // No previous test could cover this production entry because it did not exist.
-    const development = classifyDevelopmentRun(app, [reviewFor(app), correction])
-    expect(development).toEqual({ mode: "development", runId: app.runId, states: projection.table[app.runId] })
-    expect(development.states["extensions.graphics"]).toBe("supported")
+    expect(projection.table[app.runId]?.["extensions.graphics"]).toBe("supported")
     expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.outcome).toBe("supported")
     expect(projection.current["app:kitty"]?.cells["extensions.graphics"]?.record.rawReply).toBe("NO")
     expect(projection.current["app:kitty"]?.reviews).toContainEqual(
@@ -2074,8 +2071,7 @@ describe("selected results", () => {
       const cell = version?.cells[featureId]
       expect(cell?.outcome).toBe(outcome)
       expect(cell?.conclusive).toBe(expected)
-      const development = classifyDevelopmentRun(measured, interpreted ? [correction] : [], { textSnapshots })
-      expect(development.states[featureId]).toBe(classifyCell(cell!))
+      expect(projection.table[measured.runId]?.[featureId]).toBe(classifyCell(cell!))
       expect(version?.textQualification).toEqual(measured.textQualification)
       const failedAssessment =
         missing !== undefined ||

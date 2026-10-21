@@ -45,7 +45,7 @@ import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCaptur
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
-import { collectTextQualification } from "./text-qualification.ts"
+import { collectTextQualification, recordTextQualificationChecks } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
@@ -451,6 +451,8 @@ export async function collectProbeRun(
     /** Set when `capture` above reads the terminal's own text rather than pixels. */
     let textCapture = false
     let textQualification: TextQualification | undefined
+    let textQualificationStartedAt: string | undefined
+    const retainedTextSnapshots = new Map<string, Uint8Array>()
     /**
      * The text-snapshot adapter: the terminal's own cells, for the arm whose pixels cannot be read at
      * all. It answers a checkpoint with a text-cells frame whose digests are computed from the cells —
@@ -501,6 +503,7 @@ export async function collectProbeRun(
         // second write, and a digest that maps to different bytes is named instead of overwritten.
         // The bytes are the ones the frame's ref hashed — never a re-encoded copy.
         retain(artifactDirectory, result.retained, "txt")
+        retainedTextSnapshots.set(result.frame.ref, result.retained)
         return { frame: result.frame, trace: result.trace }
       }
       textCapture = true
@@ -509,6 +512,9 @@ export async function collectProbeRun(
         prepareCapture = async ({ context, featureId, recordCapture }) => {
           textQualification = await collectTextQualification({
             ctx: context,
+            onAttempt: () => {
+              textQualificationStartedAt = new Date().toISOString()
+            },
             capture: async (checkpoint) => {
               const result = await textAdapter({ featureId, ...checkpoint })
               recordCapture(result)
@@ -911,6 +917,12 @@ export async function collectProbeRun(
       ...(textQualification === undefined ? {} : { textQualification }),
       results: batch.results,
     }
+    recordTextQualificationChecks(
+      captured,
+      manifest,
+      retainedTextSnapshots,
+      textQualificationStartedAt ? { scope: "probe", startedAt: textQualificationStartedAt } : undefined,
+    )
     Object.assign(draft, captured)
     checkpoint()
     return captured

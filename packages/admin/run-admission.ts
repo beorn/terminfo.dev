@@ -140,7 +140,7 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     if (!(receipt.kind === "native" || receipt.integrity.kind === "registry" || receipt.integrity.cleanTree)) {
       return null
     }
-    const versionReply = run.schemaVersion === 2 ? deriveIdentity(run.rawReplies).xtversionPayload : undefined
+    const versionReply = run.schemaVersion !== 1 ? deriveIdentity(run.rawReplies).xtversionPayload : undefined
     return versionReply ? { rule: "runtime-identity", xtversion: versionReply } : { rule: "runtime-identity" }
   }
   return protocolIdentityMatch({
@@ -148,7 +148,11 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     rawReplies: run.rawReplies,
     provenance: run.provenance,
     appLaunch: run.origin.appLaunch,
-    results: Object.fromEntries(run.observations.map((o) => [o.featureId, o.outcome === "supported"])),
+    results: Object.fromEntries(
+      run.schemaVersion === 3
+        ? (run.results ?? []).map((result) => [result.featureId, result.status === "supported"])
+        : run.observations.map((o) => [o.featureId, o.outcome === "supported"]),
+    ),
   })
 }
 
@@ -467,8 +471,9 @@ export function planAdmission(
     throw new Error(`Cannot read the run to admit: ${source}`, { cause })
   }
   if (!isRecord(parsed)) throw new Error(`Run to admit is not an object: ${source}`)
-  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3)
+  if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) {
     throw new Error(`Run to admit requires current schema 3 or historical schema 2: ${source}`)
+  }
   const target = parsed.target
   if (!isRecord(target) || !["app", "headless", "mux"].includes(String(target.kind))) {
     throw new Error(`Run to admit has no app|headless|mux target kind: ${source}`)
@@ -944,6 +949,48 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
   const hostSha256 = createHash("sha256").update(readFileSync(hostPath)).digest("hex")
   if (!isRecord(receipt.receiptInputs) || receipt.receiptInputs.hostSha256 !== hostSha256) {
     throw new Error(`Linux completion receipt ${path} does not bind receiptInputs.hostSha256 to ${hostPath}${cure}`)
+  }
+  if (run.schemaVersion === 3) {
+    const containerPath = join(dirname(source), "container-receipt.json")
+    const capturePath = join(dirname(source), "v3-capture.json")
+    let container: unknown
+    let capture: Buffer
+    try {
+      const bytes = readFileSync(containerPath)
+      if (createHash("sha256").update(bytes).digest("hex") !== receipt.receiptInputs.containerSha256) {
+        throw new Error("container receipt digest differs from completion receipt")
+      }
+      container = JSON.parse(bytes.toString("utf8"))
+      capture = readFileSync(capturePath)
+    } catch (cause) {
+      throw new Error(
+        `Linux completion receipt ${path} cannot resolve original custody inputs ${containerPath} and ${capturePath}${cure}`,
+        { cause },
+      )
+    }
+    const captureSha256 = createHash("sha256").update(capture).digest("hex")
+    if (
+      !isRecord(container) ||
+      !isRecord(container.probeRun) ||
+      container.probeRun.runId !== run.runId ||
+      container.probeRun.sha256 !== captureSha256 ||
+      run.rawReplies["collector.httpResponseSha256"] !== captureSha256
+    ) {
+      throw new Error(
+        `Linux completion receipt ${path} does not bind original capture bytes ${capturePath} to the final run${cure}`,
+      )
+    }
+    const originalPath = join(dirname(source), "http-responses", captureSha256)
+    try {
+      if (!readFileSync(originalPath).equals(capture)) {
+        throw new Error("retained HTTP entity differs from original capture")
+      }
+    } catch (cause) {
+      throw new Error(
+        `Linux completion receipt ${path} cannot resolve matching retained HTTP bytes ${originalPath}${cure}`,
+        { cause },
+      )
+    }
   }
 }
 

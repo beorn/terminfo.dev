@@ -873,8 +873,8 @@ onBeforeUnmount(() => {
                 <details v-if="correction">
                   <summary>Support review record</summary>
                   <p>
-                    Review changed the historical observation; see its retained evidence document for the original fields.
-                    Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
+                    Review changed the historical observation; see its retained evidence document for the original
+                    fields. Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
                   </p>
                 </details>
                 <h4>3. Evidence presentation approval</h4>

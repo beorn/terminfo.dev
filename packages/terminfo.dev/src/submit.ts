@@ -68,8 +68,9 @@ export function createDraft(
           suiteComplete: run.suiteComplete,
         }
       : undefined
-  if (historicalCoverage && historicalCoverage.missing < 0)
+  if (historicalCoverage && historicalCoverage.missing < 0) {
     throw new Error(`${rawRunPath}: observation/diagnostic counts exceed trusted suite`)
+  }
   const complete = current?.complete ?? false
   const context = {
     target: run.target.kind,

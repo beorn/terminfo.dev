@@ -24,8 +24,6 @@ import {
 import {
   aggregateCells,
   classifyCells,
-  coverageSentence,
-  supportedShare,
   isStaleRelation,
   treeMovedPastRelease,
   staleCaption,
@@ -257,7 +255,6 @@ describe("release 1 measurement scope", () => {
     expect(bar.denominator).toBe(62)
     expect(bar.counts.supported).toBe(0)
     expect(bar.counts.unsupported).toBe(1)
-    expect(supportedShare(bar)).toBe("0% supported of 62")
     expect(bar.counts.untested).toBe(61)
   })
 
@@ -265,75 +262,23 @@ describe("release 1 measurement scope", () => {
     const bar = aggregateCells({}, scope.measuredIds)
     expect(bar.denominator).toBe(62)
     expect(bar.counts.supported + bar.counts.unsupported).toBe(0)
-    expect(supportedShare(bar)).toBe("0% supported of 62")
     expect(bar.counts.untested).toBe(62)
   })
 
-  it("names each row's SUPPORTED share over the 62, never as the decisive share", () => {
-    const firstMeasured = scope.measuredIds[0]
-    if (!firstMeasured) throw new Error("release scope has no measured ids")
-    const oneSupported = aggregateCells(
-      classifyCells({ [firstMeasured]: { outcome: "supported", conclusive: true } }),
-      scope.measuredIds,
-    )
-    // 1/62 rounds to 2%: the label reads the SUPPORTED share of the 62, never the decisive share.
-    expect(supportedShare(oneSupported)).toBe("2% supported of 62")
-    expect(supportedShare(aggregateCells({}, scope.measuredIds))).toBe("0% supported of 62")
-    expect(supportedShare({ ...oneSupported, denominator: 0 })).toBe("No selected run")
-  })
-
-  it("names coverage over the 62 so unmeasured catalog features are not inconclusive", () => {
-    const cells: Record<string, { outcome: "supported" | "inconclusive"; conclusive?: boolean }> = {}
-    for (const row of scope.unmeasured) cells[row.id] = { outcome: "inconclusive" }
-    const firstMeasured = scope.measuredIds[0]
-    if (!firstMeasured) throw new Error("release scope has no measured ids")
-    cells[firstMeasured] = { outcome: "supported", conclusive: true }
-    const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
-    expect(coverageSentence(bar)).toBe("1 supported · 0 unsupported · 0 inconclusive · 0 errors · 61 untested")
-    expect(coverageSentence(aggregateCells({}, scope.measuredIds))).toBe(
-      "0 supported · 0 unsupported · 0 inconclusive · 0 errors · 62 untested",
-    )
-  })
-
-  it("prints the D3 verdict beside the label on the front page, every terminal page and the loader", () => {
+  it("wires current pages to the frozen-catalog execution aggregate and Supported/all formatter", () => {
     const home = readFileSync(join(root, "docs", "index.md"), "utf8")
     const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
-    expect(home).toContain("data.releaseVerdicts[backendName]")
-    expect(home).toContain("verdict.text")
-    expect(terminal).toContain("barVerdict(aggregateCells(")
-    expect(terminal).toContain("tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)")
-    expect(terminal).toContain("measuredVerdict.text")
-    expect(loader).toContain("tier1Included(featureDescriptions, release.scoredIds)")
-    expect(loader).toContain("releaseVerdicts[key] = d3Verdict(")
-  })
-
-  it("puts the tier line on the front page and every terminal page", () => {
-    const home = readFileSync(join(root, "docs", "index.md"), "utf8")
-    const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
-    for (const source of [home, terminal]) {
-      expect(source).toContain("data.releaseScope.line")
-      expect(source).toContain("not measured in this release")
-    }
-    expect(terminal).toContain("staleCaption")
-    expect(terminal).toContain("aggregateCells")
-    expect(home).toContain("coverageSentence")
-    // The label is one owner: the loader computes it with supportedShare, the page only prints it.
+    expect(home).toContain("currentCoverageSentence(bar)")
     expect(home).toContain("data.releaseShares[backendName]")
-    expect(home).not.toMatch(/function coverageLabel[\s\S]*selected\.counts/)
-    expect(terminal).toContain("measuredShare")
-    expect(terminal).toContain("supportedShare(")
-    // One word, one number: the D3 verdict owns "decisive"; the bar's fill is "supported".
-    expect(terminal).not.toContain("% decisive of")
-    expect(home).not.toContain("decisive of ${bar.denominator}")
-    expect(terminal).toContain("measuredBar.counts.supported")
-    expect(terminal).toContain("measuredBar.counts.inconclusive")
-    expect(terminal).toContain("measuredBar.counts.untested")
-    const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
-    expect(loader).toContain("isStaleRelation")
-    expect(loader).toContain("staleCaption")
-    expect(loader).toContain("releaseStale")
-    expect(loader).toContain("releaseShares[key] = supportedShare(")
+    expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
+    expect(terminal).toContain("currentSupportedShare(measuredBar.value)")
+    expect(loader).toContain("aggregateCurrentResults(original.results, original.catalogIds)")
+    expect(loader).toContain("releaseShares[key] = currentSupportedShare(bar)")
+    for (const source of [home, terminal, loader]) {
+      expect(source).not.toContain("releaseVerdicts[")
+      expect(source).not.toContain("d3Verdict(")
+    }
     const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
     expect(helper).not.toMatch(/from ["']node:fs["']/)
   })
@@ -355,24 +300,12 @@ describe("release 1 measurement scope", () => {
       { file: join("docs", "data", "release-scope.ts"), caller: "classifyCells" },
     ])
     expect(callSites("classifyCells")).toEqual([
-      // CTO 716686ae authorizes the development entry beside projectRun; no page/script classifies raw cells.
-      { file: join("docs", "data", "selected-results.ts"), caller: "classifyDevelopmentRun" },
-      { file: join("docs", "data", "selected-results.ts"), caller: "projectResults" },
+      { file: join("docs", "data", "selected-results.ts"), caller: "projectHistoricalResults" },
     ])
-  })
-
-  it("names the 211 unmeasured features on every terminal page, including pages with no selected run", () => {
-    const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
-    const unmeasuredStart = terminal.indexOf('class="unmeasured"')
-    const scoreCardStart = terminal.indexOf('v-if="!isHistorical && selectedRun"')
-    expect(unmeasuredStart).toBeGreaterThan(-1)
-    expect(scoreCardStart).toBeGreaterThan(-1)
-    expect(unmeasuredStart).toBeLessThan(scoreCardStart)
-    expect(terminal).toContain("data.releaseScope.unmeasured")
   })
 })
 
-describe("approved baseline test states and catalog score", () => {
+describe("historical evidence-aware presentation states", () => {
   it("keeps never-started collection separate from an undecided attempt", () => {
     const states = classifyCells({
       refused: { outcome: "inconclusive", evidence: "none", reason: "policy-refused" },

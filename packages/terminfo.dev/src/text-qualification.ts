@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto"
 import {
+  assessTextQualification,
+  finalizeCapabilityResult,
+  type CapturedRunDraft,
+  type ProbeSuiteManifest,
+  type CapabilityAttempt,
   beginCaptureLifecycle,
   endCaptureLifecycle,
   TEXT_QUALIFICATION_SPEC,
@@ -12,13 +17,15 @@ import {
 } from "@terminfo/probe-defs"
 import type { TextFrameCheckpoint } from "./serve.ts"
 
-/** Measure mapping witnesses through the installed adapter; eligibility remains the reader's decision. */
+/** Measure mapping witnesses through the installed adapter before recording the execution check. */
 export async function collectTextQualification({
   ctx,
   capture,
+  onAttempt,
 }: {
   ctx: TermContext
   capture: (checkpoint: TextFrameCheckpoint) => Promise<ObservationFrame>
+  onAttempt?: () => void
 }): Promise<TextQualification> {
   const grid = { rows: ctx.rows, cols: ctx.cols }
   const unavailable = (reason: string): TextQualification => ({
@@ -28,6 +35,7 @@ export async function collectTextQualification({
   })
   const fixtures = textQualificationFixtures(grid.rows, grid.cols)
   if (typeof fixtures === "string") return unavailable(fixtures)
+  onAttempt?.()
   const visibility = await ctx.queryMode(25)
   const autowrap = await ctx.queryMode(7)
   if ((visibility !== "set" && visibility !== "reset") || (autowrap !== "set" && autowrap !== "reset")) {
@@ -100,4 +108,42 @@ export async function collectTextQualification({
     }
   }
   return { ...TEXT_QUALIFICATION_SPEC, grid, shapes }
+}
+
+/** Record the frozen text-oracle prerequisites before seal; current readers consume these facts. */
+export function recordTextQualificationChecks(
+  run: CapturedRunDraft,
+  manifest: ProbeSuiteManifest,
+  snapshots: ReadonlyMap<string, Uint8Array>,
+  attempt?: Exclude<CapabilityAttempt, { scope: "none" }>,
+): void {
+  const assessment = assessTextQualification({ ...run, textQualificationSpec: manifest.textQualification }, snapshots)
+  const qualificationAttempt: CapabilityAttempt = attempt ?? { scope: "none" }
+  run.results = run.results.map((result) => {
+    if (result.evidence !== "text") return result
+    const admittedContext =
+      run.target.kind === "app" &&
+      run.target.os?.toLowerCase() === "macos" &&
+      result.host === undefined &&
+      manifest.textClaims?.includes(result.featureId) === true
+    const status = !admittedContext || !attempt ? "test-todo" : assessment.qualified ? "supported" : "test-failure"
+    const reason = !admittedContext
+      ? "Text criterion requires a declared claim and terminal-owned macOS cell observer"
+      : !attempt
+        ? "Text qualification has not been attempted"
+        : assessment.reason
+    return finalizeCapabilityResult({
+      ...result,
+      checks: [
+        ...result.checks.filter((check) => check.id !== "text-qualification"),
+        {
+          id: "text-qualification",
+          status,
+          attempt: status === "test-todo" ? { scope: "none" } : qualificationAttempt,
+          ...(reason && { reason }),
+        },
+      ],
+      ...(reason && { reason }),
+    })
+  })
 }

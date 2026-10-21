@@ -320,10 +320,12 @@ export function finalizeCollectedDraft(
   intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
   reviews: readonly CaptureReviewInput[] = [],
 ): CollectedProbeRun | CurrentProbeRun {
-  if (run.schemaVersion !== 3 || !Array.isArray(run.results))
+  if (run.schemaVersion !== 3 || !Array.isArray(run.results)) {
     throw new Error("Final writer requires the current schema-3 draft; historical runs are read-only")
-  if ("sealedAt" in run)
+  }
+  if ("sealedAt" in run) {
     throw new Error(`Run ${run.runId} is already sealed; enrichment cannot change immutable results`)
+  }
   if (intended && run.target.id !== intended.id && run.target.id !== "unknown") {
     throw new Error(
       `Measured terminal ${run.target.id} differs from intended ${intended.id}; refusing to relabel capture`,
@@ -341,16 +343,18 @@ export function finalizeCollectedDraft(
     captured.rawReplies["collector.intent"] = JSON.stringify(intended)
   }
   for (const result of captured.results) {
-    if (result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+    if (result.checks.some((check) => check.id === "review" && check.status === "test-todo")) {
       retainCaptureBinding(captured, result.featureId)
+    }
   }
   for (const review of reviews) applyCaptureDecision(captured, review.source, review.startedAt)
   if (
     captured.results.some((result) =>
       result.checks.some((check) => check.id === "review" && check.status === "test-todo"),
     )
-  )
+  ) {
     return captured
+  }
   return sealRunDraft(captured)
 }
 

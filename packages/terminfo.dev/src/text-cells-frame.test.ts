@@ -8,6 +8,14 @@
  */
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
+import {
+  initializeRunDraft,
+  textQualificationFixtures,
+  TEXT_QUALIFICATION_SPEC,
+  type CapturedRunDraft,
+  type TextCellsObservationFrame,
+} from "@terminfo/probe-defs"
+import { recordTextQualificationChecks } from "./text-qualification.ts"
 import { textCellsFrame } from "./serve.ts"
 
 const sha = (bytes: Uint8Array) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`
@@ -254,4 +262,82 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
       textCellsFrame({ ...checkpoint, cells: { top: 1, left: 1, bottom: 4, right: 2 } }, textRead(["ab"]), 1),
     ).toThrow(/asks for rows 1-4 and columns 1-2 of a 1x2 text read/u)
   })
+})
+
+// Current status must be fixed at execution. Historical-only qualification tests missed a live
+// text Supported result whose mapping oracle was absent or attempted and broken.
+it("records text qualification attempts before seal, distinguishing absent and broken oracles", () => {
+  const featureId = "text.overwrite"
+  const manifest = {
+    probeHash: "text-suite",
+    adapterVersion: "3",
+    catalogIds: [featureId],
+    probes: { app: [featureId], headless: [], mux: [] },
+    textClaims: [featureId],
+    textQualification: TEXT_QUALIFICATION_SPEC,
+  }
+  const base = initializeRunDraft({
+    runId: "text-execution",
+    sourceRevision: "a".repeat(40),
+    manifest,
+    intendedContext: { kind: "app", id: "iterm2" },
+  })
+  const run: CapturedRunDraft = {
+    ...base,
+    target: {
+      kind: "app",
+      id: "iterm2",
+      version: "1",
+      os: "macos",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    origin: { kind: "collector" },
+    measuredAt: "2026-10-21T05:00:00.000Z",
+  }
+  const attempt = { scope: "probe" as const, startedAt: run.measuredAt }
+  run.results[0] = {
+    featureId,
+    status: "supported",
+    attempt,
+    evidence: "text",
+    checks: [{ id: "criterion", status: "supported", attempt }],
+  }
+  const fixtures = textQualificationFixtures(4, 12)
+  if (typeof fixtures === "string") throw new Error(fixtures)
+  const snapshots = new Map<string, Uint8Array>()
+  const frame = (rows: readonly string[], role: "control" | "target"): TextCellsObservationFrame => {
+    const captured = textCellsFrame({ role, label: role }, textRead(rows, 0), 1)
+    snapshots.set(captured.frame.ref, captured.retained)
+    return captured.frame as TextCellsObservationFrame
+  }
+  run.textQualification = {
+    ...TEXT_QUALIFICATION_SPEC,
+    grid: { rows: 4, cols: 12 },
+    shapes: fixtures.map((fixture) => ({
+      shape: fixture.shape,
+      frames: [frame(fixture.controlRows, "control"), frame(fixture.targetRows, "target")],
+    })),
+  }
+  const qualified = structuredClone(run)
+  recordTextQualificationChecks(qualified, manifest, snapshots, attempt)
+  expect(qualified.results[0]!.status).toBe("supported")
+  expect(qualified.results[0]!.checks.find((check) => check.id === "text-qualification")?.attempt).toEqual(attempt)
+  const unattempted = structuredClone(run)
+  recordTextQualificationChecks(unattempted, manifest, snapshots)
+  expect(unattempted.results[0]!.status).toBe("test-todo")
+  expect(unattempted.results[0]!.checks.find((check) => check.id === "text-qualification")?.attempt).toEqual({
+    scope: "none",
+  })
+  const corrupted = new Map(snapshots)
+  corrupted.set(run.textQualification.shapes[0]!.frames![0]!.ref, Buffer.from("wrong grid"))
+  recordTextQualificationChecks(run, manifest, corrupted, attempt)
+  expect(run.results[0]!.status).toBe("test-failure")
+  expect(run.results[0]!.checks.find((check) => check.id === "text-qualification")?.reason).toContain(
+    "expected character grid",
+  )
 })

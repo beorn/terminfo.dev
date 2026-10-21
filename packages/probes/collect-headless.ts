@@ -100,8 +100,9 @@ async function collectOne(name: string, directory: string): Promise<string> {
   const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
   const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
   if (process.env.TERMINFO_DRAFT_PATH) {
-    if (process.env.TERMINFO_DRAFT_PATH !== draftPath || readFileSync(draftPath, "utf8") !== initialBytes)
+    if (process.env.TERMINFO_DRAFT_PATH !== draftPath || readFileSync(draftPath, "utf8") !== initialBytes) {
       throw new Error("Delegated headless draft differs from initialized writer handoff")
+    }
   } else writeFileSync(draftPath, initialBytes, { flag: "wx" })
   const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft, null, 2)}\n`)
   let collectionStartedAt: string | undefined
@@ -243,8 +244,9 @@ export async function collectHeadlessRuns(
       })
     const draftPath = handed?.path ?? join(directory, `${name}-${delegated.runId}.draft.json`)
     if (handed) {
-      if (readFileSync(draftPath, "utf8") !== `${JSON.stringify(delegated, null, 2)}\n`)
+      if (readFileSync(draftPath, "utf8") !== `${JSON.stringify(delegated, null, 2)}\n`) {
         throw new Error(`Headless ${name} initial writer handoff differs`)
+      }
     } else writeFileSync(draftPath, `${JSON.stringify(delegated, null, 2)}\n`, { flag: "wx" })
     const workerStartedAt = new Date().toISOString()
     const retainFailure = (diagnostic: string) => {
@@ -253,8 +255,9 @@ export async function collectHeadlessRuns(
         retained.runId !== delegated.runId ||
         retained.probeHash !== suite.probeHash ||
         retained.sourceRevision !== sourceRevision
-      )
+      ) {
         throw new Error(`Worker ${name} changed delegated run identity`)
+      }
       if (!retained.rawReplies["collector.prerequisite"]) recordCollectionFailure(retained, workerStartedAt, diagnostic)
       writeFileSync(draftPath, `${JSON.stringify(retained, null, 2)}\n`)
     }

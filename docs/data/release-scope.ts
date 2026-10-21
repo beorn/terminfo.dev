@@ -136,24 +136,6 @@ export function aggregateCells(cells: Readonly<Record<string, CellState>>, ids: 
   return { denominator: ids.length, counts, idsByState }
 }
 
-export function coverageSentence(aggregate: CellAggregate): string {
-  if (!aggregate.denominator) return "No selected run"
-  const { counts } = aggregate
-  return `${counts.supported} supported · ${counts.unsupported} unsupported · ${counts.inconclusive} inconclusive · ${counts.error} errors · ${counts.untested} untested`
-}
-
-/**
- * The basis's supported share, named for what it counts. It is supported/denominator — NOT the
- * decisive share, which is conclusive/denominator (supported + unsupported) and is what the D3
- * verdict reads. Calling this one "decisive" put two different numbers under one word on the same
- * page (measured 2026-10-07 on the built site: "pass · 52/52 · 40% decisive of 62").
- */
-export function supportedShare(aggregate: CellAggregate): string {
-  if (!aggregate.denominator) return "No selected run"
-  const pct = Math.round((aggregate.counts.supported / aggregate.denominator) * 100)
-  return `${pct}% supported of ${aggregate.denominator}`
-}
-
 /**
  * The D3 verdict ladder (@chief 2026-10-07, from the operator's 20:04Z "let's make pass mean a %"):
  * a terminal PASSES when at least 90% of the INCLUDED capabilities read decisive (47 of 52),

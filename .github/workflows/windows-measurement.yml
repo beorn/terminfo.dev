@@ -7,7 +7,7 @@ on:
         description: "Existing coordinator draft run IDs by matrix target; empty object for standalone collection"
         type: string
         required: false
-        default: '{}'
+        default: "{}"
 
 permissions:
   contents: read

@@ -211,4 +211,13 @@ it("preserves the pixel screenshot reference through recorder, seal and canonica
     parseRun("pixels.json", JSON.stringify(sealRunDraft(draft)), ["sgr.bold"], new Map([[draft.probeHash, manifest]]))
       .results?.[0]?.status,
   ).toBe("supported")
+  draft.results[0]!.checks[0]!.attempt = { scope: "none" }
+  expect(() =>
+    parseRun(
+      "unattempted-pixels.json",
+      JSON.stringify(sealRunDraft(draft)),
+      ["sgr.bold"],
+      new Map([[draft.probeHash, manifest]]),
+    ),
+  ).toThrow(/decided check.*no attempt/)
 })

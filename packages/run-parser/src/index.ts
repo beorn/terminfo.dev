@@ -1222,6 +1222,11 @@ function captureBindingSource(
     rawReplyRefs,
     assertionRefs,
     frames: result.frames ?? [],
+    ...(result.screenshotRef && { screenshotRef: result.screenshotRef }),
+    ...(result.host && { host: result.host }),
+    ...(result.evidence && { evidence: result.evidence }),
+    ...(result.criterionBranch && { criterionBranch: result.criterionBranch }),
+    checks: result.checks.filter((check) => check.id !== "review"),
   })
 }
 
@@ -1302,18 +1307,17 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       return index
     })
   }
-  const checks = result.checks.map(
-    (check): CheckResult =>
-      check.id === "review"
-        ? {
-            ...check,
-            status: decision.decision,
-            attempt: { scope: "probe", startedAt },
-            reviewRef,
-            reason: decision.reason,
-            ...(assertionRefs && { assertionRefs }),
-          }
-        : check,
+  const checks = result.checks.map((check): CheckResult =>
+    check.id === "review"
+      ? {
+          ...check,
+          status: decision.decision,
+          attempt: { scope: "probe", startedAt },
+          reviewRef,
+          reason: decision.reason,
+          ...(assertionRefs && { assertionRefs }),
+        }
+      : check,
   )
   draft.rawReplies[reviewRef] = source
   draft.results[index] = finalizeCapabilityResult({
@@ -1389,8 +1393,8 @@ export function parseCapabilityResults(
         fail(path, `invalid check status for ${featureId}/${entry.id}`)
       }
       const checkAttempt = capabilityAttempt(entry.attempt, `${path}: ${featureId}/${entry.id}`, rawReplies)
-      if (entry.status === "test-failure" && checkAttempt.scope === "none") {
-        fail(path, `failed check ${featureId}/${entry.id} has no attempt`)
+      if (entry.status !== "test-todo" && checkAttempt.scope === "none") {
+        fail(path, `decided check ${featureId}/${entry.id} has no attempt`)
       }
       if (
         entry.assertionRefs !== undefined &&
@@ -1433,6 +1437,12 @@ export function parseCapabilityResults(
         [...screenshotRefs],
         [...textSnapshotRefs],
       )
+      if (
+        item.evidence === "text" &&
+        !checks.some((check) => check.id === "text-qualification" && check.status === "supported")
+      ) {
+        fail(path, `${featureId} text support requires its recorded qualification check`)
+      }
       const deciding = checks.filter((check) => check.status === status)
       if (
         !deciding.some((check) =>
@@ -1820,8 +1830,9 @@ export function decodeCollectorDraft(
   collectorRevision: string,
 ): { run: CapturedRunDraft; raw: string; sha256: string } {
   const value = parseJsonStrict(path, raw)
-  if (!object(value) || value.schemaVersion !== 3 || Object.hasOwn(value, "sealedAt"))
+  if (!object(value) || value.schemaVersion !== 3 || Object.hasOwn(value, "sealedAt")) {
     fail(path, "expected unsealed schemaVersion 3 collector draft")
+  }
   const measured = parseRun(path, raw, manifest.catalogIds ?? [], new Map([[manifest.probeHash, manifest]]), {
     mode: "capture",
   })
@@ -1829,10 +1840,12 @@ export function decodeCollectorDraft(
     measured.probeHash !== manifest.probeHash ||
     measured.suiteId !== manifest.probeHash ||
     measured.sourceRevision !== collectorRevision
-  )
+  ) {
     fail(path, "collector draft differs from trusted suite/source")
-  if (measured.identity !== "unverified" || measured.origin.kind !== "collector")
+  }
+  if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
     fail(path, "collector draft requires unverified measured identity and collector origin")
+  }
   return { run: value as unknown as CapturedRunDraft, raw, sha256: measured.sha256 }
 }
 
@@ -1849,9 +1862,11 @@ export function decodeCollectorRun(
     measured.probeHash !== manifest.probeHash ||
     measured.suiteId !== manifest.probeHash ||
     measured.sourceRevision !== collectorRevision
-  )
+  ) {
     fail(path, "collector run differs from trusted suite/source")
-  if (measured.identity !== "unverified" || measured.origin.kind !== "collector")
+  }
+  if (measured.identity !== "unverified" || measured.origin.kind !== "collector") {
     fail(path, "collector run requires unverified measured identity and collector origin")
+  }
   return { run: parseJsonStrict(path, raw) as unknown as ProbeRun, raw, sha256: measured.sha256 }
 }

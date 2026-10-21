@@ -899,8 +899,9 @@ export function recordExecutedCapability(input: {
     checks:
       input.checks && !diagnostic && observation?.outcome !== "error"
         ? input.checks.map((check) => {
-            if (!check.id || !CAPABILITY_STATUSES.includes(check.status))
+            if (!check.id || !CAPABILITY_STATUSES.includes(check.status)) {
               throw new Error(`Invalid callback check for ${featureId}`)
+            }
             const refs =
               check.assertionRefs === undefined
                 ? check.status === "test-todo"
@@ -908,8 +909,9 @@ export function recordExecutedCapability(input: {
                   : assertionRefs
                 : check.assertionRefs.map((index) => {
                     const globalIndex = assertionRefs[index]
-                    if (globalIndex === undefined)
+                    if (globalIndex === undefined) {
                       throw new Error(`Callback check ${featureId}/${check.id} names an absent assertion`)
+                    }
                     return globalIndex
                   })
             return {

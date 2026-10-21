@@ -10,28 +10,28 @@ outline: [2, 3]
 
 [View current data](/api/v3/data.json) · [Historical v2](/api/v2/data.json) · [Historical v1](/api/v1/data.json)
 
-| Field | Meaning |
-| --- | --- |
-| `version` | Public API version, `3` |
-| `generated` | Latest selected current measurement time, or empty when no current run exists |
-| `features`, `catalogIds` | Catalog metadata; each run also records its own exact frozen `catalogIds` |
-| `currentRunCount` | Number of selected current contexts |
-| `current` | Exact context keys mapped to current run references |
-| `versions`, `history` | Retained sealed schema-3 run references |
-| `methodology` | Status, score, completion and historical endpoint explanations |
-| `message` | Explicit no-current explanation when `currentRunCount` is zero |
+| Field                    | Meaning                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| `version`                | Public API version, `3`                                                       |
+| `generated`              | Latest selected current measurement time, or empty when no current run exists |
+| `features`, `catalogIds` | Catalog metadata; each run also records its own exact frozen `catalogIds`     |
+| `currentRunCount`        | Number of selected current contexts                                           |
+| `current`                | Exact context keys mapped to current run references                           |
+| `versions`, `history`    | Retained sealed schema-3 run references                                       |
+| `methodology`            | Status, score, completion and historical endpoint explanations                |
+| `message`                | Explicit no-current explanation when `currentRunCount` is zero                |
 
 A run reference includes its target/context, source revision, suite, run ID/hash, frozen catalog IDs, `sealedAt`, counts, score, completion, and a verified run-document URL/hash.
 
 ## Five recorded statuses
 
-| Stored value | Display label | Meaning |
-| --- | --- | --- |
-| `supported` | Supported | The recorded criterion was satisfied |
-| `unsupported` | Unsupported | The functioning test obtained the defined negative result |
-| `untestable` | Untestable | A reviewed context impossibility prevents this criterion |
-| `test-todo` | TEST TODO | Required work remains; this is not a terminal capability verdict |
-| `test-failure` | TEST FAILURE | An attempted test or collection failed to obtain a valid result |
+| Stored value   | Display label | Meaning                                                          |
+| -------------- | ------------- | ---------------------------------------------------------------- |
+| `supported`    | Supported     | The recorded criterion was satisfied                             |
+| `unsupported`  | Unsupported   | The functioning test obtained the defined negative result        |
+| `untestable`   | Untestable    | A reviewed context impossibility prevents this criterion         |
+| `test-todo`    | TEST TODO     | Required work remains; this is not a terminal capability verdict |
+| `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result  |
 
 Each sealed run has exactly one result per frozen catalog ID. Its `results` array retains the recorded status and attempts/checks; readers never turn old observations into new current statuses.
 
@@ -52,12 +52,12 @@ It does not invent a current score or a completed cohort. Historical results rem
 ## Read a result
 
 ```javascript
-const data = await fetch("https://terminfo.dev/api/v3/data.json").then(r => r.json())
+const data = await fetch("https://terminfo.dev/api/v3/data.json").then((r) => r.json())
 if (data.currentRunCount === 0) console.log(data.message)
 
 for (const [context, reference] of Object.entries(data.current)) {
-  const run = await fetch(new URL(reference.url, "https://terminfo.dev")).then(r => r.json())
-  const result = run.results.find(result => result.featureId === "sgr.fg.truecolor")
+  const run = await fetch(new URL(reference.url, "https://terminfo.dev")).then((r) => r.json())
+  const result = run.results.find((result) => result.featureId === "sgr.fg.truecolor")
   console.log(context, result?.status, run.score, run.complete)
 }
 ```

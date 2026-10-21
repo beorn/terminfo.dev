@@ -392,25 +392,16 @@ export function classifyDevelopmentRun(run: LoadedRun): {
   runId: string
   states: Record<string, CapabilityStatus>
 } {
-  if (run.schemaVersion !== 3 || !run.results)
+  if (run.schemaVersion !== 3 || !run.results) {
     throw new Error(
       `Development run ${run.runId} requires current schema-3 recorded results; use the historical reader for old runs`,
     )
+  }
   return {
     mode: "development",
     runId: run.runId,
     states: Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
   }
-}
-
-export function classifyHistoricalDevelopmentRun(
-  run: LoadedRun,
-  interpretations: readonly Interpretation[],
-  context: { textSnapshots?: ReadonlyMap<string, Uint8Array> } = {},
-): { mode: "development"; runId: string; states: Record<string, CellState> } {
-  if (run.schemaVersion === 3) throw new Error(`Current run ${run.runId} cannot be graded by the historical reader`)
-  const { cells } = prepareRunCells(run, interpretations, assessTextQualification(run, context.textSnapshots))
-  return { mode: "development", runId: run.runId, states: classifyCells(cells) }
 }
 
 function projectRun(
@@ -803,8 +794,9 @@ export function projectResults(
       !(run.schemaVersion === 3 ? run.results : run.observations)?.some(
         (result) => result.featureId === entry.featureId,
       )
-    )
+    ) {
       throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
+    }
   }
   const historical = projectHistoricalResults(
     runs.filter((run) => run.schemaVersion !== 3),

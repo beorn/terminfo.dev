@@ -146,8 +146,9 @@ function buildRow(
     }
   }
   const results = picked.run.results
-  if (!results)
+  if (!results) {
     return { ...base, collected: false, cause: "selected run is historical; current schema-3 results required" }
+  }
   const byId = new Map(results.map((result) => [result.featureId, result]))
   return {
     ...base,
