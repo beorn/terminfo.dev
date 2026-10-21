@@ -731,7 +731,7 @@ describe("selected-run consumer parity", () => {
       const docUrl = approval.url.split("#")[0]!
       const document = presented.documents.get(docUrl)
       expect(document?.document).toMatchObject({
-        version: 3,
+        version: 4,
         runId: current.runId,
         runSha256: current.sha256,
         cells: {
@@ -878,7 +878,7 @@ describe("selected-run consumer parity", () => {
           expect(bytes.toString("utf8")).toBe(
             JSON.stringify(
               {
-                version: 1,
+                version: 2,
                 runId: fixture.selected.runId,
                 runSha256: fixture.runSha256,
                 cells: {

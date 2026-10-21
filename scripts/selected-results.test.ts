@@ -16,7 +16,7 @@ import {
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission, planAdmission } from "./admit-run.ts"
-import { publicHistoricalResults as publicResults } from "../docs/data/public-results.ts"
+import { publicHistoricalResults as publicResults, readCellEvidence } from "../docs/data/public-results.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import {
@@ -1946,13 +1946,50 @@ describe("selected results", () => {
       url: `/api/v2/evidence/${multiRun.sha256}.json#extensions.query`,
       sha256: expectedSha,
     })
-    const cellSource = readFileSync(
-      join(import.meta.dirname, "..", "docs", ".vitepress", "theme", "ResultEvidenceCell.vue"),
-      "utf8",
+    const parsedRunDoc = JSON.parse(runDoc.bytes) as {
+      version: number
+      runId: string
+      runSha256: string
+      cells: Record<string, Record<string, unknown>>
+    }
+    const baseExpectation = {
+      schemaVersion: multiRun.schemaVersion,
+      runId: multiRun.runId,
+      runSha256: multiRun.sha256,
+      featureId: "extensions.graphics",
+      reviewId: "present-graphics-in-same-run",
+    }
+    expect(readCellEvidence(parsedRunDoc, baseExpectation)).toMatchObject({
+      version: 2,
+      runId: multiRun.runId,
+      runSha256: multiRun.sha256,
+      featureId: "extensions.graphics",
+      review: { id: "present-graphics-in-same-run" },
+    })
+    expect(() => readCellEvidence(parsedRunDoc, { ...baseExpectation, featureId: "cursor.position" })).toThrow(
+      "no evidence stored for this cell",
     )
-    expect(cellSource).toContain('url.split("#")')
-    expect(cellSource).toContain('throw new Error("evidence failed its receipt")')
-    expect(cellSource).toContain('throw new Error("no evidence stored for this cell")')
+    expect(() => readCellEvidence(parsedRunDoc, { ...baseExpectation, runSha256: "0".repeat(64) })).toThrow(
+      "Evidence document identity or structure does not match this result",
+    )
+    expect(() =>
+      readCellEvidence(
+        {
+          ...parsedRunDoc,
+          cells: {
+            ...parsedRunDoc.cells,
+            "extensions.graphics": { ...parsedRunDoc.cells["extensions.graphics"], featureId: "extensions.query" },
+          },
+        },
+        baseExpectation,
+      ),
+    ).toThrow("Evidence document identity or structure does not match this result")
+    expect(() => readCellEvidence(parsedRunDoc, { ...baseExpectation, reviewId: "wrong-review" })).toThrow(
+      "Evidence document identity or structure does not match this result",
+    )
+    expect(() => readCellEvidence({ ...parsedRunDoc, version: 1 }, baseExpectation)).toThrow(
+      "Evidence document identity or structure does not match this result",
+    )
     const redirects = readFileSync(join(import.meta.dirname, "..", "docs", "public", "_redirects"), "utf8")
     expect(redirects).toContain("/api/v2/evidence/:run/*   /api/v2/evidence/:run.json   301")
   })

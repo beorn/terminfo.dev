@@ -37,6 +37,10 @@ export type PublicFrame = {
 }
 type PublicImages = { screenshot?: SelectedCell["record"]["screenshot"]; frames?: PublicFrame[] }
 
+import { readCellEvidence, type CellEvidenceExpectation, type LoadedCellEvidence } from "./evidence-reader.ts"
+
+export { readCellEvidence, type CellEvidenceExpectation, type LoadedCellEvidence }
+
 export interface HistoricalCellEvidence {
   featureId: string
   observation: Pick<Observation, "featureId" | "outcome" | "reason" | "evidence" | "note">
@@ -46,7 +50,7 @@ export interface HistoricalCellEvidence {
 }
 
 export interface HistoricalEvidenceDocument {
-  version: 1
+  version: 2
   runId: string
   runSha256: string
   cells: Record<string, HistoricalCellEvidence>
@@ -239,7 +243,7 @@ export function publicHistoricalResults(
     )
     if (Object.keys(evidenceCells).length > 0) {
       const document: HistoricalEvidenceDocument = {
-        version: 1,
+        version: 2,
         runId: version.runId,
         runSha256: version.sha256,
         cells: evidenceCells,
@@ -252,6 +256,13 @@ export function publicHistoricalResults(
       const sha256 = createHash("sha256").update(bytes).digest("hex")
       for (const cell of Object.values(cells)) {
         if (cell.presentation.state === "presented") {
+          readCellEvidence(document, {
+            schemaVersion: version.schemaVersion,
+            runId: version.runId,
+            runSha256: version.sha256,
+            featureId: cell.featureId,
+            reviewId: cell.presentation.review.id,
+          })
           cell.presentation.sha256 = sha256
         }
       }
@@ -411,7 +422,7 @@ export interface CellEvidence {
 }
 
 export interface EvidenceDocument {
-  version: 3
+  version: 4
   runId: string
   runSha256: string
   cells: Record<string, CellEvidence>
@@ -526,7 +537,7 @@ export function publicResults(
     const mappedResults = results.map((result) => mapResult(result, version, evidenceCells))
     if (Object.keys(evidenceCells).length > 0) {
       const document: EvidenceDocument = {
-        version: 3,
+        version: 4,
         runId: version.runId,
         runSha256: version.sha256,
         cells: evidenceCells,
@@ -539,6 +550,14 @@ export function publicResults(
       const sha256 = createHash("sha256").update(bytes).digest("hex")
       for (const result of mappedResults) {
         if (result.presentation.state === "presented") {
+          readCellEvidence(document, {
+            schemaVersion: version.schemaVersion,
+            runId: version.runId,
+            runSha256: version.sha256,
+            featureId: result.featureId,
+            reviewId: result.presentation.review.id,
+            status: result.status,
+          })
           result.presentation.sha256 = sha256
         }
       }

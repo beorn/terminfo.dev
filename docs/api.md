@@ -68,7 +68,7 @@ A missing context means there is no selected current run. A feature outside a ru
 
 Status recording, identity admission and evidence publication are separate decisions. A support review does not automatically authorize publishing captured bytes.
 
-Each result's `presentation` says whether evidence is unreviewed, withdrawn or presented. Presented evidence points to `/api/v3/evidence/<runSha256>.json#<featureId>` (or `/api/v2/evidence/<runSha256>.json#<featureId>` for historical v2 runs) and carries the SHA-256 receipt of that run's evidence document. Legacy `/api/v2/evidence/<runSha256>/<featureId>.json` URLs 301-redirect to `/api/v2/evidence/<runSha256>.json`.
+Each result's `presentation` says whether evidence is unreviewed, withdrawn or presented. Presented evidence points to `/api/v3/evidence/<runSha256>.json#<featureId>` (or `/api/v2/evidence/<runSha256>.json#<featureId>` for historical v2 runs) and carries the SHA-256 receipt of that run's evidence document. Legacy `/api/v2/evidence/<runSha256>/<featureId>.json` URLs 301-redirect to `/api/v2/evidence/<runSha256>.json`; per-run evidence documents carry `version: 4` (v3 runs) and `version: 2` (historical v2 runs), bumped from per-cell `version: 3` and `version: 1` because the document shape changed to `cells[featureId]`.
 
 Each run's evidence document keys its approved cells under `cells[featureId]` and retains the sealed result (or historical observation) plus original expected/observed assertions, raw reply and frame references. Text snapshots and screenshots retain their own hashes.
 

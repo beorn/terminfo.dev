@@ -3,14 +3,13 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
 import type {
-  CellEvidence,
-  HistoricalCellEvidence,
   PublicCapabilityResult,
   HistoricalPublicCell,
   HistoricalPublicVersion,
   PublicVersion,
   TextQualificationDocument,
 } from "../../data/public-results"
+import { readCellEvidence, type LoadedCellEvidence } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 
@@ -57,10 +56,6 @@ const preview = ref<HTMLElement | null>(null)
 let previewHideTimer: ReturnType<typeof setTimeout> | undefined
 const previewVisible = ref(false)
 const dialogVisible = ref(false)
-type LoadedCellEvidence =
-  | (CellEvidence & { version: 3; runId: string; runSha256: string })
-  | (HistoricalCellEvidence & { version: 1; runId: string; runSha256: string })
-
 const previewPosition = ref<Record<string, string>>({})
 const evidenceDocument = ref<LoadedCellEvidence | null>(null)
 const qualificationDocument = ref<TextQualificationDocument | null>(null)
@@ -208,7 +203,7 @@ const hasRecordedDetail = computed(
     evidenceScreenshot.value !== undefined,
 )
 const originalObservation = computed(() =>
-  evidenceDocument.value?.version === 1 ? evidenceDocument.value.observation : undefined,
+  evidenceDocument.value?.version === 2 ? evidenceDocument.value.observation : undefined,
 )
 const originalDiffers = computed(() => {
   const original = originalObservation.value
@@ -271,7 +266,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function verifiedBytes(url: string, sha256: string, signal: AbortSignal): Promise<ArrayBuffer> {
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error("Invalid evidence SHA-256 receipt")
   const [resourcePath] = url.split("#")
-  const response = await fetch(withBase(resourcePath || url), { signal })
+  if (!resourcePath) throw new Error("Invalid evidence URL")
+  const response = await fetch(withBase(resourcePath), { signal })
   if (!response.ok) throw new Error(`Evidence request returned HTTP ${response.status}`)
   const bytes = await response.arrayBuffer()
   if (!globalThis.crypto?.subtle) throw new Error("SHA-256 verification is unavailable in this browser")
@@ -301,43 +297,14 @@ async function loadEvidence(): Promise<void> {
     }
     const bytes = await verifiedBytes(approval.url, approval.sha256, controller.signal)
     const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-    if (
-      !isRecord(parsed) ||
-      parsed.version !== (version.schemaVersion === 3 ? 3 : 1) ||
-      parsed.runId !== version.runId ||
-      parsed.runSha256 !== version.sha256 ||
-      !isRecord(parsed.cells)
-    ) {
-      throw new Error("Evidence document identity or structure does not match this result")
-    }
-    const cellEntry = parsed.cells[props.featureId]
-    if (cellEntry === undefined) {
-      throw new Error("no evidence stored for this cell")
-    }
-    const payload = isRecord(cellEntry)
-      ? version.schemaVersion === 3
-        ? cellEntry.result
-        : cellEntry.observation
-      : undefined
-    if (
-      !isRecord(cellEntry) ||
-      cellEntry.featureId !== props.featureId ||
-      !isRecord(payload) ||
-      payload.featureId !== props.featureId ||
-      (currentResult.value !== undefined && payload.status !== currentResult.value.status) ||
-      !isRecord(cellEntry.record) ||
-      !Array.isArray(cellEntry.record.assertions) ||
-      !isRecord(cellEntry.review) ||
-      cellEntry.review.id !== approval.review.id
-    ) {
-      throw new Error("Evidence document identity or structure does not match this result")
-    }
-    const document = {
-      version: parsed.version,
-      runId: parsed.runId,
-      runSha256: parsed.runSha256,
-      ...(cellEntry as unknown as CellEvidence | HistoricalCellEvidence),
-    } as LoadedCellEvidence
+    const document = readCellEvidence(parsed, {
+      schemaVersion: version.schemaVersion,
+      runId: version.runId,
+      runSha256: version.sha256,
+      featureId: props.featureId,
+      reviewId: approval.review.id,
+      status: currentResult.value?.status,
+    })
     let qualification: TextQualificationDocument | null = null
     if (document.textQualification) {
       const reference = document.textQualification
