@@ -99,7 +99,7 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
 
 <a class="backend-card" href="/terminals/headless-ghostty-native">
   <div class="backend-header">
-    <span class="backend-name">Ghostty (native)</span>
+    <span class="backend-name">libghostty-vt (native)</span>
     <span class="backend-lang">Zig</span>
   </div>
   <p class="backend-desc">Ghostty's from-scratch Zig parser (libghostty), tested independently of the GPU renderer. Ghostty also has a separate app result.</p>

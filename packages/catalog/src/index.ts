@@ -76,6 +76,8 @@ export interface TerminalRecord {
   body: string
   kind?: string
   headlessBackends?: string[]
+  /** Label of the headless backend that shares this entry's id: the app's own core, measured without the app. */
+  headlessLabel?: string
   manifestBackend?: string
   platforms?: string[]
   repo?: string
@@ -127,6 +129,23 @@ function optionalStringArray(path: string, id: string, field: string, value: unk
     throw new Error(`${path}: entry "${id}" has a non-string-array "${field}"`)
   }
   return value as string[]
+}
+
+/** The label of the headless backend sharing this entry's id, which the entry must itself list as measured. */
+function optionalHeadlessLabel(
+  path: string,
+  id: string,
+  value: unknown,
+  backends: string[] | undefined,
+): string | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== "string" || value === "") {
+    throw new Error(`${path}: entry "${id}" has a "headlessLabel" that is not a non-empty string`)
+  }
+  if (!backends?.includes(id)) {
+    throw new Error(`${path}: entry "${id}" has a "headlessLabel" but does not list "${id}" in "headlessBackends"`)
+  }
+  return value
 }
 
 function optionalBoolean(path: string, id: string, field: string, value: unknown): boolean | undefined {
@@ -183,6 +202,7 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
 }
 
 function parseTerminal(path: string, id: string, raw: Record<string, unknown>): TerminalRecord {
+  const headlessBackends = optionalStringArray(path, id, "headlessBackends", raw.headlessBackends)
   return {
     label: requireString(path, id, "label", raw.label),
     slug: requireString(path, id, "slug", raw.slug),
@@ -190,7 +210,8 @@ function parseTerminal(path: string, id: string, raw: Record<string, unknown>): 
     description: requireString(path, id, "description", raw.description),
     body: requireString(path, id, "body", raw.body),
     kind: optionalString(path, id, "kind", raw.kind),
-    headlessBackends: optionalStringArray(path, id, "headlessBackends", raw.headlessBackends),
+    headlessBackends,
+    headlessLabel: optionalHeadlessLabel(path, id, raw.headlessLabel, headlessBackends),
     manifestBackend: optionalString(path, id, "manifestBackend", raw.manifestBackend),
     platforms: optionalStringArray(path, id, "platforms", raw.platforms),
     repo: optionalString(path, id, "repo", raw.repo),
@@ -215,6 +236,27 @@ export function loadFeatures(contentDir: string): FeatureCatalog {
   const frozen = Object.freeze(catalog)
   cache.set(cacheKey, frozen)
   return frozen
+}
+
+type LabelSource = Readonly<Record<string, Pick<TerminalRecord, "label" | "kind" | "headlessLabel">>>
+
+/**
+ * The catalog's name for headless backend `id`: its entry's `headlessLabel`, else that entry's label
+ * when the entry is itself a headless engine. Undefined when the catalog does not name it.
+ */
+export function headlessName(terminals: LabelSource, id: string): string | undefined {
+  const entry = terminals[id]
+  return entry?.headlessLabel ?? (entry?.kind === "headless" ? entry.label : undefined)
+}
+
+/**
+ * The display name of catalog id `id` measured as `kind` on a page of its own: the catalog's headless
+ * name for a headless target, else the entry label (or `fallback`) qualified by the kind.
+ */
+export function targetLabel(terminals: LabelSource, id: string, kind: string, fallback: string = id): string {
+  return (
+    (kind === "headless" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
+  )
 }
 
 /** Load `content/terminals.json` from an absolute content directory. Cached per directory. */

@@ -141,7 +141,7 @@ function buildSidebar() {
 
   // These comparisons have reviewed headless runs on both sides.
   const compareItems: Array<{ text: string; link: string }> = [
-    { text: "Headless: Ghostty vs Kitty", link: "/compare/headless-ghostty-vs-headless-kitty" },
+    { text: "Headless: libghostty-vt (WASM) vs Kitty", link: "/compare/headless-ghostty-vs-headless-kitty" },
     { text: "Headless: libvterm vs vt100 (Rust)", link: "/compare/libvterm-vs-vt100-rust" },
     { text: "Headless: vt100.js vs vt100 (Rust)", link: "/compare/vt100-js-vs-vt100-rust" },
     { text: "Headless: vt220.js vs vterm.js", link: "/compare/vt220-js-vs-vterm-js" },
@@ -455,7 +455,7 @@ export default defineConfig({
     if (rel === "backends.md") {
       pageData.title = "Parser Backends: Standalone Libraries and App Parser Engines"
       pageData.description =
-        "Terminal parser backends tested without a GUI \u2014 standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, Ghostty, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
+        "Terminal parser backends tested without a GUI \u2014 standalone libraries (xterm.js, vterm.js, vt100.js) and app parser engines (Alacritty, libghostty-vt, Kitty, WezTerm). Escape sequence correctness, independent of rendering."
     }
     if (rel === "terminals.md") {
       pageData.title = "Terminal Emulators: App Terminals, Parser Backends, and Multiplexers"

@@ -76,7 +76,7 @@ export function featureSlug(id: string): string {
  * backends.json, and the loader prefixes a backend probed under a different kind
  * (xtermjs -> xterm-js, ghostty's WASM parser -> headless-ghostty). A slugified label is
  * only the fallback for a backend no catalog declares, so two pages cannot inherit one id
- * by both slugging their label the same way (ghostty-native and ghostty are both "Ghostty").
+ * by both slugging their label the same way (before 28047 the app ghostty and ghostty-native both slugged to ghostty).
  */
 export function terminalSlug(name: string, meta: ProbeData["meta"]): string {
   const declared = meta[name]?.slug

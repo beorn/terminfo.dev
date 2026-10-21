@@ -20,7 +20,11 @@ import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
-import { loadFeatures as loadFeatureCatalog, loadTerminals as loadTerminalCatalog } from "@terminfo/catalog"
+import {
+  loadFeatures as loadFeatureCatalog,
+  loadTerminals as loadTerminalCatalog,
+  targetLabel,
+} from "@terminfo/catalog"
 import { siteAnalysisPath } from "./site-out.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -1215,7 +1219,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const meta =
       termId === data.sourceId && terminals[data.sourceId]
         ? source
-        : { ...source, slug: termId, label: `${source.label} (${data.type})` }
+        : { ...source, slug: termId, label: targetLabel(terminals, data.sourceId, data.type, source.label) }
     const stats = computeTerminalStats(termId, meta, data, features, baselineFeatures, resultMap)
     allStats.set(termId, stats)
   }
