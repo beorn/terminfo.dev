@@ -245,6 +245,11 @@ export function sgrReadbackResult(
   const remaining = [...state]
   for (let token = remaining.shift(); token !== undefined; token = remaining.shift()) {
     const selector = leadingSgrCode(token)
+    // Underline reports have one style subparameter, from 0 (off) through 5 (dashed).
+    if (selector === 4 && token.includes(":") && !/^4:[0-5]$/.test(token)) {
+      unmeasured = `DECRQSS underline parameter ${token} has an unqualified style or extra subparameters`
+      break
+    }
     if (![38, 48, 58].includes(selector)) {
       parameters.push(token)
       continue

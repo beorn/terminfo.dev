@@ -5,6 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
+import { recordExecutedCapability } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import type { ProbeResult, TermContext, TerminalQueryOutcome } from "./types.ts"
 
@@ -168,10 +169,31 @@ test.each([
   ["sgr.bg.default", "0;104", "unsupported"],
   ["sgr.fg.default", "0;48;5;31", "supported"],
   ["sgr.bg.default", "0;38;2;255;42;0", "supported"],
+  ["sgr.underline.curly", "0;4:3:999", "inconclusive"],
+  ["sgr.underline.curly", "0;4:0:3", "inconclusive"],
+  ["sgr.underline.curly", "0;4:6", "inconclusive"],
+  ["sgr.underline.single", "0;4:3:999", "inconclusive"],
+  ["sgr.underline.single", "0;4:0:3", "inconclusive"],
+  ["sgr.underline.single", "0;4:6", "inconclusive"],
 ] as const)("%s with DECRQSS %s is %s", async (id, reply, outcome) => {
   const { ctx } = sgrReadbackContext(reply)
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome, evidence: "query" })
   expect(result.pass).toBe(outcome === "supported")
-  if (outcome === "inconclusive") expect(result.observation?.note).toBeTruthy()
+  expect(result.response).toBe(JSON.stringify({ sgr: reply }))
+  if (outcome === "inconclusive") {
+    expect(result.observation?.note).toBeTruthy()
+    expect(result.assertions ?? []).toHaveLength(0)
+    // An attempted malformed reply must remain unsuccessful at the stored-result boundary too.
+    const recorded = recordExecutedCapability({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: "2026-10-21T10:50:00.000Z" },
+      observation: { ...result.observation!, featureId: id, rawReplyRef: id },
+      assertions: [],
+      checks: result.checks,
+      criterionBranch: result.criterionBranch,
+    })
+    expect(recorded.status).toBe("test-failure")
+    expect(recorded.checks).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
+  }
 })
