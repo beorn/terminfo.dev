@@ -295,7 +295,7 @@ test("shared hosted DMG caller rejects altered pinned bytes before install and p
   ])
 })
 
-test("cmux hosted caller quotes the private command in normal config before one cold GUI open", async () => {
+test("cmux hosted caller quotes the first-surface command before one cold GUI open", async () => {
   const workflow = readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")
   const source = workflow.split("<<'HOSTED_CMUX_START'\n")[1]?.split("\n          HOSTED_CMUX_START")[0]
   expect(source, "the production cmux launch caller exists").toBeDefined()
@@ -375,6 +375,7 @@ test("cmux hosted caller quotes the private command in normal config before one 
   expect(events.indexOf("native:write")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("native:read-type")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("evidence")).toBeLessThan(events.indexOf("launch"))
+  expect(events.indexOf("config")).toBeLessThan(events.indexOf("launch"))
   expect(launches).toEqual([["open", "-a", "/Applications/cmux.app"]])
   expect(JSON.parse(writes.get("/runner/measurement-artifacts/cmux-launch-setup.json")!)).toMatchObject({
     domain: "fixture.installed.cmux",
@@ -384,7 +385,7 @@ test("cmux hosted caller quotes the private command in normal config before one 
   const configured = writes
     .get("/Users/runner/.config/ghostty/config")!
     .trim()
-    .replace(/^command = /, "")
+    .replace(/^initial-command = /, "")
   const argv = spawnSync("/bin/bash", ["-c", `set -- ${configured}; printf '%s\\0' "$@"`], { encoding: "utf8" })
   expect(argv.status, argv.stderr).toBe(0)
   expect(argv.stdout.split("\0").slice(0, -1)).toEqual(["/bin/bash", command])

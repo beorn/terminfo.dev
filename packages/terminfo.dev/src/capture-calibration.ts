@@ -480,6 +480,10 @@ export async function calibrateCaptureOrigin({
     throw new Error(`Capture calibration cursor visibility query timed out: ${JSON.stringify(visibilityReport)}`)
   }
   const status = visibilityReport.match?.[1]
+  if (visibilityReport.reason === "sentinel" && visibilityReport.match === null) {
+    // Retain the alternate exchange in the owned preparation trace; it cannot establish prior state.
+    await ctx.queryOutcome("\x1b[?25$p", /\x1b\[\?25;([0-4])\$y/, 5000)
+  }
   if (visibilityReport.reason !== "reply" || (status !== "1" && status !== "2")) {
     throw refusal(
       `Capture calibration cannot restore cursor visibility: ${status === "3" || status === "4" ? "permanent mode" : "unreported mode"}; ${JSON.stringify(visibilityReport)}`,

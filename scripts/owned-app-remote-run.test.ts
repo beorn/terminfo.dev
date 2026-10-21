@@ -21,8 +21,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
@@ -319,6 +321,30 @@ afterEach(() => {
 })
 
 describe("owned-app ssh transport", () => {
+  it("stages portable resource modes without source-host privilege bits", () => {
+    const resources = join(code, "node_modules", "portable-modes")
+    mkdirSync(resources)
+    writeFileSync(join(resources, "executable"), "#!/bin/sh\nprintf 'resource bytes\\n'\n")
+    writeFileSync(join(resources, "data"), "unchanged data\n")
+    symlinkSync("executable", join(resources, "link"))
+    chmodSync(resources, 0o2755)
+    chmodSync(join(resources, "executable"), 0o6755)
+    chmodSync(join(resources, "data"), 0o644)
+
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const staged = join(stage, "source", "node_modules", "portable-modes")
+    expect(statSync(staged).mode & 0o7777).toBe(0o755)
+    expect(statSync(join(staged, "executable")).mode & 0o7777).toBe(0o755)
+    expect(statSync(join(staged, "data")).mode & 0o7777).toBe(0o644)
+    expect(readFileSync(join(staged, "executable"))).toEqual(readFileSync(join(resources, "executable")))
+    expect(readFileSync(join(staged, "data"))).toEqual(readFileSync(join(resources, "data")))
+    expect(readlinkSync(join(staged, "link"))).toBe("executable")
+    expect(readFileSync(join(staged, "link"))).toEqual(readFileSync(join(resources, "executable")))
+    expect(statSync(resources).mode & 0o7777).toBe(0o2755)
+    expect(statSync(join(resources, "executable")).mode & 0o7777).toBe(0o6755)
+  })
+
   it("stages exact source, runs the identical argv on the host, and proves the returned bytes", () => {
     const result = run()
     expect(result.stderr).toBe("")
@@ -367,6 +393,38 @@ describe("owned-app ssh transport", () => {
       expect(createHash("sha256").update(bytes).digest("hex")).toBe(file.sha256)
     }
   }, 60_000)
+
+  it.each([false, true])(
+    "retains large rsync diagnostics without a pipe-buffer abort (failure=%s)",
+    (failure) => {
+      // Real child output must exceed spawnSync's pipe cap; small shim errors miss the staging bug.
+      const shim = join(shims, "rsync")
+      const emit = `"$REAL_BUN" -e 'process.stdout.write("large-output-start\\n" + "o".repeat(1200000) + "\\nlarge-output-end\\n"); process.stderr.write("large-error-start\\n" + "e".repeat(1200000) + "\\nlarge-error-end\\n")'`
+      writeFileSync(
+        shim,
+        readFileSync(shim, "utf8").replace(
+          '\n"$REAL_RSYNC" "$@"\n',
+          `\n${emit}\n${failure ? "exit 23" : '"$REAL_RSYNC" "$@"'}\n`,
+        ),
+      )
+      const result = run()
+      if (failure) {
+        expect(result.status).not.toBe(0)
+        expect(result.stderr).toContain("rsync incomplete")
+        expect(result.stderr).toContain("exited 23")
+        const path = /diagnostics: ([^\n]+)/.exec(result.stderr)?.[1]
+        expect(path, result.stderr).toBeTruthy()
+        const diagnostics = readFileSync(path!, "utf8")
+        expect(diagnostics).toContain("large-output-start\n" + "o".repeat(1200000) + "\nlarge-output-end\n")
+        expect(diagnostics).toContain("large-error-start\n" + "e".repeat(1200000) + "\nlarge-error-end\n")
+      } else {
+        expect(result.status, result.stderr).toBe(0)
+        expect(existsSync(join(output, "transport", "transport-receipt.json"))).toBe(true)
+      }
+      expect(result.stderr).not.toContain("ENOBUFS")
+    },
+    60_000,
+  )
 
   it("pins every ssh spawn and every rsync -e to the same options, with -F /dev/null first", () => {
     expect(run().status).toBe(0)

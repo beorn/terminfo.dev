@@ -16,25 +16,34 @@ function modeOutcome(status: string): TerminalQueryOutcome {
   return { reason: "reply", match: [raw, status], raw, rawBase64: Buffer.from(raw).toString("base64") }
 }
 
-test.each(["timeout", "query I/O"] as const)("cursor-mode %s stays fatal before mutation", async (fault) => {
-  const failure = new Error("Cursor mode input/output failed")
-  const write = vi.fn()
-  const captureRaw = vi.fn()
-  const ctx = {
-    rows: 4,
-    cols: 4,
-    write,
-    queryWithSentinelOutcome: async () => {
-      if (fault === "query I/O") throw failure
-      return { reason: "timeout", match: null, raw: "", rawBase64: "" }
-    },
-  } as unknown as TermContext
-  const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw })
-  if (fault === "query I/O") await expect(result).rejects.toBe(failure)
-  else await expect(result).rejects.toThrow(/cursor visibility query timed out/)
-  expect(write).not.toHaveBeenCalled()
-  expect(captureRaw).not.toHaveBeenCalled()
-})
+test.each(["timeout", "query I/O", "diagnostic I/O"] as const)(
+  "cursor-mode %s stays fatal before mutation",
+  async (fault) => {
+    const failure = new Error("Cursor mode input/output failed")
+    const write = vi.fn()
+    const captureRaw = vi.fn()
+    const ctx = {
+      rows: 4,
+      cols: 4,
+      write,
+      queryWithSentinelOutcome: async () => {
+        if (fault === "query I/O") throw failure
+        if (fault === "diagnostic I/O") {
+          return { reason: "sentinel", match: null, raw: "\x1b[?62c", rawBase64: "G1s/NjJj" }
+        }
+        return { reason: "timeout", match: null, raw: "", rawBase64: "" }
+      },
+      queryOutcome: async () => {
+        throw failure
+      },
+    } as unknown as TermContext
+    const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw })
+    if (fault !== "timeout") await expect(result).rejects.toBe(failure)
+    else await expect(result).rejects.toThrow(/cursor visibility query timed out/)
+    expect(write).not.toHaveBeenCalled()
+    expect(captureRaw).not.toHaveBeenCalled()
+  },
+)
 
 // A terminal can answer DA1 while declining DECRQM. That is an intrinsic missing
 // observable, unlike a dead exchange; neither case permits calibration mutations.
@@ -59,6 +68,7 @@ test.each([
     write,
     queryMode: async () => "unknown",
     queryWithSentinelOutcome: async () => outcome,
+    queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
   } as unknown as TermContext
   await expect(
     calibrateCaptureOrigin({ ctx, pixelGeometry: geometry, timeoutMs: 100, captureRaw }),

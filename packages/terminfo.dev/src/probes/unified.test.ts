@@ -2232,20 +2232,23 @@ it("an 18t timeout aborts capture preparation instead of recording a terminal re
 
 // The unit owns mode classification; this boundary owns trace retention and gap
 // propagation to real protocol and region callbacks after preparation refuses.
-it.each(["unknown reply", "sentinel only"])(
+it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic timeout"])(
   "a cursor-mode %s retains bytes and continues without pixel capture",
   async (fault) => {
     verifiedBatchFixture()
+    vi.useFakeTimers()
     const da1 = "\x1b[?62;4c"
     const raw = fault === "unknown reply" ? `\x1b[?25;0$y${da1}` : da1
+    const diagnostic = fault === "sentinel diagnostic reply" ? "\x1b[?25;1$y" : ""
     vi.spyOn(process.stdout, "write").mockImplementation(((text: string) => {
       if (text === "\x1b[?25$p\x1b[c") process.stdin.emit("data", Buffer.from(raw))
+      if (text === "\x1b[?25$p" && diagnostic) process.stdin.emit("data", Buffer.from(diagnostic))
       if (text === "\x1b[c") process.stdin.emit("data", Buffer.from(da1))
       return true
     }) as typeof process.stdout.write)
     const capture = vi.fn()
     const captureRaw = vi.fn()
-    const batch = await runProbeBatch({
+    const pending = runProbeBatch({
       ids: ["device.primary-da", "erase.line.all"],
       ownedTerminal: geometryOwner(measured(24, 80)),
       capture,
@@ -2253,6 +2256,8 @@ it.each(["unknown reply", "sentinel only"])(
         await calibrateCaptureOrigin({ ctx: context, timeoutMs: 100, captureRaw })
       },
     })
+    const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
+    vi.useRealTimers()
     expect(batch.observations).toContainEqual(
       expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", evidence: "query" }),
     )
@@ -2274,6 +2279,16 @@ it.each(["unknown reply", "sentinel only"])(
           rawBase64: Buffer.from(raw).toString("base64"),
           reason: fault === "unknown reply" ? "reply" : "sentinel",
         }),
+        ...(fault === "unknown reply"
+          ? []
+          : [
+              expect.objectContaining({
+                sequence: "\x1b[?25$p",
+                raw: diagnostic,
+                rawBase64: Buffer.from(diagnostic).toString("base64"),
+                reason: diagnostic ? "reply" : "timeout",
+              }),
+            ]),
       ],
     })
     expect(captureRaw).not.toHaveBeenCalled()
