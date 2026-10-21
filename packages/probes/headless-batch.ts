@@ -86,7 +86,10 @@ function sentinelOutcome(
   const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
   const read = readSentinelReply(raw, pattern)
   if (read.kind === "reply") return { match: read.match, reason: "reply", ...captured }
-  if (read.kind !== "answered") {
+  // Bytes in the query's own capture are the engine's reply to it, so a read with no frame is never
+  // silence even when those bytes are shaped like a DA1 answer: only a DA1 answer in a capture of its
+  // own ends a silent query (@dev/8 9ab12dbe S4).
+  if (read.kind !== "answered" || (reply !== "" && !read.match)) {
     return { match: read.match, reason: read.match ? "reply" : "timeout", ...captured }
   }
   const sentinel = { atMs: Date.now() - writeAt, graceMs: proven.graceMs }
@@ -97,18 +100,20 @@ function sentinelOutcome(
 
 /**
  * G1 (#30554, @cto 452bc032): a proven path delivers every reply inside its capture, so any byte the
- * engine sends after the callback returned contradicts the proof. Listen through the grace window,
- * drain adapters that read pending input on state reads, and throw on a late byte: the caller's catch
- * then records a collector error, never the negative the callback built on the silence.
+ * engine sends after the callback returned contradicts the proof. Listen through the grace window and
+ * drain adapters that read pending input on state reads. Late bytes come back to the caller, which
+ * refuses the callback's grade as a collector error, never the negative it built on the silence.
  */
-async function listenForLateReply(backend: TerminalBackend, graceMs: number): Promise<void> {
+async function listenForLateReply(
+  backend: TerminalBackend,
+  graceMs: number,
+): Promise<{ bytes: string; firstAtMs: number } | undefined> {
   const listenedAt = Date.now()
-  let late = ""
-  let firstAt: number | undefined
+  let late: { bytes: string; firstAtMs: number } | undefined
   const previous = backend.onResponse
   backend.onResponse = (bytes) => {
-    firstAt ??= Date.now() - listenedAt
-    late += decoder.decode(bytes)
+    late ??= { bytes: "", firstAtMs: Date.now() - listenedAt }
+    late.bytes += decoder.decode(bytes)
   }
   try {
     await new Promise<void>((resolve) => {
@@ -118,11 +123,7 @@ async function listenForLateReply(backend: TerminalBackend, graceMs: number): Pr
   } finally {
     backend.onResponse = previous
   }
-  if (late) {
-    throw new Error(
-      `late reply after sentinel: ${String(late.length)} bytes ${JSON.stringify(late)} at +${String(firstAt)}ms`,
-    )
-  }
+  return late?.bytes ? late : undefined
 }
 
 export function createTermlessContext(backend: TerminalBackend, proven?: ProvenReplyPath): TermlessContext {
@@ -423,8 +424,16 @@ export async function collectBatch(
       }
       const ctx = createTermlessContext(backend, proven)
       const callback = probe.termless(ctx)
-      // G1 runs before anything of the callback is kept, so a late byte leaves only the collector error.
-      if (sentinel.fired) await listenForLateReply(backend, graceMs)
+      // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
+      // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
+      const late = sentinel.fired ? await listenForLateReply(backend, graceMs) : undefined
+      if (late) {
+        retainCallbackResponse(batch, probe.id, callback)
+        batch.rawReplies[`${probe.id}.late`] = late.bytes
+        throw new Error(
+          `late reply after sentinel: ${String(late.bytes.length)} bytes ${JSON.stringify(late.bytes)} at +${String(late.firstAtMs)}ms`,
+        )
+      }
       callbackChecks = callback.checks
       criterionBranch = callback.criterionBranch
       recordResult(batch, probe, callback)

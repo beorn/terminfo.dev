@@ -1,5 +1,5 @@
 /**
- * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a drifted version, bytes ahead of the DA1 answer or a late reply becomes a measured negative.
+ * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a drifted version, bytes ahead of the DA1 answer or a late reply becomes a measured negative, or a refused late reply loses what was read.
  * @level l1
  * @consumer The headless collector's sentinel member, its G1 listener and the proven reply-path table (#30554, @cto verdicts 452bc032 and 67840412).
  * @reach Builds the production context and batch from headless-batch.ts over real Termless backends and runs real probe arms from @terminfo/probe-defs through it, beside each arm's live twin fed the same outcomes; where a case needs a reply no engine gives on demand, the engine's replies are scripted behind the real backend.
@@ -108,6 +108,7 @@ test.each([
     reason: "timeout",
     match: null,
   },
+  { name: "a DA1-shaped reply to the query itself", query: DA1, answer: DA1, reason: "timeout", match: null },
   {
     name: "a DA2 answer is not taken for DA1",
     query: "",
@@ -423,7 +424,7 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
   ])
 })
 
-test("G1: a byte the engine sends after the callback voids the negative as a collector error", async () => {
+test("G1: a byte the engine sends after the callback voids the negative as a collector error and keeps both reads", async () => {
   vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
   // collectBatch names each probe on stderr, and the root test setup refuses a test's output.
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
@@ -454,5 +455,9 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
     },
   ])
   expect(batch.assertions).toStrictEqual([])
-  expect(batch.rawReplies).toStrictEqual({})
+  // The refusal keeps what was observed: the on-time read window, and the late bytes beside it.
+  expect(batch.rawReplies).toStrictEqual({
+    "device.xtversion": DA1,
+    "device.xtversion.late": "\x1bP>|late\x1b\\",
+  })
 })
