@@ -795,9 +795,10 @@ export function decrpmModeProbe(
 export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeResult {
   return (ctx) => {
     ctx.feed(`\x1b[?${modeNum}h`)
-    // Read the adapter's mode view BEFORE the query: vt100's private-CSI handler takes any final byte
-    // other than `h` as a reset, so `CSI ? 1 $ p` clears DECCKM there and a getMode read after the
-    // query reports the mode already reset (@dev/2 review flag, 2026-10-21).
+    // Read the adapter's mode view before the query. vt100 and vt220 used to run `CSI ? 1 $ p` as a DECCKM
+    // reset, so a getMode read after the query reported the mode already reset; since #30558 they ignore a
+    // query they do not have, and the order no longer changes the reading. Reading first still keeps the
+    // context independent of how any engine treats an unknown query.
     const mode = modeName === undefined ? undefined : ctx.getMode(modeName)
     const reply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
     const state = modeName === undefined ? { reply } : { reply, mode }
