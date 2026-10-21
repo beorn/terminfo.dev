@@ -944,12 +944,18 @@ export function recordExecutedCapability(input: {
 }
 
 /** The execution owner records an aborted collection against affected unfinished capabilities. */
-export function recordCollectionFailure(draft: RunDraft, startedAt: string, diagnostic: string): void {
+export function recordCollectionFailure(
+  draft: RunDraft,
+  startedAt: string,
+  diagnostic: string,
+  delegatedIds: readonly string[],
+): void {
+  const delegated = new Set(delegatedIds)
   const diagnosticRef = "collector.failure"
   draft.rawReplies[diagnosticRef] = diagnostic
   const attempt = { scope: "collection" as const, startedAt, diagnosticRef }
   draft.results = draft.results.map((result) =>
-    result.status === "test-todo"
+    result.status === "test-todo" && delegated.has(result.featureId)
       ? finalizeCapabilityResult({
           ...result,
           attempt,

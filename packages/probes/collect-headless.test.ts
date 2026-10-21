@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
 import type { RunDraft } from "@terminfo/probe-defs"
 import { collectHeadlessRuns } from "./collect-headless.ts"
+import { probeSuiteSnapshot } from "../admin/versions.ts"
 const dirs: string[] = []
 afterEach(() => {
   vi.useRealTimers()
@@ -79,8 +80,16 @@ it("records an attempted worker timeout as collection FAILURE with retained diag
   expect(collection.failures[0]?.error).toContain("exceeded")
   expect(draft.runId).toBe(captureRunId)
   expect(draft.results).toHaveLength(273)
+  const delegated = new Set(probeSuiteSnapshot().probes.headless)
   expect(
-    draft.results.every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
+    draft.results
+      .filter((result) => delegated.has(result.featureId))
+      .every((result) => result.status === "test-failure" && result.attempt.scope === "collection"),
+  ).toBe(true)
+  expect(
+    draft.results
+      .filter((result) => !delegated.has(result.featureId))
+      .every((result) => result.status === "test-todo" && result.attempt.scope === "none"),
   ).toBe(true)
   expect(draft.rawReplies["collector.failure"]).toContain("exceeded")
   expect(draft).not.toHaveProperty("target")

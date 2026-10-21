@@ -387,6 +387,7 @@ export async function collectProbeRun(
   writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })
   const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
   let collectionStartedAt: string | undefined
+  let delegatedIds = manifest.probes.app.filter((id) => !options.ids || options.ids.includes(id))
   try {
     const terminal = detectTerminal()
     const probeHash = manifest.probeHash
@@ -425,6 +426,7 @@ export async function collectProbeRun(
       throw new Error("Mux runtime provenance envelope has unexpected fields")
     }
     const muxTarget = envelope ? parseTarget(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
+    delegatedIds = manifest.probes[muxTarget ? "mux" : "app"].filter((id) => !options.ids || options.ids.includes(id))
     if (
       muxTarget &&
       (muxTarget.kind !== "mux" || muxTarget.os !== terminal.os || muxTarget.osVersion !== terminal.osVersion)
@@ -750,7 +752,10 @@ export async function collectProbeRun(
         }
       }
       collectionStartedAt = new Date().toISOString()
-      draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({ startedAt: collectionStartedAt })
+      draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+        startedAt: collectionStartedAt,
+        ids: delegatedIds,
+      })
       checkpoint()
       batch = await withRawMode(
         () =>
@@ -928,7 +933,7 @@ export async function collectProbeRun(
     return captured
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error)
-    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic)
+    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, delegatedIds)
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
       for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic

@@ -762,7 +762,7 @@ export async function collectPass(
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
       const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
-      if (startedAt) recordCollectionFailure(retained, startedAt, row.error)
+      if (startedAt) recordCollectionFailure(retained, startedAt, row.error, snapshot.probes[context.kind])
       row.status = retained.results.some((result) => result.status === "test-failure") ? "failed" : "not-started"
       if (!startedAt) {
         for (const result of retained.results) if (result.status === "test-todo") result.reason = row.error

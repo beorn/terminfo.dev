@@ -125,7 +125,10 @@ async function collectOne(name: string, directory: string): Promise<string> {
     }
     const resolveBackend = mod.resolve as () => Promise<unknown>
     collectionStartedAt = new Date().toISOString()
-    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({ startedAt: collectionStartedAt })
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      startedAt: collectionStartedAt,
+      ids: suite.probes.headless,
+    })
     checkpoint()
     const loaded = loadedBackend(await resolveBackend(), entry.package)
     backend = loaded
@@ -186,7 +189,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     return path
   } catch (error) {
     const diagnostic = errorMessage(error)
-    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic)
+    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, suite.probes.headless)
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
       for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic
@@ -258,7 +261,9 @@ export async function collectHeadlessRuns(
       ) {
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
-      if (!retained.rawReplies["collector.prerequisite"]) recordCollectionFailure(retained, workerStartedAt, diagnostic)
+      if (!retained.rawReplies["collector.prerequisite"]) {
+        recordCollectionFailure(retained, workerStartedAt, diagnostic, suite.probes.headless)
+      }
       writeFileSync(draftPath, `${JSON.stringify(retained, null, 2)}\n`)
     }
     try {

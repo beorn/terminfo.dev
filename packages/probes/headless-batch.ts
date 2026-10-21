@@ -312,6 +312,15 @@ export async function collectBatch(
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     let backend: TerminalBackend | undefined
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
+    const activeIndex = batch.results.findIndex((result) => result.featureId === probe.id)
+    const active = batch.results[activeIndex]
+    if (!active) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
+    batch.results[activeIndex] = {
+      ...active,
+      attempt,
+      reason: "Callback attempt started; no result recorded yet",
+    }
+    onCheckpoint?.(batch)
     let callbackChecks: ProbeResult["checks"]
     let criterionBranch: string | undefined
     try {

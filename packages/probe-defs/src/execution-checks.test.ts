@@ -8,6 +8,7 @@ import { expect, it } from "vitest"
 import {
   sgrCaptureFrames,
   recordExecutedCapability,
+  recordCollectionFailure,
   initializeRunDraft,
   sealRunDraft,
   utf8DecodingRefusal,
@@ -15,6 +16,37 @@ import {
 import { cropPositionRefusal } from "./region-readback.ts"
 import type { ObservationFrame, ProbeResult, TermContext } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
+// Full-catalog drafts previously let a failed subset dispatch mark unscheduled capabilities failed.
+it("records collection failure only for delegated unfinished IDs", () => {
+  const draft = initializeRunDraft({
+    runId: "subset",
+    sourceRevision: "1".repeat(40),
+    intendedContext: { kind: "app", id: "kitty" },
+    manifest: {
+      probeHash: "subset-suite",
+      adapterVersion: "3",
+      catalogIds: ["selected", "unscheduled", "unimplemented", "decided"],
+      probes: { app: ["selected", "unscheduled", "decided"], headless: [], mux: [] },
+    },
+  })
+  const decided = {
+    ...draft.results[3]!,
+    status: "supported" as const,
+    attempt,
+    checks: [{ id: "criterion", status: "supported" as const, attempt }],
+  }
+  draft.results[3] = decided
+  recordCollectionFailure(draft, attempt.startedAt, "transport broke", ["selected", "decided"])
+  expect(draft.results.map((result) => result.status)).toEqual(["test-failure", "test-todo", "test-todo", "supported"])
+  expect(draft.results[0]?.attempt).toEqual({
+    scope: "collection",
+    startedAt: attempt.startedAt,
+    diagnosticRef: "collector.failure",
+  })
+  expect(draft.results[1]?.attempt).toEqual({ scope: "none" })
+  expect(draft.results[2]?.attempt).toEqual({ scope: "none" })
+  expect(draft.results[3]).toBe(decided)
+})
 const frames: ObservationFrame[] = [
   {
     role: "control",

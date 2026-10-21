@@ -43,6 +43,40 @@ const noGeometry = {
 }
 
 const probeHash = "f".repeat(12)
+// A callback that never returns must still have an actual attempt in the retained checkpoint.
+it("checkpoints the native attempt before invoking its callback", async () => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "modes.bracketed-paste")!
+  const original = probe.term
+  let active: unknown
+  let seen: unknown
+  try {
+    probe.term = async () => {
+      seen = active
+      return {
+        pass: false,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "none",
+          note: "Fixture callback completed",
+        },
+      }
+    }
+    await runProbeBatch({
+      ids: [probe.id],
+      onCheckpoint: (batch) => {
+        active = structuredClone(batch.results.find((result) => result.featureId === probe.id))
+      },
+    })
+  } finally {
+    probe.term = original
+  }
+  expect(seen).toMatchObject({
+    featureId: probe.id,
+    status: "test-todo",
+    attempt: { scope: "probe", startedAt: expect.any(String) },
+  })
+})
 const sourceRevision = "e".repeat(40)
 const manifest: ProbeSuiteManifest = {
   probeHash,

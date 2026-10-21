@@ -22,6 +22,30 @@ import { collectBatch, createTermlessContext } from "./headless-batch.ts"
 async function backend() {
   return createXtermBackend()
 }
+// Final-return checks miss hard death during the active callback; its checkpoint must already exist.
+test("checkpoints a probe attempt before invoking the headless callback", async () => {
+  let active: unknown
+  let seen: unknown
+  await collectBatch(
+    backend,
+    "xtermjs",
+    [
+      definition("checkpoint.fixture", () => {
+        seen = active
+        return fakeProbeResult()
+      }),
+    ],
+    undefined,
+    (batch) => {
+      active = structuredClone(batch.results[0])
+    },
+  )
+  expect(seen).toMatchObject({
+    featureId: "checkpoint.fixture",
+    status: "test-todo",
+    attempt: { scope: "probe", startedAt: expect.any(String) },
+  })
+})
 
 function definition(
   id: string,
