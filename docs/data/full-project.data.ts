@@ -15,10 +15,8 @@ import { compatibilityTargets, loadCurrentResults, loadDefaultContextPolicy } fr
 import { publicResults, type PublicVersion } from "./public-results.ts"
 import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts"
 import { statesFor } from "./selected-results.ts"
-import { DESIGN_EXCLUSION_CAUSES, DESIGN_EXCLUSION_IDS, MISSING_DEFINITION_IDS } from "./full-scope.ts"
 import { fullContextCensus } from "./full-census.ts"
 import { buildFullProjectRows, type FullContextRow } from "./full-project.ts"
-import { INSTRUMENT_LIMITS } from "./full-scope.ts"
 
 const contentDir = join(import.meta.dirname, "..", "..", "content")
 
@@ -28,12 +26,6 @@ export interface FullProjectData {
   /** The live tree suite every collected row was measured on. */
   suiteId: string
   catalogRows: number
-  designExclusions: readonly string[]
-  /** The stated cause for each design exclusion, keyed by catalog id. */
-  designExclusionCauses: Readonly<Record<string, string>>
-  missingDefinitions: readonly string[]
-  /** Reviewed per-context instrument limits. Recorded here; each context reports how many it applied. */
-  instrumentLimits: readonly { id: string; cause: string }[]
   /**
    * The collected context -> its selected run as the site publishes it, so every row can render the
    * established evidence cell and open the run's own evidence document. Nothing is re-derived here.
@@ -42,6 +34,8 @@ export interface FullProjectData {
   contexts: readonly FullContextRow[]
   collected: number
   notCollected: number
+  complete: boolean
+  recordedPositions: number
 }
 
 /** Every catalog row in the site's category order; an ungroupable id is refused, never dropped. */
@@ -95,14 +89,12 @@ export function loadFullProjectData(): FullProjectData {
     mode: "development",
     suiteId: requiredSuiteId,
     catalogRows: rows.catalogRows,
-    designExclusions: DESIGN_EXCLUSION_IDS,
-    designExclusionCauses: DESIGN_EXCLUSION_CAUSES,
-    missingDefinitions: MISSING_DEFINITION_IDS,
-    instrumentLimits: INSTRUMENT_LIMITS,
     evidenceVersions,
     contexts: rows.contexts,
     collected: rows.collected,
     notCollected: rows.notCollected,
+    complete: rows.complete,
+    recordedPositions: rows.recordedPositions,
   }
 }
 

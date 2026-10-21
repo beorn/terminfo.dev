@@ -1,6 +1,6 @@
 /** Shared interpretation parsing, scope matching and supersession; no filesystem effects. */
 import type { Interpretation } from "@terminfo/probe-defs"
-import { parseJsonStrict, validateObservationOutcome, type LoadedRun } from "@terminfo/run-parser"
+import { parseJsonStrict, parseCaptureDecision, validateObservationOutcome, type LoadedRun } from "@terminfo/run-parser"
 
 export const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -113,6 +113,10 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     }
     if (new Set(entry.supersedes).size !== entry.supersedes.length || entry.supersedes.includes(id)) {
       fail(path, `duplicate/self supersedes for ${id}`)
+    }
+    if (Object.hasOwn(entry, "captureSha256") || Object.hasOwn(entry, "decision")) {
+      parseCaptureDecision(entry, `${path}: capture ${id}`, catalog)
+      continue
     }
     if (entry.runId !== undefined && !nonempty(entry.runId)) fail(path, `invalid runId for ${id}`)
     if (

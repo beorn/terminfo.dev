@@ -40,7 +40,7 @@ export default {
 
       for (const b of data.backends) {
         const result = data.results[b.name]?.[f.id] ?? "unknown"
-        const note = data.selectedByBackend[b.name]?.selected.cells[f.id]?.note ?? ""
+        const note = data.notes[b.name]?.[f.id] ?? ""
         const bmeta = data.meta[b.name]
         backendResults.push({
           name: b.name,
@@ -56,12 +56,18 @@ export default {
 
       // Sort: yes first, then partial, then no/unknown
       backendResults.sort((a, b) => {
-        const order: Record<string, number> = { yes: 0, partial: 1, no: 2, unknown: 3 }
+        const order: Record<string, number> = {
+          supported: 0,
+          unsupported: 1,
+          untestable: 2,
+          "test-todo": 3,
+          "test-failure": 4,
+        }
         return (order[a.result] ?? 3) - (order[b.result] ?? 3)
       })
 
-      const yesCount = backendResults.filter((r) => r.result === "yes").length
-      const totalCount = backendResults.length
+      const yesCount = backendResults.filter((r) => r.result === "supported").length
+      const totalCount = backendResults.filter((r) => r.result !== "unknown").length
 
       // Build tags with labels for display
       const tags = (meta?.tags ?? []).map((t: string) => ({

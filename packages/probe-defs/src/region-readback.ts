@@ -406,6 +406,14 @@ export function cropPositionRefusal(input: {
   return {
     pass: false,
     response,
+    criterionBranch: "same-crop-comparison",
+    checks: [
+      {
+        id: "comparison",
+        status: "test-failure",
+        reason: `Compared frames were cropped from different positions: ${named}`,
+      },
+    ],
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",

@@ -1,3 +1,5 @@
+import { CAPABILITY_STATUSES, type CapabilityResult, type CapabilityStatus } from "@terminfo/probe-defs"
+
 /** Release 1 measurement claim: 62 query/reply features of the 270-feature catalog. */
 
 /** The populated categories a page displays, preserving the catalog's supplied order. */
@@ -134,24 +136,6 @@ export function aggregateCells(cells: Readonly<Record<string, CellState>>, ids: 
   return { denominator: ids.length, counts, idsByState }
 }
 
-export function coverageSentence(aggregate: CellAggregate): string {
-  if (!aggregate.denominator) return "No selected run"
-  const { counts } = aggregate
-  return `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.inconclusive} Untestable · ${counts.untested} TEST TODO · ${counts.error} TEST FAILURE`
-}
-
-/**
- * The basis's supported share, named for what it counts. It is supported/denominator — NOT the
- * decisive share, which is conclusive/denominator (supported + unsupported) and is what the D3
- * verdict reads. Calling this one "decisive" put two different numbers under one word on the same
- * page (measured 2026-10-07 on the built site: "pass · 52/52 · 40% decisive of 62").
- */
-export function supportedShare(aggregate: CellAggregate): string {
-  if (!aggregate.denominator) return "No selected run"
-  const pct = Math.round((aggregate.counts.supported / aggregate.denominator) * 100)
-  return `${pct}% supported of ${aggregate.denominator}`
-}
-
 /**
  * The D3 verdict ladder (@chief 2026-10-07, from the operator's 20:04Z "let's make pass mean a %"):
  * a terminal PASSES when at least 90% of the INCLUDED capabilities read decisive (47 of 52),
@@ -204,4 +188,64 @@ export function barVerdict(aggregate: CellAggregate): D3Verdict | undefined {
  */
 export function tier1Included(catalog: Readonly<Record<string, { tier1?: string }>>, ids: readonly string[]): string[] {
   return ids.filter((id) => catalog[id]?.tier1 === "included")
+}
+
+/** Current score and completion fold recorded statuses over exactly the frozen catalogue. */
+export interface CurrentAggregate {
+  denominator: number
+  counts: Record<CapabilityStatus, number>
+  idsByState: Record<CapabilityStatus, string[]>
+  supported: number
+  complete: boolean
+}
+
+export function aggregateCurrentResults(
+  results: readonly CapabilityResult[],
+  catalogIds: readonly string[],
+): CurrentAggregate {
+  if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
+    throw new Error("Current aggregate requires a nonempty unique frozen catalogue")
+  }
+  const counts: Record<CapabilityStatus, number> = {
+    supported: 0,
+    unsupported: 0,
+    untestable: 0,
+    "test-todo": 0,
+    "test-failure": 0,
+  }
+  const idsByState: Record<CapabilityStatus, string[]> = {
+    supported: [],
+    unsupported: [],
+    untestable: [],
+    "test-todo": [],
+    "test-failure": [],
+  }
+  const byId = new Map(results.map((result) => [result.featureId, result]))
+  if (byId.size !== results.length || results.length !== catalogIds.length || catalogIds.some((id) => !byId.has(id))) {
+    throw new Error("Current results differ from frozen catalogue membership")
+  }
+  for (const id of catalogIds) {
+    const result = byId.get(id)
+    if (!result || !CAPABILITY_STATUSES.includes(result.status)) {
+      throw new Error(`Invalid stored current status for ${id}`)
+    }
+    counts[result.status]++
+    idsByState[result.status].push(id)
+  }
+  return {
+    denominator: catalogIds.length,
+    counts,
+    idsByState,
+    supported: counts.supported,
+    complete: counts["test-todo"] === 0 && counts["test-failure"] === 0,
+  }
+}
+
+export function currentCoverageSentence(aggregate: Pick<CurrentAggregate, "counts">): string {
+  const counts = aggregate.counts
+  return `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["test-todo"]} TEST TODO · ${counts["test-failure"]} TEST FAILURE`
+}
+
+export function currentSupportedShare(aggregate: CurrentAggregate): string {
+  return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
 }

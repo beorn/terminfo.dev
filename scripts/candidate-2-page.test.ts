@@ -25,7 +25,7 @@ const data = loadCandidate2Data()
 
 // An explicit historical witness, never a substitute for the live frozen suite's empty rows.
 // Reuse the admitted run and the reader's classifier; the page mapping still runs in full.
-const report = reader.buildReport({
+const report = reader.buildHistoricalReport({
   contentDir: join(root, "content"),
   cohort: reader.candidate2Cohort(join(root, "content")),
 })
@@ -42,7 +42,7 @@ const historicalSelected = reader.barRowForContext({
 })
 const historicalRow = reader.cohortRowForSelected(historicalSelected, historicalCohort)
 const uncollectedCohort = { ...currentCohort, frozenSuiteId: "0fb194cf6cea" }
-const historicalReport = vi.spyOn(reader, "buildReport").mockReturnValue({
+const historicalReport = vi.spyOn(reader, "buildHistoricalReport").mockReturnValue({
   ...report,
   cohort: { ...historicalCohort, barRows: [historicalRow] },
 })
@@ -136,7 +136,7 @@ describe("candidate-2 page: publication rule (AC4)", () => {
     // existing historical witness, rather than require a terminal to remain unmeasured forever.
     const reason = "no collection on the required suite (27928)"
     const readerRow = reader.cohortRowForSelected(historicalSelected, uncollectedCohort, reason)
-    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+    const spy = vi.spyOn(reader, "buildHistoricalReport").mockReturnValue({
       ...report,
       cohort: { ...uncollectedCohort, barRows: [readerRow] },
     })
@@ -250,7 +250,7 @@ describe("candidate-2 page: the reader stays the one classifier", () => {
   it("takes its report and its rows from scripts/decisive-share.ts, never a private copy", () => {
     const loader = readFileSync(join(root, "docs", "data", "candidate-2.data.ts"), "utf8")
     expect(loader).toContain('from "../../scripts/decisive-share.ts"')
-    for (const symbol of ["buildReport", "cohortCategories", "categoryShares", "inconclusiveRows"]) {
+    for (const symbol of ["buildHistoricalReport", "cohortCategories", "categoryShares", "inconclusiveRows"]) {
       expect(loader, `loader must reuse the reader's ${symbol}`).toContain(symbol)
     }
   })
@@ -501,7 +501,7 @@ describe("candidate-2 page: wiring", () => {
 
   it("reads a dark context's hold from history when a newer off-freeze run takes selection", () => {
     const real = join(import.meta.dirname, "..", "content")
-    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const baseReport = reader.buildHistoricalReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
     const cohort = baseReport.cohort
     if (!cohort) throw new Error("candidate2 cohort absent")
     // The predecessor the lineage names, not the frozen suite itself: candidate 2 reads c24025ea22fc
@@ -524,7 +524,7 @@ describe("candidate-2 page: wiring", () => {
           }
         : row,
     )
-    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+    const spy = vi.spyOn(reader, "buildHistoricalReport").mockReturnValue({
       ...baseReport,
       cohort: { ...cohort, barRows, admittedRuns: [{ ...hold }, ...cohort.admittedRuns] },
     })
@@ -542,7 +542,7 @@ describe("candidate-2 page: wiring", () => {
 
   it("holds a dark context from a predecessor-suite run, not from the suite it reads", () => {
     const real = join(import.meta.dirname, "..", "content")
-    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const baseReport = reader.buildHistoricalReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
     const cohort = baseReport.cohort
     if (!cohort) throw new Error("candidate2 cohort absent")
     const darkRun = cohort.admittedRuns.find(
@@ -566,7 +566,7 @@ describe("candidate-2 page: wiring", () => {
         !(entry.run.suiteId === "68847e4d5355" && entry.run.terminalId === "wezterm" && entry.run.os === "linux"),
     )
     const spy = vi
-      .spyOn(reader, "buildReport")
+      .spyOn(reader, "buildHistoricalReport")
       .mockReturnValue({ ...baseReport, cohort: { ...cohort, barRows, admittedRuns } })
     try {
       const scrollback = loadCandidate2Data().groups.find((group) => group.key === "scrollback")
@@ -607,7 +607,7 @@ describe("candidate-2 page: wiring", () => {
     // so a context whose only history is there is not held from it. The page must subtract the suite
     // it reads, not only the helper.
     const real = join(import.meta.dirname, "..", "content")
-    const baseReport = reader.buildReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
+    const baseReport = reader.buildHistoricalReport({ contentDir: real, cohort: reader.candidate2Cohort(real) })
     const cohort = baseReport.cohort
     if (!cohort) throw new Error("candidate2 cohort absent")
     const isWezterm = (run: { terminalId: string; os: string }) => run.terminalId === "wezterm" && run.os === "linux"
@@ -625,7 +625,7 @@ describe("candidate-2 page: wiring", () => {
           }
         : row,
     )
-    const spy = vi.spyOn(reader, "buildReport").mockReturnValue({
+    const spy = vi.spyOn(reader, "buildHistoricalReport").mockReturnValue({
       ...baseReport,
       cohort: { ...cohort, frozenSuiteId: "68847e4d5355", barRows, admittedRuns },
     })

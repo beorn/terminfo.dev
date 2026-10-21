@@ -65,6 +65,10 @@ function remainderLabel(row) {
 }
 </script>
 
+::: info Historical schema-1/2 reading
+This dated release view preserves its original arithmetic. Current execution statuses, Supported/all scores and completion are available in the [current API](/api) and [full capability cohort](/release/full-273).
+:::
+
 # terminfo v0.1 candidate 2 — the classics
 
 <p class="c2-lede">This page is <strong>terminfo v0.1 candidate 2</strong>: the classic terminal capabilities. Per-context inclusion is ruled for <strong>Editing, Character Sets and Reset</strong>: those three groups are <strong>ruled for {{ data.ruledContexts.length }} contexts</strong>, <strong>included on each one</strong> that clears their pass bar on the group's in-scope basis, and the contexts that do not clear it are named as <strong>held</strong> with their fraction; a ruled context that has gone dark is named as ruled but not measurable and is never counted as included. Every other group keeps its previous state: a group that clears the bar on every measured context stays <strong>included</strong> &mdash; unless a context that held it went dark, in which case it stays <strong>held</strong> and names that context, because a public claim must never improve because data went dark. A context with no published run is named as <strong>not measured</strong> and is never counted as a measured context, but one that held a group on the previous freeze is named as the reason the group is not claimed. It previews a release that has not been <em>ratified</em>, and it is a separate surface &mdash; the published matrix still reports Release 1.</p>

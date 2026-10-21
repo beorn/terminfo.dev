@@ -619,7 +619,7 @@ async function generateLockfile() {
       runSha256: run?.sha256 ?? null,
       lastProbedVersion: run?.target.version ?? null,
       lastProbedDate: run?.measuredAt ?? "never",
-      featureCount: run?.counts.tested ?? 0,
+      featureCount: run?.catalogIds.length ?? 0,
     }
   })
 

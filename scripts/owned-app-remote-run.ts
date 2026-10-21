@@ -869,7 +869,7 @@ function main(options: Parsed): OwnedAppTransportProof {
       options,
       "owned-app probe",
       "owned-app probe failed",
-      `cd ${shq(checkout)} && ${shq(bun)} ${probeArgs.map(shq).join(" ")} --output ${shq(remoteOutput)}`,
+      `cd ${shq(checkout)} && ${process.env.TERMINFO_CAPTURE_RUN_ID ? `TERMINFO_CAPTURE_RUN_ID=${shq(process.env.TERMINFO_CAPTURE_RUN_ID)} ` : ""}${shq(bun)} ${probeArgs.map(shq).join(" ")} --output ${shq(remoteOutput)}`,
     )
     if (/ENOENT|not found/i.test(probe.stdout) && /kitty/i.test(probe.stdout)) {
       fail("kitty absent", `the owned-app probe on ${hostname} could not launch kitty: ${probe.stdout.trim()}`)

@@ -60,6 +60,10 @@ export function admitCollectedRun(
   intended?: Parameters<typeof saveDaemonProbeRun>[2],
 ): string {
   const source = retainCollectedRun(run, retainedResponsePath, intended)
+  if (source.endsWith(".draft.json")) {
+    console.log(`  Required capture review pending; private draft remains unsealed: ${source}`)
+    return source
+  }
   const plan = planAdmission(source)
   admitRun(plan)
   console.log(`  Admitted run ${plan.destination}`)

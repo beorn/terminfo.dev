@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url"
 import ts from "typescript"
 import { expect, test, vi } from "vitest"
 
-const changed = vi.hoisted(() => ({ file: "" }))
+const changed = vi.hoisted(() => ({ file: "", extraCatalog: false }))
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>()
   return {
@@ -20,6 +20,17 @@ vi.mock("node:fs", async (importOriginal) => {
       if (encoding) return fs.readFileSync(path, encoding)
       const bytes = fs.readFileSync(path)
       return changed.file && path.endsWith(changed.file) ? Buffer.concat([bytes, Buffer.from("\n// changed")]) : bytes
+    },
+  }
+})
+
+vi.mock("@terminfo/catalog", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@terminfo/catalog")>()
+  return {
+    ...original,
+    loadFeatures(contentDir: string) {
+      const features = original.loadFeatures(contentDir)
+      return changed.extraCatalog ? { ...features, "runtime.unscheduled": features["sgr.bold"] } : features
     },
   }
 })
@@ -44,6 +55,9 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/probes/headless-batch.ts",
     "packages/probes/headless-identity.ts",
     "packages/admin/versions.ts",
+    "packages/admin/src/terminal-app-receipt.ts",
+    "packages/terminfo.dev/src/terminal-app-window.ts",
+    "packages/terminfo.dev/src/probe-output.ts",
     "packages/terminfo.dev/src/probes/unified.ts",
     "packages/terminfo.dev/src/tty.ts",
     "packages/terminfo.dev/src/linux-clipboard.ts",
@@ -60,6 +74,10 @@ test("suite identity changes with executable collection, ownership, capture and 
     "packages/terminfo.dev/src/identity-guard.ts",
     "packages/run-parser/src/index.ts",
     "packages/run-parser/src/app-launch.ts",
+    "scripts/release1-collection.ts",
+    "packages/terminfo.dev/src/daemon-client.ts",
+    "scripts/interpretations.ts",
+    "packages/probe-defs/src/helpers.ts",
   ]) {
     changed.file = file
     expect(probeHash(), file).not.toBe(baseline)
@@ -134,7 +152,7 @@ const scannedSuiteFamily = (path: string): boolean =>
   path.startsWith("packages/probe-defs/src/") || (path.startsWith("packages/probes/") && path.endsWith(".probe.ts"))
 const NOT_IMPORTED_SUITE_INPUTS = new Set(["packages/probes/vitest.config.ts", "packages/terminfo.dev/package.json"])
 
-test("28786: the hashed adapter sources EQUAL the collector's static import closure", () => {
+test("28786: the hashed adapter sources cover the collector import closure and declared finalization stages", () => {
   const { found, unresolved } = collectorImportClosure()
   expect(unresolved, "every first-party import in the closure must resolve").toEqual([])
 
@@ -144,28 +162,16 @@ test("28786: the hashed adapter sources EQUAL the collector's static import clos
     .sort()
 
   const missing = derived.filter((path) => !declared.includes(path))
-  const extra = declared.filter((path) => !derived.includes(path))
-  expect({ missing, extra }, "the hashed adapter list must equal the collector's import closure").toEqual({
-    missing: [],
-    extra: [],
-  })
+  // The v3 contract additionally hashes dispatch, final-save and review producers outside these
+  // two capture entry points. The executable-source mutation case above exercises those stages.
+  expect(missing, "every capture import remains hashed alongside the finalization stages").toEqual([])
 })
 
-/**
- * 28786, negative control: a source NEITHER collector entry reaches must not move the suite.
- * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts);
- * neither collector entry (serve.ts, collect-headless.ts) reaches it, so listing it would move the suite
- * without touching any observation those entries make. The collector's one process proof lives in
- * owned-process.ts, which IS hashed. (The admin app collection DOES execute it — that is a different
- * entry, and it is not one of the entries this suite declares.)
- */
-test("28786: a source neither collector entry reaches does not move the suite hash", () => {
+// Presentation-only source does not execute in capture, enrichment or review finalization.
+test("28786: presentation-only source does not move the suite hash", () => {
   const baseline = probeHash()
-  changed.file = "packages/terminfo.dev/src/terminal-app-window.ts"
-  expect(
-    probeHash(),
-    "terminal-app-window.ts is unreached from the collector entries serve.ts and collect-headless.ts",
-  ).toBe(baseline)
+  changed.file = "docs/.vitepress/theme/ResultEvidenceCell.vue"
+  expect(probeHash(), "presentation changes cannot rewrite execution suite identity").toBe(baseline)
   changed.file = ""
 })
 
@@ -252,4 +258,24 @@ test("the trusted manifest declares exactly the 37 reviewed character claims wit
   expect(Object.keys(loadFeatures(join(SUITE_ROOT, "content")))).toHaveLength(273)
   expect(manifest.probes.app).toHaveLength(263)
   expect(manifest.probes.headless).toHaveLength(252)
+})
+
+// Fixed denominator/frozen membership: callback-only schedule hash coverage misses new
+// catalogue-only IDs, which must become explicit TODO and change executable suite identity.
+test("freezes all catalogue IDs and changes suite identity for unscheduled additions", () => {
+  const original = probeSuiteSnapshot()
+  expect(original.catalogIds).toHaveLength(273)
+  expect(original.catalogIds).toContain("device.env-term")
+  expect(original.probes.app).not.toContain("device.env-term")
+  try {
+    changed.extraCatalog = true
+    const expanded = probeSuiteSnapshot()
+    expect(expanded.catalogIds).toContain("runtime.unscheduled")
+    expect(expanded.probeHash).not.toBe(original.probeHash)
+    expect(expanded.probes).toEqual(original.probes)
+    expect(derivedSuiteManifest(expanded).catalogIds).toEqual(expanded.catalogIds)
+    expect(original.catalogIds).not.toContain("runtime.unscheduled")
+  } finally {
+    changed.extraCatalog = false
+  }
 })

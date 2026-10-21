@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, expect, test, vi } from "vitest"
+import { loadFeatures } from "@terminfo/catalog"
 import { ALL_PROBES } from "./probes/unified.ts"
 
 const environment = {
@@ -19,6 +20,11 @@ const environment = {
   TERMINFO_SOURCE_REVISION: process.env.TERMINFO_SOURCE_REVISION,
   DISPLAY: process.env.DISPLAY,
 }
+// The disabled observer still checkpoints its draft through private custody; isolate that owner.
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:os")>()),
+  homedir: () => directory,
+}))
 const directory = mkdtempSync(join(tmpdir(), "terminfo-serve-provenance-"))
 const receipt = join(directory, "runtime-provenance.json")
 let collectProbeRun: (options: { ids?: string[] }) => Promise<unknown>
@@ -30,6 +36,7 @@ beforeAll(async () => {
       sourceRevision: "b".repeat(40),
       generatedAt: "2026-09-28T00:00:00Z",
       adapterVersion: "test",
+      catalogIds: Object.keys(loadFeatures(join(import.meta.dirname, "../../..", "content"))).sort(),
       probes: { app: ALL_PROBES.map((probe) => probe.id).sort(), headless: [], mux: [] },
     },
     collectorRevision: "b".repeat(40),

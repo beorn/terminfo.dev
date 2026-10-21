@@ -6,12 +6,14 @@
  * multi-context tie with the reviewed `default-contexts.json` row, and `decisive-share` printed the
  * choice of a private fallback chain beside it. One rule, two callers.
  */
+import type { CapabilityStatus, CapabilityResult } from "@terminfo/probe-defs"
 import { isStaleRelation, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
   parseProjectedContextKey,
   recognizeProjectedContextKey,
   type ProjectedContextKeyParts,
   type SelectedVersion,
+  type CurrentSelectedVersion,
 } from "./selected-results.ts"
 
 /**
@@ -38,12 +40,25 @@ export interface ContextCandidate {
   suiteId: string
   suiteFreshness: string
   suiteRelation: SuiteRelation
-  cells: ShareCells
+  cells?: ShareCells
+  results?: CapabilityResult[]
   /**
    * The run's cells, classified once by the projection (28792 item 1). A reader cuts its bars over
    * this, never over `cells`, so `classifyCell` never runs outside the projection.
    */
+  states: Readonly<Record<string, CellState | CapabilityStatus>>
+}
+
+export interface HistoricalContextCandidate extends ContextCandidate {
+  cells: ShareCells
+  results?: never
   states: Readonly<Record<string, CellState>>
+}
+
+export interface CurrentContextCandidate extends ContextCandidate {
+  results: CapabilityResult[]
+  cells?: never
+  states: Readonly<Record<string, CapabilityStatus>>
 }
 
 /** The candidate for one context key, from the projection's own selected version. */
@@ -51,6 +66,21 @@ export function candidateFromSelected(
   key: string,
   selected: SelectedVersion,
   states: Readonly<Record<string, CellState>>,
+): HistoricalContextCandidate
+export function candidateFromSelected(
+  key: string,
+  selected: CurrentSelectedVersion,
+  states: Readonly<Record<string, CapabilityStatus>>,
+): CurrentContextCandidate
+export function candidateFromSelected(
+  key: string,
+  selected: SelectedVersion | CurrentSelectedVersion,
+  states: Readonly<Record<string, CellState | CapabilityStatus>>,
+): ContextCandidate
+export function candidateFromSelected(
+  key: string,
+  selected: SelectedVersion | CurrentSelectedVersion,
+  states: Readonly<Record<string, CellState | CapabilityStatus>>,
 ): ContextCandidate {
   return {
     key,
@@ -64,7 +94,7 @@ export function candidateFromSelected(
     suiteId: selected.suiteId,
     suiteFreshness: selected.suiteFreshness,
     suiteRelation: selected.suiteRelation,
-    cells: selected.cells,
+    ...("results" in selected ? { results: selected.results } : { cells: selected.cells }),
     states,
   }
 }
@@ -72,8 +102,8 @@ export function candidateFromSelected(
 /** How the one run for a context was chosen, printed with the row so the choice is auditable. */
 export type RunSelection = "only current" | "reviewed default-context row" | "default profile"
 
-export type PickedContextRun =
-  | { run: ContextCandidate; selection: RunSelection }
+export type PickedContextRun<T extends ContextCandidate = ContextCandidate> =
+  | { run: T; selection: RunSelection }
   | { ambiguous: string[] }
   /** A reviewed row this group cannot stand on any more; `stale` is the one sentence every caller prints. */
   | { stale: string }
@@ -156,10 +186,10 @@ function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
  * entry beside the current one and a current clipboard override, which read "ambiguous" until this
  * rule). With no current-suite candidate the fallbacks are unchanged.
  */
-export function pickContextRun(
-  candidates: readonly ContextCandidate[],
+export function pickContextRun<T extends ContextCandidate>(
+  candidates: readonly T[],
   reviewed?: { contextKey: string },
-): PickedContextRun | undefined {
+): PickedContextRun<T> | undefined {
   if (candidates.length === 0) return undefined
   if (reviewed !== undefined) {
     const reviewedKey = reviewed.contextKey

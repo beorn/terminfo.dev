@@ -10,8 +10,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import { ALL_PROBES, type ProbeRun, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
-import { decodeCollectorRun } from "@terminfo/run-parser"
+import {
+  ALL_PROBES,
+  type HistoricalProbeRun as ProbeRun,
+  type ProbeSuiteManifest,
+  type TextQualification,
+} from "@terminfo/probe-defs"
+import { decodeHistoricalCollectorRun as decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
 import { measureUtf8Decoding } from "../tty.ts"
@@ -38,6 +43,40 @@ const noGeometry = {
 }
 
 const probeHash = "f".repeat(12)
+// A callback that never returns must still have an actual attempt in the retained checkpoint.
+it("checkpoints the native attempt before invoking its callback", async () => {
+  const probe = ALL_PROBES.find((entry) => entry.id === "modes.bracketed-paste")!
+  const original = probe.term
+  let active: unknown
+  let seen: unknown
+  try {
+    probe.term = async () => {
+      seen = active
+      return {
+        pass: false,
+        observation: {
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          evidence: "none",
+          note: "Fixture callback completed",
+        },
+      }
+    }
+    await runProbeBatch({
+      ids: [probe.id],
+      onCheckpoint: (batch) => {
+        active = structuredClone(batch.results.find((result) => result.featureId === probe.id))
+      },
+    })
+  } finally {
+    probe.term = original
+  }
+  expect(seen).toMatchObject({
+    featureId: probe.id,
+    status: "test-todo",
+    attempt: { scope: "probe", startedAt: expect.any(String) },
+  })
+})
 const sourceRevision = "e".repeat(40)
 const manifest: ProbeSuiteManifest = {
   probeHash,
@@ -2337,3 +2376,96 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
     }
   },
 )
+
+// The new execution contract requires the direct native batch to record status at its real
+// callback attempt. Existing observation/coverage assertions cannot prove frozen-catalog TODOs.
+it("records actual native callback failure and leaves an unscheduled frozen capability TODO", async () => {
+  const { initializeRunDraft } = await import("@terminfo/probe-defs")
+  const id = "modes.bracketed-paste"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = definition.term
+  const draft = initializeRunDraft({
+    runId: "native-status-attempt",
+    sourceRevision,
+    manifest: { ...manifest, catalogIds: [id, "unimplemented.capability"] },
+    intendedContext: { kind: "app", id: "kitty" },
+  })
+  try {
+    definition.term = async () => {
+      throw new Error("deterministic callback failure")
+    }
+    const batch = await runProbeBatch({ ids: [id], draft })
+    expect(batch.results.find((result) => result.featureId === id)).toMatchObject({
+      status: "test-failure",
+      attempt: { scope: "probe" },
+    })
+    expect(batch.results.find((result) => result.featureId === "unimplemented.capability")).toMatchObject({
+      status: "test-todo",
+      attempt: { scope: "none" },
+      checks: [],
+    })
+  } finally {
+    definition.term = original
+  }
+})
+
+// Existing native tests retained framed observations but never distinguished an attempted broken
+// comparison from a still-unattempted required review at the callback-to-writer handoff.
+it("forwards explicit callback checks through the actual native batch attempt without inferring review from frames", async () => {
+  const { sgrCaptureFrames } = await import("../../../probe-defs/src/helpers.ts")
+  const { cropPositionRefusal } = await import("../../../probe-defs/src/region-readback.ts")
+  const id = "modes.bracketed-paste"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = definition.term
+  const frames = [
+    {
+      role: "control" as const,
+      label: "control",
+      ref: `sha256:${"a".repeat(64)}`,
+      capturedAt: 1,
+      regionRectangle: { x: 0, y: 0, width: 10, height: 20 },
+    },
+    {
+      role: "target" as const,
+      label: "target",
+      ref: `sha256:${"b".repeat(64)}`,
+      capturedAt: 2,
+      regionRectangle: { x: 0, y: 26, width: 10, height: 20 },
+    },
+  ]
+  try {
+    definition.term = async () =>
+      cropPositionRefusal({
+        id,
+        compared: frames.map((frame) => ({ role: frame.role, rectangle: frame.regionRectangle })),
+        response: "unequal crop positions",
+        frames,
+        screenshotRef: frames[1]!.ref,
+      })!
+    const failed = await runProbeBatch({ ids: [id] })
+    expect(failed.results.find((result) => result.featureId === id)).toMatchObject({
+      status: "test-failure",
+      criterionBranch: "same-crop-comparison",
+      checks: [{ id: "comparison", status: "test-failure", attempt: { scope: "probe" } }],
+    })
+    let next = 0
+    definition.term = async () =>
+      sgrCaptureFrames(
+        { write() {}, capture: async () => frames[next++]! } as unknown as import("@terminfo/probe-defs").TermContext,
+        "control",
+        "target",
+        "visual target",
+      )
+    const pending = await runProbeBatch({ ids: [id] })
+    const recorded = pending.results.find((result) => result.featureId === id)!
+    expect(recorded.status).toBe("test-todo")
+    expect(recorded.criterionBranch).toBe("visual-review")
+    expect(recorded.checks.find((check) => check.id === "review")).toMatchObject({
+      status: "test-todo",
+      attempt: { scope: "none" },
+    })
+    expect(pending.assertions.find((assertion) => assertion.featureId === id)?.expected).toContain("visual target")
+  } finally {
+    definition.term = original
+  }
+})

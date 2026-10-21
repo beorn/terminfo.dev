@@ -94,6 +94,9 @@ function sameStrings(actual: unknown, expected: string[]): actual is string[] {
 function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
   if (value.probeHash !== snapshot.probeHash) throw new Error(`Suite hash mismatch: ${path}`)
   if (value.adapterVersion !== snapshot.adapterVersion) throw new Error(`Suite adapter version mismatch: ${path}`)
+  if (!sameStrings(value.catalogIds, snapshot.catalogIds)) {
+    throw new Error(`Suite catalogue membership mismatch: ${path}`)
+  }
   for (const kind of KINDS) {
     if (!sameStrings(value.probes[kind], snapshot.probes[kind])) {
       throw new Error(`Suite ${kind} membership mismatch: ${path}`)
@@ -468,10 +471,10 @@ export function citedSuiteHashes(cwd = ROOT): Map<string, string[]> {
         throw new Error(`Cannot read committed run ${path}`, { cause })
       }
       if (!isRecord(parsed)) throw new Error(`Committed run ${path} is not an object`)
-      // Legacy v1 runs predate the executable suite and cite nothing; only schema v2 carries one.
-      if (parsed.schemaVersion !== 2) continue
+      // Legacy v1 runs predate the executable suite; historical v2 and current v3 both cite it.
+      if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) continue
       if (typeof parsed.probeHash !== "string" || !/^[0-9a-f]{12}$/.test(parsed.probeHash)) {
-        throw new Error(`Committed v2 run ${path} declares no valid probeHash`)
+        throw new Error(`Committed schema-${parsed.schemaVersion} run ${path} declares no valid probeHash`)
       }
       const files = byHash.get(parsed.probeHash) ?? []
       files.push(file)

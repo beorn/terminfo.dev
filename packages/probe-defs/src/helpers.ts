@@ -1,3 +1,16 @@
+import { CAPABILITY_STATUSES } from "./types.ts"
+import type { ProbeCheckResult } from "./types.ts"
+import type {
+  CapabilityAttempt,
+  Observation,
+  NotTestedCoverage,
+  ProbeAssertion,
+  UngradedDiagnostic,
+  CapabilityResult,
+  CurrentProbeRun,
+  ProbeSuiteManifest,
+  RunDraft,
+} from "./types.ts"
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
@@ -48,6 +61,14 @@ export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise
   if ((await ctx.utf8Decoding()) !== "8-bit") return null
   return {
     pass: false,
+    criterionBranch: "utf8-prerequisite",
+    checks: [
+      {
+        id: "utf8-context",
+        status: "test-todo",
+        reason: "Measured decoding is ISO-8859-1; correct the pinned locale and rerun this UTF-8 criterion",
+      },
+    ],
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
@@ -384,6 +405,18 @@ export async function sgrCaptureFrames(
   return {
     pass: false,
     response: JSON.stringify({ ...meta, control: controlFrame.label, target: targetFrame.label }),
+    criterionBranch: "visual-review",
+    checks: [
+      { id: "capture", status: "supported", assertionRefs: [0] },
+      { id: "review", status: "test-todo", reason: "Valid control and target capture; required visual review pending" },
+    ],
+    assertions: [
+      {
+        kind: "positive",
+        expected: `${targetLabel} compared with ${controlLabel}`,
+        observed: JSON.stringify({ control: controlFrame, target: targetFrame }),
+      },
+    ],
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
@@ -759,3 +792,179 @@ export function sentinelNegativeResult(
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
 export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"
+
+/** Initialize actual work before preflight; a callback-only schedule cannot stand in for the catalogue. */
+export function initializeRunDraft(input: {
+  runId: string
+  sourceRevision: string
+  manifest: ProbeSuiteManifest
+  intendedContext: RunDraft["intendedContext"]
+}): RunDraft {
+  const ids = input.manifest.catalogIds
+  if (!ids || ids.length === 0 || new Set(ids).size !== ids.length) {
+    throw new Error(`Suite ${input.manifest.probeHash} requires a nonempty unique frozen catalogIds set`)
+  }
+  return {
+    schemaVersion: 3,
+    runId: input.runId,
+    suiteId: input.manifest.probeHash,
+    probeHash: input.manifest.probeHash,
+    sourceRevision: input.sourceRevision,
+    intendedContext: { ...input.intendedContext },
+    results: ids.map((featureId) => ({
+      featureId,
+      status: "test-todo",
+      attempt: { scope: "none" },
+      checks: [],
+      reason: "Required capability test has not started",
+    })),
+    rawReplies: {},
+    assertions: [],
+    screenshotRefs: [],
+  }
+}
+
+/** Fold only the checks still required by the frozen probe's explicitly selected criterion branch. */
+export function finalizeCapabilityResult(input: Omit<CapabilityResult, "status">): CapabilityResult {
+  const checks = input.checks
+  const failed = checks.find((check) => check.status === "test-failure")
+  const pending = checks.find((check) => check.status === "test-todo")
+  const impossible = checks.find((check) => check.status === "untestable")
+  let status: CapabilityResult["status"]
+  let reason = input.reason
+  if (failed) {
+    status = "test-failure"
+    reason ??= failed.reason ?? "Required check failed after its attempt"
+  } else if (pending || checks.length === 0) {
+    status = "test-todo"
+    reason ??= pending?.reason ?? "Required capability implementation has not run"
+  } else if (impossible) {
+    status = impossible.reviewRef ? "untestable" : "test-todo"
+    reason ??= impossible.reason ?? "Context-impossibility review is required"
+  } else {
+    status = checks.some((check) => check.status === "unsupported") ? "unsupported" : "supported"
+  }
+  return { ...input, status, ...(reason === undefined ? {} : { reason }) }
+}
+
+/** Seal only measured/enriched identity; pending required review keeps the same draft open. */
+export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString()): CurrentProbeRun {
+  if (!draft.target || !draft.identity || !draft.measuredAt || !draft.origin) {
+    throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
+  }
+  if (
+    draft.results.some((result) => result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+  ) {
+    throw new Error(`Run ${draft.runId} has a required review pending; retain its unsealed capture`)
+  }
+  return {
+    ...draft,
+    target: draft.target,
+    identity: draft.identity,
+    measuredAt: draft.measuredAt,
+    origin: draft.origin,
+    sealedAt,
+  }
+}
+
+/** Execute the declared callback's proposition once; readers consume this recorded result. */
+export function recordExecutedCapability(input: {
+  featureId: string
+  attempt: Exclude<CapabilityAttempt, { scope: "none" }>
+  observation?: Observation
+  diagnostic?: UngradedDiagnostic
+  coverage?: NotTestedCoverage
+  assertions: readonly ProbeAssertion[]
+  checks?: ProbeCheckResult[]
+  criterionBranch?: string
+}): CapabilityResult {
+  const { featureId, attempt, observation, diagnostic, coverage } = input
+  const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
+  const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
+  const status = missingCapture
+    ? "test-todo"
+    : diagnostic || observation?.outcome === "error"
+      ? "test-failure"
+      : observation?.outcome === "supported" || observation?.outcome === "unsupported"
+        ? observation.outcome
+        : coverage || observation?.evidence === "none" || observation?.evidence === "consumed"
+          ? "test-todo"
+          : "test-failure"
+  const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
+  const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
+  const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef
+  return finalizeCapabilityResult({
+    featureId,
+    attempt,
+    checks:
+      input.checks && !diagnostic && observation?.outcome !== "error"
+        ? input.checks.map((check) => {
+            if (!check.id || !CAPABILITY_STATUSES.includes(check.status)) {
+              throw new Error(`Invalid callback check for ${featureId}`)
+            }
+            const refs =
+              check.assertionRefs === undefined
+                ? check.status === "test-todo"
+                  ? []
+                  : assertionRefs
+                : check.assertionRefs.map((index) => {
+                    const globalIndex = assertionRefs[index]
+                    if (globalIndex === undefined) {
+                      throw new Error(`Callback check ${featureId}/${check.id} names an absent assertion`)
+                    }
+                    return globalIndex
+                  })
+            return {
+              id: check.id,
+              status: check.status,
+              attempt: check.status === "test-todo" ? { scope: "none" } : attempt,
+              assertionRefs: refs,
+              ...(rawReplyRef && { rawReplyRef }),
+              ...(check.reason && { reason: check.reason }),
+            }
+          })
+        : [
+            {
+              id: "criterion",
+              status,
+              attempt: status === "test-todo" ? { scope: "none" } : attempt,
+              assertionRefs,
+              ...(rawReplyRef && { rawReplyRef }),
+              ...(reason && { reason }),
+            },
+          ],
+    ...(input.criterionBranch && { criterionBranch: input.criterionBranch }),
+    ...(observation?.evidence && { evidence: observation.evidence }),
+    ...(rawReplyRef && { rawReplyRef }),
+    ...(observation?.frames && { frames: observation.frames }),
+    ...(observation?.screenshotRef && { screenshotRef: observation.screenshotRef }),
+    ...(observation?.host && { host: observation.host }),
+    ...(reason && { reason }),
+  })
+}
+
+/** The execution owner records an aborted collection against affected unfinished capabilities. */
+export function recordCollectionFailure(
+  draft: RunDraft,
+  startedAt: string,
+  diagnostic: string,
+  delegatedIds: readonly string[],
+): void {
+  const delegated = new Set(delegatedIds)
+  const diagnosticRef = "collector.failure"
+  draft.rawReplies[diagnosticRef] = diagnostic
+  const attempt = { scope: "collection" as const, startedAt, diagnosticRef }
+  draft.results = draft.results.map((result) =>
+    result.status === "test-todo" && delegated.has(result.featureId)
+      ? finalizeCapabilityResult({
+          ...result,
+          attempt,
+          reason: diagnostic,
+          checks: [
+            ...result.checks.filter((check) => check.id !== "collection"),
+            { id: "collection", status: "test-failure", attempt, reason: diagnostic },
+          ],
+        })
+      : result,
+  )
+}

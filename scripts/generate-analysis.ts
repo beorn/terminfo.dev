@@ -16,6 +16,8 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
+import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import { loadFeatures as loadFeatureCatalog, loadTerminals as loadTerminalCatalog } from "@terminfo/catalog"
@@ -81,7 +83,7 @@ interface TerminalStats {
   yes: number
   no: number
   pct: number
-  results: Record<string, boolean>
+  results: Record<string, CapabilityStatus>
   baselineCompliance: Record<string, { total: number; yes: number; pct: number; complete: boolean }>
   uniquelySupported: string[]
   uniquelyMissing: string[]
@@ -99,7 +101,9 @@ interface AnalysisEntry {
   changes: string | null
   runSha256?: string
   measuredAt?: string
-  counts?: { conclusive: number; supported: number; unsupported: number }
+  score?: { supported: number; all: number }
+  counts?: Record<CapabilityStatus, number>
+  complete?: boolean
 }
 
 // --- Assertions ---
@@ -173,8 +177,11 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
 }
 
 interface SelectedAnalysisInput {
+  capabilities: CapabilityResult[]
+  catalogIds: string[]
+  aggregate: CurrentAggregate
   sourceId: string
-  results: Record<string, boolean>
+  results: Record<string, CapabilityStatus>
   version: string
   type: "app" | "headless" | "mux"
   runSha256: string
@@ -186,11 +193,13 @@ function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const selected = compatibilityTargets(projection, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
   for (const [key, { selected: version }] of selected) {
-    if (version.counts.conclusive === 0) continue
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
     resultMap.set(key, {
       sourceId: version.target.id,
-      results: version.v1,
+      results: Object.fromEntries(version.results.map((result) => [result.featureId, result.status])),
+      capabilities: version.results,
+      catalogIds: version.catalogIds,
+      aggregate: aggregateCurrentResults(version.results, version.catalogIds),
       version: version.target.version,
       type: version.target.kind,
       runSha256: version.sha256,
@@ -228,7 +237,7 @@ function crossValidate(
   for (const [termId, meta] of Object.entries(terminals)) {
     if (meta.historical) continue
     if (![...resultMap.values()].some((data) => data.sourceId === termId && data.type === meta.kind)) {
-      console.warn(`Warning: Terminal '${termId}' has no reviewed current conclusive results`)
+      console.warn(`Warning: Terminal '${termId}' has no sealed current schema-3 runs`)
     }
   }
 
@@ -237,7 +246,7 @@ function crossValidate(
   for (const [termId, data] of resultMap) {
     for (const [featureId, result] of Object.entries(data.results)) {
       const annKey = `${termId}:${featureId}`
-      if (result === true && annotations[annKey]) {
+      if (result === "supported" && annotations[annKey]) {
         const note = annotations[annKey].note.toLowerCase()
         if (note.includes("not supported") || note.includes("not available") || note.includes("missing")) {
           contradictions.push(`${annKey}: passes but annotation says "${annotations[annKey].note}"`)
@@ -260,25 +269,32 @@ function computeTerminalStats(
   data: SelectedAnalysisInput,
   features: Record<string, FeatureMeta>,
   baselineFeatures: Record<string, string[]>,
-  allTerminalResults: Map<string, { results: Record<string, boolean> }>,
+  allTerminalResults: Map<string, { results: Record<string, CapabilityStatus> }>,
 ): TerminalStats {
   const results = data.results
-  const total = Object.keys(results).length
-  const yes = Object.values(results).filter((v) => v === true).length
-  const no = total - yes
+  const total = data.aggregate.denominator
+  const yes = data.aggregate.counts.supported
+  const no = data.aggregate.counts.unsupported
   const pct = total > 0 ? Math.round((yes / total) * 100) : 0
 
   // Per-baseline compliance
   const baselineCompliance: TerminalStats["baselineCompliance"] = {}
   for (const [baselineName, featureIds] of Object.entries(baselineFeatures)) {
-    const relevantIds = featureIds.filter((id) => id in results)
-    const baselineYes = relevantIds.filter((id) => results[id] === true).length
-    const baselineTotal = relevantIds.length
+    const wanted = new Set(featureIds)
+    const frozenIds = data.catalogIds.filter((id) => wanted.has(id))
+    const aggregate = frozenIds.length
+      ? aggregateCurrentResults(
+          data.capabilities.filter((result) => wanted.has(result.featureId)),
+          frozenIds,
+        )
+      : undefined
+    const baselineYes = aggregate?.supported ?? 0
+    const baselineTotal = aggregate?.denominator ?? 0
     baselineCompliance[baselineName] = {
       total: baselineTotal,
       yes: baselineYes,
       pct: baselineTotal > 0 ? Math.round((baselineYes / baselineTotal) * 100) : 0,
-      complete: featureIds.length > 0 && baselineTotal === featureIds.length,
+      complete: aggregate?.complete ?? false,
     }
   }
 
@@ -291,16 +307,16 @@ function computeTerminalStats(
   const otherTerminals = [...allTerminalResults.entries()].filter(([id]) => id !== termId)
 
   for (const [featureId, supported] of Object.entries(results)) {
-    if (!supported) {
+    if (supported === "unsupported") {
       missingFeatures.push(featureId)
       // Check if every other terminal passes this
-      const allOthersPass = otherTerminals.every(([, other]) => other.results[featureId] === true)
+      const allOthersPass = otherTerminals.every(([, other]) => other.results[featureId] === "supported")
       if (allOthersPass && otherTerminals.length > 0) {
         uniquelyMissing.push(featureId)
       }
-    } else {
+    } else if (supported === "supported") {
       // Check if no other terminal supports this
-      const noOtherSupports = otherTerminals.every(([, other]) => other.results[featureId] === false)
+      const noOtherSupports = otherTerminals.every(([, other]) => other.results[featureId] === "unsupported")
       if (noOtherSupports && otherTerminals.length > 0) {
         uniquelySupported.push(featureId)
       }
@@ -376,23 +392,21 @@ function generateTerminalAnalysis(
   // Score summary + baseline in one sentence
   if (failedBaselines.length === 0 && passedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among results with a recorded Supported or Unsupported value, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all frozen catalog positions, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
     )
   } else if (failedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among results with a recorded Supported or Unsupported value, with observed unsupported results in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all frozen catalog positions, with less than full recorded support in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
     )
   } else {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among results with a recorded Supported or Unsupported value`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) across all frozen catalog positions`,
     )
   }
 
   // Ranking
   if (comparable) {
-    parts.push(
-      `Ranks <strong>#${rank}</strong> of ${totalTerminals} targets with the same set of results with a recorded Supported or Unsupported value`,
-    )
+    parts.push(`Ranks <strong>#${rank}</strong> of ${totalTerminals} targets with the same frozen catalog feature set`)
   }
 
   // Only include documented features (in features.json) in human-readable lists
@@ -428,7 +442,7 @@ function generateTerminalAnalysis(
     changes: null,
     runSha256: stats.runSha256,
     measuredAt: stats.measuredAt,
-    counts: { conclusive: stats.total, supported: stats.yes, unsupported: stats.no },
+    score: { supported: stats.yes, all: stats.total },
   }
 }
 
@@ -472,7 +486,7 @@ function generateBaselineAnalysis(
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
-      `<strong>${perfect.length}</strong> of ${terminals.length} selected targets have a recorded Supported result for every ${baselineMeta.label} feature`,
+      `<strong>${perfect.length}</strong> of ${terminals.length} selected targets have recorded support for every ${baselineMeta.label} feature`,
     )
   } else {
     parts.push(`Analysis awaiting verified measurements for the ${baselineMeta.label} baseline`)
@@ -481,9 +495,9 @@ function generateBaselineAnalysis(
   if (imperfect.length > 0) {
     const laggards = imperfect.slice(0, 3).map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0} Supported among ${baseline?.total ?? 0} Supported/Unsupported results)`
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} frozen baseline positions supported)`
     })
-    parts.push(`Known unsupported results: ${laggards.join(", ")}`)
+    parts.push(`Less than full recorded support: ${laggards.join(", ")}`)
 
     // Find what features the laggards are missing
     const missingCounts = new Map<string, number>()
@@ -491,7 +505,7 @@ function generateBaselineAnalysis(
       const bl = s.baselineCompliance[baselineName]
       if (!bl) continue
       for (const [fid, supported] of Object.entries(s.results)) {
-        if (!supported && features[fid]?.baseline === baselineName) {
+        if (supported === "unsupported" && features[fid]?.baseline === baselineName) {
           missingCounts.set(fid, (missingCounts.get(fid) ?? 0) + 1)
         }
       }
@@ -529,7 +543,7 @@ function generateCategoryAnalysis(
   const catScores: { name: string; yes: number; total: number; pct: number; complete: boolean }[] = []
   for (const [, stats] of allStats) {
     const relevant = categoryFeatures.filter((id) => id in stats.results)
-    const yes = relevant.filter((id) => stats.results[id] === true).length
+    const yes = relevant.filter((id) => stats.results[id] === "supported").length
     const total = relevant.length
     if (total > 0) {
       catScores.push({
@@ -561,7 +575,7 @@ function generateCategoryAnalysis(
   const gapCounts = new Map<string, number>()
   for (const [, stats] of allStats) {
     for (const fid of categoryFeatures) {
-      if (fid in stats.results && stats.results[fid] !== true) {
+      if (stats.results[fid] === "unsupported") {
         gapCounts.set(fid, (gapCounts.get(fid) ?? 0) + 1)
       }
     }
@@ -604,7 +618,7 @@ function generateStandardAnalysis(
   const stdScores: { name: string; yes: number; total: number; pct: number; complete: boolean }[] = []
   for (const [, stats] of allStats) {
     const relevant = taggedFeatures.filter((id) => id in stats.results)
-    const yes = relevant.filter((id) => stats.results[id] === true).length
+    const yes = relevant.filter((id) => stats.results[id] === "supported").length
     const total = relevant.length
     if (total > 0) {
       stdScores.push({
@@ -622,9 +636,7 @@ function generateStandardAnalysis(
 
   if (stdScores.length > 0) {
     const avgPct = Math.round(stdScores.reduce((sum, s) => sum + s.pct, 0) / stdScores.length)
-    parts.push(
-      `Average support among tagged-feature results with a recorded Supported or Unsupported value: <strong>${avgPct}%</strong>`,
-    )
+    parts.push(`Average support among frozen tagged-feature results: <strong>${avgPct}%</strong>`)
   }
 
   const perfect = stdScores.filter((s) => s.complete && s.pct === 100)
@@ -660,23 +672,22 @@ function generateFeatureAnalysis(
   // Count support across terminals that have this feature
   let supported = 0
   let unsupported = 0
+  let total = 0
   const unsupportedNames: string[] = []
 
   for (const stats of allStats.values()) {
     if (!(featureId in stats.results)) continue
-    if (stats.results[featureId]) {
-      supported++
-    } else {
+    total++
+    if (stats.results[featureId] === "supported") supported++
+    if (stats.results[featureId] === "unsupported") {
       unsupported++
       unsupportedNames.push(stats.name)
     }
   }
-
-  const total = supported + unsupported
   if (total === 0) {
     return {
       analysis:
-        "<p>Analysis awaiting verified measurements for this feature. No current result with a recorded Supported or Unsupported value covers it.</p>",
+        "<p>Analysis awaiting verified measurements for this feature. No sealed current schema-3 result covers it.</p>",
       date: "",
       changes: null,
     }
@@ -687,15 +698,13 @@ function generateFeatureAnalysis(
   // Support summary
   if (supported === total) {
     parts.push(
-      `Recorded checks report support in <strong>all ${total}</strong> measurements with a recorded Supported value for this feature`,
+      `Recorded checks report support in <strong>all ${total}</strong> sealed current context runs for this feature`,
     )
   } else if (supported === 0) {
-    parts.push(
-      `No Supported results among <strong>${total}</strong> targets with a recorded Supported or Unsupported value`,
-    )
+    parts.push(`No recorded support among <strong>${total}</strong> measured targets`)
   } else {
     parts.push(
-      `Recorded checks report support for <strong>${supported}</strong> of <strong>${total}</strong> targets with a recorded Supported or Unsupported value (${pct}%)`,
+      `Recorded checks report support for <strong>${supported}</strong> of <strong>${total}</strong> sealed current targets (${pct}%)`,
     )
   }
 
@@ -747,7 +756,7 @@ function generateFrameworkAnalysis(
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
-      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} selected targets have a recorded Supported result for every required feature`,
+      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} selected targets have recorded support for every required feature`,
     )
   } else {
     parts.push(`${fw.label} requires the ${baselineLabel} baseline — support analysis awaiting verified measurements`)
@@ -761,7 +770,7 @@ function generateFrameworkAnalysis(
   if (incompatible.length > 0 && incompatible.length <= 5) {
     const laggards = incompatible.map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0} Supported among ${baseline?.total ?? 0} Supported/Unsupported results)`
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} frozen baseline positions supported)`
     })
     parts.push(`Known unsupported baseline results: ${laggards.join(", ")}`)
   }
@@ -860,7 +869,7 @@ function generateStandardsIndexAnalysis(
     for (const stats of terminals) {
       const relevant = taggedFeatures.filter((id) => id in stats.results)
       if (relevant.length === 0) continue
-      const yes = relevant.filter((id) => stats.results[id] === true).length
+      const yes = relevant.filter((id) => stats.results[id] === "supported").length
       totalPct += Math.round((yes / relevant.length) * 100)
       count++
     }
@@ -875,7 +884,7 @@ function generateStandardsIndexAnalysis(
   const worst = stdAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest average support among tagged-feature checks with a recorded value: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
+      `Highest average support among frozen tagged-feature checks: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
     )
   }
 
@@ -888,7 +897,7 @@ function generateStandardsIndexAnalysis(
     if (taggedFeatures.length === 0) continue
     const perfect = terminals.filter((stats) => {
       const relevant = taggedFeatures.filter((id) => id in stats.results)
-      const yes = relevant.filter((id) => stats.results[id] === true).length
+      const yes = relevant.filter((id) => stats.results[id] === "supported").length
       return relevant.length === taggedFeatures.length && relevant.length > 0 && yes === relevant.length
     })
     if (perfect.length > 0) {
@@ -933,7 +942,7 @@ function generateFeaturesIndexAnalysis(
     for (const stats of terminals) {
       const relevant = catFeatures.filter((id) => id in stats.results)
       if (relevant.length === 0) continue
-      const yes = relevant.filter((id) => stats.results[id] === true).length
+      const yes = relevant.filter((id) => stats.results[id] === "supported").length
       totalPct += Math.round((yes / relevant.length) * 100)
       count++
     }
@@ -948,7 +957,7 @@ function generateFeaturesIndexAnalysis(
   const worst = catAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest observed average support among category checks with a recorded value: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
+      `Highest observed average support among frozen category checks: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
     )
   }
 
@@ -956,11 +965,11 @@ function generateFeaturesIndexAnalysis(
   const universalCount =
     terminals.length === 0
       ? 0
-      : Object.keys(features).filter((fid) => terminals.every((stats) => stats.results[fid] === true)).length
+      : Object.keys(features).filter((fid) => terminals.every((stats) => stats.results[fid] === "supported")).length
 
   if (universalCount > 0) {
     parts.push(
-      `<strong>${universalCount}</strong> feature${universalCount === 1 ? "" : "s"} ${universalCount === 1 ? "has" : "have"} a recorded Supported result in every selected target`,
+      `<strong>${universalCount}</strong> feature${universalCount === 1 ? "" : "s"} ${universalCount === 1 ? "has" : "have"} recorded support in every selected target`,
     )
   }
 
@@ -968,12 +977,12 @@ function generateFeaturesIndexAnalysis(
   const zeroSupport = Object.keys(features).filter((fid) => {
     const tested = terminals.filter((stats) => fid in stats.results)
     if (tested.length === 0) return false
-    return tested.every((stats) => stats.results[fid] !== true)
+    return tested.every((stats) => stats.results[fid] !== "supported")
   }).length
 
   if (zeroSupport > 0) {
     parts.push(
-      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} no Supported result among targets with a recorded value`,
+      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} no recorded support among selected catalog positions; unfinished checks do not establish unsupported behavior`,
     )
   }
 
@@ -1315,7 +1324,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (meta.historical || slugSeen.has(meta.slug)) continue
     output[`terminals/${meta.slug}`] = {
       analysis:
-        "<p>Analysis awaiting verified measurements. No current result with a recorded Supported or Unsupported value is available for this terminal.</p>",
+        "<p>Analysis awaiting verified measurements. No current schema-3 runs; historical results remain available.</p>",
       date: "",
       changes: null,
     }
@@ -1326,7 +1335,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
       if (key.startsWith("terminals/")) continue // specific unmeasured message above
       output[key] = {
         analysis:
-          "<p>Analysis awaiting verified measurements. No current results with a recorded Supported or Unsupported value are available.</p>",
+          "<p>Analysis awaiting verified measurements. No current schema-3 runs; historical results remain available.</p>",
         date: "",
         changes: null,
       }

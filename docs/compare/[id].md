@@ -5,6 +5,7 @@ next: false
 ---
 
 <script setup>
+import { publicResultFor } from '../data/public-results'
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 const { params } = useData()
@@ -44,6 +45,8 @@ for (const cat of categories) {
 
 <div class="compare-page">
 
+<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
+
 <nav class="breadcrumb">
   <span>Compare</span>
   <span class="sep">›</span>
@@ -55,7 +58,7 @@ for (const cat of categories) {
 <p class="compare-subtitle">Side-by-side selected terminal observations</p>
 
 <p v-if="p.comparableScope === 'true'" class="compare-scope">
-  Counts use jointly measured results with a recorded Supported or Unsupported value from matching recorded contexts, suites and methods. Other environment differences may remain.
+  Support scores use each frozen catalog. Differences require matching recorded contexts, suites and methods. Other environment differences may remain.
 </p>
 <p v-else class="compare-scope compare-scope--limited">
   Recorded contexts or suites differ or are incomplete. Inspect each result below; no pairwise support difference is claimed.
@@ -69,9 +72,8 @@ for (const cat of categories) {
       <h3>{{ p.termALabel }}</h3>
     </a>
     <p class="compare-context"><strong>{{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
-    <div v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-score">{{ p.supportedA }}/{{ p.jointConclusive }}</div>
-    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features have comparable Supported or Unsupported results from the same method' : 'supported on shared features measured by the same method' }}</div>
-    <div v-else class="compare-detail">This run: {{ p.termAPass }} supported of {{ p.termATotal }} results with a recorded Supported or Unsupported value</div>
+    <div class="compare-score">{{ p.termAPass }}/{{ p.termATotal }}</div>
+    <div class="compare-detail">Supported / all catalog capabilities</div>
     <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
@@ -86,9 +88,8 @@ for (const cat of categories) {
       <h3>{{ p.termBLabel }}</h3>
     </a>
     <p class="compare-context"><strong>{{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
-    <div v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-score">{{ p.supportedB }}/{{ p.jointConclusive }}</div>
-    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features have comparable Supported or Unsupported results from the same method' : 'supported on shared features measured by the same method' }}</div>
-    <div v-else class="compare-detail">This run: {{ p.termBPass }} supported of {{ p.termBTotal }} results with a recorded Supported or Unsupported value</div>
+    <div class="compare-score">{{ p.termBPass }}/{{ p.termBTotal }}</div>
+    <div class="compare-detail">Supported / all catalog capabilities</div>
     <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>
@@ -124,9 +125,9 @@ for (const cat of categories) {
     <tr v-for="f in cat.features" :key="f.id" :class="diffClass(f)">
       <td class="feature-name" :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="p.termALabel"
-        :version="data.selectedByBackend[p.termAId]?.selected" :cell="data.selectedByBackend[p.termAId]?.selected.cells[f.id]" /></td>
+        :version="data.selectedByBackend[p.termAId]?.selected" :cell="publicResultFor(data.selectedByBackend[p.termAId]?.selected, f.id)" /></td>
       <td><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="p.termBLabel"
-        :version="data.selectedByBackend[p.termBId]?.selected" :cell="data.selectedByBackend[p.termBId]?.selected.cells[f.id]" /></td>
+        :version="data.selectedByBackend[p.termBId]?.selected" :cell="publicResultFor(data.selectedByBackend[p.termBId]?.selected, f.id)" /></td>
     </tr>
   </tbody>
 </table>

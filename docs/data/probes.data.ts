@@ -12,23 +12,24 @@ import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, type FeatureCatalog } from "@terminfo/catalog"
-import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
-import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
+import { compatibilityTargets, historicalCompatibilityTargets, loadCurrentResults } from "./current-results.ts"
+import {
+  publicResults,
+  type PublicProjection,
+  type PublicCurrentResult,
+  type HistoricalPublicCurrentResult,
+} from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
-import { type CellTable } from "./selected-results.ts"
+import type { CellState } from "./release-scope.ts"
+import type { CapabilityStatus } from "@terminfo/probe-defs"
 import {
-  aggregateCells,
-  coverageSentence,
-  d3Verdict,
+  aggregateCurrentResults,
+  currentSupportedShare,
   isStaleRelation,
   staleCaption,
-  supportedShare,
-  tier1Included,
   tierLine,
-  type D3Verdict,
-  type CellAggregate,
-  type CellState,
+  type CurrentAggregate,
   type ReleaseScope,
 } from "./release-scope.ts"
 
@@ -77,12 +78,12 @@ export interface ProbeData {
   features: FeatureResult[]
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
-  /** Selected terminal id -> feature id -> conclusive "yes" | "no". */
-  results: Record<string, Record<string, string>>
-  /** backend name -> feature id -> note string */
+  /** Current terminal id -> feature id -> exact sealed five-status value. */
+  results: Record<string, Record<string, CapabilityStatus>>
+  /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
-  /** Selected terminal id -> conclusive-only compatibility score. */
-  stats: Record<string, { total: number; yes: number; no: number; partial: number; pct: number | null }>
+  /** Current scores use Supported/all positions, independently of completion. */
+  stats: Record<string, CurrentStats>
   /** backend name -> metadata from backends.json */
   meta: Record<string, BackendMeta>
   /** "backend:feature" -> { note, url? } from annotations.json */
@@ -91,8 +92,8 @@ export interface ProbeData {
   featureDescriptions: FeatureCatalog
   /** baseline -> feature ids */
   baselines: Record<string, string[]>
-  /** Backend name -> baseline conclusive score and full catalog coverage. */
-  baselineStats: Record<string, Record<string, BaselineStats>>
+  /** Backend name -> baseline Supported/all score and frozen catalog coverage. */
+  baselineStats: Record<string, Record<string, CurrentStats>>
   /** category slug -> display label */
   categoryLabels: Record<string, string>
   /** Category IDs in the curated catalog's numeric display order. */
@@ -102,12 +103,13 @@ export interface ProbeData {
   generated: string
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
+  historicalByBackend: Record<string, HistoricalPublicCurrentResult>
+  currentRunCount: number
+  historicalTable: Readonly<Record<string, Readonly<Record<string, CellState>>>>
   releaseScope: ReleaseScope & { line: string }
-  releaseBars: Record<string, CellAggregate>
+  releaseBars: Record<string, CurrentAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
   releaseShares: Record<string, string>
-  /** Backend name -> the D3 release verdict over the INCLUDED 52 (@chief 2026-10-07). */
-  releaseVerdicts: Record<string, D3Verdict>
   /** Default-run stale caption when suiteFreshness is not current; null when current. */
   releaseStale: Record<string, string | null>
   /**
@@ -115,21 +117,16 @@ export interface ProbeData {
    * classification per cell, made once in the projection. A page folds it (`aggregateCells`) for the
    * basis it shows rather than walking the run's raw cells, so no page holds a second classifier.
    */
-  releaseTable: Record<string, Readonly<Record<string, CellState>>>
+  releaseTable: Record<string, Readonly<Record<string, CapabilityStatus>>>
   /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
   suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
-interface BaselineStats {
-  total: number
-  yes: number
+interface CurrentStats {
+  score: { supported: number; all: number }
+  counts: Record<CapabilityStatus, number>
+  complete: boolean
   pct: number | null
-  catalog: number
-  supported: number
-  unsupported: number
-  inconclusive: number
-  errors: number
-  untested: number
 }
 
 function loadFeatureDescriptions(): FeatureCatalog {
@@ -189,7 +186,11 @@ export { data }
 export function loadFullProbes(): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
+  const published = publicResults(
+    projection,
+    compatibilityTargets(projection, contentDir),
+    historicalCompatibilityTargets(projection.historical, contentDir),
+  )
   const byTarget = new Map(Object.entries(published.selectedByBackend))
   const featureDescriptions = loadFeatureDescriptions()
   const features: FeatureResult[] = Object.entries(featureDescriptions)
@@ -229,24 +230,21 @@ export function loadFullProbes(): ProbeData {
       type: kind,
       ...(os && { platforms: [os] }),
     })
-    results[key] = Object.fromEntries(
-      Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
-    )
+    results[key] = Object.fromEntries(selected.results.map((result) => [result.featureId, result.status]))
     notes[key] = Object.fromEntries(
-      Object.entries(selected.cells).flatMap(([feature, cell]) =>
-        Object.hasOwn(selected.v1, feature) && cell.note ? [[feature, cell.note]] : [],
-      ),
+      selected.results.flatMap((result) => (result.reason ? [[result.featureId, result.reason]] : [])),
     )
-    const { conclusive, supported, unsupported } = selected.counts
     stats[key] = {
-      total: conclusive,
-      yes: supported,
-      no: unsupported,
-      partial: 0,
-      pct: conclusive > 0 ? Math.round((supported / conclusive) * 100) : null,
+      score: { ...selected.score },
+      counts: { ...selected.counts },
+      complete: selected.complete,
+      pct: Math.round((100 * selected.score.supported) / selected.score.all),
     }
   }
-  backends.sort((a, b) => (stats[b.name]?.yes ?? 0) - (stats[a.name]?.yes ?? 0) || a.name.localeCompare(b.name))
+  backends.sort(
+    (a, b) =>
+      (stats[b.name]?.score.supported ?? 0) - (stats[a.name]?.score.supported ?? 0) || a.name.localeCompare(b.name),
+  )
   const generated =
     Object.values(projection.current)
       .map((v) => v.measuredAt)
@@ -257,37 +255,23 @@ export function loadFullProbes(): ProbeData {
     ...release,
     line: tierLine(release, generated ? { measuredAt: generated } : undefined),
   }
-  const releaseBars: Record<string, CellAggregate> = {}
+  const releaseBars: Record<string, CurrentAggregate> = {}
   const releaseShares: Record<string, string> = {}
-  const releaseVerdicts: Record<string, D3Verdict> = {}
   const releaseStale: Record<string, string | null> = {}
-  // The bar and the verdict are over the app denominator, never the declared 62: the ten rows the
-  // 27832 audit excludes by contract carry tier1 "excluded", and the app-unobservable rows are out by
-  // construction, since no app run can decide them (@terminfo/catalog and @terminfo/probe-defs own
-  // the labels and the D3 rule).
-  const includedIds = tier1Included(featureDescriptions, release.scoredIds)
-  for (const [key, { selected }] of byTarget) {
-    // One fold over the reader's classified table, never a second walk over the run's raw cells.
-    const table = projection.table[selected.runId]
-    if (!table) throw new Error(`release bar ${key}: the projection classified no row for run ${selected.runId}`)
-    const bar = aggregateCells(table, release.scoredIds)
-    if (bar.denominator && coverageSentence(bar) === "No selected run") {
-      throw new Error(`release bar ${key} has a denominator but no coverage sentence`)
-    }
+  for (const [key, entry] of byTarget) {
+    const { selected } = entry
+    // The sealed run's complete frozen catalog is the current score basis.
+    const original = projection.current[entry.contextKey]
+    if (!original) throw new Error(`Missing sealed current run for ${key}`)
+    const bar = aggregateCurrentResults(original.results, original.catalogIds)
     releaseBars[key] = bar
-    releaseShares[key] = supportedShare(bar)
-    const includedBar = aggregateCells(table, includedIds)
-    if (includedBar.denominator > 0) {
-      const decisive = includedBar.counts.supported + includedBar.counts.unsupported
-      releaseVerdicts[key] = d3Verdict(decisive, includedBar.denominator)
-    }
+    releaseShares[key] = currentSupportedShare(bar)
     releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
   }
-  // The table slice a terminal page folds: every run its run picker can select, classified once here.
-  const releaseTable: Record<string, Readonly<Record<string, CellState>>> = {}
+  const releaseTable: Record<string, Readonly<Record<string, CapabilityStatus>>> = {}
   for (const run of Object.values(published.projection.versions).flat()) {
     const rows = projection.table[run.runId]
-    if (!rows) throw new Error(`The projection classified no row for version run ${run.runId}`)
+    if (!rows) throw new Error(`The projection has no sealed status row for run ${run.runId}`)
     releaseTable[run.runId] = rows
   }
   const result: ProbeData = {
@@ -308,10 +292,12 @@ export function loadFullProbes(): ProbeData {
     generated,
     selected: published.projection,
     selectedByBackend,
+    historicalByBackend: published.historicalByBackend,
+    currentRunCount: published.projection.currentRunCount,
+    historicalTable: projection.historical.table,
     releaseScope,
     releaseBars,
     releaseShares,
-    releaseVerdicts,
     releaseStale,
     releaseTable,
     suiteMove: {
@@ -320,7 +306,7 @@ export function loadFullProbes(): ProbeData {
       treeMovedPastRelease: projection.treeMovedPastRelease,
     },
   }
-  computeBaselines(result, projection.table)
+  computeBaselines(result, projection)
   return result
 }
 
@@ -331,7 +317,7 @@ export default {
   },
 }
 
-function computeBaselines(data: ProbeData, table: CellTable): void {
+function computeBaselines(data: ProbeData, projection: import("./selected-results.ts").SelectedProjection): void {
   const baselineOrder = ["core", "modern", "rich", "unicode", "legacy"]
   const baselines: Record<string, string[]> = {}
   for (const bl of baselineOrder) baselines[bl] = []
@@ -342,28 +328,28 @@ function computeBaselines(data: ProbeData, table: CellTable): void {
   }
 
   // Compute per-backend baseline stats
-  const baselineStats: Record<string, Record<string, BaselineStats>> = {}
+  const baselineStats: Record<string, Record<string, CurrentStats>> = {}
   for (const backend of data.backends) {
-    const backendStats: Record<string, BaselineStats> = {}
+    const backendStats: Record<string, CurrentStats> = {}
     baselineStats[backend.name] = backendStats
     const selected = data.selectedByBackend[backend.name]?.selected
     if (!selected) throw new Error(`Missing selected public run for ${backend.name}`)
-    const rows = table[selected.runId]
-    if (!rows) throw new Error(`The projection classified no row for run ${selected.runId}`)
+    const original = Object.values(projection.current).find((run) => run.runId === selected.runId)
+    if (!original) throw new Error(`Missing frozen current results for ${selected.runId}`)
     for (const bl of baselineOrder) {
-      const ids = baselines[bl] ?? []
-      const { supported, unsupported, inconclusive, error: errors, untested } = aggregateCells(rows, ids).counts
-      const total = supported + unsupported
+      const group = new Set(baselines[bl] ?? [])
+      const ids = original.catalogIds.filter((id) => group.has(id))
+      if (!ids.length) continue
+      const wanted = new Set(ids)
+      const bar = aggregateCurrentResults(
+        original.results.filter((result) => wanted.has(result.featureId)),
+        ids,
+      )
       backendStats[bl] = {
-        total,
-        yes: supported,
-        pct: ids.length > 0 ? Math.round((supported / ids.length) * 100) : null,
-        catalog: ids.length,
-        supported,
-        unsupported,
-        inconclusive,
-        errors,
-        untested,
+        score: { supported: bar.supported, all: bar.denominator },
+        counts: bar.counts,
+        complete: bar.complete,
+        pct: Math.round((100 * bar.supported) / bar.denominator),
       }
     }
   }

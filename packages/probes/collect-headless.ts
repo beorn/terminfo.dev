@@ -5,16 +5,23 @@ import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
 import { release, tmpdir } from "node:os"
-import { join, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
+import { dirname, join, resolve } from "node:path"
+import { pathToFileURL, fileURLToPath } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
-import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
+import {
+  ALL_PROBES,
+  initializeRunDraft,
+  sealRunDraft,
+  recordCollectionFailure,
+  type RunDraft,
+  type CapturedRunDraft,
+} from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
 import { owningCheckout } from "./termless-root.ts"
 
-const ROOT = resolve(import.meta.dir, "../..")
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 // Match the existing Linux full-probe HTTP budget for one engine.
 const WORKER_TIMEOUT_MS = 120_000
 const WORKER_STOP_GRACE_MS = 2_000
@@ -84,6 +91,21 @@ async function collectOne(name: string, directory: string): Promise<string> {
     execFileSync("git", ["status", "--porcelain", "--", ...sourcePaths], { cwd: ROOT, encoding: "utf8" })
       .toString()
       .trim().length > 0
+  const draft = initializeRunDraft({
+    runId: process.env.TERMINFO_CAPTURE_RUN_ID ?? randomUUID(),
+    sourceRevision,
+    manifest: suite,
+    intendedContext: { kind: "headless", id: name, os: process.platform },
+  })
+  const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
+  const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
+  if (process.env.TERMINFO_DRAFT_PATH) {
+    if (process.env.TERMINFO_DRAFT_PATH !== draftPath || readFileSync(draftPath, "utf8") !== initialBytes) {
+      throw new Error("Delegated headless draft differs from initialized writer handoff")
+    }
+  } else writeFileSync(draftPath, initialBytes, { flag: "wx" })
+  const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft, null, 2)}\n`)
+  let collectionStartedAt: string | undefined
   let backend: TerminalBackend | undefined
   try {
     if (name === "kitty" && !process.env.KITTY_BINARY) {
@@ -102,6 +124,12 @@ async function collectOne(name: string, directory: string): Promise<string> {
       throw new Error(`${entry.package} does not export resolve()`)
     }
     const resolveBackend = mod.resolve as () => Promise<unknown>
+    collectionStartedAt = new Date().toISOString()
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      startedAt: collectionStartedAt,
+      ids: suite.probes.headless,
+    })
+    checkpoint()
     const loaded = loadedBackend(await resolveBackend(), entry.package)
     backend = loaded
     loaded.init({ cols: 80, rows: 24 })
@@ -109,10 +137,22 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     backend = undefined
     loaded.destroy()
-    const batch = await collectBatch(async () => loadedBackend(await resolveBackend(), entry.package), name, ALL_PROBES)
-    const run: ProbeRun = {
-      schemaVersion: 2,
-      runId: randomUUID(),
+    const batch = await collectBatch(
+      async () => loadedBackend(await resolveBackend(), entry.package),
+      name,
+      ALL_PROBES,
+      draft,
+      (progress) => {
+        Object.assign(draft, {
+          results: progress.results,
+          rawReplies: { ...draft.rawReplies, ...progress.rawReplies },
+          assertions: progress.assertions,
+        })
+        checkpoint()
+      },
+    )
+    const run: CapturedRunDraft = {
+      ...draft,
       target: {
         kind: "headless",
         id: name,
@@ -134,23 +174,28 @@ async function collectOne(name: string, directory: string): Promise<string> {
       runtimeIdentity,
       suiteId: suite.probeHash,
       probeHash: suite.probeHash,
-      suiteComplete: batch.observations.length + batch.notTested.length === suite.probes.headless.length,
       sourceRevision: sourceDirty ? `${sourceRevision}+dirty` : sourceRevision,
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector" },
-      ...batch,
+      rawReplies: { ...draft.rawReplies, ...batch.rawReplies },
+      assertions: batch.assertions,
+      results: batch.results,
       screenshotRefs: [],
     }
-    const path = join(directory, `${name}-${run.runId}.json`)
+    const path = join(directory, `${name}-${run.runId}.capture.json`)
     const bytes = `${JSON.stringify(run, null, 2)}\n`
-    parseRun(
-      path,
-      bytes,
-      ALL_PROBES.map((probe) => probe.id),
-      new Map([[suite.probeHash, suite]]),
-    )
+    parseRun(path, bytes, suite.catalogIds, new Map([[suite.probeHash, suite]]), { mode: "capture" })
     writeFileSync(path, bytes, { flag: "wx" })
     return path
+  } catch (error) {
+    const diagnostic = errorMessage(error)
+    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, suite.probes.headless)
+    else {
+      draft.rawReplies["collector.prerequisite"] = diagnostic
+      for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic
+    }
+    checkpoint()
+    throw error
   } finally {
     backend?.destroy()
   }
@@ -159,6 +204,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
 export async function collectHeadlessRuns(
   selectors: string[] = [],
   outputDirectory?: string,
+  initializations?: ReadonlyMap<string, { draft: RunDraft; path: string }>,
 ): Promise<HeadlessCollection> {
   const backends = manifest().backends
   const osOnly = Object.entries(backends)
@@ -174,11 +220,11 @@ export async function collectHeadlessRuns(
   const unknown = requested.filter((name) => !headless.includes(name))
   if (unknown.length) throw new Error(`Unknown headless backend selector(s): ${unknown.join(", ")}`)
   const suite = trustedSuite()
-  const script = realpathSync(import.meta.path)
+  const script = realpathSync(fileURLToPath(import.meta.url))
   if (!script.endsWith("/packages/probes/collect-headless.ts")) {
     throw new Error(`Packaged CLI has no local headless collector source at ${script}; install the source workspaces`)
   }
-  const directory = outputDirectory ?? mkdtempSync(join(tmpdir(), "terminfo-headless-v2-"))
+  const directory = outputDirectory ?? mkdtempSync(join(tmpdir(), "terminfo-headless-v3-"))
   mkdirSync(directory, { recursive: true })
   if (readdirSync(directory).length > 0) throw new Error(`Headless output directory is not empty: ${directory}`)
   const runs: string[] = []
@@ -189,9 +235,41 @@ export async function collectHeadlessRuns(
     if (!entry) throw new Error(`Manifest lost expected headless backend ${name}`)
     const stdoutPath = join(directory, `${name}.stdout.txt`)
     const stderrPath = join(directory, `${name}.stderr.txt`)
+    const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
+    const handed = initializations?.get(name)
+    const delegated =
+      handed?.draft ??
+      initializeRunDraft({
+        runId: randomUUID(),
+        sourceRevision,
+        manifest: suite,
+        intendedContext: { kind: "headless", id: name, os: process.platform },
+      })
+    const draftPath = handed?.path ?? join(directory, `${name}-${delegated.runId}.draft.json`)
+    if (handed) {
+      if (readFileSync(draftPath, "utf8") !== `${JSON.stringify(delegated, null, 2)}\n`) {
+        throw new Error(`Headless ${name} initial writer handoff differs`)
+      }
+    } else writeFileSync(draftPath, `${JSON.stringify(delegated, null, 2)}\n`, { flag: "wx" })
+    const workerStartedAt = new Date().toISOString()
+    const retainFailure = (diagnostic: string) => {
+      const retained = JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
+      if (
+        retained.runId !== delegated.runId ||
+        retained.probeHash !== suite.probeHash ||
+        retained.sourceRevision !== sourceRevision
+      ) {
+        throw new Error(`Worker ${name} changed delegated run identity`)
+      }
+      if (!retained.rawReplies["collector.prerequisite"]) {
+        recordCollectionFailure(retained, workerStartedAt, diagnostic, suite.probes.headless)
+      }
+      writeFileSync(draftPath, `${JSON.stringify(retained, null, 2)}\n`)
+    }
     try {
       const child = Bun.spawn([process.execPath, script, "--one", name, directory], {
         cwd: ROOT,
+        env: { ...process.env, TERMINFO_CAPTURE_RUN_ID: delegated.runId, TERMINFO_DRAFT_PATH: draftPath },
         stdout: "pipe",
         stderr: "pipe",
       })
@@ -221,6 +299,9 @@ export async function collectHeadlessRuns(
       writeFileSync(stdoutPath, stdout, { flag: "wx" })
       writeFileSync(stderrPath, stderr, { flag: "wx" })
       if (timedOut) {
+        retainFailure(
+          `Worker ${name} exceeded ${WORKER_TIMEOUT_MS}ms and exited ${exitCode}; stdout=${stdoutPath} stderr=${stderrPath}`,
+        )
         failures.push({
           backend: name,
           package: entry.package,
@@ -239,6 +320,7 @@ export async function collectHeadlessRuns(
           lines.find((line) => line.startsWith("ENOENT:")) ??
           lines.at(-1) ??
           "no stderr"
+        retainFailure(`Worker exited ${exitCode}: ${detail}; stderr=${stderrPath}`)
         failures.push({
           backend: name,
           package: entry.package,
@@ -246,7 +328,9 @@ export async function collectHeadlessRuns(
         })
         continue
       }
-      const candidates = readdirSync(directory).filter((file) => file.startsWith(`${name}-`) && file.endsWith(".json"))
+      const candidates = readdirSync(directory).filter(
+        (file) => file.startsWith(`${name}-`) && file.endsWith(".capture.json"),
+      )
       const [candidate] = candidates
       if (candidates.length !== 1 || !candidate) {
         throw new Error(
@@ -259,12 +343,21 @@ export async function collectHeadlessRuns(
         readFileSync(path, "utf8"),
         ALL_PROBES.map((probe) => probe.id),
         new Map([[suite.probeHash, suite]]),
+        { mode: "capture" },
       )
       if (parsed.target.kind !== "headless" || parsed.target.id !== name) {
         throw new Error(`Worker wrote a run for ${parsed.target.id} instead of ${name}: ${path}`)
       }
-      runs.push(path)
+      if (parsed.runId !== delegated.runId) throw new Error(`Worker ${name} changed runId during capture handoff`)
+      const captured = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft
+      const sealed = sealRunDraft(captured)
+      const finalPath = join(directory, `${name}-${sealed.runId}.json`)
+      const bytes = `${JSON.stringify(sealed, null, 2)}\n`
+      parseRun(finalPath, bytes, suite.catalogIds ?? [], new Map([[suite.probeHash, suite]]))
+      writeFileSync(finalPath, bytes, { flag: "wx" })
+      runs.push(finalPath)
     } catch (error) {
+      retainFailure(errorMessage(error))
       failures.push({ backend: name, package: entry.package, error: errorMessage(error) })
     }
   }

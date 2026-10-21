@@ -13,7 +13,6 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { loadFullProjectData } from "../docs/data/full-project.data.ts"
-import { DESIGN_EXCLUSION_IDS, MISSING_DEFINITION_IDS } from "../docs/data/full-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 const data = loadFullProjectData()
@@ -25,14 +24,14 @@ describe("the full-273 preview", () => {
     expect(data.collected + data.notCollected).toBe(33)
   })
 
-  it("prints S/D and D/N together for every collected context", () => {
+  it("prints Supported over all 273 and finishes only at zero TODO/failure", () => {
     for (const row of data.contexts) {
       if (!row.collected) continue
       const { result } = row
       expect(result.catalogRows).toBe(273)
-      expect(result.fraction).toBe(`${result.decisive}/${result.denominator}`)
-      expect(result.ceiling).toBe(`${result.denominator}/273`)
-      expect(result.included).toBe(result.pct >= 90)
+      expect(result.denominator).toBe(273)
+      expect(result.fraction).toBe(`${result.supported}/273`)
+      expect(result.complete).toBe(result.counts["test-todo"] === 0 && result.counts["test-failure"] === 0)
       expect(result.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
     }
   })
@@ -45,19 +44,12 @@ describe("the full-273 preview", () => {
     }
   })
 
-  it("names the design exclusions and keeps the missing definitions in the denominator", () => {
-    expect(data.designExclusions).toEqual([...DESIGN_EXCLUSION_IDS])
-    expect(data.designExclusions).toHaveLength(13)
-    expect(data.missingDefinitions).toEqual([...MISSING_DEFINITION_IDS])
-    expect(data.missingDefinitions).toHaveLength(0)
-    for (const row of data.contexts) {
-      if (!row.collected) continue
-      expect(row.result.denominator).toBe(data.catalogRows - row.result.excluded.length)
-      for (const id of data.missingDefinitions) {
-        expect(row.result.excluded.map((entry) => entry.id)).not.toContain(id)
-        expect(row.result.missingDefinitions).toContain(id)
-      }
-    }
+  it("keeps an all-history corpus incomplete without inventing a current score", () => {
+    expect(data.collected).toBe(0)
+    expect(data.notCollected).toBe(33)
+    expect(data.recordedPositions).toBe(0)
+    expect(data.complete).toBe(false)
+    expect(data.evidenceVersions).toEqual({})
   })
 
   it("lets every collected row reach its run's evidence through the established evidence cell", () => {
@@ -67,8 +59,10 @@ describe("the full-273 preview", () => {
       expect(version?.runId).toBe(row.run.runId)
       expect(version?.sha256).toBeTruthy()
       for (const observation of row.observations) {
-        if (observation.state === "untested") continue
-        expect(version?.cells[observation.id], `${row.context} ${observation.id}`).toBeDefined()
+        expect(
+          version?.results.find((result) => result.featureId === observation.id),
+          `${row.context} ${observation.id}`,
+        ).toBeDefined()
       }
     }
     const page = readFileSync(join(root, "docs", "release", "full-273.md"), "utf8")

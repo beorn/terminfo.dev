@@ -24,7 +24,8 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import type { ProbeRun as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { parseRun } from "@terminfo/run-parser"
+import type { CapturedRunDraft as CollectedProbeRun, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -42,6 +43,7 @@ const trustedReceipt = {
     sourceRevision: "b".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
     adapterVersion: "3.3.1",
+    catalogIds: ["device.primary-da"],
     probes: { app: ["device.primary-da"], headless: ["device.primary-da"], mux: ["device.primary-da"] },
   } satisfies ProbeSuiteManifest,
   collectorRevision: "a".repeat(40),
@@ -49,7 +51,8 @@ const trustedReceipt = {
 
 function collectorRun(): CollectedProbeRun {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
     target: {
       kind: "app",
@@ -65,15 +68,21 @@ function collectorRun(): CollectedProbeRun {
     identity: "unverified",
     suiteId: trustedReceipt.manifest.probeHash,
     probeHash: trustedReceipt.manifest.probeHash,
-    suiteComplete: false,
     sourceRevision: trustedReceipt.collectorRevision,
     measuredAt: "2026-09-28T12:00:00.000Z",
     origin: { kind: "collector" },
     rawReplies: {},
     assertions: [],
     screenshotRefs: [],
-    observations: [],
-    ungradedDiagnostics: {},
+    results: [
+      {
+        featureId: "device.primary-da",
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Not implemented",
+      },
+    ],
   }
 }
 
@@ -112,10 +121,11 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
   }
 })
 
-it("writes one immutable v2 capture and refuses a mismatched intended version", () => {
+it("writes one immutable current capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
   const run: CollectedProbeRun = {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
     target: {
       kind: "app",
@@ -131,15 +141,13 @@ it("writes one immutable v2 capture and refuses a mismatched intended version", 
     identity: "unverified",
     suiteId: "abcdef123456",
     probeHash: "abcdef123456",
-    suiteComplete: false,
     sourceRevision: "a".repeat(40),
     measuredAt: "2026-09-28T00:00:00.000Z",
     origin: { kind: "collector" },
     rawReplies: { "device.primary-da": "\x1b[?62;4c" },
     assertions: [],
     screenshotRefs: [],
-    observations: [],
-    ungradedDiagnostics: {},
+    results: collectorRun().results,
   }
   const dir = join(root, "runs")
   expect(() => saveDaemonProbeRun(run, dir, { kind: "app", id: "kitty", version: "0.48.0" })).toThrow(
@@ -610,4 +618,111 @@ it("sends the process owner as processOwner, refused when it names another daemo
   } finally {
     server.close()
   }
+})
+
+// Existing immutable-write tests never resumed a genuinely pending capture with typed review bytes.
+it("resumes a retained pending capture through the final writer without changing the original draft", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const run = collectorRun()
+  run.results[0]!.checks = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+  ]
+  const path = saveDaemonProbeRun(run, root)
+  expect(path).toMatch(/draft.json$/)
+  const original = readFileSync(path, "utf8")
+  const pending = JSON.parse(original) as CollectedProbeRun
+  const capture = pending.rawReplies["collector.capture.device.primary-da"]!
+  const review = JSON.stringify({
+    id: "context-review",
+    runId: run.runId,
+    featureId: "device.primary-da",
+    captureSha256: createHash("sha256").update(capture).digest("hex"),
+    decision: "untestable",
+    reviewed: true,
+    reviewer: "reviewer",
+    reason: "This stream-only context cannot receive device-status replies",
+    scope: {
+      target: { kind: "app", id: "kitty" },
+      versions: ["0.49.1", "0.49.1"],
+      suites: [run.probeHash, run.probeHash],
+    },
+    sources: ["collector.capture.device.primary-da"],
+    supersedes: [],
+  })
+  const final = saveDaemonProbeRun(pending, root, undefined, [
+    { source: review, startedAt: "2026-10-21T05:00:00.000Z" },
+  ])
+  expect(final).not.toMatch(/draft.json$/)
+  expect(readFileSync(path, "utf8")).toBe(original)
+  const parsed = parseRun(
+    final,
+    readFileSync(final, "utf8"),
+    ["device.primary-da"],
+    new Map([[run.probeHash, trustedReceipt.manifest]]),
+  )
+  expect(parsed.runId).toBe(run.runId)
+  expect(parsed.results?.[0]?.status).toBe("untestable")
+  expect(parsed.rawReplies["collector.review.context-review"]).toBe(review)
+})
+
+// A single-review fixture always reached a sealed filename and missed the pending filename collision.
+it("retains partial reviews as immutable snapshots, then seals the same logical run", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const run = collectorRun()
+  run.results = ["device.primary-da", "device.secondary-da"].map((featureId) => ({
+    featureId,
+    status: "test-todo",
+    attempt: { scope: "none" },
+    checks: [
+      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+    ],
+    reason: "Required context review pending",
+  }))
+  const originalPath = saveDaemonProbeRun(run, root)
+  const original = readFileSync(originalPath, "utf8")
+  const pending = JSON.parse(original) as CollectedProbeRun
+  const decision = (featureId: string, id: string) =>
+    JSON.stringify({
+      id,
+      runId: run.runId,
+      featureId,
+      captureSha256: createHash("sha256")
+        .update(pending.rawReplies["collector.capture." + featureId]!)
+        .digest("hex"),
+      decision: "untestable",
+      reviewed: true,
+      reviewer: "reviewer",
+      reason: "This stream-only context cannot receive the criterion's device replies",
+      scope: {
+        target: { kind: "app", id: "kitty" },
+        versions: ["0.49.1", "0.49.1"],
+        suites: [run.probeHash, run.probeHash],
+      },
+      sources: ["collector.capture." + featureId],
+      supersedes: [],
+    })
+  const partialPath = saveDaemonProbeRun(pending, root, undefined, [
+    { source: decision("device.primary-da", "first-review"), startedAt: "2026-10-21T05:00:00.000Z" },
+  ])
+  expect(partialPath).not.toBe(originalPath)
+  expect(partialPath).toMatch(/\.[a-f0-9]{64}\.draft.json$/)
+  const partial = readFileSync(partialPath, "utf8")
+  const finalPath = saveDaemonProbeRun(JSON.parse(partial) as CollectedProbeRun, root, undefined, [
+    { source: decision("device.secondary-da", "second-review"), startedAt: "2026-10-21T05:01:00.000Z" },
+  ])
+  const manifest = {
+    ...trustedReceipt.manifest,
+    catalogIds: run.results.map((result) => result.featureId),
+    probes: { ...trustedReceipt.manifest.probes, app: run.results.map((result) => result.featureId) },
+  }
+  const parsed = parseRun(
+    finalPath,
+    readFileSync(finalPath, "utf8"),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(parsed.runId).toBe(run.runId)
+  expect(parsed.results?.map((result) => result.status)).toEqual(["untestable", "untestable"])
+  expect(readFileSync(originalPath, "utf8")).toBe(original)
+  expect(readFileSync(partialPath, "utf8")).toBe(partial)
 })

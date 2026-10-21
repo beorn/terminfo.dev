@@ -2,6 +2,12 @@ name: windows-measurement
 
 on:
   workflow_dispatch:
+    inputs:
+      capture_run_ids:
+        description: "Existing coordinator draft run IDs by matrix target; empty object for standalone collection"
+        type: string
+        required: false
+        default: "{}"
 
 permissions:
   contents: read
@@ -28,6 +34,7 @@ jobs:
         shell: bash
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CAPTURE_RUN_IDS: ${{ inputs.capture_run_ids }}
     steps:
       - name: Bootstrap the pinned producer and sample at job start
         id: start
@@ -191,6 +198,9 @@ jobs:
           OUT="$RUNNER_TEMP/measurement-artifacts"
           APPARATUS="$RUNNER_TEMP/hosted-apparatus"
           COMMAND_PATH="$RUNNER_TEMP/collect.ps1"
+          CAPTURE_RUN_ID=""
+          if [[ -n "$CAPTURE_RUN_IDS" ]]; then CAPTURE_RUN_ID="$(jq -r --arg id "$APP_ID" '.[$id] // ""' <<< "$CAPTURE_RUN_IDS")"; fi
+          [[ -z "$CAPTURE_RUN_ID" || "$CAPTURE_RUN_ID" =~ ^[a-f0-9]{32}$ ]] || { echo "Invalid delegated capture run ID" >&2; exit 1; }
 
           WIN_OUT="$(cygpath -w "$OUT")"
           WIN_COMMAND="$(cygpath -w "$COMMAND_PATH")"
@@ -225,6 +235,7 @@ jobs:
           \$env:PATH = "$APP_DIR;$BUN_DIR;$NODE_DIR;" + \$env:PATH
           \$env:TERMINFO_DISPOSABLE_RECEIPT = "$WIN_OUT\\host-measured.json"
           \$env:TERMINFO_CAPTURE_DIRECTORY = "$WIN_OUT\\artifacts"
+          \$env:TERMINFO_CAPTURE_RUN_ID = "$CAPTURE_RUN_ID"
 
           \$attempts = 0
           while (-not (Test-Path "$WIN_OUT\\collector-ready")) {

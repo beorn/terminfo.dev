@@ -6,7 +6,7 @@
  * @reach fs-walk <fixture-only: mkdtempSync run, destination, and Git authoring directories>
  * @testonly none
  */
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -14,7 +14,14 @@ import { dirname, join } from "node:path"
 import { afterEach, expect, test, vi } from "vitest"
 import * as suiteManifest from "../packages/admin/suite-manifest.ts"
 import * as versions from "../packages/admin/versions.ts"
-import { decodeCollectorRun, parseJsonStrict, parseRun, parseSuiteManifest } from "@terminfo/run-parser"
+import {
+  decodeHistoricalCollectorRun,
+  retainCaptureBinding,
+  parseJsonStrict,
+  parseRun,
+  parseSuiteManifest,
+} from "@terminfo/run-parser"
+import { initializeRunDraft, type CapturedRunDraft } from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import {
@@ -164,10 +171,27 @@ test("daemon-saved enriched run names the launcher cure without content placemen
   if (!object(document) || typeof document.sourceRevision !== "string") {
     throw new Error("Collector fixture lacks source revision")
   }
-  const decoded = decodeCollectorRun(source, raw, derivedSuiteManifest(probeSuiteSnapshot()), document.sourceRevision)
+  const snapshot = probeSuiteSnapshot()
+  const decoded = decodeHistoricalCollectorRun(source, raw, derivedSuiteManifest(snapshot), document.sourceRevision)
+  const {
+    observations: _observations,
+    notTested: _notTested,
+    ungradedDiagnostics: _diagnostics,
+    suiteComplete: _complete,
+    ...metadata
+  } = decoded.run
   const staged = saveDaemonProbeRun(
     {
-      ...decoded.run,
+      ...metadata,
+      schemaVersion: 3,
+      intendedContext: { kind: metadata.target.kind, id: metadata.target.id },
+      results: snapshot.catalogIds.map((featureId) => ({
+        featureId,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Synthetic fresh TODO fixture; no old observation upgraded",
+      })),
       rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
     },
     dirname(source),
@@ -638,8 +662,8 @@ test("a run with an unsafe filename component refuses", () => {
   )
 })
 
-test("a run that is not schema v2 refuses", () => {
-  expect(() => planAdmission(runFixture({ schemaVersion: 1 }))).toThrow(/not schema v2/)
+test("an unsupported run schema refuses", () => {
+  expect(() => planAdmission(runFixture({ schemaVersion: 1 }))).toThrow(/current schema 3 or historical schema 2/)
 })
 
 /**
@@ -982,4 +1006,304 @@ test("a run collected against a shared terminal cites no receipt and places none
     detail: "collected against a shared terminal: it cites no receipt, so none is placed",
   })
   expect(placeOwnershipReceipt(source, undefined, RECEIPT_RUN_ID, KITTY_TARGET, content).placed).toBe("none")
+})
+
+// Existing admission fixtures start from already sealed historical evidence. They cannot prove the
+// real command preserves an original draft, rejects a foreign typed decision, and seals before decode.
+test("existing admission command resumes typed capture review and refuses a mismatched capture", () => {
+  const directory = temp("terminfo-review-command-")
+  const snapshot = probeSuiteSnapshot()
+  const manifest = derivedSuiteManifest(snapshot)
+  const featureId = manifest.catalogIds![0]!
+  const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: import.meta.dirname,
+    encoding: "utf8",
+  }).trim()
+  const base = initializeRunDraft({
+    runId: "review-command",
+    sourceRevision,
+    manifest,
+    intendedContext: { kind: "app", id: "kitty", version: "1" },
+  })
+  const run: CapturedRunDraft = {
+    ...base,
+    target: {
+      kind: "app",
+      id: "kitty",
+      version: "1",
+      os: "macos",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-10-21T05:00:00.000Z",
+    origin: { kind: "collector" },
+  }
+  run.results[0]!.checks = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review" },
+  ]
+  const capture = retainCaptureBinding(run, featureId)
+  const source = join(directory, "original.draft.json")
+  const original = JSON.stringify(run)
+  writeFileSync(source, original)
+  const decision = {
+    id: "command-review",
+    runId: run.runId,
+    featureId,
+    captureSha256: capture.sha256,
+    decision: "untestable",
+    reviewed: true,
+    reviewer: "fixture-reviewer",
+    reason: "This stream-only context cannot display the criterion's pixel target",
+    scope: { target: { kind: "app", id: "kitty" }, versions: ["1", "1"], suites: [run.probeHash, run.probeHash] },
+    sources: [capture.rawReplyRef],
+    supersedes: [],
+  }
+  const review = join(directory, "decision.json")
+  const final = join(directory, "kitty-1-macos-review-command.json")
+  const invoke = () =>
+    spawnSync(
+      process.execPath,
+      [
+        join(import.meta.dirname, "admit-run.ts"),
+        "--for",
+        source,
+        "--review",
+        review,
+        "--review-started-at",
+        "2026-10-21T05:01:00.000Z",
+      ],
+      { cwd: dirname(import.meta.dirname), encoding: "utf8" },
+    )
+  writeFileSync(review, JSON.stringify({ ...decision, captureSha256: "f".repeat(64) }))
+  const rejected = invoke()
+  expect(rejected.status).toBe(1)
+  expect(rejected.stderr).toMatch(/capture digest mismatch/)
+  expect(existsSync(final)).toBe(false)
+  writeFileSync(review, JSON.stringify(decision))
+  const resumed = invoke()
+  // This synthetic unverified context is not admissible. Review/final-save must complete first,
+  // and the ordinary admission owner must still refuse rather than publish it.
+  expect(resumed.status).toBe(1)
+  expect(resumed.stdout).toContain("Retained reviewed capture")
+  expect(readFileSync(source, "utf8")).toBe(original)
+  const parsed = parseRun(
+    final,
+    readFileSync(final, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(parsed.runId).toBe(run.runId)
+  expect(parsed.results?.[0]?.status).toBe("untestable")
+})
+
+// A macOS review fixture never enters Linux completion custody. Exercise the actual command and
+// existing shell composer, then plan ordinary admission without placing synthetic fixture evidence.
+test("Linux review command composes final bytes with original host, container and HTTP custody", () => {
+  authoringFixture()
+  const specimen = runFixture()
+  const directory = dirname(specimen)
+  const manifest = derivedSuiteManifest(probeSuiteSnapshot())
+  const old = parseRun(
+    specimen,
+    readFileSync(specimen, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: import.meta.dirname, encoding: "utf8" }).trim()
+  const run: CapturedRunDraft = {
+    ...initializeRunDraft({ runId: old.runId, sourceRevision: revision, manifest, intendedContext: old.target }),
+    target: old.target,
+    provenance: structuredClone(old.provenance),
+    identity: old.identity,
+    measuredAt: old.measuredAt,
+    origin: old.origin,
+    rawReplies: { ...old.rawReplies },
+    assertions: [],
+    screenshotRefs: [],
+  }
+  if (!run.provenance?.runtime || !run.provenance.executable) throw new Error("Fixture lacks Linux runtime/executable")
+  run.provenance.runtime.sourceRevision = revision
+  const featureId = run.results[0]!.featureId
+  run.results[0]!.checks = [
+    { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
+  ]
+  const digest = (bytes: string) => createHash("sha256").update(bytes).digest("hex")
+  const hostPath = join(directory, "host-measured.json")
+  const host = JSON.parse(readFileSync(hostPath, "utf8"))
+  if (!object(host) || !object(host.runtime) || !object(host.runnerArtifact) || !object(host.runnerArtifact.build)) {
+    throw new Error("Fixture lacks host runtime/build receipt")
+  }
+  host.runtime.sourceRevision = revision
+  host.runtime.suiteHash = manifest.probeHash
+  host.runnerArtifact.build.collectorRevision = revision
+  host.runnerArtifact.build.probeHash = manifest.probeHash
+  const hostBytes = JSON.stringify(host)
+  writeFileSync(hostPath, hostBytes)
+  const ownership = JSON.parse(run.rawReplies["collector.disposableOwnership"]!)
+  if (!object(ownership)) throw new Error("Fixture lacks ownership citation")
+  run.rawReplies["collector.disposableOwnership"] = JSON.stringify({ ...ownership, receiptSha256: digest(hostBytes) })
+  const captureBytes = JSON.stringify(run)
+  const captureSha = digest(captureBytes)
+  writeFileSync(join(directory, "v3-capture.json"), captureBytes)
+  mkdirSync(join(directory, "http-responses"))
+  writeFileSync(join(directory, "http-responses", captureSha), captureBytes)
+  run.rawReplies["collector.httpResponseSha256"] = captureSha
+  const binding = retainCaptureBinding(run, featureId)
+  const pendingPath = saveDaemonProbeRun(run, directory)
+  const pendingBytes = readFileSync(pendingPath, "utf8")
+  const executable = run.provenance.executable
+  const containerBytes = JSON.stringify({
+    runId: host.runId,
+    executable,
+    invocation: { path: executable.path, sha256: executable.sha256 },
+    sourceArtifact: run.provenance.sourceArtifact,
+    collector: {
+      frozenRunnerSha256: host.runnerArtifact.frozenRunnerSha256,
+      buildReceiptSha256: host.runnerArtifact.buildReceiptSha256,
+    },
+    probeRun: { path: "v3-capture.json", runId: run.runId, sha256: captureSha },
+    display: { glxinfo: "synthetic retained fixture", geometry: "800x600" },
+    clipboardFixture: { runId: host.runId, profile: host.clipboardProfile, sha256: "a".repeat(64) },
+    capture: null,
+  })
+  writeFileSync(join(directory, "container-receipt.json"), containerBytes)
+  rmSync(join(directory, "run-receipt.json"))
+  const review = join(directory, "review.json")
+  writeFileSync(
+    review,
+    JSON.stringify({
+      id: "linux-review",
+      runId: run.runId,
+      featureId,
+      captureSha256: binding.sha256,
+      decision: "untestable",
+      reviewed: true,
+      reviewer: "fixture-reviewer",
+      reason: "This stream-only context cannot display the criterion's visual target",
+      scope: {
+        target: { kind: "app", id: "kitty" },
+        versions: [old.target.version, old.target.version],
+        suites: [run.probeHash, run.probeHash],
+      },
+      sources: [binding.rawReplyRef],
+      supersedes: [],
+    }),
+  )
+  const destination = join(temp("terminfo-review-no-placement-"), "run.json")
+  writeFileSync(destination, "pre-existing private fixture destination")
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(import.meta.dirname, "admit-run.ts"),
+      "--for",
+      pendingPath,
+      "--review",
+      review,
+      "--review-started-at",
+      "2026-10-21T05:01:00.000Z",
+      "--into",
+      destination,
+    ],
+    { cwd: dirname(import.meta.dirname), encoding: "utf8" },
+  )
+  expect(result.status).toBe(1)
+  expect(result.stderr).toMatch(/Refusing to overwrite a different admitted run/)
+  const final = join(directory, `kitty-${old.target.version}-linux-${run.runId}.json`)
+  const finalBytes = readFileSync(final, "utf8")
+  const parsed = parseRun(final, finalBytes, manifest.catalogIds!, new Map([[manifest.probeHash, manifest]]))
+  expect(parsed.results?.[0]?.status).toBe("untestable")
+  const completion = JSON.parse(readFileSync(join(directory, "run-receipt.json"), "utf8"))
+  if (!object(completion)) throw new Error("Fixture completion receipt is not an object")
+  expect(completion.probeRun).toMatchObject({ runId: run.runId, sha256: digest(finalBytes) })
+  expect(completion.receiptInputs).toEqual({ hostSha256: digest(hostBytes), containerSha256: digest(containerBytes) })
+  expect(planAdmission(final, join(temp("terminfo-reviewed-plan-"), "run.json")).runId).toBe(run.runId)
+  expect(readFileSync(pendingPath, "utf8")).toBe(pendingBytes)
+  expect(readFileSync(hostPath, "utf8")).toBe(hostBytes)
+  expect(readFileSync(join(directory, "container-receipt.json"), "utf8")).toBe(containerBytes)
+  expect(readFileSync(join(directory, "v3-capture.json"), "utf8")).toBe(captureBytes)
+  expect(readFileSync(join(directory, "http-responses", captureSha), "utf8")).toBe(captureBytes)
+})
+
+// Existing completion mutations covered final-run/host identity only, and missed deleted or changed
+// original capture/container/HTTP bytes after the final host-enriched schema-3 run was sealed.
+test.each([
+  "valid",
+  "missing-container",
+  "changed-container",
+  "missing-capture",
+  "changed-capture",
+  "missing-http",
+  "changed-http",
+] as const)("current Linux admission resolves original custody inputs: %s", (fault) => {
+  authoringFixture()
+  const source = runFixture()
+  const manifest = derivedSuiteManifest(probeSuiteSnapshot())
+  const old = parseRun(
+    source,
+    readFileSync(source, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  if (!old.sourceRevision) throw new Error("Fixture lacks collector source")
+  const draft = initializeRunDraft({
+    runId: old.runId,
+    sourceRevision: old.sourceRevision,
+    manifest,
+    intendedContext: old.target,
+  })
+  const capture = {
+    ...draft,
+    target: old.target,
+    provenance: old.provenance,
+    identity: old.identity,
+    measuredAt: old.measuredAt,
+    origin: old.origin,
+    rawReplies: old.rawReplies,
+    assertions: [],
+    screenshotRefs: [],
+  }
+  const captureBytes = Buffer.from(JSON.stringify(capture))
+  const captureSha = createHash("sha256").update(captureBytes).digest("hex")
+  const directory = dirname(source)
+  const capturePath = join(directory, "v3-capture.json")
+  const containerPath = join(directory, "container-receipt.json")
+  const http = join(directory, "http-responses", captureSha)
+  writeFileSync(capturePath, captureBytes)
+  const containerBytes = JSON.stringify({ probeRun: { path: "v3-capture.json", runId: old.runId, sha256: captureSha } })
+  writeFileSync(containerPath, containerBytes)
+  mkdirSync(dirname(http))
+  writeFileSync(http, captureBytes)
+  const final = {
+    ...capture,
+    sealedAt: "2026-10-21T05:02:00.000Z",
+    rawReplies: { ...capture.rawReplies, "collector.httpResponseSha256": captureSha },
+  }
+  const bytes = JSON.stringify(final)
+  writeFileSync(source, bytes)
+  const completionPath = join(directory, "run-receipt.json")
+  const completion = JSON.parse(readFileSync(completionPath, "utf8"))
+  if (!object(completion) || !object(completion.probeRun) || !object(completion.receiptInputs)) {
+    throw new Error("Missing completion fixture bindings")
+  }
+  completion.probeRun.sha256 = createHash("sha256").update(bytes).digest("hex")
+  completion.receiptInputs.containerSha256 = createHash("sha256").update(containerBytes).digest("hex")
+  writeFileSync(completionPath, JSON.stringify(completion))
+  const destination = join(temp("terminfo-custody-dest-"), "content", "run.json")
+  if (fault === "missing-container") rmSync(containerPath)
+  if (fault === "changed-container") writeFileSync(containerPath, "{}")
+  if (fault === "missing-capture") rmSync(capturePath)
+  if (fault === "changed-capture") writeFileSync(capturePath, "{}")
+  if (fault === "missing-http") rmSync(http)
+  if (fault === "changed-http") writeFileSync(http, "{}")
+  if (fault === "valid") expect(planAdmission(source, destination).runId).toBe(old.runId)
+  else {
+    expect(() => planAdmission(source, destination)).toThrow(
+      /original custody inputs|original capture bytes|retained HTTP bytes/,
+    )
+  }
+  expect(existsSync(destination)).toBe(false)
 })

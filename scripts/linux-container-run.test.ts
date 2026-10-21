@@ -60,7 +60,7 @@ function compose(
         executable: { path: "/nix/store/kitty/bin/.kitty-wrapped", version: "kitty 0.49.1", sha256: "elf-hash" },
         sourceArtifact: { path: "/kitty-source/kitty.txz", sha256: "archive-hash" },
         collector: { frozenRunnerSha256: containerRunnerSha, buildReceiptSha256: "receipt-hash" },
-        probeRun: { path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" },
+        probeRun: { path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" },
         display: { glxinfo: "llvmpipe", geometry: "WIDTH=800" },
         clipboardFixture: { runId: containerRunId, profile: containerProfile, sha256: "fixture-hash" },
         capture,
@@ -179,10 +179,10 @@ fi
   // The launcher's post-batch check must bind the measured ELF to this run's
   // outer app. Mux runs deliberately have no top-level app provenance.
   const source = readFileSync(launcher, "utf8")
-  const match = source.match(/jq -e --slurpfile run "\$raw\/v2-run\.json" \\\n\s*'([^']*)'/)
+  const match = source.match(/jq -e --slurpfile run "\$raw\/v3-capture\.json" \\\n\s*'([^']*)'/)
   if (!match) throw new Error("Retained executable comparison not found in scripts/linux-container-run.sh")
   const executable = containerFacts.executable
-  const runPath = join(dir, "v2-run.json")
+  const runPath = join(dir, "v3-capture.json")
   const selectedKey = mux ? "outerApp" : "provenance"
   for (const mismatch of ["none", "path", "sha256", "missing"] as const) {
     const measured = { ...executable }
@@ -301,8 +301,55 @@ describe("container run receipt composition", () => {
       sha256: "archive-hash",
     })
     expect(receipt.collector.frozenRunnerSha256).toBe("runner-hash")
-    expect(receipt.probeRun).toEqual({ path: "v2-run.json", runId: "b".repeat(32), sha256: "probe-hash" })
+    expect(receipt.probeRun).toEqual({ path: "v3-capture.json", runId: "b".repeat(32), sha256: "probe-hash" })
     expect(receipt.clipboardFixture).toEqual({ runId: "a".repeat(32), profile: "default", sha256: "fixture-hash" })
+  })
+
+  // The existing three-argument tests never composed a final enriched schema-3 run after review.
+  it("binds the final sealed bytes while retaining original container input and logical runId", () => {
+    const { result } = compose()
+    const output = join(dir, "final-receipt.json")
+    expect(result.status).toBe(0)
+    const containerBytes = readFileSync(join(dir, "container.json"))
+    const final = join(dir, "reviewed-final.json")
+    const run = {
+      schemaVersion: 3,
+      runId: "b".repeat(32),
+      sealedAt: "2026-10-21T05:00:00.000Z",
+      rawReplies: { "collector.review.example": "exact reviewed decision bytes" },
+    }
+    const invoke = (receiptPath = output) =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          'source "$1"; compose_receipt "$2" "$3" "$4" "$5"',
+          "_",
+          launcher,
+          join(dir, "host.json"),
+          join(dir, "container.json"),
+          receiptPath,
+          final,
+        ],
+        { encoding: "utf8" },
+      )
+    writeFileSync(final, JSON.stringify(run))
+    expect(invoke().status).toBe(0)
+    const receipt = JSON.parse(readFileSync(output, "utf8")) as {
+      probeRun: { path: string; runId: string; sha256: string }
+      receiptInputs: { containerSha256: string }
+    }
+    expect(receipt.probeRun).toEqual({
+      path: "reviewed-final.json",
+      runId: run.runId,
+      sha256: createHash("sha256").update(readFileSync(final)).digest("hex"),
+    })
+    expect(receipt.receiptInputs.containerSha256).toBe(createHash("sha256").update(containerBytes).digest("hex"))
+    expect(readFileSync(join(dir, "container.json"))).toEqual(containerBytes)
+    writeFileSync(final, JSON.stringify({ ...run, runId: "foreign-run" }))
+    const foreign = invoke(join(dir, "foreign-receipt.json"))
+    expect(foreign.status).toBe(2)
+    expect(foreign.stderr).toContain("final runId differs from original captured runId")
   })
 
   it("refuses a filtered host/container selection mismatch", () => {
@@ -378,7 +425,7 @@ describe("disposable ownership receipt mount", () => {
 describe("frame-less container run", () => {
   const expression = (() => {
     const source = readFileSync(launcher, "utf8")
-    const match = source.match(/capture_frame=\$\(jq -c '([^']*)' \/out\/v2-run\.json\)/)
+    const match = source.match(/capture_frame=\$\(jq -c '([^']*)' \/out\/v3-capture\.json\)/)
     if (!match) throw new Error("frame selection expression not found in scripts/linux-container-run.sh")
     return match[1]!
   })()
@@ -388,14 +435,14 @@ describe("frame-less container run", () => {
   }
 
   it("selects null for a run that captured no frame, without failing", () => {
-    const result = select({ observations: [{ featureId: "device.primary-da" }, { featureId: "reset.ris" }] })
+    const result = select({ results: [{ featureId: "device.primary-da" }, { featureId: "reset.ris" }] })
     expect(result.status).toBe(0)
     expect(result.stdout.trim()).toBe("null")
   })
 
   it("selects the target frame when a probe captured one", () => {
     const frame = { role: "target", ref: `sha256:${"a".repeat(64)}`, sourceRef: `sha256:${"b".repeat(64)}` }
-    const result = select({ observations: [{ featureId: "cursor.shape", frames: [frame] }] })
+    const result = select({ results: [{ featureId: "cursor.shape", frames: [frame] }] })
     expect(result.status).toBe(0)
     expect(JSON.parse(result.stdout)).toEqual(frame)
   })
@@ -407,58 +454,33 @@ describe("frame-less container run", () => {
     expect(source).not.toMatch(/png_sha=\$\(jq -er '\[\.observations\[\]\.frames/)
   })
 
-  const gateExpression = (() => {
+  const selectionExpression = (() => {
     const source = readFileSync(launcher, "utf8")
-    const match = source.match(/jq -e --argjson ids "\$selected_ids" --argjson frameless "\$frameless_ids" '([^']*)'/)
-    if (!match) throw new Error("--ids gate expression not found in scripts/linux-container-run.sh")
+    const match = source.match(/jq -e --argjson ids "\$selected_ids" '([^']*)' \/out\/v3-capture\.json/)
+    if (!match) throw new Error("--ids selection expression not found in scripts/linux-container-run.sh")
     return match[1]!
   })()
-
-  function gate(ids: string[], frameless: string[], run: unknown) {
-    return spawnSync(
-      "jq",
-      [
-        "-e",
-        "--argjson",
-        "ids",
-        JSON.stringify(ids),
-        "--argjson",
-        "frameless",
-        JSON.stringify(frameless),
-        gateExpression,
-      ],
-      { input: JSON.stringify(run), encoding: "utf8" },
-    )
-  }
-
-  const frameUnavailable = {
-    kind: "collector-error",
-    name: "FrameUnavailable",
-    message: "This run has no capture directory",
-  }
-
-  it("accepts a frame-less selection whose only diagnostic is the named FrameUnavailable", () => {
-    const result = gate(["device.primary-da", "cursor.shape"], ["cursor.shape"], {
-      observations: [{ featureId: "device.primary-da" }],
-      ungradedDiagnostics: { "cursor.shape": frameUnavailable },
+  const selected = (requested: string[], actual: string[], statuses: string[]) =>
+    spawnSync("jq", ["-e", "--argjson", "ids", JSON.stringify(requested), selectionExpression], {
+      input: JSON.stringify({
+        rawReplies: { "collector.selection": JSON.stringify({ ids: actual }) },
+        results: actual.map((featureId, index) => ({ featureId, status: statuses[index] })),
+      }),
+      encoding: "utf8",
     })
-    expect(result.status).toBe(0)
+  // Selection custody must not rewrite an actual capability FAILURE or missing prerequisite TODO.
+  // The old diagnostic-based transport refusal discarded that execution-owned status distinction.
+  it("retains requested selection when capability results include TODO and FAILURE", () => {
+    expect(
+      selected(
+        ["device.primary-da", "cursor.shape"],
+        ["cursor.shape", "device.primary-da"],
+        ["test-todo", "test-failure"],
+      ).status,
+    ).toBe(0)
   })
-
-  it("refuses a FrameUnavailable in a run that had a capture directory", () => {
-    const result = gate(["device.primary-da", "cursor.shape"], [], {
-      observations: [{ featureId: "device.primary-da" }],
-      ungradedDiagnostics: { "cursor.shape": frameUnavailable },
-    })
-    expect(result.status).not.toBe(0)
-  })
-
-  it("refuses any other diagnostic in a frame-less selection", () => {
-    const result = gate(["cursor.shape"], ["cursor.shape"], {
-      observations: [],
-      ungradedDiagnostics: { "cursor.shape": { kind: "collector-error", name: "Error", message: "boom" } },
-    })
-    expect(result.status).not.toBe(0)
+  it("refuses a changed selection without deriving feature status from it", () => {
+    expect(selected(["device.primary-da", "cursor.shape"], ["device.primary-da"], ["supported"]).status).not.toBe(0)
   })
 
   it("composes a frame-less run, whose container receipt carries no capture", () => {
@@ -614,7 +636,7 @@ echo ELAPSED_MS=$elapsed_ms
 })
 
 /**
- * @failure host attach exit 143 discards observed.json + container-receipt.json + v2-run.json that
+ * @failure host attach exit 143 discards observed.json + container-receipt.json + v3-capture.json that
  *   the completed batch already wrote, so a 7.5 s kitty run is unusable.
  * @level l1 — sources completed_batch_survives_attach_timeout against owned temp receipts.
  * @consumer scripts/linux-container-run.sh host attach failure branch (#28552)
@@ -625,7 +647,7 @@ describe("completed batch survives attach SIGTERM (#28552)", () => {
     mkdirSync(raw)
     writeFileSync(join(raw, "observed.json"), "{}\n")
     writeFileSync(join(raw, "container-receipt.json"), "{}\n")
-    writeFileSync(join(raw, "v2-run.json"), "{}\n")
+    writeFileSync(join(raw, "v3-capture.json"), "{}\n")
     const completed = spawnSync(
       "bash",
       ["-c", 'source "$1"; completed_batch_survives_attach_timeout 143 "$2"', "_", launcher, raw],
