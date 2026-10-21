@@ -2,7 +2,12 @@
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
 import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
-import { readHyperlinkMetadata, recordExecutedCapability } from "@terminfo/probe-defs"
+import {
+  readHyperlinkMetadata,
+  readSentinelReply,
+  recordExecutedCapability,
+  sentinelGraceMs,
+} from "@terminfo/probe-defs"
 import type {
   CapabilityResult,
   RunDraft,
@@ -12,12 +17,26 @@ import type {
   ProbeAssertion,
   ProbeDefinition,
   ProbeResult,
+  TerminalQueryOutcome,
   TermlessContext,
   UngradedDiagnostic,
 } from "@terminfo/probe-defs"
+import type { ReplyPathProof } from "./proven-reply-paths.ts"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+
+/** The DA1 query the sentinel member sends in its own capture, as the live collector appends it. */
+const DA1_QUERY = "\x1b[c"
+
+/** A proven reply path, as the collector hands it to one probe's context (#30554). */
+export interface ProvenReplyPath {
+  readonly proof: ReplyPathProof
+  /** The grace window this pass reads, recorded in every sentinel outcome and waited out by G1. */
+  readonly graceMs: number
+  /** Called each time the member returns a `sentinel` outcome, so the collector listens before destroy. */
+  readonly onSentinel: () => void
+}
 
 /**
  * A declared `none` says the arm does not measure, so a collector failure on it has no observation to
@@ -46,7 +65,65 @@ export function feedCapture(backend: TerminalBackend, text: string): string {
   return response
 }
 
-export function createTermlessContext(backend: TerminalBackend): TermlessContext {
+/**
+ * F1 (27832) on a proven headless engine (#30554): the query in one capture, then DA1 in a capture of
+ * its own, read with the live collector's rule. Two captures keep the order a real terminal produces,
+ * the query's replies before the DA1 answer, even where an adapter appends its own reply after the
+ * engine's (libvterm, vt100 and vt220 do for 14t and 18t). The capture is synchronous, so a read that
+ * never saw the DA1 answer, or saw bytes ahead of it that match nothing, has ended the way live's
+ * timeout does: no sentinel facts, and never the `sentinel` outcome (@cto 67840412 R1).
+ */
+function sentinelOutcome(
+  backend: TerminalBackend,
+  sequence: string,
+  pattern: RegExp,
+  proven: ProvenReplyPath,
+): TerminalQueryOutcome {
+  const writeAt = Date.now()
+  const reply = feedCapture(backend, sequence)
+  const answer = feedCapture(backend, DA1_QUERY)
+  const raw = reply + answer
+  const captured = { raw, rawBase64: Buffer.from(raw).toString("base64") }
+  const read = readSentinelReply(raw, pattern)
+  if (read.kind === "reply") return { match: read.match, reason: "reply", ...captured }
+  if (read.kind !== "answered") {
+    return { match: read.match, reason: read.match ? "reply" : "timeout", ...captured }
+  }
+  const sentinel = { atMs: Date.now() - writeAt, graceMs: proven.graceMs }
+  if (read.match) return { match: read.match, reason: "reply", ...captured, sentinel }
+  proven.onSentinel()
+  return { match: null, reason: "sentinel", ...captured, sentinel }
+}
+
+/**
+ * G1 (#30554, @cto 452bc032): a proven path delivers every reply inside its capture, so any byte the
+ * engine sends after the callback returned contradicts the proof. Listen through the grace window,
+ * drain adapters that read pending input on state reads, and throw on a late byte: the caller's catch
+ * then records a collector error, never the negative the callback built on the silence.
+ */
+async function listenForLateReply(backend: TerminalBackend, graceMs: number): Promise<void> {
+  const listenedAt = Date.now()
+  let late = ""
+  let firstAt: number | undefined
+  const previous = backend.onResponse
+  backend.onResponse = (bytes) => {
+    firstAt ??= Date.now() - listenedAt
+    late += decoder.decode(bytes)
+  }
+  try {
+    await new Promise((resolve) => setTimeout(resolve, graceMs))
+    backend.getCursor()
+  } finally {
+    backend.onResponse = previous
+  }
+  if (late) {
+    throw new Error(
+      `late reply after sentinel: ${String(late.length)} bytes ${JSON.stringify(late)} at +${String(firstAt)}ms`,
+    )
+  }
+}
+
+export function createTermlessContext(backend: TerminalBackend, proven?: ProvenReplyPath): TermlessContext {
   let cols: number
   try {
     cols = backend.getRow(0).length
@@ -70,6 +147,11 @@ export function createTermlessContext(backend: TerminalBackend): TermlessContext
     feedCapture(text) {
       return feedCapture(backend, text)
     },
+    ...(proven && {
+      queryWithSentinelOutcome(sequence: string, pattern: RegExp) {
+        return sentinelOutcome(backend, sequence, pattern, proven)
+      },
+    }),
     getCell(row, col) {
       const cell = backend.getCell(row, col)
       const hyperlink = readHyperlinkMetadata(
@@ -290,7 +372,10 @@ export async function collectBatch(
   definitions: readonly ProbeDefinition[],
   draft?: Pick<RunDraft, "results">,
   onCheckpoint?: (batch: Batch) => void,
+  proof?: ReplyPathProof,
 ): Promise<Batch> {
+  // One read of the grace window per pass: every sentinel outcome records it and G1 waits it out.
+  const graceMs = proof ? sentinelGraceMs() : 0
   const batch: Batch = {
     results:
       draft?.results ??
@@ -326,8 +411,18 @@ export async function collectBatch(
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
-      const ctx = createTermlessContext(backend)
+      const sentinel = { fired: false }
+      const proven = proof && {
+        proof,
+        graceMs,
+        onSentinel: () => {
+          sentinel.fired = true
+        },
+      }
+      const ctx = createTermlessContext(backend, proven)
       const callback = probe.termless(ctx)
+      // G1 runs before anything of the callback is kept, so a late byte leaves only the collector error.
+      if (sentinel.fired) await listenForLateReply(backend, graceMs)
       callbackChecks = callback.checks
       criterionBranch = callback.criterionBranch
       recordResult(batch, probe, callback)
