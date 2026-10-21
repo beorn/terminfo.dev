@@ -6,9 +6,11 @@
  * @testonly none
  */
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { afterEach, expect, it, vi } from "vitest"
 import type { CapturedRunDraft, RunDraft } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
@@ -141,6 +143,117 @@ it.each([true, false])(
     }
   },
 )
+// The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
+// this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
+// manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
+// draft and refuses admission, and the fourth decision seals through the same writer in-process.
+it("reviews a draft the real headless collector wrote through admit-run --review", async () => {
+  const root = fileURLToPath(new URL("../../", import.meta.url))
+  const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim()
+  if (dirtySources) {
+    throw new Error(
+      `admit-run binds HEAD to the draft's sourceRevision; commit the dirty suite sources first:\n${dirtySources}`,
+    )
+  }
+  const dir = directory()
+  const collection = await collectHeadlessRuns(["xtermjs"], dir)
+  expect(collection.failures).toEqual([])
+  const draftPath = collection.runs[0]!
+  expect(draftPath).toMatch(/\.draft\.json$/)
+  const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
+  const draftBytes = readFileSync(draftPath, "utf8")
+  const pending = draft.results
+    .filter((row) => row.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+    .map((row) => row.featureId)
+    .sort()
+  expect(pending).toEqual(["extensions.clipboard-paste", "input.xtest-click", "input.xtest-key", "input.xtest-wheel"])
+  const decision = (featureId: string, reason: string) =>
+    JSON.stringify({
+      id: `round-trip-${featureId}`,
+      runId: draft.runId,
+      featureId,
+      captureSha256: createHash("sha256").update(draft.rawReplies[`collector.capture.${featureId}`]!).digest("hex"),
+      decision: "untestable",
+      reviewed: true,
+      reviewer: "collect-headless round-trip test",
+      reason,
+      scope: {
+        target: { kind: "headless", id: "xtermjs" },
+        versions: [draft.target.version, draft.target.version],
+        suites: [draft.probeHash, draft.probeHash],
+      },
+      sources: [`collector.capture.${featureId}`],
+      supersedes: [],
+    })
+  const reviewed = [
+    ["input.xtest-key", "Embedded xterm.js has no X server, so XTEST key injection has no path to the engine"],
+    ["input.xtest-click", "Embedded xterm.js has no X server, so XTEST click injection has no path to the engine"],
+    ["input.xtest-wheel", "Embedded xterm.js has no X server, so XTEST wheel injection has no path to the engine"],
+  ] as const
+  const reviewPaths = reviewed.map(([featureId, reason], index) => {
+    const path = join(dir, `review-${index}.json`)
+    writeFileSync(path, decision(featureId, reason))
+    return path
+  })
+  const startedAt = new Date().toISOString()
+  const result = Bun.spawnSync(
+    [
+      "bun",
+      "scripts/admit-run.ts",
+      "--for",
+      draftPath,
+      ...reviewPaths.flatMap((path) => ["--review", path]),
+      "--review-started-at",
+      startedAt,
+    ],
+    { cwd: root, stdout: "pipe", stderr: "pipe" },
+  )
+  const stdout = new TextDecoder().decode(result.stdout)
+  const stderr = new TextDecoder().decode(result.stderr)
+  expect(stderr, stdout).not.toContain("requires unverified measured identity")
+  const retainedPath = /Retained reviewed capture (.+); original draft unchanged/.exec(stdout)?.[1]
+  expect(retainedPath, `${stdout}\n${stderr}`).toBeTruthy()
+  expect(stderr).toContain("Required reviews remain pending")
+  expect(result.exitCode).toBe(1)
+  expect(readFileSync(draftPath, "utf8")).toBe(draftBytes)
+  const suite = probeSuiteSnapshot()
+  const suites = new Map([[suite.probeHash, suite]])
+  const retained = parseRun(retainedPath!, readFileSync(retainedPath!, "utf8"), suite.catalogIds!, suites, {
+    mode: "capture",
+  })
+  for (const [featureId] of reviewed) {
+    const row = retained.results?.find((entry) => entry.featureId === featureId)
+    expect(row?.status, featureId).toBe("untestable")
+    const check = row?.checks?.find((entry) => entry.id === "review")
+    expect(check?.status, featureId).toBe("untestable")
+    expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
+  }
+  expect(retained.results?.find((entry) => entry.featureId === "extensions.clipboard-paste")?.status).toBe("test-todo")
+  const sealedPath = saveDaemonProbeRun(
+    JSON.parse(readFileSync(retainedPath!, "utf8")) as CapturedRunDraft,
+    dir,
+    undefined,
+    [
+      {
+        source: decision(
+          "extensions.clipboard-paste",
+          "Embedded xterm.js has no system clipboard, so an XTEST paste has nothing to paste from",
+        ),
+        startedAt,
+      },
+    ],
+  )
+  expect(sealedPath).not.toMatch(/\.draft\.json$/)
+  const sealed = parseRun(sealedPath, readFileSync(sealedPath, "utf8"), suite.catalogIds!, suites)
+  expect(sealed.sealedAt).toBeTruthy()
+  for (const featureId of pending) {
+    expect(sealed.results?.find((entry) => entry.featureId === featureId)?.status, featureId).toBe("untestable")
+  }
+})
+
 // Batch callback tests do not exercise worker creation/timeouts: these invoke the real coordinator
 // with only its process actuator replaced, so no engine or terminal is launched.
 it("initializes all 273 before worker launch and retains explicit missing prerequisites as TODO", async () => {
