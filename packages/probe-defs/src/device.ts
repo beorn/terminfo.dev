@@ -1,5 +1,5 @@
 import type { ProbeDefinition, ProbeResult, TerminalQueryOutcome } from "./types.ts"
-import { REPLY_AFTER_SENTINEL_NOTE, parserStateResult, probe, sentinelNegativeResult } from "./helpers.ts"
+import { REPLY_AFTER_SENTINEL_NOTE, parserStateResult, probe, replyFrame, sentinelNegativeResult } from "./helpers.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
 interface DeviceReply {
@@ -112,11 +112,24 @@ function answerPattern(spec: DeviceReply): RegExp {
   return new RegExp(sources.join("|"), spec.valid.flags)
 }
 
+/**
+ * Live's grading of one query outcome. A headless context on a proven reply path offers the same
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here; a headless
+ * context without that member keeps its capture-only reading.
+ */
+function deviceOutcomeResult(spec: DeviceReply, outcome: TerminalQueryOutcome): ProbeResult {
+  return deviceReplyResult(spec, outcome.raw, replyFrame(outcome), outcome.reason, outcome.sentinel)
+}
+
 function deviceQuery(spec: DeviceReply): ProbeDefinition {
   const responsePattern = answerPattern(spec)
   const definition = probe(
     spec.id,
     (ctx) => {
+      // DA1 cannot be its own sentinel, so primary DA1 keeps the capture, as live keeps its direct query.
+      if (!spec.direct && ctx.queryWithSentinelOutcome) {
+        return deviceOutcomeResult(spec, ctx.queryWithSentinelOutcome(spec.query, responsePattern))
+      }
       const raw = ctx.feedCapture(spec.query)
       return deviceReplyResult(spec, raw, responsePattern.exec(raw)?.[0] ?? null, "sentinel")
     },
@@ -125,8 +138,7 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
       const outcome = spec.direct
         ? await ctx.queryOutcome(spec.query, responsePattern)
         : await ctx.queryWithSentinelOutcome(spec.query, responsePattern)
-      const matchedFrame = outcome.reason === "reply" ? (outcome.match?.[0] ?? null) : null
-      return deviceReplyResult(spec, outcome.raw, matchedFrame, outcome.reason, outcome.sentinel)
+      return deviceOutcomeResult(spec, outcome)
     },
     "query",
   )
@@ -157,7 +169,7 @@ function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
 
 /** Status-0 to SGR already shows the terminal speaks DECRQSS, so a silent second setting is not F1. */
 function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeResult {
-  const secondFrame = second.reason === "reply" ? (second.match?.[0] ?? null) : null
+  const secondFrame = replyFrame(second)
   const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
   if (graded.observation?.outcome === "supported") return graded
   if (refusedFrame(DECRQSS_DECSTBM, secondFrame)) {
@@ -204,15 +216,18 @@ function decrqssFacilityProbe(): ProbeDefinition {
   const definition = probe(
     "device.decrqss",
     (ctx) => {
+      // A proven headless path takes live's two steps: SGR, then DECSTBM only after an SGR refusal.
+      if (ctx.queryWithSentinelOutcome) {
+        const sgr = ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
+        if (!refusedFrame(DECRQSS_SGR, replyFrame(sgr))) return deviceOutcomeResult(DECRQSS_SGR, sgr)
+        return decrqssAfterSgrRefusal(ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern))
+      }
       const raw = ctx.feedCapture(DECRQSS_SGR.query)
       return deviceReplyResult(DECRQSS_SGR, raw, sgrPattern.exec(raw)?.[0] ?? null, "sentinel")
     },
     async (ctx) => {
       const sgr = await ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
-      const sgrFrame = sgr.reason === "reply" ? (sgr.match?.[0] ?? null) : null
-      if (!refusedFrame(DECRQSS_SGR, sgrFrame)) {
-        return deviceReplyResult(DECRQSS_SGR, sgr.raw, sgrFrame, sgr.reason, sgr.sentinel)
-      }
+      if (!refusedFrame(DECRQSS_SGR, replyFrame(sgr))) return deviceOutcomeResult(DECRQSS_SGR, sgr)
       const second = await ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
       return decrqssAfterSgrRefusal(second)
     },
@@ -424,19 +439,19 @@ export const deviceProbes: ProbeDefinition[] = [
       "device.xtwinops-20",
       (ctx) => {
         ctx.feed("\x1b]1;test-icon\x07")
+        if (ctx.queryWithSentinelOutcome) {
+          return deviceOutcomeResult(
+            iconLabelReply,
+            ctx.queryWithSentinelOutcome(iconLabelReply.query, answerPattern(iconLabelReply)),
+          )
+        }
         const raw = ctx.feedCapture(iconLabelReply.query)
         return deviceReplyResult(iconLabelReply, raw, answerPattern(iconLabelReply).exec(raw)?.[0] ?? null, "sentinel")
       },
       async (ctx) => {
         ctx.write("\x1b]1;test-icon\x07")
         const reply = await ctx.queryWithSentinelOutcome(iconLabelReply.query, answerPattern(iconLabelReply))
-        return deviceReplyResult(
-          iconLabelReply,
-          reply.raw,
-          reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
-          reply.reason,
-          reply.sentinel,
-        )
+        return deviceOutcomeResult(iconLabelReply, reply)
       },
     ),
     termlessObservationEvidence: "query",
@@ -449,19 +464,19 @@ export const deviceProbes: ProbeDefinition[] = [
       "device.xtwinops-21",
       (ctx) => {
         ctx.feed("\x1b]2;test-title\x07")
+        if (ctx.queryWithSentinelOutcome) {
+          return deviceOutcomeResult(
+            windowTitleReply,
+            ctx.queryWithSentinelOutcome(windowTitleReply.query, windowTitleReply.valid),
+          )
+        }
         const raw = ctx.feedCapture(windowTitleReply.query)
         return deviceReplyResult(windowTitleReply, raw, windowTitleReply.valid.exec(raw)?.[0] ?? null, "sentinel")
       },
       async (ctx) => {
         ctx.write("\x1b]2;test-title\x07")
         const reply = await ctx.queryWithSentinelOutcome(windowTitleReply.query, windowTitleReply.valid)
-        return deviceReplyResult(
-          windowTitleReply,
-          reply.raw,
-          reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
-          reply.reason,
-          reply.sentinel,
-        )
+        return deviceOutcomeResult(windowTitleReply, reply)
       },
     ),
     termlessObservationEvidence: "query",

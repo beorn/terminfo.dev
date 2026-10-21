@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
 import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-defs"
-import { decrpmReplyPattern, decrpmStatus } from "@terminfo/probe-defs"
+import { decrpmReplyPattern, decrpmStatus, readSentinelReply, sentinelGraceMs } from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -159,17 +159,21 @@ function matchResponse(
       if (settled) return
       chunks.push(Buffer.from(chunk))
       buf = Buffer.concat(chunks).toString()
-      const match = buf.match(pattern)
       if (!sentinel) {
+        const match = buf.match(pattern)
         if (match) finish([...match], "reply")
         return
       }
-      const end = buf.search(/\x1b\[\?[0-9;]+c/)
-      if (end < 0) return
-      if (match && (match.index ?? 0) < end) {
-        finish([...match], "reply")
+      // The headless collector reads its captures with this same rule (#30554).
+      const read = readSentinelReply(buf, pattern)
+      if (read.kind === "pending") return
+      if (read.kind === "reply") {
+        finish(read.match, "reply")
         return
       }
+      // `unmatched` (bytes ahead of the DA1 answer, none matching) still takes the sentinel path here,
+      // as it always has; the headless collector never reads it as silence. #30559 decides live's rule
+      // from a census of live cells with bytes before the DA1 answer.
       // DA1 answered and no reply preceded it. Keep reading for the grace window: a reply inside it
       // still grades by the reply, carrying the ordering note; only silence through the window is the
       // measured negative the grader records as "negative by sentinel", citing these numbers. The
@@ -177,7 +181,7 @@ function matchResponse(
       sentinelFacts ??= { atMs: Date.now() - writeAt, graceMs }
       clearTimeout(timer)
       timer = setTimeout(() => finish(null, "sentinel", sentinelFacts), graceMs)
-      if (match) finish([...match], "reply", sentinelFacts)
+      if (read.match) finish(read.match, "reply", sentinelFacts)
     }
 
     const startTimer = () => {
@@ -240,38 +244,6 @@ export function readResponse(
  */
 export async function query(sequence: string, responsePattern: RegExp, timeoutMs = 1000): Promise<string[] | null> {
   return (await queryOutcome(sequence, responsePattern, timeoutMs)).match
-}
-
-/**
- * F1 (27832): how long the collector keeps reading after a DA1 sentinel before it calls a missing
- * reply a measured negative. Sized by measurement, once: re-run the sentinel-fired features on every
- * Release 1 terminal with a 1 s post-DA1 read and record any late reply and its delay, then
- * grace = max(250 ms, 2 x the largest observed delay). 250 ms is the floor until that measurement
- * lands; the issue names any terminal that answers late and the features it answers late for.
- */
-export const SENTINEL_GRACE_MS = 250
-
-/**
- * The window is a measured value, so the one-time sizing pass may widen it without a code change:
- * TERMINFO_SENTINEL_GRACE_MS sets the post-DA1 read for that pass only. An unset or empty value is
- * the floor. Anything that is not a positive whole number of milliseconds falls back to the same
- * floor and says so on stderr: a typo here must never be silent, and a mistyped sizing value does
- * not justify refusing the pass (28385, 30255).
- */
-export function sentinelGraceMs(
-  raw: string | undefined = process.env.TERMINFO_SENTINEL_GRACE_MS,
-  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
-): number {
-  if (raw === undefined || raw === "") return SENTINEL_GRACE_MS
-  const value = /^[0-9]+$/.test(raw) ? Number(raw) : Number.NaN
-  if (!Number.isSafeInteger(value) || value < 1) {
-    warn(
-      `TERMINFO_SENTINEL_GRACE_MS ${JSON.stringify(raw)} is not a positive whole number of milliseconds; ` +
-        `using the ${SENTINEL_GRACE_MS} ms floor for this run`,
-    )
-    return SENTINEL_GRACE_MS
-  }
-  return value
 }
 
 /**

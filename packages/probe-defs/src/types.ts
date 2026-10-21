@@ -628,6 +628,15 @@ export interface TermlessContext {
   readonly cols: number
   feed(text: string): void
   feedCapture(text: string): string
+  /**
+   * F1 (27832) on a headless engine (#30554). Present only when the collector holds a proof that this
+   * backend delivers every engine reply inside the capture (packages/probes proven-reply-paths.ts); an
+   * arm that finds it absent keeps its plain capture, so a silent query stays inconclusive there. It
+   * captures `sequence`, then a DA1 query in a capture of its own, and reads the two with the live
+   * collector's rule (readSentinelReply): a DA1 answer with nothing before it and no reply is the
+   * measured `sentinel` outcome live records.
+   */
+  queryWithSentinelOutcome?(sequence: string, pattern: RegExp): TerminalQueryOutcome
   getCell(
     row: number,
     col: number,

@@ -19,6 +19,7 @@ import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
+import { replyPathDecision } from "./proven-reply-paths.ts"
 import { owningCheckout } from "./termless-root.ts"
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
@@ -137,6 +138,10 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     backend = undefined
     loaded.destroy()
+    // The run keeps why its silent queries could or could not grade by sentinel (#30554).
+    const replyPath = replyPathDecision(name, runtimeIdentity)
+    draft.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
+    checkpoint()
     const batch = await collectBatch(
       async () => loadedBackend(await resolveBackend(), entry.package),
       name,
@@ -150,6 +155,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
         })
         checkpoint()
       },
+      replyPath.member ? replyPath.proof : undefined,
     )
     const run: CapturedRunDraft = {
       ...draft,

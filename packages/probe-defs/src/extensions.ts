@@ -8,6 +8,7 @@ import {
   parserStateResult,
   probe,
   readHyperlinkMetadata,
+  replyFrame,
   sentinelNegativeResult,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
@@ -68,6 +69,14 @@ function oscReplyResult(
   }
 }
 
+/**
+ * Live's grading of one OSC query outcome. A headless context on a proven reply path offers the same
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here.
+ */
+function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string, prefix: RegExp): ProbeResult {
+  return oscReplyResult(reply.raw, replyFrame(reply), expected, prefix, reply.sentinel)
+}
+
 function unverifiedEffect(note: string, response?: string): ProbeResult {
   return {
     pass: false,
@@ -114,6 +123,20 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeResult {
       },
     ],
   }
+}
+
+/** XTSMGRAPHICS item 2, read: the current Sixel geometry in pixels. */
+const SIXEL_GEOMETRY_QUERY = "\x1b[?2;1;0S"
+const SIXEL_GEOMETRY_REPLY = /\x1b\[\?2;[0-9;]*S/
+
+/** Live's grading of one Sixel geometry outcome, shared by both arms (#30554). */
+function sixelGeometryOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+  return sixelGeometryResult(
+    reply.raw,
+    replyFrame(reply),
+    reply.reason === "timeout" ? "timeout" : "no-response",
+    reply.sentinel,
+  )
 }
 
 /** A read of current Sixel geometry; protocol failure and silence never establish a negative. */
@@ -218,19 +241,22 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
       probe(
         id,
         (ctx) => {
+          if (ctx.queryWithSentinelOutcome) {
+            return oscOutcomeResult(
+              ctx.queryWithSentinelOutcome(querySeq, pattern),
+              `Complete OSC ${oscCode} color reply`,
+              prefix,
+            )
+          }
           const raw = ctx.feedCapture(querySeq)
           return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, `Complete OSC ${oscCode} color reply`, prefix)
         },
-        async (ctx) => {
-          const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
-          return oscReplyResult(
-            reply.raw,
-            reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
+        async (ctx) =>
+          oscOutcomeResult(
+            await ctx.queryWithSentinelOutcome(querySeq, pattern),
             `Complete OSC ${oscCode} color reply`,
             prefix,
-            reply.sentinel,
-          )
-        },
+          ),
         "query",
       ),
     ),
@@ -348,19 +374,13 @@ function oscSimpleQueryProbe(
       probe(
         id,
         (ctx) => {
+          if (ctx.queryWithSentinelOutcome) {
+            return oscOutcomeResult(ctx.queryWithSentinelOutcome(query, pattern), expected, prefix)
+          }
           const raw = ctx.feedCapture(query)
           return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
         },
-        async (ctx) => {
-          const reply = await ctx.queryWithSentinelOutcome(query, pattern)
-          return oscReplyResult(
-            reply.raw,
-            reply.reason === "reply" ? (reply.match?.[0] ?? null) : null,
-            expected,
-            prefix,
-            reply.sentinel,
-          )
-        },
+        async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(query, pattern), expected, prefix),
         "query",
       ),
     ),
@@ -845,6 +865,7 @@ const KITTY_FLAGS = /\x1b\[\?(\d+)u/
 const KITTY_FLAGS_SHAPED = /\x1b\[\?[0-9;]*u/
 /** A `CSI ?` sequence that never reaches a final byte before the next escape or the end of the capture. */
 const KITTY_FLAGS_TRUNCATED = /\x1b\[\?[0-9;]*(?=\x1b|$)/
+const KITTY_FLAGS_MISSING = "No Kitty keyboard reply; key events were not tested"
 
 type KittyDetection =
   | { readonly kind: "answered" }
@@ -934,6 +955,13 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
       }
       ctx.feed(`\x1b[>${pushValue}u`) // explicit push; a throw here pops nothing
       try {
+        if (ctx.queryWithSentinelOutcome) {
+          return matchedReplyResult(
+            ctx.queryWithSentinelOutcome(`\x1b[?u`, KITTY_FLAGS),
+            KITTY_FLAGS_MISSING,
+            (frame) => keyboardFlagsResult(frame, flagBit),
+          )
+        }
         return keyboardFlagsResult(ctx.feedCapture(`\x1b[?u`), flagBit)
       } finally {
         ctx.feed("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
@@ -955,9 +983,11 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
       }
       ctx.write(`\x1b[>${pushValue}u`) // explicit push; a throw here pops nothing
       try {
-        const reply = await ctx.queryWithSentinelOutcome(`\x1b[?u`, KITTY_FLAGS)
-        if (!reply.match) return unansweredQuery(reply, "No Kitty keyboard reply; key events were not tested")
-        return keyboardFlagsResult(reply.match[0] ?? "", flagBit)
+        return matchedReplyResult(
+          await ctx.queryWithSentinelOutcome(`\x1b[?u`, KITTY_FLAGS),
+          KITTY_FLAGS_MISSING,
+          (frame) => keyboardFlagsResult(frame, flagBit),
+        )
       } finally {
         ctx.write("\x1b[<u") // pop the mode pushed for this probe, even if the query fails
       }
@@ -984,12 +1014,27 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult
   }
 }
 
+/**
+ * Live's reading of one string-graded query outcome: no matched frame grades through unansweredQuery, a
+ * matched frame through the site's grader. A headless context on a proven reply path offers the same
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms read it here. The grader reads only the
+ * frame; the result keeps the whole read window, DA1 answer included, as the observed evidence.
+ */
+function matchedReplyResult(
+  reply: TerminalQueryOutcome,
+  missingNote: string,
+  grade: (frame: string) => ProbeResult,
+): ProbeResult {
+  if (!reply.match) return unansweredQuery(reply, missingNote)
+  return { ...grade(reply.match[0] ?? ""), response: reply.raw }
+}
+
 function keyboardFlagsResult(response: string, flagBits: number): ProbeResult {
   const match = /\x1b\[\?(\d+)u/.exec(response)
   if (!match?.[1]) {
     return unansweredQuery(
       { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
-      "No Kitty keyboard reply; key events were not tested",
+      KITTY_FLAGS_MISSING,
     )
   }
   const flags = Number(match[1])
@@ -1112,6 +1157,47 @@ function allocatedImageResult(response: string, imageNumber: number): { imageId:
   }
 }
 
+/** The specified query action: it replies before the DA1 sentinel and stores no image. */
+const GRAPHICS_QUERY = "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"
+const GRAPHICS_QUERY_REPLY = /\x1b_Gi=31;([^\x1b]+)\x1b\\/
+
+/** Live's reading of the graphics query outcome, shared by both arms (#30554). */
+function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+  return matchedReplyResult(reply, "No matching graphics query reply; image rendering was not tested", (frame) =>
+    graphicsQueryResult(frame, 31),
+  )
+}
+
+/** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
+function allocationOutcomeResult(
+  reply: TerminalQueryOutcome,
+  imageNumber: number,
+): { imageId: number | null; result: ProbeResult } {
+  if (!reply.match) {
+    return {
+      imageId: null,
+      result: unansweredQuery(
+        reply,
+        "No matching image allocation reply; no image ownership or transmission conclusion",
+      ),
+    }
+  }
+  const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
+  return { ...uploaded, result: { ...uploaded.result, response: reply.raw } }
+}
+
+function placementRequest(imageId: number): string {
+  return `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`
+}
+
+/** Live's reading of a placement outcome, shared by both arms (#30554). */
+function placementOutcomeResult(placement: TerminalQueryOutcome, imageId: number): ProbeResult {
+  // The probe grades the acknowledgement, never rendering: WezTerm places silently (27915).
+  return matchedReplyResult(placement, "No placement acknowledgement; visible pixels were not tested", (frame) =>
+    graphicsQueryResult(frame, imageId, "Image placement acknowledged; visible pixels were not tested"),
+  )
+}
+
 function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition {
   const newNumber = () => (Number.parseInt(globalThis.crypto.randomUUID().slice(0, 8), 16) % 0xfffffffe) + 1
   return {
@@ -1121,10 +1207,23 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         const imageNumber = newNumber()
         let imageId: number | null = null
         try {
+          if (ctx.queryWithSentinelOutcome) {
+            const uploaded = allocationOutcomeResult(
+              ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
+              imageNumber,
+            )
+            imageId = uploaded.imageId
+            if (!imageId || !display) return uploaded.result
+            const placement = ctx.queryWithSentinelOutcome(
+              placementRequest(imageId),
+              kittyReplyFrame({ i: String(imageId) }),
+            )
+            return placementOutcomeResult(placement, imageId)
+          }
           const uploaded = allocatedImageResult(ctx.feedCapture(imageTransferRequest(imageNumber)), imageNumber)
           imageId = uploaded.imageId
           if (!imageId || !display) return uploaded.result
-          const response = ctx.feedCapture(`\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`)
+          const response = ctx.feedCapture(placementRequest(imageId))
           return graphicsQueryResult(response, imageId, "Image placement acknowledged; visible pixels were not tested")
         } finally {
           if (imageId) ctx.feed(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
@@ -1134,32 +1233,17 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
         const imageNumber = newNumber()
         let imageId: number | null = null
         try {
-          const reply = await ctx.queryWithSentinelOutcome(
-            imageTransferRequest(imageNumber),
-            allocationReply(imageNumber),
+          const uploaded = allocationOutcomeResult(
+            await ctx.queryWithSentinelOutcome(imageTransferRequest(imageNumber), allocationReply(imageNumber)),
+            imageNumber,
           )
-          if (!reply.match) {
-            return unansweredQuery(
-              reply,
-              "No matching image allocation reply; no image ownership or transmission conclusion",
-            )
-          }
-          const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
           imageId = uploaded.imageId
           if (!imageId || !display) return uploaded.result
           const placement = await ctx.queryWithSentinelOutcome(
-            `\x1b_Ga=p,i=${imageId},c=2,r=1,C=1\x1b\\`,
+            placementRequest(imageId),
             kittyReplyFrame({ i: String(imageId) }),
           )
-          if (!placement.match) {
-            // The probe grades the acknowledgement, never rendering: WezTerm places silently (27915).
-            return unansweredQuery(placement, "No placement acknowledgement; visible pixels were not tested")
-          }
-          return graphicsQueryResult(
-            placement.match[0] ?? "",
-            imageId,
-            "Image placement acknowledged; visible pixels were not tested",
-          )
+          return placementOutcomeResult(placement, imageId)
         } finally {
           // Free only the image the terminal explicitly allocated for this probe.
           if (imageId) ctx.write(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
@@ -1171,9 +1255,17 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
   }
 }
 
+const OSC21_FOREGROUND_QUERY = "\x1b]21;foreground=?\x1b\\"
+const OSC21_REPLY = /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/
+
+/** Live's reading of the OSC 21 outcome, shared by both arms (#30554). */
+function kittyForegroundOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+  return matchedReplyResult(reply, "No OSC 21 reply; color rendering was not tested", kittyForegroundResult)
+}
+
 /** A query establishes recognition; this does not test changed colors or pixels. */
 function kittyForegroundResult(response: string): ProbeResult {
-  const match = /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/.exec(response)
+  const match = OSC21_REPLY.exec(response)
   if (!match) {
     return unansweredQuery(
       { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
@@ -1231,8 +1323,16 @@ function textSizingResult(
   }
 }
 
+const CLIPBOARD_QUERY = "\x1b[?5522$p"
+const CLIPBOARD_REPLY = /\x1b\[\?5522;([0-4])\$y/
+
+/** Live's reading of the mode 5522 outcome, shared by both arms (#30554). */
+function clipboardOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
+  return matchedReplyResult(reply, "No DECRPM response for mode 5522", clipboardProtocolResult)
+}
+
 function clipboardProtocolResult(response: string): ProbeResult {
-  const match = /\x1b\[\?5522;([0-4])\$y/.exec(response)
+  const match = CLIPBOARD_REPLY.exec(response)
   if (!match) {
     return unansweredQuery(
       { match: null, reason: "sentinel", raw: response, rawBase64: btoa(response) },
@@ -1649,17 +1749,12 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...queryOnly(
       probe(
         "extensions.kitty-graphics",
-        (ctx) => graphicsQueryResult(ctx.feedCapture("\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\"), 31),
-        async (ctx) => {
-          const reply = await ctx.queryWithSentinelOutcome(
-            "\x1b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\x1b\\",
-            /\x1b_Gi=31;([^\x1b]+)\x1b\\/,
-          )
-          if (!reply.match) {
-            return unansweredQuery(reply, "No matching graphics query reply; image rendering was not tested")
-          }
-          return graphicsQueryResult(reply.match[0] ?? "", 31)
-        },
+        (ctx) =>
+          ctx.queryWithSentinelOutcome
+            ? graphicsQueryOutcomeResult(ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY))
+            : graphicsQueryResult(ctx.feedCapture(GRAPHICS_QUERY), 31),
+        async (ctx) =>
+          graphicsQueryOutcomeResult(await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)),
         "query",
       ),
     ),
@@ -2352,12 +2447,11 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...queryOnly(
       probe(
         "extensions.osc5522-clipboard",
-        (ctx) => clipboardProtocolResult(ctx.feedCapture("\x1b[?5522$p")),
-        async (ctx) => {
-          const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", /\x1b\[\?5522;([0-4])\$y/)
-          if (!reply.match) return unansweredQuery(reply, "No DECRPM response for mode 5522")
-          return clipboardProtocolResult(reply.match[0] ?? "")
-        },
+        (ctx) =>
+          ctx.queryWithSentinelOutcome
+            ? clipboardOutcomeResult(ctx.queryWithSentinelOutcome(CLIPBOARD_QUERY, CLIPBOARD_REPLY))
+            : clipboardProtocolResult(ctx.feedCapture(CLIPBOARD_QUERY)),
+        async (ctx) => clipboardOutcomeResult(await ctx.queryWithSentinelOutcome(CLIPBOARD_QUERY, CLIPBOARD_REPLY)),
         "query",
       ),
     ),
@@ -2536,15 +2630,12 @@ export const extensionsProbes: ProbeDefinition[] = [
     ...queryOnly(
       probe(
         "extensions.osc21-kitty-color",
-        (ctx) => kittyForegroundResult(ctx.feedCapture("\x1b]21;foreground=?\x1b\\")),
-        async (ctx) => {
-          const reply = await ctx.queryWithSentinelOutcome(
-            "\x1b]21;foreground=?\x1b\\",
-            /\x1b\]21;([^\x07\x1b]*)(?:\x07|\x1b\\)/,
-          )
-          if (!reply.match) return unansweredQuery(reply, "No OSC 21 reply; color rendering was not tested")
-          return kittyForegroundResult(reply.match[0] ?? "")
-        },
+        (ctx) =>
+          ctx.queryWithSentinelOutcome
+            ? kittyForegroundOutcomeResult(ctx.queryWithSentinelOutcome(OSC21_FOREGROUND_QUERY, OSC21_REPLY))
+            : kittyForegroundResult(ctx.feedCapture(OSC21_FOREGROUND_QUERY)),
+        async (ctx) =>
+          kittyForegroundOutcomeResult(await ctx.queryWithSentinelOutcome(OSC21_FOREGROUND_QUERY, OSC21_REPLY)),
         "query",
       ),
     ),
@@ -2683,20 +2774,17 @@ export const extensionsProbes: ProbeDefinition[] = [
       probe(
         "extensions.sixel-geometry-report",
         (ctx) => {
-          const raw = ctx.feedCapture("\x1b[?2;1;0S")
-          const frame = /\x1b\[\?2;[0-9;]*S/.exec(raw)?.[0] ?? null
+          if (ctx.queryWithSentinelOutcome) {
+            return sixelGeometryOutcomeResult(ctx.queryWithSentinelOutcome(SIXEL_GEOMETRY_QUERY, SIXEL_GEOMETRY_REPLY))
+          }
+          const raw = ctx.feedCapture(SIXEL_GEOMETRY_QUERY)
+          const frame = SIXEL_GEOMETRY_REPLY.exec(raw)?.[0] ?? null
           return sixelGeometryResult(raw, frame, "no-response")
         },
-        async (ctx) => {
-          const reply = await ctx.queryWithSentinelOutcome("\x1b[?2;1;0S", /\x1b\[\?2;[0-9;]*S/, 1000)
-          const frame = reply.reason === "reply" ? (reply.match?.[0] ?? null) : null
-          return sixelGeometryResult(
-            reply.raw,
-            frame,
-            reply.reason === "timeout" ? "timeout" : "no-response",
-            reply.sentinel,
-          )
-        },
+        async (ctx) =>
+          sixelGeometryOutcomeResult(
+            await ctx.queryWithSentinelOutcome(SIXEL_GEOMETRY_QUERY, SIXEL_GEOMETRY_REPLY, 1000),
+          ),
         "query",
       ),
     ),
