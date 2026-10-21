@@ -262,11 +262,6 @@ function backendTooltip(name, version) {
 </div>
 <p v-else class="no-data-inline">No app results yet. See <a href="/contribute">how to record a run and prepare an offline contribution draft</a>.</p>
 
-<details class="unmeasured release-details">
-  <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
-  <ul><li v-for="feature in data.releaseScope.unmeasured" :key="feature.id"><a :href="'/' + feature.id.split('.')[0] + '/' + featureSlug(feature.id)">{{ feature.name }}</a></li></ul>
-</details>
-
 ## Terminal Baseline 2026 {#baselines}
 
 <p class="section-subtitle">Inspired by <a href="https://web.dev/baseline">Web Baseline</a> — minimum feature sets that terminals should support. For the weird and wonderful history of protocols that didn't make the cut, see the <a href="/baseline/legacy">Legacy baseline</a>.</p>

@@ -112,14 +112,6 @@ const breadcrumbParent = (() => {
 
 <p v-if="p.terminalDescription" class="terminal-desc">{{ p.terminalDescription }}</p>
 
-<p class="tier-line">{{ data.releaseScope.line }}</p>
-<details class="unmeasured">
-  <summary>{{ data.releaseScope.unmeasured.length }} features not measured in this release</summary>
-  <ul>
-    <li v-for="feature in data.releaseScope.unmeasured" :key="feature.id"><a :href="'/' + feature.id.split('.')[0] + '/' + (data.featureDescriptions[feature.id]?.slug ?? feature.id.replace(/\./g, '-'))">{{ feature.name }}</a></li>
-  </ul>
-</details>
-
 <div v-if="relatedPages.length" class="see-also">
   See also: <span v-for="(r, i) in relatedPages"><a :href="r.link">{{ r.text }}</a><span v-if="i < relatedPages.length - 1"> · </span></span>
 </div>
