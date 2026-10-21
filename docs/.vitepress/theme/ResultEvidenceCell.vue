@@ -136,15 +136,19 @@ const referenceImageUrl = computed(() => (referenceFrame.value ? withBase(refere
 const expectedIllustration = computed(() =>
   props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
 )
-const compactResult = computed(() => {
-  if (status.value.text === "Supported") return "Matches the expected result."
-  if (status.value.text === "Unsupported") return "Does not match the expected result."
-  if (status.value.text === "Untestable") return "Not testable in this reviewed context."
+const compactCause = computed(() => {
+  if (status.value.text === "Supported")
+    return isDecSampleResult.value ? "q becomes a line; ASCII is restored" : "meets the recorded test criterion"
+  if (status.value.text === "Unsupported") return "does not meet the recorded test criterion"
+  if (status.value.text === "Untestable") return props.cell?.note || "reviewed context prevents this test"
   if (status.value.text === "TEST TODO")
-    return props.cell?.evidence === "none" ? "Not run: execution prerequisite unmet." : "Not run in this selection."
-  return props.cell?.evidence === "text" || props.cell?.evidence === "pixels"
-    ? "Capture failed."
-    : "No valid test result."
+    return props.cell?.evidence === "none" && props.cell.reason === "policy-refused"
+      ? "test did not start: prerequisite unmet"
+      : "rerun required"
+  if (props.cell?.evidence === "text") return "our test could not capture text"
+  if (props.cell?.evidence === "pixels") return "our test could not capture an image"
+  if (props.cell?.reason === "timeout") return "our test timed out"
+  return "our test could not produce a valid result"
 })
 
 const evidenceRecord = computed(() => evidenceDocument.value?.record)
@@ -471,7 +475,7 @@ onBeforeUnmount(() => {
         @focusout="scheduleHidePreview"
         @keydown.esc.stop="closePreview"
       >
-        <strong class="result-evidence__verdict">{{ status.text }}</strong>
+        <strong class="result-evidence__verdict">{{ status.text }} · {{ compactCause }}</strong>
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
           >{{ targetName
@@ -487,7 +491,6 @@ onBeforeUnmount(() => {
                 <rect x="1" y="1" width="38" height="26" rx="2" />
                 <path d="M6 22l9-9 7 7 6-6 6 8M5 4l30 20" />
               </svg>
-              <span>Not captured</span>
             </div>
           </figure>
           <figure>
@@ -498,7 +501,7 @@ onBeforeUnmount(() => {
                 :src="expectedIllustration"
                 :alt="'Illustrative expected Unicode cells; not a captured terminal result'"
               />
-              <span class="result-evidence__illustrative">Illustration · Not captured</span>
+              <span class="result-evidence__illustrative">Illustration</span>
             </template>
             <pre v-else-if="assertions[0]?.expected" class="result-evidence__sample-text">{{
               assertions[0].expected
@@ -512,7 +515,6 @@ onBeforeUnmount(() => {
             </div>
           </figure>
         </div>
-        <p class="result-evidence__compact-result">{{ compactResult }}</p>
         <details class="result-evidence__compact-details" @toggle="keepPreview">
           <summary>Technical details</summary>
           <div>

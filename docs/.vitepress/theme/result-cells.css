@@ -357,10 +357,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.result-evidence__preview .result-evidence__compact-result {
-  font-size: 0.73rem;
-  margin: 4px 0;
-}
 .result-evidence__compact-details {
   border-top: 1px solid var(--vp-c-divider);
   padding-top: 7px;
