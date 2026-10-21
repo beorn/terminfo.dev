@@ -167,21 +167,11 @@ test("28786: the hashed adapter sources cover the collector import closure and d
   expect(missing, "every capture import remains hashed alongside the finalization stages").toEqual([])
 })
 
-/**
- * 28786, negative control: a source NEITHER collector entry reaches must not move the suite.
- * `terminal-app-window.ts` is imported only by packages/admin/src (app.ts, terminal-app-receipt.ts);
- * neither collector entry (serve.ts, collect-headless.ts) reaches it, so listing it would move the suite
- * without touching any observation those entries make. The collector's one process proof lives in
- * owned-process.ts, which IS hashed. (The admin app collection DOES execute it — that is a different
- * entry, and it is not one of the entries this suite declares.)
- */
-test("28786: a source neither collector entry reaches does not move the suite hash", () => {
+// Presentation-only source does not execute in capture, enrichment or review finalization.
+test("28786: presentation-only source does not move the suite hash", () => {
   const baseline = probeHash()
-  changed.file = "packages/terminfo.dev/src/terminal-app-window.ts"
-  expect(
-    probeHash(),
-    "terminal-app-window.ts is unreached from the collector entries serve.ts and collect-headless.ts",
-  ).toBe(baseline)
+  changed.file = "docs/.vitepress/theme/ResultEvidenceCell.vue"
+  expect(probeHash(), "presentation changes cannot rewrite execution suite identity").toBe(baseline)
   changed.file = ""
 })
 
