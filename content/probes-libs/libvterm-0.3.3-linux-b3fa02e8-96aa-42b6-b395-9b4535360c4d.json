@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.9.2",
     "termlessRevision": "bed5c0d82de183e6539307ee32b2cfbcefc8fd16",
-    "resolvedPath": "/hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/termless/packages/libvterm/src/index.ts",
+    "resolvedPath": "vendor/termless/packages/libvterm/src/index.ts",
     "integrity": {
       "kind": "source",
       "repository": "git@github.com:beorn/termless.git",
@@ -28,7 +28,7 @@
     "runtimeFormat": "wasm",
     "engineVersion": "0.3.3",
     "loadedBinary": {
-      "path": "/hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/termless/packages/libvterm/wasm/libvterm.wasm",
+      "path": "vendor/termless/packages/libvterm/wasm/libvterm.wasm",
       "sha256": "1df1f9725e0a75c2a02f8207b3114e1038f9c15f4020900247ff3ad0f2e098b5"
     }
   },

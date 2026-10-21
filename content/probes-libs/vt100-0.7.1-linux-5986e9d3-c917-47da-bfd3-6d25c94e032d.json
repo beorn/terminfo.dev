@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
-    "resolvedPath": "/hh/var/wt/adhoc1-wave-f877/node_modules/.bun/vt100.js@file+vendor+vterm+packages+vt100/node_modules/vt100.js/src/index.ts",
+    "resolvedPath": "node_modules/.bun/vt100.js@file+vendor+vterm+packages+vt100/node_modules/vt100.js/src/index.ts",
     "integrity": {
       "kind": "source",
       "repository": "git@github.com:beorn/vterm.git",

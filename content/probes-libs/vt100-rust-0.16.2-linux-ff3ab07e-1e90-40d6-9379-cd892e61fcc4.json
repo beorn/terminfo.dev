@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
     "loadedBinary": {
-      "path": "/hh/var/wt/adhoc1-wave-f877/vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+      "path": "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
       "sha256": "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa"
     },
     "provenance": {

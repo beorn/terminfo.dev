@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "aaa4bf2dedb07f3a30a9c8e0d38a687c529069a3",
-    "resolvedPath": "/hh/var/wt/dev-wt3/node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    "resolvedPath": "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
     "integrity": {
       "kind": "registry",
       "lockIntegrity": "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="

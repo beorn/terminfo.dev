@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "3fe156569982e6ee57a73f8b5d0ed7e495fb29ae",
     "loadedBinary": {
-      "path": "/hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
+      "path": "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
       "sha256": "89fa01a30036e551dfe2128ac05179a907aac123b28b6c9680c45459a6955df4"
     },
     "provenance": {

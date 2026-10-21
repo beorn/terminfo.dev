@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
     "loadedBinary": {
-      "path": "/hh/dev-wt3/vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
+      "path": "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
       "sha256": "41a52d6bb3b9263b02993dd7ed3d5716dfa61707b656a7d79179e813408c7b51"
     },
     "provenance": {

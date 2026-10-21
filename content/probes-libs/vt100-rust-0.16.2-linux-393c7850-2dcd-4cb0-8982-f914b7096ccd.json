@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "eecb4ca22c7986683b613aa3fe694bb770a937ff",
     "loadedBinary": {
-      "path": "/hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+      "path": "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
       "sha256": "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa"
     },
     "provenance": {

@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "eecb4ca22c7986683b613aa3fe694bb770a937ff",
     "loadedBinary": {
-      "path": "/hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/vendor/termless/packages/wezterm/termless-wezterm.node",
+      "path": "vendor/termless/packages/wezterm/termless-wezterm.node",
       "sha256": "a0e33d906a21ce7edb4383683b195f3b86d2c6aa8f67bee99cc92a6b869807d2"
     },
     "provenance": {

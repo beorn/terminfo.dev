@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "430044688076ba32ef69f093eff0a337098e36dd",
-    "resolvedPath": "/hh/var/wt/30033/node_modules/.bun/vt100.js@file+vendor+vterm+packages+vt100/node_modules/vt100.js/src/index.ts",
+    "resolvedPath": "node_modules/.bun/vt100.js@file+vendor+vterm+packages+vt100/node_modules/vt100.js/src/index.ts",
     "integrity": {
       "kind": "source",
       "repository": "git@github.com:beorn/vterm.git",

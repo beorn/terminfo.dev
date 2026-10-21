@@ -20,7 +20,6 @@
     "revision": "b09b56c29c1e367e598b60ca266e2cc9038751e0"
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev12/27915-clean/runs6/b5844e3ee13098ea25a58a8b247a433a/prep/runner-bundle.tar",
     "sha256": "a8c8da5866118314664d0ab1911427f9669c758f1deb527b55cbe6b01624d158",
     "narSha256": "sha256-vRsWyj0bDz/n1/qqkMEqPSa71tY9EAo4lUgJB0eqV2Y=",
     "frozenRunnerSha256": "2b10e92e1c80a61a5d5a492de50fdeaffecf990eef3b0424cf3eb17a059393b8",

@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "3fe156569982e6ee57a73f8b5d0ed7e495fb29ae",
-    "resolvedPath": "/hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/vterm/packages/vterm/src/index.ts",
+    "resolvedPath": "vendor/vterm/packages/vterm/src/index.ts",
     "integrity": {
       "kind": "source",
       "repository": "git@github.com:beorn/vterm.git",

@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
     "loadedBinary": {
-      "path": "/hh/var/wt/adhoc1-wave-f877/vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
+      "path": "vendor/termless/packages/ghostty-native/termless-ghostty-native.node",
       "sha256": "84a83e2dbb6105eb8023e2a47a6a31924c7187c91d003ce260f7630e12929d70"
     },
     "provenance": {

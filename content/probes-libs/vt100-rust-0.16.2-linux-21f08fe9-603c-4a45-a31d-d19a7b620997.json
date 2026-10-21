@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "30f4cbe6731838f9cfe5915e29ece45377c7b541",
     "loadedBinary": {
-      "path": "/hh/var/wt/dev10-15323-final-collection/vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
+      "path": "vendor/termless/packages/vt100-rust/termless-vt100-rust.node",
       "sha256": "a478127f571a25cf0e2b52e2972aa26d4344df03d9b3fba93ca03efd9cc9a0fa"
     },
     "provenance": {

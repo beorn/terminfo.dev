@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "3fe156569982e6ee57a73f8b5d0ed7e495fb29ae",
-    "resolvedPath": "/hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    "resolvedPath": "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
     "integrity": {
       "kind": "registry",
       "lockIntegrity": "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="

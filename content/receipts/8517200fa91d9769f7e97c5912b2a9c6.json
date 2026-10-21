@@ -17,7 +17,6 @@
     "sri": "sha256-1XNhi5EenEYb1CG5bBPHTH8csvGsnDJ4GNT/hDZs9cY="
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@adhoc1/wave-f877/kitty-linux/3f4edc4eb51b8cd02e9ae6ddba91522e/prep/runner-bundle.tar",
     "sha256": "14bbaee460aad9432c405f05bf5dda6fb3c6cdba701d64df29ffa197feab198e",
     "narSha256": "sha256-6dgAm23hUBRcELAnaekx8TxfS/fwZGfiVzpVCV83RJ4=",
     "frozenRunnerSha256": "5f9c2a16769e33c895c3160d552b1725c82781164f0e033b42a42a4b2c93e976",

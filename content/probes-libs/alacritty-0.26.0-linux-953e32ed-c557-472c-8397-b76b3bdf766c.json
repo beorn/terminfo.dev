@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "eecb4ca22c7986683b613aa3fe694bb770a937ff",
     "loadedBinary": {
-      "path": "/hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      "path": "vendor/termless/packages/alacritty/termless-alacritty-native.node",
       "sha256": "14f385f0a01dd79ad5a0853f1c95c61f4252be718e4b0b6de176537c01959bca"
     },
     "provenance": {

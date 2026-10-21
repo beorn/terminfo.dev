@@ -20,7 +20,6 @@
     "revision": "refs/tags/v0.17.0"
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev/luna3/linux-448ce7769d2c/b39d46ac391d734843b041dcb7e635e2/prep/runner-bundle.tar",
     "sha256": "0a0c27d31cad9c629cdfd87f0d70e14efd894e6211dd64daf6a21716c4e30108",
     "narSha256": "sha256-jsdyDNw4TRyByPPx6WRKqjvT+lHkZ9L6KEcAK92w6g4=",
     "frozenRunnerSha256": "8d162e32e699d2d72ec841e3300de2efca7f93ba9bca4f0c1d5e9bcb9e8085e2",

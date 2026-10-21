@@ -20,7 +20,6 @@
     "revision": "refs/tags/v0.17.0"
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev/luna3/freeze-c240/alacritty-recollect-1540/c065af0aef73f41db7b1040ee50d516c/prep/runner-bundle.tar",
     "sha256": "2dbac91c53b0efdf51a9b321912dea513339a9d26719f79f4a3bd56cda5573f7",
     "narSha256": "sha256-qEVkidA7RjtEyEISmBcQs7Wh6Vi1/6DMPgCgE/Ph8bs=",
     "frozenRunnerSha256": "a41ba57230b74092ba48c416494100ae28312d5e23933fda2e9555d73577131b",

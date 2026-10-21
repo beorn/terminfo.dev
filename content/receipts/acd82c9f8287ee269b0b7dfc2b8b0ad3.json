@@ -17,7 +17,6 @@
     "sri": "sha256-1XNhi5EenEYb1CG5bBPHTH8csvGsnDJ4GNT/hDZs9cY="
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev/luna3/freeze-c240/e350a369c99987b3f21b07fb872ba6c2/prep/runner-bundle.tar",
     "sha256": "fc725ffeae2e73d0addf5419377cb86d9a742345b8f71cb57e38b99e9b65cf17",
     "narSha256": "sha256-2w+B0qIVtHZjSmcWSPFUZxmzWeJ3NX/6nWbTiLr6Jvg=",
     "frozenRunnerSha256": "d9ee6bfcff6c5a9a449c2528543b22e052c76a2fc3ecee66113f292b255df82d",

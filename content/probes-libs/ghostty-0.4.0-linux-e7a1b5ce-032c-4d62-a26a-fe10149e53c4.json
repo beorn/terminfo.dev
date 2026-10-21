@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "4b39770c169ec393cfd6ec7f59110e91c9c9d0c5",
-    "resolvedPath": "/hh/dev-wt3/node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/dist/ghostty-web.js",
+    "resolvedPath": "node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/dist/ghostty-web.js",
     "integrity": {
       "kind": "registry",
       "lockIntegrity": "sha512-0puDBik2qapbD/QQBW9o5ZHfXnZBqZWx/ctBiVtKZ6ZLds4NYb+wZuw1cRLXZk9zYovIQ908z3rvFhexAvc5Hg=="
@@ -25,7 +25,7 @@
     "runtimeFormat": "wasm",
     "engineVersion": "0.4.0",
     "loadedBinary": {
-      "path": "/hh/dev-wt3/node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/ghostty-vt.wasm",
+      "path": "node_modules/.bun/ghostty-web@0.4.0/node_modules/ghostty-web/ghostty-vt.wasm",
       "sha256": "d6f0326f1874ad2ce9f289e3a4a0c5f3507d4cb38d8747e4b287def470a0c60a"
     }
   },

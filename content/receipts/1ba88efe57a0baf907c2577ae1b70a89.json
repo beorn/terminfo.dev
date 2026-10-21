@@ -20,7 +20,6 @@
     "revision": "refs/tags/v1.3.1"
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev3/27917/linux/ghostty/63073ce0946ff087c52fa34ebb04f27c/prep/runner-bundle.tar",
     "sha256": "dfb28a66a6113be68d54dc751778a6ffcf3e1e39867fafb9e54031e3fc0e082a",
     "narSha256": "sha256-yLbW7DB5DyipTN+xVjQjO0SWhHFZ4HMTuAQ2p33xyio=",
     "frozenRunnerSha256": "da2da4cf102eeb399913366ae7e13f730c892ca93cb253a087e849a951bd466b",

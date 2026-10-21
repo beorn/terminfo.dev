@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "3fe156569982e6ee57a73f8b5d0ed7e495fb29ae",
     "loadedBinary": {
-      "path": "/hh/var/wt/@si/terminfo/15323-quality-plateau/vendor/termless/packages/alacritty/termless-alacritty-native.node",
+      "path": "vendor/termless/packages/alacritty/termless-alacritty-native.node",
       "sha256": "1ab3171861f6af82b2fc60089d7627a85049470773f80730ccfb5cbecf9ecee8"
     },
     "provenance": {

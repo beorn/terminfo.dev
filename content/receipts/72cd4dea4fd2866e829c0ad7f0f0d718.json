@@ -20,7 +20,6 @@
     "revision": "refs/tags/v0.17.0"
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev/3/27892-runs/alacritty/0faf043c3a9d686d2b359e45da57f0d0/prep/runner-bundle.tar",
     "sha256": "af325f7701c134c4ecf1c9aed15433032ffcee3663fd38fdabba206a8e03e3de",
     "narSha256": "sha256-71LEwWmUf+RTarWkZlCnZ8XaiUCWblouuz2xswlbn1U=",
     "frozenRunnerSha256": "6195dcf6bf4ab949eb0afb5bcd8bbe933380253eba66c1e084c3c583ad1eb4f5",

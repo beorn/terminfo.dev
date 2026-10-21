@@ -17,7 +17,6 @@
     "sri": "sha256-lpvig2cN6t1mk0hlxN5sWrBF46P6zCsijez5GiDYw2w="
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev3/30033/xterm-linux/db8e5248b50e84eb8c070bbb92940d91/prep/runner-bundle.tar",
     "sha256": "bcc49e07dccef8796b0c3e528a8b749ea04ab514f1f486260e621b89f16c1ef8",
     "narSha256": "sha256-r2fSCtBz7SNK10gIu5vE2q0d8XmkWwhpXDdQgkAgS9w=",
     "frozenRunnerSha256": "fcd8e1238ec94bd87b8cf9ebc73bd4e16430e3d68c3ff99bece710ed8225f5c0",

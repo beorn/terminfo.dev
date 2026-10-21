@@ -17,7 +17,6 @@
     "sri": "sha256-lpvig2cN6t1mk0hlxN5sWrBF46P6zCsijez5GiDYw2w="
   },
   "runnerArtifact": {
-    "url": "file:///hh/var/@dev/luna3/28023-24/collection-f9450b3bc56a/ca3d0fb68c142a07f81284e4b1e179b4/prep/runner-bundle.tar",
     "sha256": "30e8256e4bc4e6c06bc587a90c8060eee335559d1bd1c97fd6117e905a8aef11",
     "narSha256": "sha256-k4JTpZyqitkzJY3+b57FH/8klAGwIzx1Dw8QL6XW5Zo=",
     "frozenRunnerSha256": "c19d3e140f399bf7a29a34aa77568bd5360aed6fe2fe90a2052bf00b1da81881",

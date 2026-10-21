@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.10.2",
     "termlessRevision": "eecb4ca22c7986683b613aa3fe694bb770a937ff",
-    "resolvedPath": "/hh/var/yrd-workdir/github.com/beorn/hh-dev%23main/environments/adhoc1-kitty-batch1-private/vendor/vterm/packages/vt100/src/index.ts",
+    "resolvedPath": "vendor/vterm/packages/vt100/src/index.ts",
     "integrity": {
       "kind": "source",
       "repository": "git@github.com:beorn/vterm.git",

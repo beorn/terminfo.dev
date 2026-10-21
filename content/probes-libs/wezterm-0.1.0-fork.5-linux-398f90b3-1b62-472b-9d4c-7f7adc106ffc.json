@@ -19,7 +19,7 @@
     "adapterVersion": "0.10.2",
     "termlessRevision": "30f4cbe6731838f9cfe5915e29ece45377c7b541",
     "loadedBinary": {
-      "path": "/hh/var/wt/dev10-15323-final-collection/vendor/termless/packages/wezterm/termless-wezterm.node",
+      "path": "vendor/termless/packages/wezterm/termless-wezterm.node",
       "sha256": "a0e33d906a21ce7edb4383683b195f3b86d2c6aa8f67bee99cc92a6b869807d2"
     },
     "provenance": {

@@ -17,7 +17,7 @@
     "kind": "js",
     "adapterVersion": "0.9.2",
     "termlessRevision": "4da05890587546edb221909ef0ec64c4651b528a",
-    "resolvedPath": "/hh/var/wt/@si/terminfo/15323-quality-plateau/node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
+    "resolvedPath": "node_modules/.bun/@xterm+headless@6.0.0/node_modules/@xterm/headless/lib-headless/xterm-headless.js",
     "integrity": {
       "kind": "registry",
       "lockIntegrity": "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="
