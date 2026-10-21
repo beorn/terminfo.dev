@@ -35,7 +35,7 @@ it.each(["tmux", "screen"])(
     const tty=await import("./packages/terminfo.dev/src/tty.ts")
     const owned=await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const hash="a".repeat(12),revision="b".repeat(40)
-    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest:{catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:hash,probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:revision}
+    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest:{catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:hash,probes:{app:unified.ALL_PROBES.map(p=>p.id).sort(),mux:unified.ALL_PROBES.map(p=>p.id).sort(),headless:[]}},collectorRevision:revision}
     const mux=process.env.TERMINFO_TEST_MUX, version=mux==="screen"?"4.09.01":"3.6"
     const target={kind:"mux",id:mux,version,os:"linux",osVersion:"fixture",outerTerminal:"kitty",mux,config:"/out/mux.conf",permissions:null}
     const outerApp={target:{...target,kind:"app",id:"kitty",version:"0.49.2",outerTerminal:null,mux:null,config:"--config NONE"},
