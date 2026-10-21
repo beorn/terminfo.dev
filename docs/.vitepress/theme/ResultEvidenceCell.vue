@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import type { ObservationEvidence, ObservationReason } from "@terminfo/probe-defs"
+import type { ObservationReason } from "@terminfo/probe-defs"
 import type { EvidenceDocument, PublicCell, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import { data } from "../../data/probes.data"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 
 const props = withDefaults(
@@ -68,29 +69,17 @@ const namedCoverage = computed(() =>
   props.version?.notTestedCoverage.named.find((record) => record.featureId === props.featureId),
 )
 
-const status = computed(() => {
-  if (!props.version) return { text: "No reviewed current result", icon: "?", tone: "unknown" }
-  if (!props.cell) {
-    return {
-      text: namedCoverage.value ? "Not tested: no applicable observable" : "Not tested by this run",
-      icon: "?",
-      tone: "unknown",
-    }
-  }
-  if (props.cell.outcome === "error") return { text: "Probe error", icon: "!", tone: "error" }
-  if (props.cell.outcome === "inconclusive") return { text: "Inconclusive", icon: "~", tone: "ungraded" }
-  if (!props.cell.conclusive) return { text: "Ungraded observation", icon: "~", tone: "ungraded" }
-  if (props.cell.outcome === "supported") return { text: "Supported", icon: "✓", tone: "yes" }
-  if (props.cell.outcome === "unsupported") return { text: "Unsupported", icon: "✗", tone: "no" }
-  return { text: "Ungraded observation", icon: "~", tone: "ungraded" }
-})
-const shortLabel = computed(() => {
-  if (status.value.text === "No reviewed current result") return "No result"
-  if (status.value.text.startsWith("Not tested")) return "Not tested"
-  if (status.value.text === "Ungraded observation") return "Ungraded"
-  if (status.value.text === "Probe error") return "Error"
-  return status.value.text
-})
+const status = computed(
+  () =>
+    ({
+      supported: { text: "Supported", icon: "✓", tone: "yes" },
+      unsupported: { text: "Unsupported", icon: "✗", tone: "no" },
+      inconclusive: { text: "Untestable", icon: "–", tone: "ungraded" },
+      untested: { text: "TEST TODO", icon: "–", tone: "unknown" },
+      error: { text: "TEST FAILURE", icon: "!", tone: "error" },
+    })[(props.version && data.releaseTable[props.version.runId]?.[props.featureId]) || "untested"],
+)
+const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.evidence === "query"
     ? "Terminal query"
@@ -98,18 +87,6 @@ const methodLabel = computed(() =>
       ? "Not measured"
       : (props.cell?.evidence ?? ""),
 )
-// Wording contract: how-it-works/how-to-read-a-result.md:16,22–26.
-const previewMethods: Partial<Record<ObservationEvidence, string>> = {
-  query: "terminal response",
-  pixels: "screenshot",
-  behavior: "measured behavior",
-  "parser-state": "engine state",
-  interaction: "input test",
-}
-const previewStatus = computed(() => {
-  const method = props.cell ? previewMethods[props.cell.evidence] : undefined
-  return props.cell?.conclusive && method ? status.value.text + ": verified in " + method : status.value.text
-})
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
   if (!props.cell) {
@@ -147,6 +124,29 @@ const previewFrame = computed(() =>
   previewFrames.value.find((frame) => frame.role === "target" && frame.kind !== "text-cells"),
 )
 const previewImageUrl = computed(() => (previewFrame.value ? withBase(previewFrame.value.url) : screenshotUrl.value))
+// A control is not an expected result unless the retained label explicitly identifies a reference.
+const referenceFrame = computed(() =>
+  previewFrames.value.find((frame) => frame.kind !== "text-cells" && /\b(expected|reference)\b/i.test(frame.label)),
+)
+const testedText = computed(() => {
+  const frame = previewFrames.value.find((frame) => frame.role === "target" && frame.kind === "text-cells")
+  return frame ? textSnapshots.value[frame.sha256] : undefined
+})
+const referenceImageUrl = computed(() => (referenceFrame.value ? withBase(referenceFrame.value.url) : undefined))
+const expectedIllustration = computed(() =>
+  props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
+)
+const compactResult = computed(() => {
+  if (status.value.text === "Supported") return "Matches the expected result."
+  if (status.value.text === "Unsupported") return "Does not match the expected result."
+  if (status.value.text === "Untestable") return "Not testable in this reviewed context."
+  if (status.value.text === "TEST TODO")
+    return props.cell?.evidence === "none" ? "Not run: execution prerequisite unmet." : "Not run in this selection."
+  return props.cell?.evidence === "text" || props.cell?.evidence === "pixels"
+    ? "Capture failed."
+    : "No valid test result."
+})
+
 const evidenceRecord = computed(() => evidenceDocument.value?.record)
 const evidenceFrames = computed(() => evidenceRecord.value?.frames ?? [])
 const evidenceScreenshot = computed(() => evidenceRecord.value?.screenshot)
@@ -363,7 +363,7 @@ function showPreview(): void {
   keepPreview()
   if (dialogVisible.value || !trigger.value || typeof window === "undefined") return
   const box = trigger.value.getBoundingClientRect()
-  const width = Math.min(320, window.innerWidth - 16)
+  const width = Math.min(420, window.innerWidth - 16)
   const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8))
   const above = window.innerHeight - box.bottom < 230 && box.top > 230
   previewPosition.value = {
@@ -373,10 +373,18 @@ function showPreview(): void {
     ...(above ? { transform: "translateY(-100%)" } : {}),
   }
   previewVisible.value = true
+  document.addEventListener("pointerdown", outsidePreview)
   void loadEvidence()
 }
 
+function outsidePreview(event: PointerEvent): void {
+  if (event.target instanceof Node && (preview.value?.contains(event.target) || trigger.value?.contains(event.target)))
+    return
+  hidePreview()
+}
+
 function hidePreview(): void {
+  document.removeEventListener("pointerdown", outsidePreview)
   keepPreview()
   previewVisible.value = false
 }
@@ -408,7 +416,7 @@ watch(evidenceIdentity, () => {
 })
 
 onBeforeUnmount(() => {
-  keepPreview()
+  hidePreview()
   invalidateEvidence()
   if (dialog.value?.open) dialog.value.close()
 })
@@ -428,7 +436,7 @@ onBeforeUnmount(() => {
       @focus="showPreview"
       @blur="scheduleHidePreview"
       @keydown.esc.stop="hidePreview"
-      @click="openDialog"
+      @click="showPreview"
     >
       <span aria-hidden="true">{{ status.icon }}</span>
       <span v-if="display === 'text'" class="result-evidence__label"
@@ -451,56 +459,75 @@ onBeforeUnmount(() => {
         @focusout="scheduleHidePreview"
         @keydown.esc.stop="hidePreview"
       >
-        <strong>{{ previewStatus }}</strong>
-        <span
-          >{{ targetName }}<template v-if="version"> · {{ version.target.version }}</template></span
+        <strong class="result-evidence__verdict">{{ status.text }}</strong>
+        <strong class="result-evidence__test-title">{{ featureName }}</strong>
+        <span class="result-evidence__compact-context"
+          >{{ targetName
+          }}<template v-if="version"> · {{ version.target.version }} · {{ version.target.os }}</template></span
         >
-        <template v-if="probeGuidanceText && !recordedQueries.length && !previewImageUrl">
-          <strong>Current probe guidance</strong>
-          <span>{{ probeGuidanceText }}</span>
-        </template>
-        <a :href="withBase('/how-it-works/')">How we test</a>
-        <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
-        <span v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</span>
-        <span v-if="textExplanation">{{ textExplanation }}</span>
-        <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
-        <span v-if="cell?.note">{{ cell.note }}</span>
-        <img
-          v-if="previewImageUrl"
-          :src="previewImageUrl"
-          :alt="previewFrame ? `${previewFrame.label} target frame` : `Recorded ${featureName} result`"
-        />
-        <span v-if="previewFrames.length">{{ previewFrames.length }} screenshots · before and after</span>
-        <span v-if="presentation?.state === 'withdrawn'">Presentation withdrawn: {{ presentation.review.reason }}</span>
-        <span v-if="evidenceLoading">Loading recorded evidence…</span>
-        <span v-else-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
-        <template v-else-if="recordedQueries.length && !previewImageUrl">
-          <template v-for="(query, index) in recordedQueries" :key="index">
-            <strong>What we asked</strong>
-            <pre class="result-evidence__raw">{{ JSON.stringify(query.sequence) }}</pre>
-            <strong>Terminal reply</strong>
-            <pre v-if="query.raw !== undefined" class="result-evidence__raw">{{ JSON.stringify(query.raw) }}</pre>
-            <span v-else>No reply bytes were recorded for this query.</span>
-          </template>
-          <template v-for="(assertion, index) in assertions" :key="index">
-            <span>Expected: {{ assertion.expected }}</span>
-            <span>Observed: {{ assertion.observed }}</span>
-          </template>
-        </template>
-        <template v-else-if="rawReply !== undefined && !previewImageUrl">
-          <strong>{{ cell?.evidence === "query" ? "Terminal reply" : "Recorded test trace" }}</strong>
-          <pre class="result-evidence__raw">{{ rawReplyDisplay }}</pre>
-        </template>
-        <span v-else-if="evidenceDocument && !previewImageUrl">No reply or screenshot was recorded.</span>
-        <button v-if="presentation?.state === 'presented'" type="button" @click="openDialog">
-          {{
-            previewImageUrl
-              ? "See screenshots and test details"
-              : cell?.evidence === "query"
-                ? "See the terminal's reply and test details"
-                : "See recorded evidence and test details"
-          }}
-        </button>
+        <div class="result-evidence__comparison">
+          <figure>
+            <figcaption>TESTED</figcaption>
+            <img v-if="previewImageUrl" :src="previewImageUrl" :alt="`Recorded ${featureName} target`" />
+            <pre v-else-if="testedText" class="result-evidence__sample-text">{{ testedText }}</pre>
+            <div v-else class="result-evidence__missing-image" role="img" aria-label="Not captured">
+              <svg viewBox="0 0 40 28" aria-hidden="true">
+                <rect x="1" y="1" width="38" height="26" rx="2" />
+                <path d="M6 22l9-9 7 7 6-6 6 8M5 4l30 20" />
+              </svg>
+              <span>Not captured</span>
+            </div>
+          </figure>
+          <figure>
+            <figcaption>EXPECTED</figcaption>
+            <img v-if="referenceImageUrl" :src="referenceImageUrl" :alt="`Recorded reference for ${featureName}`" />
+            <template v-else-if="expectedIllustration">
+              <img
+                :src="expectedIllustration"
+                :alt="'Illustrative expected Unicode cells; not a captured terminal result'"
+              />
+              <span class="result-evidence__illustrative">Illustration · Not captured</span>
+            </template>
+            <pre v-else-if="assertions[0]?.expected" class="result-evidence__sample-text">{{
+              assertions[0].expected
+            }}</pre>
+            <div v-else class="result-evidence__missing-image" role="img" aria-label="Expected reference not recorded">
+              <svg viewBox="0 0 40 28" aria-hidden="true">
+                <rect x="1" y="1" width="38" height="26" rx="2" />
+                <path d="M6 22l9-9 7 7 6-6 6 8" />
+              </svg>
+              <span>Reference not recorded</span>
+            </div>
+          </figure>
+        </div>
+        <p class="result-evidence__compact-result">{{ compactResult }}</p>
+        <details class="result-evidence__compact-details" @toggle="keepPreview">
+          <summary>Technical details</summary>
+          <div>
+            <strong>Feature test</strong>
+            <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
+            <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
+            <span v-if="cell?.note">{{ cell.note }}</span>
+            <template v-if="cell?.textQualificationReason">
+              <strong>Capture qualification</strong>
+              <span>{{ cell.textQualificationReason }}</span>
+            </template>
+            <span v-else-if="textExplanation">{{ textExplanation }}</span>
+            <span v-if="evidenceLoading">Loading recorded evidence…</span>
+            <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
+            <span v-if="presentation?.state === 'withdrawn'"
+              >Presentation withdrawn: {{ presentation.review.reason }}</span
+            >
+            <code v-if="version">Run {{ version.runId }}</code>
+            <details v-if="probeGuidanceText">
+              <summary>Catalog test description</summary>
+              {{ probeGuidanceText }}
+            </details>
+            <button v-if="presentation?.state === 'presented'" type="button" @click="openDialog">
+              Open recorded evidence
+            </button>
+          </div>
+        </details>
       </div>
 
       <dialog
@@ -557,27 +584,11 @@ onBeforeUnmount(() => {
             <p>The status describes the tested claim. The evidence label describes how it was observed.</p>
             <h4>Result states</h4>
             <ul>
-              <li><strong>Supported</strong>: the evidence establishes the tested effect.</li>
-              <li><strong>Unsupported</strong>: the evidence establishes that the tested effect did not occur.</li>
-              <li><strong>Inconclusive</strong>: the evidence does not establish either result.</li>
-              <li><strong>Probe error (Error)</strong>: the probe failed to complete its measurement.</li>
-              <li>
-                <strong>Ungraded observation (Ungraded)</strong>: a result was recorded, but it lacks a usable
-                conclusive assessment of the tested claim. For example, a legacy callback may record a pass/fail value
-                without enough measured evidence to grade it. This does not necessarily mean test criteria were absent.
-              </li>
-              <li>
-                <strong>Not tested by this run (Not tested)</strong>: the site has selected a reviewed run for this
-                context, but that run has no observation for this feature. For example, the run may predate this feature
-                being added to its suite. This does not prove unsupported or a deliberate skip.
-              </li>
-              <li>
-                <strong>No reviewed current result (No result)</strong>: the site has not selected any reviewed run for
-                this terminal context. For example, it may have only an unreviewed capture for this version and
-                configuration. Private or older runs may also exist. This differs from Not tested, where a run is
-                selected but lacks this feature; you do not need to select a run, and this does not describe human
-                consensus.
-              </li>
+              <li><strong>Supported</strong>: the evidence satisfies the support criterion.</li>
+              <li><strong>Unsupported</strong>: a functioning test obtained the defined negative result.</li>
+              <li><strong>Untestable</strong>: a specific reviewed context limitation prevents the test.</li>
+              <li><strong>TEST TODO</strong>: the required measurement has not run.</li>
+              <li><strong>TEST FAILURE</strong>: the attempted test did not produce a valid result.</li>
             </ul>
             <h4>Evidence kinds</h4>
             <ul>
