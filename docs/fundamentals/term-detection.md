@@ -62,7 +62,7 @@ DECRPM — DEC Private Mode Report — replies to a DECRQM request for one priva
 
 Many features have private-mode numbers, including bracketed paste (2004), mouse tracking (1000/1002/1003/1006), focus tracking (1004), alternate screen (1049), and synchronized output (2026). A valid correlated reply reports whether the responding layer recognizes the requested mode and its current state. It does not by itself verify rendering or interaction associated with that mode.
 
-No attempted probe is TEST TODO; a probe that receives no reply is TEST FAILURE: the layer might not implement DECRQM, or the reply might not reach the application. DECRPM also cannot describe features without a corresponding private-mode query, such as OSC 8 hyperlinks or Kitty graphics. Those need other queries or controlled behavioral observations.
+If no probe was attempted, the site displays TEST TODO. An attempted DECRQM query without its required reply is TEST FAILURE: the layer might not implement DECRQM, or the reply might not reach the application. DECRPM also cannot describe features without a corresponding private-mode query, such as OSC 8 hyperlinks or Kitty graphics. Those need other queries or controlled behavioral observations.
 
 ## XTVERSION
 
@@ -78,7 +78,7 @@ Runtime probing asks what a terminal did in a specified test. A measured reply o
 
 A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply after an attempted query is TEST FAILURE. Writing test content changes the terminal, so this check needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
 
-[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and marks a state-changing check TEST TODO unless a verified disposable test environment is available. A query reply establishes only the property it reports; rendering and interaction require their own observations.
+[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and skips state-changing checks unless a verified disposable test environment is available. The site displays those skipped checks as TEST TODO; the raw run preserves the collector's original fields. A query reply establishes only the property it reports; rendering and interaction require their own observations.
 
 ::: info Why terminfo.dev probes directly instead of using terminfo
 Terminfo describes capabilities associated with a `$TERM` entry, including [user-defined extensions in ncurses](https://invisible-island.net/ncurses/man/user_caps.5.html). Those descriptions do not record what happened in a particular test. Runtime observations complement them; unanswered or refused checks give no support conclusion. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
