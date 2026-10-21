@@ -2,7 +2,7 @@
  * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a drifted version, bytes ahead of the DA1 answer or a late reply becomes a measured negative.
  * @level l1
  * @consumer The headless collector's sentinel member, its G1 listener and the proven reply-path table (#30554, @cto verdicts 452bc032 and 67840412).
- * @reach Builds the production context and batch from headless-batch.ts over real Termless backends; where a case needs a reply no engine gives on demand, the engine's replies are scripted behind the real backend.
+ * @reach Builds the production context and batch from headless-batch.ts over real Termless backends and runs real probe arms from @terminfo/probe-defs through it, beside each arm's live twin fed the same outcomes; where a case needs a reply no engine gives on demand, the engine's replies are scripted behind the real backend.
  * @testonly none
  */
 /* oxlint-disable typescript/no-deprecated -- Exercise the production TerminalBackend adapter boundary. */
@@ -12,7 +12,7 @@ import { createVt100Backend } from "@termless/vt100"
 import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createXtermBackend } from "@termless/xtermjs"
-import type { ProbeDefinition } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeDefinition, type TermContext, type TerminalQueryOutcome } from "@terminfo/probe-defs"
 import { afterEach, expect, test, vi } from "vitest"
 import { collectBatch, createTermlessContext, feedCapture, type ProvenReplyPath } from "./headless-batch.ts"
 import { PROVEN_REPLY_PATHS, replyPathDecision, type ReplyPathProof } from "./proven-reply-paths.ts"
@@ -219,51 +219,145 @@ test.each(["ghostty", "alacritty", "wezterm", "vt100-rust", "ghostty-native", "k
   },
 )
 
-/** A query probe that publishes the sentinel negative its silent engine earns, in the graders' words. */
-const silentQuery: ProbeDefinition = {
-  id: "sentinel.fixture",
-  term: null,
-  termlessObservationEvidence: "query",
-  termless: (ctx) => {
-    const outcome = ctx.queryWithSentinelOutcome?.("\x1b[>q", XTVERSION)
-    if (outcome?.reason !== "sentinel" || !outcome.sentinel) throw new Error(`no sentinel outcome: ${JSON.stringify(outcome)}`)
-    const { atMs, graceMs } = outcome.sentinel
-    return {
-      pass: false,
-      response: outcome.raw,
-      observation: { outcome: "unsupported", evidence: "query", note: "negative by sentinel" },
-      assertions: [
-        {
-          kind: "negative",
-          expected: "XTVERSION reply",
-          observed: `DA1 answered at +${String(atMs)}ms; no reply through the ${String(graceMs)} ms window`,
-        },
-      ],
-    }
-  },
+function definitionOf(id: string): ProbeDefinition {
+  const definition = ALL_PROBES.find((candidate) => candidate.id === id)
+  if (!definition) throw new Error(`no probe definition ${id}`)
+  return definition
 }
+
+function armsOf(id: string) {
+  const { termless, term } = definitionOf(id)
+  if (!termless || !term) throw new Error(`${id} has no headless and live arm pair`)
+  return { termless, term }
+}
+
+/** A proven context that keeps every outcome its sentinel member gave, in order. */
+function recordingContext(script: (text: string) => string) {
+  const ctx = contextOf(scripted(script), proven())
+  const member = ctx.queryWithSentinelOutcome?.bind(ctx)
+  if (!member) throw new Error("a proven context has the sentinel member")
+  const outcomes: TerminalQueryOutcome[] = []
+  ctx.queryWithSentinelOutcome = (sequence, pattern) => {
+    const outcome = member(sequence, pattern)
+    outcomes.push(outcome)
+    return outcome
+  }
+  return { ctx, outcomes }
+}
+
+/** A live context whose sentinel queries answer, in order, with the outcomes a headless arm was given. */
+function replayingLive(outcomes: readonly TerminalQueryOutcome[]): TermContext {
+  const queue = [...outcomes]
+  const refused = (what: string) => async (): Promise<never> => {
+    throw new Error(`the live arm asked for ${what}`)
+  }
+  return {
+    write: () => {},
+    queryCursorPosition: refused("a cursor report"),
+    measureRenderedWidth: refused("a width"),
+    query: refused("a raw query"),
+    queryWithSentinel: refused("a sentinel match"),
+    queryOutcome: refused("a direct query"),
+    queryWithSentinelOutcome: async () => {
+      const next = queue.shift()
+      if (!next) throw new Error("the live arm asked for more sentinel queries than the headless arm made")
+      return next
+    },
+    queryMode: refused("a mode"),
+  }
+}
+
+interface ArmCase {
+  id: string
+  when: string
+  /** The engine's reply to each query; anything unnamed is silent. DA1 always answers. */
+  replies: Readonly<Record<string, string>>
+  outcome: "unsupported" | "inconclusive"
+}
+
+// One real arm per grader family, both two-step arms, and DECRQSS's second step after an SGR refusal.
+const ARM_CASES: ArmCase[] = [
+  { id: "device.xtversion", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "device.xtwinops-20", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "device.decrqss", when: "silent", replies: {}, outcome: "unsupported" },
+  {
+    id: "device.decrqss",
+    when: "after an SGR refusal",
+    replies: { "\x1bP$qm\x1b\\": "\x1bP0$r\x1b\\" },
+    outcome: "inconclusive",
+  },
+  { id: "extensions.osc10-fg-color", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.osc1337-cellsize", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.sixel-geometry-report", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.osc21-kitty-color", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.osc5522-clipboard", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.kitty-graphics", when: "silent", replies: {}, outcome: "unsupported" },
+  { id: "extensions.kitty-graphics.transmit", when: "silent", replies: {}, outcome: "unsupported" },
+]
+
+test.each(ARM_CASES)(
+  "$id, $when: the proven headless arm grades exactly as live grades the same outcomes",
+  async ({ id, replies, outcome }) => {
+    const { termless, term } = armsOf(id)
+    const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
+    const headless = termless(ctx)
+    expect(outcomes.length, id).toBeGreaterThan(0)
+    expect(headless.observation?.outcome, id).toBe(outcome)
+    if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
+    expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
+    // Without the member the arm keeps today's capture-only reading, where silence never grades.
+    const plain = termless(contextOf(scripted((text) => replies[text] ?? "")))
+    expect(plain.observation?.outcome, id).toBe("inconclusive")
+  },
+)
+
+test("extensions.kitty-keyboard: once detection answers, a silent flags query grades as live grades it", async () => {
+  const { termless, term } = armsOf("extensions.kitty-keyboard")
+  const detection = `\x1b[?0u${DA1}`
+  const fed: string[] = []
+  const { ctx, outcomes } = recordingContext((text) => {
+    fed.push(text)
+    if (text === "\x1b[?u\x1b[c") return detection
+    return text === DA1_QUERY ? DA1 : ""
+  })
+  const headless = termless(ctx)
+  // Detection stays the DA1-graded capture both collectors already share; the flags query takes the member.
+  expect(fed).toEqual(["\x1b[?u\x1b[c", "\x1b[>1u", "\x1b[?u", DA1_QUERY, "\x1b[<u"])
+  expect(headless.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+  const answered: TerminalQueryOutcome = {
+    match: ["\x1b[?0u", "0"],
+    reason: "reply",
+    raw: detection,
+    rawBase64: base64(detection),
+  }
+  expect(headless).toStrictEqual(await term(replayingLive([answered, ...outcomes])))
+})
 
 test("G1: a silent proven engine publishes the sentinel negative once the grace window stays quiet", async () => {
   vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
   const batch = await collectBatch(
     async () => scripted((text) => (text === DA1_QUERY ? DA1 : "")),
     "xtermjs",
-    [silentQuery],
+    [definitionOf("device.xtversion")],
     undefined,
     undefined,
     proofOf("xtermjs"),
   )
   expect(batch.observations).toStrictEqual([
     {
-      featureId: "sentinel.fixture",
+      featureId: "device.xtversion",
       outcome: "unsupported",
       evidence: "query",
       note: "negative by sentinel",
-      rawReplyRef: "sentinel.fixture",
+      rawReplyRef: "device.xtversion",
     },
   ])
   expect(batch.assertions).toMatchObject([
-    { kind: "negative", expected: "XTVERSION reply", observed: "DA1 answered at +0ms; no reply through the 40 ms window" },
+    {
+      kind: "negative",
+      expected: "complete XTVERSION DCS >| printable name/version ST",
+      observed: expect.stringMatching(/^DA1 answered at \+\d+ms; no reply through the 40 ms window$/),
+    },
   ])
 })
 
@@ -279,19 +373,19 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
       return backend
     },
     "xtermjs",
-    [silentQuery],
+    [definitionOf("device.xtversion")],
     undefined,
     undefined,
     proofOf("xtermjs"),
   )
   expect(batch.observations).toMatchObject([
     {
-      featureId: "sentinel.fixture",
+      featureId: "device.xtversion",
       outcome: "error",
       reason: "collector-error",
       evidence: "query",
       note: expect.stringMatching(
-        /^headless xtermjs probe sentinel\.fixture: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms$/,
+        /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms$/,
       ),
     },
   ])

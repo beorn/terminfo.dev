@@ -11,7 +11,14 @@ import type {
   ProbeSuiteManifest,
   RunDraft,
 } from "./types.ts"
-import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
+import type {
+  ObservationEvidence,
+  ProbeDefinition,
+  ProbeResult,
+  TerminalQueryOutcome,
+  TermlessContext,
+  TermContext,
+} from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
 export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
@@ -957,6 +964,11 @@ export function sentinelNegativeResult(
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
 export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"
+
+/** The frame a query grader reads from an outcome: a reply's match, never bytes that arrived without one. */
+export function replyFrame(outcome: TerminalQueryOutcome): string | null {
+  return outcome.reason === "reply" ? (outcome.match?.[0] ?? null) : null
+}
 
 /** The DA1 answer that ends a sentinel query's reply, as the live collector has always matched it. */
 const DA1_ANSWER = /\x1b\[\?[0-9;]+c/
