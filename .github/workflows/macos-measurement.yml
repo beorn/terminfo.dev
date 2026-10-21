@@ -457,7 +457,7 @@ jobs:
           }
           const directory = join(homedir(), ".config", "ghostty");
           mkdirSync(directory, { recursive: true });
-          writeFileSync(join(directory, "config"), "command = /bin/bash " + shellQuote(process.env.COMMAND_PATH) + "\n", { mode: 0o600 });
+          writeFileSync(join(directory, "config"), "initial-command = /bin/bash " + shellQuote(process.env.COMMAND_PATH) + "\n", { mode: 0o600 });
           const status = await Bun.spawn(["open", "-a", process.env.APP_BUNDLE], { stdout: "inherit", stderr: "inherit" }).exited;
           if (status !== 0) throw new Error("open exited " + status);
           HOSTED_CMUX_START
