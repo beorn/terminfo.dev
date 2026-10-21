@@ -375,6 +375,7 @@ test("cmux hosted caller quotes the first-surface command before one cold GUI op
   expect(events.indexOf("native:write")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("native:read-type")).toBeLessThan(events.indexOf("launch"))
   expect(events.indexOf("evidence")).toBeLessThan(events.indexOf("launch"))
+  expect(events.indexOf("config")).toBeLessThan(events.indexOf("launch"))
   expect(launches).toEqual([["open", "-a", "/Applications/cmux.app"]])
   expect(JSON.parse(writes.get("/runner/measurement-artifacts/cmux-launch-setup.json")!)).toMatchObject({
     domain: "fixture.installed.cmux",
