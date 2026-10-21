@@ -289,9 +289,9 @@ describe("release 1 measurement scope", () => {
     if (!firstMeasured) throw new Error("release scope has no measured ids")
     cells[firstMeasured] = { outcome: "supported", conclusive: true }
     const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
-    expect(coverageSentence(bar)).toBe("1 supported · 0 unsupported · 0 inconclusive · 0 errors · 61 untested")
+    expect(coverageSentence(bar)).toBe("1 Supported · 0 Unsupported · 0 Untestable · 61 TEST TODO · 0 TEST FAILURE")
     expect(coverageSentence(aggregateCells({}, scope.measuredIds))).toBe(
-      "0 supported · 0 unsupported · 0 inconclusive · 0 errors · 62 untested",
+      "0 Supported · 0 Unsupported · 0 Untestable · 62 TEST TODO · 0 TEST FAILURE",
     )
   })
 

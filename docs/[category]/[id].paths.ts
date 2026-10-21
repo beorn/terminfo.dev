@@ -61,7 +61,7 @@ export default {
       })
 
       const yesCount = backendResults.filter((r) => r.result === "yes").length
-      const totalCount = backendResults.filter((r) => r.result === "yes" || r.result === "no").length
+      const totalCount = backendResults.length
 
       // Build tags with labels for display
       const tags = (meta?.tags ?? []).map((t: string) => ({

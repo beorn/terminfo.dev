@@ -97,6 +97,13 @@ const selectionExplanation = computed(() => {
   return undefined
 })
 const reasonExplanation = computed(() => (props.cell?.reason ? reasonExplanations[props.cell.reason] : undefined))
+const legacyStatusWords = /\b(?:inconclusive|conclusive|conclusively|untested)\b|\bnot[ -]tested\b/i
+function readerSafeExplanation(value?: string): string | undefined {
+  if (!value) return undefined
+  return legacyStatusWords.test(value)
+    ? `The original wording is preserved in the downloadable record. Current displayed status: ${status.value.text}.`
+    : value
+}
 // Why a text row is shown but not counted (30033 ruling f1f3c64b). The sentence lives in
 // ungraded-explanation.ts so the two arms' reasons are pinned by their own test.
 const textExplanation = computed(() =>
@@ -548,7 +555,7 @@ onBeforeUnmount(() => {
             <strong>Feature test</strong>
             <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
             <span v-if="reasonExplanation">{{ reasonExplanation }}</span>
-            <span v-if="cell?.note">{{ cell.note }}</span>
+            <span v-if="cell?.note">{{ readerSafeExplanation(cell.note) }}</span>
             <template v-if="cell?.textQualificationReason">
               <strong>Capture qualification</strong>
               <span>{{ cell.textQualificationReason }}</span>
@@ -557,7 +564,7 @@ onBeforeUnmount(() => {
             <span v-if="evidenceLoading">Loading recorded evidence…</span>
             <span v-if="evidenceError" role="alert">Evidence error: {{ evidenceError }}</span>
             <span v-if="presentation?.state === 'withdrawn'"
-              >Presentation withdrawn: {{ presentation.review.reason }}</span
+              >Presentation withdrawn: {{ readerSafeExplanation(presentation.review.reason) }}</span
             >
             <code v-if="version">Run {{ version.runId }}</code>
             <details v-if="probeGuidanceText">
@@ -676,15 +683,15 @@ onBeforeUnmount(() => {
         </template>
         <details v-if="isDecSampleResult && cell?.note" class="result-evidence__details">
           <summary>Detailed review note</summary>
-          <p>{{ cell.note }}</p>
+          <p>{{ readerSafeExplanation(cell.note) }}</p>
         </details>
-        <p v-else-if="cell?.note">{{ cell.note }}</p>
+        <p v-else-if="cell?.note">{{ readerSafeExplanation(cell.note) }}</p>
         <p v-if="cell?.evidence === 'query' && cell?.conclusive">
           This result is based on the query's recorded evidence, not every use of this feature.
         </p>
         <p v-else-if="cell?.evidence === 'query'">This query did not establish a yes-or-no result for the feature.</p>
-        <p v-if="cell?.reason">Reason: {{ cell.reason }}</p>
-        <p v-else-if="namedCoverage">Reason: {{ namedCoverage.reason }}</p>
+        <p v-if="cell?.reason">Reason: {{ readerSafeExplanation(cell.reason) }}</p>
+        <p v-else-if="namedCoverage">Reason: {{ readerSafeExplanation(namedCoverage.reason) }}</p>
         <p v-if="selectionExplanation">{{ selectionExplanation }}</p>
         <p v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</p>
         <p v-if="reasonExplanation">{{ reasonExplanation }}</p>
@@ -692,14 +699,14 @@ onBeforeUnmount(() => {
         <h3>Evidence</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
         <p v-else-if="!cell && namedCoverage">
-          The run retains a probe trace, but no supported or unsupported result was established.
+          TEST FAILURE: the attempt retained a trace but established neither Supported nor Unsupported.
         </p>
-        <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
+        <p v-else-if="!cell">TEST TODO: no reviewed current result covers this feature.</p>
         <template v-else-if="presentation?.state === 'not-reviewed'">
           <p>Original evidence has not been reviewed for presentation.</p>
         </template>
         <template v-else-if="presentation?.state === 'withdrawn'">
-          <p>Evidence presentation was withdrawn: {{ presentation.review.reason }}</p>
+          <p>Evidence presentation was withdrawn: {{ readerSafeExplanation(presentation.review.reason) }}</p>
           <p>Reviewed by {{ presentation.review.reviewer }}.</p>
         </template>
         <template v-else-if="presentation?.state === 'presented'">
@@ -710,13 +717,13 @@ onBeforeUnmount(() => {
           <template v-else-if="evidenceDocument">
             <p v-if="correction && isDecSampleResult">
               The collector captured the images but did not automatically judge their content. It left the result
-              inconclusive until image review. Sol, an AI reviewer, then compared the unchanged frames against two
-              criteria: the middle <code>q</code> on row 3 must look like the horizontal line in row 2, and row 4 must
-              remain ordinary ASCII text. That review established support for this sample. It used no numeric confidence
-              score, new frames or updated terminal. “Corrected after review” means the assessment changed; Kitty was
-              not fixed and this was not a rerun. The same AI reviewer made the support assessment and the separate
-              decision to display the evidence, not two independent tests or human approvals. The original result and
-              both decisions are preserved in Review history.
+              awaiting review (TEST TODO). Sol, an AI reviewer, then compared the unchanged frames against two criteria:
+              the middle <code>q</code> on row 3 must look like the horizontal line in row 2, and row 4 must remain
+              ordinary ASCII text. That review established support for this sample. It used no numeric confidence score,
+              new frames or updated terminal. “Corrected after review” means the assessment changed; Kitty was not fixed
+              and this was not a rerun. The same AI reviewer made the support assessment and the separate decision to
+              display the evidence, not two independent tests or human approvals. The original result and both decisions
+              are preserved in Review history.
             </p>
             <p v-else-if="correction">
               This result was corrected after review. See Review history for the original result and reason.
@@ -817,27 +824,34 @@ onBeforeUnmount(() => {
                 </p>
                 <h4>1. Original recorded result</h4>
                 <p>
-                  {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                  Original observation used the {{ evidenceDocument.observation.evidence }} method
                   <template v-if="evidenceDocument.observation.reason">
-                    · {{ evidenceDocument.observation.reason }}</template
+                    · {{ readerSafeExplanation(evidenceDocument.observation.reason) }}</template
                   >
                 </p>
                 <p>
-                  Inconclusive meant the images still needed review. Insufficient-evidence meant the collector had not
-                  yet established a supported or unsupported result.
+                  The automated check completed. The criterion requiring independent visual judgment remained TEST TODO
+                  until review.
                 </p>
-                <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+                <p v-if="evidenceDocument.observation.note">
+                  {{ readerSafeExplanation(evidenceDocument.observation.note) }}
+                </p>
+                <p>
+                  <a :href="withBase(cell.presentation.url)" target="_blank" rel="noopener noreferrer"
+                    >Open original recorded evidence</a
+                  >
+                </p>
                 <h4>2. Support review</h4>
                 <p>
-                  Sol, an AI image reviewer, changed the assessment from inconclusive to supported for this sample using
+                  Sol, an AI image reviewer, changed the assessment from TEST TODO to Supported for this sample using
                   the same original control and target frames. The frames were retained; Kitty was not fixed and the
                   test was not rerun.
                 </p>
                 <details v-if="correction">
                   <summary>Support review record</summary>
                   <p>
-                    Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
-                    Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
+                    Review changed the displayed result to {{ status.text }}. Reviewed by {{ correction.reviewer }}. The
+                    original review rationale remains in the evidence record.
                   </p>
                 </details>
                 <h4>3. Evidence presentation approval</h4>
@@ -848,27 +862,39 @@ onBeforeUnmount(() => {
                 </p>
                 <details>
                   <summary>Evidence presentation record</summary>
-                  <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+                  <p>{{ presentation.review.reviewer }}: {{ readerSafeExplanation(presentation.review.reason) }}</p>
+                  <p>
+                    <a :href="withBase(cell.presentation.url)" target="_blank" rel="noopener noreferrer"
+                      >Open original recorded evidence</a
+                    >
+                  </p>
                 </details>
               </template>
               <template v-else>
                 <p v-if="correction">
-                  Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
-                  Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
+                  Review changed the displayed result to {{ status.text }}. Reviewed by {{ correction.reviewer }}. The
+                  original review rationale remains in the evidence record.
                 </p>
                 <details>
                   <summary>Evidence publication check</summary>
-                  <p>{{ presentation.review.reviewer }}: {{ presentation.review.reason }}</p>
+                  <p>{{ presentation.review.reviewer }}: {{ readerSafeExplanation(presentation.review.reason) }}</p>
                 </details>
                 <template v-if="originalDiffers">
                   <h4>Original recorded observation</h4>
                   <p>
-                    {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                    Original observation used the {{ evidenceDocument.observation.evidence }} method
                     <template v-if="evidenceDocument.observation.reason">
-                      · {{ evidenceDocument.observation.reason }}</template
+                      · {{ readerSafeExplanation(evidenceDocument.observation.reason) }}</template
                     >
                   </p>
-                  <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
+                  <p v-if="evidenceDocument.observation.note">
+                    {{ readerSafeExplanation(evidenceDocument.observation.note) }}
+                  </p>
+                  <p>
+                    <a :href="withBase(cell.presentation.url)" target="_blank" rel="noopener noreferrer"
+                      >Open original recorded evidence</a
+                    >
+                  </p>
                 </template>
               </template>
             </details>

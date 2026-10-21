@@ -6,11 +6,13 @@
   position: relative;
 }
 
-[data-tooltip]:hover {
+[data-tooltip]:hover,
+[data-tooltip]:focus-visible {
   z-index: 25;
 }
 
 [data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after,
 .tooltip-content {
   content: attr(data-tooltip);
   position: absolute;
@@ -36,14 +38,18 @@
 
 /* Near left edge: align left instead of center */
 [data-tooltip]:first-child:hover::after,
-td:first-child [data-tooltip]:hover::after {
+[data-tooltip]:first-child:focus-visible::after,
+td:first-child [data-tooltip]:hover::after,
+td:first-child [data-tooltip]:focus-visible::after {
   left: 0;
   transform: none;
 }
 
 /* Don't show empty tooltips */
 [data-tooltip=""]:hover::after,
-[data-tooltip]:not([data-tooltip]):hover::after {
+[data-tooltip=""]:focus-visible::after,
+[data-tooltip]:not([data-tooltip]):hover::after,
+[data-tooltip]:not([data-tooltip]):focus-visible::after {
   display: none;
 }
 

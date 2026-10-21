@@ -481,9 +481,9 @@ export default defineConfig({
         if (params.comparableScope !== "true") {
           pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}) have different or incomplete recorded contexts; inspect their selected observations without a pairwise support claim.`
         } else if (params.jointConclusive === "0") {
-          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): no jointly conclusive observations measured by the same method.`
+          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): no shared features have a recorded Supported or Unsupported result from the same method.`
         } else {
-          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): ${params.differ} differences among ${params.jointConclusive} jointly conclusive, same-method features.`
+          pageData.description = `${params.termALabel} (${params.termAKind}, ${params.termAOs}) and ${params.termBLabel} (${params.termBKind}, ${params.termBOs}): ${params.differ} differences among ${params.jointConclusive} shared features with results from the same method.`
         }
       } else if (rel.startsWith("terminals/")) {
         if (params.historical === "true") {

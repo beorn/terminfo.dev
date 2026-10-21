@@ -34,6 +34,9 @@
   font-weight: 600;
   font-size: 0.9em;
   flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
@@ -43,6 +46,16 @@
   font-size: 0.8em;
   color: var(--vp-c-text-3);
   flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-name[data-tooltip]:hover::after,
+.summary-name[data-tooltip]:focus-visible::after,
+.summary-version[data-tooltip]:hover::after,
+.summary-version[data-tooltip]:focus-visible::after {
+  content: attr(data-tooltip);
 }
 
 .summary-bar {

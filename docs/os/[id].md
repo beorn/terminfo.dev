@@ -55,7 +55,7 @@ function evidenceClass(row) {
 </div>
 
 <div class="evidence-note">
-  Percentages show support among conclusive observations for each source run, not coverage of the full feature catalog or a platform-wide score. Open a terminal row for its selected version, OS context, and evidence; the <a href="/">feature matrix</a> shows individual results. Parser and reference rows do not establish full app behavior on this OS.
+  Percentages show support among results with a recorded Supported or Unsupported value for each source run, not coverage of the full feature catalog or a platform-wide score. Open a terminal row for its selected version, OS context, and evidence; the <a href="/">feature matrix</a> shows individual results. Parser and reference rows do not establish full app behavior on this OS.
 </div>
 
 ## App Terminals
@@ -64,7 +64,7 @@ function evidenceClass(row) {
   <thead>
     <tr>
       <th>Terminal</th>
-      <th>Conclusive support</th>
+      <th>Supported results</th>
       <th>Evidence</th>
       <th>Notes</th>
     </tr>
@@ -90,7 +90,7 @@ function evidenceClass(row) {
   <thead>
     <tr>
       <th>Backend</th>
-      <th>Conclusive support</th>
+      <th>Supported results</th>
       <th>Evidence</th>
       <th>Notes</th>
     </tr>
@@ -115,7 +115,7 @@ function evidenceClass(row) {
   <thead>
     <tr>
       <th>Multiplexer</th>
-      <th>Conclusive support</th>
+      <th>Supported results</th>
       <th>Evidence</th>
       <th>Notes</th>
     </tr>

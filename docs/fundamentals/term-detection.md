@@ -54,7 +54,7 @@ DA1 is an escape sequence query: the application sends `CSI c` (or `CSI 0 c`) an
 
 DA1 reports device-attribute codes, not an exact product identity. The codes describe broad categories such as 132-column mode, a printer port, or Sixel graphics; they do not verify those features' behavior in the current session. [xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html)
 
-DA1 can also serve as a **sentinel** after another query. A complete reply correlated to that query establishes only the property the reply reports, whether or not DA1 subsequently answers. If no matching reply arrives before the sentinel or deadline, the result is inconclusive; a missing or ambiguous DA1 reply cannot turn silence into evidence of non-support. [Kitty keyboard protocol detection](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol)
+DA1 can also serve as a **sentinel** after another query. A complete reply correlated to that query establishes only the property the reply reports, whether or not DA1 subsequently answers. If no matching reply arrives before the sentinel or deadline, the result is TEST TODO if no probe was attempted, or TEST FAILURE if it was attempted without a result; a missing or ambiguous DA1 reply cannot turn silence into evidence of non-support. [Kitty keyboard protocol detection](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol)
 
 ## DECRPM (Mode Report)
 
@@ -62,7 +62,7 @@ DECRPM — DEC Private Mode Report — replies to a DECRQM request for one priva
 
 Many features have private-mode numbers, including bracketed paste (2004), mouse tracking (1000/1002/1003/1006), focus tracking (1004), alternate screen (1049), and synchronized output (2026). A valid correlated reply reports whether the responding layer recognizes the requested mode and its current state. It does not by itself verify rendering or interaction associated with that mode.
 
-No reply is inconclusive: the layer might not implement DECRQM, or the reply might not reach the application. DECRPM also cannot describe features without a corresponding private-mode query, such as OSC 8 hyperlinks or Kitty graphics. Those need other queries or controlled behavioral observations.
+If no probe was attempted, the site displays TEST TODO. An attempted DECRQM query without its required reply is TEST FAILURE: the layer might not implement DECRQM, or the reply might not reach the application. DECRPM also cannot describe features without a corresponding private-mode query, such as OSC 8 hyperlinks or Kitty graphics. Those need other queries or controlled behavioral observations.
 
 ## XTVERSION
 
@@ -70,15 +70,15 @@ XTVERSION sends `CSI > 0 q` and, when implemented, returns `DCS > | text ST`. Th
 
 The reply may identify an intermediate layer such as tmux rather than the outer graphical terminal. A name and version can guide a compatibility table, but that table predicts expected capabilities; it does not measure the installed configuration or the end-to-end path. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
 
-Using a version table requires maintaining its entries as implementations change. Where the behavior matters, a query or controlled test of that behavior provides narrower, stronger evidence. If no XTVERSION reply arrives, the result is inconclusive.
+Using a version table requires maintaining its entries as implementations change. Where the behavior matters, a query or controlled test of that behavior provides narrower, stronger evidence. If no XTVERSION reply arrives, the result is TEST TODO if no probe was attempted, or TEST FAILURE if it was attempted without a result.
 
 ## Runtime Probing
 
 Runtime probing asks what a terminal did in a specified test. A measured reply or effect can answer that test's question more directly than an environment variable or a database entry, but only for the behavior actually observed.
 
-A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply is inconclusive. Writing test content changes the terminal, so this check needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
+A width test can write a sample character and measure the cursor position afterward. The measured distance says how wide that sample was in that environment; a missing reply after an attempted query is TEST FAILURE. Writing test content changes the terminal, so this check needs a verified disposable test environment. Other probes use DECRPM queries, OSC response parsing, and DA1 sentinels.
 
-[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and records state-changing checks as inconclusive unless a verified disposable test environment is available. A query reply establishes only the property it reports; rendering and interaction require their own observations.
+[Termless](https://termless.dev) instantiates a headless emulator and reads back its parser state. In an ordinary terminal, the `npx terminfo.dev` CLI runs reviewed queries and skips state-changing checks unless a verified disposable test environment is available. The site displays those skipped checks as TEST TODO; the raw run preserves the collector's original fields. A query reply establishes only the property it reports; rendering and interaction require their own observations.
 
 ::: info Why terminfo.dev probes directly instead of using terminfo
 Terminfo describes capabilities associated with a `$TERM` entry, including [user-defined extensions in ncurses](https://invisible-island.net/ncurses/man/user_caps.5.html). Those descriptions do not record what happened in a particular test. Runtime observations complement them; unanswered or refused checks give no support conclusion. See [Why not terminfo?](/about#why-not-terminfo) for the full rationale.
@@ -133,7 +133,7 @@ Terminal detection gets significantly harder when multiplexers (tmux, screen, Ze
 ::: tip Detection strategy inside multiplexers
 
 1. Check the selected `$TERM` entry for the interface exposed to your application.
-2. Query a specific mode when the responding layer implements DECRQM; treat silence as inconclusive.
+2. Query a specific mode when the responding layer implements DECRQM; silence after an attempted query is TEST FAILURE.
 3. If you explicitly use tmux passthrough, check its `allow-passthrough` setting and validate the reply's origin. [tmux manual](https://github.com/tmux/tmux/blob/master/tmux.1)
    :::
 

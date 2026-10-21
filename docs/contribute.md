@@ -27,7 +27,7 @@ npx terminfo.dev --version      # Record the CLI version
 
 For inline `test --json` or `test --output`, stdin must be an interactive terminal. With `--json` the raw JSON goes to stdout, so probe controls go to `/dev/tty`, separate from it; with `--output` the JSON goes to a file, so the probe controls use stdout — the terminal you launched the CLI in, which is the device a hosted owned-terminal receipt verifies. `--output` refuses an existing file. A draft does not create a GitHub issue or grant publication consent.
 
-In an ordinary terminal, the CLI can run reviewed query checks. Checks that change terminal state require a verified disposable test environment. Without one, the CLI records them as **inconclusive (policy-refused)** before those checks write anything; it does not report them as unsupported. You do not need to loosen terminal permissions. Default clipboard access stays off.
+In an ordinary terminal, the CLI can run reviewed query checks. Checks that change terminal state require a verified disposable test environment. Without one, those checks are not sent and the site displays TEST TODO. The raw run preserves the collector's original fields. You do not need to loosen terminal permissions. Default clipboard access stays off.
 
 ## What a probe can establish
 
@@ -44,15 +44,15 @@ A PNG generated from a Termless cell grid illustrates the headless state; it is 
 
 For example, [Kitty's keyboard query](https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol) reports protocol state; key-event encoding needs input tests. A [graphics query](https://sw.kovidgoyal.net/kitty/graphics-protocol/#querying-support-and-available-transmission-mediums) and an actual image capture answer different questions. The [xterm control-sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html) defines many of the replies used by these probes.
 
-**No reply is inconclusive.** A feature may be unsupported, blocked by a multiplexer or permission, queried incorrectly, or slower than the collection deadline. Policy-refused is also inconclusive. The record says whether the collector skipped the check or a reviewed interpretation attributes an observed result to the test's permission policy. A terminal reply alone does not establish the cause. An explicit negative reply or failed behavioral assertion is stronger evidence. A collection error describes the test run; it is not a terminal failure.
+**An attempted query with no reply is TEST FAILURE.** If no probe was attempted, the result is TEST TODO. A reviewed refusal that proves the context cannot expose a feature is Untestable. A feature may also be Unsupported, but a missing reply alone does not establish that. A terminal reply alone does not establish the cause. A collection failure describes the test run; it is not a terminal failure.
 
 ## Reading results
 
-We are correcting older probes and results that treated sequence consumption or a missing reply as a conclusive support result. Historical booleans without the necessary evidence remain unverified; a new label cannot reconstruct evidence that was never captured.
+We are correcting older probes and results that treated sequence consumption or a missing reply as a Supported result. Historical booleans without the necessary evidence remain unverified; a new label cannot reconstruct evidence that was never captured.
 
-The model being introduced keeps outcome and method together: **supported**, **unsupported**, **inconclusive** or **collection error**, accompanied by the specific assertion and evidence. **Not tested** means there is no applicable observation. When we can name why, the record carries a coverage note (`reason: "no-semantic-observable"`) naming the missing observable, for example an input event or a pixel color that a headless cell dump cannot expose: the probe ran and its raw state is retained, but no measurement of the claim was possible. Named coverage is still not tested, never a fifth outcome and never support or failure. A not-tested feature without a note is simply unrecorded. Documentation can describe an implementation, but is separate from a measured result. Older scorecards do not yet express all of these distinctions.
+The reader label is one of five values: **Supported**, **Unsupported**, **Untestable**, **TEST TODO** or **TEST FAILURE**, accompanied by the specific assertion and evidence. **Untestable** means a reviewer established there is no observable; **TEST TODO** means no attempt or impossibility review exists; **TEST FAILURE** means an attempt did not establish a result. The underlying record can carry a coverage note (`reason: "no-semantic-observable"`) naming a missing observable, for example an input event or a pixel color that a headless cell dump cannot expose. That raw field is retained, while the reader label follows the reviewed classification. Documentation can describe an implementation, but is separate from a measured result. Older scorecards do not yet express all of these distinctions.
 
-Suite completeness and support are different. A complete suite has a recorded outcome for every scheduled probe, including policy refusals, collection errors and named not-tested coverage; it does not mean every check was attempted or produced conclusive evidence. Support asks which measured behaviors worked. An older submission with fewer probes contributes useful history without making its missing features failures. Our target is trustworthy measurements of the stated scope, rather than 100% support from every terminal.
+Suite completeness and support are different. A complete suite has a recorded outcome for every scheduled probe, including TEST TODO, TEST FAILURE and named Untestable coverage; it does not mean every check established a result. Support asks which measured behaviors worked. An older submission with fewer probes contributes useful history without making its missing features failures. Our target is trustworthy measurements of the stated scope, rather than 100% support from every terminal.
 
 ## Contributing screenshots and reproductions
 
@@ -84,4 +84,4 @@ Everything is [open source](https://github.com/beorn/terminfo.dev) — code unde
 - [Probe definitions](https://github.com/beorn/terminfo.dev/tree/main/packages/probe-defs) — the shared feature tests
 - [npm package](https://www.npmjs.com/package/terminfo.dev) — `terminfo.dev` on npm
 
-Missing your terminal? A reproducible contribution is welcome even when the result is inconclusive.
+Missing your terminal? A reproducible contribution is welcome even when the result is TEST TODO or TEST FAILURE.

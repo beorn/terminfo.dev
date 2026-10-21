@@ -137,7 +137,7 @@ export function aggregateCells(cells: Readonly<Record<string, CellState>>, ids: 
 export function coverageSentence(aggregate: CellAggregate): string {
   if (!aggregate.denominator) return "No selected run"
   const { counts } = aggregate
-  return `${counts.supported} supported · ${counts.unsupported} unsupported · ${counts.inconclusive} inconclusive · ${counts.error} errors · ${counts.untested} untested`
+  return `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.inconclusive} Untestable · ${counts.untested} TEST TODO · ${counts.error} TEST FAILURE`
 }
 
 /**
