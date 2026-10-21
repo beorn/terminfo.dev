@@ -25,7 +25,7 @@ function timeout(): TerminalQueryOutcome {
  * A Kitty-shaped terminal: it maintains real SGR, DECTCEM and IRM state and answers DECRQSS
  * and DECRQM from that state. `answer: false` models a terminal that never replies.
  */
-function kittyContext(answer: boolean): TermContext {
+function kittyContext(answer: boolean, resets = true): TermContext {
   let sgr: number[] = []
   let visible = true
   let irm = false
@@ -40,7 +40,11 @@ function kittyContext(answer: boolean): TermContext {
           .filter((part) => part !== "")
           .map(Number)
         // A real SGR state: 0 (or a bare CSI m) clears, any other parameter accumulates.
-        sgr = params.length === 0 || params.includes(0) ? [] : [...new Set([...sgr, ...params])]
+        if (params.length === 0 || params.includes(0)) {
+          if (resets) sgr = []
+        } else {
+          sgr = [...new Set([...sgr, ...params])]
+        }
       }
       if (bytes.includes("\x1b[?25h")) visible = true
       if (bytes.includes("\x1b[?25l")) visible = false
@@ -137,7 +141,7 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
  *
  * reset.sgr is an SGR-state claim, so the terminal's own DECRQSS report decides it (the shared
  * sgrReadbackDecision shape sgr.reset binds from sgr.ts) and no pixel review is needed: after
- * the setup and the reset the terminal reports no style code. Covers the four cases below: the
+ * a qualified setup and the reset the terminal reports no style code. Covers the four cases below: the
  * plain supported report, Kitty's normalized negation-list report, a retained 1/3/7 report
  * (negative), and a silent terminal (inconclusive, never negative).
  */
@@ -153,9 +157,13 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
   const ctx = kittyContext(true)
   // What Kitty's normalized list reports after the reset: explicit negation codes, no 1/3/7.
   const payload = "0;22;23;24;27"
-  ctx.queryWithSentinelOutcome = async (sequence) => {
-    if (!sequence.startsWith("\x1bP$qm")) return timeout()
-    return { match: [`\x1bP1$r${payload}m\x1b\\`, payload], reason: "reply", raw: "", rawBase64: "" }
+  const readState = ctx.queryWithSentinelOutcome
+  ctx.queryWithSentinelOutcome = async (sequence, pattern, timeoutMs) => {
+    const outcome = await readState(sequence, pattern, timeoutMs)
+    if (sequence.startsWith("\x1bP$qm") && outcome.match?.[1] === "") {
+      return { ...outcome, match: [`\x1bP1$r${payload}m\x1b\\`, payload] }
+    }
+    return outcome
   }
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(true)
@@ -164,11 +172,7 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
 })
 
 test("reset.sgr is a negative when the terminal keeps reporting the styles after the reset", async () => {
-  const ctx = kittyContext(true)
-  ctx.queryWithSentinelOutcome = async (sequence) => {
-    if (!sequence.startsWith("\x1bP$qm")) return timeout()
-    return { match: ["\x1bP1$r1;3;7m\x1b\\", "1;3;7"], reason: "reply", raw: "", rawBase64: "" }
-  }
+  const ctx = kittyContext(true, false)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(false)
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })

@@ -306,13 +306,14 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
       }),
     )
     // A 3-row grid passes the SGR guard but cannot map the 4-row region fixture. The trace is not
-    // empty (the silent DECRQSS readback wrote its sequence and query), so the evidence is "query"
+    // empty (the silent DECRQSS baseline wrote neutralization and queried), so the evidence is "query"
     // and no capture is ever requested.
     expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "query" })
     expect(ok.assertions, id).toBeUndefined()
     expect(roles, id).toEqual([])
     expect(ok.observation?.frames, id).toBeUndefined()
-    expect(writes.length, id).toBeGreaterThanOrEqual(3)
+    // An unanswered baseline stops before setup; cleanup still runs before the region refusal.
+    expect(writes, id).toEqual(["\x1b[0m", "\x1b[0m"])
   }
 })
 

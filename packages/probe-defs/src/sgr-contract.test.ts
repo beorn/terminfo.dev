@@ -32,7 +32,11 @@ const SGR_CONTRACT: GroupContract = [
   { id: "sgr.hidden", expected: "decided", claim: "SGR 8 selects the hidden attribute" },
   { id: "sgr.strikethrough", expected: "decided", claim: "SGR 9 selects strikethrough" },
   { id: "sgr.overline", expected: "decided", claim: "SGR 53 selects overline" },
-  { id: "sgr.reset", expected: "decided", claim: "SGR 0 clears every attribute" },
+  {
+    id: "sgr.reset",
+    expected: "decided",
+    claim: "SGR 0 clears measured bold, italic, and underline after qualified setup",
+  },
   { id: "sgr.fg.standard", expected: "decided", claim: "SGR 30-37 selects a standard foreground" },
   { id: "sgr.fg.bright", expected: "decided", claim: "SGR 90-97 selects a bright foreground" },
   { id: "sgr.fg.256", expected: "decided", claim: "SGR 38;5 selects a 256-colour foreground" },
@@ -51,10 +55,26 @@ const SGR_CONTRACT: GroupContract = [
   { id: "sgr.underline-color-indexed", expected: "decided", claim: "SGR 58;5 selects an indexed underline colour" },
   { id: "sgr.underline-color-rgb", expected: "decided", claim: "SGR 58;2 selects an RGB underline colour" },
   { id: "sgr.underline-color-reset", expected: "decided", claim: "SGR 59 resets the underline colour" },
-  { id: "sgr.selective-reset.bold", expected: "decided", claim: "SGR 22 clears bold and faint only" },
-  { id: "sgr.selective-reset.italic", expected: "decided", claim: "SGR 23 clears italic only" },
-  { id: "sgr.selective-reset.underline", expected: "decided", claim: "SGR 24 clears underline only" },
-  { id: "sgr.selective-reset.inverse", expected: "decided", claim: "SGR 27 clears inverse only" },
+  {
+    id: "sgr.selective-reset.bold",
+    expected: "decided",
+    claim: "SGR 22 clears measured bold and faint while preserving measured italic",
+  },
+  {
+    id: "sgr.selective-reset.italic",
+    expected: "decided",
+    claim: "SGR 23 clears measured italic while preserving measured bold",
+  },
+  {
+    id: "sgr.selective-reset.underline",
+    expected: "decided",
+    claim: "SGR 24 clears measured underline while preserving measured bold",
+  },
+  {
+    id: "sgr.selective-reset.inverse",
+    expected: "decided",
+    claim: "SGR 27 clears measured inverse while preserving measured bold",
+  },
 ]
 
 /** The named set 28454 reviews: SGR's rows plus the focused test files that bind them (no glob). */

@@ -28,6 +28,7 @@ export function sgrTermReadback(
   sequence: string,
   readback: SgrReadback,
   fallback: (ctx: TermContext) => ProbeResult | Promise<ProbeResult>,
+  setup?: Parameters<typeof sgrReadbackDecision>[4],
 ): (ctx: TermContext) => Promise<ProbeResult> {
   return async (ctx) => {
     // The capture fixture guard refuses before any bytes on a measured small terminal, so the
@@ -36,7 +37,7 @@ export function sgrTermReadback(
       const refusal = sgrCaptureTooSmall(ctx, "SGR fixture")
       if (refusal) return refusal
     }
-    const decided = await sgrReadbackDecision(ctx, id, sequence, readback)
+    const decided = await sgrReadbackDecision(ctx, id, sequence, readback, setup)
     if (decided) return decided
     // The readback may have written its sequence and query before returning no decisive answer, so a
     // named refusal from the region oracle after it is truthful QUERY evidence, never the zero-byte
@@ -331,12 +332,17 @@ function resetProbe(
       (ctx) => measuredReset(ctx, id, setup, reset, set, preserve),
       sgrTermReadback(
         id,
-        setup + reset,
+        reset,
         {
           require: preserve.map((attribute) => RESET_ATTRIBUTE_CODE[attribute]),
           forbid: set.map((attribute) => RESET_ATTRIBUTE_CODE[attribute]),
         },
         (ctx) => consumedResetSgr(ctx, id, setup, reset),
+        {
+          sequence: setup,
+          baseline: { require: [], forbid: [...set, ...preserve].map((attribute) => RESET_ATTRIBUTE_CODE[attribute]) },
+          readback: { require: [...set, ...preserve].map((attribute) => RESET_ATTRIBUTE_CODE[attribute]) },
+        },
       ),
       "consumed",
     ),
@@ -530,8 +536,16 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
-      sgrTermReadback(id, `\x1b[${setup}m\x1b[${reset}m`, { require: [], forbid: nondefaultColors }, (ctx) =>
-        consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
+      sgrTermReadback(
+        id,
+        `\x1b[${reset}m`,
+        { require: [], forbid: nondefaultColors },
+        (ctx) => consumedSgrReset(ctx, id, `\x1b[${setup}m`, `\x1b[${reset}m`),
+        {
+          sequence: `\x1b[${setup}m`,
+          baseline: { require: [], forbid: nondefaultColors },
+          readback: { require: [setup] },
+        },
       ),
       "consumed",
     ),
@@ -698,10 +712,15 @@ export const sgrProbes: ProbeDefinition[] = [
       },
       sgrTermReadback(
         "sgr.underline-color-reset",
-        "\x1b[4m\x1b[58;2;255;0;128m\x1b[59m",
+        "\x1b[59m",
         { require: [4], forbid: [58] },
         (ctx) =>
           consumedSgrReset(ctx, "sgr.underline-color-reset", "\x1b[4m\x1b[58;2;255;0;128m", "\x1b[59m", "\x1b[4m"),
+        {
+          sequence: "\x1b[4m\x1b[58;2;255;0;128m",
+          baseline: { require: [], forbid: [4, 58] },
+          readback: { require: [4, 58], requireTokens: ["58:2:255:0:128"] },
+        },
       ),
       "consumed",
     ),

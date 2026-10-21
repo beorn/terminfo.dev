@@ -292,6 +292,8 @@ export function sgrReadbackResult(
     }
   }
   const codes = parameters.flatMap((token) => {
+    // Style zero explicitly disables underline; its leading 4 is not an active attribute.
+    if (token === "4:0") return [24]
     const alias = SGR_CODE_ALIASES[token]
     return alias === undefined ? [leadingSgrCode(token)] : [leadingSgrCode(token), alias]
   })
@@ -324,16 +326,44 @@ export async function sgrReadbackDecision(
   id: string,
   sequence: string,
   readback: SgrReadback,
+  setup?: { sequence: string; baseline: SgrReadback; readback: SgrReadback },
 ): Promise<ProbeResult | null> {
-  ctx.write("\x1b[0m")
-  ctx.write(sequence)
-  let state: string[] | null
+  const observed: Record<string, string> = {}
   try {
-    state = await querySgrState(ctx)
+    ctx.write("\x1b[0m")
+    if (setup) {
+      // A final neutral reply cannot prove a reset unless the same transaction first established
+      // a neutral baseline and the requested setup. Keep all phases inside the cleanup lifetime.
+      for (const [phase, bytes, criterion] of [
+        ["baseline", "", setup.baseline],
+        ["setup", setup.sequence, setup.readback],
+      ] as const) {
+        if (bytes) ctx.write(bytes)
+        const state = await querySgrState(ctx)
+        if (state === null) return null
+        observed[phase] = state.join(";")
+        const qualified = sgrReadbackResult(id, bytes, state, criterion)
+        if (!qualified.pass) {
+          const note = `${id}: ${phase} prerequisite was not established${qualified.note ? `: ${qualified.note}` : ""}`
+          return {
+            pass: false,
+            response: JSON.stringify({ phase, ...observed }),
+            note,
+            observation: { outcome: "inconclusive", evidence: "query", reason: "insufficient-evidence", note },
+          }
+        }
+      }
+    }
+    ctx.write(sequence)
+    const state = await querySgrState(ctx)
+    if (state === null) return null
+    const result = sgrReadbackResult(id, sequence, state, readback)
+    return setup
+      ? { ...result, response: JSON.stringify({ sgr: state.length === 0 ? "0" : state.join(";"), ...observed }) }
+      : result
   } finally {
     ctx.write("\x1b[0m")
   }
-  return state === null ? null : sgrReadbackResult(id, sequence, state, readback)
 }
 
 /**

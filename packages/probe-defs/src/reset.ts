@@ -61,10 +61,17 @@ export const resetProbes: ProbeDefinition[] = [
         let readbackAttempted = false
         if (measuredRoom) {
           readbackAttempted = true
-          const readback = await sgrReadbackDecision(ctx, "reset.sgr", "\x1b[1;3;7m\x1b[0m", {
-            require: [],
-            forbid: [1, 3, 7],
-          })
+          const readback = await sgrReadbackDecision(
+            ctx,
+            "reset.sgr",
+            "\x1b[0m",
+            { require: [], forbid: [1, 3, 7] },
+            {
+              sequence: "\x1b[1;3;7m",
+              baseline: { require: [], forbid: [1, 3, 7] },
+              readback: { require: [1, 3, 7] },
+            },
+          )
           if (readback) return readback
         }
         if (ctx.capture) {
