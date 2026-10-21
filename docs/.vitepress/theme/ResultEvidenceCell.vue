@@ -137,9 +137,7 @@ const expectedIllustration = computed(() =>
   props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
 )
 const compactCause = computed(() => {
-  if (status.value.text === "Supported")
-    return isDecSampleResult.value ? "q becomes a line; ASCII is restored" : "meets the recorded test criterion"
-  if (status.value.text === "Unsupported") return "does not meet the recorded test criterion"
+  if (status.value.text === "Supported" || status.value.text === "Unsupported") return "Reviewed capture not available."
   if (status.value.text === "Untestable") return props.cell?.note || "reviewed context prevents this test"
   if (status.value.text === "TEST TODO")
     return props.cell?.evidence === "none" && props.cell.reason === "policy-refused"
@@ -331,6 +329,7 @@ async function loadEvidence(): Promise<void> {
     evidenceDocument.value = document
     qualificationDocument.value = qualification
     textSnapshots.value = snapshots
+    repositionPreview()
   } catch (error) {
     if (
       request !== evidenceRequest ||
@@ -363,21 +362,34 @@ function scheduleHidePreview(event?: FocusEvent): void {
   previewHideTimer = setTimeout(hidePreview, 200)
 }
 
+function positionPreview(): void {
+  if (!previewVisible.value || !trigger.value || !preview.value) return
+  const box = trigger.value.getBoundingClientRect()
+  const height = preview.value.getBoundingClientRect().height
+  const width = Math.min(420, window.innerWidth - 16)
+  const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8))
+  const below = box.bottom + 8
+  const above = box.top - height - 8
+  const top =
+    below + height <= window.innerHeight - 8 ? below : above >= 8 ? above : Math.max(8, window.innerHeight - height - 8)
+  previewPosition.value = { left: `${left}px`, top: `${top}px`, width: `${width}px` }
+}
+
+function repositionPreview(): void {
+  keepPreview()
+  if (previewVisible.value)
+    previewPosition.value = { ...previewPosition.value, width: `${Math.min(420, window.innerWidth - 16)}px` }
+  void nextTick(positionPreview)
+}
+
 function showPreview(): void {
   keepPreview()
   if (dialogVisible.value || !trigger.value || typeof window === "undefined") return
-  const box = trigger.value.getBoundingClientRect()
-  const width = Math.min(420, window.innerWidth - 16)
-  const left = Math.max(8, Math.min(box.left, window.innerWidth - width - 8))
-  const above = window.innerHeight - box.bottom < 230 && box.top > 230
-  previewPosition.value = {
-    left: `${left}px`,
-    top: `${above ? box.top - 8 : box.bottom + 8}px`,
-    width: `${width}px`,
-    ...(above ? { transform: "translateY(-100%)" } : {}),
-  }
   previewVisible.value = true
+  previewPosition.value = { width: `${Math.min(420, window.innerWidth - 16)}px` }
   document.addEventListener("pointerdown", outsidePreview)
+  window.addEventListener("resize", repositionPreview)
+  repositionPreview()
   void loadEvidence()
 }
 
@@ -400,6 +412,7 @@ function outsidePreview(event: PointerEvent): void {
 
 function hidePreview(): void {
   document.removeEventListener("pointerdown", outsidePreview)
+  window.removeEventListener("resize", repositionPreview)
   keepPreview()
   previewVisible.value = false
 }
@@ -474,8 +487,14 @@ onBeforeUnmount(() => {
         @focusin="keepPreview"
         @focusout="scheduleHidePreview"
         @keydown.esc.stop="closePreview"
+        @toggle.capture="repositionPreview"
       >
-        <strong class="result-evidence__verdict">{{ status.text }} · {{ compactCause }}</strong>
+        <strong
+          class="result-evidence__trigger result-evidence__verdict"
+          :class="`result-evidence__trigger--${status.tone}`"
+          ><span aria-hidden="true">{{ status.icon }}</span
+          >{{ status.text }}</strong
+        >
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
           >{{ targetName
@@ -486,11 +505,11 @@ onBeforeUnmount(() => {
             <figcaption>TESTED</figcaption>
             <img v-if="previewImageUrl" :src="previewImageUrl" :alt="`Recorded ${featureName} target`" />
             <pre v-else-if="testedText" class="result-evidence__sample-text">{{ testedText }}</pre>
-            <div v-else class="result-evidence__missing-image" role="img" aria-label="Not captured">
-              <svg viewBox="0 0 40 28" aria-hidden="true">
-                <rect x="1" y="1" width="38" height="26" rx="2" />
-                <path d="M6 22l9-9 7 7 6-6 6 8M5 4l30 20" />
-              </svg>
+            <pre v-else-if="assertions[0]?.observed" class="result-evidence__sample-text">{{
+              assertions[0].observed
+            }}</pre>
+            <div v-else class="result-evidence__missing-image">
+              <span>{{ compactCause }}</span>
             </div>
           </figure>
           <figure>
@@ -515,7 +534,7 @@ onBeforeUnmount(() => {
             </div>
           </figure>
         </div>
-        <details class="result-evidence__compact-details" @toggle="keepPreview">
+        <details class="result-evidence__compact-details">
           <summary>Technical details</summary>
           <div>
             <strong>Feature test</strong>
