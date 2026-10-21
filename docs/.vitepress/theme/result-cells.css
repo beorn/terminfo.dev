@@ -98,12 +98,12 @@
   color: #b93838;
   background: rgba(239, 68, 68, 0.1);
 }
-.result-evidence__trigger--error {
-  color: #a34620;
-  background: rgba(245, 158, 11, 0.12);
-}
-.result-evidence__trigger--ungraded,
+.result-evidence__trigger--error,
 .result-evidence__trigger--unknown {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+}
+.result-evidence__trigger--ungraded {
   color: var(--vp-c-text-2);
 }
 
@@ -216,8 +216,9 @@
 .result-evidence__outcome--no {
   color: #b93838;
 }
-.result-evidence__outcome--error {
-  color: #a34620;
+.result-evidence__outcome--error,
+.result-evidence__outcome--unknown {
+  color: #7c3aed;
 }
 .result-evidence__frames {
   display: grid;

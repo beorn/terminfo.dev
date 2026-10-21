@@ -26,6 +26,15 @@ const categoryFilter = ref('all')
 const baselineFilter = ref('all')
 const platformFilter = ref('all')
 
+// Use the same current-first selection as terminal detail pages. History stays historical.
+const displayedSelections = { ...data.historicalByBackend, ...data.selectedByBackend }
+const historicalBackends = Object.entries(data.historicalByBackend)
+  .filter(([name]) => !data.selectedByBackend[name])
+  .map(([name, { selected }]) => ({
+    name, version: selected.target.version, type: selected.target.kind,
+    platforms: selected.target.os ? [selected.target.os] : [],
+  }))
+
 // Baseline metadata for filter dropdown
 const baselineOptions = [
   { id: 'core', label: 'Core', count: data.baselines.core?.length ?? 0 },
@@ -53,7 +62,7 @@ function releaseSharePct(backendName) {
 
 // Sort backends by that one basis (highest first), then by name so the order is deterministic.
 const sortedBackends = computed(() => {
-  return [...data.backends].sort((a, b) => {
+  return [...data.backends, ...historicalBackends].sort((a, b) => {
     const delta = releaseSharePct(b.name) - releaseSharePct(a.name)
     return delta !== 0 ? delta : a.name.localeCompare(b.name)
   })
@@ -82,13 +91,13 @@ function platformIcon(os) {
 }
 
 function platformIcons(backendName) {
-  const os = data.selectedByBackend[backendName]?.selected.target.os
+  const os = displayedSelections[backendName]?.selected.target.os
   return os ? platformIcon(os) : ''
 }
 
 function supportFraction(backendName) {
   const bar = data.releaseBars[backendName]
-  return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : 'Not measured'
+  return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : data.selectedByBackend[backendName] ? 'Not measured' : 'Historical'
 }
 
 const sortedCategories = computed(() => visibleCategoryIds(data.categoryOrder, data.categories))
@@ -186,7 +195,7 @@ function backendLabel(name) {
 // ghostty is measured on macOS and on Linux. Print the run's OS beside the label so two
 // legitimate runs cannot read as one contradictory number (28047).
 function backendContextLabel(name) {
-  const os = data.selectedByBackend[name]?.selected.target.os
+  const os = displayedSelections[name]?.selected.target.os
   return `${backendLabel(name)} · ${os ? (data.platformLabels?.[os] ?? os) : 'OS not recorded'}`
 }
 
@@ -206,7 +215,7 @@ function backendTooltip(name, version) {
   if (meta.upstream) parts.push(`Upstream: ${meta.upstream}`)
   if (meta.type) parts.push(`Type: ${meta.type}`)
   if (version) parts.push(`Version: ${version}`)
-  const measuredAt = data.selectedByBackend[name]?.selected.measuredAt
+  const measuredAt = displayedSelections[name]?.selected.measuredAt
   if (measuredAt) parts.push(`Tested (UTC): ${new Date(measuredAt).toLocaleDateString('en-US', { timeZone: 'UTC' })}`)
   if (meta.url) parts.push(meta.url)
   if (meta.caveat) parts.push(`⚠ ${meta.caveat}`)
@@ -216,11 +225,11 @@ function backendTooltip(name, version) {
 
 <div class="problem-summary">
 
-<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
+<p v-if="data.currentRunCount === 0">No current schema-3 runs. <a href="/terminals">Historical results</a> are shown below for review.</p>
 </div>
 
-<div v-if="data.backends.length === 0" class="no-data">
-  <p>No current measurements are available yet.</p>
+<div v-if="sortedBackends.length === 0" class="no-data">
+  <p>No current or historical measurements are available yet.</p>
 </div>
 
 <div v-else>
@@ -322,6 +331,7 @@ function backendTooltip(name, version) {
       <th v-for="b in appBackends" :key="b.name">
         <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
         <span class="th-platforms" v-html="platformIcons(b.name)"></span>
+        <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>
   </thead>
@@ -337,7 +347,7 @@ function backendTooltip(name, version) {
       </td>
       <td v-for="b in appBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
+          :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -402,6 +412,7 @@ function backendTooltip(name, version) {
       <th class="feature-col"></th>
       <th v-for="b in headlessBackends" :key="b.name">
         <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>
   </thead>
@@ -417,7 +428,7 @@ function backendTooltip(name, version) {
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
+          :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -458,6 +469,7 @@ function backendTooltip(name, version) {
       <th class="feature-col"></th>
       <th v-for="b in muxBackends" :key="b.name">
         <a class="hover-link" :href="'/terminals/' + termSlug(b.name)" :title="backendTooltip(b.name, b.version)">{{ backendLabel(b.name) }}</a>
+        <span v-if="!data.selectedByBackend[b.name]" class="historical-label">Historical</span>
       </th>
     </tr>
   </thead>
@@ -473,7 +485,7 @@ function backendTooltip(name, version) {
       </td>
       <td v-for="b in muxBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
+          :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -1115,7 +1127,7 @@ strips, or mishandles.
 .VPHome .summary-bar { height:24px; min-width:0; border-radius:4px; }
 .VPHome .summary-pct { width:auto; min-width:0; font-variant-numeric:tabular-nums; font-size:14px; }
 .VPHome .bar-fail { background:var(--vp-c-divider); }
-.VPHome .bar-remainder { background:repeating-linear-gradient(135deg,transparent 0 4px,var(--vp-c-divider) 4px 5px); }
+.VPHome .bar-remainder { background:#7c3aed; }
 .VPHome .summary-muted .summary-row { grid-template-columns:148px 82px minmax(0,1fr) 74px; }
 .VPHome .problem-summary { max-width:none; margin:0 0 32px; padding:0; background:none; border-radius:0; font-size:16px; }
 .VPHome .VPHero .main { max-width:none; }
@@ -1124,13 +1136,14 @@ strips, or mishandles.
 .support-legend span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:6px; border-radius:2px; background:var(--vp-c-divider); }
 .support-legend .legend-supported::before { background:#10b981; }
 .support-legend .legend-inconclusive::before { background:#f59e0b; }
-.support-legend .legend-unmeasured::before { background:repeating-linear-gradient(135deg,transparent 0 2px,var(--vp-c-text-3) 2px 3px); }
+.support-legend .legend-unmeasured::before { background:#7c3aed; }
+.historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
 @media (max-width:600px) {
  .VPHome .summary-row,.VPHome .summary-muted .summary-row { grid-template-columns:minmax(0,1fr) 18px 84px; gap:8px 10px; padding:14px 0; }
  .VPHome .summary-muted .summary-version { grid-column:3; }
- .VPHome .summary-bar { grid-column:1 / 3; grid-row:2; order:initial; }
- .VPHome .summary-pct { grid-column:3; grid-row:2; order:initial; text-align:right; }
+ .VPHome .summary-bar { grid-column:1 / -1; grid-row:2; order:initial; }
+ .VPHome .summary-pct,.VPHome .baseline-backend-pct { display:none; }
  .VPHome .problem-summary { padding:0; font-size:15px; }
 }
 </style>
