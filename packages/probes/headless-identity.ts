@@ -56,7 +56,7 @@ export function recordedPath(path: string): string {
   const anchor = /\/(?:vendor|node_modules)\//.exec(path)
   if (!anchor) {
     throw new Error(
-      `Cannot record ${path} in a run file: it is outside the workspace's vendor/ and node_modules/ trees and the Nix store`,
+      `Cannot record ${basename(path)} in a run file: it is outside the workspace's vendor/ and node_modules/ trees and the Nix store`,
     )
   }
   return path.slice(anchor.index + 1)
@@ -434,7 +434,7 @@ export async function headlessRuntimeIdentity(
     }
     const path = realpathSync(binary.path)
     const sha = sha256(readFileSync(path))
-    if (binary.sha256 !== sha) throw new Error(`${name} WASM changed after loading: ${path}`)
+    if (binary.sha256 !== sha) throw new Error(`${name} WASM changed after loading: ${basename(path)}`)
     const engineVersion =
       name === "libvterm" ? libvtermVersion(path, sha, adapter.directory, termlessRoot) : upstream.version
     return { ...base, runtimeFormat: "wasm", engineVersion, loadedBinary: { path: recordedPath(path), sha256: sha } }

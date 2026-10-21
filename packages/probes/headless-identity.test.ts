@@ -369,14 +369,15 @@ test("a run records the engine path inside the workspace, never the collecting h
 
 /**
  * @failure A loaded file outside the workspace's vendor/ and node_modules/ trees and the Nix store
- *   had no publishable name, so it would have recorded the host path (30568).
+ *   had no publishable name, so it would have recorded the host path (30568). The refusal itself
+ *   reaches the run draft through the collector's failure record, so it names the file only.
  * @level l2
  * @consumer packages/probes/headless-identity.ts recordedPath
  * @reach fs-walk <fixture-only: imports the copied identity module>
  * @testonly recordedPath: the fixture's js engines never load a Nix store binary or a file outside
  *   the workspace, so both arms are pinned through the exported helper
  */
-test("a Nix store path is recorded as is; a path outside the workspace is refused", () => {
+test("a Nix store path is recorded as is; a path outside the workspace is refused without its folder", () => {
   const result = spawnSync(
     process.execPath,
     [
@@ -393,6 +394,8 @@ test("a Nix store path is recorded as is; a path outside the workspace is refuse
   const body = JSON.parse(result.stdout) as { store: string; refused: string }
   expect(body.store).toBe("/nix/store/0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-kitty-0.49.2/bin/kitty")
   expect(body.refused).toMatch(/outside the workspace's vendor\/ and node_modules\/ trees and the Nix store/)
+  expect(body.refused).toContain("Cannot record engine.wasm ")
+  expect(body.refused).not.toContain("/opt/elsewhere")
 })
 
 test("a Termless checkout outside the sibling path is used, and its own revision is recorded", () => {
