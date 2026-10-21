@@ -146,9 +146,10 @@ describe("check-private-leak — content scan", () => {
     expect(scanContent(content())).toEqual([])
   })
 
-  it("skips the images in artifacts/", () => {
-    write("content/artifacts/x.json", JSON.stringify({ path: "/hh/var/x" }))
-    expect(scanContent(content())).toEqual([])
+  it("reads the text captures in artifacts/ and skips images", () => {
+    write("content/artifacts/a.txt", "prompt in /hh/var/seat $ ")
+    write("content/artifacts/b.png", "\u0089PNG /hh/var/seat")
+    expect(scanContent(content()).map((x) => x.path)).toEqual(["content/artifacts/a.txt"])
   })
 
   it("the committed content/ tree records no host path", () => {

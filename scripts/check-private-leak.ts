@@ -80,7 +80,7 @@ const HOST_PATH = new RegExp(
   "g",
 )
 
-/** Text formats under content/ that can carry a recorded path; artifacts/ holds images only. */
+/** Text formats under content/ that can carry a recorded path, the text captures in artifacts/ included. */
 const CONTENT_TEXT = /\.(?:json|jsonl|md|txt|ya?ml)$/
 
 export interface Violation {
@@ -228,7 +228,7 @@ export function scanSitemap(distDir: string): Violation[] {
 }
 
 // ---------------------------------------------------------------------------
-// Layer 4 — CONTENT scan (content/**, except the images in artifacts/)
+// Layer 4 — CONTENT scan (content/**, text files only)
 // ---------------------------------------------------------------------------
 
 /** One finding per file: where the first host path starts, never the path itself, which CI logs would republish. */
@@ -236,7 +236,7 @@ export function scanContent(contentDir: string): Violation[] {
   const violations: Violation[] = []
   if (!existsSync(contentDir)) return violations
 
-  const check = (full: string) => {
+  walk(contentDir, (full) => {
     if (!CONTENT_TEXT.test(full)) return
     const text = readFileSync(full, "utf-8")
     const matches = [...text.matchAll(HOST_PATH)]
@@ -255,14 +255,7 @@ export function scanContent(contentDir: string): Violation[] {
       path: `content/${relative(contentDir, full)}`,
       reason: `${matches.length} absolute host path(s), the first under ${root} at ${line}:${column} — record a workspace-relative path, or none`,
     })
-  }
-
-  for (const name of readdirSync(contentDir)) {
-    if (name === "artifacts") continue
-    const full = join(contentDir, name)
-    if (statSync(full).isDirectory()) walk(full, check)
-    else check(full)
-  }
+  })
 
   return violations
 }
