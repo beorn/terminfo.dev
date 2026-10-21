@@ -337,6 +337,8 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query gr
 
 test("G1: a silent proven engine publishes the sentinel negative once the grace window stays quiet", async () => {
   vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
+  // collectBatch names each probe on stderr, and the root test setup refuses a test's output.
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const batch = await collectBatch(
     async () => scripted((text) => (text === DA1_QUERY ? DA1 : "")),
     "xtermjs",
@@ -365,6 +367,8 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
 
 test("G1: a byte the engine sends after the callback voids the negative as a collector error", async () => {
   vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
+  // collectBatch names each probe on stderr, and the root test setup refuses a test's output.
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const batch = await collectBatch(
     async () => {
       const backend = scripted((text) => {
