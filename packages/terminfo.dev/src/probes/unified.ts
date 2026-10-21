@@ -384,15 +384,20 @@ export async function runProbeBatch(
     if (!decodingAttempt) {
       const queries: TTYQueryTrace[] = []
       const events: TTYTraceEvent[] = []
-      decodingAttempt = withTTYQueryTrace(queries, events, measureUtf8Decoding).then((reading) => {
-        batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({
-          decoding: reading,
-          writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
-          queries,
-          events,
+      let decoding: Utf8DecodingReading | undefined
+      decodingAttempt = withTTYQueryTrace(queries, events, measureUtf8Decoding)
+        .then((reading) => {
+          decoding = reading
+          return reading
         })
-        return reading
-      })
+        .finally(() => {
+          batch.rawReplies["collector.utf8Decoding"] = JSON.stringify({
+            decoding,
+            writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
+            queries,
+            events,
+          })
+        })
     }
     return decodingAttempt
   }

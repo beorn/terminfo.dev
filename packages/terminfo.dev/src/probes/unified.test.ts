@@ -2134,12 +2134,19 @@ it("joins the in-flight attempt, so a row asking before it returns measures noth
 // failure behind a later, differently-contexted measurement and re-open the round trip every row.
 it("keeps a failed attempt failed for the batch, so no later row re-measures the same context", async () => {
   verifiedBatchFixture()
+  const actual = await vi.importActual<typeof import("../tty.ts")>("../tty.ts")
+  const raw = "\x1b[2;1R"
+  process.stdout.write = ((sequence: string) => {
+    if (sequence === "\x1b[6n") process.stdin.emit("data", Buffer.from(raw))
+    if (sequence === "\x1b[0më") throw new Error("the decode round trip failed")
+    return true
+  }) as typeof process.stdout.write
   const measured = vi.mocked(measureUtf8Decoding)
   const original = measured.getMockImplementation()
   let attempts = 0
   measured.mockImplementation(() => {
     attempts += 1
-    return Promise.reject(new Error("the decode round trip failed"))
+    return actual.measureUtf8Decoding()
   })
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalTerm = definition.term
@@ -2158,7 +2165,21 @@ it("keeps a failed attempt failed for the batch, so no later row re-measures the
     const batch = await runProbeBatch({ ids: [definition.id] })
     expect(attempts).toBe(1)
     expect(seen).toEqual(["failed: the decode round trip failed", "failed: the decode round trip failed"])
-    expect(batch.rawReplies["collector.utf8Decoding"]).toBeUndefined()
+    const retained = batch.rawReplies["collector.utf8Decoding"]
+    expect(retained).toBeTruthy()
+    expect(JSON.parse(retained!)).not.toHaveProperty("decoding")
+    expect(JSON.parse(retained!)).toMatchObject({
+      writes: ["\x1b7", "\x1b[2;1H", "\x1b[0më", "\x1b8"],
+      queries: [
+        {
+          sequence: "\x1b[6n",
+          reason: "reply",
+          match: [raw, "2", "1"],
+          raw,
+          rawBase64: Buffer.from(raw).toString("base64"),
+        },
+      ],
+    })
   } finally {
     definition.term = originalTerm
     if (original) measured.mockImplementation(original)
