@@ -727,16 +727,23 @@ describe("selected-run consumer parity", () => {
         (result) => result.featureId === "sgr.bold",
       )?.presentation
       if (approval?.state !== "presented") throw new Error("Current evidence was not presented")
-      const document = presented.documents.get(approval.url)
+      expect(approval.url).toBe(`/api/v3/evidence/${current.sha256}.json#sgr.bold`)
+      const docUrl = approval.url.split("#")[0]!
+      const document = presented.documents.get(docUrl)
       expect(document?.document).toMatchObject({
         version: 3,
         runId: current.runId,
         runSha256: current.sha256,
-        result: { status: "supported" },
-        record: {
-          rawReply: "RETAINED_CURRENT_REPLY",
-          assertions: current.assertions,
-          screenshot: { url: `/artifacts/${screenshotSha256}.png`, sha256: screenshotSha256 },
+        cells: {
+          "sgr.bold": {
+            featureId: "sgr.bold",
+            result: { status: "supported" },
+            record: {
+              rawReply: "RETAINED_CURRENT_REPLY",
+              assertions: current.assertions,
+              screenshot: { url: `/artifacts/${screenshotSha256}.png`, sha256: screenshotSha256 },
+            },
+          },
         },
       })
       expect(createHash("sha256").update(document!.bytes).digest("hex")).toBe(approval.sha256)
@@ -751,7 +758,7 @@ describe("selected-run consumer parity", () => {
         "screenshot",
       )
       expect(readFileSync(join(out, "artifacts", `${screenshotSha256}.png`))).toEqual(screenshot)
-      expect(readFileSync(join(out, approval.url), "utf8")).toBe(document!.bytes)
+      expect(readFileSync(join(out, docUrl), "utf8")).toBe(document!.bytes)
     } finally {
       imageReader?.mockRestore()
       policy?.mockRestore()
@@ -846,19 +853,26 @@ describe("selected-run consumer parity", () => {
         const presented = site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
         expect(presented?.state).toBe("presented")
         if (presented?.state !== "presented") throw new Error("Missing presented evidence")
+        expect(presented.url).toBe(`/api/v2/evidence/${fixture.runSha256}.json#sgr.bold`)
+        const docUrl = presented.url.split("#")[0]!
         generateApi(out)
-        const evidenceFile = join(out, presented.url.slice(1))
+        const evidenceFile = join(out, docUrl.slice(1))
         const bytes = readFileSync(evidenceFile)
         expect(createHash("sha256").update(bytes).digest("hex")).toBe(presented.sha256)
         const document = JSON.parse(bytes.toString("utf8")) as EvidenceDocument
         expect(document).toMatchObject({
           runId: fixture.selected.runId,
           runSha256: fixture.runSha256,
-          featureId: "sgr.bold",
+          cells: {
+            "sgr.bold": {
+              featureId: "sgr.bold",
+            },
+          },
         })
-        expect(document.record.rawReply).toBe(original.record.rawReply)
+        const cellDoc = document.cells["sgr.bold"]!
+        expect(cellDoc.record.rawReply).toBe(original.record.rawReply)
         expect(bytes.toString("utf8")).not.toContain("CORRECTION_OTHER_FEATURE_RAW")
-        expect(document.observation.note).toBe(original.note)
+        expect(cellDoc.observation.note).toBe(original.note)
         // CTO condition4 explicitly preserves the historical PNG document bytes, including key order.
         if (kind === "pixels") {
           expect(bytes.toString("utf8")).toBe(
@@ -867,30 +881,34 @@ describe("selected-run consumer parity", () => {
                 version: 1,
                 runId: fixture.selected.runId,
                 runSha256: fixture.runSha256,
-                featureId: "sgr.bold",
-                observation: {
-                  featureId: "sgr.bold",
-                  outcome: "supported",
-                  evidence: "query",
-                  note: "unchecked collector note /home/fixture/private",
-                },
-                record: {
-                  screenshot,
-                  rawReply: "\u001b[1;2R",
-                  assertions: [
-                    {
+                cells: {
+                  "sgr.bold": {
+                    featureId: "sgr.bold",
+                    observation: {
                       featureId: "sgr.bold",
-                      kind: "positive",
-                      expected: "PRIVATE_ASSERTION_EXPECTED",
-                      observed: "\u001b[1;2R",
+                      outcome: "supported",
+                      evidence: "query",
+                      note: "unchecked collector note /home/fixture/private",
                     },
-                  ],
-                },
-                review: {
-                  id: "present-bold",
-                  reviewer: "reviewer",
-                  reason: "checked original evidence",
-                  sources: ["https://example.org/review"],
+                    record: {
+                      screenshot,
+                      rawReply: "\u001b[1;2R",
+                      assertions: [
+                        {
+                          featureId: "sgr.bold",
+                          kind: "positive",
+                          expected: "PRIVATE_ASSERTION_EXPECTED",
+                          observed: "\u001b[1;2R",
+                        },
+                      ],
+                    },
+                    review: {
+                      id: "present-bold",
+                      reviewer: "reviewer",
+                      reason: "checked original evidence",
+                      sources: ["https://example.org/review"],
+                    },
+                  },
                 },
               },
               null,
@@ -911,7 +929,8 @@ describe("selected-run consumer parity", () => {
             runId: fixture.selected.runId,
             qualification: { shapes: [{ shape: "mid-line-gap" }] },
           })
-          expect(document.record.frames).toEqual([{ ...frame, url: screenshot.url }])
+          expect(cellDoc.record.frames).toEqual([{ ...frame, url: screenshot.url }])
+          expect(document.cells["extensions.sixel"]?.record.frames).toEqual([{ ...frame, url: screenshot.url }])
           if (!other.presentation) throw new Error("Missing second presented text result")
           other.presentation.decision.presentsEvidence = false
         }
@@ -929,7 +948,7 @@ describe("selected-run consumer parity", () => {
         generateApi(out)
         generateApi(copied)
         expect(existsSync(evidenceFile)).toBe(false)
-        expect(existsSync(join(copied, presented.url.slice(1)))).toBe(false)
+        expect(existsSync(join(copied, docUrl.slice(1)))).toBe(false)
         expect(existsSync(join(out, screenshot.url.slice(1)))).toBe(false)
         expect(existsSync(join(copied, screenshot.url.slice(1)))).toBe(false)
         const after = probesLoader.load().historicalByBackend.kitty?.selected.cells["sgr.bold"]

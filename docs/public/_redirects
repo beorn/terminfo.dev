@@ -1,3 +1,6 @@
 # Redirect old /terminal/ URLs to /terminals/ (renamed 2026-03-26)
 /terminal     /terminals     301
 /terminal/*   /terminals/:splat   301
+
+# Redirect legacy per-cell v2 evidence URLs to the per-run evidence document (#30598)
+/api/v2/evidence/:run/*   /api/v2/evidence/:run.json   301

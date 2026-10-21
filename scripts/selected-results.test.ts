@@ -1904,11 +1904,57 @@ describe("selected results", () => {
     expect(publicCell?.record?.frames).toEqual(expectedFrames)
     expect(publicCell?.record).not.toHaveProperty("screenshot")
     expect(publicCell?.presentation.state).toBe("presented")
-    expect(
-      published.documents.get(`/api/v2/evidence/${measured.sha256}/extensions.graphics.json`)?.document,
-    ).toMatchObject({
-      record: { frames: expectedFrames },
+    if (publicCell?.presentation.state === "presented") {
+      expect(publicCell.presentation.url).toBe(`/api/v2/evidence/${measured.sha256}.json#extensions.graphics`)
+    }
+    expect(published.documents.get(`/api/v2/evidence/${measured.sha256}.json`)?.document).toMatchObject({
+      cells: {
+        "extensions.graphics": {
+          record: { frames: expectedFrames },
+        },
+      },
     })
+    const multiRun = parseRun("multi-cell.json", JSON.stringify(run("multi-cell")), catalog)
+    const presentGraphics = {
+      ...present,
+      id: "present-graphics-in-same-run",
+      runId: multiRun.runId,
+      runSha256: multiRun.sha256,
+      scope: reviewFor(multiRun).scope,
+      featureId: "extensions.graphics",
+    }
+    const presentQuery = {
+      ...presentGraphics,
+      id: "present-query-in-same-run",
+      featureId: "extensions.query",
+    }
+    const multiPresented = projectResults([multiRun], [reviewFor(multiRun), presentGraphics, presentQuery], catalog, {
+      currentProbeHash: "current",
+    })
+    const multiPublished = publicResults(multiPresented, new Map())
+    expect([...multiPublished.documents.keys()]).toEqual([`/api/v2/evidence/${multiRun.sha256}.json`])
+    const runDoc = multiPublished.documents.get(`/api/v2/evidence/${multiRun.sha256}.json`)!
+    const expectedSha = createHash("sha256").update(runDoc.bytes).digest("hex")
+    const versionCells = multiPublished.projection.current["app:kitty"]?.cells
+    expect(versionCells?.["extensions.graphics"]?.presentation).toMatchObject({
+      state: "presented",
+      url: `/api/v2/evidence/${multiRun.sha256}.json#extensions.graphics`,
+      sha256: expectedSha,
+    })
+    expect(versionCells?.["extensions.query"]?.presentation).toMatchObject({
+      state: "presented",
+      url: `/api/v2/evidence/${multiRun.sha256}.json#extensions.query`,
+      sha256: expectedSha,
+    })
+    const cellSource = readFileSync(
+      join(import.meta.dirname, "..", "docs", ".vitepress", "theme", "ResultEvidenceCell.vue"),
+      "utf8",
+    )
+    expect(cellSource).toContain('url.split("#")')
+    expect(cellSource).toContain('throw new Error("evidence failed its receipt")')
+    expect(cellSource).toContain('throw new Error("no evidence stored for this cell")')
+    const redirects = readFileSync(join(import.meta.dirname, "..", "docs", "public", "_redirects"), "utf8")
+    expect(redirects).toContain("/api/v2/evidence/:run/*   /api/v2/evidence/:run.json   301")
   })
 
   // AC2–AC4: the public result reader must promote a reviewed character claim only from this
