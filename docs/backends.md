@@ -135,7 +135,7 @@ The two test types answer different questions:
 - **Headless results** report what the backend exposes: cell attributes, state or protocol replies. They do not establish the app's pixels or user interaction.
 - **App results** report what the specific probe observed in a running terminal. Query replies establish response behavior; controlled screenshots can establish the visible property they show. Input and permission behavior need their own checks.
 
-When results differ, compare the terminal version, configuration, probe method and evidence before attributing a cause. A difference can come from the adapter or probe as well as the terminal. The [result definitions](/contribute#reading-results) distinguish unsupported behavior, inconclusive observations and collection errors.
+When results differ, compare the terminal version, configuration, probe method and evidence before attributing a cause. A difference can come from the adapter or probe as well as the terminal. The [result definitions](/contribute#reading-results) distinguish Unsupported results, TEST TODO, TEST FAILURE and reviewed Untestable results.
 
 ---
 

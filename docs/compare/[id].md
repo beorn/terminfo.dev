@@ -32,7 +32,7 @@ function termTooltip(label, description, type, url) {
   return parts.join('\n') || label
 }
 
-// Only opposing results in the jointly conclusive, same-method cohort establish a difference.
+// Only opposing results with a recorded value, measured by the same method, establish a difference.
 const onlyAFeatures = []
 const onlyBFeatures = []
 for (const cat of categories) {
@@ -100,7 +100,7 @@ for (const cat of categories) {
   </div>
 </div>
 
-<p v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured conclusively by the same method</p>
+<p v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured by the same method</p>
 
 ## Feature Comparison
 

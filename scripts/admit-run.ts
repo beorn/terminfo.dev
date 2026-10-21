@@ -68,6 +68,26 @@ if (import.meta.main) {
       )
       console.log(`Retained reviewed capture ${source}; original draft unchanged`)
       if (source.endsWith(".draft.json")) throw new Error(`Required reviews remain pending in ${source}; no admission`)
+      if (
+        (decoded.run.target.kind === "app" || decoded.run.target.kind === "mux") &&
+        decoded.run.target.os?.toLowerCase() === "linux"
+      ) {
+        const directory = dirname(source)
+        execFileSync(
+          "bash",
+          [
+            "-c",
+            'source "$1"; compose_receipt "$2" "$3" "$4" "$5"',
+            "_",
+            join(import.meta.dirname, "linux-container-run.sh"),
+            join(directory, "host-measured.json"),
+            join(directory, "container-receipt.json"),
+            join(directory, "run-receipt.json"),
+            source,
+          ],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        )
+      }
     }
     const plan = planAdmission(source, into)
     const result = admitRun(plan)

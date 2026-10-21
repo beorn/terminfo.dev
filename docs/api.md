@@ -78,11 +78,11 @@ Free-form execution reasons and captured diagnostics pass the existing presentat
 
 **`GET /api/v2/data.json`** preserves schema-1/2 outcomes, provenance and readable evidence. Its existing `current` keys are historical defaults, not current schema-3 measurements.
 
-**`GET /api/v1/data.json`** preserves the released historical yes/no projection and its historical score semantics. It omits nonconclusive entries rather than treating them as false.
+**`GET /api/v1/data.json`** preserves the released historical yes/no projection and its historical score semantics. It omits entries without a recorded Supported or Unsupported value rather than treating them as false.
 
 Both endpoints declare `methodology.historicalOnly: true` and point to v3. No new-contract status is converted into a historical boolean.
 
-Historical v1 scores keep their original denominator: conclusive yes/no results. They must not be compared with the v3 Supported/all score as if the bases were equal.
+Historical v1 scores keep their original denominator: recorded yes/no results. They must not be compared with the v3 Supported/all score as if the bases were equal.
 
 Historical SVG badges remain at their released URLs and visibly say Historical:
 

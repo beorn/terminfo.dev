@@ -28,12 +28,11 @@ export default {
     const baselinesPath = join(__dirname, "..", "..", "content", "baselines.json")
     const baselines = JSON.parse(readFileSync(baselinesPath, "utf-8")) as Record<string, BaselineMeta>
 
-    // Sort backends by score (highest first)
-    const sortedBackends = [...data.backends].sort((a, b) => {
-      const aPct = data.stats[a.name]?.pct ?? 0
-      const bPct = data.stats[b.name]?.pct ?? 0
-      return bPct - aPct
-    })
+    // Keep terminal rows easy to scan. Baseline percentages are subset-specific,
+    // so sorting by the global score makes the row order disagree with the values.
+    const sortedBackends = [...data.backends].sort((a, b) =>
+      (data.meta[a.name]?.label ?? a.name).localeCompare(data.meta[b.name]?.label ?? b.name),
+    )
 
     const backends = sortedBackends.map((b) => ({
       name: b.name,

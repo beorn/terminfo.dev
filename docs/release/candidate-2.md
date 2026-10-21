@@ -59,7 +59,9 @@ function unmeasuredWithoutHold(group) {
 }
 
 function remainderLabel(row) {
-  return row.remainder.map((entry) => `${entry.featureId} (${entry.bucket})`).join(', ')
+  return row.remainder
+    .map((entry) => `${entry.featureId} (${entry.bucket === 'error' ? 'TEST FAILURE' : 'TEST TODO'})`)
+    .join(', ')
 }
 </script>
 
@@ -138,14 +140,14 @@ This dated release view preserves its original arithmetic. Current execution sta
     <template v-if="context.selection"> &middot; selected by the {{ context.selection }}</template>
   </p>
   <p v-if="context.inconclusive.length" class="c2-gap">
-    Not decided ({{ context.inconclusive.length }}): {{ context.inconclusive.map((row) => row.featureId).join(', ') }}
+    Other rows ({{ context.inconclusive.length }}): {{ context.inconclusive.map((row) => row.featureId).join(', ') }}
   </p>
   <ul v-if="context.inconclusive.some((row) => row.note)" class="c2-causes">
     <li v-for="row in context.inconclusive.filter((entry) => entry.note)" :key="row.featureId">
       <code>{{ row.featureId }}</code> &mdash; {{ row.note }}
     </li>
   </ul>
-  <p v-if="context.remainder.length" class="c2-gap">No result recorded: {{ remainderLabel(context) }}</p>
+  <p v-if="context.remainder.length" class="c2-gap">Other statuses: {{ remainderLabel(context) }}</p>
 </div>
 
 <h3>Rows this page does not publish {#not-published}</h3>

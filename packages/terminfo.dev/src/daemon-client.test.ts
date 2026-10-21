@@ -664,3 +664,65 @@ it("resumes a retained pending capture through the final writer without changing
   expect(parsed.results?.[0]?.status).toBe("untestable")
   expect(parsed.rawReplies["collector.review.context-review"]).toBe(review)
 })
+
+// A single-review fixture always reached a sealed filename and missed the pending filename collision.
+it("retains partial reviews as immutable snapshots, then seals the same logical run", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const run = collectorRun()
+  run.results = ["device.primary-da", "device.secondary-da"].map((featureId) => ({
+    featureId,
+    status: "test-todo",
+    attempt: { scope: "none" },
+    checks: [
+      { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review pending" },
+    ],
+    reason: "Required context review pending",
+  }))
+  const originalPath = saveDaemonProbeRun(run, root)
+  const original = readFileSync(originalPath, "utf8")
+  const pending = JSON.parse(original) as CollectedProbeRun
+  const decision = (featureId: string, id: string) =>
+    JSON.stringify({
+      id,
+      runId: run.runId,
+      featureId,
+      captureSha256: createHash("sha256")
+        .update(pending.rawReplies["collector.capture." + featureId]!)
+        .digest("hex"),
+      decision: "untestable",
+      reviewed: true,
+      reviewer: "reviewer",
+      reason: "This stream-only context cannot receive the criterion's device replies",
+      scope: {
+        target: { kind: "app", id: "kitty" },
+        versions: ["0.49.1", "0.49.1"],
+        suites: [run.probeHash, run.probeHash],
+      },
+      sources: ["collector.capture." + featureId],
+      supersedes: [],
+    })
+  const partialPath = saveDaemonProbeRun(pending, root, undefined, [
+    { source: decision("device.primary-da", "first-review"), startedAt: "2026-10-21T05:00:00.000Z" },
+  ])
+  expect(partialPath).not.toBe(originalPath)
+  expect(partialPath).toMatch(/\.[a-f0-9]{64}\.draft.json$/)
+  const partial = readFileSync(partialPath, "utf8")
+  const finalPath = saveDaemonProbeRun(JSON.parse(partial) as CollectedProbeRun, root, undefined, [
+    { source: decision("device.secondary-da", "second-review"), startedAt: "2026-10-21T05:01:00.000Z" },
+  ])
+  const manifest = {
+    ...trustedReceipt.manifest,
+    catalogIds: run.results.map((result) => result.featureId),
+    probes: { ...trustedReceipt.manifest.probes, app: run.results.map((result) => result.featureId) },
+  }
+  const parsed = parseRun(
+    finalPath,
+    readFileSync(finalPath, "utf8"),
+    manifest.catalogIds,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(parsed.runId).toBe(run.runId)
+  expect(parsed.results?.map((result) => result.status)).toEqual(["untestable", "untestable"])
+  expect(readFileSync(originalPath, "utf8")).toBe(original)
+  expect(readFileSync(partialPath, "utf8")).toBe(partial)
+})

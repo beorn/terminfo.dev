@@ -169,6 +169,13 @@ const breadcrumbParent = (() => {
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
   <p class="result-share-label">{{ measuredShare }}</p>
   <p>{{ currentCoverageSentence(measuredBar) }}</p>
+  <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
+    <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['test-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['test-todo'] / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['test-failure']" class="result-share-error" :style="{ width: `${measuredBar.counts['test-failure'] / measuredBar.denominator * 100}%` }"></span>
+  </div>
   <p>Run {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and capability support are separate.</p>
 </div>
 

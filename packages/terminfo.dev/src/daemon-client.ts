@@ -370,10 +370,17 @@ export function saveDaemonProbeRun(
     if (!/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`Unsafe capture filename component: ${value}`)
   }
   mkdirSync(directory, { recursive: true })
+  // A partially reviewed draft is a new immutable snapshot of the same logical capture.
+  // Keep the original pending bytes; the existing private writer needs no second store.
+  const reviewedPending =
+    captured.sealedAt === undefined &&
+    Object.keys(captured.rawReplies).some((key) => key.startsWith("collector.review."))
+  const bytes = `${JSON.stringify(captured, null, 2)}\n`
+  const snapshot = reviewedPending ? `.${createHash("sha256").update(bytes).digest("hex")}` : ""
   const file = join(
     directory,
-    `${captured.target.id}-${captured.target.version}-${captured.target.os ?? "unknown"}-${captured.runId}${captured.sealedAt === undefined ? ".draft" : ""}.json`,
+    `${captured.target.id}-${captured.target.version}-${captured.target.os ?? "unknown"}-${captured.runId}${snapshot}${captured.sealedAt === undefined ? ".draft" : ""}.json`,
   )
-  writeFileSync(file, `${JSON.stringify(captured, null, 2)}\n`, { flag: "wx", mode: 0o600 })
+  writeFileSync(file, bytes, { flag: "wx", mode: 0o600 })
   return file
 }

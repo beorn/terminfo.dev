@@ -293,7 +293,7 @@ Sixel is DEC’s raster graphics format. Its data characters encode vertical col
 - Raster graphics encoded in a terminal escape-sequence stream.
 - A different image format and placement model from Kitty graphics.
 - Usable over SSH when the terminal and any intermediaries support the path.
-- Rendering needs image evidence; a declaration or cursor response alone is inconclusive.
+- Rendering needs image evidence; a declaration or cursor response alone does not establish Supported or Unsupported.
 
 :::
 

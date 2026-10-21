@@ -24,7 +24,7 @@ npx terminfo.dev test --output /tmp/terminfo-run.json   # one raw run, saved to 
 npx terminfo.dev submit /tmp/terminfo-run.json --draft /tmp/terminfo-draft.md
 ```
 
-`test` sends the probes to your terminal and records the replies. It never sends a probe that would change your terminal's state; each such probe is recorded as "Inconclusive: we did not send it", so the run stays complete. Leave your terminal's permissions as they are; clipboard access stays off.
+`test` sends the probes to your terminal and records the replies. It never sends a probe that would change your terminal's state; each such probe is recorded as TEST TODO because the probe was not sent, so the run stays complete. Leave your terminal's permissions as they are; clipboard access stays off.
 
 `submit --draft` writes two files and posts nothing: the draft issue at the path you gave, and next to it an exact copy of the raw run named `<sha256>.json`.
 

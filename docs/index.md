@@ -529,7 +529,7 @@ function backendTooltip(name, version) {
 Data comes from three complementary sources:
 
 **Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
-the community CLI runs reviewed queries; checks that change terminal state require retained evidence
+the community CLI runs reviewed queries; checks that change terminal state remain TEST TODO
 until a verified disposable test environment is available. Rendering and interaction require
 their own evidence, such as screenshots and input tests; a reply alone proves neither.
 

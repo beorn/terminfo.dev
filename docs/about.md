@@ -30,7 +30,7 @@ The site is being audited for probes that overstate what they establish. In part
 
 A useful result states the measured outcome, method, terminal or engine identity, probe revision and measurement time. Reviewed corrections must retain the original evidence and explain what changed and why. The [contribution guide](/contribute#reading-results) explains the result vocabulary and how to submit a reproduction or screenshot.
 
-Our target is complete, trustworthy measurements of the stated scope. Terminals and headless engines make different feature choices; a universal 100% support score is not the goal. Untested features, intentional exclusions and inconclusive measurements need explicit labels.
+Our target is complete, trustworthy measurements of the stated scope. Terminals and headless engines make different feature choices; a universal 100% support score is not the goal. Every feature needs one of five labels: Supported, Unsupported, Untestable, TEST TODO or TEST FAILURE.
 
 See the [roadmap](/roadmap) for what this measurement repair covers and what remains for later work.
 
