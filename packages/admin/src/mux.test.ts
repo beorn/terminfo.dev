@@ -141,7 +141,9 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
     }
     expect(stopOwnedDaemon).toHaveBeenCalledWith(owned)
     expect(removeProbeRun).toHaveBeenCalledOnce()
-    expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/tmux.*kill-session/), expect.anything())
+    expect(spawnSync).toHaveBeenCalledWith("/usr/bin/tmux", ["-V"], expect.anything())
+    expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/^'\/usr\/bin\/tmux' new-session /), expect.anything())
+    expect(execSync).toHaveBeenCalledWith(expect.stringMatching(/^'\/usr\/bin\/tmux' kill-session /), expect.anything())
     expect(log).not.toHaveBeenCalledWith(expect.stringContaining("(admitted)"))
     expect(readFileSync(original, "utf8")).toBe(bytes)
   } finally {
@@ -168,6 +170,8 @@ it.each([
   { label: "spawn failure", status: null, stdout: "", stderr: "", accepted: false, error: new Error("ENOENT") },
 ])("validates Darwin Screen preflight: $label", async ({ status, stdout, stderr, accepted, ...extra }) => {
   const log = vi.spyOn(console, "log").mockImplementation(() => {})
+  const originalPath = process.env.PATH
+  const standardPaths = 'PATH="/usr/local/bin:/usr/bin:/bin"; export PATH;\n'
   vi.stubGlobal("process", { ...process, platform: "darwin" })
   vi.mocked(execSync).mockImplementation((command) => {
     if (command.toString().startsWith("which tmux")) throw new Error("not found")
@@ -177,7 +181,7 @@ it.each([
   vi.mocked(spawnSync).mockImplementation((binary, args = []) => {
     const result = { status: 0, stdout: "", stderr: "", error: undefined, signal: null, pid: 0, output: [] }
     if (binary === "/usr/libexec/path_helper") {
-      return { ...result, stdout: 'PATH="/usr/local/bin:/usr/bin:/bin"; export PATH;\n' }
+      return { ...result, stdout: standardPaths }
     }
     if (binary === "/bin/sh") {
       return args.at(-1) === "screen" ? { ...result, stdout: "/usr/bin/screen\n" } : { ...result, status: 1 }
@@ -192,9 +196,18 @@ it.each([
     } else {
       await expect(handleMux(undefined, {})).rejects.toThrow(/screen.*version|version.*screen/i)
     }
+    expect(spawnSync).toHaveBeenCalledWith("/usr/libexec/path_helper", ["-s"], expect.anything())
+    expect(spawnSync).toHaveBeenCalledWith(
+      "/bin/sh",
+      ["-c", `${standardPaths}\ncommand -v "$1"`, "terminfo-mux", "screen"],
+      expect.anything(),
+    )
+    expect(process.env.PATH).toBe(originalPath)
     expect(createProbeRun).not.toHaveBeenCalled()
     expect(findOwnedDaemon).not.toHaveBeenCalled()
   } finally {
+    if (originalPath === undefined) delete process.env.PATH
+    else process.env.PATH = originalPath
     vi.unstubAllGlobals()
     vi.resetAllMocks()
     vi.restoreAllMocks()
