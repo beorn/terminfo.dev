@@ -1,4 +1,14 @@
-import type { CapabilityResult, CurrentProbeRun, ProbeSuiteManifest, RunDraft } from "./types.ts"
+import type {
+  CapabilityAttempt,
+  Observation,
+  NotTestedCoverage,
+  ProbeAssertion,
+  UngradedDiagnostic,
+  CapabilityResult,
+  CurrentProbeRun,
+  ProbeSuiteManifest,
+  RunDraft,
+} from "./types.ts"
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
@@ -833,4 +843,60 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
     origin: draft.origin,
     sealedAt,
   }
+}
+
+/** Execute the declared callback's proposition once; readers consume this recorded result. */
+export function recordExecutedCapability(input: {
+  featureId: string
+  attempt: Exclude<CapabilityAttempt, { scope: "none" }>
+  observation?: Observation
+  diagnostic?: UngradedDiagnostic
+  coverage?: NotTestedCoverage
+  assertions: readonly ProbeAssertion[]
+}): CapabilityResult {
+  const { featureId, attempt, observation, diagnostic, coverage } = input
+  const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
+  const requiresReview =
+    observation?.outcome === "inconclusive" &&
+    (observation.evidence === "pixels" || observation.evidence === "text") &&
+    (observation.frames?.length ?? 0) >= 2
+  const status =
+    diagnostic || observation?.outcome === "error"
+      ? "test-failure"
+      : observation?.outcome === "supported" || observation?.outcome === "unsupported"
+        ? observation.outcome
+        : coverage || observation?.evidence === "none" || observation?.evidence === "consumed" || requiresReview
+          ? "test-todo"
+          : "test-failure"
+  const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
+  const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
+  const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef
+  return finalizeCapabilityResult({
+    featureId,
+    attempt,
+    checks: requiresReview
+      ? [
+          { id: "capture", status: "supported", attempt, assertionRefs, ...(rawReplyRef && { rawReplyRef }) },
+          {
+            id: "review",
+            status: "test-todo",
+            attempt: { scope: "none" },
+            reason: "Valid capture; required review pending",
+          },
+        ]
+      : [
+          {
+            id: "criterion",
+            status,
+            attempt: status === "test-todo" ? { scope: "none" } : attempt,
+            assertionRefs,
+            ...(rawReplyRef && { rawReplyRef }),
+            ...(reason && { reason }),
+          },
+        ],
+    ...(observation?.evidence && { evidence: observation.evidence }),
+    ...(rawReplyRef && { rawReplyRef }),
+    ...(observation?.frames && { frames: observation.frames }),
+    ...(reason && { reason }),
+  })
 }

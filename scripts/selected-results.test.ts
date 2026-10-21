@@ -3488,3 +3488,40 @@ describe("identity self-admission", () => {
     )
   })
 })
+
+// Pre-seal decisions must bind capture bytes without hashing the final status into itself.
+// Existing identity/presentation cases require final-run hashes and cannot represent this branch.
+describe("pre-seal capture decisions", () => {
+  const decision = {
+    id: "capture-review",
+    runId: "capture-run",
+    featureId: "extensions.graphics",
+    captureSha256: "a1".repeat(32),
+    decision: "untestable",
+    reviewed: true,
+    reviewer: "reviewer",
+    reason: "This headless parser has no display surface for the visual viewport claim",
+    scope: {
+      target: { kind: "headless", id: "xtermjs" },
+      versions: ["6.0.0", "6.0.0"],
+      suites: ["a1b2c3d4e5f6", "a1b2c3d4e5f6"],
+    },
+    sources: ["capture://exact-binding"],
+    supersedes: [],
+  }
+  it("accepts a typed reviewed impossibility independently of a final-run hash", () => {
+    expect(parseInterpretations("capture-review.json", JSON.stringify([decision]), catalog)).toEqual([decision])
+  })
+  it.each([
+    { decision: undefined },
+    { captureSha256: "not-a-digest" },
+    { reviewed: false },
+    { runSha256: "b2".repeat(32) },
+    { verifiesIdentity: true },
+    { observation: { outcome: "supported" } },
+  ])("rejects ambiguous or authority-mixed capture review %o", (change) => {
+    expect(() =>
+      parseInterpretations("capture-review.json", JSON.stringify([{ ...decision, ...change }]), catalog),
+    ).toThrow(/capture|pre-seal/)
+  })
+})

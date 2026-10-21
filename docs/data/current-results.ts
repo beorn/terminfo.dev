@@ -7,8 +7,11 @@ import {
   maskRunnerStorePath,
   type SelectedProjection,
   type SelectedVersion,
-  statesFor,
+  type CurrentSelectedVersion,
+  type HistoricalProjection,
 } from "./selected-results.ts"
+import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { CellState } from "./release-scope.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
@@ -23,8 +26,12 @@ export interface DefaultContextReview {
 
 export interface CurrentResult {
   contextKey: string
-  selected: SelectedVersion
+  selected: CurrentSelectedVersion
   policy?: DefaultContextReview
+}
+
+export interface HistoricalCurrentResult extends Omit<CurrentResult, "selected"> {
+  selected: SelectedVersion
 }
 
 export interface CurrentResults {
@@ -222,23 +229,42 @@ export function reviewedContextFor<Row extends { contextKey: string }>(
 
 /** Compatibility consumers select one reviewed context per kind:id, then derive stable v1/site keys. */
 export function compatibilityTargets(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
+  return compatibilityTargetsFor(projection, contentDir)
+}
+
+/** Explicit historical defaults preserve released v1/v2 keys without supplying current v3 results. */
+export function historicalCompatibilityTargets(
+  projection: HistoricalProjection,
+  contentDir: string,
+): Map<string, HistoricalCurrentResult> {
+  return compatibilityTargetsFor(projection, contentDir)
+}
+
+function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelectedVersion>(
+  projection: {
+    current: Record<string, Version>
+    table: Readonly<Record<string, Readonly<Record<string, CellState | CapabilityStatus>>>>
+  },
+  contentDir: string,
+): Map<string, { contextKey: string; selected: Version; policy?: DefaultContextReview }> {
   const policy = loadDefaultContextPolicy(contentDir)
   const catalog = loadCatalogKeys(contentDir)
-  const groups = new Map<string, CurrentResult[]>()
+  type TargetResult = { contextKey: string; selected: Version; policy?: DefaultContextReview }
+  const groups = new Map<string, TargetResult[]>()
   for (const [contextKey, selected] of Object.entries(projection.current)) {
     const targetKey = `${selected.target.kind}:${selected.target.id}`
     const group = groups.get(targetKey) ?? []
     group.push({ contextKey, selected })
     groups.set(targetKey, group)
   }
-  const byTarget = new Map<string, CurrentResult>()
+  const byTarget = new Map<string, TargetResult>()
   for (const [targetKey, group] of groups) {
     const review = policy[targetKey]
     // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
     const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
     const picked = pickContextRun(
       group.map((entry) =>
-        candidateFromSelected(entry.contextKey, entry.selected, statesFor(projection, entry.selected.runId)),
+        candidateFromSelected(entry.contextKey, entry.selected, selectedStates(projection.table, entry.selected.runId)),
       ),
       review,
     )
@@ -262,4 +288,13 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
     byTarget.set(key, { ...chosen, ...(review && { policy: review }) })
   }
   return byTarget
+}
+
+function selectedStates(
+  table: Readonly<Record<string, Readonly<Record<string, CellState | CapabilityStatus>>>>,
+  runId: string,
+): Readonly<Record<string, CellState | CapabilityStatus>> {
+  const states = table[runId]
+  if (!states) throw new Error(`Selected run ${runId} has no projected result table`)
+  return states
 }

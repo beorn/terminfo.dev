@@ -211,8 +211,32 @@ describe("sealed current runs", () => {
   it("does not accept a current support assertion without its bound raw evidence", () => {
     const raw = current()
     const first = raw.results[0]!
-    const supported = { ...first, status: "supported", evidence: "parser-state", attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }, checks: [{ id: "criterion", status: "supported", attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }, assertionRefs: [0] }] }
-    expect(() => parseRun("unbound-current.json", JSON.stringify({ ...raw, results: [supported, ...raw.results.slice(1)], assertions: [{ featureId: "alpha", kind: "positive", expected: "bold=true", observed: "bold=true" }], rawReplies: {} }), catalog, new Map([[suite.probeHash, currentSuite]]))).toThrow(/raw|bound/)
+    const supported = {
+      ...first,
+      status: "supported",
+      evidence: "parser-state",
+      attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+      checks: [
+        {
+          id: "criterion",
+          status: "supported",
+          attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+          assertionRefs: [0],
+        },
+      ],
+    }
+    expect(() =>
+      parseRun(
+        "unbound-current.json",
+        JSON.stringify({
+          ...raw,
+          results: [supported, ...raw.results.slice(1)],
+          assertions: [{ featureId: "alpha", kind: "positive", expected: "bold=true", observed: "bold=true" }],
+          rawReplies: {},
+        }),
+        catalog,
+        new Map([[suite.probeHash, currentSuite]]),
+      ),
+    ).toThrow(/raw|bound/)
   })
-
 })

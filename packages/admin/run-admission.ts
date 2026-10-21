@@ -266,13 +266,13 @@ function identityDecision(
   if (run.identity === "disputed") return "identity-disputed"
   const pin = pinnedIdentity(run, active)
   if (run.target.kind === "headless") {
-    if (run.schemaVersion !== 2 && !pin) {
+    if (run.schemaVersion === 1 && !pin) {
       return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
     }
     return identityAdmission ? null : "runtime-identity-unverified"
   }
   if (!ADMISSION_IDENTITY_RULES[run.target.id]) return "identity-no-profile"
-  if (run.schemaVersion !== 2) {
+  if (run.schemaVersion === 1) {
     if (!pin) return run.identity === "unverified" ? "identity-unverified" : "identity-unreviewed"
     return identityAdmission ? null : "identity-replies-mismatch"
   }

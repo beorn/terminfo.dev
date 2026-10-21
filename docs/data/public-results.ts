@@ -1,6 +1,8 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
 import type {
+  CapabilityResult,
+  CapabilityStatus,
   ConsoleBufferOwner,
   Observation,
   ObservationFrame,
@@ -10,12 +12,15 @@ import type {
   TextQualification,
   TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
-import type { CurrentResult } from "./current-results.ts"
+import type { CurrentResult, HistoricalCurrentResult } from "./current-results.ts"
 import {
   HISTORICAL_RERUN_NOTE,
   statesFor,
+  historicalStatesFor,
   type SelectedCell,
   type SelectedProjection,
+  type HistoricalProjection,
+  type CurrentSelectedVersion,
   type SelectedVersion,
 } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
@@ -32,7 +37,7 @@ export type PublicFrame = {
 }
 type PublicImages = { screenshot?: SelectedCell["record"]["screenshot"]; frames?: PublicFrame[] }
 
-export interface EvidenceDocument {
+export interface HistoricalEvidenceDocument {
   version: 1
   runId: string
   runSha256: string
@@ -56,7 +61,10 @@ export interface TextQualificationDocument {
   }
 }
 
-export interface PublicCell extends Pick<SelectedCell, "featureId" | "outcome" | "reason" | "evidence" | "conclusive"> {
+export interface HistoricalPublicCell extends Pick<
+  SelectedCell,
+  "featureId" | "outcome" | "reason" | "evidence" | "conclusive"
+> {
   note?: string
   /** The console host the read returned; absent on a pixels row and on a text row that had none. */
   host?: ConsoleBufferOwner
@@ -77,19 +85,22 @@ export interface PublicCell extends Pick<SelectedCell, "featureId" | "outcome" |
     | { state: "presented"; review: PublicReview; url: string; sha256: string }
 }
 
-export interface PublicVersion extends Omit<SelectedVersion, "cells" | "ungradedDiagnostics" | "textQualification"> {
-  cells: Record<string, PublicCell>
+export interface HistoricalPublicVersion extends Omit<
+  SelectedVersion,
+  "cells" | "ungradedDiagnostics" | "textQualification"
+> {
+  cells: Record<string, HistoricalPublicCell>
 }
 
-export interface PublicProjection {
-  current: Record<string, PublicVersion>
-  versions: Record<string, PublicVersion[]>
-  history: Record<string, PublicVersion[]>
+export interface HistoricalPublicProjection {
+  current: Record<string, HistoricalPublicVersion>
+  versions: Record<string, HistoricalPublicVersion[]>
+  history: Record<string, HistoricalPublicVersion[]>
   exclusions: Array<{ runId: string; reason: string }>
 }
 
-export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
-  selected: PublicVersion
+export interface HistoricalPublicCurrentResult extends Omit<HistoricalCurrentResult, "selected"> {
+  selected: HistoricalPublicVersion
   /**
    * The reader's classified states for this backend's selected run, keyed by feature id. A page that
    * names a backend (its bar, its tooltip) reads the state here, so it never classifies the run's raw
@@ -130,61 +141,19 @@ function images(record: SelectedCell["record"], where: string): PublicImages {
 }
 
 /** One mapping also supplies the exact lazy documents that generate-api writes. */
-export function publicResults(projection: SelectedProjection, targets: ReadonlyMap<string, CurrentResult>) {
-  const documents = new Map<string, { bytes: string; document: EvidenceDocument | TextQualificationDocument }>()
-  const qualificationFor = (version: SelectedVersion): { url: string; sha256: string } | undefined => {
-    if (!version.textQualification) return undefined
-    const qualification = version.textQualification
-    const document: TextQualificationDocument = {
-      version: 1,
-      runId: version.runId,
-      runSha256: version.sha256,
-      qualification: {
-        ...qualification,
-        shapes: qualification.shapes.map((shape) => {
-          if (shape.reason !== undefined) return { shape: shape.shape, reason: shape.reason }
-          const frames = images(
-            {
-              assertions: [],
-              frames: shape.frames.map((frame) => ({
-                role: frame.role,
-                label: frame.label,
-                capturedAt: frame.capturedAt,
-                kind: "text-cells",
-                sha256: frame.ref.slice(7),
-              })),
-            },
-            `run ${version.runId} qualification ${shape.shape}`,
-          ).frames
-          if (!frames) throw new Error(`Missing mapped qualification frames for ${version.runId}/${shape.shape}`)
-          return {
-            shape: shape.shape,
-            frames: frames.map((frame, index) => {
-              const raw = shape.frames[index]
-              if (!raw) throw new Error(`Missing original qualification frame for ${version.runId}/${shape.shape}`)
-              return {
-                ...frame,
-                cellDigest: raw.cellDigest,
-                frameDigest: raw.frameDigest,
-                cellRectangle: { ...raw.cellRectangle },
-              }
-            }),
-          }
-        }),
-      },
-    }
-    const url = `/api/v2/evidence/${version.sha256}/text-qualification.json`
-    const bytes = JSON.stringify(document, null, 2) + "\n"
-    const prior = documents.get(url)
-    if (prior && prior.bytes !== bytes) throw new Error(`Conflicting qualification document ${url}`)
-    documents.set(url, { bytes, document })
-    return { url, sha256: createHash("sha256").update(bytes).digest("hex") }
-  }
-  const mapCell = (cell: SelectedCell, version: SelectedVersion): PublicCell => {
+export function publicHistoricalResults(
+  projection: HistoricalProjection,
+  targets: ReadonlyMap<string, HistoricalCurrentResult>,
+) {
+  const documents = new Map<
+    string,
+    { bytes: string; document: HistoricalEvidenceDocument | TextQualificationDocument }
+  >()
+  const mapCell = (cell: SelectedCell, version: SelectedVersion): HistoricalPublicCell => {
     const approved = cell.presentation?.decision.presentsEvidence === true
     const reviewedCorrection = cell.chain.correctionId !== undefined
     const origin = cell.chain.origin
-    const result: PublicCell = {
+    const result: HistoricalPublicCell = {
       featureId: cell.featureId,
       outcome: cell.outcome,
       evidence: cell.evidence,
@@ -212,8 +181,8 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       return result
     }
     const { observation, record } = original
-    const textQualification = cell.evidence === "text" ? qualificationFor(version) : undefined
-    const document: EvidenceDocument = {
+    const textQualification = cell.evidence === "text" ? qualificationFor(version, documents, 2) : undefined
+    const document: HistoricalEvidenceDocument = {
       version: 1,
       runId: version.runId,
       runSha256: version.sha256,
@@ -262,7 +231,8 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     config: value.config,
     permissions: value.permissions,
   })
-  const mapVersion = (version: SelectedVersion): PublicVersion => ({
+  const mapVersion = (version: SelectedVersion): HistoricalPublicVersion => ({
+    schemaVersion: version.schemaVersion,
     runId: version.runId,
     target: target(version.target),
     measuredAt: version.measuredAt,
@@ -294,20 +264,20 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
   })
   const mapGroups = (groups: Record<string, SelectedVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
-  const selected: PublicProjection = {
+  const selected: HistoricalPublicProjection = {
     current: Object.fromEntries(Object.entries(projection.current).map(([key, version]) => [key, mapVersion(version)])),
     versions: mapGroups(projection.versions),
     history: mapGroups(projection.history),
     exclusions: projection.exclusions.map(({ runId, reason }) => ({ runId, reason })),
   }
-  const selectedByBackend: Record<string, PublicCurrentResult> = Object.fromEntries(
+  const selectedByBackend: Record<string, HistoricalPublicCurrentResult> = Object.fromEntries(
     [...targets].map(([key, value]) => [
       key,
       {
         contextKey: value.contextKey,
         selected: mapVersion(value.selected),
         // The selected run's states come from the projection's ONE table, never a second classification.
-        states: statesFor(projection, value.selected.runId),
+        states: historicalStatesFor(projection, value.selected.runId),
         ...(value.policy && {
           policy: {
             contextKey: value.policy.contextKey,
@@ -320,4 +290,235 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     ]),
   )
   return { projection: selected, selectedByBackend, documents }
+}
+
+function qualificationFor(
+  version: Pick<SelectedVersion, "runId" | "sha256" | "textQualification">,
+  documents: PublicDocuments,
+  apiVersion: 2 | 3,
+): { url: string; sha256: string } | undefined {
+  if (!version.textQualification) return undefined
+  const qualification = version.textQualification
+  const document: TextQualificationDocument = {
+    version: 1,
+    runId: version.runId,
+    runSha256: version.sha256,
+    qualification: {
+      ...qualification,
+      shapes: qualification.shapes.map((shape) => {
+        if (shape.reason !== undefined) return { shape: shape.shape, reason: shape.reason }
+        const frames = images(
+          {
+            assertions: [],
+            frames: shape.frames.map((frame) => ({
+              role: frame.role,
+              label: frame.label,
+              capturedAt: frame.capturedAt,
+              kind: "text-cells",
+              sha256: frame.ref.slice(7),
+            })),
+          },
+          `run ${version.runId} qualification ${shape.shape}`,
+        ).frames
+        if (!frames) throw new Error(`Missing mapped qualification frames for ${version.runId}/${shape.shape}`)
+        return {
+          shape: shape.shape,
+          frames: frames.map((frame, index) => {
+            const raw = shape.frames[index]
+            if (!raw) throw new Error(`Missing original qualification frame for ${version.runId}/${shape.shape}`)
+            return {
+              ...frame,
+              cellDigest: raw.cellDigest,
+              frameDigest: raw.frameDigest,
+              cellRectangle: { ...raw.cellRectangle },
+            }
+          }),
+        }
+      }),
+    },
+  }
+  const url = `/api/v${apiVersion}/evidence/${version.sha256}/text-qualification.json`
+  const bytes = JSON.stringify(document, null, 2) + "\n"
+  const prior = documents.get(url)
+  if (prior && prior.bytes !== bytes) throw new Error(`Conflicting qualification document ${url}`)
+  documents.set(url, { bytes, document })
+  return { url, sha256: createHash("sha256").update(bytes).digest("hex") }
+}
+
+/** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
+export interface PublicCapabilityResult extends Pick<
+  CapabilityResult,
+  "featureId" | "status" | "attempt" | "checks" | "evidence"
+> {
+  reason?: string
+  record?: PublicImages
+  presentation: HistoricalPublicCell["presentation"]
+}
+
+export interface PublicVersion extends Omit<
+  CurrentSelectedVersion,
+  "results" | "rawReplies" | "assertions" | "origin" | "presentations" | "textQualification"
+> {
+  results: PublicCapabilityResult[]
+}
+
+export interface PublicProjection {
+  current: Record<string, PublicVersion>
+  versions: Record<string, PublicVersion[]>
+  history: Record<string, PublicVersion[]>
+  historical: HistoricalPublicProjection
+  currentRunCount: number
+  exclusions: HistoricalPublicProjection["exclusions"]
+}
+
+export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
+  selected: PublicVersion
+  states: Readonly<Record<string, CapabilityStatus>>
+}
+
+export interface EvidenceDocument {
+  version: 3
+  runId: string
+  runSha256: string
+  featureId: string
+  result: CapabilityResult
+  record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
+  review: PublicReview
+  textQualification?: { url: string; sha256: string }
+}
+
+type PublicDocuments = Map<
+  string,
+  {
+    bytes: string
+    document: EvidenceDocument | HistoricalEvidenceDocument | TextQualificationDocument
+  }
+>
+
+function publicAttempt(attempt: CapabilityResult["attempt"]): CapabilityResult["attempt"] {
+  return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
+}
+
+/** The API and the site consume the same current/history split and the same evidence documents. */
+export function publicResults(
+  projection: SelectedProjection,
+  targets: ReadonlyMap<string, CurrentResult>,
+  historicalTargets: ReadonlyMap<string, HistoricalCurrentResult> = new Map(),
+) {
+  const historical = publicHistoricalResults(projection.historical, historicalTargets)
+  const documents: PublicDocuments = new Map(historical.documents)
+  const mapResult = (result: CapabilityResult, version: CurrentSelectedVersion): PublicCapabilityResult => {
+    const decision = version.presentations[result.featureId]
+    const approved = decision?.presentsEvidence === true
+    const mapped: PublicCapabilityResult = {
+      featureId: result.featureId,
+      status: result.status,
+      attempt: publicAttempt(result.attempt),
+      checks: result.checks.map((check) => ({
+        id: check.id,
+        status: check.status,
+        attempt: publicAttempt(check.attempt),
+        ...(approved && check.reason !== undefined && { reason: check.reason }),
+        ...(check.assertionRefs && { assertionRefs: [...check.assertionRefs] }),
+      })),
+      ...(result.evidence && { evidence: result.evidence }),
+      ...(approved && result.reason !== undefined && { reason: result.reason }),
+      presentation: { state: "not-reviewed" },
+    }
+    if (!decision) return mapped
+    const review = publicReview(decision)
+    if (!approved) {
+      mapped.presentation = { state: "withdrawn", review }
+      return mapped
+    }
+    const rawReply = result.rawReplyRef === undefined ? undefined : version.rawReplies[result.rawReplyRef]
+    if (result.rawReplyRef !== undefined && rawReply === undefined) {
+      throw new Error(`Run ${version.runId}/${result.featureId}: missing retained raw reply ${result.rawReplyRef}`)
+    }
+    const record: SelectedCell["record"] = {
+      assertions: version.assertions.filter((assertion) => assertion.featureId === result.featureId),
+      ...(rawReply !== undefined && { rawReply }),
+      ...(result.frames && {
+        frames: result.frames.map((frame) => ({
+          role: frame.role,
+          label: frame.label,
+          capturedAt: frame.capturedAt,
+          kind: frame.kind === "text-cells" ? ("text-cells" as const) : ("pixels" as const),
+          sha256: frame.ref.slice(7),
+          ...(frame.kind !== "text-cells" && { url: `/artifacts/${frame.ref.slice(7)}.png` }),
+        })),
+      }),
+    }
+    const textQualification = result.evidence === "text" ? qualificationFor(version, documents, 3) : undefined
+    const document: EvidenceDocument = {
+      version: 3,
+      runId: version.runId,
+      runSha256: version.sha256,
+      featureId: result.featureId,
+      result: globalThis.structuredClone(result),
+      record: {
+        ...images(record, `run ${version.runId}/${result.featureId}`),
+        assertions: record.assertions,
+        ...(rawReply !== undefined && { rawReply }),
+      },
+      review,
+      ...(textQualification && { textQualification }),
+    }
+    const url = `/api/v3/evidence/${version.sha256}/${encodeURIComponent(result.featureId)}.json`
+    const bytes = JSON.stringify(document, null, 2) + "\n"
+    const prior = documents.get(url)
+    if (prior && prior.bytes !== bytes) throw new Error(`Conflicting evidence document ${url}`)
+    documents.set(url, { bytes, document })
+    mapped.presentation = { state: "presented", review, url, sha256: createHash("sha256").update(bytes).digest("hex") }
+    mapped.record = images(record, `run ${version.runId}/${result.featureId}`)
+    return mapped
+  }
+  const mappedRuns = new Map<string, PublicVersion>()
+  const mapVersion = (version: CurrentSelectedVersion): PublicVersion => {
+    const prior = mappedRuns.get(version.runId)
+    if (prior) {
+      if (prior.sha256 !== version.sha256) throw new Error(`Conflicting sealed current run ${version.runId}`)
+      return prior
+    }
+    const {
+      rawReplies: _raw,
+      assertions: _assertions,
+      origin: _origin,
+      presentations: _presentations,
+      textQualification: _qualification,
+      results,
+      ...metadata
+    } = version
+    const mapped: PublicVersion = {
+      ...metadata,
+      catalogIds: [...version.catalogIds],
+      counts: { ...version.counts },
+      score: { ...version.score },
+      results: results.map((result) => mapResult(result, version)),
+    }
+    mappedRuns.set(version.runId, mapped)
+    return mapped
+  }
+  const mapGroups = (groups: Record<string, CurrentSelectedVersion[]>) =>
+    Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
+  const selected: PublicProjection = {
+    current: Object.fromEntries(Object.entries(projection.current).map(([key, version]) => [key, mapVersion(version)])),
+    versions: mapGroups(projection.versions),
+    history: mapGroups(projection.history),
+    historical: historical.projection,
+    currentRunCount: Object.keys(projection.current).length,
+    exclusions: projection.exclusions.map(({ runId, reason }) => ({ runId, reason })),
+  }
+  const selectedByBackend: Record<string, PublicCurrentResult> = Object.fromEntries(
+    [...targets].map(([key, value]) => [
+      key,
+      {
+        contextKey: value.contextKey,
+        selected: mapVersion(value.selected),
+        states: statesFor(projection, value.selected.runId),
+        ...(value.policy && { policy: { ...value.policy, sources: publicSources(value.policy.sources) } }),
+      },
+    ]),
+  )
+  return { projection: selected, selectedByBackend, historicalByBackend: historical.selectedByBackend, documents }
 }

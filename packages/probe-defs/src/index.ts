@@ -161,3 +161,5 @@ export type {
   HistoricalInterpretation,
 } from "./types.ts"
 export { initializeRunDraft, finalizeCapabilityResult, sealRunDraft } from "./helpers.ts"
+
+export { recordExecutedCapability } from "./helpers.ts"

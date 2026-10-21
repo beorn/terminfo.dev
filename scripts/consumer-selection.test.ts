@@ -107,6 +107,15 @@ function writeFrozenSuite(content: string, probeHash: string): void {
 }
 
 describe("consumer selection", () => {
+  it("keeps an all-history corpus readable without inventing current schema-3 results", () => {
+    const content = join(import.meta.dirname, "..", "content")
+    const { projection } = loadCurrentResults(content)
+    expect(Object.keys(projection.current)).toHaveLength(0)
+    const published = publicResults(projection, compatibilityTargets(projection, content))
+    expect(published.projection.current).toEqual({})
+    expect(Object.values(published.projection.historical.history).flat().length).toBeGreaterThan(0)
+  })
+
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
     const source = join(import.meta.dirname, "..")

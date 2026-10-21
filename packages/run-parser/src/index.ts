@@ -4,6 +4,8 @@ import { isAbsolute, win32 } from "node:path"
 import {
   CAPABILITY_STATUSES,
   finalizeCapabilityResult,
+  type CaptureDecision,
+  type RunDraft,
   type CapabilityResult,
   type CapabilityAttempt,
   type CheckResult,
@@ -68,6 +70,7 @@ export interface LoadedRun {
   results?: CapabilityResult[]
   catalogIds?: string[]
   sealedAt?: string
+  intendedContext?: Partial<ProbeTarget>
 }
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -1119,6 +1122,182 @@ export function parseOuterApp(
   }
 }
 
+/** Typed capability review of immutable capture bytes, separate from final-run admission review. */
+export function parseCaptureDecision(value: unknown, path: string, catalog: ReadonlySet<string>): CaptureDecision {
+  if (!object(value)) fail(path, "invalid pre-seal capture decision")
+  for (const key of ["runSha256", "observation", "verifiesIdentity", "presentsEvidence", "origin"]) {
+    if (Object.hasOwn(value, key)) fail(path, `pre-seal capture decision cannot set ${key}`)
+  }
+  for (const key of ["id", "runId", "featureId", "reviewer", "reason"]) {
+    if (!nonempty(value[key])) fail(path, `pre-seal capture decision requires ${key}`)
+  }
+  if (!catalog.has(String(value.featureId))) fail(path, "pre-seal capture decision feature is outside catalogue")
+  if (!["supported", "unsupported", "untestable"].includes(String(value.decision)) || value.reviewed !== true) {
+    fail(path, "pre-seal capture decision requires a typed reviewed decision")
+  }
+  if (typeof value.captureSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.captureSha256)) {
+    fail(path, "invalid pre-seal capture SHA256")
+  }
+  const scope = value.scope
+  if (
+    !object(scope) ||
+    !object(scope.target) ||
+    !["app", "headless", "mux"].includes(String(scope.target.kind)) ||
+    !nonempty(scope.target.id)
+  ) {
+    fail(path, "invalid pre-seal capture target scope")
+  }
+  for (const key of ["versions", "suites"]) {
+    const range = scope[key]
+    if (!Array.isArray(range) || range.length !== 2 || !range.every(nonempty) || range[0] !== range[1]) {
+      fail(path, `pre-seal capture decision requires exact ${key}`)
+    }
+  }
+  if (
+    !Array.isArray(value.sources) ||
+    value.sources.length === 0 ||
+    !value.sources.every(nonempty) ||
+    !Array.isArray(value.supersedes) ||
+    !value.supersedes.every(nonempty)
+  ) {
+    fail(path, "pre-seal capture decision requires sources and supersedes")
+  }
+  return value as unknown as CaptureDecision
+}
+
+/** The existing raw-reply custody retains only binding metadata, never duplicate frame/trace blobs. */
+function captureBindingSource(
+  draft: Pick<
+    RunDraft,
+    | "runId"
+    | "suiteId"
+    | "probeHash"
+    | "sourceRevision"
+    | "intendedContext"
+    | "target"
+    | "results"
+    | "rawReplies"
+    | "assertions"
+  >,
+  featureId: string,
+): string {
+  const result = draft.results.find((entry) => entry.featureId === featureId)
+  if (!result) throw new Error(`Capture feature ${featureId} is outside frozen catalogue`)
+  const rawKeys = new Set<string>()
+  if (result.rawReplyRef) rawKeys.add(result.rawReplyRef)
+  for (const check of result.checks) if (check.rawReplyRef) rawKeys.add(check.rawReplyRef)
+  for (const frame of result.frames ?? []) {
+    if (frame.sourceRef && Object.hasOwn(draft.rawReplies, frame.sourceRef)) rawKeys.add(frame.sourceRef)
+  }
+  for (const key of Object.keys(draft.rawReplies)) {
+    if (key.startsWith("collector.") && !key.startsWith("collector.capture.") && !key.startsWith("collector.review.")) {
+      rawKeys.add(key)
+    }
+  }
+  const hash = (source: string): string => createHash("sha256").update(source, "utf8").digest("hex")
+  const rawReplyRefs = [...rawKeys].sort().map((key) => {
+    const bytes = draft.rawReplies[key]
+    if (bytes === undefined) throw new Error(`Capture ${featureId} missing raw bytes ${key}`)
+    return { key, sha256: hash(bytes) }
+  })
+  const assertionRefs = draft.assertions.flatMap((assertion, index) =>
+    assertion.featureId === featureId ? [{ index, sha256: hash(JSON.stringify(assertion)) }] : [],
+  )
+  return JSON.stringify({
+    runId: draft.runId,
+    probeHash: draft.probeHash,
+    sourceRevision: draft.sourceRevision,
+    intendedContext: draft.intendedContext,
+    ...(draft.target && { target: draft.target }),
+    featureId,
+    rawReplyRefs,
+    assertionRefs,
+    frames: result.frames ?? [],
+  })
+}
+
+/** Called only when this criterion requires review, after collector/intent/target enrichment. */
+export function retainCaptureBinding(
+  draft: RunDraft,
+  featureId: string,
+): { source: string; sha256: string; rawReplyRef: string } {
+  if ("sealedAt" in draft) throw new Error(`Run ${draft.runId} is already sealed`)
+  const result = draft.results.find((entry) => entry.featureId === featureId)
+  if (!result?.checks.some((check) => check.id === "review")) {
+    throw new Error(`Capture ${featureId} has no required review`)
+  }
+  const source = captureBindingSource(draft, featureId)
+  const rawReplyRef = `collector.capture.${featureId}`
+  if (draft.rawReplies[rawReplyRef] !== undefined && draft.rawReplies[rawReplyRef] !== source) {
+    throw new Error(`Capture ${featureId} binding is immutable`)
+  }
+  draft.rawReplies[rawReplyRef] = source
+  return { source, sha256: createHash("sha256").update(source, "utf8").digest("hex"), rawReplyRef }
+}
+
+function validateCaptureBinding(
+  draft: Parameters<typeof captureBindingSource>[0],
+  decision: CaptureDecision,
+  path: string,
+): void {
+  const source = draft.rawReplies[`collector.capture.${decision.featureId}`]
+  if (!source || createHash("sha256").update(source, "utf8").digest("hex") !== decision.captureSha256) {
+    fail(path, "capture digest mismatch or absent capture")
+  }
+  if (source !== captureBindingSource(draft, decision.featureId)) {
+    fail(path, "capture context/source/suite/evidence binding changed")
+  }
+  if (decision.runId !== draft.runId) fail(path, "capture runId mismatch")
+  const context = draft.target ?? draft.intendedContext
+  if (
+    decision.scope.target.kind !== context.kind ||
+    decision.scope.target.id !== context.id ||
+    decision.scope.versions[0] !== context.version ||
+    decision.scope.suites[0] !== draft.probeHash ||
+    draft.probeHash !== draft.suiteId
+  ) {
+    fail(path, "capture scope mismatch")
+  }
+}
+
+/** Apply one typed decision to its still-open required review; final-run reviews cannot use this path. */
+export function applyCaptureDecision(draft: RunDraft, source: string, startedAt: string): void {
+  if ("sealedAt" in draft) throw new Error(`Run ${draft.runId} is already sealed`)
+  if (!date(startedAt)) throw new Error("Capture review requires its actual attempt timestamp")
+  const decision = parseCaptureDecision(
+    parseJsonStrict("capture review", source),
+    "capture review",
+    new Set(draft.results.map((result) => result.featureId)),
+  )
+  validateCaptureBinding(draft, decision, "capture review")
+  const index = draft.results.findIndex((result) => result.featureId === decision.featureId)
+  const result = draft.results[index]
+  if (!result || !result.checks.some((check) => check.id === "review" && check.status === "test-todo")) {
+    throw new Error(`Capture ${decision.featureId} has no pending required review`)
+  }
+  const reviewRef = `collector.review.${decision.id}`
+  if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
+  const checks = result.checks.map((check): CheckResult =>
+    check.id === "review"
+      ? {
+          ...check,
+          status: decision.decision,
+          attempt: { scope: "probe", startedAt },
+          reviewRef,
+          reason: decision.reason,
+        }
+      : check,
+  )
+  draft.rawReplies[reviewRef] = source
+  draft.results[index] = finalizeCapabilityResult({
+    ...result,
+    checks,
+    reviewRef,
+    reason: decision.reason,
+    attempt: { scope: "probe", startedAt },
+  })
+}
+
 /** Validate recorded execution facts; this never infers a current result from a missing row. */
 function capabilityAttempt(value: unknown, path: string, rawReplies: Record<string, string>): CapabilityAttempt {
   if (!object(value) || !["none", "collection", "probe"].includes(String(value.scope))) {
@@ -1218,7 +1397,15 @@ export function parseCapabilityResults(
       }
       // Reuse the existing raw/assertion/frame validator without persisting or deriving
       // another disposition. The result's recorded status remains authoritative.
-      parseObservation({ ...item, outcome: status }, path, new Set(expected), rawReplies, [...assertions], [...screenshotRefs], [...textSnapshotRefs])
+      parseObservation(
+        { ...item, outcome: status },
+        path,
+        new Set(expected),
+        rawReplies,
+        [...assertions],
+        [...screenshotRefs],
+        [...textSnapshotRefs],
+      )
       const deciding = checks.filter((check) => check.status === status)
       if (
         !deciding.some((check) =>
@@ -1238,15 +1425,8 @@ export function parseCapabilityResults(
     if (status === "untestable") {
       const key = result.reviewRef ?? checks.find((check) => check.status === "untestable")?.reviewRef
       if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable reviewed impossibility reason`)
-      const review = parseJsonStrict(`${path}: ${key}`, rawReplies[key])
-      if (
-        !object(review) ||
-        review.decision !== "untestable" ||
-        review.featureId !== featureId ||
-        review.reviewed !== true ||
-        !nonempty(review.reason) ||
-        !nonempty(review.captureSha256)
-      ) {
+      const review = parseCaptureDecision(parseJsonStrict(`${path}: ${key}`, rawReplies[key]), path, expected)
+      if (review.decision !== "untestable" || review.featureId !== featureId || review.reason !== result.reason) {
         fail(path, `${featureId} invalid context-impossibility review`)
       }
     }
@@ -1400,13 +1580,59 @@ export function parseRun(
     }
     if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
     const results = current
-      ? parseCapabilityResults(raw.results, path, expected, raw.rawReplies as Record<string, string>, assertions, raw.screenshotRefs as string[], textSnapshotRefs)
+      ? parseCapabilityResults(
+          raw.results,
+          path,
+          expected,
+          raw.rawReplies as Record<string, string>,
+          assertions,
+          raw.screenshotRefs as string[],
+          textSnapshotRefs,
+        )
       : undefined
+    if (current && results) {
+      if (!object(raw.intendedContext)) fail(path, "current run requires intendedContext")
+      const captureRun = {
+        runId,
+        suiteId: asString(raw.suiteId, path, "suiteId"),
+        probeHash,
+        sourceRevision,
+        intendedContext: raw.intendedContext as Partial<ProbeTarget>,
+        target,
+        results,
+        rawReplies: raw.rawReplies as Record<string, string>,
+        assertions,
+      }
+      for (const result of results) {
+        const refs = new Set(
+          [result.reviewRef, ...result.checks.map((check) => check.reviewRef)].filter(
+            (ref): ref is string => ref !== undefined,
+          ),
+        )
+        for (const ref of refs) {
+          const bytes = captureRun.rawReplies[ref]
+          if (!bytes) fail(path, `missing immutable capture decision ${ref}`)
+          const decision = parseCaptureDecision(parseJsonStrict(path, bytes), path, expected)
+          if (decision.featureId !== result.featureId) fail(path, "capture decision feature mismatch")
+          validateCaptureBinding(captureRun, decision, path)
+          for (const check of result.checks.filter((check) => check.reviewRef === ref)) {
+            if (check.status !== decision.decision) fail(path, "capture decision differs from recorded check")
+          }
+        }
+      }
+    }
     return {
       path,
       sha256,
       schemaVersion: raw.schemaVersion,
-      ...(current ? { results, catalogIds: [...expected], sealedAt: raw.sealedAt as string } : {}),
+      ...(current
+        ? {
+            results,
+            catalogIds: [...expected],
+            sealedAt: raw.sealedAt as string,
+            intendedContext: raw.intendedContext as Partial<ProbeTarget>,
+          }
+        : {}),
       runId,
       target,
       identity: raw.identity as LoadedRun["identity"],

@@ -2322,3 +2322,35 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
     }
   },
 )
+
+// The new execution contract requires the direct native batch to record status at its real
+// callback attempt. Existing observation/coverage assertions cannot prove frozen-catalog TODOs.
+it("records actual native callback failure and leaves an unscheduled frozen capability TODO", async () => {
+  const { initializeRunDraft } = await import("@terminfo/probe-defs")
+  const id = "modes.bracketed-paste"
+  const definition = ALL_PROBES.find((probe) => probe.id === id)!
+  const original = definition.term
+  const draft = initializeRunDraft({
+    runId: "native-status-attempt",
+    sourceRevision,
+    manifest: { ...manifest, catalogIds: [id, "unimplemented.capability"] },
+    intendedContext: { kind: "app", id: "kitty" },
+  })
+  try {
+    definition.term = async () => {
+      throw new Error("deterministic callback failure")
+    }
+    const batch = await runProbeBatch({ ids: [id], draft })
+    expect(batch.results.find((result) => result.featureId === id)).toMatchObject({
+      status: "test-failure",
+      attempt: { scope: "probe" },
+    })
+    expect(batch.results.find((result) => result.featureId === "unimplemented.capability")).toMatchObject({
+      status: "test-todo",
+      attempt: { scope: "none" },
+      checks: [],
+    })
+  } finally {
+    definition.term = original
+  }
+})

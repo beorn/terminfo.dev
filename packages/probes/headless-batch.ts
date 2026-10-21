@@ -2,7 +2,7 @@
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
 import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
-import { readHyperlinkMetadata, finalizeCapabilityResult } from "@terminfo/probe-defs"
+import { readHyperlinkMetadata, recordExecutedCapability } from "@terminfo/probe-defs"
 import type {
   CapabilityResult,
   RunDraft,
@@ -337,33 +337,13 @@ export async function collectBatch(
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
       const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)
-      const assertionRefs = batch.assertions.flatMap((entry, index) => (entry.featureId === probe.id ? [index] : []))
-      const status =
-        diagnostic || observation?.outcome === "error"
-          ? ("test-failure" as const)
-          : observation?.outcome === "supported" || observation?.outcome === "unsupported"
-            ? observation.outcome
-            : coverage || observation?.evidence === "none" || observation?.evidence === "consumed"
-              ? ("test-todo" as const)
-              : ("test-failure" as const)
-      const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
-      const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
-      const result = finalizeCapabilityResult({
+      const result = recordExecutedCapability({
         featureId: probe.id,
         attempt,
-        checks: [
-          {
-            id: "criterion",
-            status,
-            attempt: status === "test-todo" ? { scope: "none" } : attempt,
-            assertionRefs,
-            ...(observation?.rawReplyRef ? { rawReplyRef: observation.rawReplyRef } : {}),
-            ...(reason ? { reason } : {}),
-          },
-        ],
-        ...(observation?.evidence ? { evidence: observation.evidence } : {}),
-        ...(observation?.rawReplyRef ? { rawReplyRef: observation.rawReplyRef } : {}),
-        ...(reason ? { reason } : {}),
+        observation,
+        diagnostic,
+        coverage,
+        assertions: batch.assertions,
       })
       const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
       if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)

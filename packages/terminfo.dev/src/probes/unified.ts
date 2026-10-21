@@ -8,6 +8,9 @@
 
 import {
   ALL_PROBES as PROBE_DEFS,
+  recordExecutedCapability,
+  type CapabilityResult,
+  type RunDraft,
   type CaptureCells,
   type CapturePixelGeometry,
   type ConsoleBufferOwner,
@@ -134,6 +137,7 @@ export const ALL_PROBES: Probe[] = PROBE_DEFS.filter((p) => p.term !== null).map
 }))
 
 export interface ProbeBatch {
+  results: CapabilityResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
@@ -297,11 +301,22 @@ export async function runProbeBatch(
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
     target?: ReceiptTarget
+    draft?: Pick<RunDraft, "results">
+    onCheckpoint?: () => void
   } = {},
 ): Promise<ProbeBatch> {
   const out = options.out ?? process.stdout
   const { expected, selected } = selectAppProbes(options.ids)
   const batch: ProbeBatch = {
+    results:
+      options.draft?.results ??
+      PROBE_DEFS.map((probe) => ({
+        featureId: probe.id,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Required callback has not started",
+      })),
     rawReplies: {},
     observations: [],
     assertions: [],
@@ -627,6 +642,7 @@ export async function runProbeBatch(
       if (captureGeometryRefusal) context.captureGeometryRefusal = captureGeometryRefusal
       if (captureGeometryRefusal) context.capture = undefined
     }
+    const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
       const callback = probe.term
@@ -755,6 +771,17 @@ export async function runProbeBatch(
       } else {
         batch.rawReplies[probe.id] = trace
       }
+      const index = batch.results.findIndex((result) => result.featureId === probe.id)
+      if (index < 0) throw new Error(`Native callback ${probe.id} is outside the initialized catalogue`)
+      batch.results[index] = recordExecutedCapability({
+        featureId: probe.id,
+        attempt,
+        observation: batch.observations.find((entry) => entry.featureId === probe.id),
+        diagnostic: batch.ungradedDiagnostics[probe.id],
+        coverage: batch.notTested.find((entry) => entry.featureId === probe.id),
+        assertions: batch.assertions,
+      })
+      options.onCheckpoint?.()
     }
   }
   if (ownsTerminal && options.ownedTerminal) {

@@ -6,12 +6,14 @@
  * multi-context tie with the reviewed `default-contexts.json` row, and `decisive-share` printed the
  * choice of a private fallback chain beside it. One rule, two callers.
  */
+import type { CapabilityStatus, CapabilityResult } from "@terminfo/probe-defs"
 import { isStaleRelation, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
   parseProjectedContextKey,
   recognizeProjectedContextKey,
   type ProjectedContextKeyParts,
   type SelectedVersion,
+  type CurrentSelectedVersion,
 } from "./selected-results.ts"
 
 /**
@@ -38,19 +40,20 @@ export interface ContextCandidate {
   suiteId: string
   suiteFreshness: string
   suiteRelation: SuiteRelation
-  cells: ShareCells
+  cells?: ShareCells
+  results?: CapabilityResult[]
   /**
    * The run's cells, classified once by the projection (28792 item 1). A reader cuts its bars over
    * this, never over `cells`, so `classifyCell` never runs outside the projection.
    */
-  states: Readonly<Record<string, CellState>>
+  states: Readonly<Record<string, CellState | CapabilityStatus>>
 }
 
 /** The candidate for one context key, from the projection's own selected version. */
 export function candidateFromSelected(
   key: string,
-  selected: SelectedVersion,
-  states: Readonly<Record<string, CellState>>,
+  selected: SelectedVersion | CurrentSelectedVersion,
+  states: Readonly<Record<string, CellState | CapabilityStatus>>,
 ): ContextCandidate {
   return {
     key,
@@ -64,7 +67,7 @@ export function candidateFromSelected(
     suiteId: selected.suiteId,
     suiteFreshness: selected.suiteFreshness,
     suiteRelation: selected.suiteRelation,
-    cells: selected.cells,
+    ...("results" in selected ? { results: selected.results } : { cells: selected.cells }),
     states,
   }
 }
