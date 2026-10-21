@@ -26,7 +26,8 @@ import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
 import { initializeRunDraft, recordCollectionFailure, type RunDraft } from "@terminfo/probe-defs"
-import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
+import { buildFullProjectRows } from "../docs/data/full-project.ts"
+import { aggregateCurrentResults, currentCoverageSentence, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { loadFeatures } from "@terminfo/catalog"
@@ -39,9 +40,10 @@ import {
   classifyDevelopmentRun,
   readVerifiedArtifact,
   historicalStatesFor as statesFor,
+  statesFor as currentStatesFor,
   type SelectedVersion,
 } from "../docs/data/selected-results.ts"
-import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
+import { parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
@@ -484,9 +486,7 @@ export async function collectPass(
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
-  const interpretations = activeInterpretations(
-    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds),
-  )
+  parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds)
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
     ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
@@ -697,8 +697,9 @@ export async function collectPass(
       const header = JSON.parse(raw) as { schemaVersion?: unknown; sealedAt?: unknown }
       if (header.schemaVersion === 3 && header.sealedAt === undefined) {
         const decoded = decodeCollectorDraft(path, raw, derivedSuiteManifest(snapshot), sourceRevision)
-        if (decoded.run.runId !== handed.draft.runId)
+        if (decoded.run.runId !== handed.draft.runId) {
           throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
+        }
         if (
           decoded.run.target?.kind !== context.kind ||
           decoded.run.target.id !== context.id ||
@@ -763,8 +764,9 @@ export async function collectPass(
       const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
       if (startedAt) recordCollectionFailure(retained, startedAt, row.error)
       row.status = retained.results.some((result) => result.status === "test-failure") ? "failed" : "not-started"
-      if (!startedAt)
+      if (!startedAt) {
         for (const result of retained.results) if (result.status === "test-todo") result.reason = row.error
+      }
       writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)
     }
   }
@@ -1158,6 +1160,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
 
 /** Admission supplies the validated target; coverage needs no second raw-run parser. */
 export interface ProducedRun {
+  readonly runId?: string
   readonly target: Pick<AdmissionPlan["target"], "kind" | "id" | "os">
 }
 
@@ -1177,7 +1180,7 @@ export function admitProducedRuns(
   const produced: ProducedRun[] = []
   for (const plan of plans) {
     admitRun(plan)
-    const run = { target: plan.target }
+    const run = { target: plan.target, runId: plan.runId }
     produced.push(run)
     onAdmitted?.(run, plan.destination)
   }
@@ -1352,8 +1355,9 @@ if (import.meta.main) {
         )
       }
       for (const error of pass.errors) console.error(error)
-      if (!pass.complete || pass.errors.length || pass.contexts.some((row) => row.status === "failed"))
+      if (!pass.complete || pass.errors.length || pass.contexts.some((row) => row.status === "failed")) {
         process.exitCode = 1
+      }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       process.exitCode = 1
@@ -1383,7 +1387,44 @@ if (import.meta.main) {
           : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
       )
       for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
-      runChild(["bun", "run", "decisive-share"], "decisive-share")
+      const projection = loadCurrentResults(CONTENT).projection
+      const admittedIds = new Set(produced.map((run) => run.runId))
+      const admitted = Object.entries(projection.versions).flatMap(([key, versions]) =>
+        versions.filter((run) => admittedIds.has(run.runId)).map((run) => ({ key, run })),
+      )
+      const requiredSuiteId = frozenSuite ?? admitted[0]?.run.suiteId
+      if (!requiredSuiteId) {
+        throw new Error(
+          "No current schema-3 admitted executions; historical results cannot complete the current collection",
+        )
+      }
+      const coverage = buildFullProjectRows({
+        census: fullContextCensus(CONTENT).contexts,
+        catalogIds: Object.keys(loadFeatures(CONTENT)),
+        requiredSuiteId,
+        candidates: admitted.map(({ key, run }) =>
+          candidateFromSelected(key, run, currentStatesFor(projection, run.runId)),
+        ),
+        reviewed: loadDefaultContextPolicy(CONTENT),
+      })
+      for (const { key, run } of admitted) {
+        console.log(
+          `  ${key} ${run.runId}: ${currentCoverageSentence(run)}; ${run.score.supported}/${run.score.all} Supported / all`,
+        )
+      }
+      const sources = new Set(admitted.map(({ run }) => run.sourceRevision))
+      const complete =
+        gaps.length === 0 &&
+        coverage.contexts.length === 33 &&
+        coverage.catalogRows === 273 &&
+        coverage.recordedPositions === 9009 &&
+        coverage.complete &&
+        sources.size === 1
+      console.log(`Current source: ${[...sources].join(", ") || "none"}; suite ${requiredSuiteId}`)
+      console.log(
+        `Current execution: ${coverage.collected}/33 contexts, ${coverage.recordedPositions}/9009 recorded positions; ${complete ? "complete: zero TEST TODO and TEST FAILURE" : "incomplete: fresh current execution or required checks remain"}`,
+      )
+      if (!complete) process.exitCode = 1
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       process.exitCode = 1

@@ -58,11 +58,14 @@ test("status separates reviewed current runs from newer legacy files and refuses
         generatedAt: "2026-09-28T00:00:00.000Z",
         freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
+        catalogIds: fixtureFeatures,
         probes: { app: ["extensions.query"], headless: ["extensions.query"], mux: ["extensions.query"] },
       }),
     )
     const run = {
-      schemaVersion: 2,
+      schemaVersion: 3,
+      sealedAt: "2026-09-28T12:00:01.000Z",
+      intendedContext: { kind: "app", id: "kitty", version: "0.46.2" },
       runId: "reviewed-kitty",
       target: {
         kind: "app",
@@ -78,19 +81,33 @@ test("status separates reviewed current runs from newer legacy files and refuses
       identity: "verified",
       suiteId: snapshot.probeHash,
       probeHash: snapshot.probeHash,
-      suiteComplete: true,
       sourceRevision: "2".repeat(40),
       measuredAt: "2026-09-28T12:00:00.000Z",
       origin: { kind: "collector" },
       rawReplies: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" },
       assertions: [],
       screenshotRefs: [],
-      observations: [
+      results: [
         {
           featureId: "extensions.query",
-          outcome: "inconclusive",
-          reason: "timeout",
-          evidence: "query",
+          status: "test-failure",
+          attempt: { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" },
+          checks: [
+            {
+              id: "criterion",
+              status: "test-failure",
+              attempt: { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" },
+              reason: "Query timed out",
+            },
+          ],
+          reason: "Query timed out",
+        },
+        {
+          featureId: "cursor.position",
+          status: "test-todo",
+          attempt: { scope: "none" },
+          checks: [],
+          reason: "Missing implementation",
         },
       ],
     }
@@ -130,13 +147,12 @@ test("status separates reviewed current runs from newer legacy files and refuses
 
     const projection = loadCurrentResults(join(root, "content")).projection
     expect(projection.current["app:kitty"], JSON.stringify(projection.exclusions)).toBeDefined()
-    expect(projection.current["app:kitty"]?.counts).toMatchObject({
-      catalog: 2,
-      tested: 1,
-      notTested: 1,
-      conclusive: 0,
+    expect(projection.current["app:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
+      untestable: 0,
+      "test-todo": 1,
+      "test-failure": 1,
     })
 
     const invoke = () =>
@@ -145,8 +161,9 @@ test("status separates reviewed current runs from newer legacy files and refuses
     expect(selected.error).toBeUndefined()
     expect(selected.status, selected.stdout + selected.stderr).toBe(0)
     expect(selected.stdout).toContain("reviewed-kitty")
-    expect(selected.stdout).toContain("1 tested, 1 not tested, 0 conclusive")
-    expect(selected.stdout).toContain("1 inconclusive, 0 error")
+    expect(selected.stdout).toContain("1 TEST TODO")
+    expect(selected.stdout).toContain("1 TEST FAILURE")
+    expect(selected.stdout).toContain("0/2 Supported / all")
     expect(selected.stdout).not.toContain("9.9.9")
     expect(selected.stdout).toContain("Archive libs: 1")
 

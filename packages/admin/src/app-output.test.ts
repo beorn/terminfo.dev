@@ -59,7 +59,7 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   parseKittyIdentity: vi.fn(),
 }))
 vi.mock("./admit-collected-run.ts", () => ({
-  admitCollectedRun: vi.fn(),
+  admitCollectedRun: vi.fn(() => "/private/content/terminal-app.json"),
   retainCollectedRun: vi.fn(() => "/private/out/terminal-app.json"),
 }))
 

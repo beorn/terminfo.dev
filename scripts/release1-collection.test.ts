@@ -810,7 +810,7 @@ describe("release collection hands every produced run to the admission owner", (
           ...(assertedSuiteId === undefined ? {} : { frozenSuiteId: assertedSuiteId }),
         })
         expect(writer).toHaveBeenCalledWith(plan)
-        expect(produced).toEqual([{ target: plan.target }])
+        expect(produced).toEqual([{ target: plan.target, runId: plan.runId }])
         expect(
           uncoveredContexts(census(), produced).some(({ context }) => context.id === "xterm" && context.os === "linux"),
         ).toBe(false)

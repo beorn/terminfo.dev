@@ -1436,6 +1436,7 @@ it("keeps a historical native parser on its own route without promoting it to cu
   const targets = vi
     .spyOn(currentResults, "historicalCompatibilityTargets")
     .mockReturnValue(new Map([["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }]]))
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   let probes: ReturnType<typeof vi.spyOn> | undefined
   let analysis: ReturnType<typeof vi.spyOn> | undefined
   try {
@@ -1444,6 +1445,9 @@ it("keeps a historical native parser on its own route without promoting it to cu
     analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generateAnalysis())
     const pages = terminalPaths.paths()
     const page = pages.find((entry) => entry.params.backendId === "ghostty-native")
+    expect(warning).toHaveBeenCalledWith("Warning: Terminal 'ghostty-native' has no sealed current schema-3 runs")
+    for (const [message] of warning.mock.calls)
+      expect(message).toMatch(/^Warning: Terminal '.+' has no sealed current schema-3 runs$/)
     expect(page?.params.id).toBe("headless-ghostty-native")
     expect(page?.params.total).toBe("")
     expect(data.selectedByBackend["ghostty-native"]).toBeUndefined()
@@ -1454,6 +1458,7 @@ it("keeps a historical native parser on its own route without promoting it to cu
     analysis?.mockRestore()
     targets.mockRestore()
     selection.mockRestore()
+    warning.mockRestore()
   }
 })
 

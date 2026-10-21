@@ -381,7 +381,7 @@ export async function collectProbeRun(
       ...(process.env.TERMINFO_TARGET_VERSION && { version: process.env.TERMINFO_TARGET_VERSION }),
     },
   })
-  const draftDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY ?? join(homedir(), ".terminfo-dev", "http-responses")
+  const draftDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY || join(homedir(), ".terminfo-dev", "http-responses")
   mkdirSync(draftDirectory, { recursive: true, mode: 0o700 })
   const draftPath = join(draftDirectory, `${captureRunId}.draft.json`)
   writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })

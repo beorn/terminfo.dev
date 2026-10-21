@@ -1226,7 +1226,6 @@ function captureBindingSource(
     ...(result.host && { host: result.host }),
     ...(result.evidence && { evidence: result.evidence }),
     ...(result.criterionBranch && { criterionBranch: result.criterionBranch }),
-    checks: result.checks.filter((check) => check.id !== "review"),
   })
 }
 
