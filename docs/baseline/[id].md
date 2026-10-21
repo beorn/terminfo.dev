@@ -33,7 +33,7 @@ function featureTooltip(f) {
 }
 
 function termTooltip(b) {
-  const parts = [coverageLabel(b)]
+  const parts = [b.label, coverageLabel(b)]
   if (b.description) parts.push(b.description)
   if (b.type) parts.push('Type: ' + b.type)
   if (b.version) parts.push('Version: ' + b.version)
@@ -113,9 +113,9 @@ function platformIcons(b) {
 
 <div v-if="appScores.length > 0" class="summary">
   <div v-for="s in appScores" :key="s.name" class="summary-row">
-    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :data-tooltip="termTooltip(s)">{{ s.label }}</a>
+    <a class="summary-name hover-link" :href="'/terminals/' + s.slug" :aria-label="'Terminal: ' + s.label + (s.version ? '; Version: ' + s.version : '')" :title="s.label" :data-tooltip="termTooltip(s)"><span class="summary-name-text">{{ s.label }}</span></a>
     <span class="summary-platforms" v-html="platformIcons(s)"></span>
-    <span class="summary-version">{{ s.version }}</span>
+    <span class="summary-version" tabindex="0" :aria-label="'Version: ' + s.version" :title="s.version" :data-tooltip="'Version: ' + s.version"><span class="summary-version-text">{{ s.version }}</span></span>
     <div class="summary-bar" :aria-label="coverageLabel(s)">
       <div v-for="segment in barSegments" :key="segment.id" class="bar-segment"
         :class="'bar-' + segment.id" :style="{ width: barWidth(s, segment.id) }">
@@ -315,6 +315,15 @@ function platformIcons(b) {
   font-weight: 600;
   font-size: 0.9em;
   flex-shrink: 0;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.baseline-page .summary-name-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .summary-platforms {
@@ -352,16 +361,30 @@ function platformIcons(b) {
   color: var(--vp-c-text-3);
   font-size: 0.8em;
   flex: 0 0 5em;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: visible;
+  cursor: help;
+}
+
+.baseline-page .summary-version-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .baseline-page .summary-pct {
   width: 23ch;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: 400;
   font-size: 0.9em;
   text-align: right;
   flex-shrink: 0;
+  color: #566171;
+}
+
+.dark .baseline-page .summary-pct {
+  color: #c3c9d6;
 }
 
 .baseline-page .summary-counts {
