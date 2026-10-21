@@ -8,6 +8,7 @@
  */
 import { expect, test } from "vitest"
 import { join } from "node:path"
+import { decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import {
   contractGaps,
@@ -131,8 +132,15 @@ const MODES_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
-function modeQueryContext(state: "set" | "reset" | "unknown" | null) {
-  return replayContext(new Map(), { queryMode: async () => state })
+/** Every private DECRQM answers Ps; queryMode keeps the fold for the arms that only ask whether a mode is on. */
+function modeQueryContext(ps: 0 | 1 | 2 | 3 | 4 | null) {
+  return replayContext(new Map(), {
+    queryMode: async () => (ps === null ? null : decrpmStatus(String(ps))),
+    queryWithSentinel: async (sequence, pattern) => {
+      const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
+      return mode === undefined || ps === null ? null : pattern.exec(`\x1b[?${mode};${ps}$y`)
+    },
+  })
 }
 
 function modesTermContext(id: string) {
@@ -190,7 +198,7 @@ function modesTermContext(id: string) {
       },
     })
   }
-  return modeQueryContext("set")
+  return modeQueryContext(1)
 }
 
 test("the Modes contract covers every Modes capability and names none unknown", () => {

@@ -17,6 +17,8 @@ import {
   osInputReviewResult,
   isBlank,
   queryAnsiMode,
+  queryDecrpm,
+  decrpmReading,
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -1463,30 +1465,33 @@ export const modesProbes: ProbeDefinition[] = [
         }
       },
       async (ctx) => {
-        const result = await ctx.queryMode(2031)
-        const recognized = result === "set" || result === "reset"
+        const ps = await queryDecrpm(ctx, 2031)
+        // Ps 4 says the terminal knows the mode and cannot set it: unsupported, as decrpmResult grades it (#30557).
+        const recognized = ps === 1 || ps === 2 || ps === 3
         const note =
-          result === null
+          ps === null
             ? "No DECRPM 2031 reply; update events were not tested"
-            : result === "unknown"
+            : ps === 0
               ? "DECRPM 2031 explicitly unrecognized"
-              : `DECRPM 2031 recognized (${result}); update events were not tested`
+              : ps === 4
+                ? "DECRPM 2031 permanently reset (Ps 4); the terminal cannot set it"
+                : `DECRPM 2031 recognized (${decrpmReading(ps)}); update events were not tested`
         return {
           pass: recognized,
           note,
-          response: result ?? undefined,
+          response: ps === null ? undefined : decrpmReading(ps),
           observation: {
-            outcome: result === null ? "inconclusive" : recognized ? "supported" : "unsupported",
+            outcome: ps === null ? "inconclusive" : recognized ? "supported" : "unsupported",
             evidence: "query",
-            ...(result === null && { reason: "no-response" as const }),
+            ...(ps === null && { reason: "no-response" as const }),
             note,
           },
-          ...(result !== null && {
+          ...(ps !== null && {
             assertions: [
               {
                 kind: recognized ? ("positive" as const) : ("negative" as const),
                 expected: "DECRPM 2031 recognizes color-scheme reporting mode",
-                observed: result,
+                observed: decrpmReading(ps),
               },
             ],
           }),

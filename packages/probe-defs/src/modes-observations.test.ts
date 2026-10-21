@@ -203,10 +203,12 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
   const definition = modesProbes.find((probe) => probe.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
 
-  for (const state of ["unknown", null, "set", "reset"] as const) {
-    const queried: number[] = []
+  // The app arm reads the DECRPM reply itself (queryWithSentinel plus the shared parser), never the folded
+  // queryMode word, so Ps 4 cannot hide behind "reset" (#30557).
+  for (const ps of [0, null, 1, 2, 3, 4] as const) {
+    const queried: string[] = []
     const unexpected = (operation: string): never => {
-      throw new Error(`${id}: unexpected ${operation} for ${state}`)
+      throw new Error(`${id}: unexpected ${operation} for Ps ${ps}`)
     }
     const context: TermContext = {
       cols: 80,
@@ -215,25 +217,25 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       queryCursorPosition: async () => unexpected("CPR"),
       measureRenderedWidth: async () => unexpected("width query"),
       query: async () => unexpected("raw query"),
-      queryWithSentinel: async () => unexpected("sentinel query"),
+      queryWithSentinel: async (sequence, pattern) => {
+        queried.push(sequence)
+        return ps === null ? null : pattern.exec(`\x1b[?${number};${ps}$y`)
+      },
       queryOutcome: async () => unexpected("query outcome"),
       queryWithSentinelOutcome: async () => unexpected("sentinel outcome"),
-      queryMode: async (mode) => {
-        queried.push(mode)
-        return state
-      },
+      queryMode: async () => unexpected("folded mode query"),
     }
 
     const result = await definition.term(context)
-    expect(queried, `${id}: ${state}`).toEqual([number])
-    if (state === null) {
+    expect(queried, `${id}: Ps ${ps}`).toEqual([`\x1b[?${number}$p`])
+    if (ps === null) {
       expect(result.pass).toBe(false)
       expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
       expect(result.observation?.note, `${id}: note must survive projection`).toBe("No DECRPM response")
       expect(result.assertions ?? []).toEqual([])
-    } else if (state === "unknown") {
+    } else if (ps === 0) {
       expect(result.pass).toBe(false)
-      expect(result.response).toBe("unknown")
+      expect(result.response).toBe("not recognized (Ps 0)")
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
@@ -241,10 +243,19 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       })
       expect(result.observation?.note, `${id}: note must survive projection`).toMatch(/not recognized/)
       expect(result.assertions ?? []).toEqual([])
+    } else if (ps === 4) {
+      expect(result.pass).toBe(false)
+      expect(result.response).toBe("permanently reset (Ps 4)")
+      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(result.assertions).toMatchObject([
+        { kind: "negative", expected: `DECRPM mode ${number} can be set`, observed: "permanently reset (Ps 4)" },
+      ])
     } else {
+      const reading = ps === 1 ? "set (Ps 1)" : ps === 2 ? "reset (Ps 2)" : "permanently set (Ps 3)"
       expect(result.pass).toBe(true)
+      expect(result.response).toBe(reading)
       expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
-      expect(result.assertions).toMatchObject([{ kind: "positive", observed: state }])
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
     }
   }
   expect(definition.termWrites).toBe("query")

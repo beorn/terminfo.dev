@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmModeProbe, cursorProbe, sgrProbe } from "./helpers.ts"
+import { decrpmModeProbe, cursorProbe, sgrProbe, type DecrpmPs } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
 import type { TermContext, TermlessContext } from "./types.ts"
@@ -887,27 +887,46 @@ test("cursor movement binds measured positions and parser state, never a missing
 
 test("DECRPM recognizes explicit set/reset/unknown without changing an existing mode", async () => {
   const written: string[] = []
-  const makeContext = (state: "set" | "reset" | "unknown" | null) =>
+  const makeContext = (ps: DecrpmPs | null) =>
     terminal({
       write(text) {
         written.push(text)
       },
-      queryMode: async () => state,
+      queryWithSentinel: async (sequence, pattern) => {
+        expect(sequence).toBe("\x1b[?42$p")
+        return ps === null ? null : pattern.exec(`\x1b[?42;${ps}$y`)
+      },
+      queryMode: async () => {
+        throw new Error("the DECRQM arm reads Ps through queryWithSentinel, never the folded word (#30557)")
+      },
     })
   const decrpm = decrpmModeProbe("modes.test", 42, null)
   if (!decrpm.term) throw new Error("missing mode callback")
-  for (const state of ["set", "reset"] as const) {
-    const result = await decrpm.term(makeContext(state))
+  for (const [ps, reading] of [
+    [1, "set (Ps 1)"],
+    [2, "reset (Ps 2)"],
+    [3, "permanently set (Ps 3)"],
+  ] as const) {
+    const result = await decrpm.term(makeContext(ps))
     expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
-    expect(result.assertions).toMatchObject([{ kind: "positive", observed: state }])
+    expect(result.response).toBe(reading)
+    expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
   }
-  const unknown = await decrpm.term(makeContext("unknown"))
+  // Ps 4: known, cannot be set (#30557).
+  const four = await decrpm.term(makeContext(4))
+  expect(four.pass).toBe(false)
+  expect(four.response).toBe("permanently reset (Ps 4)")
+  expect(four.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(four.assertions).toMatchObject([
+    { kind: "negative", expected: "DECRPM mode 42 can be set", observed: "permanently reset (Ps 4)" },
+  ])
+  const unknown = await decrpm.term(makeContext(0))
   expect(unknown.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
     evidence: "query",
   })
-  expect(unknown.response).toBe("unknown")
+  expect(unknown.response).toBe("not recognized (Ps 0)")
   expect(unknown.assertions).toBeUndefined()
   expect((await decrpm.term(makeContext(null))).observation).toMatchObject({
     outcome: "inconclusive",

@@ -200,14 +200,32 @@ export function decrpmReplyPattern(modeNumber: number, kind: "private" | "ansi" 
   return new RegExp(`\\x1b\\[${kind === "private" ? "\\?" : ""}${modeNumber};([0-4])\\$y`)
 }
 
-/** The one reading of Ps for every DECRPM consumer: 1/3 set, 2/4 reset, 0 not recognized, anything else no readback. */
-export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown" | null {
+/** A DECRPM Ps kept distinct (#30557): 0 not recognized, 1 set, 2 reset, 3 permanently set, 4 permanently reset. */
+export type DecrpmPs = 0 | 1 | 2 | 3 | 4
+
+/** The one reading of Ps for every DECRPM consumer; anything outside 0–4 is no readback. */
+export function decrpmPs(ps: string | undefined): DecrpmPs | null {
   if (ps === undefined || ps === "") return null
   const status = Number(ps)
-  if (status === 1 || status === 3) return "set"
-  if (status === 2 || status === 4) return "reset"
-  if (status === 0) return "unknown"
-  return null
+  return status === 0 || status === 1 || status === 2 || status === 3 || status === 4 ? status : null
+}
+
+/**
+ * The fold over decrpmPs for the consumers that only ask whether a mode is on (cursor visibility, DECSCLM,
+ * DECAWM, calibration): 1/3 set, 2/4 reset, 0 not recognized. A grader never reads this word, because it
+ * hides Ps 4 behind "reset" (#30557).
+ */
+export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown" | null {
+  const reading = decrpmPs(ps)
+  if (reading === null) return null
+  if (reading === 0) return "unknown"
+  return reading === 1 || reading === 3 ? "set" : "reset"
+}
+
+/** One DECRQM on the app arm, read by the shared parser with Ps kept distinct: the same bytes queryMode folds. */
+export async function queryDecrpm(ctx: TermContext, modeNum: number): Promise<DecrpmPs | null> {
+  const match = await ctx.queryWithSentinel(`\x1b[?${modeNum}$p`, decrpmReplyPattern(modeNum))
+  return decrpmPs(match?.[1])
 }
 
 /**
@@ -747,7 +765,7 @@ export function decrpmModeProbe(
     termObservationEvidence: "query",
     termless: termlessFn,
     async term(ctx) {
-      return decrpmResult(await ctx.queryMode(modeNum), modeNum)
+      return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
     },
   }
 }
@@ -768,21 +786,38 @@ export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: Ter
     const reply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
     const state = modeName === undefined ? { reply } : { reply, mode }
     ctx.feed(`\x1b[?${modeNum}l`)
-    const status = decrpmStatus(decrpmReplyPattern(modeNum).exec(reply)?.[1])
-    if (status === null) {
+    const ps = decrpmPs(decrpmReplyPattern(modeNum).exec(reply)?.[1])
+    if (ps === null) {
       return osInputReviewResult(
         `DECRPM reply to CSI ? ${modeNum} $ p`,
         state,
         "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
       )
     }
-    return { ...decrpmResult(status, modeNum), response: JSON.stringify(state) }
+    return { ...decrpmResult(ps, modeNum), response: JSON.stringify(state) }
   }
 }
 
-/** The one grader of a DECRPM reading, shared by the app arm and the headless arm. */
-export function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number): ProbeResult {
-  if (state === null) {
+const DECRPM_WORDS: Record<DecrpmPs, string> = {
+  0: "not recognized",
+  1: "set",
+  2: "reset",
+  3: "permanently set",
+  4: "permanently reset",
+}
+
+/** A DECRPM reading as a cell stores it: the word and the numeric Ps, so a stored "reset" never hides a Ps 4 (#30557). */
+export function decrpmReading(ps: DecrpmPs): string {
+  return `${DECRPM_WORDS[ps]} (Ps ${ps})`
+}
+
+/**
+ * The one grader of a DECRPM reading, shared by the app arm and the headless arm (#30557, @cto 254dd9cf):
+ * Ps 1, 2 and 3 grade supported; Ps 4 grades unsupported, because the terminal says it knows the mode and
+ * that the mode cannot be set (xterm.js answers exactly that for 1005); Ps 0 and no reply are inconclusive.
+ */
+export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeResult {
+  if (ps === null) {
     return {
       pass: false,
       note: "No DECRPM response",
@@ -794,11 +829,12 @@ export function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum:
       },
     }
   }
-  if (state === "unknown") {
+  const reading = decrpmReading(ps)
+  if (ps === 0) {
     return {
       pass: false,
       note: `DECRPM mode ${modeNum}: not recognized; mode behavior unmeasured`,
-      response: state,
+      response: reading,
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
@@ -807,16 +843,32 @@ export function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum:
       },
     }
   }
+  if (ps === 4) {
+    const note = `DECRPM mode ${modeNum}: ${reading}; the terminal knows the mode and cannot set it`
+    return {
+      pass: false,
+      note,
+      response: reading,
+      observation: { outcome: "unsupported", evidence: "query", note },
+      assertions: [
+        {
+          kind: "negative",
+          expected: `DECRPM mode ${modeNum} can be set`,
+          observed: reading,
+        },
+      ],
+    }
+  }
   return {
     pass: true,
-    note: `DECRPM mode ${modeNum}: ${state}`,
-    response: state,
+    note: `DECRPM mode ${modeNum}: ${reading}`,
+    response: reading,
     observation: { outcome: "supported", evidence: "query" },
     assertions: [
       {
         kind: "positive",
         expected: `DECRPM mode ${modeNum} recognized (set or reset)`,
-        observed: state,
+        observed: reading,
       },
     ],
   }
