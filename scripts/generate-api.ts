@@ -41,7 +41,7 @@ const docsDir = join(root, "docs")
 const publicDir = join(docsDir, "public")
 const apiDir = join(publicDir, "api", "v1")
 const contentDir = join(root, "content")
-// Cloudflare Pages Free-plan limits. The account tier is not verified, so use the conservative file cap.
+// Cloudflare Pages Free-plan limits (25 MiB per asset, 20,000 files per deployment).
 const maxAssetBytes = 25 * 1024 * 1024
 const maxOutputFiles = 20_000
 
