@@ -405,7 +405,7 @@ describe("release 1 decisive-count reader", () => {
     expect(share.inconclusivePct).toBe(0)
     expect(share.inconclusiveIds).toEqual([])
     expect(share.remainder).toEqual([
-      { featureId: "d.inconclusive", bucket: "error" },
+      { featureId: "d.inconclusive", bucket: "untested" },
       { featureId: "e.error", bucket: "error" },
       { featureId: "f.missing", bucket: "untested" },
     ])
@@ -422,13 +422,13 @@ describe("release 1 decisive-count reader", () => {
     expect(share.remainder.every((entry) => entry.bucket === "untested")).toBe(true)
   })
 
-  it("counts an unverified supported outcome as a test failure, not decisive", () => {
+  it("requires rerun for an unverified outcome with no retained attempt method", () => {
     const share = decisiveShare(classifyCells({ "a.supported": { outcome: "supported", conclusive: false } }), [
       "a.supported",
     ])
     expect(share.decisive).toBe(0)
     expect(share.inconclusive).toBe(0)
-    expect(share.remainder).toEqual([{ featureId: "a.supported", bucket: "error" }])
+    expect(share.remainder).toEqual([{ featureId: "a.supported", bucket: "untested" }])
   })
 
   it("labels the D3 verdict: pass from 90% decisive of the included 52, with gaps from 70%, fail below, the fraction beside the label", () => {
@@ -875,7 +875,7 @@ describe("release 1 decisive-count reader", () => {
     expect(printed).toContain("suite c6ec4ee8f580")
     expect(printed).toContain("decisive/52     3/4 = 75%  (pass >= 90%)")
     expect(printed).toContain("inconclusive/52 0/4 = 0%")
-    expect(printed).toContain("remainder    1 rows: d.inconclusive (error)")
+    expect(printed).toContain("remainder    1 rows: d.inconclusive (untested)")
     expect(printed).toContain("verdict         with gaps · 3/4  (75% decisive of the included 4)")
     expect(printed).toContain(
       "context/62      decisive 3/6 = 50%, inconclusive 0/6 = 0%  (context only, not the verdict)",

@@ -11,7 +11,13 @@ import type {
   TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import type { CurrentResult } from "./current-results.ts"
-import { statesFor, type SelectedCell, type SelectedProjection, type SelectedVersion } from "./selected-results.ts"
+import {
+  HISTORICAL_RERUN_NOTE,
+  statesFor,
+  type SelectedCell,
+  type SelectedProjection,
+  type SelectedVersion,
+} from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
@@ -186,7 +192,8 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
       ...(cell.reason && { reason: cell.reason }),
       ...(cell.host !== undefined && { host: cell.host }),
       ...(cell.textQualificationReason !== undefined && { textQualificationReason: cell.textQualificationReason }),
-      ...((reviewedCorrection || approved) && cell.note !== undefined && { note: cell.note }),
+      ...((reviewedCorrection || approved || cell.note === HISTORICAL_RERUN_NOTE) &&
+        cell.note !== undefined && { note: cell.note }),
       chain: {
         origin: { kind: origin.kind, ...(origin.url && /^https?:\/\//.test(origin.url) && { url: origin.url }) },
         method: cell.chain.method,

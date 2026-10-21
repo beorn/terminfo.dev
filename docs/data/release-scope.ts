@@ -42,6 +42,7 @@ export type CellState = "supported" | "unsupported" | "inconclusive" | "error" |
  * Presentation states retain their existing keys: inconclusive is reserved for reviewed Untestable
  * claims, error is TEST FAILURE, and untested is TEST TODO. A missing cell or evidence "none" means
  * no feature measurement started; an undecided attempt is a failed test, not terminal non-support.
+ * Historical booleans or records without an attempt method require a rerun, not a guessed failure.
  * Existing refusals never establish that a capability is impossible to test in its context.
  */
 export function classifyCell(
@@ -49,9 +50,10 @@ export function classifyCell(
 ): CellState {
   if (!cell) return "untested"
   if (cell.outcome === "error") return "error"
-  if (cell.evidence === "none") return "untested"
+  if (cell.evidence === "none" || cell.evidence === "legacy") return "untested"
   if (cell.conclusive && cell.outcome === "supported") return "supported"
   if (cell.conclusive && cell.outcome === "unsupported") return "unsupported"
+  if (!cell.evidence) return "untested"
   return "error"
 }
 

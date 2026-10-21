@@ -44,6 +44,9 @@ import {
 } from "../../scripts/interpretations.ts"
 export { parseInterpretations } from "../../scripts/interpretations.ts"
 
+/** Public migration explanation derived from legacy booleans, never an original run note. */
+export const HISTORICAL_RERUN_NOTE = "Historical result lacks retained attempt evidence; rerun required (TEST TODO)."
+
 export interface SelectedCell extends Observation {
   conclusive: boolean
   /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
@@ -282,6 +285,7 @@ function prepareRunCells(
   for (const observation of run.observations) {
     cells[observation.featureId] = {
       ...observation,
+      ...(run.legacy ? { note: HISTORICAL_RERUN_NOTE } : {}),
       record: observationRecord(run, observation),
       conclusive: isConclusiveObservation(run, observation, text),
       ...(observation.evidence === "text" &&

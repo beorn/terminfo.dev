@@ -381,7 +381,7 @@ describe("approved baseline test states and catalog score", () => {
       failed: { outcome: "error", evidence: "none", reason: "collector-error" },
       legacy: { outcome: "supported", conclusive: false, evidence: "legacy" },
     })
-    expect(states).toEqual({ refused: "untested", attempted: "error", failed: "error", legacy: "error" })
+    expect(states).toEqual({ refused: "untested", attempted: "error", failed: "error", legacy: "untested" })
   })
 
   it("scores the selected Kitty Modern run over all 69 capabilities without promoting refused underlines", () => {

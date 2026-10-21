@@ -18,6 +18,7 @@ import {
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission, planAdmission } from "./admit-run.ts"
 import { publicResults } from "../docs/data/public-results.ts"
+import { loadFeatures } from "@terminfo/catalog"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import { decodeCollectorRun, decodeExactUtf8, parseRun as parseRunSource } from "@terminfo/run-parser"
 import type { ObservationFrame, ProbeSuiteManifest } from "@terminfo/probe-defs"
@@ -935,7 +936,7 @@ describe("selected results", () => {
     expect(JSON.stringify(capture)).toBe(bytes)
   })
 
-  it("keeps legacy booleans ungraded and omits unknown causes from v1", () => {
+  it("requires a rerun TODO for historical booleans without attempt evidence and retains attempted failures", () => {
     const legacy = parseRun(
       "legacy.json",
       JSON.stringify({
@@ -962,6 +963,31 @@ describe("selected results", () => {
     )
     const projection = projectResults([legacy, timeout], [reviewFor(timeout)], catalog, { currentProbeHash: "current" })
     expect(projection.history["app:kitty"]?.find((r) => r.runId === legacy.runId)?.counts.conclusive).toBe(0)
+    const retainedPath = join(import.meta.dirname, "../content/probes-apps/kitty-0.46.2-macos.json")
+    const retainedCatalog = Object.keys(loadFeatures(join(import.meta.dirname, "../content")))
+    const retained = parseRun(retainedPath, readFileSync(retainedPath, "utf8"), retainedCatalog)
+    const historical = projectResults([retained], [], retainedCatalog, { currentProbeHash: "current" })
+    const historicalCell = historical.history["app:kitty"]?.[0]?.cells["sgr.bold"]
+    expect(historical.table[retained.runId]?.["sgr.bold"]).toBe("untested")
+    expect(historicalCell).toMatchObject({
+      outcome: "supported",
+      evidence: "legacy",
+      conclusive: false,
+      note: "Historical result lacks retained attempt evidence; rerun required (TEST TODO).",
+      record: { assertions: [] },
+    })
+    expect(historicalCell?.record.rawReply).toBeUndefined()
+    expect(publicResults(historical, new Map()).projection.history["app:kitty"]?.[0]?.cells["sgr.bold"]?.note).toBe(
+      "Historical result lacks retained attempt evidence; rerun required (TEST TODO).",
+    )
+    if (!historicalCell) throw new Error("Missing retained legacy fixture")
+    historicalCell.note = "Private historical annotation"
+    expect(
+      publicResults(historical, new Map()).projection.history["app:kitty"]?.[0]?.cells["sgr.bold"]?.note,
+    ).toBeUndefined()
+    expect(retained.observations.find((cell) => cell.featureId === "sgr.bold")?.note).toBeUndefined()
+    expect(projection.table[timeout.runId]?.["extensions.query"]).toBe("error")
+
     expect(projection.exclusions).toContainEqual(
       expect.objectContaining({ runId: legacy.runId, reason: "identity-unverified" }),
     )
