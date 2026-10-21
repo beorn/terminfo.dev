@@ -248,6 +248,26 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       assert.ok(Object.keys(projection.current).length > 0, "retained corpus needs an exact current context");
       assert.ok(compatibility.size > 0, "retained corpus needs a compatibility target");
       const site = loadFullProbes();
+      // Keep real-corpus scoring here so release-scope tests do not load the corpus a second time.
+      const kitty = site.selectedByBackend.kitty;
+      assert.equal(kitty?.selected.target.version, "0.48.2");
+      assert.equal(kitty?.selected.target.os, "macos");
+      const modern = site.baselineStats.kitty?.modern;
+      assert.equal(modern?.catalog, 69);
+      assert.equal(modern?.supported, 17);
+      assert.equal(modern?.unsupported, 0);
+      assert.equal(modern?.inconclusive, 0);
+      assert.equal(modern?.untested, 52);
+      assert.equal(modern?.errors, 0);
+      assert.equal(modern?.pct, 25);
+      for (const style of ["double", "curly", "dotted", "dashed"]) {
+        const id = "sgr.underline." + style;
+        assert.equal(kitty?.states[id], "untested", id + " state");
+        const cell = kitty?.selected.cells[id];
+        assert.equal(cell?.outcome, "inconclusive", id + " outcome");
+        assert.equal(cell?.evidence, "none", id + " evidence");
+        assert.equal(cell?.reason, "policy-refused", id + " reason");
+      }
       Bun.gc(true);
       const matrix = probesLoader.load();
       Bun.gc(true);

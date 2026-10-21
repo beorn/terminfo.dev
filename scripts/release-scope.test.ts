@@ -13,7 +13,6 @@ import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures } from "@terminfo/catalog"
-import { loadFullProbes } from "../docs/data/probes.data.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import {
   cohortIds,
@@ -383,27 +382,4 @@ describe("approved baseline test states and catalog score", () => {
     })
     expect(states).toEqual({ refused: "untested", attempted: "error", failed: "error", legacy: "untested" })
   })
-
-  // This reads and verifies the committed corpus; cold CI loading can exceed the default 5s.
-  it("scores the selected Kitty Modern run over all 69 capabilities without promoting refused underlines", () => {
-    const site = loadFullProbes()
-    expect(site.selectedByBackend.kitty?.selected.target).toMatchObject({ version: "0.48.2", os: "macos" })
-    expect(site.baselineStats.kitty?.modern).toMatchObject({
-      catalog: 69,
-      supported: 17,
-      unsupported: 0,
-      inconclusive: 0,
-      untested: 52,
-      errors: 0,
-      pct: 25,
-    })
-    for (const style of ["double", "curly", "dotted", "dashed"]) {
-      expect(site.selectedByBackend.kitty?.states[`sgr.underline.${style}`]).toBe("untested")
-      expect(site.selectedByBackend.kitty?.selected.cells[`sgr.underline.${style}`]).toMatchObject({
-        outcome: "inconclusive",
-        evidence: "none",
-        reason: "policy-refused",
-      })
-    }
-  }, 30_000)
 })
