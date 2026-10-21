@@ -33,6 +33,9 @@ import { spawnSync } from "node:child_process"
 import { createHash, randomBytes } from "node:crypto"
 import {
   existsSync,
+  openSync,
+  closeSync,
+  statSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -642,25 +645,36 @@ function rsync(
   destination: string,
   extra: readonly string[] = [],
 ): void {
-  const result = spawnSync("rsync", ["-a", "-e", sshCommandLine(options), ...extra, "--", source, destination], {
-    encoding: "utf8",
-    timeout: options.rsyncTimeoutMs,
-  })
+  // Dependency trees can produce more diagnostics than spawnSync's pipe buffer holds.
+  // Keep the complete child output even when the transfer fails before copy-back exists.
+  mkdirSync(options.output, { recursive: true, mode: 0o700 })
+  const diagnostics = join(mkdtempSync(join(options.output, "rsync-")), "diagnostics.log")
+  const descriptor = openSync(diagnostics, "wx", 0o600)
+  let result: ReturnType<typeof spawnSync>
+  try {
+    result = spawnSync("rsync", ["-a", "-e", sshCommandLine(options), ...extra, "--", source, destination], {
+      stdio: ["ignore", descriptor, descriptor],
+      timeout: options.rsyncTimeoutMs,
+    })
+  } finally {
+    closeSync(descriptor)
+  }
   if (result.error) {
     if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
       fail(
         "timeout",
-        `${label} exceeded ${minutesOf(options.rsyncTimeoutMs)} min; the remote rsync may still be running on ${options.transport.slice(4)}, so the stage is kept`,
+        `${label} exceeded ${minutesOf(options.rsyncTimeoutMs)} min; the remote rsync may still be running on ${options.transport.slice(4)}, so the stage is kept; diagnostics: ${diagnostics}`,
       )
     }
-    fail("rsync incomplete", `rsync ${source} -> ${destination}: ${result.error.message}`)
+    fail("rsync incomplete", `rsync ${source} -> ${destination}: ${result.error.message}; diagnostics: ${diagnostics}`)
   }
   if (result.status !== 0) {
     fail(
       "rsync incomplete",
-      `rsync ${source} -> ${destination} exited ${String(result.status)}: ${result.stderr.trim()}`,
+      `rsync ${source} -> ${destination} exited ${String(result.status)}; diagnostics: ${diagnostics}`,
     )
   }
+  if (statSync(diagnostics).size > 0) console.error(`rsync ${label} diagnostics: ${diagnostics}`)
 }
 
 function main(options: Parsed): OwnedAppTransportProof {

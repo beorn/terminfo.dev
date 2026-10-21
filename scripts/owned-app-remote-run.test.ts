@@ -368,6 +368,38 @@ describe("owned-app ssh transport", () => {
     }
   }, 60_000)
 
+  it.each([false, true])(
+    "retains large rsync diagnostics without a pipe-buffer abort (failure=%s)",
+    (failure) => {
+      // Real child output must exceed spawnSync's pipe cap; small shim errors miss the staging bug.
+      const shim = join(shims, "rsync")
+      const emit = `"$REAL_BUN" -e 'process.stdout.write("large-output-start\\n" + "o".repeat(1200000) + "\\nlarge-output-end\\n"); process.stderr.write("large-error-start\\n" + "e".repeat(1200000) + "\\nlarge-error-end\\n")'`
+      writeFileSync(
+        shim,
+        readFileSync(shim, "utf8").replace(
+          '\n"$REAL_RSYNC" "$@"\n',
+          `\n${emit}\n${failure ? "exit 23" : '"$REAL_RSYNC" "$@"'}\n`,
+        ),
+      )
+      const result = run()
+      if (failure) {
+        expect(result.status).not.toBe(0)
+        expect(result.stderr).toContain("rsync incomplete")
+        expect(result.stderr).toContain("exited 23")
+        const path = /diagnostics: ([^\n]+)/.exec(result.stderr)?.[1]
+        expect(path, result.stderr).toBeTruthy()
+        const diagnostics = readFileSync(path!, "utf8")
+        expect(diagnostics).toContain("large-output-start\n" + "o".repeat(1200000) + "\nlarge-output-end\n")
+        expect(diagnostics).toContain("large-error-start\n" + "e".repeat(1200000) + "\nlarge-error-end\n")
+      } else {
+        expect(result.status, result.stderr).toBe(0)
+        expect(existsSync(join(output, "transport", "transport-receipt.json"))).toBe(true)
+      }
+      expect(result.stderr).not.toContain("ENOBUFS")
+    },
+    60_000,
+  )
+
   it("pins every ssh spawn and every rsync -e to the same options, with -F /dev/null first", () => {
     expect(run().status).toBe(0)
     // An exact prefix, not presence: ssh keeps the FIRST value it reads, so an option placed ahead
