@@ -16,9 +16,10 @@ import {
   notTestedResult,
   osInputReviewResult,
   isBlank,
-  queryAnsiMode,
   queryDecrpm,
   decrpmReading,
+  decrpmResult,
+  type DecrpmPs,
 } from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
@@ -954,20 +955,21 @@ export const modesProbes: ProbeDefinition[] = [
         if (refusal) return refusal
         // IRM is ANSI mode 4; DECRQM (`CSI 4 $ p`) reports it without reading cells.
         // A complete report decides the claim; no report falls through to the cell fixture below.
-        let on: Awaited<ReturnType<typeof queryAnsiMode>>
+        let on: DecrpmPs | null
         try {
           ctx.write("\x1b[4h")
-          on = await queryAnsiMode(ctx, 4)
+          on = await queryDecrpm(ctx, 4, "ansi")
         } finally {
           ctx.write("\x1b[4l")
         }
-        if (on === "set" || on === "reset") {
-          const off = await queryAnsiMode(ctx, 4)
-          if (off === "set" || off === "reset") {
-            const ok = on === "set" && off === "reset"
+        if (on !== null && on !== 0) {
+          const off = await queryDecrpm(ctx, 4, "ansi")
+          if (off !== null && off !== 0) {
+            // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
+            const ok = (on === 1 || on === 3) && (off === 2 || off === 4)
             return {
               pass: ok,
-              response: JSON.stringify({ on, off }),
+              response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),
               observation: ok
                 ? { outcome: "supported", evidence: "query" }
                 : { outcome: "unsupported", evidence: "query" },
@@ -975,7 +977,7 @@ export const modesProbes: ProbeDefinition[] = [
                 {
                   kind: ok ? "positive" : "negative",
                   expected: "DECRQM mode 4 reports set after CSI 4 h and reset after CSI 4 l",
-                  observed: `${on} -> ${off}`,
+                  observed: `${decrpmReading(on)} -> ${decrpmReading(off)}`,
                 },
               ],
             }
@@ -1264,16 +1266,18 @@ export const modesProbes: ProbeDefinition[] = [
             ctx.write("\x1b[?1047l\x1b[0m\x1b[2J\x1b[H")
           }
         }
-        const decrpmResult = await ctx.queryMode(1047)
+        const ps = await queryDecrpm(ctx, 1047)
+        // Ps 4 says the terminal knows 1047 and cannot set it: the shared grader marks it unsupported (#30557 r2).
+        if (ps === 4) return decrpmResult(ps, 1047)
         return {
           pass: false,
-          ...(decrpmResult !== null && { response: decrpmResult }),
+          ...(ps !== null && { response: decrpmReading(ps) }),
           observation: {
             outcome: "inconclusive",
-            reason: decrpmResult === null ? "no-response" : "insufficient-evidence",
+            reason: ps === null ? "no-response" : "insufficient-evidence",
             evidence: "query",
             note:
-              decrpmResult === null
+              ps === null
                 ? "No DECRPM reply; alternate-buffer clearing was not measured"
                 : "DECRPM status does not measure alternate-buffer clearing",
           },
@@ -1490,7 +1494,9 @@ export const modesProbes: ProbeDefinition[] = [
             assertions: [
               {
                 kind: recognized ? ("positive" as const) : ("negative" as const),
-                expected: "DECRPM 2031 recognizes color-scheme reporting mode",
+                // Ps 4 is recognized and cannot be set: the assertion names that, as decrpmResult does (@dev/2 72304b0e).
+                expected:
+                  ps === 4 ? "DECRPM mode 2031 can be set" : "DECRPM 2031 recognizes color-scheme reporting mode",
                 observed: decrpmReading(ps),
               },
             ],

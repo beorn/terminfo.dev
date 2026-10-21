@@ -25,7 +25,7 @@ function timeout(): TerminalQueryOutcome {
  * A Kitty-shaped terminal: it maintains real SGR, DECTCEM and IRM state and answers DECRQSS
  * and DECRQM from that state. `answer: false` models a terminal that never replies.
  */
-function kittyContext(answer: boolean, resets = true): TermContext {
+function kittyContext(answer: boolean, resets = true, permanent = false): TermContext {
   let sgr: number[] = []
   let visible = true
   let irm = false
@@ -54,7 +54,15 @@ function kittyContext(answer: boolean, resets = true): TermContext {
     queryCursorPosition: async () => ({ row: 1, col: 2 }),
     measureRenderedWidth: async () => null,
     query: async () => null,
-    queryWithSentinel: async () => null,
+    // DECRQM answers with the Ps: DECTCEM (private 25) and IRM (ANSI 4) from live state, or Ps 4 for a terminal
+    // that knows both modes and cannot set them (#30557 r2).
+    queryWithSentinel: async (sequence, pattern) => {
+      if (!answer) return null
+      const ps = (on: boolean) => (permanent ? "4" : on ? "1" : "2")
+      if (sequence === "\x1b[?25$p") return pattern.exec(`\x1b[?25;${ps(visible)}$y`)
+      if (sequence === "\x1b[4$p") return pattern.exec(`\x1b[4;${ps(irm)}$y`)
+      return null
+    },
     queryOutcome: async () => timeout(),
     async queryWithSentinelOutcome(sequence) {
       if (!answer) return timeout()
@@ -62,32 +70,43 @@ function kittyContext(answer: boolean, resets = true): TermContext {
         const payload = sgr.length === 0 ? "" : sgr.join(";")
         return { match: [`\x1bP1$r${payload}m\x1b\\`, payload], reason: "reply", raw: "", rawBase64: "" }
       }
-      if (sequence === "\x1b[4$p") {
-        const status = irm ? "1" : "2"
-        return { match: [`\x1b[4;${status}$y`, status], reason: "reply", raw: "", rawBase64: "" }
-      }
       return timeout()
     },
-    queryMode: async (modeNum) => {
-      if (!answer) return null
-      if (modeNum === 25) return visible ? "set" : "reset"
-      return null
+    queryMode: async () => {
+      throw new Error(
+        "the DECTCEM and IRM toggles read the Ps through queryWithSentinel, never the folded word (#30557)",
+      )
     },
   }
 }
 
 test.each([
   ["sgr.bold", "1"],
-  ["cursor.hide", "set -> reset"],
-  ["modes.insert-replace", "set -> reset"],
+  ["cursor.hide", "set (Ps 1) -> reset (Ps 2)"],
+  ["modes.insert-replace", "set (Ps 1) -> reset (Ps 2)"],
 ] as const)("%s is decided supported by its readback query on a responding terminal", async (id, observed) => {
   const result = await termProbe(id)(kittyContext(true))
   expect(result.pass).toBe(true)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
   if (id === "sgr.bold") expect(result.response).toContain(observed)
-  else expect(result.response).toContain("set")
+  else expect(result.assertions?.[0]?.observed).toBe(observed)
 })
+
+// #30557 r2: the toggle cells store the Ps, so a permanently reset mode (Ps 4) grades unsupported and reads as such.
+test.each(["cursor.hide", "modes.insert-replace"] as const)(
+  "%s grades a permanently reset mode unsupported and stores the Ps",
+  async (id) => {
+    const result = await termProbe(id)(kittyContext(true, true, true))
+    expect(result.pass).toBe(false)
+    expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+    expect(result.assertions?.[0]).toMatchObject({
+      kind: "negative",
+      observed: "permanently reset (Ps 4) -> permanently reset (Ps 4)",
+    })
+    expect(result.response).toContain("permanently reset (Ps 4)")
+  },
+)
 
 test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
   "%s stays inconclusive and never negative when the readback reply is missing",

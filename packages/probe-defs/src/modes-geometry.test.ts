@@ -46,7 +46,9 @@ function app(
     },
     measureRenderedWidth: async () => unexpected("measureRenderedWidth"),
     query: async () => unexpected("query"),
-    queryWithSentinel: async () => unexpected("queryWithSentinel"),
+    // The IRM toggle reads ANSI mode 4 through DECRQM (#30557 r2); this fixture models a terminal that never answers.
+    queryWithSentinel: async (sequence) =>
+      /^\x1b\[\??\d+\$p$/.test(sequence) ? null : unexpected("queryWithSentinel"),
     queryOutcome: async () => unexpected("queryOutcome"),
     queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryMode: async () => unexpected("queryMode"),
@@ -125,7 +127,7 @@ test("insert mode is disabled when its initial ANSI mode query rejects", async (
   if (!definition?.term) throw new Error("Missing insert-replace app callback")
   const events: string[] = []
   const context = app(1, 6, events)
-  context.queryWithSentinelOutcome = async () => {
+  context.queryWithSentinel = async () => {
     events.push("ANSI mode query")
     throw new Error("injected ANSI mode query failure")
   }

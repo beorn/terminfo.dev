@@ -185,16 +185,6 @@ function leadingSgrCode(token: string): number {
   return Number(token.split(":")[0])
 }
 
-/**
- * DECRQM for an ANSI (non-private) mode: `CSI Ps $ p` -> `CSI Ps ; Pm $ y`.
- * Status 1/3 is set, 2/4 is reset, 0 is not recognized, any other value is no readback.
- */
-export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
-  const outcome = await ctx.queryWithSentinelOutcome(`\x1b[${modeNumber}$p`, decrpmReplyPattern(modeNumber, "ansi"))
-  if (outcome.reason !== "reply") return null
-  return decrpmStatus(outcome.match?.[1])
-}
-
 /** The DECRPM reply to one DECRQM: `CSI ? Pd ; Ps $ y` for a DEC private mode, `CSI Pd ; Ps $ y` for an ANSI mode. */
 export function decrpmReplyPattern(modeNumber: number, kind: "private" | "ansi" = "private"): RegExp {
   return new RegExp(`\\x1b\\[${kind === "private" ? "\\?" : ""}${modeNumber};([0-4])\\$y`)
@@ -211,9 +201,10 @@ export function decrpmPs(ps: string | undefined): DecrpmPs | null {
 }
 
 /**
- * The fold over decrpmPs for the consumers that only ask whether a mode is on (cursor visibility, DECSCLM,
- * DECAWM, calibration): 1/3 set, 2/4 reset, 0 not recognized. A grader never reads this word, because it
- * hides Ps 4 behind "reset" (#30557).
+ * The fold over decrpmPs, 1/3 set, 2/4 reset, 0 not recognized, for tty.ts queryMode and the readers that only
+ * save, restore or compare a prior state: the cursor-visibility and autowrap equality checks
+ * (text-qualification.ts, capture-calibration.ts), the DECSCLM restore (modes.ts) and the DECAWM gate (text.ts).
+ * No grader reads this word: it hides Ps 4 behind "reset", so a grader reads the Ps through queryDecrpm (#30557).
  */
 export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown" | null {
   const reading = decrpmPs(ps)
@@ -222,9 +213,17 @@ export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown
   return reading === 1 || reading === 3 ? "set" : "reset"
 }
 
-/** One DECRQM on the app arm, read by the shared parser with Ps kept distinct: the same bytes queryMode folds. */
-export async function queryDecrpm(ctx: TermContext, modeNum: number): Promise<DecrpmPs | null> {
-  const match = await ctx.queryWithSentinel(`\x1b[?${modeNum}$p`, decrpmReplyPattern(modeNum))
+/**
+ * One DECRQM on the app arm, read by the shared parser with Ps kept distinct: `CSI ? Ps $ p` for a DEC private mode
+ * (the same bytes queryMode folds), `CSI Ps $ p` for an ANSI mode such as IRM.
+ */
+export async function queryDecrpm(
+  ctx: TermContext,
+  modeNum: number,
+  kind: "private" | "ansi" = "private",
+): Promise<DecrpmPs | null> {
+  const query = kind === "private" ? `\x1b[?${modeNum}$p` : `\x1b[${modeNum}$p`
+  const match = await ctx.queryWithSentinel(query, decrpmReplyPattern(modeNum, kind))
   return decrpmPs(match?.[1])
 }
 

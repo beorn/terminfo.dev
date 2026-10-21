@@ -106,19 +106,48 @@ test("app reset observations require a measured effect and leave unmeasurable re
   expect(ris.assertions).toMatchObject([{ kind: "positive", expected: "RIS homes cursor from 5;5" }])
 
   const writes: string[] = []
-  const modeReplies = ["reset", "set", "reset"] as const
+  const modeReplies = [2, 1, 2]
   let modeReplyIndex = 0
   const soft = await find("reset.soft")(
     terminal({
       rows: 24,
       cols: 80,
       write: (sequence) => writes.push(sequence),
-      queryMode: async () => modeReplies[modeReplyIndex++] ?? null,
+      queryWithSentinel: async (_sequence, pattern) => {
+        const ps = modeReplies[modeReplyIndex++]
+        return ps === undefined ? null : pattern.exec(`\x1b[?1;${ps}$y`)
+      },
     }),
   )
   expect(soft.observation).toMatchObject({ outcome: "supported", evidence: "query" })
   expect(soft.assertions).toMatchObject([{ kind: "positive" }])
+  expect(soft.response).toBe(JSON.stringify({ before: "reset (Ps 2)", enabled: "set (Ps 1)", after: "reset (Ps 2)" }))
   expect(writes.at(-1)).toBe("\x1b[?1l")
+
+  // #30557 r2: a DECCKM the terminal cannot enable (Ps 4) is named, instead of "readback was unavailable".
+  const permanentWrites: string[] = []
+  const permanent = await find("reset.soft")(
+    terminal({
+      rows: 24,
+      cols: 80,
+      write: (sequence) => permanentWrites.push(sequence),
+      queryWithSentinel: async (_sequence, pattern) => pattern.exec("\x1b[?1;4$y"),
+    }),
+  )
+  expect(permanent.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    evidence: "query",
+    note: expect.stringContaining("permanently reset (Ps 4)"),
+  })
+  expect(permanent.response).toBe(
+    JSON.stringify({
+      before: "permanently reset (Ps 4)",
+      enabled: "permanently reset (Ps 4)",
+      after: "permanently reset (Ps 4)",
+    }),
+  )
+  expect(permanentWrites.at(-1)).toBe("\x1b[?1l")
 
   const methodWrites: string[] = []
   const method = await find("reset.method")(terminal({ write: (sequence) => methodWrites.push(sequence) }))

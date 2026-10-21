@@ -1668,7 +1668,9 @@ describe("partial probe automation candidates", () => {
       )
       expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, evidence: "query" })
       if (ps === 4) {
-        expect(result.assertions, "Ps 4").toMatchObject([{ kind: "negative", observed: "permanently reset (Ps 4)" }])
+        expect(result.assertions, "Ps 4").toMatchObject([
+          { kind: "negative", expected: "DECRPM mode 2031 can be set", observed: "permanently reset (Ps 4)" },
+        ])
       }
     }
   })

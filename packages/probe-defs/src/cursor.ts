@@ -5,7 +5,15 @@ import {
   type TermContext,
   type TermlessContext,
 } from "./types.ts"
-import { cursorProbe, cursorStyleReadbackDecision, parserStateResult, probe } from "./helpers.ts"
+import {
+  cursorProbe,
+  cursorStyleReadbackDecision,
+  decrpmReading,
+  parserStateResult,
+  probe,
+  queryDecrpm,
+  type DecrpmPs,
+} from "./helpers.ts"
 import { captureRegionVerdict, cropPositionRefusal, type RegionReadback } from "./region-readback.ts"
 
 /**
@@ -345,20 +353,21 @@ export const cursorProbes: ProbeDefinition[] = [
         }
         // DECTCEM is DEC private mode 25; DECRQM reports shown/hidden without pixels.
         ctx.write("\x1b[?25h")
-        const shown = await ctx.queryMode(25)
-        if (shown === "set" || shown === "reset") {
+        const shown = await queryDecrpm(ctx, 25)
+        if (shown !== null && shown !== 0) {
           ctx.write("\x1b[?25l")
-          let hidden: "set" | "reset" | "unknown" | null = null
+          let hidden: DecrpmPs | null = null
           try {
-            hidden = await ctx.queryMode(25)
+            hidden = await queryDecrpm(ctx, 25)
           } finally {
-            ctx.write(shown === "set" ? "\x1b[?25h" : "\x1b[?25l")
+            ctx.write(shown === 1 || shown === 3 ? "\x1b[?25h" : "\x1b[?25l")
           }
-          if (hidden === "set" || hidden === "reset") {
-            const ok = shown === "set" && hidden === "reset"
+          if (hidden !== null && hidden !== 0) {
+            // The stored reading keeps the Ps (#30557 r2): a permanent state (Ps 3 or 4) fails the toggle.
+            const ok = (shown === 1 || shown === 3) && (hidden === 2 || hidden === 4)
             return {
               pass: ok,
-              response: JSON.stringify({ shown, hidden }),
+              response: JSON.stringify({ shown: decrpmReading(shown), hidden: decrpmReading(hidden) }),
               observation: ok
                 ? { outcome: "supported", evidence: "query" }
                 : { outcome: "unsupported", evidence: "query" },
@@ -366,7 +375,7 @@ export const cursorProbes: ProbeDefinition[] = [
                 {
                   kind: ok ? "positive" : "negative",
                   expected: "DECRQM mode 25 reports set after CSI ? 25 h and reset after CSI ? 25 l",
-                  observed: `${shown} -> ${hidden}`,
+                  observed: `${decrpmReading(shown)} -> ${decrpmReading(hidden)}`,
                 },
               ],
             }
