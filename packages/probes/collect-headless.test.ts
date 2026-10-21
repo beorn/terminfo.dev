@@ -172,7 +172,21 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
     .filter((row) => row.checks.some((check) => check.id === "review" && check.status === "test-todo"))
     .map((row) => row.featureId)
     .sort()
-  expect(pending).toEqual(["extensions.clipboard-paste", "input.xtest-click", "input.xtest-key", "input.xtest-wheel"])
+  expect(pending).toEqual([
+    "extensions.clipboard-paste",
+    "input.button-event-mouse",
+    "input.kitty-click-events",
+    "input.modify-other-keys",
+    "input.modify-other-keys-3",
+    "input.pixel-mouse",
+    "input.urxvt-mouse",
+    "input.x10-mouse",
+    "input.xtest-click",
+    "input.xtest-key",
+    "input.xtest-wheel",
+    "modes.alt-scroll-1007",
+    "modes.application-keypad",
+  ])
   const decision = (featureId: string, reason: string) =>
     JSON.stringify({
       id: `round-trip-${featureId}`,
@@ -191,14 +205,13 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
       sources: [`collector.capture.${featureId}`],
       supersedes: [],
     })
-  const reviewed = [
-    ["input.xtest-key", "Embedded xterm.js has no X server, so XTEST key injection has no path to the engine"],
-    ["input.xtest-click", "Embedded xterm.js has no X server, so XTEST click injection has no path to the engine"],
-    ["input.xtest-wheel", "Embedded xterm.js has no X server, so XTEST wheel injection has no path to the engine"],
-  ] as const
-  const reviewPaths = reviewed.map(([featureId, reason], index) => {
+  const reason = (featureId: string) =>
+    `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+  const reviewed = pending.slice(0, -1)
+  const sealing = pending[pending.length - 1]!
+  const reviewPaths = reviewed.map((featureId, index) => {
     const path = join(dir, `review-${index}.json`)
-    writeFileSync(path, decision(featureId, reason))
+    writeFileSync(path, decision(featureId, reason(featureId)))
     return path
   })
   const startedAt = new Date().toISOString()
@@ -227,24 +240,22 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
   const retained = parseRun(retainedPath!, readFileSync(retainedPath!, "utf8"), suite.catalogIds!, suites, {
     mode: "capture",
   })
-  for (const [featureId] of reviewed) {
+  for (const featureId of reviewed) {
     const row = retained.results?.find((entry) => entry.featureId === featureId)
     expect(row?.status, featureId).toBe("untestable")
     const check = row?.checks?.find((entry) => entry.id === "review")
     expect(check?.status, featureId).toBe("untestable")
     expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
   }
-  expect(retained.results?.find((entry) => entry.featureId === "extensions.clipboard-paste")?.status).toBe("test-todo")
+  expect(retained.results?.find((entry) => entry.featureId === sealing)?.status).toBe("test-todo")
   const sealedPath = saveDaemonProbeRun(
     JSON.parse(readFileSync(retainedPath!, "utf8")) as CapturedRunDraft,
     dir,
     undefined,
     [
       {
-        source: decision(
-          "extensions.clipboard-paste",
-          "Embedded xterm.js has no system clipboard, so an XTEST paste has nothing to paste from",
-        ),
+        source: decision(sealing, reason(sealing)),
+
         startedAt,
       },
     ],

@@ -26,7 +26,25 @@ async function backend() {
 // Missing-input callback tests never exercised the production recorder, so these
 // OS-window criteria stayed generic TODOs with no review a collector could retain.
 test("requests review for headless OS-input criteria without fabricating app delivery", async () => {
-  const ids = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel", "extensions.clipboard-paste"]
+  const ids = [
+    "input.xtest-key",
+    "input.xtest-click",
+    "input.xtest-wheel",
+    "extensions.clipboard-paste",
+    "input.modify-other-keys",
+    "input.modify-other-keys-3",
+    "input.pixel-mouse",
+    "input.urxvt-mouse",
+    "input.x10-mouse",
+    "input.button-event-mouse",
+    "input.kitty-click-events",
+    "modes.alt-scroll-1007",
+    "modes.application-keypad",
+  ]
+  const coverage = (id: string) =>
+    id === "modes.application-keypad"
+      ? { reason: /keypad input/, raw: { on: expect.any(Boolean), off: expect.any(Boolean) } }
+      : { reason: /OS-level XTEST/, raw: { input: false } }
   const definitions = ids.map((id) => {
     const found = ALL_PROBES.find((probe) => probe.id === id)
     if (!found) throw new Error(`Missing registry definition ${id}`)
@@ -39,13 +57,14 @@ test("requests review for headless OS-input criteria without fabricating app del
   expect(batch.ungradedDiagnostics).toEqual({})
   for (const result of batch.results) {
     expect(result.status, result.featureId).toBe("test-todo")
-    expect(result.reason, result.featureId).toMatch(/OS-level XTEST/)
+    const expected = coverage(result.featureId)
+    expect(result.reason, result.featureId).toMatch(expected.reason)
     expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
-    expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject({ input: false })
+    expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject(expected.raw)
     expect(batch.notTested, result.featureId).toContainEqual({
       featureId: result.featureId,
       reason: "no-semantic-observable",
-      noObservable: expect.stringMatching(/OS-level XTEST/),
+      noObservable: expect.stringMatching(expected.reason),
       rawReplyRef: result.featureId,
     })
     expect(result.criterionBranch, result.featureId).toBe("os-input-review")
