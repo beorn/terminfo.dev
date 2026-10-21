@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process"
 import { randomUUID } from "node:crypto"
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs"
 import { release, tmpdir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { basename, dirname, join, resolve } from "node:path"
 import { pathToFileURL, fileURLToPath } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
 import {
@@ -29,6 +29,28 @@ const WORKER_STOP_GRACE_MS = 2_000
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Strip collecting-host folder prefixes from diagnostics recorded in a run draft while keeping the
+ * file or directory name (#30591). Re-thrown errors and stderr files keep the full path for local diagnosis.
+ */
+function scrubRecordedFailure(diagnostic: string): string {
+  return diagnostic.replace(
+    /(?:file:\/\/\/[^\s"'`:;,()[\]{}]+|(?<![\w.~/\\-])[A-Za-z]:\\[^\s"'`:;,()[\]{}]+|(?<![\w.~/-])\/[^\s"'\\`:;,()[\]{}]+)/g,
+    (match) => {
+      if (match.startsWith("//")) return match
+      const clean = match.replace(/^file:\/\//, "").replaceAll("\\", "/")
+      if (
+        !/^[A-Za-z]:\//.test(clean) &&
+        !clean.replace(/\/+$/, "").slice(1).includes("/") &&
+        !/^\/(?:hh|home|Users|tmp|var|private|opt|root|mnt|Volumes|nix)\/?$/.test(clean)
+      ) {
+        return match
+      }
+      return basename(clean) || clean
+    },
+  )
 }
 
 function loadedBackend(value: unknown, specifier: string): TerminalBackend {
@@ -190,7 +212,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     writeFileSync(path, bytes, { flag: "wx" })
     return path
   } catch (error) {
-    const diagnostic = errorMessage(error)
+    const diagnostic = scrubRecordedFailure(errorMessage(error))
     if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, suite.probes.headless)
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
@@ -255,6 +277,7 @@ export async function collectHeadlessRuns(
     } else writeFileSync(draftPath, `${JSON.stringify(delegated, null, 2)}\n`, { flag: "wx" })
     const workerStartedAt = new Date().toISOString()
     const retainFailure = (diagnostic: string) => {
+      const scrubbed = scrubRecordedFailure(diagnostic)
       const retained = JSON.parse(readFileSync(draftPath, "utf8")) as RunDraft
       if (
         retained.runId !== delegated.runId ||
@@ -264,7 +287,16 @@ export async function collectHeadlessRuns(
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
       if (!retained.rawReplies["collector.prerequisite"]) {
-        recordCollectionFailure(retained, workerStartedAt, diagnostic, suite.probes.headless)
+        recordCollectionFailure(retained, workerStartedAt, scrubbed, suite.probes.headless)
+      } else {
+        retained.rawReplies["collector.prerequisite"] = scrubRecordedFailure(
+          retained.rawReplies["collector.prerequisite"],
+        )
+        for (const result of retained.results) {
+          if (result.status === "test-todo" && result.reason) {
+            result.reason = scrubRecordedFailure(result.reason)
+          }
+        }
       }
       writeFileSync(draftPath, `${JSON.stringify(retained, null, 2)}\n`)
     }

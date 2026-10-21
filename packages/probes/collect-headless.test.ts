@@ -349,3 +349,96 @@ it("records an attempted worker timeout as collection FAILURE with retained diag
   expect(draft.rawReplies["collector.failure"]).toContain("exceeded")
   expect(draft).not.toHaveProperty("target")
 })
+it("scrubs absolute host folder prefixes from recorded draft failures while keeping full paths in terminal errors", async () => {
+  const dir = directory()
+  const receiptPath = "/hh/var/wt/seat/vendor/termless/packages/libvterm/wasm/libvterm.wasm.receipt.json"
+  const prereqPath = "/Users/alice/work/vendor/termless/packages/xtermjs/src/index.ts"
+  const winPath = "C:\\Users\\alice\\work\\vendor\\termless\\packages\\xtermjs\\dist\\xterm.wasm"
+  const sshUrl = "ssh://git@github.com/o/r"
+  const httpsUrl = "https://terminfo.dev/docs/capture"
+  vi.spyOn(Bun, "spawn").mockImplementation(((argv: string[], options: { env: Record<string, string> }) => {
+    const backend = argv[3]
+    if (backend === "xtermjs") {
+      const draft = JSON.parse(readFileSync(options.env.TERMINFO_DRAFT_PATH!, "utf8")) as RunDraft
+      const prereq = `Termless adapter @termless/xtermjs resolved to ${prereqPath} (win=${winPath}, upstream=${sshUrl}, docs=${httpsUrl}), which is not inside a Git checkout`
+      draft.rawReplies["collector.prerequisite"] = prereq
+      for (const result of draft.results) if (result.status === "test-todo") result.reason = prereq
+      writeFileSync(options.env.TERMINFO_DRAFT_PATH!, `${JSON.stringify(draft, null, 2)}\n`)
+      return {
+        stdout: new Blob([]).stream(),
+        stderr: new Blob([`Error: ${prereq}\n`]).stream(),
+        exited: Promise.resolve(1),
+        kill: vi.fn(),
+      }
+    }
+    return {
+      stdout: new Blob([]).stream(),
+      stderr: new Blob([
+        `Error: libvterm build receipt is missing or does not match loaded WASM/JS: ${receiptPath}\n`,
+      ]).stream(),
+      exited: Promise.resolve(1),
+      kill: vi.fn(),
+    }
+  }) as never)
+  const collection = await collectHeadlessRuns(["xtermjs", "libvterm"], dir)
+  expect(collection.failures).toHaveLength(2)
+  // AC2: local terminal diagnostics and stderr files keep the full paths unchanged.
+  expect(collection.failures[0]?.error).toContain(prereqPath)
+  expect(collection.failures[0]?.error).toContain(winPath)
+  expect(collection.failures[1]?.error).toContain(receiptPath)
+  expect(collection.failures[1]?.error).toContain(join(dir, "libvterm.stderr.txt"))
+  expect(readFileSync(join(dir, "libvterm.stderr.txt"), "utf8")).toContain(receiptPath)
+
+  // AC1: recorded run drafts keep filenames without any host folder segments, and preserve URL schemes.
+  const files = readdirSync(dir).filter((entry) => entry.endsWith(".draft.json"))
+  expect(files).toHaveLength(2)
+  const xtermDraftBytes = readFileSync(
+    join(
+      dir,
+      files.find((f) => f.startsWith("xtermjs-"))!,
+    ),
+    "utf8",
+  )
+  const libvtermDraftBytes = readFileSync(
+    join(
+      dir,
+      files.find((f) => f.startsWith("libvterm-"))!,
+    ),
+    "utf8",
+  )
+  expect(xtermDraftBytes).toContain("index.ts")
+  expect(xtermDraftBytes).toContain("win=xterm.wasm")
+  expect(xtermDraftBytes).toContain(`upstream=${sshUrl}`)
+  expect(xtermDraftBytes).toContain(`docs=${httpsUrl}`)
+  expect(xtermDraftBytes).not.toContain("/Users/alice")
+  expect(xtermDraftBytes).not.toContain("C:\\\\Users\\\\alice")
+  expect(xtermDraftBytes).not.toContain("vendor/termless")
+  expect(libvtermDraftBytes).toContain("libvterm.wasm.receipt.json")
+  expect(libvtermDraftBytes).toContain("stderr=libvterm.stderr.txt")
+  expect(libvtermDraftBytes).not.toContain("/hh/var")
+  expect(libvtermDraftBytes).not.toContain(dir)
+})
+it.runIf(OWNED_LAYOUT)(
+  "worker --one records a failure without host folders while throwing the unchanged path to stderr",
+  () => {
+    const root = fileURLToPath(new URL("../../", import.meta.url))
+    const dir = directory()
+    const missingKitty = "/Users/alice/local/bin/missing-kitty"
+    const child = Bun.spawnSync([process.execPath, "packages/probes/collect-headless.ts", "--one", "kitty", dir], {
+      cwd: root,
+      env: { ...process.env, KITTY_BINARY: missingKitty },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const stderr = new TextDecoder().decode(child.stderr)
+    expect(child.exitCode).toBe(1)
+    // AC2: the thrown error reaches the operator's terminal unchanged with the full path.
+    expect(stderr).toContain(`KITTY_BINARY does not exist: ${missingKitty}`)
+    // AC1: the draft written by collectOne records the failure without the path's folders.
+    const draft = retainedDraft(dir)
+    const draftBytes = JSON.stringify(draft)
+    expect(draft.rawReplies["collector.failure"]).toContain("KITTY_BINARY does not exist: missing-kitty")
+    expect(draftBytes).not.toContain("/Users/alice")
+    expect(draftBytes).not.toContain("/local/bin")
+  },
+)
