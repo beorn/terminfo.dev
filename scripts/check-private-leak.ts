@@ -7,7 +7,7 @@
  * routes. This script is the gate that makes a `/reviews/` (or similar) page
  * impossible to publish silently.
  *
- * It checks THREE layers:
+ * It checks FOUR layers:
  *   1. SOURCE  — no internal .md under docs/: forbidden path segments
  *                (reviews/internal/drafts/...), the `llm-meta` marker that AI
  *                review/enrichment output carries, or frontmatter that opts a
@@ -15,9 +15,11 @@
  *   2. BUILD   — no forbidden route directory in docs/.vitepress/dist/ (only
  *                checked when a build exists).
  *   3. SITEMAP — no forbidden path in dist/sitemap.xml.
+ *   4. CONTENT — no absolute host path in a committed content/ file: run files,
+ *                receipts and review tables are published as they are.
  *
- * SOURCE is always checked; BUILD/SITEMAP are checked when dist/ exists. In CI
- * this runs right after `bun run build`, so all three layers are active.
+ * SOURCE and CONTENT are always checked; BUILD/SITEMAP are checked when dist/
+ * exists. In CI this runs right after `bun run build`, so all four layers are active.
  *
  * Exit code: 1 if any leak is found, 0 otherwise. 2 on usage error.
  *
@@ -62,8 +64,27 @@ const FRONTMATTER_OPT_OUT: Array<{ key: string; value: string }> = [
   { key: "publish", value: "false" },
 ]
 
+/**
+ * The one account a recorded home folder may name: GitHub-hosted runners and the Linux
+ * measurement container both run as `runner`, which names no person.
+ */
+export const RUNNER_ACCOUNT = "runner"
+
+/**
+ * An absolute path on a collecting host: the estate root /hh, or the home folder of any
+ * account but the runner's. A run file that records one publishes the host's folder layout
+ * or a person's account name.
+ */
+const HOST_PATH = new RegExp(
+  String.raw`(?<![\w.~-])/(?:hh(?=[/"'\s\\]|$)|(?:home|Users)/(?!${RUNNER_ACCOUNT}(?=[/"'\s\\]|$))[^/"'\s\\]+)`,
+  "g",
+)
+
+/** Text formats under content/ that can carry a recorded path; artifacts/ holds images only. */
+const CONTENT_TEXT = /\.(?:json|jsonl|md|txt|ya?ml)$/
+
 export interface Violation {
-  layer: "source" | "build" | "sitemap"
+  layer: "source" | "build" | "sitemap" | "content"
   path: string
   reason: string
 }
@@ -207,12 +228,52 @@ export function scanSitemap(distDir: string): Violation[] {
 }
 
 // ---------------------------------------------------------------------------
+// Layer 4 — CONTENT scan (content/**, except the images in artifacts/)
+// ---------------------------------------------------------------------------
+
+/** One finding per file: where the first host path starts, never the path itself, which CI logs would republish. */
+export function scanContent(contentDir: string): Violation[] {
+  const violations: Violation[] = []
+  if (!existsSync(contentDir)) return violations
+
+  const check = (full: string) => {
+    if (!CONTENT_TEXT.test(full)) return
+    const text = readFileSync(full, "utf-8")
+    const matches = [...text.matchAll(HOST_PATH)]
+    const first = matches[0]
+    if (!first || first.index === undefined) return
+    const before = text.slice(0, first.index)
+    const line = before.split("\n").length
+    const column = first.index - before.lastIndexOf("\n")
+    const root = first[0].startsWith("/hh")
+      ? "/hh"
+      : first[0].startsWith("/home/")
+        ? "/home/<account>"
+        : "/Users/<account>"
+    violations.push({
+      layer: "content",
+      path: `content/${relative(contentDir, full)}`,
+      reason: `${matches.length} absolute host path(s), the first under ${root} at ${line}:${column} — record a workspace-relative path, or none`,
+    })
+  }
+
+  for (const name of readdirSync(contentDir)) {
+    if (name === "artifacts") continue
+    const full = join(contentDir, name)
+    if (statSync(full).isDirectory()) walk(full, check)
+    else check(full)
+  }
+
+  return violations
+}
+
+// ---------------------------------------------------------------------------
 // Aggregate
 // ---------------------------------------------------------------------------
 
-export function checkPrivateLeak(docsDir: string): Violation[] {
+export function checkPrivateLeak(docsDir: string, contentDir = join(dirname(docsDir), "content")): Violation[] {
   const distDir = join(docsDir, ".vitepress", "dist")
-  return [...scanSources(docsDir), ...scanDist(distDir), ...scanSitemap(distDir)]
+  return [...scanSources(docsDir), ...scanDist(distDir), ...scanSitemap(distDir), ...scanContent(contentDir)]
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +313,12 @@ function main(): void {
     `\n${YELLOW}Internal artifacts must not live under docs/.${RESET} Move them out of the` +
       ` published tree (e.g. a private location outside this repo) — they must never become routes.\n`,
   )
+  if (violations.some((v) => v.layer === "content")) {
+    console.error(
+      `${YELLOW}Committed run files are public.${RESET} A collector records a path relative to the` +
+        ` workspace, a Nix store path, or nothing — never the collecting host's folders.\n`,
+    )
+  }
   process.exit(1)
 }
 

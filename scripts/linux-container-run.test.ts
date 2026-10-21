@@ -136,6 +136,9 @@ fi
   }
   expect(raw.sourceArtifact.url).toBe("https://example.invalid/kitty.txz")
   expect(raw.sourceArtifact.sri).toBe("sha256-kitty")
+  // The receipt is committed to the public repo: the runner bundle is named by its digests,
+  // never by the folder the host prepared it in (30568).
+  expect(bytes).not.toContain(dir)
   const outer = { kind: "app", id: "kitty", version: "0.49.1", os: "linux" }
   if (mux) {
     expect(raw.declaredTarget).toEqual(target)

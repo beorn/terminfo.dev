@@ -89,7 +89,6 @@ write_host_receipt() {
     --arg target "$target_id" --arg mux "$mux_kind" \
     --arg url "$source_url" --arg sri "$source_sri" \
     --arg kind "$proof_kind" --arg narSri "$proof_nar_sri" --arg revision "$proof_revision" \
-    --arg runnerUrl "file://$prep/runner-bundle.tar" \
     '{kind:"app",id:$target,version:$version,os:"linux"} as $app |
     {schemaVersion:1,kind:"linux-xvfb-container",collectedAt:$collectedAt,runId:$run,preset:$preset,clipboardProfile:$profile,sentinelGraceMs:($grace|tonumber),
       declaredTarget:(if $mux == "" then $app else {kind:"mux",id:$mux,os:"linux"} end),
@@ -97,7 +96,7 @@ write_host_receipt() {
         + (if $mux == "" then {} else {target:$app} end)
         + (if $kind == "derived-source-tree"
            then {kind:$kind,narSri:$narSri,revision:$revision} else {} end)),
-      runnerArtifact:{url:$runnerUrl,sha256:$bundle,narSha256:$bundleNar,
+      runnerArtifact:{sha256:$bundle,narSha256:$bundleNar,
         frozenRunnerSha256:$runnerSha,buildReceiptSha256:$receiptSha,
         build:$build[0],rootBunLockSha256:$lock},
       runtime:{imageId:$image,imageTarSha256:$tar,arch:$arch,nixLockRevision:$nix,

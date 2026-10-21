@@ -46,6 +46,22 @@ function inside(path: string, directory: string): boolean {
   return rel !== ".." && !rel.startsWith("../") && !rel.startsWith("/")
 }
 
+/**
+ * The path a run file records for a loaded file. Run files are published, so it names the file
+ * from the workspace's vendor/ or node_modules/ tree, or by its content-addressed Nix store path;
+ * any other absolute path would publish the collecting host's folders.
+ */
+export function recordedPath(path: string): string {
+  if (path.startsWith("/nix/store/")) return path
+  const anchor = /\/(?:vendor|node_modules)\//.exec(path)
+  if (!anchor) {
+    throw new Error(
+      `Cannot record ${path} in a run file: it is outside the workspace's vendor/ and node_modules/ trees and the Nix store`,
+    )
+  }
+  return path.slice(anchor.index + 1)
+}
+
 function resolvedPackage(specifier: string, importer: string): { path: string; directory: string; version: string } {
   const path = realpathSync(Bun.resolveSync(specifier, importer))
   let directory = dirname(path)
@@ -242,7 +258,7 @@ function sidecarIdentity(
     engineVersion: receipt.engineVersion,
     adapterVersion,
     termlessRevision,
-    loadedBinary,
+    loadedBinary: { path: recordedPath(loadedBinary.path), sha256: loadedBinary.sha256 },
     provenance: {
       sha256: receipt.sha256,
       sourceCommit: receipt.sourceCommit,
@@ -337,7 +353,7 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
     engineVersion: version,
     adapterVersion,
     termlessRevision,
-    loadedBinary: { path, sha256: binarySha256 },
+    loadedBinary: { path: recordedPath(path), sha256: binarySha256 },
     provenance: {
       sha256: binarySha256,
       sourceCommit: termlessRevision,
@@ -398,7 +414,7 @@ export async function headlessRuntimeIdentity(
     kind: "js" as const,
     adapterVersion: adapter.version,
     termlessRevision,
-    resolvedPath: upstream.path,
+    resolvedPath: recordedPath(upstream.path),
     integrity,
   }
   if (adapterType === "wasm") {
@@ -421,7 +437,7 @@ export async function headlessRuntimeIdentity(
     if (binary.sha256 !== sha) throw new Error(`${name} WASM changed after loading: ${path}`)
     const engineVersion =
       name === "libvterm" ? libvtermVersion(path, sha, adapter.directory, termlessRoot) : upstream.version
-    return { ...base, runtimeFormat: "wasm", engineVersion, loadedBinary: { path, sha256: sha } }
+    return { ...base, runtimeFormat: "wasm", engineVersion, loadedBinary: { path: recordedPath(path), sha256: sha } }
   }
   return { ...base, runtimeFormat: "js", engineVersion: upstream.version }
 }

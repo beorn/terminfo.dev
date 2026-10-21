@@ -91,7 +91,7 @@ function runIdentity(name: string, pkg: string) {
       "-e",
       `import { headlessRuntimeIdentity } from ${JSON.stringify(fixture.identityHref)};
        const id = await headlessRuntimeIdentity(${JSON.stringify(name)}, ${JSON.stringify(pkg)}, "js");
-       process.stdout.write(JSON.stringify({ ok: true, integrityKind: id.integrity.kind, engineVersion: id.engineVersion, revision: id.termlessRevision }))`,
+       process.stdout.write(JSON.stringify({ ok: true, integrityKind: id.integrity.kind, engineVersion: id.engineVersion, revision: id.termlessRevision, resolvedPath: id.resolvedPath }))`,
     ],
     { encoding: "utf8" },
   )
@@ -351,6 +351,50 @@ test("same name and version with different installed bytes is refused", () => {
  * @reach fs-walk <fixture-only: temporary Git checkouts>
  * @testonly none
  */
+/**
+ * @failure resolvedPath and loadedBinary.path recorded the collecting checkout's absolute path, so
+ *   committed headless run files published the build host's folder layout (30568).
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts recordedPath
+ * @reach fs-walk <fixture-only: temporary lockfile, owned Git roots and installed package bytes>
+ * @testonly none
+ */
+test("a run records the engine path inside the workspace, never the collecting host's folders", () => {
+  const result = runIdentity("vt100", "@termless/vt100")
+  expect(result.status, result.stderr).toBe(0)
+  const body = JSON.parse(result.stdout) as { resolvedPath: string }
+  expect(body.resolvedPath).toBe("node_modules/.bun/vt100.js@file/node_modules/vt100.js/src/index.ts")
+  expect(result.stdout).not.toContain(fixture.root)
+})
+
+/**
+ * @failure A loaded file outside the workspace's vendor/ and node_modules/ trees and the Nix store
+ *   had no publishable name, so it would have recorded the host path (30568).
+ * @level l2
+ * @consumer packages/probes/headless-identity.ts recordedPath
+ * @reach fs-walk <fixture-only: imports the copied identity module>
+ * @testonly recordedPath: the fixture's js engines never load a Nix store binary or a file outside
+ *   the workspace, so both arms are pinned through the exported helper
+ */
+test("a Nix store path is recorded as is; a path outside the workspace is refused", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `import { recordedPath } from ${JSON.stringify(fixture.identityHref)};
+       const store = recordedPath("/nix/store/0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-kitty-0.49.2/bin/kitty");
+       let refused = "";
+       try { recordedPath("/opt/elsewhere/lib/engine.wasm") } catch (error) { refused = String(error) }
+       process.stdout.write(JSON.stringify({ store, refused }))`,
+    ],
+    { encoding: "utf8" },
+  )
+  expect(result.status, result.stderr).toBe(0)
+  const body = JSON.parse(result.stdout) as { store: string; refused: string }
+  expect(body.store).toBe("/nix/store/0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-kitty-0.49.2/bin/kitty")
+  expect(body.refused).toMatch(/outside the workspace's vendor\/ and node_modules\/ trees and the Nix store/)
+})
+
 test("a Termless checkout outside the sibling path is used, and its own revision is recorded", () => {
   const elsewhere = join("elsewhere", "termless")
   fixture = identityFixture({ termlessSubdir: elsewhere })
