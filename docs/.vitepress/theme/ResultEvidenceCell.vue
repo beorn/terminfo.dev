@@ -728,7 +728,9 @@ onBeforeUnmount(() => {
         <p
           v-if="
             cell?.evidence === 'query' &&
-            (historicalCell?.conclusive || currentResult?.status === 'supported' || currentResult?.status === 'unsupported')
+            (historicalCell?.conclusive ||
+              currentResult?.status === 'supported' ||
+              currentResult?.status === 'unsupported')
           "
         >
           This result is based on the query's recorded evidence, not every use of this feature.
