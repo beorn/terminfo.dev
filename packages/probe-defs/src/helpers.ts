@@ -1,3 +1,4 @@
+import type { CapabilityResult, CurrentProbeRun, ProbeSuiteManifest, RunDraft } from "./types.ts"
 import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermlessContext, TermContext } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
@@ -759,3 +760,77 @@ export function sentinelNegativeResult(
 
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
 export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"
+
+/** Initialize actual work before preflight; a callback-only schedule cannot stand in for the catalogue. */
+export function initializeRunDraft(input: {
+  runId: string
+  sourceRevision: string
+  manifest: ProbeSuiteManifest
+  intendedContext: RunDraft["intendedContext"]
+}): RunDraft {
+  const ids = input.manifest.catalogIds
+  if (!ids || ids.length === 0 || new Set(ids).size !== ids.length) {
+    throw new Error(`Suite ${input.manifest.probeHash} requires a nonempty unique frozen catalogIds set`)
+  }
+  return {
+    schemaVersion: 3,
+    runId: input.runId,
+    suiteId: input.manifest.probeHash,
+    probeHash: input.manifest.probeHash,
+    sourceRevision: input.sourceRevision,
+    intendedContext: { ...input.intendedContext },
+    results: ids.map((featureId) => ({
+      featureId,
+      status: "test-todo",
+      attempt: { scope: "none" },
+      checks: [],
+      reason: "Required capability test has not started",
+    })),
+    rawReplies: {},
+    assertions: [],
+    screenshotRefs: [],
+  }
+}
+
+/** Fold only the checks still required by the frozen probe's explicitly selected criterion branch. */
+export function finalizeCapabilityResult(input: Omit<CapabilityResult, "status">): CapabilityResult {
+  const checks = input.checks
+  const failed = checks.find((check) => check.status === "test-failure")
+  const pending = checks.find((check) => check.status === "test-todo")
+  const impossible = checks.find((check) => check.status === "untestable")
+  let status: CapabilityResult["status"]
+  let reason = input.reason
+  if (failed) {
+    status = "test-failure"
+    reason ??= failed.reason ?? "Required check failed after its attempt"
+  } else if (pending || checks.length === 0) {
+    status = "test-todo"
+    reason ??= pending?.reason ?? "Required capability implementation has not run"
+  } else if (impossible) {
+    status = impossible.reviewRef ? "untestable" : "test-todo"
+    reason ??= impossible.reason ?? "Context-impossibility review is required"
+  } else {
+    status = checks.some((check) => check.status === "unsupported") ? "unsupported" : "supported"
+  }
+  return { ...input, status, ...(reason === undefined ? {} : { reason }) }
+}
+
+/** Seal only measured/enriched identity; pending required review keeps the same draft open. */
+export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString()): CurrentProbeRun {
+  if (!draft.target || !draft.identity || !draft.measuredAt || !draft.origin) {
+    throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
+  }
+  if (
+    draft.results.some((result) => result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+  ) {
+    throw new Error(`Run ${draft.runId} has a required review pending; retain its unsealed capture`)
+  }
+  return {
+    ...draft,
+    target: draft.target,
+    identity: draft.identity,
+    measuredAt: draft.measuredAt,
+    origin: draft.origin,
+    sealedAt,
+  }
+}

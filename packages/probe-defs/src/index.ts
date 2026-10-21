@@ -148,3 +148,16 @@ export { APP_UNOBSERVABLE_ROWS, appUnobservableIds, splitAppObservable } from ".
 export type { AppObservableSplit, AppUnobservableRow } from "./app-unobservable.ts"
 
 export { TEXT_QUALIFICATION_SPEC, TEXT_QUALIFICATION_SHAPES, textQualificationFixtures } from "./text-qualification.ts"
+
+export { CAPABILITY_STATUSES } from "./types.ts"
+export type {
+  CapabilityStatus,
+  CapabilityAttempt,
+  CapabilityResult,
+  CheckResult,
+  RunDraft,
+  CurrentProbeRun,
+  CaptureDecision,
+  HistoricalInterpretation,
+} from "./types.ts"
+export { initializeRunDraft, finalizeCapabilityResult, sealRunDraft } from "./helpers.ts"

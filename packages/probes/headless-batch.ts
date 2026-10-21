@@ -2,8 +2,10 @@
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
 import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
-import { readHyperlinkMetadata } from "@terminfo/probe-defs"
+import { readHyperlinkMetadata, finalizeCapabilityResult } from "@terminfo/probe-defs"
 import type {
+  CapabilityResult,
+  RunDraft,
   NotTestedCoverage,
   Observation,
   ObservationEvidence,
@@ -105,6 +107,7 @@ export function createTermlessContext(backend: TerminalBackend): TermlessContext
 }
 
 interface Batch {
+  results: CapabilityResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
@@ -285,8 +288,18 @@ export async function collectBatch(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
   definitions: readonly ProbeDefinition[],
+  draft?: Pick<RunDraft, "results">,
 ): Promise<Batch> {
   const batch: Batch = {
+    results:
+      draft?.results ??
+      definitions.map((probe) => ({
+        featureId: probe.id,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Required callback has not started",
+      })),
     rawReplies: {},
     observations: [],
     assertions: [],
@@ -297,6 +310,7 @@ export async function collectBatch(
     if (!probe.termless) continue
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     let backend: TerminalBackend | undefined
+    const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
@@ -320,6 +334,40 @@ export async function collectBatch(
         }
       }
     } finally {
+      const observation = batch.observations.find((entry) => entry.featureId === probe.id)
+      const diagnostic = batch.ungradedDiagnostics[probe.id]
+      const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)
+      const assertionRefs = batch.assertions.flatMap((entry, index) => (entry.featureId === probe.id ? [index] : []))
+      const status =
+        diagnostic || observation?.outcome === "error"
+          ? ("test-failure" as const)
+          : observation?.outcome === "supported" || observation?.outcome === "unsupported"
+            ? observation.outcome
+            : coverage || observation?.evidence === "none" || observation?.evidence === "consumed"
+              ? ("test-todo" as const)
+              : ("test-failure" as const)
+      const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
+      const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
+      const result = finalizeCapabilityResult({
+        featureId: probe.id,
+        attempt,
+        checks: [
+          {
+            id: "criterion",
+            status,
+            attempt: status === "test-todo" ? { scope: "none" } : attempt,
+            assertionRefs,
+            ...(observation?.rawReplyRef ? { rawReplyRef: observation.rawReplyRef } : {}),
+            ...(reason ? { reason } : {}),
+          },
+        ],
+        ...(observation?.evidence ? { evidence: observation.evidence } : {}),
+        ...(observation?.rawReplyRef ? { rawReplyRef: observation.rawReplyRef } : {}),
+        ...(reason ? { reason } : {}),
+      })
+      const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
+      if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
+      batch.results[index] = result
       // Engine reset is a measured behavior, not a guarantee of fixture isolation.
       // A cleanup failure aborts the worker instead of sealing a misleading run.
       try {

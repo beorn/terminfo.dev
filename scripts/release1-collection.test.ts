@@ -223,6 +223,7 @@ it.each([
     suite !== "different"
       ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
           ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
+          catalogIds: Object.keys(catalog.loadFeatures(CONTENT)).sort(),
           ...(textCase && {
             probes: {
               app: ["text.overwrite"],

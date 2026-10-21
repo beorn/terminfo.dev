@@ -108,6 +108,7 @@ test("the declared manifest carries only the derived record", () => {
   const manifest = derivedSuiteManifest(probeSuiteSnapshot())
   expect(Object.keys(manifest).sort()).toEqual([
     "adapterVersion",
+    "catalogIds",
     "probeHash",
     "probes",
     "textClaims",
@@ -121,6 +122,7 @@ test("current suite verification and persistence reject altered text declaration
   const snapshot: ProbeSuiteSnapshot = {
     probeHash: "c".repeat(12),
     adapterVersion: "1.0.0",
+    catalogIds: ["attributes", "character"],
     probes: { app: ["character", "attributes"], headless: [], mux: ["character", "attributes"] },
     sourcePaths: [],
     textClaims: ["character"],
@@ -197,6 +199,7 @@ const COMPOSED = "b".repeat(12)
 const snapshotOf = (probeHash: string): ProbeSuiteSnapshot => ({
   probeHash,
   adapterVersion: "1.0.0",
+  catalogIds: ["fixture.catalogue"],
   probes: { app: [], headless: [], mux: [] },
   sourcePaths: [],
 })

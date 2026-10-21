@@ -247,7 +247,7 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
   )
   expect(callback).not.toHaveBeenCalled()
   if (stage === "init") expect(destroy).toHaveBeenCalledOnce()
-  expect(batch).toEqual({
+  expect(batch).toMatchObject({
     observations: [
       {
         featureId: "setup",
@@ -348,7 +348,7 @@ test("attributes a context operation failure and restores the backend response l
     ),
   ])
   expect(value.onResponse).toBe(previous)
-  expect(batch).toEqual({
+  expect(batch).toMatchObject({
     observations: [
       {
         featureId: "query",
@@ -414,7 +414,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
       { termlessObservationEvidence: "parser-state" },
     ),
   ])
-  expect(batch).toEqual({
+  expect(batch).toMatchObject({
     observations: [
       {
         featureId: "wrong",
@@ -458,7 +458,7 @@ test.each(["supported", "error", "raw", "assertion"] as const)(
         { termlessObservationEvidence: "parser-state" },
       ),
     ])
-    expect(batch).toEqual({
+    expect(batch).toMatchObject({
       observations: [],
       assertions: [],
       notTested: [],
@@ -483,7 +483,7 @@ test("refuses a callback result that is neither a measurement nor a coverage rec
   const batch = await collectBatch(backend, "xtermjs", [
     definition("legacy", untyped, { termlessObservationEvidence: "parser-state" }),
   ])
-  expect(batch).toEqual({
+  expect(batch).toMatchObject({
     observations: [],
     assertions: [],
     notTested: [],
@@ -659,4 +659,42 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
   } finally {
     value.destroy()
   }
+})
+
+// Runtime status must preserve attempted failure separately from an unstarted implementation;
+// old observation/coverage tests cannot express a catalogue member with no callback.
+test("records a complete explicit catalogue and retains probe attempt failure", async () => {
+  const { initializeRunDraft } = await import("@terminfo/probe-defs")
+  const draft = initializeRunDraft({
+    runId: "headless-status-contract",
+    sourceRevision: "a".repeat(40),
+    intendedContext: { kind: "headless", id: "xtermjs" },
+    manifest: {
+      probeHash: "runtime-suite",
+      adapterVersion: "3",
+      catalogIds: ["attempted", "unimplemented"],
+      probes: { app: [], mux: [], headless: ["attempted"] },
+    },
+  })
+  const batch = await collectBatch(
+    backend,
+    "xtermjs",
+    [
+      definition(
+        "attempted",
+        () => {
+          throw new Error("retained oracle failure")
+        },
+        { termlessObservationEvidence: "parser-state" },
+      ),
+    ],
+    draft,
+  )
+  expect(batch.results.map(({ featureId, status }) => ({ featureId, status }))).toEqual([
+    { featureId: "attempted", status: "test-failure" },
+    { featureId: "unimplemented", status: "test-todo" },
+  ])
+  expect(batch.results[0]?.attempt.scope).toBe("probe")
+  expect(batch.results[0]?.reason).toContain("retained oracle failure")
+  expect(batch.results[1]?.attempt).toEqual({ scope: "none" })
 })

@@ -8,7 +8,7 @@ import { release, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import { manifest, type TerminalBackend } from "@termless/core"
-import { ALL_PROBES, type ProbeRun } from "@terminfo/probe-defs"
+import { ALL_PROBES, initializeRunDraft, sealRunDraft, type CurrentProbeRun } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import { probeSuiteSnapshot } from "../admin/versions.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
@@ -84,6 +84,15 @@ async function collectOne(name: string, directory: string): Promise<string> {
     execFileSync("git", ["status", "--porcelain", "--", ...sourcePaths], { cwd: ROOT, encoding: "utf8" })
       .toString()
       .trim().length > 0
+  const draft = initializeRunDraft({
+    runId: process.env.TERMINFO_CAPTURE_RUN_ID ?? randomUUID(),
+    sourceRevision,
+    manifest: suite,
+    intendedContext: { kind: "headless", id: name, os: process.platform },
+  })
+  writeFileSync(join(directory, `${name}-${draft.runId}.draft.json`), `${JSON.stringify(draft, null, 2)}\n`, {
+    flag: "wx",
+  })
   let backend: TerminalBackend | undefined
   try {
     if (name === "kitty" && !process.env.KITTY_BINARY) {
@@ -109,10 +118,14 @@ async function collectOne(name: string, directory: string): Promise<string> {
     const runtimeIdentity = await headlessRuntimeIdentity(name, entry.package, entry.type)
     backend = undefined
     loaded.destroy()
-    const batch = await collectBatch(async () => loadedBackend(await resolveBackend(), entry.package), name, ALL_PROBES)
-    const run: ProbeRun = {
-      schemaVersion: 2,
-      runId: randomUUID(),
+    const batch = await collectBatch(
+      async () => loadedBackend(await resolveBackend(), entry.package),
+      name,
+      ALL_PROBES,
+      draft,
+    )
+    const run: CurrentProbeRun = sealRunDraft({
+      ...draft,
       target: {
         kind: "headless",
         id: name,
@@ -134,21 +147,17 @@ async function collectOne(name: string, directory: string): Promise<string> {
       runtimeIdentity,
       suiteId: suite.probeHash,
       probeHash: suite.probeHash,
-      suiteComplete: batch.observations.length + batch.notTested.length === suite.probes.headless.length,
       sourceRevision: sourceDirty ? `${sourceRevision}+dirty` : sourceRevision,
       measuredAt: new Date().toISOString(),
       origin: { kind: "collector" },
-      ...batch,
+      rawReplies: batch.rawReplies,
+      assertions: batch.assertions,
+      results: batch.results,
       screenshotRefs: [],
-    }
+    })
     const path = join(directory, `${name}-${run.runId}.json`)
     const bytes = `${JSON.stringify(run, null, 2)}\n`
-    parseRun(
-      path,
-      bytes,
-      ALL_PROBES.map((probe) => probe.id),
-      new Map([[suite.probeHash, suite]]),
-    )
+    parseRun(path, bytes, suite.catalogIds, new Map([[suite.probeHash, suite]]))
     writeFileSync(path, bytes, { flag: "wx" })
     return path
   } finally {
@@ -246,7 +255,9 @@ export async function collectHeadlessRuns(
         })
         continue
       }
-      const candidates = readdirSync(directory).filter((file) => file.startsWith(`${name}-`) && file.endsWith(".json"))
+      const candidates = readdirSync(directory).filter(
+        (file) => file.startsWith(`${name}-`) && file.endsWith(".json") && !file.endsWith(".draft.json"),
+      )
       const [candidate] = candidates
       if (candidates.length !== 1 || !candidate) {
         throw new Error(

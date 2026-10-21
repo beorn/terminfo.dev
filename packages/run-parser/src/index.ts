@@ -2,6 +2,11 @@
 import { createHash } from "node:crypto"
 import { isAbsolute, win32 } from "node:path"
 import {
+  CAPABILITY_STATUSES,
+  finalizeCapabilityResult,
+  type CapabilityResult,
+  type CapabilityAttempt,
+  type CheckResult,
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
@@ -33,7 +38,7 @@ export { ALACRITTY_VERSION_PATTERN, parseAppLaunchReceipt, parseDerivedSourceTre
 export interface LoadedRun {
   path: string
   sha256: string
-  schemaVersion: 1 | 2
+  schemaVersion: 1 | 2 | 3
   runId: string
   target: ProbeTarget
   identity: ProbeRun["identity"]
@@ -60,6 +65,9 @@ export interface LoadedRun {
   notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   legacy: boolean
+  results?: CapabilityResult[]
+  catalogIds?: string[]
+  sealedAt?: string
 }
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -785,7 +793,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   // corruption, so it refuses by name. Unknown fields are refused rather than silently accepted.
   const derivedKeys = ["adapterVersion", "probeHash", "probes"]
   const legacyKeys = ["generatedAt", "sourceRevision"]
-  const pointerKeys = ["freeze", "textClaims", "textQualification"]
+  const pointerKeys = ["freeze", "textClaims", "textQualification", "catalogIds"]
   const known = new Set([...derivedKeys, ...legacyKeys, ...pointerKeys])
   const unknown = Object.keys(value)
     .filter((key) => !known.has(key))
@@ -826,6 +834,21 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
       fail(path, `invalid ${kind} suite membership`)
     }
     probes[kind] = ids
+  }
+  let catalogIds: string[] | undefined
+  if (value.catalogIds !== undefined) {
+    if (
+      !Array.isArray(value.catalogIds) ||
+      !value.catalogIds.every(nonempty) ||
+      new Set(value.catalogIds).size !== value.catalogIds.length ||
+      value.catalogIds.length === 0
+    ) {
+      fail(path, "invalid frozen catalogIds")
+    }
+    catalogIds = value.catalogIds
+    for (const id of Object.values(probes).flat()) {
+      if (!catalogIds.includes(id)) fail(path, `scheduled ${id} is outside frozen catalogue membership`)
+    }
   }
   let textClaims: string[] | undefined
   if ("textClaims" in value) {
@@ -894,6 +917,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     probeHash,
     adapterVersion,
     probes,
+    ...(catalogIds === undefined ? {} : { catalogIds }),
     ...(textClaims === undefined ? {} : { textClaims }),
     ...(textQualification === undefined ? {} : { textQualification }),
     ...(sourceRevision === undefined ? {} : { sourceRevision }),
@@ -1095,6 +1119,145 @@ export function parseOuterApp(
   }
 }
 
+/** Validate recorded execution facts; this never infers a current result from a missing row. */
+function capabilityAttempt(value: unknown, path: string, rawReplies: Record<string, string>): CapabilityAttempt {
+  if (!object(value) || !["none", "collection", "probe"].includes(String(value.scope))) {
+    fail(path, "invalid capability attempt scope")
+  }
+  if (value.scope === "none") {
+    if (value.startedAt !== undefined || value.diagnosticRef !== undefined) {
+      fail(path, "unstarted attempt cannot carry execution facts")
+    }
+    return { scope: "none" }
+  }
+  if (!date(value.startedAt)) fail(path, "attempt requires startedAt")
+  if (
+    value.diagnosticRef !== undefined &&
+    (!nonempty(value.diagnosticRef) || !Object.hasOwn(rawReplies, value.diagnosticRef))
+  ) {
+    fail(path, "missing attempt diagnostic bytes")
+  }
+  return {
+    scope: value.scope as "collection" | "probe",
+    startedAt: value.startedAt,
+    ...(typeof value.diagnosticRef === "string" ? { diagnosticRef: value.diagnosticRef } : {}),
+  }
+}
+
+export function parseCapabilityResults(
+  value: unknown,
+  path: string,
+  expected: ReadonlySet<string>,
+  rawReplies: Record<string, string>,
+  assertions: readonly ProbeAssertion[],
+  screenshotRefs: readonly string[] = [],
+  textSnapshotRefs: readonly string[] = [],
+): CapabilityResult[] {
+  if (!Array.isArray(value)) fail(path, "missing explicit capability results")
+  const seen = new Set<string>()
+  const results = value.map((item): CapabilityResult => {
+    if (!object(item) || !nonempty(item.featureId)) fail(path, "invalid capability result")
+    const featureId = item.featureId
+    if (seen.has(featureId)) fail(path, `duplicate capability ${featureId}`)
+    seen.add(featureId)
+    if (!expected.has(featureId)) fail(path, `${featureId} is outside frozen catalogue membership`)
+    if (!CAPABILITY_STATUSES.includes(item.status as CapabilityResult["status"])) {
+      fail(path, `invalid capability status for ${featureId}`)
+    }
+    const status = item.status as CapabilityResult["status"]
+    const attempt = capabilityAttempt(item.attempt, `${path}: ${featureId}`, rawReplies)
+    if (["test-todo", "test-failure", "untestable"].includes(status) && !nonempty(item.reason)) {
+      fail(path, `${featureId} ${status} requires reason`)
+    }
+    if (status === "test-failure" && attempt.scope === "none") {
+      fail(path, `${featureId} failure requires a retained attempt`)
+    }
+    if (!Array.isArray(item.checks)) fail(path, `${featureId} requires its explicit check set`)
+    const checkIds = new Set<string>()
+    const checks = item.checks.map((entry): CheckResult => {
+      if (!object(entry) || !nonempty(entry.id) || checkIds.has(entry.id)) {
+        fail(path, `${featureId} requires unique check ids`)
+      }
+      checkIds.add(entry.id)
+      if (!CAPABILITY_STATUSES.includes(entry.status as CheckResult["status"])) {
+        fail(path, `invalid check status for ${featureId}/${entry.id}`)
+      }
+      const checkAttempt = capabilityAttempt(entry.attempt, `${path}: ${featureId}/${entry.id}`, rawReplies)
+      if (entry.status === "test-failure" && checkAttempt.scope === "none") {
+        fail(path, `failed check ${featureId}/${entry.id} has no attempt`)
+      }
+      if (
+        entry.assertionRefs !== undefined &&
+        (!Array.isArray(entry.assertionRefs) ||
+          !entry.assertionRefs.every(
+            (index) =>
+              Number.isSafeInteger(index) && Number(index) >= 0 && assertions[Number(index)]?.featureId === featureId,
+          ))
+      ) {
+        fail(path, `invalid assertion references for ${featureId}/${entry.id}`)
+      }
+      if (
+        entry.rawReplyRef !== undefined &&
+        (!nonempty(entry.rawReplyRef) || !Object.hasOwn(rawReplies, entry.rawReplyRef))
+      ) {
+        fail(path, `missing raw check evidence for ${featureId}`)
+      }
+      return { ...entry, attempt: checkAttempt } as unknown as CheckResult
+    })
+    const result = { ...item, featureId, status, attempt, checks } as unknown as CapabilityResult
+    if (finalizeCapabilityResult(result).status !== status) {
+      fail(path, `${featureId} recorded status hides required check work`)
+    }
+    if (status === "supported" || status === "unsupported") {
+      if (
+        attempt.scope === "none" ||
+        !item.evidence ||
+        isNonMeasuringEvidence(item.evidence as Observation["evidence"])
+      ) {
+        fail(path, `${featureId} support result requires measured evidence`)
+      }
+      // Reuse the existing raw/assertion/frame validator without persisting or deriving
+      // another disposition. The result's recorded status remains authoritative.
+      parseObservation({ ...item, outcome: status }, path, new Set(expected), rawReplies, [...assertions], [...screenshotRefs], [...textSnapshotRefs])
+      const deciding = checks.filter((check) => check.status === status)
+      if (
+        !deciding.some((check) =>
+          (check.assertionRefs ?? []).some((index) => {
+            const assertion = assertions[index]
+            return (
+              assertion?.kind === (status === "supported" ? "positive" : "negative") &&
+              nonempty(assertion.expected) &&
+              nonempty(assertion.observed)
+            )
+          }),
+        )
+      ) {
+        fail(path, `${featureId} requires its deciding expected/observed assertion`)
+      }
+    }
+    if (status === "untestable") {
+      const key = result.reviewRef ?? checks.find((check) => check.status === "untestable")?.reviewRef
+      if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable reviewed impossibility reason`)
+      const review = parseJsonStrict(`${path}: ${key}`, rawReplies[key])
+      if (
+        !object(review) ||
+        review.decision !== "untestable" ||
+        review.featureId !== featureId ||
+        review.reviewed !== true ||
+        !nonempty(review.reason) ||
+        !nonempty(review.captureSha256)
+      ) {
+        fail(path, `${featureId} invalid context-impossibility review`)
+      }
+    }
+    return result
+  })
+  if (results.length !== expected.size || [...expected].some((id) => !seen.has(id))) {
+    fail(path, "results differ from frozen catalogue membership")
+  }
+  return results
+}
+
 export function parseRun(
   path: string,
   source: string,
@@ -1103,14 +1266,19 @@ export function parseRun(
 ): LoadedRun {
   const raw = parseJsonStrict(path, source)
   if (!object(raw)) fail(path, "run must be an object")
-  if (raw.outerApp !== undefined && raw.schemaVersion !== 2) fail(path, "outerApp requires a schema-v2 mux run")
-  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2) {
+  if (raw.outerApp !== undefined && raw.schemaVersion !== 2 && raw.schemaVersion !== 3) {
+    fail(path, "outerApp requires a schema-v2 mux run")
+  }
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2 && raw.schemaVersion !== 3) {
     fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
   }
-  const catalog = new Set(catalogIds)
+  const citedCatalog = raw.schemaVersion === 3 ? suites.get(String(raw.probeHash))?.catalogIds : undefined
+  if (raw.schemaVersion === 3 && !citedCatalog) fail(path, "current run requires frozen catalogue membership")
+  const catalog = new Set(citedCatalog ?? catalogIds)
   const sha256 = createHash("sha256").update(source).digest("hex")
-  if (raw.schemaVersion === 2) {
-    if (Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
+  if (raw.schemaVersion === 2 || raw.schemaVersion === 3) {
+    const current = raw.schemaVersion === 3
+    if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
     const target = parseTarget(raw.target, path)
     const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, target, path)
     const runId = asString(raw.runId, path, "runId")
@@ -1160,8 +1328,14 @@ export function parseRun(
         fail(path, `missing assertion raw reply ${assertion.rawReplyRef}`)
       }
     }
-    if (!Array.isArray(raw.observations)) fail(path, "missing observations")
-    const observations = raw.observations.map((v) =>
+    if (current && (!date(raw.sealedAt) || new Date(raw.sealedAt).toISOString() !== raw.sealedAt)) {
+      fail(path, "missing or invalid sealedAt; retain an unsealed run as a draft")
+    }
+    if (current && ["observations", "notTested", "ungradedDiagnostics"].some((key) => Object.hasOwn(raw, key))) {
+      fail(path, "current run cannot carry displaced live dispositions")
+    }
+    if (!current && !Array.isArray(raw.observations)) fail(path, "missing observations")
+    const observations = (current ? [] : (raw.observations as unknown[])).map((v) =>
       parseObservation(
         v,
         path,
@@ -1175,7 +1349,7 @@ export function parseRun(
     if (new Set(observations.map((v) => v.featureId)).size !== observations.length) {
       fail(path, "duplicate observation feature ID")
     }
-    if (raw.suiteComplete !== true && raw.suiteComplete !== false) fail(path, "missing suiteComplete")
+    if (!current && raw.suiteComplete !== true && raw.suiteComplete !== false) fail(path, "missing suiteComplete")
     const probeHash = asString(raw.probeHash, path, "probeHash")
     const sourceRevision = asString(raw.sourceRevision, path, "sourceRevision")
     const provenance = parseRunProvenance(raw.provenance, target, { probeHash, sourceRevision }, path)
@@ -1190,7 +1364,7 @@ export function parseRun(
     if (!manifest || manifest.probeHash !== probeHash) {
       fail(path, `unknown suite ${probeHash}; missing trusted manifest`)
     }
-    const expected = new Set(manifest.probes[target.kind])
+    const expected = new Set(current ? manifest.catalogIds : manifest.probes[target.kind])
     for (const assertion of assertions) {
       if (!expected.has(assertion.featureId)) {
         fail(path, `assertion ${assertion.featureId} is outside suite ${probeHash} for ${target.kind}`)
@@ -1211,7 +1385,7 @@ export function parseRun(
       assertions,
     )
     const suiteComplete = observations.length + notTested.length === expected.size
-    if (raw.suiteComplete !== suiteComplete) {
+    if (!current && raw.suiteComplete !== suiteComplete) {
       fail(
         path,
         `suiteComplete disagrees with observed and not-tested membership (${observations.length} measured + ${notTested.length} not tested of ${expected.size} probes)`,
@@ -1225,10 +1399,14 @@ export function parseRun(
       }
     }
     if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
+    const results = current
+      ? parseCapabilityResults(raw.results, path, expected, raw.rawReplies as Record<string, string>, assertions, raw.screenshotRefs as string[], textSnapshotRefs)
+      : undefined
     return {
       path,
       sha256,
-      schemaVersion: 2,
+      schemaVersion: raw.schemaVersion,
+      ...(current ? { results, catalogIds: [...expected], sealedAt: raw.sealedAt as string } : {}),
       runId,
       target,
       identity: raw.identity as LoadedRun["identity"],
@@ -1237,7 +1415,7 @@ export function parseRun(
       ...(outerApp && { outerApp }),
       suiteId: asString(raw.suiteId, path, "suiteId"),
       probeHash,
-      suiteComplete,
+      suiteComplete: current || suiteComplete,
       suiteProbeCount: expected.size,
       sourceRevision,
       measuredAt: raw.measuredAt,

@@ -94,6 +94,9 @@ function sameStrings(actual: unknown, expected: string[]): actual is string[] {
 function verifyValue(value: ProbeSuiteManifest, path: string, snapshot: ProbeSuiteSnapshot): ProbeSuiteManifest {
   if (value.probeHash !== snapshot.probeHash) throw new Error(`Suite hash mismatch: ${path}`)
   if (value.adapterVersion !== snapshot.adapterVersion) throw new Error(`Suite adapter version mismatch: ${path}`)
+  if (!sameStrings(value.catalogIds, snapshot.catalogIds)) {
+    throw new Error(`Suite catalogue membership mismatch: ${path}`)
+  }
   for (const kind of KINDS) {
     if (!sameStrings(value.probes[kind], snapshot.probes[kind])) {
       throw new Error(`Suite ${kind} membership mismatch: ${path}`)

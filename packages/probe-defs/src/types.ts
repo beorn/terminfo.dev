@@ -30,6 +30,69 @@ export interface NotTestedCoverageResult {
   notTested: NoSemanticObservable
 }
 
+/** Execution-owned disposition; historical ObservationOutcome is never a current result. */
+export const CAPABILITY_STATUSES = ["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const
+export type CapabilityStatus = (typeof CAPABILITY_STATUSES)[number]
+export type CapabilityAttempt =
+  | { scope: "none" }
+  | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }
+
+/** The still-required checks for the frozen criterion branch, retained at execution. */
+export interface CheckResult {
+  id: string
+  status: CapabilityStatus
+  attempt: CapabilityAttempt
+  assertionRefs?: number[]
+  rawReplyRef?: string
+  reviewRef?: string
+  reason?: string
+}
+export interface CapabilityResult {
+  featureId: string
+  status: CapabilityStatus
+  attempt: CapabilityAttempt
+  checks: CheckResult[]
+  criterionBranch?: string
+  rawReplyRef?: string
+  reviewRef?: string
+  reason?: string
+  frames?: ObservationFrame[]
+  evidence?: ObservationEvidence
+}
+
+/** A private in-flight run; intended context is never measured identity/provenance. */
+export interface RunDraft {
+  schemaVersion: 3
+  runId: string
+  suiteId: string
+  probeHash: string
+  sourceRevision: string
+  intendedContext: Partial<ProbeTarget>
+  target?: ProbeTarget
+  identity?: "verified" | "unverified" | "disputed"
+  runtimeIdentity?: HeadlessRuntimeIdentity
+  provenance?: RunProvenance
+  outerApp?: OuterAppProof
+  measuredAt?: string
+  origin?: RunOrigin
+  rawReplies: Record<string, string>
+  assertions: ProbeAssertion[]
+  screenshotRefs: string[]
+  textSnapshotRefs?: string[]
+  textQualification?: TextQualification
+  results: CapabilityResult[]
+  sealedAt?: never
+}
+
+/** Final status bytes are immutable after all legitimate enrichment and required review. */
+export interface CurrentProbeRun extends Omit<RunDraft, "target" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
+  target: ProbeTarget
+  identity: "verified" | "unverified" | "disputed"
+  measuredAt: string
+  origin: RunOrigin
+  sealedAt: string
+}
+
 /** A proposition's measured outcome. Missing catalog IDs mean not tested. */
 export const OBSERVATION_OUTCOMES = ["supported", "unsupported", "inconclusive", "error"] as const
 export type ObservationOutcome = (typeof OBSERVATION_OUTCOMES)[number]
@@ -335,6 +398,8 @@ export interface ProbeSuiteManifest {
   sourceRevision?: string
   generatedAt?: string
   adapterVersion: string
+  /** Complete frozen membership, distinct from callback schedules. Absent only in historical suites. */
+  catalogIds?: string[]
   probes: Record<ProbeTarget["kind"], string[]>
   textClaims?: string[]
   textQualification?: TextQualificationSpec
@@ -498,7 +563,7 @@ export interface RunProvenance {
   fixture: { definition: string; config: string; font: string; geometry: string; display: string; gl: string }
 }
 
-export interface Interpretation {
+export interface HistoricalInterpretation {
   id: string
   /** A review of identity or community origin must name the exact immutable run. */
   runId?: string
@@ -521,6 +586,27 @@ export interface Interpretation {
   presentsEvidence?: boolean
   origin?: "documentation"
 }
+
+/** A pre-seal review binds capture bytes rather than circularly hashing the resulting run. */
+export interface CaptureDecision {
+  id: string
+  runId: string
+  featureId: string
+  captureSha256: string
+  decision: "supported" | "unsupported" | "untestable"
+  reviewed: true
+  reviewer: string
+  reason: string
+  scope: HistoricalInterpretation["scope"]
+  sources: string[]
+  supersedes: string[]
+  runSha256?: never
+  observation?: never
+  verifiesIdentity?: never
+  presentsEvidence?: never
+  origin?: never
+}
+export type Interpretation = HistoricalInterpretation | CaptureDecision
 
 /** Context for headless backends (synchronous cell-state access) */
 export interface TermlessContext {
