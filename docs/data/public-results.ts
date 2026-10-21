@@ -38,9 +38,27 @@ export type PublicFrame = {
 }
 type PublicImages = { screenshot?: SelectedCell["record"]["screenshot"]; frames?: PublicFrame[] }
 
-import { readCellEvidence, type CellEvidenceExpectation, type LoadedCellEvidence } from "./evidence-reader.ts"
+import {
+  describeTracePanes,
+  readCellEvidence,
+  readCellTrace,
+  type CellEvidenceExpectation,
+  type CellTraceExpectation,
+  type LoadedCellEvidence,
+  type LoadedCellTrace,
+  type TracePaneCopy,
+} from "./evidence-reader.ts"
 
-export { readCellEvidence, type CellEvidenceExpectation, type LoadedCellEvidence }
+export {
+  describeTracePanes,
+  readCellEvidence,
+  readCellTrace,
+  type CellEvidenceExpectation,
+  type CellTraceExpectation,
+  type LoadedCellEvidence,
+  type LoadedCellTrace,
+  type TracePaneCopy,
+}
 
 export interface HistoricalCellEvidence {
   featureId: string
@@ -412,6 +430,19 @@ function traceReceipt(
   if (!trace) return {}
   const prior = documents.get(trace.url)
   if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
+  const firstFeatureId = Object.keys(trace.document.cells)[0]
+  if (firstFeatureId !== undefined) {
+    const schemaVersion = trace.url.startsWith("/api/v3/") ? 3 : 2
+    const loaded = readCellTrace(trace.document, {
+      schemaVersion,
+      runId: trace.document.runId,
+      runSha256: trace.document.runSha256,
+      featureId: firstFeatureId,
+      expectedSha256: trace.sha256,
+      actualSha256: trace.sha256,
+    })
+    describeTracePanes(loaded)
+  }
   documents.set(trace.url, { bytes: trace.bytes, document: trace.document })
   return { trace: { url: trace.url, sha256: trace.sha256 } }
 }
