@@ -184,7 +184,7 @@
     "url": "https://www.npmjs.com/package/vterm.js",
     "repo": "https://github.com/beorn/vterm",
     "description": "Headless TypeScript emulator aiming for trustworthy coverage of applicable parser behavior.",
-    "body": "<p><strong>vterm.js</strong> is a headless terminal emulator library written in TypeScript with zero runtime dependencies. It exposes terminal cell and parser state, plus query responses for terminal applications.</p>\n<p>Termless uses vterm.js as a headless backend. The target here is complete, conclusive evidence for applicable parser and state behavior, with unsupported behavior and features requiring a renderer or host integration shown separately. A universal feature-support percentage is not the goal.</p>\n<p>It runs in Bun, Node.js, and browsers.</p>",
+    "body": "<p><strong>vterm.js</strong> is a headless terminal emulator library written in TypeScript with zero runtime dependencies. It exposes terminal cell and parser state, plus query responses for terminal applications.</p>\n<p>Termless uses vterm.js as a headless backend. The target here is evidence of applicable parser and state behavior, with behavior requiring a renderer or host integration shown separately. A universal feature-support percentage is not the goal.</p>\n<p>It runs in Bun, Node.js, and browsers.</p>",
     "headlessBackends": ["vterm"],
     "platforms": ["macos", "linux", "windows"]
   },
