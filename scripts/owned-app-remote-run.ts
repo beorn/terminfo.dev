@@ -652,10 +652,15 @@ function rsync(
   const descriptor = openSync(diagnostics, "wx", 0o600)
   let result: ReturnType<typeof spawnSync>
   try {
-    result = spawnSync("rsync", ["-a", "-e", sshCommandLine(options), ...extra, "--", source, destination], {
-      stdio: ["ignore", descriptor, descriptor],
-      timeout: options.rsyncTimeoutMs,
-    })
+    // Shared source trees can inherit setgid; runtime resources keep ordinary modes, not host privilege bits.
+    result = spawnSync(
+      "rsync",
+      ["-a", "-e", sshCommandLine(options), "--chmod=ug-s", ...extra, "--", source, destination],
+      {
+        stdio: ["ignore", descriptor, descriptor],
+        timeout: options.rsyncTimeoutMs,
+      },
+    )
   } finally {
     closeSync(descriptor)
   }

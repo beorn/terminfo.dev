@@ -21,8 +21,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
@@ -319,6 +321,30 @@ afterEach(() => {
 })
 
 describe("owned-app ssh transport", () => {
+  it("stages portable resource modes without source-host privilege bits", () => {
+    const resources = join(code, "node_modules", "portable-modes")
+    mkdirSync(resources)
+    writeFileSync(join(resources, "executable"), "#!/bin/sh\nprintf 'resource bytes\\n'\n")
+    writeFileSync(join(resources, "data"), "unchanged data\n")
+    symlinkSync("executable", join(resources, "link"))
+    chmodSync(resources, 0o2755)
+    chmodSync(join(resources, "executable"), 0o6755)
+    chmodSync(join(resources, "data"), 0o644)
+
+    const result = run()
+    expect(result.status, result.stderr).toBe(0)
+    const staged = join(stage, "source", "node_modules", "portable-modes")
+    expect(statSync(staged).mode & 0o7777).toBe(0o755)
+    expect(statSync(join(staged, "executable")).mode & 0o7777).toBe(0o755)
+    expect(statSync(join(staged, "data")).mode & 0o7777).toBe(0o644)
+    expect(readFileSync(join(staged, "executable"))).toEqual(readFileSync(join(resources, "executable")))
+    expect(readFileSync(join(staged, "data"))).toEqual(readFileSync(join(resources, "data")))
+    expect(readlinkSync(join(staged, "link"))).toBe("executable")
+    expect(readFileSync(join(staged, "link"))).toEqual(readFileSync(join(resources, "executable")))
+    expect(statSync(resources).mode & 0o7777).toBe(0o2755)
+    expect(statSync(join(resources, "executable")).mode & 0o7777).toBe(0o6755)
+  })
+
   it("stages exact source, runs the identical argv on the host, and proves the returned bytes", () => {
     const result = run()
     expect(result.stderr).toBe("")
