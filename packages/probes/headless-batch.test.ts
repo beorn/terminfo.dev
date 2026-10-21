@@ -42,11 +42,19 @@ test("requests review for headless OS-input criteria without fabricating app del
     expect(result.reason, result.featureId).toMatch(/OS-level XTEST/)
     expect(result.rawReplyRef, result.featureId).toBe(result.featureId)
     expect(JSON.parse(batch.rawReplies[result.featureId]!), result.featureId).toMatchObject({ input: false })
+    expect(batch.notTested, result.featureId).toContainEqual({
+      featureId: result.featureId,
+      reason: "no-semantic-observable",
+      noObservable: expect.stringMatching(/OS-level XTEST/),
+      rawReplyRef: result.featureId,
+    })
+    expect(result.criterionBranch, result.featureId).toBe("os-input-review")
     expect(result.checks, result.featureId).toContainEqual(
       expect.objectContaining({
         id: "review",
         status: "test-todo",
         attempt: { scope: "none" },
+        rawReplyRef: result.featureId,
         reason: expect.any(String),
       }),
     )

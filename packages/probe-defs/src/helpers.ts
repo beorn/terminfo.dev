@@ -46,6 +46,27 @@ export function notTestedResult(noObservable: string, state: object): ProbeResul
 }
 
 /**
+ * The headless arm of a criterion that needs OS-level input: the same coverage record and raw
+ * state as notTestedResult, with the explicit branch selecting the existing review check. The
+ * position stays TEST TODO with a required review pending; nothing here grades support, delivery
+ * or Untestable, and an app context without an input adapter keeps its plain coverage record.
+ */
+export function osInputReviewResult(noObservable: string, state: object): ProbeResult {
+  return {
+    ...notTestedResult(noObservable, state),
+    criterionBranch: "os-input-review",
+    checks: [
+      {
+        id: "review",
+        status: "test-todo",
+        reason:
+          "Headless context injects no OS-level input; required independent review of the retained raw state pending",
+      },
+    ],
+  }
+}
+
+/**
  * A row whose claim compares plainly written glyphs against a sequence of pixels assumes the
  * terminal decodes plain UTF-8 — a CONTEXT, measured once per run and never assumed (#28752). A
  * measured 8-bit (ISO-8859-1) decoding means the expected frame paints a different string from the
