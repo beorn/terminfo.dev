@@ -31,7 +31,10 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   const writes: string[] = []
   const factory = async () => {
     const value = await resolveLibvterm()
-    expect(value.getMode("autoWrap")).toBeNull()
+    // libvterm's WASM bridge exposes no modes. Termless answers null only from #30549, which the
+    // published @termless/libvterm 0.10.2 that CI installs predates, so pin the null reading here:
+    // the subject is terminfo's null-mode consumers, not the termless version.
+    vi.spyOn(value, "getMode").mockReturnValue(null as unknown as boolean)
     const feed = value.feed.bind(value)
     vi.spyOn(value, "feed").mockImplementation((bytes) => {
       writes.push(new TextDecoder().decode(bytes))
