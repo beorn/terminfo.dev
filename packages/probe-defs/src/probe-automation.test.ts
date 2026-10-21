@@ -1647,22 +1647,31 @@ describe("partial probe automation candidates", () => {
 
   test("mode 2031 requires its own DECRPM recognition, not a separate color-scheme query", async () => {
     const p = probe("modes.color-scheme-reporting")
-    for (const [state, outcome] of [
-      ["set", "supported"],
-      ["reset", "supported"],
-      ["unknown", "unsupported"],
+    for (const [ps, outcome] of [
+      [1, "supported"],
+      [2, "supported"],
+      [3, "supported"],
+      [4, "unsupported"],
+      [0, "unsupported"],
       [null, "inconclusive"],
     ] as const) {
       const result = await p.term!(
         terminalContext({
-          queryMode: async (mode) => {
-            expect(mode).toBe(2031)
-            return state
+          queryMode: async () => {
+            throw new Error("the 2031 arm reads Ps through queryWithSentinel, never the folded word (#30557)")
           },
-          queryWithSentinel: async () => ["\x1b[?997;1n", "1"],
+          queryWithSentinel: async (sequence, pattern) => {
+            if (sequence === "\x1b[?2031$p") return ps === null ? null : pattern.exec(`\x1b[?2031;${ps}$y`)
+            return ["\x1b[?997;1n", "1"]
+          },
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, evidence: "query" })
+      if (ps === 4) {
+        expect(result.assertions, "Ps 4").toMatchObject([
+          { kind: "negative", expected: "DECRPM mode 2031 can be set", observed: "permanently reset (Ps 4)" },
+        ])
+      }
     }
   })
 

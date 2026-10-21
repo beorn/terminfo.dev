@@ -149,26 +149,34 @@ test("unmeasured app modes leave prior state untouched instead of toggling it fo
     const definition = modesProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     if (id === "modes.altscreen-1047") expect(definition.termObservationEvidence).toBe("query")
-    for (const state of [null, "unknown", "set", "reset"] as const) {
-      const queried: number[] = []
+    for (const ps of [null, 0, 1, 2, 3, 4] as const) {
+      const queried: string[] = []
       const unexpected = (): never => {
         throw new Error(`${id}: no state write or CPR is a feature measurement`)
       }
       const context = {
         write: unexpected,
         queryCursorPosition: unexpected,
-        queryMode: async (mode: number) => {
-          queried.push(mode)
-          return state
+        queryMode: unexpected,
+        queryWithSentinel: async (sequence: string, pattern: RegExp) => {
+          queried.push(sequence)
+          return ps === null ? null : pattern.exec(`\x1b[?1047;${ps}$y`)
         },
       } as unknown as TermContext
       const result = await definition.term(context)
-      expect(result.observation, `${id}:${state}`).toMatchObject({
-        outcome: "inconclusive",
+      // #30557 r2: the 1047 DECRPM fallback grades a permanently reset mode unsupported; every other Ps stays inconclusive.
+      const permanent = id === "modes.altscreen-1047" && ps === 4
+      expect(result.observation, `${id}:${ps}`).toMatchObject({
+        outcome: permanent ? "unsupported" : "inconclusive",
         evidence: id === "modes.altscreen-1047" ? "query" : "none",
       })
-      expect(result.assertions ?? [], id).toEqual([])
-      expect(queried, id).toEqual(id === "modes.altscreen-1047" ? [1047] : [])
+      if (permanent) {
+        expect(result.response).toBe("permanently reset (Ps 4)")
+        expect(result.assertions, id).toMatchObject([{ kind: "negative", observed: "permanently reset (Ps 4)" }])
+      } else {
+        expect(result.assertions ?? [], id).toEqual([])
+      }
+      expect(queried, id).toEqual(id === "modes.altscreen-1047" ? ["\x1b[?1047$p"] : [])
     }
   }
 })
@@ -184,7 +192,11 @@ test("app cursor replies and mode recognition do not prove alternate-buffer beha
       queryCursorPosition: async () => ({ row: 3, col: 3 }),
       measureRenderedWidth: async () => null,
       query: async () => null,
-      queryWithSentinel: async () => null,
+      // Private DECRQM answers "set" (Ps 1); the ANSI IRM query stays unanswered, so IRM keeps its cell fixture.
+      queryWithSentinel: async (sequence, pattern) => {
+        const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
+        return mode === undefined ? null : pattern.exec(`\x1b[?${mode};1$y`)
+      },
       queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
       queryWithSentinelOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
       queryMode: async () => "set",
@@ -203,10 +215,12 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
   const definition = modesProbes.find((probe) => probe.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
 
-  for (const state of ["unknown", null, "set", "reset"] as const) {
-    const queried: number[] = []
+  // The app arm reads the DECRPM reply itself (queryWithSentinel plus the shared parser), never the folded
+  // queryMode word, so Ps 4 cannot hide behind "reset" (#30557).
+  for (const ps of [0, null, 1, 2, 3, 4] as const) {
+    const queried: string[] = []
     const unexpected = (operation: string): never => {
-      throw new Error(`${id}: unexpected ${operation} for ${state}`)
+      throw new Error(`${id}: unexpected ${operation} for Ps ${ps}`)
     }
     const context: TermContext = {
       cols: 80,
@@ -215,25 +229,25 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       queryCursorPosition: async () => unexpected("CPR"),
       measureRenderedWidth: async () => unexpected("width query"),
       query: async () => unexpected("raw query"),
-      queryWithSentinel: async () => unexpected("sentinel query"),
+      queryWithSentinel: async (sequence, pattern) => {
+        queried.push(sequence)
+        return ps === null ? null : pattern.exec(`\x1b[?${number};${ps}$y`)
+      },
       queryOutcome: async () => unexpected("query outcome"),
       queryWithSentinelOutcome: async () => unexpected("sentinel outcome"),
-      queryMode: async (mode) => {
-        queried.push(mode)
-        return state
-      },
+      queryMode: async () => unexpected("folded mode query"),
     }
 
     const result = await definition.term(context)
-    expect(queried, `${id}: ${state}`).toEqual([number])
-    if (state === null) {
+    expect(queried, `${id}: Ps ${ps}`).toEqual([`\x1b[?${number}$p`])
+    if (ps === null) {
       expect(result.pass).toBe(false)
       expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
       expect(result.observation?.note, `${id}: note must survive projection`).toBe("No DECRPM response")
       expect(result.assertions ?? []).toEqual([])
-    } else if (state === "unknown") {
+    } else if (ps === 0) {
       expect(result.pass).toBe(false)
-      expect(result.response).toBe("unknown")
+      expect(result.response).toBe("not recognized (Ps 0)")
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
@@ -241,10 +255,20 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
       })
       expect(result.observation?.note, `${id}: note must survive projection`).toMatch(/not recognized/)
       expect(result.assertions ?? []).toEqual([])
+    } else if (ps === 4) {
+      expect(result.pass).toBe(false)
+      expect(result.response).toBe("permanently reset (Ps 4)")
+      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(result.observation?.note, `${id}: note must survive projection`).toMatch(/permanently reset \(Ps 4\)/)
+      expect(result.assertions).toMatchObject([
+        { kind: "negative", expected: `DECRPM mode ${number} can be set`, observed: "permanently reset (Ps 4)" },
+      ])
     } else {
+      const reading = ps === 1 ? "set (Ps 1)" : ps === 2 ? "reset (Ps 2)" : "permanently set (Ps 3)"
       expect(result.pass).toBe(true)
+      expect(result.response).toBe(reading)
       expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
-      expect(result.assertions).toMatchObject([{ kind: "positive", observed: state }])
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
     }
   }
   expect(definition.termWrites).toBe("query")

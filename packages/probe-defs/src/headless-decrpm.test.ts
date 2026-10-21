@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
+import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
 import type { TermlessContext } from "./types.ts"
 
@@ -55,10 +55,9 @@ const expectedState = (reply: string, mode: string | null) => (mode === null ? {
 test.each(features)("$id grades the engine's DECRPM reply exactly as the app arm does", ({ id, number, mode }) => {
   const arm = headless(id)
   for (const [ps, state] of [
-    ["1", "set"],
-    ["3", "set"],
-    ["2", "reset"],
-    ["4", "reset"],
+    ["1", "set (Ps 1)"],
+    ["2", "reset (Ps 2)"],
+    ["3", "permanently set (Ps 3)"],
   ] as const) {
     const fed: string[] = []
     const captured: string[] = []
@@ -87,6 +86,19 @@ test.each(features)("$id grades the engine's DECRPM reply exactly as the app arm
   })
   expect(zero.assertions, id).toBeUndefined()
   expect(zero.criterionBranch, id).toBeUndefined()
+  // Ps 4: the terminal knows the mode and says it cannot be set. Unsupported, never a folded "reset" (#30557).
+  const fourReply = `\x1b[?${number};4$y`
+  const four = arm(context(fourReply, true, [], [])) as ReturnType<
+    NonNullable<(typeof modesProbes)[number]["termless"]>
+  >
+  expect(four.pass, id).toBe(false)
+  expect(four.observation, id).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(four.assertions, id).toMatchObject([
+    { kind: "negative", expected: `DECRPM mode ${number} can be set`, observed: "permanently reset (Ps 4)" },
+  ])
+  expect(four.criterionBranch, id).toBeUndefined()
+  expect(four.notTested, id).toBeUndefined()
+  expect(JSON.parse(four.response!), id).toEqual(expectedState(fourReply, mode))
 })
 
 test.each(features)(
@@ -135,6 +147,11 @@ test.each(features.filter((feature) => feature.mode !== null))(
 )
 
 test("one DECRPM reading serves the app query, the ANSI query and the headless arm", () => {
+  expect(["0", "1", "2", "3", "4"].map((ps) => decrpmPs(ps))).toEqual([0, 1, 2, 3, 4])
+  expect(decrpmPs("7")).toBeNull()
+  expect(decrpmPs("")).toBeNull()
+  expect(decrpmPs(undefined)).toBeNull()
+  // The fold for consumers that only ask whether the mode is on; no grader reads it (#30557).
   expect(decrpmStatus("1")).toBe("set")
   expect(decrpmStatus("3")).toBe("set")
   expect(decrpmStatus("2")).toBe("reset")

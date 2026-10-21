@@ -1,7 +1,16 @@
 import type { ProbeDefinition } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
-import { parserStateResult, probe, sgrCaptureFrames, sgrCaptureTooSmall, sgrReadbackDecision } from "./helpers.ts"
+import {
+  decrpmReading,
+  parserStateResult,
+  probe,
+  queryDecrpm,
+  sgrCaptureFrames,
+  sgrCaptureTooSmall,
+  sgrReadbackDecision,
+  type DecrpmPs,
+} from "./helpers.ts"
 
 /**
  * The cell-aligned readback for DECALN. The compared region is rows 2-3 and never row 1: DECALN
@@ -229,8 +238,8 @@ export const resetProbes: ProbeDefinition[] = [
             },
           }
         }
-        const before = await ctx.queryMode(1)
-        if (before === null || before === "unknown") {
+        const before = await queryDecrpm(ctx, 1)
+        if (before === null || before === 0) {
           return {
             pass: false,
             observation: {
@@ -243,11 +252,13 @@ export const resetProbes: ProbeDefinition[] = [
         }
         ctx.write("\x1b[?1h")
         try {
-          const enabled = await ctx.queryMode(1)
+          const enabled = await queryDecrpm(ctx, 1)
           ctx.write("\x1b[!p") // DECSTR — soft reset
-          const after = await ctx.queryMode(1)
-          const measured = { before, enabled, after }
-          if (enabled !== "set" || after === null || after === "unknown") {
+          const after = await queryDecrpm(ctx, 1)
+          // The stored readings keep the Ps (#30557 r2).
+          const reading = (ps: DecrpmPs | null) => (ps === null ? null : decrpmReading(ps))
+          const measured = { before: reading(before), enabled: reading(enabled), after: reading(after) }
+          if (!(enabled === 1 || enabled === 3) || after === null || after === 0) {
             return {
               pass: false,
               response: JSON.stringify(measured),
@@ -255,11 +266,14 @@ export const resetProbes: ProbeDefinition[] = [
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
                 evidence: "query",
-                note: "Application-cursor mode setup or reset readback was unavailable",
+                note:
+                  enabled === 4
+                    ? "DECCKM is permanently reset (Ps 4); the terminal cannot enable it, so DECSTR's reset of it is unmeasured"
+                    : "Application-cursor mode setup or reset readback was unavailable",
               },
             }
           }
-          const pass = after === "reset"
+          const pass = after === 2 || after === 4
           return {
             pass,
             response: JSON.stringify(measured),
@@ -273,7 +287,7 @@ export const resetProbes: ProbeDefinition[] = [
             ],
           }
         } finally {
-          if (before === "set") ctx.write("\x1b[?1h")
+          if (before === 1 || before === 3) ctx.write("\x1b[?1h")
           else ctx.write("\x1b[?1l")
         }
       },

@@ -40,7 +40,14 @@ function app(
     },
     measureRenderedWidth: async () => unexpected("measureRenderedWidth"),
     query: async () => unexpected("query"),
-    queryWithSentinel: async () => unexpected("queryWithSentinel"),
+    // reset.soft reads DECCKM through DECRQM (#30557 r2); this fixture models a terminal that never answers it.
+    queryWithSentinel: async (sequence) => {
+      if (/^\x1b\[\?\d+\$p$/.test(sequence)) {
+        events.push("mode")
+        return null
+      }
+      return unexpected("queryWithSentinel")
+    },
     queryOutcome: async () => unexpected("queryOutcome"),
     queryWithSentinelOutcome: async () => {
       // "silent" models a terminal that never answers DECRQSS: reset.sgr then leaves the fixture
@@ -48,10 +55,7 @@ function app(
       if (decrqss === "silent") return { match: null, reason: "timeout", raw: "", rawBase64: "" }
       return unexpected("queryWithSentinelOutcome")
     },
-    queryMode: async () => {
-      events.push("mode")
-      return null
-    },
+    queryMode: async () => unexpected("queryMode"),
   }
 }
 
