@@ -384,6 +384,7 @@ describe("approved baseline test states and catalog score", () => {
     expect(states).toEqual({ refused: "untested", attempted: "error", failed: "error", legacy: "untested" })
   })
 
+  // This reads and verifies the committed corpus; cold CI loading can exceed the default 5s.
   it("scores the selected Kitty Modern run over all 69 capabilities without promoting refused underlines", () => {
     const site = loadFullProbes()
     expect(site.selectedByBackend.kitty?.selected.target).toMatchObject({ version: "0.48.2", os: "macos" })
@@ -404,5 +405,5 @@ describe("approved baseline test states and catalog score", () => {
         reason: "policy-refused",
       })
     }
-  })
+  }, 30_000)
 })
