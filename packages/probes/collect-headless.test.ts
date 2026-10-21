@@ -169,7 +169,24 @@ it("reviews a draft the real headless collector wrote through admit-run --review
     .filter((row) => row.checks.some((check) => check.id === "review" && check.status === "test-todo"))
     .map((row) => row.featureId)
     .sort()
-  expect(pending).toEqual(["extensions.clipboard-paste", "input.xtest-click", "input.xtest-key", "input.xtest-wheel"])
+  // #30547: xterm.js answers none of the colour reset/stack readbacks, so those eight wait on review too.
+  const colourReadback = [
+    "extensions.osc104-reset-palette",
+    "extensions.osc110-reset-fg",
+    "extensions.osc111-reset-bg",
+    "extensions.osc112-reset-cursor",
+    "extensions.osc113-reset-pointer-fg",
+    "extensions.osc114-reset-pointer-bg",
+    "extensions.osc30001-color-stack-push",
+    "extensions.osc30101-color-stack-pop",
+  ]
+  expect(pending).toEqual([
+    "extensions.clipboard-paste",
+    ...colourReadback,
+    "input.xtest-click",
+    "input.xtest-key",
+    "input.xtest-wheel",
+  ])
   const decision = (featureId: string, reason: string) =>
     JSON.stringify({
       id: `round-trip-${featureId}`,
@@ -188,11 +205,18 @@ it("reviews a draft the real headless collector wrote through admit-run --review
       sources: [`collector.capture.${featureId}`],
       supersedes: [],
     })
-  const reviewed = [
+  const reviewed: ReadonlyArray<readonly [string, string]> = [
     ["input.xtest-key", "Embedded xterm.js has no X server, so XTEST key injection has no path to the engine"],
     ["input.xtest-click", "Embedded xterm.js has no X server, so XTEST click injection has no path to the engine"],
     ["input.xtest-wheel", "Embedded xterm.js has no X server, so XTEST wheel injection has no path to the engine"],
-  ] as const
+    ...colourReadback.map(
+      (featureId) =>
+        [
+          featureId,
+          "@xterm/headless exposes no colour readback: onColor is internal and the Termless backend has no colour getter",
+        ] as const,
+    ),
+  ]
   const reviewPaths = reviewed.map(([featureId, reason], index) => {
     const path = join(dir, `review-${index}.json`)
     writeFileSync(path, decision(featureId, reason))
