@@ -14,7 +14,7 @@ import {
  */
 
 import { writeFileSync } from "node:fs"
-import { execSync } from "node:child_process"
+import { execSync, spawnSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
@@ -44,9 +44,8 @@ interface MuxDef {
   name: string
   id: string
   binary: string
-  version: () => string
-  start: (sessionName: string, scriptPath: string) => void
-  kill: (sessionName: string) => void
+  start: (binary: string, sessionName: string, scriptPath: string) => void
+  kill: (binary: string, sessionName: string) => void
 }
 
 const BUN = process.execPath
@@ -56,48 +55,74 @@ const MUXES: MuxDef[] = [
     name: "tmux",
     id: "tmux",
     binary: "tmux",
-    version: () => {
-      try {
-        // "tmux 3.6a" → "3.6a"
-        return execSync("tmux -V", { encoding: "utf-8", timeout: 3000 })
-          .trim()
-          .replace(/^tmux\s+/, "")
-      } catch {
-        return "unknown"
-      }
+    start: (binary, session, scriptPath) => {
+      execSync(`${shellQuote(binary)} new-session -d -s ${session} -x 120 -y 40 "${scriptPath}"`, { timeout: 10_000 })
     },
-    start: (session, scriptPath) => {
-      execSync(`tmux new-session -d -s ${session} -x 120 -y 40 "${scriptPath}"`, { timeout: 10_000 })
-    },
-    kill: (session) => {
-      execSync(`tmux kill-session -t ${session}`, { timeout: 5000, stdio: "ignore" })
+    kill: (binary, session) => {
+      execSync(`${shellQuote(binary)} kill-session -t ${session}`, { timeout: 5000, stdio: "ignore" })
     },
   },
   {
     name: "GNU Screen",
     id: "screen",
     binary: "screen",
-    version: () => {
-      try {
-        // screen -v exits with code 1 but still prints version
-        const out = execSync("screen -v 2>&1 || true", { encoding: "utf-8", timeout: 3000 }).trim()
-        return out.match(/version\s+([\d.]+)/)?.[1] ?? "unknown"
-      } catch {
-        return "unknown"
-      }
+    start: (binary, session, scriptPath) => {
+      execSync(`${shellQuote(binary)} -dmS ${session} ${scriptPath}`, { timeout: 10_000 })
     },
-    start: (session, scriptPath) => {
-      execSync(`screen -dmS ${session} ${scriptPath}`, { timeout: 10_000 })
-    },
-    kill: (session) => {
-      execSync(`screen -S ${session} -X quit`, { timeout: 5000, stdio: "ignore" })
+    kill: (binary, session) => {
+      execSync(`${shellQuote(binary)} -S ${session} -X quit`, { timeout: 5000, stdio: "ignore" })
     },
   },
 ]
 
 // ── Helpers ──
 
+function muxVersion(mux: MuxDef, binary: string): string {
+  const args = [mux.id === "screen" ? "-v" : "-V"]
+  const result = spawnSync(binary, args, { encoding: "utf8", timeout: 3000 })
+  const pattern =
+    mux.id === "screen"
+      ? /^Screen version ([0-9]+\.[0-9]+\.[0-9]+)[^\r\n]*\r?\n?$/
+      : /^tmux ([0-9]+\.[0-9]+[a-z]?)[^\r\n]*\r?\n?$/
+  const match = pattern.exec(result.stdout ?? "")
+  const version = match?.[1]
+  const acceptedStatus = result.status === 0 || (mux.id === "screen" && result.status === 1)
+  if (result.error || result.signal || !acceptedStatus || result.stderr !== "" || !version) {
+    throw new Error(
+      `${mux.id} version preflight failed for ${binary}: ${JSON.stringify({
+        status: result.status,
+        signal: result.signal,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        error: result.error?.message,
+      })}`,
+    )
+  }
+  return version
+}
+
 function whichBinary(name: string): string | null {
+  if (process.platform === "darwin") {
+    // Standard system paths, without reading login profiles or changing this process's PATH.
+    const paths = spawnSync("/usr/libexec/path_helper", ["-s"], { encoding: "utf8", timeout: 3000 })
+    if (paths.error || paths.signal || paths.status !== 0 || paths.stderr !== "" || !paths.stdout.trim()) {
+      throw new Error(
+        `Darwin mux path_helper failed: ${JSON.stringify({ status: paths.status, stderr: paths.stderr, error: paths.error?.message })}`,
+      )
+    }
+    const found = spawnSync("/bin/sh", ["-c", `${paths.stdout}\ncommand -v "$1"`, "terminfo-mux", name], {
+      encoding: "utf8",
+      timeout: 3000,
+    })
+    if (!found.error && !found.signal && found.status === 1 && found.stdout === "" && found.stderr === "") return null
+    const binary = found.stdout?.trim() ?? ""
+    if (found.error || found.signal || found.status !== 0 || found.stderr !== "" || !/^\/[^\r\n]+$/.test(binary)) {
+      throw new Error(
+        `Darwin mux executable lookup failed for ${name}: ${JSON.stringify({ status: found.status, stdout: found.stdout, stderr: found.stderr, error: found.error?.message })}`,
+      )
+    }
+    return binary
+  }
   try {
     return execSync(`which ${name}`, { encoding: "utf-8", timeout: 3000 }).trim() || null
   } catch {
@@ -164,8 +189,9 @@ async function runMux(
   mux: MuxDef,
   opts: { force?: boolean; output?: string },
 ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-  if (!whichBinary(mux.binary)) return { success: false, error: "not installed" }
-  const version = mux.version()
+  const binary = whichBinary(mux.binary)
+  if (!binary) return { success: false, error: "not installed" }
+  const version = muxVersion(mux, binary)
 
   const run = createProbeRun()
   const sessionName = `terminfo-${run.id.slice(0, 16)}`
@@ -175,7 +201,7 @@ async function runMux(
   try {
     writeServeScript(run)
     console.log(`  Launching ${mux.name} v${version}...`)
-    mux.start(sessionName, run.scriptPath)
+    mux.start(binary, sessionName, run.scriptPath)
     sessionStarted = true
     console.log(`  Waiting for owned daemon inside ${mux.name}...`)
     daemon = await findOwnedDaemon(run.id, DAEMON_DIR)
@@ -197,7 +223,7 @@ async function runMux(
     }
     if (sessionStarted) {
       try {
-        mux.kill(sessionName)
+        mux.kill(binary, sessionName)
       } catch (err) {
         cleanupErrors.push(`session: ${String(err)}`)
       }
@@ -226,8 +252,9 @@ export async function handleMux(
   if (!muxName && !opts.all) {
     console.log("\nAvailable multiplexers:\n")
     for (const mux of MUXES) {
-      const installed = !!whichBinary(mux.binary)
-      const version = installed ? mux.version() : ""
+      const binary = whichBinary(mux.binary)
+      const installed = !!binary
+      const version = binary ? muxVersion(mux, binary) : ""
       console.log(`  ${installed ? "+" : "-"} ${mux.name.padEnd(16)} ${version}`)
     }
     console.log("\nProbe all:  terminfo probe mux --all")
