@@ -9,7 +9,9 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { createHash } from "node:crypto"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { requestDaemonProbe } from "./daemon-client.ts"
 
 let child: ChildProcess | undefined
 let home: string | undefined
@@ -139,6 +141,97 @@ afterEach(async () => {
 })
 
 describe("daemon HTTP boundary", () => {
+  // A generic helper test misses both serialization and the client's early non-OK rejection.
+  // Only the OS command is substituted: the Darwin census, command callback, HTTP handler and
+  // client are real. This fixture establishes byte custody, never a native macOS failure cause.
+  it("retains a failed census command's stderr through HTTP and client original custody (30412)", async () => {
+    const { registration } = await startTestDaemon(
+      String.raw`
+        import {mock} from "bun:test"
+        import assert from "node:assert/strict"
+        import {writeFileSync} from "node:fs"
+        import {join} from "node:path"
+        const cp = await import("node:child_process")
+        const execFile = cp.execFile
+        mock.module("node:child_process", () => ({...cp, execFile: (file, args, options, callback) => {
+          assert.equal(file, "/usr/bin/osascript")
+          writeFileSync(join(process.env.HOME,"census-invocation.json"), JSON.stringify({file,args}))
+          return execFile(process.execPath, ["-e", "process.stderr.write(Buffer.from([100, 0, 255, 10]));process.exit(17)"], options, callback)
+        }}))
+        const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+        globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest:{probeHash:"a".repeat(12),probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:"b".repeat(40)}
+        const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+        const {createDarwinCapture} = await import("./packages/terminfo.dev/src/darwin-capture.ts")
+        mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
+        mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({...owned,createOwnedTerminal:()=>createDarwinCapture(process.env.HOME,{appPid:41})}))
+        const {startDaemon} = await import("./packages/terminfo.dev/src/serve.ts")
+        await startDaemon()
+      `,
+      {
+        TERMINFO_PROBE_HASH: "",
+        TERMINFO_SOURCE_REVISION: "",
+        TERMINFO_CAPTURE_DIRECTORY: "",
+        TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+        TERMINFO_DISPOSABLE_RECEIPT: "",
+        TERMINFO_RUNTIME_PROVENANCE: "",
+      },
+    )
+    if (!home || !registration.token) throw new Error("Diagnostic fixture lacks its private home or daemon token")
+    const privateHome = home
+    vi.stubEnv("HOME", privateHome)
+    vi.stubEnv("USERPROFILE", privateHome)
+    try {
+      const processOwner = {
+        asserter: "terminfo-admin" as const,
+        launchRunId: registration.runId,
+        workerPid: registration.pid,
+        provider: "kitty" as const,
+        ownerPid: 900,
+        executablePath: "/Applications/kitty.app/Contents/MacOS/kitty",
+        marker: { flag: "--instance-group", value: `terminfo-${registration.runId}` },
+        tty: "/dev/ttys004",
+        intendedVersion: "0.49.1",
+      }
+      const daemon = { ...registration, token: registration.token, terminal: "kitty", terminalVersion: "0.49.1" }
+      let failure: unknown
+      try {
+        await requestDaemonProbe(daemon, { process: processOwner })
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(Error)
+      expect(JSON.parse(readFileSync(join(privateHome, "census-invocation.json"), "utf8"))).toMatchObject({
+        file: "/usr/bin/osascript",
+        args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
+      })
+      expect(failure).toMatchObject({ status: 500 })
+      const directory = join(privateHome, ".terminfo-dev", "http-responses")
+      const files = readdirSync(directory)
+      expect(files).toHaveLength(1)
+      const path = join(directory, files[0]!)
+      const bytes = readFileSync(path)
+      const sha256 = createHash("sha256").update(bytes).digest("hex")
+      expect(failure).toMatchObject({ path, sha256 })
+      expect((failure as Error).message).toContain("HTTP 500")
+      expect((failure as Error).message).toContain(path)
+      expect((failure as Error).message).toContain(sha256)
+      expect(files[0]).toBe(sha256)
+      const body = JSON.parse(bytes.toString())
+      expect(body.captureCommand).toMatchObject({
+        file: "/usr/bin/osascript",
+        args: ["-l", "JavaScript", "-e", expect.stringContaining("CGWindowListCopyWindowInfo")],
+        stdoutBase64: "",
+        stderrBase64: Buffer.from([100, 0, 255, 10]).toString("base64"),
+        code: 17,
+        signal: null,
+        killed: false,
+      })
+      expect(bytes.toString()).not.toContain(registration.token)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   // Carrier validation precedes source-suite loading. The old endpoint ignored
   // these bodies and tried to probe; authentication coverage did not detect that.
   it("refuses malformed or mismatched owner assertions before collection", async () => {

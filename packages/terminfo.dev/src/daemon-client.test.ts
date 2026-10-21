@@ -371,6 +371,53 @@ it("retains exact daemon HTTP bytes and refuses invalid UTF-8 before parsing", a
   await expect(readRawDaemonProbeResponse(new Response(Buffer.from([0xff])), trustedReceipt)).rejects.toThrow(/UTF-8/i)
 })
 
+// A failed response is evidence, not a ProbeRun: invalid UTF-8 must not discard its original bytes.
+it.each([Buffer.from('{"error":"census failed"}\r\n'), Buffer.from([255, 0, 10])])(
+  "retains failed daemon HTTP originals before rejecting collection (30412): %j",
+  async (bytes) => {
+    root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+    vi.stubEnv("HOME", root)
+    vi.stubEnv("USERPROFILE", root)
+    try {
+      const runId = "a".repeat(32)
+      server = createServer((req, res) => {
+        if (req.url === "/info") {
+          res.end(JSON.stringify({ runId, pid: 222, terminal: "kitty", terminalVersion: "0.49.1" }))
+        } else {
+          res.statusCode = 500
+          res.end(bytes)
+        }
+      })
+      server.listen(0, "127.0.0.1")
+      await once(server, "listening")
+      const address = server.address()
+      if (!address || typeof address === "string") throw new Error("fixture did not bind")
+      let failure: unknown
+      try {
+        await requestDaemonProbe({
+          runId,
+          pid: 222,
+          port: address.port,
+          token: "fixture-token",
+          terminal: "kitty",
+          terminalVersion: "0.49.1",
+        })
+      } catch (error) {
+        failure = error
+      }
+      const sha256 = createHash("sha256").update(bytes).digest("hex")
+      const directory = join(root, ".terminfo-dev", "http-responses")
+      const path = join(directory, sha256)
+      expect(failure).toMatchObject({ status: 500, path, sha256 })
+      expect(readFileSync(path)).toEqual(bytes)
+      expect(lstatSync(directory).mode & 0o077).toBe(0)
+      expect(lstatSync(path).mode & 0o077).toBe(0)
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  },
+)
+
 // The admin's second serialization cannot reconstruct the authenticated HTTP entity body.
 it("retains authenticated exact response bytes before intended-version refusal", async () => {
   const privateRoot = mkdtempSync(join(tmpdir(), "terminfo-owned-"))

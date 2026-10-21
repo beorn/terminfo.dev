@@ -27,6 +27,29 @@ const temporary: string[] = []
 const originalPath = process.env.PATH
 const originalDisplay = process.env.DISPLAY
 
+// A decoded Error.message cannot preserve binary callback output on a failed census (30412).
+// Exercise the real subprocess boundary, without an optional stderr observer to fill the gap.
+test("capture command retains failed callback bytes with its native exit details", async () => {
+  const args = [
+    "-e",
+    "process.stdout.write(Buffer.from([17, 0, 23])); process.stderr.write(Buffer.from([100, 0, 255, 10])); process.exit(17)",
+  ]
+  await expect(command(process.execPath, args)).rejects.toMatchObject({
+    code: 17,
+    killed: false,
+    signal: null,
+    captureCommand: {
+      file: process.execPath,
+      args,
+      stdoutBase64: Buffer.from([17, 0, 23]).toString("base64"),
+      stderrBase64: Buffer.from([100, 0, 255, 10]).toString("base64"),
+      code: 17,
+      signal: null,
+      killed: false,
+    },
+  })
+})
+
 // A successful screenshot command can still explain a missing PNG only on stderr.
 test("capture command preserves zero-exit stderr before resolving unchanged stdout bytes", async () => {
   const observed: Buffer[] = []
