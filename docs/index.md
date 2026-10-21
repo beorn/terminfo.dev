@@ -1157,7 +1157,8 @@ strips, or mishandles.
  .VPHome .matrix .feature-col,.VPHome .matrix .feature-name { position:sticky; left:0; z-index:2; box-sizing:border-box; width:180px; min-width:180px; max-width:180px; white-space:normal; background:var(--vp-c-bg); }
  .VPHome .matrix th.feature-col { z-index:11; background:var(--vp-c-bg-soft); }
  .VPHome .matrix .feature-name > a { display:block; overflow-wrap:anywhere; }
- .VPHome .matrix .category-header > a { position:sticky; left:12px; display:inline-block; }
+ .VPHome .matrix .category-header { display:table-cell; }
+ .VPHome .matrix .category-header > a { position:sticky; left:12px; display:block; width:max-content; }
  .VPHome .problem-summary { padding:0; font-size:15px; }
 }
 </style>
