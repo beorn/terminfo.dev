@@ -1629,8 +1629,10 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
   const as = (contextKey: string, kind: CurrentSelectedVersion["target"]["kind"], id: string) => {
     const selected = structuredClone(base)
     selected.target = { ...selected.target, kind, id }
-    // Public results cache mapped runs by run id, so each target needs its own sealed run and status row.
+    // Public results cache mapped runs by run id and publish one trace per run sha, so each target needs
+    // its own sealed run, sha and status row.
     selected.runId = `${base.runId}-${contextKey}`
+    selected.sha256 = createHash("sha256").update(contextKey).digest("hex")
     projection.current[contextKey] = selected
     projection.table = { ...projection.table, [selected.runId]: projection.table[base.runId] ?? {} }
     return { contextKey, selected }
