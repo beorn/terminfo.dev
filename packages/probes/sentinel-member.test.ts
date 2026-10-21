@@ -335,6 +335,64 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query gr
   expect(headless).toStrictEqual(await term(replayingLive([answered, ...outcomes])))
 })
 
+const IMAGE_ID = "7"
+const KITTY_DETECTION = `\x1b[?0u${DA1}`
+
+/** One case per string-grader site: the engine answers, and DA1 answers after it. */
+const ANSWERED_CASES: { id: string; reply: (text: string) => string; liveFirst?: TerminalQueryOutcome[] }[] = [
+  {
+    id: "extensions.kitty-keyboard",
+    reply: (text) => (text === "\x1b[?u\x1b[c" ? KITTY_DETECTION : text === "\x1b[?u" ? "\x1b[?1u" : ""),
+    // The headless arm detects by capture; live detects through its sentinel query, so live sees one outcome more.
+    liveFirst: [
+      { match: ["\x1b[?0u", "0"], reason: "reply", raw: KITTY_DETECTION, rawBase64: base64(KITTY_DETECTION) },
+    ],
+  },
+  {
+    id: "extensions.kitty-graphics",
+    reply: (text) => (text.startsWith("\x1b_Gi=31,") ? "\x1b_Gi=31;OK\x1b\\" : ""),
+  },
+  {
+    id: "extensions.kitty-graphics.transmit",
+    reply: (text) => {
+      const number = /^\x1b_Ga=t,.*,I=(\d+);/.exec(text)?.[1]
+      return number ? `\x1b_Gi=${IMAGE_ID},I=${number};OK\x1b\\` : ""
+    },
+  },
+  {
+    id: "extensions.kitty-graphics.display",
+    reply: (text) => {
+      const number = /^\x1b_Ga=t,.*,I=(\d+);/.exec(text)?.[1]
+      if (number) return `\x1b_Gi=${IMAGE_ID},I=${number};OK\x1b\\`
+      return text.startsWith(`\x1b_Ga=p,i=${IMAGE_ID},`) ? `\x1b_Gi=${IMAGE_ID};OK\x1b\\` : ""
+    },
+  },
+  {
+    id: "extensions.osc21-kitty-color",
+    reply: (text) => (text === "\x1b]21;foreground=?\x1b\\" ? "\x1b]21;foreground=rgb:ffff/ffff/ffff\x1b\\" : ""),
+  },
+  { id: "extensions.osc5522-clipboard", reply: (text) => (text === "\x1b[?5522$p" ? "\x1b[?5522;1$y" : "") },
+]
+
+test.each(ANSWERED_CASES)(
+  "$id: an answered string-graded query keeps the whole read window, DA1 answer included, as live does",
+  async ({ id, reply, liveFirst = [] }) => {
+    // Both arms draw the same image number, so the live twin can take the headless arm's allocation outcome.
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("0000002a-0000-4000-8000-000000000000")
+    const { termless, term } = armsOf(id)
+    const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : reply(text)))
+    const headless = termless(ctx)
+    const graded = outcomes.at(-1)
+    const frame = graded?.match?.[0]
+    if (!graded || !frame) throw new Error(`${id}: the member gave no answered outcome`)
+    // The grader reads only the frame; the result records everything the read window held.
+    expect(headless.observation?.outcome, id).toBe("supported")
+    expect(graded.raw, id).toBe(`${frame}${DA1}`)
+    expect(headless.response, id).toBe(graded.raw)
+    expect(headless).toStrictEqual(await term(replayingLive([...liveFirst, ...outcomes])))
+  },
+)
+
 test("G1: a silent proven engine publishes the sentinel negative once the grace window stays quiet", async () => {
   vi.stubEnv("TERMINFO_SENTINEL_GRACE_MS", "40")
   // collectBatch names each probe on stderr, and the root test setup refuses a test's output.

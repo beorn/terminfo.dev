@@ -1017,7 +1017,8 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeResult
 /**
  * Live's reading of one string-graded query outcome: no matched frame grades through unansweredQuery, a
  * matched frame through the site's grader. A headless context on a proven reply path offers the same
- * outcome through `queryWithSentinelOutcome` (#30554), so both arms read it here.
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms read it here. The grader reads only the
+ * frame; the result keeps the whole read window, DA1 answer included, as the observed evidence.
  */
 function matchedReplyResult(
   reply: TerminalQueryOutcome,
@@ -1025,7 +1026,7 @@ function matchedReplyResult(
   grade: (frame: string) => ProbeResult,
 ): ProbeResult {
   if (!reply.match) return unansweredQuery(reply, missingNote)
-  return grade(reply.match[0] ?? "")
+  return { ...grade(reply.match[0] ?? ""), response: reply.raw }
 }
 
 function keyboardFlagsResult(response: string, flagBits: number): ProbeResult {
@@ -1167,7 +1168,7 @@ function graphicsQueryOutcomeResult(reply: TerminalQueryOutcome): ProbeResult {
   )
 }
 
-/** Live's reading of an allocation outcome, shared by both arms (#30554). */
+/** Live's reading of an allocation outcome, shared by both arms (#30554); the result keeps the whole read window. */
 function allocationOutcomeResult(
   reply: TerminalQueryOutcome,
   imageNumber: number,
@@ -1181,7 +1182,8 @@ function allocationOutcomeResult(
       ),
     }
   }
-  return allocatedImageResult(reply.match[0] ?? "", imageNumber)
+  const uploaded = allocatedImageResult(reply.match[0] ?? "", imageNumber)
+  return { ...uploaded, result: { ...uploaded.result, response: reply.raw } }
 }
 
 function placementRequest(imageId: number): string {
