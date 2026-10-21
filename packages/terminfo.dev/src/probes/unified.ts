@@ -743,6 +743,7 @@ export async function runProbeBatch(
           preGeometry?.status === "measured" &&
           (post?.status !== "measured" || post.rows !== preGeometry.rows || post.cols !== preGeometry.cols)
         if (resized) {
+          batch.rawReplies[`${probe.id}.callbackObservation`] = JSON.stringify(result.observation)
           callbackChecks = [
             {
               id: "geometry",
@@ -764,13 +765,18 @@ export async function runProbeBatch(
             ? {
                 outcome: "inconclusive" as const,
                 reason: "insufficient-evidence" as const,
-                note: `Measured geometry changed or became unavailable after ${probe.id}`,
+                note: `${(result.observation.note ?? result.note) ? `${result.observation.note ?? result.note}; ` : ""}Measured geometry changed or became unavailable after ${probe.id} (resized)`,
               }
             : {}),
           ...(rawReplyRef ? { rawReplyRef } : {}),
         })
-        for (const assertion of resized ? [] : (result.assertions ?? [])) {
-          batch.assertions.push({ featureId: probe.id, ...assertion, ...(rawReplyRef ? { rawReplyRef } : {}) })
+        for (const assertion of result.assertions ?? []) {
+          batch.assertions.push({
+            featureId: probe.id,
+            ...assertion,
+            ...(resized ? { note: `${assertion.note ? `${assertion.note}; ` : ""}Geometry resized during probe` } : {}),
+            ...(rawReplyRef ? { rawReplyRef } : {}),
+          })
         }
       } else {
         // The callback returned neither a measurement nor a coverage record. The type makes
