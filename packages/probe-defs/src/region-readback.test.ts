@@ -1015,8 +1015,8 @@ test("a silent DECRQSS readback is truthful query evidence, and an answering one
   // callbacks write SGR0 + the tested sequence, query DECRQSS, then write a cleanup, so by the time
   // the region oracle declines the row the trace is NOT empty. run-parser refuses evidence "none"
   // unless writes, queries and events are all empty, so these three rows must report "query".
-  // The DECRQSS-supported path must survive: a terminal that reports the post-reset state is still
-  // graded structurally, and only a silent one reaches the named refusal.
+  // The DECRQSS-supported path must survive: a terminal that reports its actual baseline, setup
+  // and post-reset state is still graded structurally; only a silent one reaches the named refusal.
   const probes = [...sgrProbes, ...resetProbes]
   for (const id of NO_REFERENCE_ROWS) {
     const probe = probes.find((candidate) => candidate.id === id)
@@ -1030,20 +1030,31 @@ test("a silent DECRQSS readback is truthful query evidence, and an answering one
     expect(result.observation?.note ?? "", id).toContain("no independent reference exists for a multi-attribute reset")
     expect(result.observation?.note ?? "", id).toContain("the caller wrote before this refusal")
   }
-  const reported: Record<(typeof NO_REFERENCE_ROWS)[number], string> = {
-    "reset.sgr": "0",
-    "sgr.reset": "0",
-    "sgr.selective-reset.bold": "3",
-  }
   for (const id of NO_REFERENCE_ROWS) {
     const probe = probes.find((candidate) => candidate.id === id)
     const terminal = statefulTerminal(ALL_ATTRS, { ris: true })
-    terminal.ctx.queryWithSentinelOutcome = async () => ({
-      match: [`\x1bP1$r${reported[id]}m\x1b\\`, reported[id]],
-      reason: "reply" as const,
-      raw: "",
-      rawBase64: "",
-    })
+    terminal.ctx.queryWithSentinelOutcome = async () => {
+      const state = terminal.snapshot()
+      const reported =
+        (
+          [
+            ["bold", "1"],
+            ["faint", "2"],
+            ["italic", "3"],
+            ["underline", "4"],
+            ["inverse", "7"],
+          ] as const
+        )
+          .filter(([attribute]) => state.has(attribute))
+          .map(([, code]) => code)
+          .join(";") || "0"
+      return {
+        match: [`\x1bP1$r${reported}m\x1b\\`, reported],
+        reason: "reply" as const,
+        raw: "",
+        rawBase64: "",
+      }
+    }
     const result = await probe!.term!(terminal.ctx)
     expect(result.observation?.outcome, `${id}: DECRQSS still grades this row`).toBe("supported")
     expect(result.observation?.evidence, id).toBe("query")
