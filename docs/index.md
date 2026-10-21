@@ -217,11 +217,10 @@ function backendTooltip(name, version) {
 <div class="problem-summary">
 
 <p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
-  <p :title="data.releaseScope.line"><a href="/how-it-works/">{{ data.releaseScope.measuredCount }} of {{ data.releaseScope.catalogCount }} features measured</a></p>
 </div>
 
 <div v-if="data.backends.length === 0" class="no-data">
-  <p>No probe data available yet.</p>
+  <p>No current measurements are available yet.</p>
 </div>
 
 <div v-else>
