@@ -7,7 +7,18 @@
  */
 import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
 import { describe, expect, it, vi } from "vitest"
-import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync, cpSync, symlinkSync } from "node:fs"
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  mkdirSync,
+  writeFileSync,
+  cpSync,
+  symlinkSync,
+  readdirSync,
+  statSync,
+} from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -56,7 +67,7 @@ const fixture = vi.hoisted(() => {
       record: {
         rawReply: "\u001b[1;2R",
         assertions: [
-          { featureId: "sgr.bold", kind: "positive", expected: "PRIVATE_ASSERTION_EXPECTED", observed: "\u001b[1;2R" },
+          { featureId: "sgr.bold", kind: "positive", expected: "STORED_ASSERTION_EXPECTED", observed: "\u001b[1;2R" },
         ],
       },
       chain: {
@@ -89,6 +100,7 @@ const fixture = vi.hoisted(() => {
     suiteFreshness: "current",
     sourceRevision: "rev",
     sha256: runSha256,
+    identity: "verified",
     suite: { observed: 2, expected: 2, complete: true },
     cells,
     v1: { "sgr.bold": true, "extensions.sixel": false },
@@ -227,6 +239,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
       sourceRevision: run.sourceRevision ?? "fixture",
       sealedAt: run.measuredAt,
       sha256: run.sha256,
+      identity: run.identity,
       catalogIds: ids,
       results,
       counts,
@@ -650,6 +663,54 @@ describe("selected-run consumer parity", () => {
     }
   })
 
+  // 30565: a displayed run's trace is a lazy file beside its run document; a summary never holds one.
+  it("writes each displayed run's trace beside its run document and reports trace bytes and files", () => {
+    const out = mkdtempSync(join(tmpdir(), "terminfo-run-traces-"))
+    // With no current selection for screen, its page displays the historical run, which gets a v2 trace.
+    const current = currentResults.compatibilityTargets(currentResults.loadCurrentResults("").projection, "")
+    const targets = vi
+      .spyOn(currentResults, "compatibilityTargets")
+      .mockReturnValue(new Map([...current].filter(([key]) => key !== "screen")))
+    try {
+      generateApi(out)
+      const listed = (dir: string) =>
+        existsSync(join(out, dir)) ? readdirSync(join(out, dir)).map((name) => `/${dir}/${name}`) : []
+      const read = (url: string) => readFileSync(join(out, url), "utf8")
+      const receipts: string[] = []
+      for (const url of [...listed("api/v2/runs"), ...listed("api/v3/runs")]) {
+        const run = JSON.parse(read(url)) as { sha256: string; trace?: { url: string; sha256: string } }
+        if (!run.trace) continue
+        const bytes = readFileSync(join(out, run.trace.url))
+        expect(createHash("sha256").update(bytes).digest("hex")).toBe(run.trace.sha256)
+        expect(JSON.parse(bytes.toString("utf8"))).toMatchObject({ version: 1, runSha256: run.sha256 })
+        receipts.push(run.trace.url)
+      }
+      // Every trace file is exactly one run document's receipt.
+      const traces = [...listed("api/v2/traces"), ...listed("api/v3/traces")]
+      expect(traces.sort()).toEqual(receipts.sort())
+      const cellsOf = (url: string) => (JSON.parse(read(url)) as { cells: Record<string, unknown> }).cells
+      const cell = (url: string, featureId: string) => cellsOf(url)[featureId]
+      expect(cell(`/api/v3/traces/${fixture.selected.sha256}.json`, "sgr.bold")).toMatchObject({ status: "supported" })
+      expect(cell(`/api/v2/traces/${fixture.screen.sha256}.json`, "sgr.bold")).toMatchObject({
+        outcome: "inconclusive",
+      })
+      const report = assertDeploymentLimits(out)
+      expect(report.traceFiles).toBe(traces.length)
+      expect(report.traceBytes).toBe(traces.reduce((total, url) => total + statSync(join(out, url)).size, 0))
+      const summaries = ["api/v1/data.json", "api/v2/data.json", "api/v3/data.json"]
+      expect(Object.keys(report.dataJsonBytes).sort()).toEqual(summaries)
+      for (const path of summaries) {
+        const summary = read(path)
+        expect(report.dataJsonBytes[path]).toBe(Buffer.byteLength(summary))
+        // A summary may carry a run's receipt; it never carries the trace's records.
+        for (const url of traces) expect(summary).not.toContain(JSON.stringify(cellsOf(url)))
+      }
+    } finally {
+      targets.mockRestore()
+      rmSync(out, { recursive: true, force: true })
+    }
+  })
+
   it("ships current cells without global selection history while routes retain versions", () => {
     const site = probesLoader.load()
     expect(Object.hasOwn(site, "selected")).toBe(false)
@@ -675,7 +736,7 @@ describe("selected-run consumer parity", () => {
       const v2 = readFileSync(join(out, "api", "v2", "data.json"), "utf8")
       for (const serialized of [JSON.stringify(site), v1, v2]) {
         for (const marker of [
-          "PRIVATE_ASSERTION_EXPECTED",
+          "STORED_ASSERTION_EXPECTED",
           "PRIVATE_DIAGNOSTIC",
           "/home/fixture/private",
           "/private/fixture/app",
@@ -710,6 +771,28 @@ describe("selected-run consumer parity", () => {
       const targets = new Map([["kitty", { contextKey: "app:kitty", selected: current }]])
       const unpublished = publicResults(projection, targets)
       expect(JSON.stringify(unpublished.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
+      // 30565: the displayed run's trace publishes the unreviewed result's allowlisted record only.
+      const receipt = unpublished.selectedByBackend.kitty?.selected.trace
+      if (!receipt) throw new Error("Missing trace receipt for the displayed current run")
+      expect(receipt.url).toBe(`/api/v3/traces/${current.sha256}.json`)
+      const trace = unpublished.documents.get(receipt.url)
+      if (!trace) throw new Error(`Missing trace document ${receipt.url}`)
+      expect(createHash("sha256").update(trace.bytes).digest("hex")).toBe(receipt.sha256)
+      const { cells } = JSON.parse(trace.bytes) as { cells: Record<string, unknown> }
+      expect(cells["sgr.bold"]).toEqual({
+        status: "supported",
+        ...(result.evidence && { evidence: result.evidence }),
+        replyWithheld: true,
+        assertions: [{ kind: "positive", expected: "expected criterion", observed: "actual response" }],
+      })
+      for (const marker of [
+        "RETAINED_CURRENT_REPLY",
+        "UNAPPROVED_CURRENT_REASON",
+        "/home/fixture/private",
+        screenshotSha256,
+      ]) {
+        expect(trace.bytes).not.toContain(marker)
+      }
       const privateFullProject = loadFullProjectData()
       expect(privateFullProject.collected).toBe(1)
       expect(JSON.stringify(privateFullProject).includes("UNAPPROVED_CURRENT_REASON")).toBe(false)
@@ -728,6 +811,12 @@ describe("selected-run consumer parity", () => {
       )?.presentation
       if (approval?.state !== "presented") throw new Error("Current evidence was not presented")
       expect(approval.url).toBe(`/api/v3/evidence/${current.sha256}.json#sgr.bold`)
+      // A presentation decision takes the result out of the trace.
+      const traceAfter = presented.selectedByBackend.kitty?.selected.trace
+      const tracedAfter = traceAfter && presented.documents.get(traceAfter.url)
+      if (traceAfter && !tracedAfter) throw new Error(`Missing trace document ${traceAfter.url}`)
+      const cellsAfter = tracedAfter ? (JSON.parse(tracedAfter.bytes) as { cells: Record<string, unknown> }).cells : {}
+      expect(Object.keys(cellsAfter)).not.toContain("sgr.bold")
       const docUrl = approval.url.split("#")[0]!
       const document = presented.documents.get(docUrl)
       expect(document?.document).toMatchObject({
@@ -897,7 +986,7 @@ describe("selected-run consumer parity", () => {
                         {
                           featureId: "sgr.bold",
                           kind: "positive",
-                          expected: "PRIVATE_ASSERTION_EXPECTED",
+                          expected: "STORED_ASSERTION_EXPECTED",
                           observed: "\u001b[1;2R",
                         },
                       ],
@@ -916,8 +1005,13 @@ describe("selected-run consumer parity", () => {
             ) + "\n",
           )
         }
-        expect(JSON.stringify(site)).not.toContain("PRIVATE_ASSERTION_EXPECTED")
+        expect(JSON.stringify(site)).not.toContain("STORED_ASSERTION_EXPECTED")
         expect(readFileSync(join(out, screenshot.url.slice(1)))).toEqual(artifact)
+        if (kind === "pixels") {
+          // When other cells remain unreviewed on the displayed current run, both the run's trace and the
+          // presented cell's artifact are written together.
+          expect(existsSync(join(out, "api/v3/traces", `${fixture.runSha256}.json`))).toBe(true)
+        }
         if (kind === "text-cells") {
           const first = site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.textQualification
           const second = site.historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.textQualification

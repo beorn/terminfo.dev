@@ -105,6 +105,8 @@ export interface SelectedVersion {
   suite: { observed: number; expected: number | null; complete: boolean; namedNotTested: number }
   sourceRevision: string | null
   sha256: string
+  /** The identity the run recorded for itself. Only its trace document publishes it. */
+  identity: LoadedRun["identity"]
   identityAdmission?: IdentityAdmission
   /** Immutable run-owned witnesses; no derived assessment is stored here. */
   textQualification?: TextQualification
@@ -173,6 +175,8 @@ export interface CurrentSelectedVersion {
   sourceRevision: string
   sealedAt: string
   sha256: string
+  /** The identity the run recorded for itself. Only its trace document publishes it. */
+  identity: LoadedRun["identity"]
   catalogIds: string[]
   results: CapabilityResult[]
   rawReplies: Record<string, string>
@@ -494,6 +498,7 @@ function projectRun(
     },
     sourceRevision: run.sourceRevision,
     sha256: run.sha256,
+    identity: run.identity,
     ...(identityAdmission && { identityAdmission }),
     ...(run.textQualification === undefined ? {} : { textQualification: run.textQualification }),
     cells,
@@ -877,6 +882,7 @@ export function projectResults(
       sourceRevision: run.sourceRevision,
       sealedAt: run.sealedAt,
       sha256: run.sha256,
+      identity: run.identity,
       catalogIds: [...run.catalogIds],
       results: globalThis.structuredClone(run.results),
       suiteRelation,

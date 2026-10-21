@@ -74,6 +74,15 @@ Each run's evidence document keys its approved cells under `cells[featureId]` an
 
 Free-form execution reasons and captured diagnostics pass the existing presentation review boundary. A summary without that approval does not expose the private collector note or capture.
 
+A run a page displays carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v2/traces/<run sha256>.json` for a historical run or `/api/v3/traces/<run sha256>.json` for a current one. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
+
+- the outcome or status, the evidence method and a reason code;
+- the bytes the probe wrote, and each query's sequence and reason;
+- a headless engine's parser state;
+- each assertion's kind and expected text.
+
+A live terminal's reply (a query's `match`, an assertion's `observed`) appears only for features whose replies use a closed grammar, such as numeric reports. Other stored reply content, such as screen state or a clipboard, does not appear; a result whose stored reply the trace leaves out says `replyWithheld: true`. Notes, actions, diagnostics, captures, raw read windows and paths never appear in a trace.
+
 ## Historical v1 and v2
 
 **`GET /api/v2/data.json`** preserves schema-1/2 outcomes, provenance and readable evidence. Its existing `current` keys are historical defaults, not current schema-3 measurements.

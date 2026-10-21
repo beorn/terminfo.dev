@@ -24,6 +24,7 @@ import {
   type SelectedVersion,
 } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
+import { currentTrace, historicalTrace, type CurrentTraceDocument, type HistoricalTraceDocument } from "./run-trace.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
 /** Missing kind retains the historical PNG shape byte for byte. */
@@ -95,9 +96,17 @@ export interface HistoricalPublicCell extends Pick<
 
 export interface HistoricalPublicVersion extends Omit<
   SelectedVersion,
-  "cells" | "ungradedDiagnostics" | "textQualification"
+  "cells" | "ungradedDiagnostics" | "textQualification" | "identity"
 > {
   cells: Record<string, HistoricalPublicCell>
+  /** The receipt of this run's trace document; only a run a page displays has one. */
+  trace?: TraceReceipt
+}
+
+/** Where a displayed run's trace document lives, and the SHA-256 of its exact bytes. */
+export interface TraceReceipt {
+  url: string
+  sha256: string
 }
 
 export interface HistoricalPublicProjection {
@@ -152,11 +161,23 @@ function images(record: SelectedCell["record"], where: string): PublicImages {
 export function publicHistoricalResults(
   projection: HistoricalProjection,
   targets: ReadonlyMap<string, HistoricalCurrentResult>,
+  /** Run IDs a page displays; each gets a trace. By default, every target's selected run. */
+  traced: ReadonlySet<string> = new Set([...targets.values()].map((value) => value.selected.runId)),
 ) {
   const documents = new Map<
     string,
-    { bytes: string; document: HistoricalEvidenceDocument | TextQualificationDocument }
+    { bytes: string; document: HistoricalEvidenceDocument | TextQualificationDocument | HistoricalTraceDocument }
   >()
+  const traces = new Map<string, { trace?: TraceReceipt }>()
+  /** Every mapping of one run carries the same receipt, so its run document has one form. */
+  const traceOf = (version: SelectedVersion): { trace?: TraceReceipt } => {
+    if (!traced.has(version.runId)) return {}
+    const known = traces.get(version.sha256)
+    if (known) return known
+    const receipt = traceReceipt(documents, historicalTrace(version))
+    traces.set(version.sha256, receipt)
+    return receipt
+  }
   const mapCell = (
     cell: SelectedCell,
     version: SelectedVersion,
@@ -285,6 +306,7 @@ export function publicHistoricalResults(
       sourceRevision: version.sourceRevision,
       sha256: version.sha256,
       ...(version.identityAdmission && { identityAdmission: version.identityAdmission }),
+      ...traceOf(version),
       cells,
       v1: { ...version.v1 },
       reviews: version.reviews.map(publicReview),
@@ -382,6 +404,18 @@ function qualificationFor(
   return { url, sha256: createHash("sha256").update(bytes).digest("hex") }
 }
 
+/** Keeps a run's trace document for generate-api and returns the receipt its run version carries. */
+function traceReceipt(
+  documents: PublicDocuments,
+  trace: ReturnType<typeof historicalTrace> | ReturnType<typeof currentTrace>,
+): { trace?: TraceReceipt } {
+  if (!trace) return {}
+  const prior = documents.get(trace.url)
+  if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
+  documents.set(trace.url, { bytes: trace.bytes, document: trace.document })
+  return { trace: { url: trace.url, sha256: trace.sha256 } }
+}
+
 /** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
 export interface PublicCapabilityResult extends Pick<
   CapabilityResult,
@@ -394,9 +428,11 @@ export interface PublicCapabilityResult extends Pick<
 
 export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
-  "results" | "rawReplies" | "assertions" | "origin" | "presentations" | "textQualification"
+  "results" | "rawReplies" | "assertions" | "origin" | "presentations" | "textQualification" | "identity"
 > {
   results: PublicCapabilityResult[]
+  /** The receipt of this run's trace document; only a run a page displays has one. */
+  trace?: TraceReceipt
 }
 
 export interface PublicProjection {
@@ -432,7 +468,12 @@ type PublicDocuments = Map<
   string,
   {
     bytes: string
-    document: EvidenceDocument | HistoricalEvidenceDocument | TextQualificationDocument
+    document:
+      | EvidenceDocument
+      | HistoricalEvidenceDocument
+      | TextQualificationDocument
+      | HistoricalTraceDocument
+      | CurrentTraceDocument
   }
 >
 
@@ -446,7 +487,13 @@ export function publicResults(
   targets: ReadonlyMap<string, CurrentResult>,
   historicalTargets: ReadonlyMap<string, HistoricalCurrentResult> = new Map(),
 ) {
-  const historical = publicHistoricalResults(projection.historical, historicalTargets)
+  // A page displays a historical run only for a context with no current selection.
+  const historical = publicHistoricalResults(
+    projection.historical,
+    historicalTargets,
+    new Set([...historicalTargets].filter(([key]) => !targets.has(key)).map(([, value]) => value.selected.runId)),
+  )
+  const traced = new Set([...targets.values()].map((value) => value.selected.runId))
   const documents: PublicDocuments = new Map(historical.documents)
   const mapResult = (
     result: CapabilityResult,
@@ -530,6 +577,7 @@ export function publicResults(
       origin: _origin,
       presentations: _presentations,
       textQualification: _qualification,
+      identity: _identity,
       results,
       ...metadata
     } = version
@@ -564,6 +612,7 @@ export function publicResults(
     }
     const mapped: PublicVersion = {
       ...metadata,
+      ...(traced.has(version.runId) && traceReceipt(documents, currentTrace(version))),
       catalogIds: [...version.catalogIds],
       counts: { ...version.counts },
       score: { ...version.score },
