@@ -176,16 +176,15 @@ const breadcrumbParent = (() => {
     <ul class="result-counts">
     <li><strong>{{ measuredBar.counts.supported }}</strong> supported <small>Positive evidence</small></li>
     <li><strong>{{ measuredBar.counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
-    <li><strong>{{ measuredBar.counts.inconclusive }}</strong> inconclusive <small>Cannot decide</small></li>
-    <li><strong>{{ measuredBar.counts.untested }}</strong> not tested <small>{{ namedNotTested ? namedNotTested + ' named: no applicable observable' : 'No observation' }}</small></li>
-    <li><strong>{{ measuredBar.counts.error }}</strong> errors <small>Probe error</small></li>
+    <li><strong>{{ measuredBar.counts.inconclusive }}</strong> Untestable <small>Reviewed: this context cannot measure it</small></li>
+    <li><strong>{{ measuredBar.counts.untested }}</strong> TEST TODO <small>No reviewed measurement</small></li>
+    <li><strong>{{ measuredBar.counts.error }}</strong> TEST FAILURE <small>Attempt did not establish a result</small></li>
     </ul>
-  <p class="score-detail">Inconclusive includes checks blocked by permissions or policy before execution. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
+  <p class="score-detail">TEST TODO means the probe was not attempted; TEST FAILURE means an attempted probe did not establish a result. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
     <p v-if="libraryOnlyIds.length" class="score-detail">{{ libraryOnlyIds.length }} {{ libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ libraryOnlyIds.join(', ') }}.</p>
-    <p>{{ counts.tested }} of {{ counts.catalog }} catalog features have a recorded outcome. This includes checks that could not run, such as a probe refused by a permission policy.</p>
-    <p v-if="counts.conclusive">Of {{ counts.conclusive }} results that could be decided, {{ counts.supported }} were supported and {{ counts.unsupported }} were unsupported. Inconclusive, error and not-tested results are separate.</p>
-    <p v-if="namedNotTested">{{ counts.tested }} measured + {{ namedNotTested }} named not-tested + {{ counts.notTested - namedNotTested }} unrecorded remainder = {{ counts.catalog }} catalog features; each feature is in exactly one bucket.</p>
-    <p v-else>No conclusive results in this reviewed run.</p>
+    <p>{{ counts.catalog }} catalog features are classified across the five labels above.</p>
+    <p v-if="counts.conclusive">Among {{ counts.conclusive }} results with a recorded Supported or Unsupported value, {{ counts.supported }} were Supported and {{ counts.unsupported }} were Unsupported.</p>
+    <p v-else>No Supported or Unsupported results in this reviewed run.</p>
   </details>
 </div>
 
@@ -227,7 +226,7 @@ const breadcrumbParent = (() => {
         <th>Version</th>
         <th>Support</th>
         <th class="version-pct-header">Score</th>
-        <th class="version-counts-header">Conclusive features</th>
+        <th class="version-counts-header">Results with a recorded Supported or Unsupported value</th>
       </tr>
     </thead>
     <tbody>
@@ -239,7 +238,7 @@ const breadcrumbParent = (() => {
           </div>
         </td>
         <td class="version-pct">{{ v.pct == null ? 'No score' : `${v.pct}%` }}</td>
-        <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No conclusive results' }}</td>
+        <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No Supported or Unsupported results' }}</td>
       </tr>
     </tbody>
   </table>

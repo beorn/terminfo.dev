@@ -692,9 +692,9 @@ onBeforeUnmount(() => {
         <h3>Evidence</h3>
         <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
         <p v-else-if="!cell && namedCoverage">
-          The run retains a probe trace, but no supported or unsupported result was established.
+          TEST FAILURE: the attempt retained a trace but established neither Supported nor Unsupported.
         </p>
-        <p v-else-if="!cell">This feature was not tested by the reviewed current run.</p>
+        <p v-else-if="!cell">TEST TODO: no reviewed current result covers this feature.</p>
         <template v-else-if="presentation?.state === 'not-reviewed'">
           <p>Original evidence has not been reviewed for presentation.</p>
         </template>
@@ -710,7 +710,7 @@ onBeforeUnmount(() => {
           <template v-else-if="evidenceDocument">
             <p v-if="correction && isDecSampleResult">
               The collector captured the images but did not automatically judge their content. It left the result
-              inconclusive until image review. Sol, an AI reviewer, then compared the unchanged frames against two
+              awaiting review (TEST TODO). Sol, an AI reviewer, then compared the unchanged frames against two
               criteria: the middle <code>q</code> on row 3 must look like the horizontal line in row 2, and row 4 must
               remain ordinary ASCII text. That review established support for this sample. It used no numeric confidence
               score, new frames or updated terminal. “Corrected after review” means the assessment changed; Kitty was
@@ -817,26 +817,25 @@ onBeforeUnmount(() => {
                 </p>
                 <h4>1. Original recorded result</h4>
                 <p>
-                  {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                  {{ status.text }} · {{ evidenceDocument.observation.evidence }} method
                   <template v-if="evidenceDocument.observation.reason">
                     · {{ evidenceDocument.observation.reason }}</template
                   >
                 </p>
                 <p>
-                  Inconclusive meant the images still needed review. Insufficient-evidence meant the collector had not
-                  yet established a supported or unsupported result.
+                  The images awaited review (TEST TODO). The collector had not established Supported or Unsupported.
                 </p>
                 <p v-if="evidenceDocument.observation.note">{{ evidenceDocument.observation.note }}</p>
                 <h4>2. Support review</h4>
                 <p>
-                  Sol, an AI image reviewer, changed the assessment from inconclusive to supported for this sample using
+                  Sol, an AI image reviewer, changed the assessment from TEST TODO to Supported for this sample using
                   the same original control and target frames. The frames were retained; Kitty was not fixed and the
                   test was not rerun.
                 </p>
                 <details v-if="correction">
                   <summary>Support review record</summary>
                   <p>
-                    Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                    Review changed the displayed result to {{ status.text }}.
                     Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
                   </p>
                 </details>
@@ -853,7 +852,7 @@ onBeforeUnmount(() => {
               </template>
               <template v-else>
                 <p v-if="correction">
-                  Review changed the result from {{ evidenceDocument.observation.outcome }} to {{ cell.outcome }}.
+                  Review changed the displayed result to {{ status.text }}.
                   Reviewed by {{ correction.reviewer }}: {{ correction.reason }}
                 </p>
                 <details>
@@ -863,7 +862,7 @@ onBeforeUnmount(() => {
                 <template v-if="originalDiffers">
                   <h4>Original recorded observation</h4>
                   <p>
-                    {{ evidenceDocument.observation.outcome }} · {{ evidenceDocument.observation.evidence }} method
+                    {{ status.text }} · {{ evidenceDocument.observation.evidence }} method
                     <template v-if="evidenceDocument.observation.reason">
                       · {{ evidenceDocument.observation.reason }}</template
                     >

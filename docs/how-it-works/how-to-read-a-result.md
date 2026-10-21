@@ -13,7 +13,7 @@ next:
 
 # How to read a result
 
-A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "Inconclusive: no reply". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". A missing reply is Inconclusive, never Unsupported.
+A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "TEST FAILURE: no reply to an attempted query". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". A probe that was not attempted is TEST TODO; an attempted probe without a result is TEST FAILURE.
 
 ## Supported and Unsupported: verified in …
 
@@ -27,27 +27,27 @@ Supported: the effect happened. Unsupported: the same kind of check showed it di
 
 ## "Corrected after review"
 
-A program does not judge pictures, so every screenshot result is recorded as "Inconclusive: the screenshots alone do not settle it". A reviewer compares the two frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.
+A program does not judge pictures, so every screenshot result is recorded as TEST TODO until a reviewer decides whether the screenshots establish support. A reviewer compares the two frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.
 
-## Inconclusive
+## Untestable, TEST TODO and TEST FAILURE
 
-Inconclusive means we could not tell, not that the feature failed.
+**Untestable** means a reviewer established that this context cannot expose the feature. **TEST TODO** means no attempt established a result. **TEST FAILURE** means an attempt did not establish Supported or Unsupported; it says the test failed, not that the feature failed.
 
-- **Inconclusive: no reply** and **Inconclusive: no reply in time** — the terminal may not know the query, or may ignore it.
-- **Inconclusive: the reply was not in the expected form** — we do not grade a reply we cannot parse.
-- **Inconclusive: the terminal refused permission** — it said no at run time, such as a denied clipboard read.
-- **Inconclusive: we did not send it** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
-- **Inconclusive: the terminal accepted it, but nothing visible changed** — the terminal kept working, but we saw no effect to grade. An ignored sequence also keeps working, so this cannot tell acting from ignoring.
-- **Inconclusive: what we saw does not settle it** — a reply, measurement or engine state was recorded, but proves nothing either way.
-- **Inconclusive: the screenshots alone do not settle it** — the screenshots were taken, but no reviewer has confirmed the effect in them; see "Corrected after review" above.
+- **TEST FAILURE: no reply** or **TEST FAILURE: no reply in time** — the query was attempted, but no result arrived before the deadline.
+- **TEST FAILURE: the reply was not in the expected form** — we do not grade a reply we cannot parse.
+- **TEST FAILURE: the terminal refused permission** — it said no at run time, such as a denied clipboard read.
+- **TEST TODO: the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
+- **TEST FAILURE: the terminal accepted the query, but nothing visible changed** — the terminal kept working, but we saw no effect to grade. An ignored sequence also keeps working, so this cannot tell acting from ignoring.
+- **TEST FAILURE: the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.
+- **TEST TODO: screenshots await review** — the screenshots were taken, but no reviewer has confirmed the effect in them; see "Corrected after review" above.
 
 ## No grade
 
-- **Not graded: old result, kept without evidence** — a pass/fail from before we kept evidence; it cannot be graded now.
-- **Probe error: our test failed** — nothing about the terminal.
-- **Not tested: no semantic observable** — the probe ran and retained a trace, but this target exposes no way to measure the feature. A named coverage record says which observable is missing; it is not a failed probe or a support claim.
-- **Not tested: not in this run** — no measurement or named coverage record exists for this feature, for example because its probe came later. This is different from a probe that ran without a semantic observable, and from a deliberate skip. Neither kind of not-tested coverage means Unsupported.
-- **No result: no reviewed run for this terminal yet** — see [Contribute a run](/how-it-works/contribute-a-run).
+- **TEST TODO: no reviewed evidence** — an old result without evidence does not establish a current status.
+- **TEST FAILURE: the test did not complete** — this describes the attempt, not the terminal.
+- **Untestable** — a reviewer confirmed this context has no observable that can measure the feature; the reviewed reason names what is unavailable.
+- **TEST TODO** — no attempt or reviewed impossibility record covers this feature in the selected run. This does not mean Unsupported.
+- **TEST TODO: no reviewed run for this terminal yet** — see [Contribute a run](/how-it-works/contribute-a-run).
 
 ## Review history
 

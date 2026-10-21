@@ -159,7 +159,7 @@ function barSegmentItems(backendName, segment) {
       const note = n[id]
       items.push(item('✗', note))
     } else if (segment === 'remainder' && (state === 'error' || state === 'untested')) {
-      items.push(item(state === 'error' ? '!' : '·', state === 'error' ? 'error' : 'untested'))
+      items.push(item(state === 'error' ? '!' : '·', state === 'error' ? 'TEST FAILURE' : 'TEST TODO'))
     }
   }
   return items
@@ -167,9 +167,9 @@ function barSegmentItems(backendName, segment) {
 
 const barSegments = [
   { id: 'yes', label: 'Supported' },
-  { id: 'partial', label: 'Inconclusive' },
+  { id: 'partial', label: 'Untestable' },
   { id: 'fail', label: 'Unsupported' },
-  { id: 'remainder', label: 'Error / untested' },
+  { id: 'remainder', label: 'TEST FAILURE / TEST TODO' },
 ]
 
 function segmentWidth(name, segment) {
@@ -200,7 +200,7 @@ function barWidth(backendName, segment) {
 
 function scoreLabel(backendName) {
   const bar = data.releaseBars[backendName]
-  if (!bar) return 'No conclusive score'
+  if (!bar) return 'No score'
   // The D3 verdict (pass / with gaps / fail) over the included 52 leads, with its fraction; the
   // measured-62 SUPPORTED share follows as the secondary, differently-denominated readout.
   const verdict = data.releaseVerdicts[backendName]
@@ -274,7 +274,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Inconclusive</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">Error / untested</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">TEST FAILURE / TEST TODO</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -330,7 +330,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} conclusive` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} results with a recorded Supported or Unsupported value` }}</span>
       </div>
     </div>
   </a>
@@ -438,7 +438,7 @@ function backendTooltip(name, version) {
         <span class="baseline-backend-bar">
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} conclusive` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].yes}/${data.baselineStats[b.name][bl].total} results with a recorded Supported or Unsupported value` }}</span>
       </div>
     </div>
   </a>
@@ -572,7 +572,7 @@ function backendTooltip(name, version) {
 Data comes from three complementary sources:
 
 **Terminal Applications** — measured in a particular app and environment. On an ordinary terminal,
-the community CLI runs reviewed queries; checks that change terminal state remain inconclusive
+the community CLI runs reviewed queries; checks that change terminal state remain TEST TODO until a safe environment is approved
 until a verified disposable test environment is available. Rendering and interaction require
 their own evidence, such as screenshots and input tests; a reply alone proves neither.
 

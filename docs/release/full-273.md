@@ -68,7 +68,7 @@ This page scores the live tree suite against the runs that exist today. It is no
   <p>
     Run <code>{{ row.run.runId }}</code> &middot; suite <code>{{ row.run.suiteId }}</code> &middot; {{ row.run.version }} &middot; selected by the {{ row.run.selection }}.
     {{ row.result.excluded.length }} rows are named and excluded from this denominator; their original observations are retained below.
-    Not decisive: {{ row.result.counts.inconclusive }} inconclusive &middot; {{ row.result.counts.error }} error &middot; {{ row.result.counts.untested }} untested.
+    Other statuses: {{ row.result.counts.inconclusive }} Untestable &middot; {{ row.result.counts.untested }} TEST TODO &middot; {{ row.result.counts.error }} TEST FAILURE.
     Each measured row uses the existing evidence cell; reviewed evidence opens its document, while unreviewed/withdrawn evidence is labelled.
   </p>
   <table>
@@ -83,7 +83,7 @@ This page scores the live tree suite against the runs that exist today. It is no
         <td>{{ group.ceiling }}</td>
         <td>
           <template v-if="group.verdict">{{ group.included ? 'included' : 'not included' }}</template><template v-else>every row excluded</template>
-          <template v-if="group.verdict && !group.included"> &mdash; {{ group.counts.inconclusive }} inconclusive, {{ group.counts.error }} error, {{ group.counts.untested }} untested</template>
+          <template v-if="group.verdict && !group.included"> &mdash; {{ group.counts.inconclusive }} Untestable, {{ group.counts.untested }} TEST TODO, {{ group.counts.error }} TEST FAILURE</template>
         </td>
       </tr>
     </tbody>

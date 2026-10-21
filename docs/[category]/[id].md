@@ -77,9 +77,9 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> targets with conclusive results ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> displayed targets ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
-<p v-else class="feature-score">No conclusive results for this feature.</p>
+<p v-else class="feature-score">No Supported results among the displayed targets.</p>
 
 ## Terminal Applications
 

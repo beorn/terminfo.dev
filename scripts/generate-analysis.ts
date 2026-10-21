@@ -376,21 +376,23 @@ function generateTerminalAnalysis(
   // Score summary + baseline in one sentence
   if (failedBaselines.length === 0 && passedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among conclusive feature results, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among results with a recorded Supported or Unsupported value, with complete support for the measured baselines (${passedBaselines.join(", ")})`,
     )
   } else if (failedBaselines.length > 0) {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among conclusive feature results, with observed unsupported results in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among results with a recorded Supported or Unsupported value, with observed unsupported results in the ${failedBaselines.join(", ")} baseline${failedBaselines.length > 1 ? "s" : ""}`,
     )
   } else {
     parts.push(
-      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among conclusive feature results`,
+      `${stats.name} has <strong>${stats.pct}%</strong> support (${stats.yes}/${stats.total}) among results with a recorded Supported or Unsupported value`,
     )
   }
 
   // Ranking
   if (comparable) {
-    parts.push(`Ranks <strong>#${rank}</strong> of ${totalTerminals} targets with the same conclusive feature set`)
+    parts.push(
+      `Ranks <strong>#${rank}</strong> of ${totalTerminals} targets with the same set of results with a recorded Supported or Unsupported value`,
+    )
   }
 
   // Only include documented features (in features.json) in human-readable lists
@@ -470,7 +472,7 @@ function generateBaselineAnalysis(
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
-      `<strong>${perfect.length}</strong> of ${terminals.length} selected targets have conclusive support for every ${baselineMeta.label} feature`,
+      `<strong>${perfect.length}</strong> of ${terminals.length} selected targets have a recorded Supported result for every ${baselineMeta.label} feature`,
     )
   } else {
     parts.push(`Analysis awaiting verified measurements for the ${baselineMeta.label} baseline`)
@@ -479,7 +481,7 @@ function generateBaselineAnalysis(
   if (imperfect.length > 0) {
     const laggards = imperfect.slice(0, 3).map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} conclusive baseline features supported)`
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} baseline features with a recorded Supported or Unsupported value)`
     })
     parts.push(`Known unsupported results: ${laggards.join(", ")}`)
 
@@ -620,7 +622,9 @@ function generateStandardAnalysis(
 
   if (stdScores.length > 0) {
     const avgPct = Math.round(stdScores.reduce((sum, s) => sum + s.pct, 0) / stdScores.length)
-    parts.push(`Average support among conclusive tagged-feature results: <strong>${avgPct}%</strong>`)
+    parts.push(
+      `Average support among tagged-feature results with a recorded Supported or Unsupported value: <strong>${avgPct}%</strong>`,
+    )
   }
 
   const perfect = stdScores.filter((s) => s.complete && s.pct === 100)
@@ -672,7 +676,7 @@ function generateFeatureAnalysis(
   if (total === 0) {
     return {
       analysis:
-        "<p>Analysis awaiting verified measurements for this feature. No conclusive current result covers it.</p>",
+        "<p>Analysis awaiting verified measurements for this feature. No current result with a recorded Supported or Unsupported value covers it.</p>",
       date: "",
       changes: null,
     }
@@ -683,13 +687,15 @@ function generateFeatureAnalysis(
   // Support summary
   if (supported === total) {
     parts.push(
-      `Recorded checks report support in <strong>all ${total}</strong> conclusive measurements for this feature`,
+      `Recorded checks report support in <strong>all ${total}</strong> measurements with a recorded Supported value for this feature`,
     )
   } else if (supported === 0) {
-    parts.push(`No conclusive support among <strong>${total}</strong> measured targets`)
+    parts.push(
+      `No Supported results among <strong>${total}</strong> targets with a recorded Supported or Unsupported value`,
+    )
   } else {
     parts.push(
-      `Recorded checks report support for <strong>${supported}</strong> of <strong>${total}</strong> conclusively measured targets (${pct}%)`,
+      `Recorded checks report support for <strong>${supported}</strong> of <strong>${total}</strong> targets with a recorded Supported or Unsupported value (${pct}%)`,
     )
   }
 
@@ -741,7 +747,7 @@ function generateFrameworkAnalysis(
 
   if (terminals.some((s) => (s.baselineCompliance[baselineName]?.total ?? 0) > 0)) {
     parts.push(
-      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} selected targets have conclusive support for every required feature`,
+      `${fw.label} requires the ${baselineLabel} baseline — <strong>${compatible.length}</strong> of ${terminals.length} selected targets have recorded Supported result for every required feature`,
     )
   } else {
     parts.push(`${fw.label} requires the ${baselineLabel} baseline — support analysis awaiting verified measurements`)
@@ -755,7 +761,7 @@ function generateFrameworkAnalysis(
   if (incompatible.length > 0 && incompatible.length <= 5) {
     const laggards = incompatible.map((s) => {
       const baseline = s.baselineCompliance[baselineName]
-      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} conclusive baseline features supported)`
+      return `${s.name} (${baseline?.yes ?? 0}/${baseline?.total ?? 0} baseline features with a recorded Supported or Unsupported value)`
     })
     parts.push(`Known unsupported baseline results: ${laggards.join(", ")}`)
   }
@@ -869,7 +875,7 @@ function generateStandardsIndexAnalysis(
   const worst = stdAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest average support among conclusive tagged-feature checks: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
+      `Highest average support among tagged-feature checks with a recorded value: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
     )
   }
 
@@ -942,7 +948,7 @@ function generateFeaturesIndexAnalysis(
   const worst = catAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest observed average support among conclusive category checks: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
+      `Highest observed average support among category checks with a recorded value: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
     )
   }
 
@@ -954,7 +960,7 @@ function generateFeaturesIndexAnalysis(
 
   if (universalCount > 0) {
     parts.push(
-      `<strong>${universalCount}</strong> feature${universalCount === 1 ? "" : "s"} ${universalCount === 1 ? "has" : "have"} conclusive support in every selected target`,
+      `<strong>${universalCount}</strong> feature${universalCount === 1 ? "" : "s"} ${universalCount === 1 ? "has" : "have"} a recorded Supported result in every selected target`,
     )
   }
 
@@ -967,7 +973,7 @@ function generateFeaturesIndexAnalysis(
 
   if (zeroSupport > 0) {
     parts.push(
-      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} no conclusive support among targets that measured them`,
+      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} no Supported result among targets with a recorded value`,
     )
   }
 
@@ -1309,7 +1315,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (meta.historical || slugSeen.has(meta.slug)) continue
     output[`terminals/${meta.slug}`] = {
       analysis:
-        "<p>Analysis awaiting verified measurements. No conclusive current result is available for this terminal.</p>",
+        "<p>Analysis awaiting verified measurements. No current result with a recorded Supported or Unsupported value is available for this terminal.</p>",
       date: "",
       changes: null,
     }
@@ -1319,7 +1325,8 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
       if (key.startsWith("terminals/") && entry.probeCount === 0) continue // historical reference
       if (key.startsWith("terminals/")) continue // specific unmeasured message above
       output[key] = {
-        analysis: "<p>Analysis awaiting verified measurements. No conclusive current results are available.</p>",
+        analysis:
+          "<p>Analysis awaiting verified measurements. No current results with a recorded Supported or Unsupported value are available.</p>",
         date: "",
         changes: null,
       }

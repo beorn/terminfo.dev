@@ -1,12 +1,12 @@
 # Roadmap
 
-These are planned areas of work, not release dates or claims that untested features are supported. The [changelog](/changelog) records the current unpublished correction draft.
+These are planned areas of work, not release dates or claims that unmeasured features are Supported. The [changelog](/changelog) records the current unpublished correction draft.
 
 ## R1 — Trustworthy measurements
 
 Correct overstated results and terminal attribution, review controlled Linux Kitty and headless-engine evidence, and make each reported result's scope, method and available evidence inspectable. Keep site, API and CLI results tied to the same reviewed runs and explain corrections publicly. This release remains under review; its remaining evidence and reproduction gaps are named in the changelog.
 
-R1 does not add Mac or Windows app measurements, multiplexer implementation, new protocol families or automatic refresh. A missing or inconclusive measurement remains visible rather than becoming a support claim.
+R1 does not add Mac or Windows app measurements, multiplexer implementation, new protocol families or automatic refresh. Missing attempts remain TEST TODO; failed attempts remain TEST FAILURE; neither becomes a support claim.
 
 ## R2 — Everyday interactions
 

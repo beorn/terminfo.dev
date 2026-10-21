@@ -31,7 +31,7 @@ function termTooltip(label, description, type, url) {
   return parts.join('\n') || label
 }
 
-// Only opposing results in the jointly conclusive, same-method cohort establish a difference.
+// Only opposing results with a recorded value, measured by the same method, establish a difference.
 const onlyAFeatures = []
 const onlyBFeatures = []
 for (const cat of categories) {
@@ -55,7 +55,7 @@ for (const cat of categories) {
 <p class="compare-subtitle">Side-by-side selected terminal observations</p>
 
 <p v-if="p.comparableScope === 'true'" class="compare-scope">
-  Counts use jointly conclusive results from matching recorded contexts, suites and methods. Other environment differences may remain.
+  Counts use jointly measured results with a recorded Supported or Unsupported value from matching recorded contexts, suites and methods. Other environment differences may remain.
 </p>
 <p v-else class="compare-scope compare-scope--limited">
   Recorded contexts or suites differ or are incomplete. Inspect each result below; no pairwise support difference is claimed.
@@ -70,8 +70,8 @@ for (const cat of categories) {
     </a>
     <p class="compare-context"><strong>{{ p.termAVersion }}</strong> · {{ p.termAKind }} · {{ p.termAOs }} {{ p.termAOsVersion }}</p>
     <div v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-score">{{ p.supportedA }}/{{ p.jointConclusive }}</div>
-    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features measured conclusively by the same method' : 'supported on shared features measured by the same method' }}</div>
-    <div v-else class="compare-detail">This run: {{ p.termAPass }} supported of {{ p.termATotal }} conclusive observations</div>
+    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features have comparable Supported or Unsupported results from the same method' : 'supported on shared features measured by the same method' }}</div>
+    <div v-else class="compare-detail">This run: {{ p.termAPass }} supported of {{ p.termATotal }} results with a recorded Supported or Unsupported value</div>
     <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termAConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termAPermissions }}</dd>
@@ -87,8 +87,8 @@ for (const cat of categories) {
     </a>
     <p class="compare-context"><strong>{{ p.termBVersion }}</strong> · {{ p.termBKind }} · {{ p.termBOs }} {{ p.termBOsVersion }}</p>
     <div v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-score">{{ p.supportedB }}/{{ p.jointConclusive }}</div>
-    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features measured conclusively by the same method' : 'supported on shared features measured by the same method' }}</div>
-    <div v-else class="compare-detail">This run: {{ p.termBPass }} supported of {{ p.termBTotal }} conclusive observations</div>
+    <div v-if="p.comparableScope === 'true'" class="compare-detail">{{ p.jointConclusive === '0' ? 'No shared features have comparable Supported or Unsupported results from the same method' : 'supported on shared features measured by the same method' }}</div>
+    <div v-else class="compare-detail">This run: {{ p.termBPass }} supported of {{ p.termBTotal }} results with a recorded Supported or Unsupported value</div>
     <details class="compare-run-details"><summary>Run details</summary><dl class="compare-context-details">
       <dt>Configuration</dt><dd>{{ p.termBConfig }}</dd>
       <dt>Permissions</dt><dd>{{ p.termBPermissions }}</dd>
@@ -99,7 +99,7 @@ for (const cat of categories) {
   </div>
 </div>
 
-<p v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured conclusively by the same method</p>
+<p v-if="p.comparableScope === 'true' && p.jointConclusive !== '0'" class="compare-diff-summary">{{ p.differ }} differences among {{ p.jointConclusive }} shared features measured by the same method</p>
 
 ## Feature Comparison
 

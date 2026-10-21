@@ -10,7 +10,7 @@ Machine-readable terminal compatibility data -- the terminal equivalent of [MDN 
 
 **`GET /api/v1/data.json`**
 
-Returns the v1 compatibility projection as a single JSON file. Only reviewed, conclusive current results appear. An absent terminal or feature means this response has no qualified result for it; absence is not a negative result. [Measurement methods](/contribute#what-a-probe-can-establish) explain what each observation can establish.
+Returns the v1 compatibility projection as a single JSON file. Only reviewed current results with a recorded Supported or Unsupported value appear. An absent terminal or feature means this response has no qualified result for it; absence is not a negative result. [Measurement methods](/contribute#what-a-probe-can-establish) explain what each observation can establish.
 
 [View raw data](/api/v1/data.json)
 
@@ -61,7 +61,7 @@ Color coding:
 }
 ```
 
-This empty-results example matches a build with no selectable reviewed runs. When one is available, `terminals` and `results` gain its slug; `notes` remains optional per feature. The existing v1 score object keeps its meaning: `total` is the number of reported yes/no feature results, `pass` counts yes, and `pct` is `pass / total`. Unknown, inconclusive and error observations are omitted, so coverage belongs in v2. Collector note text appears only after an exact evidence-presentation review; a reviewed correction note remains available without that decision. The methodology record announces this note correction, and the release packet counts the removed notes per target.
+This empty-results example matches a build with no selectable reviewed runs. When one is available, `terminals` and `results` gain its slug; `notes` remains optional per feature. The existing v1 score object keeps its meaning: `total` is the number of reported yes/no feature results, `pass` counts yes, and `pct` is `pass / total`. Other five-state results are omitted, so coverage belongs in v2. Collector note text appears only after an exact evidence-presentation review; a reviewed correction note remains available without that decision. The methodology record announces this note correction, and the release packet counts the removed notes per target.
 
 ### Top-level Fields
 
@@ -72,7 +72,7 @@ This empty-results example matches a build with no selectable reviewed runs. Whe
 | `methodology` | `object` | Revision, v2 and methods links, and each v1 row's chosen context and run SHA |
 | `features`    | `object` | Feature definitions keyed by dot-path ID                                     |
 | `terminals`   | `object` | Terminal metadata keyed by slug                                              |
-| `results`     | `object` | Conclusive support results: `terminal_slug -> feature_id -> "yes" \| "no"`   |
+| `results`     | `object` | Supported or Unsupported results: `terminal_slug -> feature_id -> "yes" \| "no"`   |
 | `notes`       | `object` | Optional reviewed notes: `terminal_slug -> feature_id -> note_text`          |
 
 ### Feature Object
@@ -94,7 +94,7 @@ This empty-results example matches a build with no selectable reviewed runs. Whe
 | `type`        | `string`    | `"app"` (real terminal) or `"headless"` (parser library); multiplexers are in v2 |
 | `platforms`   | `string[]?` | Tested platforms: `macos`, `linux`, `windows`                                    |
 | `url`         | `string?`   | Terminal homepage                                                                |
-| `score.total` | `number`    | Conclusive yes/no feature results reported in v1                                 |
+| `score.total` | `number`    | yes/no feature results reported in v1                                 |
 | `score.pass`  | `number`    | Features passing                                                                 |
 | `score.pct`   | `number`    | Pass percentage (0-100)                                                          |
 
@@ -105,7 +105,7 @@ This empty-results example matches a build with no selectable reviewed runs. Whe
 ```javascript
 const data = await fetch("https://terminfo.dev/api/v1/data.json").then((r) => r.json())
 
-// "yes", "no", or undefined when this context has no conclusive result.
+// "yes", "no", or undefined when this context has no result with a recorded Supported or Unsupported value.
 const support = data.results["ghostty"]?.["extensions.kitty-keyboard"]
 if (support === undefined) console.log("No qualified current result")
 ```
@@ -143,11 +143,11 @@ if (terminal) {
 
 **`GET /api/v2/data.json`** is the index of exact-context runs. `current` is keyed by target context, so an app, its headless parser and a multiplexer stay separate. `versions` keeps selectable versions; `history` keeps older and excluded runs, including ungraded legacy observations. All three sections contain run references with the same shape. `exclusions` explains why a run was not selected without publishing internal source paths. Receipt refusals use stable `ownership-*` codes (or `windows-hosted-receipt-required`); private diagnostic detail and unverified copied launch identity are omitted. Unexpected receipt I/O or implementation faults fail generation instead of becoming exclusions. Multiplexer runs are admitted through the same identity table as apps: `tmux` and `screen` carry their own rules, resolving the mux name and version from the mux's own protocol reply — tmux from a complete XTVERSION `tmux <version>`, Screen from its DA2 version encoding plus DA1 — never from `TERM` or an app-relayed hint. A run whose terminal id has no rule is refused with `identity-no-profile`; a mux run with a rule but no matching measured identity is refused with `identity-replies-mismatch`, and missing platform, attachment or outer-app proof is refused by its named `mux-*` or `outer-app-*` code.
 
-Each reference contains `runId`, `target`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suiteRelation`, `suite` (observed and expected probe counts), `sourceRevision`, `sha256`, `counts`, `url` and `documentSha256`. Counts distinguish catalog, tested, not tested, conclusive, supported and unsupported features. The run document at `url` contains the full selected run: its metadata, `cells`, compatibility `v1` values, and reviews. Cells retain the four outcomes (`supported`, `unsupported`, `inconclusive`, `error`), their measurement method, reason when recorded, and provenance.
+Each reference contains `runId`, `target`, `measuredAt`, `suiteId`, `probeHash`, `suiteFreshness`, `suiteRelation`, `suite` (observed and expected probe counts), `sourceRevision`, `sha256`, `counts`, `url` and `documentSha256`. Counts distinguish catalog features, completed attempts, TEST TODO, results with a recorded value, Supported and Unsupported. The run document at `url` contains the full selected run: its metadata, `cells`, compatibility `v1` values, and reviews. Cells retain original historical values and provenance; the rendered result uses Supported, Unsupported, Untestable, TEST TODO or TEST FAILURE.
 
 `suiteRelation` is the machine fact: `release` when the run was measured on the release scope's frozen suite, `tree` when it was measured on the live build's suite, `older` otherwise, and `partial` when the run is incomplete. `suiteFreshness` is its display label — `release suite <id>`, `tree suite <hash>`, `older suite (<n> probes)`, or `partial (<n> of <m> probes)`. The release suite and the build's tree suite are named separately and never conflated; earlier references from before that split read `current suite` for a run on the live tree suite, and a consumer that matched that string must now read `suiteRelation`.
 
-`suite.observed` counts measured outcomes plus named not-tested coverage, so a complete run with coverage notes is not labeled partial. The additive `notTestedCoverage` field names the subset of not-tested features whose probe ran and retained a nonempty raw trace, but for which this environment exposes no applicable observable (`reason: "no-semantic-observable"`, with a specific `noObservable` description). `counts.notTested` still counts every catalog feature without a measured outcome, and a feature never appears in both `cells` and `notTestedCoverage`. Compatibility limit: a v2 parser that recomputes suite completeness from observations alone rejects a run carrying named coverage, even though the key is optional, so new runs are admitted only by the updated parser. Previously stored runs and the four public cell outcomes are unchanged.
+`suite.observed` counts measured outcomes plus named coverage records, so a complete run with coverage notes is not labeled partial. The additive `notTestedCoverage` field names the subset of features whose probe ran and retained a nonempty raw trace, but for which this environment exposes no applicable observable (`reason: "no-semantic-observable"`, with a specific `noObservable` description). `counts.notTested` still counts every catalog feature without a measured outcome, and a feature never appears in both `cells` and `notTestedCoverage`. Compatibility limit: a v2 parser that recomputes suite completeness from observations alone rejects a run carrying named coverage, even though the key is optional, so new runs are admitted only by the updated parser. Previously stored raw values are unchanged; reader labels use the five statuses above.
 
 Run URLs have the form `/api/v2/runs/<sha256>.json`, using the raw run's SHA-256 identity. Reviewed interpretations can change the public document bytes without changing that raw identity or URL. Verify the exact response bytes against `documentSha256`, then check `sha256` and `runId` against the reference before using the document. A failed fetch, digest or identity check is an error, not missing observations. Keep the index and its verified documents together when archiving a result; a later deployment can replace the public interpretation at the same URL. v1 remains the single-request compatibility summary.
 

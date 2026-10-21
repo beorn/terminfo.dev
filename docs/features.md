@@ -157,7 +157,7 @@ In practice, control sequences use the 7-bit form starting with `ESC` (byte `0x1
     <p v-if="categoryMeta[cat]?.tagline" class="category-tagline">{{ categoryMeta[cat]?.tagline }}</p>
     <div v-if="topTerminals(cat).length > 0" class="category-top">
       <span class="category-top-label">Top:</span>
-      <span v-for="(t, i) in topTerminals(cat)" :key="t.name" class="category-top-terminal">{{ t.name }} ({{ t.yes }}/{{ t.total }} conclusive, {{ t.pct }}%)<span v-if="i < topTerminals(cat).length - 1">, </span></span>
+      <span v-for="(t, i) in topTerminals(cat)" :key="t.name" class="category-top-terminal">{{ t.name }} ({{ t.yes }}/{{ t.total }} Supported or Unsupported results, {{ t.pct }}%)<span v-if="i < topTerminals(cat).length - 1">, </span></span>
     </div>
   </a>
 </div>
@@ -274,7 +274,7 @@ For **terminal applications**, query probes record replies such as cursor positi
 
 For **headless backends**, [Termless](https://termless.dev) sends sequences and checks replies or programmatic terminal state. These assertions can verify cell contents, attributes or cursor behavior. A PNG drawn from that state illustrates the grid; it does not capture the terminal app’s renderer.
 
-The methods complement each other. Missing observations remain not tested; silence and policy refusal remain inconclusive. Permissions and intermediaries such as multiplexers are part of the measurement context.
+The methods complement each other. Missing observations are TEST TODO; an attempted probe without a result is TEST FAILURE; a reviewed inability to measure is Untestable. Permissions and intermediaries such as multiplexers are part of the measurement context.
 
 ---
 
