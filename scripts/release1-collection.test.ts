@@ -693,45 +693,51 @@ describe("release 1 Linux launcher flags", () => {
     expect(bar.run.suiteId).toBe(frozenSuiteIdFor(CONTENT, "candidate2"))
   }, 30_000)
 
-  // linuxLedger reads the whole committed corpus, which grows with every admitted run, so this row carries the
-  // budget the corpus-reading consumer-selection rows use (CI took 5054 ms against the 5000 ms default).
+  // The preceding parity test owns the complete corpus. Launcher readback needs only these five
+  // committed historical witnesses; projecting the corpus twice can exceed the 3 GiB worker cap.
   it("reads the five Linux invocations back from the committed runs in the corpus", () => {
-    // Retiring the old freeze preference leaves multiple current Kitty profiles. Refuse the
-    // real ambiguity before exercising launcher readback on an explicit historical witness.
-    const ambiguous = buildReport({ contentDir: CONTENT }).barRows.find(
-      (row) => row.context.os === "linux" && !row.measured && row.reason.includes("ambiguous current selection"),
-    )
-    const liveLedger = ambiguous ? undefined : linuxLedger(CONTENT)
-    if (ambiguous) {
-      expect(() => linuxLedger(CONTENT)).toThrow(
-        new RegExp(`${ambiguous.context.terminalId}/linux:.*more than one run.*refusing to guess`),
-      )
-    }
     const fixture = mkdtempSync(join(tmpdir(), "release1-historical-launchers-"))
     const historicalSuite = vi.spyOn(versions, "probeHash").mockReturnValue("c3d1fbb77561")
     try {
-      for (const name of readdirSync(CONTENT)) {
-        if (name !== "suites") symlinkSync(join(CONTENT, name), join(fixture, name))
+      for (const dir of ["suites", "probes-apps", "probes-libs", "probes-mux", "receipts"]) {
+        mkdirSync(join(fixture, dir))
       }
-      mkdirSync(join(fixture, "suites"))
-      for (const name of readdirSync(join(CONTENT, "suites"))) {
-        const path = join(CONTENT, "suites", name)
-        const manifest = { ...parseSuiteManifest(path, readFileSync(path, "utf8")) }
-        delete manifest.freeze
-        // Restore only the historical fixture's declaration, as committed at d7c37731.
-        if (name === "c3d1fbb77561.json") {
-          manifest.freeze = { release: "candidate2", at: "2026-10-12T03:33:42.000Z" }
-        }
-        writeFileSync(join(fixture, "suites", name), JSON.stringify(manifest))
+      // Artifact verification reads only digests cited by these runs, never enumerates this store.
+      for (const name of ["features.json", "artifacts"]) symlinkSync(join(CONTENT, name), join(fixture, name))
+      const path = join(CONTENT, "suites", "c3d1fbb77561.json")
+      const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
+      writeFileSync(
+        join(fixture, "suites", "c3d1fbb77561.json"),
+        JSON.stringify({ ...manifest, freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" } }),
+      )
+      const featureIds = Object.keys(catalog.loadFeatures(CONTENT))
+      for (const file of [
+        "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json",
+        "ghostty-1.3.1-linux-41614cad72c1968c6805dc8e6308f650.json",
+        "wezterm-0-unstable-2026-09-17-linux-0a1528649d6b1009e785138128d3c606.json",
+        "alacritty-0.17.0-linux-1040d1b4714d3d8edd5ec7ef7fbdcf70.json",
+        "xterm-411-linux-72e684384d32131d0569dd81722a6eae.json",
+      ]) {
+        const source = join(CONTENT, "probes-apps", file)
+        const run = parseRun(
+          source,
+          readFileSync(source, "utf8"),
+          featureIds,
+          new Map([[manifest.probeHash, manifest]]),
+        )
+        symlinkSync(source, join(fixture, "probes-apps", file))
+        const receipt = `${run.runId}.json`
+        symlinkSync(join(CONTENT, "receipts", receipt), join(fixture, "receipts", receipt))
       }
-      // Every measured run and policy remains byte-identical to the complete committed corpus.
+      // Raw runs, receipts and artifact bytes stay committed. Current optional policy refers to
+      // newer contexts, so it belongs only to the real-corpus parity test, not these witnesses.
       const ledger = linuxLedger(fixture)
       expect(ledger.kitty?.runId).toBe("dfd4cd08416fb5f3be3eaeed5acce782")
       expect(Object.keys(ledger).sort()).toEqual(["alacritty", "ghostty", "kitty", "wezterm", "xterm"])
       // Every assertion here is a property of the READ-BACK, not of today's corpus: which run the site
       // selects changes as clean runs land (alacritty and wezterm linux moved from excluded to selected
       // while this change was in flight), so a test that pinned that would fail for a non-regression.
-      for (const [id, row] of [...Object.entries(ledger), ...Object.entries(liveLedger ?? {})]) {
+      for (const [id, row] of Object.entries(ledger)) {
         expect(row.version).not.toBe("")
         expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
         expect(existsSync(join(CONTENT, row.file))).toBe(true)
