@@ -761,8 +761,12 @@ export function decrpmModeProbe(
 export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeResult {
   return (ctx) => {
     ctx.feed(`\x1b[?${modeNum}h`)
+    // Read the adapter's mode view BEFORE the query: vt100's private-CSI handler takes any final byte
+    // other than `h` as a reset, so `CSI ? 1 $ p` clears DECCKM there and a getMode read after the
+    // query reports the mode already reset (@dev/2 review flag, 2026-10-21).
+    const mode = modeName === undefined ? undefined : ctx.getMode(modeName)
     const reply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
-    const state = modeName === undefined ? { reply } : { reply, mode: ctx.getMode(modeName) }
+    const state = modeName === undefined ? { reply } : { reply, mode }
     ctx.feed(`\x1b[?${modeNum}l`)
     const status = decrpmStatus(decrpmReplyPattern(modeNum).exec(reply)?.[1])
     if (status === null) {

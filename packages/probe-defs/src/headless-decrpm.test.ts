@@ -113,6 +113,27 @@ test.each(features)(
   },
 )
 
+test.each(features.filter((feature) => feature.mode !== null))(
+  "$id reads the adapter's mode before the DECRQM query, which vt100 parses as a reset",
+  ({ id, number }) => {
+    const order: string[] = []
+    const base = context(`\x1b[?${number};1$y`, true, [], [])
+    const probe = {
+      ...base,
+      feedCapture: (text: string) => {
+        order.push("query")
+        return base.feedCapture(text)
+      },
+      getMode: () => {
+        order.push("getMode")
+        return true
+      },
+    } as unknown as TermlessContext
+    headless(id)(probe)
+    expect(order, id).toEqual(["getMode", "query"])
+  },
+)
+
 test("one DECRPM reading serves the app query, the ANSI query and the headless arm", () => {
   expect(decrpmStatus("1")).toBe("set")
   expect(decrpmStatus("3")).toBe("set")
