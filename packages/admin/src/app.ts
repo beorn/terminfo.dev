@@ -13,7 +13,7 @@ import {
  * the full 128-probe set from the serve daemon.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -327,6 +327,11 @@ export interface AppLaunch {
   /** The cli-process launch record: the owner binary and the marker its live argv must still carry. */
   executablePath?: string
   marker?: ProcessMarker
+  diagnosticOutput?: {
+    stdoutPath: string
+    stderrPath: string
+    parentCloseErrors: string[]
+  }
 }
 
 /** In-memory spawn input only: inherited environment must never be retained or logged. */
@@ -370,14 +375,64 @@ export function prepareCliLaunch(appId: string, run: ProbeRun): PreparedCliLaunc
 }
 
 /** Spawn once; GUI ownership is resolved separately after the caller's readiness handshake. */
-export function launchPreparedCli(prepared: PreparedCliLaunch): AppLaunch {
-  const child = spawn(prepared.spawnPath, prepared.args, { detached: true, stdio: "ignore", env: prepared.env })
+export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirectory?: string): AppLaunch {
+  const parentCloseErrors: string[] = []
+  const closeParentFd = (fd: number): void => {
+    try {
+      closeSync(fd)
+    } catch (cause) {
+      parentCloseErrors.push(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+  function throwWithCleanupErrors(primary: unknown): never {
+    if (parentCloseErrors.length === 0) throw primary
+    const cleanupErrors = parentCloseErrors.map((message) => new Error(message))
+    throw new AggregateError(
+      [primary, ...cleanupErrors],
+      `CLI launch failed: ${primary instanceof Error ? primary.message : String(primary)}; parent descriptor close failed: ${parentCloseErrors.join("; ")}`,
+      { cause: primary },
+    )
+  }
+
+  const stdoutPath = diagnosticDirectory === undefined ? undefined : join(diagnosticDirectory, "app.stdout.log")
+  const stderrPath = diagnosticDirectory === undefined ? undefined : join(diagnosticDirectory, "app.stderr.log")
+  let stdoutFd: number | undefined
+  let stderrFd: number | undefined
+  if (stdoutPath !== undefined && stderrPath !== undefined) {
+    try {
+      stdoutFd = openSync(stdoutPath, "wx", 0o600)
+      stderrFd = openSync(stderrPath, "wx", 0o600)
+    } catch (primary) {
+      if (stdoutFd !== undefined) closeParentFd(stdoutFd)
+      throwWithCleanupErrors(primary)
+    }
+  }
+
+  let child: ChildProcess
+  try {
+    child = spawn(
+      prepared.spawnPath,
+      prepared.args,
+      stdoutFd === undefined || stderrFd === undefined
+        ? { detached: true, stdio: "ignore", env: prepared.env }
+        : { detached: true, stdio: ["ignore", stdoutFd, stderrFd], env: prepared.env },
+    )
+  } catch (primary) {
+    if (stdoutFd !== undefined) closeParentFd(stdoutFd)
+    if (stderrFd !== undefined) closeParentFd(stderrFd)
+    throwWithCleanupErrors(primary)
+  }
   child.unref()
+  if (stdoutFd !== undefined) closeParentFd(stdoutFd)
+  if (stderrFd !== undefined) closeParentFd(stderrFd)
   return {
     proc: child,
     identityPath: prepared.identityPath,
     executablePath: prepared.executablePath,
     marker: prepared.marker,
+    ...(stdoutPath === undefined || stderrPath === undefined
+      ? {}
+      : { diagnosticOutput: { stdoutPath, stderrPath, parentCloseErrors } }),
   }
 }
 

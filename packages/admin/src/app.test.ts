@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn } from "node:child_process"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { closeSync, mkdirSync, openSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp, launchPreparedCli, prepareCliLaunch, stopLaunchedApp, type AppLaunch } from "./app.ts"
@@ -33,8 +33,10 @@ import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 vi.mock("../../../scripts/admit-run.ts", () => ({ planAdmission: vi.fn(), admitRun: vi.fn() }))
 
 vi.mock("node:fs", () => ({
+  closeSync: vi.fn(),
   existsSync: vi.fn(() => true),
   mkdirSync: vi.fn(),
+  openSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
   writeFileSync: vi.fn(),
 }))
@@ -105,6 +107,8 @@ const receipt: AppLaunchReceipt = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  let nextDiagnosticFd = 100
+  vi.mocked(openSync).mockImplementation(() => nextDiagnosticFd++)
   vi.mocked(createProbeRun).mockReturnValue({
     id: "private-run",
     directory: "/private/run",
@@ -284,6 +288,8 @@ describe("Ghostty cli-process arm", () => {
       ["--config-file", "/private/run/ghostty-private-run", "-e", "/private/run/serve.sh"],
       { detached: true, stdio: "ignore", env: expect.any(Object) },
     )
+    expect(openSync).not.toHaveBeenCalled()
+    expect(closeSync).not.toHaveBeenCalled()
     expect(findOwnedDaemon).toHaveBeenCalledWith("private-run", expect.any(String), "ghostty")
     expect(resolveOwnedProcessByMarker).toHaveBeenCalledWith({
       executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
@@ -304,6 +310,110 @@ describe("Ghostty cli-process arm", () => {
       },
     })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
+  })
+
+  test("returns the spawned child and records a failed first descriptor close while attempting both closes", () => {
+    const child = { unref: vi.fn() }
+    vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>)
+    vi.mocked(openSync).mockReturnValueOnce(101).mockReturnValueOnce(102)
+    vi.mocked(closeSync)
+      .mockImplementationOnce(() => {
+        throw new Error("stdout parent close failed")
+      })
+      .mockImplementationOnce(() => {})
+
+    const prepared = prepareCliLaunch("ghostty", {
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+    const launched = launchPreparedCli(prepared, "/private/run")
+
+    expect(openSync).toHaveBeenNthCalledWith(1, "/private/run/app.stdout.log", "wx", 0o600)
+    expect(openSync).toHaveBeenNthCalledWith(2, "/private/run/app.stderr.log", "wx", 0o600)
+    expect(spawn).toHaveBeenCalledWith(prepared.spawnPath, prepared.args, {
+      detached: true,
+      stdio: ["ignore", 101, 102],
+      env: prepared.env,
+    })
+    expect(closeSync).toHaveBeenNthCalledWith(1, 101)
+    expect(closeSync).toHaveBeenNthCalledWith(2, 102)
+    expect(launched).toMatchObject({
+      proc: child,
+      identityPath: prepared.identityPath,
+      executablePath: prepared.executablePath,
+      marker: prepared.marker,
+      diagnosticOutput: {
+        stdoutPath: "/private/run/app.stdout.log",
+        stderrPath: "/private/run/app.stderr.log",
+        parentCloseErrors: ["stdout parent close failed"],
+      },
+    })
+  })
+
+  test("does not spawn after a partial diagnostic-file open and preserves both open and close errors", () => {
+    const openError = new Error("stderr open failed")
+    const closeError = new Error("stdout parent close failed")
+    vi.mocked(openSync)
+      .mockReturnValueOnce(201)
+      .mockImplementationOnce(() => {
+        throw openError
+      })
+    vi.mocked(closeSync).mockImplementationOnce(() => {
+      throw closeError
+    })
+    const prepared = prepareCliLaunch("ghostty", {
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+
+    let failure: unknown
+    try {
+      launchPreparedCli(prepared, "/private/run")
+    } catch (cause) {
+      failure = cause
+    }
+
+    expect(spawn).not.toHaveBeenCalled()
+    expect(closeSync).toHaveBeenCalledExactlyOnceWith(201)
+    expect(failure).toBeInstanceOf(AggregateError)
+    expect((failure as AggregateError).errors[0]).toBe(openError)
+    expect((failure as AggregateError).errors[1]).toMatchObject({ message: closeError.message })
+    expect((failure as Error & { cause?: unknown }).cause).toBe(openError)
+  })
+
+  test("preserves a synchronous spawn error and both descriptor-close outcomes", () => {
+    const spawnError = new Error("spawn failed")
+    const closeError = new Error("stdout parent close failed")
+    vi.mocked(openSync).mockReturnValueOnce(301).mockReturnValueOnce(302)
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      throw spawnError
+    })
+    vi.mocked(closeSync)
+      .mockImplementationOnce(() => {
+        throw closeError
+      })
+      .mockImplementationOnce(() => {})
+    const prepared = prepareCliLaunch("ghostty", {
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/serve.sh",
+    })
+
+    let failure: unknown
+    try {
+      launchPreparedCli(prepared, "/private/run")
+    } catch (cause) {
+      failure = cause
+    }
+
+    expect(closeSync).toHaveBeenNthCalledWith(1, 301)
+    expect(closeSync).toHaveBeenNthCalledWith(2, 302)
+    expect(failure).toBeInstanceOf(AggregateError)
+    expect((failure as AggregateError).errors[0]).toBe(spawnError)
+    expect((failure as AggregateError).errors[1]).toMatchObject({ message: closeError.message })
+    expect((failure as Error & { cause?: unknown }).cause).toBe(spawnError)
   })
 })
 

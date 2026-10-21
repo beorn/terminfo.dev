@@ -25,7 +25,13 @@ import {
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 
-vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true), writeFileSync: vi.fn(), readFileSync: vi.fn(() => "") }))
+vi.mock("node:fs", () => ({
+  closeSync: vi.fn(),
+  existsSync: vi.fn(() => true),
+  openSync: vi.fn(() => 100),
+  writeFileSync: vi.fn(),
+  readFileSync: vi.fn(() => ""),
+}))
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(() => "2.15\n"),
   execSync: vi.fn(() => "2.15\n"),
