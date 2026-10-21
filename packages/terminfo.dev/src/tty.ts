@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { openSync } from "node:fs"
 import { WriteStream } from "node:tty"
 import type { TerminalQueryOutcome, Utf8DecodingReading } from "@terminfo/probe-defs"
-import { decrpmReplyPattern, decrpmStatus } from "@terminfo/probe-defs"
+import { decrpmReplyPattern, decrpmStatus, readSentinelReply } from "@terminfo/probe-defs"
 
 /**
  * TTY utilities — raw mode, response reading, escape sequence I/O.
@@ -159,15 +159,16 @@ function matchResponse(
       if (settled) return
       chunks.push(Buffer.from(chunk))
       buf = Buffer.concat(chunks).toString()
-      const match = buf.match(pattern)
       if (!sentinel) {
+        const match = buf.match(pattern)
         if (match) finish([...match], "reply")
         return
       }
-      const end = buf.search(/\x1b\[\?[0-9;]+c/)
-      if (end < 0) return
-      if (match && (match.index ?? 0) < end) {
-        finish([...match], "reply")
+      // The headless collector reads its captures with this same rule (#30554).
+      const read = readSentinelReply(buf, pattern)
+      if (read.kind === "pending") return
+      if (read.kind === "reply") {
+        finish(read.match, "reply")
         return
       }
       // DA1 answered and no reply preceded it. Keep reading for the grace window: a reply inside it
@@ -177,7 +178,7 @@ function matchResponse(
       sentinelFacts ??= { atMs: Date.now() - writeAt, graceMs }
       clearTimeout(timer)
       timer = setTimeout(() => finish(null, "sentinel", sentinelFacts), graceMs)
-      if (match) finish([...match], "reply", sentinelFacts)
+      if (read.match) finish(read.match, "reply", sentinelFacts)
     }
 
     const startTimer = () => {

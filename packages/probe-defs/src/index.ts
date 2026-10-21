@@ -66,8 +66,10 @@ export {
   queryDecrpm,
   isBlank,
   readHyperlinkMetadata,
+  readSentinelReply,
   probe,
   utf8DecodingRefusal,
+  type SentinelRead,
 } from "./helpers.ts"
 export {
   beginCaptureLifecycle,

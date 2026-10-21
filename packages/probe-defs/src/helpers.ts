@@ -958,6 +958,30 @@ export function sentinelNegativeResult(
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
 export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"
 
+/** The DA1 answer that ends a sentinel query's reply, as the live collector has always matched it. */
+const DA1_ANSWER = /\x1b\[\?[0-9;]+c/
+
+/** What the bytes read so far say about a query that carried a DA1 sentinel. */
+export type SentinelRead =
+  | { kind: "pending"; match: string[] | null }
+  | { kind: "reply"; match: string[] }
+  | { kind: "answered"; match: string[] | null }
+
+/**
+ * F1 (27832) has one reading rule for both collectors (#30554, @cto 452bc032 condition 3). Until the
+ * DA1 answer arrives the read is `pending`; a frame ahead of it is a plain `reply` with no sentinel
+ * facts; once DA1 came first the read is `answered`, carrying any frame that followed it. The live
+ * collector applies this to every chunk; the headless member applies it once to its two captures.
+ */
+export function readSentinelReply(buffer: string, pattern: RegExp): SentinelRead {
+  const found = buffer.match(pattern)
+  const match = found ? [...found] : null
+  const end = buffer.search(DA1_ANSWER)
+  if (end < 0) return { kind: "pending", match }
+  if (match && (found?.index ?? 0) < end) return { kind: "reply", match }
+  return { kind: "answered", match }
+}
+
 /** Initialize actual work before preflight; a callback-only schedule cannot stand in for the catalogue. */
 export function initializeRunDraft(input: {
   runId: string
