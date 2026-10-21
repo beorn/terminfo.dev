@@ -119,8 +119,16 @@ test("an untracked package inside a parent repository refuses and names the path
 
 test("a package outside any Git checkout refuses and names the package", () => {
   const loose = checkout("loose", false)
-  expect(() => owningCheckout(loose.adapterPath, "@termless/xtermjs")).toThrow(/@termless\/xtermjs resolved to/)
-  expect(() => owningCheckout(loose.adapterPath, "@termless/xtermjs")).toThrow(/not inside a Git checkout/)
+  // A host TMPDIR can itself sit inside a checkout (/hh/var/s is under /hh), so Git's discovery stops at the fixture.
+  const ceiling = process.env.GIT_CEILING_DIRECTORIES
+  process.env.GIT_CEILING_DIRECTORIES = realpathSync(fixture)
+  try {
+    expect(() => owningCheckout(loose.adapterPath, "@termless/xtermjs")).toThrow(/@termless\/xtermjs resolved to/)
+    expect(() => owningCheckout(loose.adapterPath, "@termless/xtermjs")).toThrow(/not inside a Git checkout/)
+  } finally {
+    if (ceiling === undefined) delete process.env.GIT_CEILING_DIRECTORIES
+    else process.env.GIT_CEILING_DIRECTORIES = ceiling
+  }
 })
 
 test("both collection entry points take the checkout from this resolver", () => {
