@@ -593,3 +593,17 @@ test("semantic observables omitted in headless mode return notTested without fai
     expect(result.notTested?.reason).toBe("no-semantic-observable")
   }
 })
+
+// #30547: only a silent first readback selects review. A non-empty reply the parser cannot read keeps the colour-stack
+// rows' inconclusive no-response grade, and its raw reply is now retained (those rows carried callbackRaw null).
+test("a non-empty unparsed colour-stack readback stays inconclusive and retains its raw reply", () => {
+  const unparsed = "\x1b]10;not-a-colour\x07"
+  for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
+    const probe = extensionsProbes.find((p) => p.id === id)
+    if (!probe?.termless) throw new Error(`Missing ${id} headless arm`)
+    const result = probe.termless(headlessContext({ ...inertModel(), feedCapture: () => unparsed }))
+    expect(result.criterionBranch, id).toBeUndefined()
+    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "query", reason: "no-response" })
+    expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
+  }
+})

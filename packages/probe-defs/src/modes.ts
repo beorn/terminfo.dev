@@ -8,7 +8,16 @@ import type {
   TermlessContext,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
-import { probe, decrpmModeProbe, parserStateResult, notTestedResult, isBlank, queryAnsiMode } from "./helpers.ts"
+import {
+  probe,
+  decrpmModeProbe,
+  headlessDecrpmArm,
+  parserStateResult,
+  notTestedResult,
+  osInputReviewResult,
+  isBlank,
+  queryAnsiMode,
+} from "./helpers.ts"
 import { applicationKeypad, altScroll1007 } from "./input.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -829,16 +838,10 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // Bracketed paste
-  decrpmModeProbe("modes.bracketed-paste", 2004, (ctx) => {
-    ctx.feed("\x1b[?2004h")
-    return notTestedResult("input events", { mode: ctx.getMode("bracketedPaste") })
-  }),
+  decrpmModeProbe("modes.bracketed-paste", 2004, headlessDecrpmArm(2004, "bracketedPaste")),
 
   // Application cursor keys
-  decrpmModeProbe("modes.application-cursor", 1, (ctx) => {
-    ctx.feed("\x1b[?1h")
-    return notTestedResult("key events", { mode: ctx.getMode("applicationCursor") })
-  }),
+  decrpmModeProbe("modes.application-cursor", 1, headlessDecrpmArm(1, "applicationCursor")),
 
   // Auto wrap
   decrpmModeProbe("modes.auto-wrap", 7, (ctx) => {
@@ -871,16 +874,10 @@ export const modesProbes: ProbeDefinition[] = [
   }),
 
   // Mouse tracking
-  decrpmModeProbe("modes.mouse-tracking", 1000, (ctx) => {
-    ctx.feed("\x1b[?1000h")
-    return notTestedResult("mouse events", { mode: ctx.getMode("mouseTracking") })
-  }),
+  decrpmModeProbe("modes.mouse-tracking", 1000, headlessDecrpmArm(1000, "mouseTracking")),
 
   // Focus tracking
-  decrpmModeProbe("modes.focus-tracking", 1004, (ctx) => {
-    ctx.feed("\x1b[?1004h")
-    return notTestedResult("focus events", { mode: ctx.getMode("focusTracking") })
-  }),
+  decrpmModeProbe("modes.focus-tracking", 1004, headlessDecrpmArm(1004, "focusTracking")),
 
   // Reverse video
   decrpmModeProbe("modes.reverse-video", 5, (ctx) => {
@@ -1047,20 +1044,10 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // SGR mouse encoding
-  decrpmModeProbe("modes.mouse-sgr", 1006, (ctx) => {
-    ctx.feed("\x1b[?1006h")
-    const pass = ctx.getMode("sgrMouse") === true
-    ctx.feed("\x1b[?1006l")
-    return notTestedResult("encoded mouse events", { mode: pass })
-  }),
+  decrpmModeProbe("modes.mouse-sgr", 1006, headlessDecrpmArm(1006, "sgrMouse")),
 
   // All-motion mouse tracking
-  decrpmModeProbe("modes.mouse-all", 1003, (ctx) => {
-    ctx.feed("\x1b[?1003h")
-    const pass = ctx.getMode("mouseTracking") === true
-    ctx.feed("\x1b[?1003l")
-    return notTestedResult("mouse movement", { mode: pass })
-  }),
+  decrpmModeProbe("modes.mouse-all", 1003, headlessDecrpmArm(1003, "mouseTracking")),
 
   // Application keypad: DECKPAM then KP_5 encoding (SS3 u vs 5)
   probe(
@@ -1070,7 +1057,7 @@ export const modesProbes: ProbeDefinition[] = [
       const on = ctx.getMode("applicationKeypad") === true
       ctx.feed("\x1b>")
       const off = ctx.getMode("applicationKeypad") === false
-      return notTestedResult("keypad input", { on, off })
+      return osInputReviewResult("keypad input", { on, off })
     },
     applicationKeypad,
     "interaction",
@@ -1408,25 +1395,13 @@ export const modesProbes: ProbeDefinition[] = [
   // ?1007 — alt-scroll: wheel-as-cursor-keys on alt-screen (decided-row move off DECRPM)
   probe(
     "modes.alt-scroll-1007",
-    () => notTestedResult("OS-level XTEST wheel injection", { input: false }),
+    () => osInputReviewResult("OS-level XTEST wheel injection", { input: false }),
     altScroll1007,
     "interaction",
   ),
 
   // ?1005 — UTF-8 mouse encoding (legacy)
-  decrpmModeProbe("modes.utf8-mouse-1005", 1005, (ctx) => {
-    ctx.feed("\x1b[?1005h")
-    // Verify via DECRPM query — response CSI ? 1005 ; Ps $ y where Ps=1 means set
-    const response = ctx.feedCapture("\x1b[?1005$p")
-    ctx.feed("\x1b[?1005l")
-    if (response.includes("$y")) {
-      return notTestedResult("encoded UTF-8 mouse events", { response })
-    }
-    // Fallback: verify sequence didn't break the terminal
-    ctx.feed("X")
-    const ok = ctx.getCell(0, 0).char === "X"
-    return notTestedResult("encoded UTF-8 mouse events", { responsive: ok })
-  }),
+  decrpmModeProbe("modes.utf8-mouse-1005", 1005, headlessDecrpmArm(1005)),
 
   // ?3 — DECCOLM 80/132 column switch
   decrpmModeProbe("modes.deccolm", 3, (ctx) => {

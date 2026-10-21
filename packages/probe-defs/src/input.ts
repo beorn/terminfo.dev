@@ -3,24 +3,24 @@ import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
 export const inputProbes: ProbeDefinition[] = [
-  probe("input.modify-other-keys", () => xtestCoverage("key injection"), modifyOtherKeys2, "interaction"),
+  probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "interaction"),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
-  probe("input.pixel-mouse", () => xtestCoverage("click injection"), pixelMouse, "interaction"),
-  probe("input.urxvt-mouse", () => xtestCoverage("click injection"), urxvtMouse, "interaction"),
-  probe("input.x10-mouse", () => xtestCoverage("click injection"), x10Mouse, "interaction"),
+  probe("input.pixel-mouse", () => headlessXtestReview("click injection"), pixelMouse, "interaction"),
+  probe("input.urxvt-mouse", () => headlessXtestReview("click injection"), urxvtMouse, "interaction"),
+  probe("input.x10-mouse", () => headlessXtestReview("click injection"), x10Mouse, "interaction"),
 
-  probe("input.modify-other-keys-3", () => xtestCoverage("key injection"), modifyOtherKeys3, "interaction"),
+  probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "interaction"),
 
-  probe("input.button-event-mouse", () => xtestCoverage("click injection"), buttonEventMouse, "interaction"),
+  probe("input.button-event-mouse", () => headlessXtestReview("click injection"), buttonEventMouse, "interaction"),
 
   probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "interaction"),
   probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "interaction"),
   probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "interaction"),
   {
-    ...probe("input.kitty-click-events", () => xtestCoverage("click injection"), kittyClickEvents, "interaction"),
+    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "interaction"),
     termlessObservationEvidence: "none",
   },
 ]

@@ -63,13 +63,12 @@ function reviewResult(branch: string, reason: string, noObservable: string, stat
  * The headless arm of a criterion that needs OS-level input. An app context without an input
  * adapter keeps its plain coverage record.
  */
-export function osInputReviewResult(noObservable: string, state: object): ProbeResult {
-  return reviewResult(
-    "os-input-review",
-    "Headless context injects no OS-level input; required independent review of the retained raw state pending",
-    noObservable,
-    state,
-  )
+export function osInputReviewResult(
+  noObservable: string,
+  state: object,
+  reason = "Headless context injects no OS-level input; required independent review of the retained raw state pending",
+): ProbeResult {
+  return reviewResult("os-input-review", reason, noObservable, state)
 }
 
 /**
@@ -208,12 +207,20 @@ function leadingSgrCode(token: string): number {
  * Status 1/3 is set, 2/4 is reset, 0 is not recognized, any other value is no readback.
  */
 export async function queryAnsiMode(ctx: TermContext, modeNumber: number): Promise<"set" | "reset" | "unknown" | null> {
-  const outcome = await ctx.queryWithSentinelOutcome(
-    `\x1b[${modeNumber}$p`,
-    new RegExp(`\\x1b\\[${modeNumber};([0-4])\\$y`),
-  )
+  const outcome = await ctx.queryWithSentinelOutcome(`\x1b[${modeNumber}$p`, decrpmReplyPattern(modeNumber, "ansi"))
   if (outcome.reason !== "reply") return null
-  const status = Number(outcome.match?.[1])
+  return decrpmStatus(outcome.match?.[1])
+}
+
+/** The DECRPM reply to one DECRQM: `CSI ? Pd ; Ps $ y` for a DEC private mode, `CSI Pd ; Ps $ y` for an ANSI mode. */
+export function decrpmReplyPattern(modeNumber: number, kind: "private" | "ansi" = "private"): RegExp {
+  return new RegExp(`\\x1b\\[${kind === "private" ? "\\?" : ""}${modeNumber};([0-4])\\$y`)
+}
+
+/** The one reading of Ps for every DECRPM consumer: 1/3 set, 2/4 reset, 0 not recognized, anything else no readback. */
+export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown" | null {
+  if (ps === undefined || ps === "") return null
+  const status = Number(ps)
   if (status === 1 || status === 3) return "set"
   if (status === 2 || status === 4) return "reset"
   if (status === 0) return "unknown"
@@ -762,7 +769,36 @@ export function decrpmModeProbe(
   }
 }
 
-function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number): ProbeResult {
+/**
+ * The headless arm of a DECRQM mode criterion (#30543): the engine's own DECRPM reply, read by the same parser and
+ * graded by the same decrpmResult as the app arm, whenever the adapter delivers one; otherwise the review branch.
+ * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
+ * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
+ */
+export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeResult {
+  return (ctx) => {
+    ctx.feed(`\x1b[?${modeNum}h`)
+    // Read the adapter's mode view BEFORE the query: vt100's private-CSI handler takes any final byte
+    // other than `h` as a reset, so `CSI ? 1 $ p` clears DECCKM there and a getMode read after the
+    // query reports the mode already reset (@dev/2 review flag, 2026-10-21).
+    const mode = modeName === undefined ? undefined : ctx.getMode(modeName)
+    const reply = ctx.feedCapture(`\x1b[?${modeNum}$p`)
+    const state = modeName === undefined ? { reply } : { reply, mode }
+    ctx.feed(`\x1b[?${modeNum}l`)
+    const status = decrpmStatus(decrpmReplyPattern(modeNum).exec(reply)?.[1])
+    if (status === null) {
+      return osInputReviewResult(
+        `DECRPM reply to CSI ? ${modeNum} $ p`,
+        state,
+        "The adapter delivered no DECRPM reply from the engine; required independent review of the retained raw state pending",
+      )
+    }
+    return { ...decrpmResult(status, modeNum), response: JSON.stringify(state) }
+  }
+}
+
+/** The one grader of a DECRPM reading, shared by the app arm and the headless arm. */
+export function decrpmResult(state: "set" | "reset" | "unknown" | null, modeNum: number): ProbeResult {
   if (state === null) {
     return {
       pass: false,

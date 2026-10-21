@@ -149,7 +149,7 @@ const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.m
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
-// draft and refuses admission, and the fourth decision seals through the same writer in-process.
+// draft and refuses admission, and the last pending decision seals through the same writer in-process.
 it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote through admit-run --review", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url))
   const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
@@ -186,9 +186,18 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
   expect(pending).toEqual([
     "extensions.clipboard-paste",
     ...colourReadback,
+    "input.button-event-mouse",
+    "input.kitty-click-events",
+    "input.modify-other-keys",
+    "input.modify-other-keys-3",
+    "input.pixel-mouse",
+    "input.urxvt-mouse",
+    "input.x10-mouse",
     "input.xtest-click",
     "input.xtest-key",
     "input.xtest-wheel",
+    "modes.alt-scroll-1007",
+    "modes.application-keypad",
   ])
   const decision = (featureId: string, reason: string) =>
     JSON.stringify({
@@ -208,21 +217,16 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
       sources: [`collector.capture.${featureId}`],
       supersedes: [],
     })
-  const reviewed: ReadonlyArray<readonly [string, string]> = [
-    ["input.xtest-key", "Embedded xterm.js has no X server, so XTEST key injection has no path to the engine"],
-    ["input.xtest-click", "Embedded xterm.js has no X server, so XTEST click injection has no path to the engine"],
-    ["input.xtest-wheel", "Embedded xterm.js has no X server, so XTEST wheel injection has no path to the engine"],
-    ...colourReadback.map(
-      (featureId) =>
-        [
-          featureId,
-          "@xterm/headless exposes no colour readback: onColor is internal and the Termless backend has no colour getter",
-        ] as const,
-    ),
-  ]
-  const reviewPaths = reviewed.map(([featureId, reason], index) => {
+  // A colour decision names xterm.js's own missing observable (#30547), never the OS-input reason.
+  const reason = (featureId: string) =>
+    colourReadback.includes(featureId)
+      ? `@xterm/headless keeps no colour state a reader can observe for ${featureId}, and the Termless backend exposes no colour getter`
+      : `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+  const reviewed = pending.slice(0, -1)
+  const sealing = pending[pending.length - 1]!
+  const reviewPaths = reviewed.map((featureId, index) => {
     const path = join(dir, `review-${index}.json`)
-    writeFileSync(path, decision(featureId, reason))
+    writeFileSync(path, decision(featureId, reason(featureId)))
     return path
   })
   const startedAt = new Date().toISOString()
@@ -251,24 +255,22 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
   const retained = parseRun(retainedPath!, readFileSync(retainedPath!, "utf8"), suite.catalogIds!, suites, {
     mode: "capture",
   })
-  for (const [featureId] of reviewed) {
+  for (const featureId of reviewed) {
     const row = retained.results?.find((entry) => entry.featureId === featureId)
     expect(row?.status, featureId).toBe("untestable")
     const check = row?.checks?.find((entry) => entry.id === "review")
     expect(check?.status, featureId).toBe("untestable")
     expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
   }
-  expect(retained.results?.find((entry) => entry.featureId === "extensions.clipboard-paste")?.status).toBe("test-todo")
+  expect(retained.results?.find((entry) => entry.featureId === sealing)?.status).toBe("test-todo")
   const sealedPath = saveDaemonProbeRun(
     JSON.parse(readFileSync(retainedPath!, "utf8")) as CapturedRunDraft,
     dir,
     undefined,
     [
       {
-        source: decision(
-          "extensions.clipboard-paste",
-          "Embedded xterm.js has no system clipboard, so an XTEST paste has nothing to paste from",
-        ),
+        source: decision(sealing, reason(sealing)),
+
         startedAt,
       },
     ],
