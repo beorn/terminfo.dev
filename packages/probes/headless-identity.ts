@@ -3,7 +3,7 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
-import { dirname, join, relative, resolve } from "node:path"
+import { basename, dirname, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
 import { owningCheckout } from "./termless-root.ts"
@@ -254,7 +254,7 @@ function sidecarIdentity(
 }
 
 /**
- * Source proof for a Kitty derivation's env.src. A file is a source archive and keeps its
+ * Source proof for a Kitty derivation's declared source. A file is a source archive and keeps its
  * flat sha256; a directory is an unpacked source tree (nixpkgs kitty) and is proven by the
  * NAR hash of that exact store path. Anything else fails loud, never a guessed digest.
  */
@@ -306,8 +306,19 @@ function kittyIdentity(adapterVersion: string, termlessRevision: string): Headle
     execFileSync("nix", ["derivation", "show", storeInfo.deriver], { encoding: "utf8" }),
   )
   const derivations = record(derivation) && record(derivation.derivations) ? derivation.derivations : undefined
-  const drv = derivations ? Object.values(derivations)[0] : undefined
-  const sourcePath = record(drv) && record(drv.env) ? drv.env.src : undefined
+  const drv = derivations?.[storeInfo.deriver] ?? derivations?.[basename(storeInfo.deriver)]
+  const legacySource = record(drv) && record(drv.env) ? drv.env.src : undefined
+  const structuredSource = record(drv) && record(drv.structuredAttrs) ? drv.structuredAttrs.src : undefined
+  if (
+    (legacySource !== undefined && typeof legacySource !== "string") ||
+    (structuredSource !== undefined && typeof structuredSource !== "string")
+  ) {
+    throw new Error(`Malformed source declaration in Kitty Nix derivation ${storeInfo.deriver}`)
+  }
+  if (legacySource !== undefined && structuredSource !== undefined && legacySource !== structuredSource) {
+    throw new Error(`Conflicting source declarations in Kitty Nix derivation ${storeInfo.deriver}`)
+  }
+  const sourcePath = legacySource ?? structuredSource
   if (typeof sourcePath !== "string" || !sourcePath.startsWith("/nix/store/")) {
     throw new Error(`No source archive in Kitty Nix derivation ${storeInfo.deriver}`)
   }

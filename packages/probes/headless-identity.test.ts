@@ -53,6 +53,15 @@ function identityFixture({ termlessSubdir = join("vendor", "termless") }: { term
     overrides[`${name}.js`] = `file:vendor/vterm/packages/${name}`
   }
   writeFileSync(join(root, "bun.lock"), JSON.stringify({ packages: overrides, overrides }))
+  writeFileSync(join(root, "flake.lock"), "{}\n")
+  const kittyAdapter = join(termless, "packages", "kitty")
+  mkdirSync(join(kittyAdapter, "src"), { recursive: true })
+  writeFileSync(
+    join(kittyAdapter, "package.json"),
+    JSON.stringify({ name: "@termless/kitty", version: "0.1.0", main: "src/index.ts" }),
+  )
+  writeFileSync(join(kittyAdapter, "src", "index.ts"), "export {}\n")
+  symlinkSync(kittyAdapter, join(root, "node_modules", "@termless", "kitty"), "dir")
   for (const repository of [termless, vterm]) {
     const git = (...args: string[]) => {
       const result = spawnSync("git", ["-C", repository, ...args], { encoding: "utf8" })
@@ -99,6 +108,96 @@ function runRegistryIntegrity(name: string, version: string) {
     { encoding: "utf8" },
   )
 }
+
+// Source-proof tests start after derivation selection; exercise the public identity entry here.
+// These Nix command responses project the retained Kitty 0.49.2 format-4 derivation from 30211.
+const kittyStore = "/nix/store/afvnxnvk3lchq4b0ihmhw93xc7x9q4py-kitty-0.49.2"
+const kittyDeriver = "/nix/store/7z13wj90r3kxc8pdxcdjqm81xqsj2444-kitty-0.49.2.drv"
+const kittySource = "/nix/store/nzf4mjj8bdhdn0mygayh03bigayxyly0-source"
+function runKittyIdentity(attrs: Record<string, unknown>, sourcePresent = true, unrelatedFirst = false) {
+  return spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `
+    Object.defineProperty(process, "platform", { value: "linux" });
+    Object.defineProperty(process, "arch", { value: "x64" });
+    const fs = require("node:fs");
+    const child = require("node:child_process");
+    const realpath = fs.realpathSync, readFile = fs.readFileSync, stat = fs.statSync, exec = child.execFileSync;
+    const store = ${JSON.stringify(kittyStore)}, deriver = ${JSON.stringify(kittyDeriver)}, source = ${JSON.stringify(kittySource)};
+    fs.realpathSync = (path, ...args) => path === "/fixture/kitty" ? store + "/bin/kitty" : realpath(path, ...args);
+    fs.readFileSync = (path, ...args) => path === store + "/bin/kitty" ? Buffer.from("fixture kitty binary") : readFile(path, ...args);
+    fs.statSync = (path, ...args) => path === source ? stat(${JSON.stringify(fixture.root)} + (${sourcePresent} ? "" : "/absent-source")) : stat(path, ...args);
+    child.execFileSync = (command, args, options) => {
+      if (command === store + "/bin/kitty") return "kitty 0.49.2";
+      if (command !== "nix") return exec(command, args, options);
+      if (args[0] === "path-info") return JSON.stringify({ [store]: { narHash: "sha256-" + "A".repeat(43) + "=", deriver } });
+      if (args[0] === "derivation") return JSON.stringify({ version: 4, derivations: {
+        ...(${unrelatedFirst} ? { "unrelated.drv": { env: { src: "/nix/store/unrelated-source" } } } : {}),
+        [deriver.split("/").at(-1)]: ${JSON.stringify(attrs)}
+      } });
+      if (args[0] === "hash" && args[1] === "path" && args[2] === source) return "sha256-" + "B".repeat(43) + "=";
+      throw new Error("Unexpected Nix operation: " + args.join(" "));
+    };
+    const { headlessRuntimeIdentity } = await import(${JSON.stringify(fixture.identityHref)});
+    const identity = await headlessRuntimeIdentity("kitty", "@termless/kitty", "native");
+    process.stdout.write(JSON.stringify(identity));
+  `,
+    ],
+    { encoding: "utf8", env: { ...process.env, KITTY_BINARY: "/fixture/kitty" } },
+  )
+}
+
+test.each([
+  { name: "legacy source", attrs: { env: { src: kittySource } }, succeeds: true },
+  { name: "structured source", attrs: { structuredAttrs: { src: kittySource } }, succeeds: true },
+  {
+    name: "matching declarations",
+    attrs: { env: { src: kittySource }, structuredAttrs: { src: kittySource } },
+    succeeds: true,
+  },
+  {
+    name: "conflicting declarations",
+    attrs: { env: { src: kittySource }, structuredAttrs: { src: "/nix/store/other-source" } },
+    succeeds: false,
+  },
+  {
+    name: "malformed structured source",
+    attrs: { env: { src: kittySource }, structuredAttrs: { src: 42 } },
+    succeeds: false,
+  },
+  { name: "missing declarations", attrs: {}, succeeds: false },
+])("Kitty identity binds $name to the declared source", ({ attrs, succeeds }) => {
+  const result = runKittyIdentity(attrs)
+  if (succeeds) {
+    expect(result.status, result.stderr).toBe(0)
+    const identity = JSON.parse(result.stdout)
+    expect(identity).toMatchObject({
+      engineVersion: "0.49.2",
+      loadedBinary: { path: `${kittyStore}/bin/kitty` },
+      provenance: { toolchain: expect.stringContaining(`source directory ${kittySource} narHash sha256-`) },
+    })
+  } else {
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toMatch(/source.*(?:derivation|declaration)|(?:derivation|declaration).*source/i)
+  }
+})
+
+test("Kitty identity reports the absent declared source without realizing or substituting it", () => {
+  const result = runKittyIdentity({ structuredAttrs: { src: kittySource } }, false)
+  expect(result.status).not.toBe(0)
+  expect(result.stderr).toContain(`Kitty source path is neither an archive file nor a source directory: ${kittySource}`)
+  expect(result.stderr).not.toContain("Unexpected Nix operation")
+})
+
+test("Kitty identity selects the output's recorded deriver when another derivation is first", () => {
+  const result = runKittyIdentity({ env: { src: kittySource } }, true, true)
+  expect(result.status, result.stderr).toBe(0)
+  expect(JSON.parse(result.stdout)).toMatchObject({
+    provenance: { toolchain: expect.stringContaining(`source directory ${kittySource} narHash `) },
+  })
+})
 
 /**
  * @failure bun's file: install of vt100.js/vt220.js/vterm.js lands under node_modules/.bun, so
