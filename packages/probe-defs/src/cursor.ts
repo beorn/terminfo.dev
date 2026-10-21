@@ -739,7 +739,8 @@ export const cursorProbes: ProbeDefinition[] = [
           return parserStateResult(cursor.y === 0 && cursor.x === cols - 1, expected, { cols, start, wrapped, cursor })
         } finally {
           ctx.feed("\x1b[?45l")
-          ctx.feed(originallyAutoWrap ? "\x1b[?7h" : "\x1b[?7l")
+          // #30574: the runtime getter can be null despite its current boolean type.
+          if (originallyAutoWrap !== null) ctx.feed(originallyAutoWrap ? "\x1b[?7h" : "\x1b[?7l")
         }
       },
       async (ctx) => {

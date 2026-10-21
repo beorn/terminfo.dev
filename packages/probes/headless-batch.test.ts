@@ -27,7 +27,7 @@ async function backend() {
 }
 
 // libvterm exposes no mode getter; its real cell behavior still decides wrapping.
-test("null mode metadata retains measured wrapping and unknown cleanup/keypad state", async () => {
+test("null mode metadata classes A/B retain measured wrapping, unknown cleanup and raw state", async () => {
   const writes: string[] = []
   const factory = async () => {
     const value = await resolveLibvterm()
@@ -42,14 +42,27 @@ test("null mode metadata retains measured wrapping and unknown cleanup/keypad st
   const batch = await collectBatch(
     factory,
     "libvterm",
-    registryDefinitions(["modes.auto-wrap", "cursor.reverse-wrap", "modes.application-keypad"]),
+    registryDefinitions([
+      "modes.auto-wrap",
+      "cursor.reverse-wrap",
+      "modes.application-keypad",
+      "modes.color-scheme-reporting",
+      "modes.left-right-margin",
+      "modes.altscreen-47",
+      "modes.altscreen-1047",
+    ]),
   )
   expect.soft(batch.observations.find((row) => row.featureId === "modes.auto-wrap")).toMatchObject({
     outcome: "supported",
     evidence: "parser-state",
   })
   expect.soft(writes).not.toContain("\x1b[?7l")
+  expect.soft(writes).not.toContain("\x1b[?2031l")
   expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({ on: null, off: null })
+  expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({ mode: null })
+  for (const id of ["modes.altscreen-47", "modes.altscreen-1047"]) {
+    expect.soft(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ entered: null, exited: null })
+  }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "test-todo",
     criterionBranch: "os-input-review",

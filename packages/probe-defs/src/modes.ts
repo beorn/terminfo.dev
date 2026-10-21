@@ -857,7 +857,8 @@ export const modesProbes: ProbeDefinition[] = [
     try {
       ctx.feed("\x1b[?7h")
       const enabled = ctx.getMode("autoWrap")
-      if (!enabled) {
+      // #30574: unreported mode metadata is null; measured cells can still decide.
+      if (enabled === false) {
         return parserStateResult(null, expected, { originallyEnabled, enabled }, "Auto-wrap setup was not measured")
       }
       ctx.feed("X".repeat(ctx.cols) + "Y")
@@ -872,7 +873,8 @@ export const modesProbes: ProbeDefinition[] = [
         next,
       })
     } finally {
-      ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
+      // #30574: the runtime getter can be null despite its current boolean type.
+      if (originallyEnabled !== null) ctx.feed(originallyEnabled ? "\x1b[?7h" : "\x1b[?7l")
     }
   }),
 
@@ -1058,9 +1060,13 @@ export const modesProbes: ProbeDefinition[] = [
     "modes.application-keypad",
     (ctx) => {
       ctx.feed("\x1b=")
-      const on = ctx.getMode("applicationKeypad") === true
+      const onMode = ctx.getMode("applicationKeypad")
+      // #30574: retain unknown runtime mode state until the public type is widened.
+      const on = onMode === null ? null : onMode === true
       ctx.feed("\x1b>")
-      const off = ctx.getMode("applicationKeypad") === false
+      const offMode = ctx.getMode("applicationKeypad")
+      // #30574: unknown is not a measured failure to disable the mode.
+      const off = offMode === null ? null : offMode === false
       return osInputReviewResult("keypad input", { on, off })
     },
     applicationKeypad,
@@ -1073,7 +1079,9 @@ export const modesProbes: ProbeDefinition[] = [
       "modes.left-right-margin",
       (ctx) => {
         ctx.feed("\x1b[?69h")
-        const pass = ctx.getMode("leftRightMargin") === true
+        const mode = ctx.getMode("leftRightMargin")
+        // #30574: the runtime getter can be null despite its current boolean type.
+        const pass = mode === null ? null : mode === true
         ctx.feed("\x1b[?69l")
         return parserStateResult(
           null,
@@ -1140,9 +1148,13 @@ export const modesProbes: ProbeDefinition[] = [
       "modes.altscreen-47",
       (ctx) => {
         ctx.feed("\x1b[?47h")
-        const entered = ctx.getMode("altScreen") === true
+        const enteredMode = ctx.getMode("altScreen")
+        // #30574: keep unknown runtime state distinct from a measured false.
+        const entered = enteredMode === null ? null : enteredMode === true
         ctx.feed("\x1b[?47l")
-        const exited = ctx.getMode("altScreen") === false
+        const exitedMode = ctx.getMode("altScreen")
+        // #30574: unknown is not a measured failure to leave the alternate screen.
+        const exited = exitedMode === null ? null : exitedMode === false
         return parserStateResult(
           null,
           "?47 swaps the visible screen buffer",
@@ -1213,9 +1225,13 @@ export const modesProbes: ProbeDefinition[] = [
       "modes.altscreen-1047",
       (ctx) => {
         ctx.feed("\x1b[?1047h")
-        const entered = ctx.getMode("altScreen") === true
+        const enteredMode = ctx.getMode("altScreen")
+        // #30574: keep unknown runtime state distinct from a measured false.
+        const entered = enteredMode === null ? null : enteredMode === true
         ctx.feed("\x1b[?1047l")
-        const exited = ctx.getMode("altScreen") === false
+        const exitedMode = ctx.getMode("altScreen")
+        // #30574: unknown is not a measured failure to leave the alternate screen.
+        const exited = exitedMode === null ? null : exitedMode === false
         return parserStateResult(
           null,
           "?1047 swaps and clears the visible alternate buffer",
@@ -1465,7 +1481,8 @@ export const modesProbes: ProbeDefinition[] = [
             "Mode metadata does not measure update events",
           )
         } finally {
-          ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
+          // #30574: the runtime getter can be null despite its current boolean type.
+          if (initiallyEnabled !== null) ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
         }
       },
       async (ctx) => {
