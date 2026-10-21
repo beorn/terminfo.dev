@@ -5,7 +5,7 @@
  * @reach fs-walk <fixture-only: coordinator enumerates its owned temporary worker output>
  * @testonly none
  */
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
@@ -143,11 +143,14 @@ it.each([true, false])(
     }
   },
 )
+// The real worker loads headless-identity.ts, which requires the owned vterm checkout beside this one;
+// standalone component CI checks out terminfo.dev alone, so this runs wherever that layout exists.
+const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.meta.url)))
 // The fixture tests above never send a collector-written draft through the decoder that admit-run uses;
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
 // draft and refuses admission, and the fourth decision seals through the same writer in-process.
-it("reviews a draft the real headless collector wrote through admit-run --review", async () => {
+it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote through admit-run --review", async () => {
   const root = fileURLToPath(new URL("../../", import.meta.url))
   const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
     cwd: root,
