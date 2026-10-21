@@ -3,14 +3,13 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
 import type {
-  EvidenceDocument,
-  HistoricalEvidenceDocument,
   PublicCapabilityResult,
   HistoricalPublicCell,
   HistoricalPublicVersion,
   PublicVersion,
   TextQualificationDocument,
 } from "../../data/public-results"
+import { readCellEvidence, type LoadedCellEvidence } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 
@@ -58,7 +57,7 @@ let previewHideTimer: ReturnType<typeof setTimeout> | undefined
 const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
-const evidenceDocument = ref<EvidenceDocument | HistoricalEvidenceDocument | null>(null)
+const evidenceDocument = ref<LoadedCellEvidence | null>(null)
 const qualificationDocument = ref<TextQualificationDocument | null>(null)
 const textSnapshots = ref<Record<string, string>>({})
 const recordedQueries = ref<Array<{ sequence: string; raw?: string }>>([])
@@ -180,6 +179,7 @@ const expectedIllustration = computed(() =>
   props.featureId === "charsets.utf8" ? withBase("/illustrations/utf8-cells.svg") : undefined,
 )
 const compactCause = computed(() => {
+  if (evidenceError.value) return evidenceError.value
   if (currentResult.value)
     return currentResult.value.reason ?? "Recorded details have not been approved for publication."
   if (historicalCell.value?.evidence === "text") return "our test could not capture text"
@@ -203,7 +203,7 @@ const hasRecordedDetail = computed(
     evidenceScreenshot.value !== undefined,
 )
 const originalObservation = computed(() =>
-  evidenceDocument.value?.version === 1 ? evidenceDocument.value.observation : undefined,
+  evidenceDocument.value?.version === 2 ? evidenceDocument.value.observation : undefined,
 )
 const originalDiffers = computed(() => {
   const original = originalObservation.value
@@ -265,13 +265,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** The existing evidence receipt check also verifies TXT bytes and the run-owned witness document. */
 async function verifiedBytes(url: string, sha256: string, signal: AbortSignal): Promise<ArrayBuffer> {
   if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error("Invalid evidence SHA-256 receipt")
-  const response = await fetch(withBase(url), { signal })
+  const [resourcePath] = url.split("#")
+  if (!resourcePath) throw new Error("Invalid evidence URL")
+  const response = await fetch(withBase(resourcePath), { signal })
   if (!response.ok) throw new Error(`Evidence request returned HTTP ${response.status}`)
   const bytes = await response.arrayBuffer()
   if (!globalThis.crypto?.subtle) throw new Error("SHA-256 verification is unavailable in this browser")
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
   const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
-  if (actualSha256 !== sha256) throw new Error("Evidence SHA-256 mismatch")
+  if (actualSha256 !== sha256) throw new Error("evidence failed its receipt")
   return bytes
 }
 
@@ -295,24 +297,14 @@ async function loadEvidence(): Promise<void> {
     }
     const bytes = await verifiedBytes(approval.url, approval.sha256, controller.signal)
     const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-    const payload = isRecord(parsed) ? (version.schemaVersion === 3 ? parsed.result : parsed.observation) : undefined
-    if (
-      !isRecord(parsed) ||
-      parsed.version !== (version.schemaVersion === 3 ? 3 : 1) ||
-      parsed.runId !== version.runId ||
-      parsed.runSha256 !== version.sha256 ||
-      parsed.featureId !== props.featureId ||
-      !isRecord(payload) ||
-      payload.featureId !== props.featureId ||
-      (currentResult.value !== undefined && payload.status !== currentResult.value.status) ||
-      !isRecord(parsed.record) ||
-      !Array.isArray(parsed.record.assertions) ||
-      !isRecord(parsed.review) ||
-      parsed.review.id !== approval.review.id
-    ) {
-      throw new Error("Evidence document identity or structure does not match this result")
-    }
-    const document = parsed as unknown as EvidenceDocument | HistoricalEvidenceDocument
+    const document = readCellEvidence(parsed, {
+      schemaVersion: version.schemaVersion,
+      runId: version.runId,
+      runSha256: version.sha256,
+      featureId: props.featureId,
+      reviewId: approval.review.id,
+      status: currentResult.value?.status,
+    })
     let qualification: TextQualificationDocument | null = null
     if (document.textQualification) {
       const reference = document.textQualification
@@ -352,7 +344,7 @@ async function loadEvidence(): Promise<void> {
       return
     // The app collector stores the actual exchange in its approved raw trace.
     // Catalog guidance never substitutes for the question sent in a recorded run.
-    const raw = parsed.record.rawReply
+    const raw = document.record.rawReply
     let queries: Array<{ sequence: string; raw?: string }> = []
     if (cell.evidence === "query" && typeof raw === "string" && /^\s*\{\s*"writes"\s*:/.test(raw)) {
       const trace: unknown = JSON.parse(raw)

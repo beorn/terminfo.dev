@@ -11,7 +11,16 @@
  * build outDir so `bun run build` emits fresh deploy artifacts without
  * dirtying the source tree.
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync, lstatSync } from "node:fs"
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  readdirSync,
+  unlinkSync,
+  rmdirSync,
+  lstatSync,
+} from "node:fs"
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -24,7 +33,7 @@ import { CAPABILITY_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { readVerifiedArtifact, type SelectedVersion } from "../docs/data/selected-results.ts"
-import { publicResults } from "../docs/data/public-results.ts"
+import { publicResults, type CellEvidence, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
@@ -32,7 +41,7 @@ const docsDir = join(root, "docs")
 const publicDir = join(docsDir, "public")
 const apiDir = join(publicDir, "api", "v1")
 const contentDir = join(root, "content")
-// Cloudflare Pages Free-plan limits. The account tier is not verified, so use the conservative file cap.
+// Cloudflare Pages Free-plan limits (25 MiB per asset, 20,000 files per deployment).
 const maxAssetBytes = 25 * 1024 * 1024
 const maxOutputFiles = 20_000
 
@@ -253,13 +262,18 @@ function writeEvidence(
   const expected = new Map<string, Buffer>()
   for (const [url, { bytes, document }] of documents) {
     expected.set(url.slice(1), Buffer.from(bytes))
-    const frames =
-      "qualification" in document
-        ? document.qualification.shapes.flatMap((shape) => shape.frames ?? [])
-        : [
-            ...(document.record.screenshot ? [{ ...document.record.screenshot, kind: undefined }] : []),
-            ...(document.record.frames ?? []),
-          ]
+    const frames: Array<{ sha256: string; kind?: string }> = []
+    if ("qualification" in document) {
+      for (const shape of document.qualification.shapes) {
+        if (shape.frames) frames.push(...shape.frames)
+      }
+    } else {
+      const cells: Record<string, CellEvidence | HistoricalCellEvidence> = document.cells
+      for (const cell of Object.values(cells)) {
+        if (cell.record.screenshot) frames.push({ ...cell.record.screenshot, kind: undefined })
+        if (cell.record.frames) frames.push(...cell.record.frames)
+      }
+    }
     for (const frame of frames) {
       const text = frame.kind === "text-cells"
       const path = `artifacts/${frame.sha256}.${text ? "txt" : "png"}`
@@ -280,7 +294,7 @@ function writeEvidence(
   const inventoryPath = join(out, "api", "v2", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v[23]\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v[23]\/runs\/[a-f0-9]{64}\.json)$/.test(
+    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v[23]\/evidence\/[a-f0-9]{64}(?:\.json|\/[A-Za-z0-9_.%~-]+\.json)|api\/v[23]\/runs\/[a-f0-9]{64}\.json)$/.test(
       path,
     )
   if (existsSync(inventoryPath)) {
@@ -330,8 +344,16 @@ function writeEvidence(
       throw new Error(`${join(out, relative)}: unapproved or modified evidence artifact`)
     }
   }
+  const prunedDirs = new Set<string>()
   for (const [relative] of existing) {
-    if (!expected.has(relative)) unlinkSync(join(out, relative))
+    if (!expected.has(relative)) {
+      const fullPath = join(out, relative)
+      unlinkSync(fullPath)
+      prunedDirs.add(dirname(fullPath))
+    }
+  }
+  for (const dir of prunedDirs) {
+    if (existsSync(dir) && readdirSync(dir).length === 0) rmdirSync(dir)
   }
   for (const [relative, bytes] of expected) {
     const path = join(out, relative)

@@ -37,15 +37,23 @@ export type PublicFrame = {
 }
 type PublicImages = { screenshot?: SelectedCell["record"]["screenshot"]; frames?: PublicFrame[] }
 
-export interface HistoricalEvidenceDocument {
-  version: 1
-  runId: string
-  runSha256: string
+import { readCellEvidence, type CellEvidenceExpectation, type LoadedCellEvidence } from "./evidence-reader.ts"
+
+export { readCellEvidence, type CellEvidenceExpectation, type LoadedCellEvidence }
+
+export interface HistoricalCellEvidence {
   featureId: string
   observation: Pick<Observation, "featureId" | "outcome" | "reason" | "evidence" | "note">
   record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
   review: PublicReview
   textQualification?: { url: string; sha256: string }
+}
+
+export interface HistoricalEvidenceDocument {
+  version: 2
+  runId: string
+  runSha256: string
+  cells: Record<string, HistoricalCellEvidence>
 }
 
 export interface TextQualificationDocument {
@@ -149,7 +157,11 @@ export function publicHistoricalResults(
     string,
     { bytes: string; document: HistoricalEvidenceDocument | TextQualificationDocument }
   >()
-  const mapCell = (cell: SelectedCell, version: SelectedVersion): HistoricalPublicCell => {
+  const mapCell = (
+    cell: SelectedCell,
+    version: SelectedVersion,
+    evidenceCells: Record<string, HistoricalCellEvidence>,
+  ): HistoricalPublicCell => {
     const approved = cell.presentation?.decision.presentsEvidence === true
     const reviewedCorrection = cell.chain.correctionId !== undefined
     const origin = cell.chain.origin
@@ -182,10 +194,7 @@ export function publicHistoricalResults(
     }
     const { observation, record } = original
     const textQualification = cell.evidence === "text" ? qualificationFor(version, documents, 2) : undefined
-    const document: HistoricalEvidenceDocument = {
-      version: 1,
-      runId: version.runId,
-      runSha256: version.sha256,
+    evidenceCells[cell.featureId] = {
       featureId: cell.featureId,
       observation: {
         featureId: observation.featureId,
@@ -210,12 +219,8 @@ export function publicHistoricalResults(
       review,
       ...(textQualification && { textQualification }),
     }
-    const url = `/api/v2/evidence/${version.sha256}/${encodeURIComponent(cell.featureId)}.json`
-    const bytes = JSON.stringify(document, null, 2) + "\n"
-    const prior = documents.get(url)
-    if (prior && prior.bytes !== bytes) throw new Error(`Conflicting evidence document ${url}`)
-    documents.set(url, { bytes, document })
-    result.presentation = { state: "presented", review, url, sha256: createHash("sha256").update(bytes).digest("hex") }
+    const url = `/api/v2/evidence/${version.sha256}.json#${encodeURIComponent(cell.featureId)}`
+    result.presentation = { state: "presented", review, url, sha256: "" }
     result.record = images(record, `run ${version.runId} feature ${cell.featureId}`)
     if (textQualification) result.textQualification = textQualification
     return result
@@ -231,37 +236,69 @@ export function publicHistoricalResults(
     config: value.config,
     permissions: value.permissions,
   })
-  const mapVersion = (version: SelectedVersion): HistoricalPublicVersion => ({
-    schemaVersion: version.schemaVersion,
-    runId: version.runId,
-    target: target(version.target),
-    measuredAt: version.measuredAt,
-    suiteId: version.suiteId,
-    probeHash: version.probeHash,
-    suiteFreshness: version.suiteFreshness,
-    suiteRelation: version.suiteRelation,
-    suite: {
-      observed: version.suite.observed,
-      expected: version.suite.expected,
-      complete: version.suite.complete,
-      namedNotTested: version.suite.namedNotTested,
-    },
-    sourceRevision: version.sourceRevision,
-    sha256: version.sha256,
-    ...(version.identityAdmission && { identityAdmission: version.identityAdmission }),
-    cells: Object.fromEntries(Object.entries(version.cells).map(([id, cell]) => [id, mapCell(cell, version)])),
-    v1: { ...version.v1 },
-    reviews: version.reviews.map(publicReview),
-    counts: {
-      catalog: version.counts.catalog,
-      tested: version.counts.tested,
-      notTested: version.counts.notTested,
-      conclusive: version.counts.conclusive,
-      supported: version.counts.supported,
-      unsupported: version.counts.unsupported,
-    },
-    notTestedCoverage: version.notTestedCoverage,
-  })
+  const mapVersion = (version: SelectedVersion): HistoricalPublicVersion => {
+    const evidenceCells: Record<string, HistoricalCellEvidence> = {}
+    const cells = Object.fromEntries(
+      Object.entries(version.cells).map(([id, cell]) => [id, mapCell(cell, version, evidenceCells)]),
+    )
+    if (Object.keys(evidenceCells).length > 0) {
+      const document: HistoricalEvidenceDocument = {
+        version: 2,
+        runId: version.runId,
+        runSha256: version.sha256,
+        cells: evidenceCells,
+      }
+      const docUrl = `/api/v2/evidence/${version.sha256}.json`
+      const bytes = JSON.stringify(document, null, 2) + "\n"
+      const prior = documents.get(docUrl)
+      if (prior && prior.bytes !== bytes) throw new Error(`Conflicting evidence document ${docUrl}`)
+      documents.set(docUrl, { bytes, document })
+      const sha256 = createHash("sha256").update(bytes).digest("hex")
+      for (const cell of Object.values(cells)) {
+        if (cell.presentation.state === "presented") {
+          readCellEvidence(document, {
+            schemaVersion: version.schemaVersion,
+            runId: version.runId,
+            runSha256: version.sha256,
+            featureId: cell.featureId,
+            reviewId: cell.presentation.review.id,
+          })
+          cell.presentation.sha256 = sha256
+        }
+      }
+    }
+    return {
+      schemaVersion: version.schemaVersion,
+      runId: version.runId,
+      target: target(version.target),
+      measuredAt: version.measuredAt,
+      suiteId: version.suiteId,
+      probeHash: version.probeHash,
+      suiteFreshness: version.suiteFreshness,
+      suiteRelation: version.suiteRelation,
+      suite: {
+        observed: version.suite.observed,
+        expected: version.suite.expected,
+        complete: version.suite.complete,
+        namedNotTested: version.suite.namedNotTested,
+      },
+      sourceRevision: version.sourceRevision,
+      sha256: version.sha256,
+      ...(version.identityAdmission && { identityAdmission: version.identityAdmission }),
+      cells,
+      v1: { ...version.v1 },
+      reviews: version.reviews.map(publicReview),
+      counts: {
+        catalog: version.counts.catalog,
+        tested: version.counts.tested,
+        notTested: version.counts.notTested,
+        conclusive: version.counts.conclusive,
+        supported: version.counts.supported,
+        unsupported: version.counts.unsupported,
+      },
+      notTestedCoverage: version.notTestedCoverage,
+    }
+  }
   const mapGroups = (groups: Record<string, SelectedVersion[]>) =>
     Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(mapVersion)]))
   const selected: HistoricalPublicProjection = {
@@ -376,15 +413,19 @@ export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
   states: Readonly<Record<string, CapabilityStatus>>
 }
 
-export interface EvidenceDocument {
-  version: 3
-  runId: string
-  runSha256: string
+export interface CellEvidence {
   featureId: string
   result: CapabilityResult
   record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
   review: PublicReview
   textQualification?: { url: string; sha256: string }
+}
+
+export interface EvidenceDocument {
+  version: 4
+  runId: string
+  runSha256: string
+  cells: Record<string, CellEvidence>
 }
 
 type PublicDocuments = Map<
@@ -407,7 +448,11 @@ export function publicResults(
 ) {
   const historical = publicHistoricalResults(projection.historical, historicalTargets)
   const documents: PublicDocuments = new Map(historical.documents)
-  const mapResult = (result: CapabilityResult, version: CurrentSelectedVersion): PublicCapabilityResult => {
+  const mapResult = (
+    result: CapabilityResult,
+    version: CurrentSelectedVersion,
+    evidenceCells: Record<string, CellEvidence>,
+  ): PublicCapabilityResult => {
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
     const mapped: PublicCapabilityResult = {
@@ -456,10 +501,7 @@ export function publicResults(
       }),
     }
     const textQualification = result.evidence === "text" ? qualificationFor(version, documents, 3) : undefined
-    const document: EvidenceDocument = {
-      version: 3,
-      runId: version.runId,
-      runSha256: version.sha256,
+    evidenceCells[result.featureId] = {
       featureId: result.featureId,
       result: globalThis.structuredClone(result),
       record: {
@@ -470,12 +512,8 @@ export function publicResults(
       review,
       ...(textQualification && { textQualification }),
     }
-    const url = `/api/v3/evidence/${version.sha256}/${encodeURIComponent(result.featureId)}.json`
-    const bytes = JSON.stringify(document, null, 2) + "\n"
-    const prior = documents.get(url)
-    if (prior && prior.bytes !== bytes) throw new Error(`Conflicting evidence document ${url}`)
-    documents.set(url, { bytes, document })
-    mapped.presentation = { state: "presented", review, url, sha256: createHash("sha256").update(bytes).digest("hex") }
+    const url = `/api/v3/evidence/${version.sha256}.json#${encodeURIComponent(result.featureId)}`
+    mapped.presentation = { state: "presented", review, url, sha256: "" }
     mapped.record = images(record, `run ${version.runId}/${result.featureId}`)
     return mapped
   }
@@ -495,12 +533,41 @@ export function publicResults(
       results,
       ...metadata
     } = version
+    const evidenceCells: Record<string, CellEvidence> = {}
+    const mappedResults = results.map((result) => mapResult(result, version, evidenceCells))
+    if (Object.keys(evidenceCells).length > 0) {
+      const document: EvidenceDocument = {
+        version: 4,
+        runId: version.runId,
+        runSha256: version.sha256,
+        cells: evidenceCells,
+      }
+      const docUrl = `/api/v3/evidence/${version.sha256}.json`
+      const bytes = JSON.stringify(document, null, 2) + "\n"
+      const existing = documents.get(docUrl)
+      if (existing && existing.bytes !== bytes) throw new Error(`Conflicting evidence document ${docUrl}`)
+      documents.set(docUrl, { bytes, document })
+      const sha256 = createHash("sha256").update(bytes).digest("hex")
+      for (const result of mappedResults) {
+        if (result.presentation.state === "presented") {
+          readCellEvidence(document, {
+            schemaVersion: version.schemaVersion,
+            runId: version.runId,
+            runSha256: version.sha256,
+            featureId: result.featureId,
+            reviewId: result.presentation.review.id,
+            status: result.status,
+          })
+          result.presentation.sha256 = sha256
+        }
+      }
+    }
     const mapped: PublicVersion = {
       ...metadata,
       catalogIds: [...version.catalogIds],
       counts: { ...version.counts },
       score: { ...version.score },
-      results: results.map((result) => mapResult(result, version)),
+      results: mappedResults,
     }
     mappedRuns.set(version.runId, mapped)
     return mapped
