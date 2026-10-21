@@ -520,17 +520,16 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
       .filter((v): v is string => v !== undefined && v !== "")
       .map(formatControlBytes)
 
-    if (primaryMatches.length > 0) {
+    if (cell.replyWithheld) {
+      items.push({
+        label: "Reply",
+        text: "Reply not reviewed for publication.",
+      })
+    } else if (primaryMatches.length > 0) {
       items.push({
         label: "Reply",
         code: primaryMatches.join("  "),
         ...(observedValues.length > 0 && { text: `Observed: ${observedValues.join(", ")}` }),
-      })
-    } else if (cell.replyWithheld) {
-      items.push({
-        label: "Reply",
-        text: "Reply not reviewed for publication.",
-        ...(observedValues.length > 0 && { code: observedValues.join("\n") }),
       })
     } else if (observedValues.length > 0) {
       items.push({
@@ -546,10 +545,6 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
     }
     notKeptLine = "Not kept: screenshot, raw read window (including sentinel reply), reviewed evidence file"
   } else if (cell.replyWithheld) {
-    const observedValues = cell.assertions
-      .map((a) => a.observed)
-      .filter((v): v is string => v !== undefined && v !== "")
-      .map(formatControlBytes)
     items.push({
       label: "Sent",
       text: "Input bytes were not stored by this run.",
@@ -557,7 +552,6 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
     items.push({
       label: "Reply",
       text: "Reply not reviewed for publication.",
-      ...(observedValues.length > 0 && { code: observedValues.join("\n") }),
     })
     notKeptLine = "Not kept: screenshot, raw read window, reviewed evidence file"
   } else {

@@ -430,16 +430,16 @@ function traceReceipt(
   if (!trace) return {}
   const prior = documents.get(trace.url)
   if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
-  const firstFeatureId = Object.keys(trace.document.cells)[0]
-  if (firstFeatureId !== undefined) {
-    const schemaVersion = trace.url.startsWith("/api/v3/") ? 3 : 2
+  const actualSha256 = createHash("sha256").update(trace.bytes).digest("hex")
+  const schemaVersion = trace.url.startsWith("/api/v3/") ? 3 : 2
+  for (const featureId of Object.keys(trace.document.cells)) {
     const loaded = readCellTrace(trace.document, {
       schemaVersion,
       runId: trace.document.runId,
       runSha256: trace.document.runSha256,
-      featureId: firstFeatureId,
+      featureId,
       expectedSha256: trace.sha256,
-      actualSha256: trace.sha256,
+      actualSha256,
     })
     describeTracePanes(loaded)
   }

@@ -273,6 +273,68 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.expected.behavior).toBe("no window title report")
   })
 
+  it("never renders an observed or matched reply on a replyWithheld fixture even if one is present (@cto REVISE 1)", () => {
+    const document = {
+      version: 1 as const,
+      runId: "trace-run-withheld-leak",
+      runSha256: SAMPLE_SHA256,
+      measuredAt: "2026-09-28T12:00:00.000Z",
+      sourceRevision: "2".repeat(40),
+      identity: {
+        recorded: "verified",
+        admission: {
+          rule: "kitty",
+          da1: "\u001b[?62;52;c",
+          xtversion: "kitty(0.49.2)",
+        },
+      },
+      cells: {
+        "device.xtwinops-21": {
+          outcome: "unsupported",
+          evidence: "query",
+          replyWithheld: true as const,
+          events: [
+            { kind: "write", sequence: "\u001b[0m" },
+            { kind: "query", sequence: "\u001b[21t\u001b[c", reason: "reply", match: ["\u001b]lsecret-title\u001b\\"] },
+          ],
+          assertions: [{ kind: "negative", expected: "no window title report", observed: "secret-title" }],
+        },
+        "extensions.osc52-read": {
+          outcome: "unsupported",
+          evidence: "query",
+          replyWithheld: true as const,
+          assertions: [{ kind: "negative", expected: "no clipboard read", observed: "secret-clipboard" }],
+        },
+      },
+    }
+    const withQuery = readCellTrace(document, {
+      schemaVersion: 2,
+      runId: document.runId,
+      runSha256: document.runSha256,
+      featureId: "device.xtwinops-21",
+    })
+    const queryPanes = describeTracePanes(withQuery, { sequence: "ESC [ 21 t", targetKind: "app" })
+    expect(queryPanes.tested.items).toEqual([
+      { label: "Sent", code: "ESC [ 0 m" },
+      { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
+      { label: "Reply", text: "Reply not reviewed for publication." },
+    ])
+    expect(queryPanes.tested.text).not.toContain("secret-title")
+
+    const withoutQuery = readCellTrace(document, {
+      schemaVersion: 2,
+      runId: document.runId,
+      runSha256: document.runSha256,
+      featureId: "extensions.osc52-read",
+    })
+    const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", targetKind: "app" })
+    expect(noQueryPanes.tested.items).toEqual([
+      { label: "Sent", text: "Input bytes were not stored by this run." },
+      { label: "Reply", text: "Reply not reviewed for publication." },
+    ])
+    expect(noQueryPanes.tested.text).not.toContain("secret-clipboard")
+  })
+
   it("renders an empty-trace policy-refused cell with reader-safe reason text, Sent/Observed Nothing, identity, and no private collector note", () => {
     const document = {
       version: 1 as const,

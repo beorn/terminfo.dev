@@ -20,7 +20,7 @@ import {
 import { data } from "../../data/probes.data"
 import { textEvidenceExplanation } from "./ungraded-explanation"
 
-const verifiedTraceDocuments = new Map<string, unknown>()
+const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
 
 const props = withDefaults(
   defineProps<{
@@ -307,7 +307,11 @@ async function loadEvidence(): Promise<void> {
   if (!version || !cell) return
   if (approval?.state === "not-reviewed") {
     const traceReceipt = version.trace
-    if (!traceReceipt) return
+    if (!traceReceipt) {
+      evidenceError.value = "no trace stored for this cell"
+      repositionPreview()
+      return
+    }
     const identity = evidenceIdentity.value
     const request = ++evidenceRequest
     const controller = new AbortController()
@@ -320,24 +324,27 @@ async function loadEvidence(): Promise<void> {
         throw new Error("Result and run identities disagree")
       }
       const cacheKey = `${traceReceipt.url}#${traceReceipt.sha256}`
-      let parsed = verifiedTraceDocuments.get(cacheKey)
-      if (parsed === undefined) {
+      let cached = verifiedTraceDocuments.get(cacheKey)
+      if (cached === undefined) {
         const bytes = await verifiedBytes(
           traceReceipt.url,
           traceReceipt.sha256,
           controller.signal,
           "trace failed its receipt",
         )
-        parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
-        verifiedTraceDocuments.set(cacheKey, parsed)
+        const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
+        const actualSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")
+        const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+        cached = { parsed, actualSha256 }
+        verifiedTraceDocuments.set(cacheKey, cached)
       }
-      const loaded = readCellTrace(parsed, {
+      const loaded = readCellTrace(cached.parsed, {
         schemaVersion: version.schemaVersion,
         runId: version.runId,
         runSha256: version.sha256,
         featureId: props.featureId,
         expectedSha256: traceReceipt.sha256,
-        actualSha256: traceReceipt.sha256,
+        actualSha256: cached.actualSha256,
       })
       if (
         request !== evidenceRequest ||
