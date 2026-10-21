@@ -54,10 +54,11 @@ describe("website build identity", () => {
         "-e",
         'import { resolveConfig } from "vitepress"; const config = await resolveConfig("./docs", "build"); console.log(JSON.stringify({ root: config.root }));',
       ],
-      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 20_000 },
+      // Hang protection only: resolving the config loads the whole catalog, measured at 11-19 s on CI (30632).
+      { cwd: siteRoot, env: { ...process.env, NODE_ENV: "test" }, timeout: 60_000 },
     )
     expect(JSON.parse(stdout)).toEqual({ root: join(siteRoot, "docs") })
-  }, 25_000)
+  }, 65_000)
 
   it("accepts only the exact validated clean CI build from the deployed HTTP endpoint", async () => {
     const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
