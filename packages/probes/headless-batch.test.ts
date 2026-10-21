@@ -782,6 +782,28 @@ test("a result with no observation keeps its response and refused assertions", a
   expect(batch.rawReplies).toStrictEqual({ legacy: "X" })
 })
 
+// 30585: a grader that got no reply names that as its reason, and the reason is the record of the missing raw.
+// The recorder admits it as measured, publishes no verdict and synthesizes nothing into rawReplies.
+test("admits an inconclusive no-response result with its named reason and no synthesized raw", async () => {
+  const batch = await collectBatch(backend, "xtermjs", [
+    definition(
+      "silent",
+      () => ({ pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }),
+      { termlessObservationEvidence: "query" },
+    ),
+  ])
+  expect(batch.observations).toStrictEqual([
+    { featureId: "silent", outcome: "inconclusive", reason: "no-response", evidence: "query" },
+  ])
+  expect(batch.assertions).toStrictEqual([])
+  expect(batch.rawReplies).toStrictEqual({})
+  expect(batch.results).toStrictEqual([
+    expect.objectContaining({ featureId: "silent", status: "test-failure", reason: "no-response" }),
+  ])
+  expect(batch.results[0]).not.toHaveProperty("rawReplyRef")
+  validateObservation(batch.observations[0]!, "run", batch.rawReplies, batch.assertions)
+})
+
 test("refuses a callback result that is neither a measurement nor a coverage record", async () => {
   // The union makes this unreachable from a typed callback; an untyped caller still gets a loud refusal.
   const untyped = (() => ({ pass: true, note: "Legacy conclusion" })) as unknown as ProbeDefinition["termless"]
