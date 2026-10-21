@@ -1,3 +1,8 @@
+import {
+  aggregateCurrentResults,
+  currentCoverageSentence,
+  currentSupportedShare,
+} from "../../../docs/data/release-scope.ts"
 /**
  * Server probe mechanism — daemon mode for real terminal probing.
  *
@@ -76,9 +81,13 @@ export async function handleServer(
       const retained = await readRetainedDaemonProbeResponse(res)
       console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
       const data = retained.run
-      const observed = data.observations.length
-      const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
-      console.log(`  ${label.padEnd(25)} ${observed}/${total} explicit observations (unreviewed)`)
+      const aggregate = aggregateCurrentResults(
+        data.results,
+        data.results.map((result) => result.featureId),
+      )
+      console.log(
+        `  ${label.padEnd(25)} ${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)} (identity unverified)`,
+      )
 
       const { verifyTerminalIdentity } = await import("../../terminfo.dev/src/identity-guard.ts")
       const identityCheck = verifyTerminalIdentity(data.target.id, data.rawReplies)
@@ -86,8 +95,8 @@ export async function handleServer(
         ...data,
         rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },
       }
-      admitCollectedRun(run, retained.path)
-      saved++
+      const source = admitCollectedRun(run, retained.path)
+      if (!source.endsWith(".draft.json")) saved++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       failures.push(`${label}: ${msg}`)

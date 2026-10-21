@@ -117,7 +117,8 @@ beforeEach(() => {
     path: "/private/http-responses/digest",
     sha256: "d".repeat(64),
     run: {
-      schemaVersion: 2,
+      schemaVersion: 3,
+      intendedContext: { kind: "app", id: "terminal-app", version: "2.15" },
       runId: "private-run",
       origin: { kind: "collector" },
       target: {
@@ -134,14 +135,20 @@ beforeEach(() => {
       identity: "unverified",
       suiteId: "suite",
       probeHash: "hash",
-      suiteComplete: false,
       sourceRevision: "source",
       measuredAt: "2026-09-28T00:00:00.000Z",
       rawReplies: { "collector.httpResponseSha256": "d".repeat(64) },
       assertions: [],
       screenshotRefs: [],
-      observations: [],
-      ungradedDiagnostics: {},
+      results: [
+        {
+          featureId: "sgr.bold",
+          status: "test-todo",
+          attempt: { scope: "none" },
+          checks: [],
+          reason: "Required test missing",
+        },
+      ],
     },
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })

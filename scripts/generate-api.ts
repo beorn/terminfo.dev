@@ -15,7 +15,12 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlink
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import {
+  compatibilityTargets,
+  historicalCompatibilityTargets,
+  loadCurrentResults,
+} from "../docs/data/current-results.ts"
+import { CAPABILITY_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { readVerifiedArtifact, type SelectedVersion } from "../docs/data/selected-results.ts"
@@ -87,6 +92,8 @@ interface ApiData {
   methodology: {
     revision: string
     v2: string
+    v3: string
+    historicalOnly: true
     methods: string
     keyPolicy: string
     notesPolicy: string
@@ -273,7 +280,7 @@ function writeEvidence(
   const inventoryPath = join(out, "api", "v2", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v2\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v2\/runs\/[a-f0-9]{64}\.json)$/.test(
+    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v[23]\/evidence\/[a-f0-9]{64}\/[A-Za-z0-9_.%~-]+\.json|api\/v[23]\/runs\/[a-f0-9]{64}\.json)$/.test(
       path,
     )
   if (existsSync(inventoryPath)) {
@@ -314,6 +321,8 @@ function writeEvidence(
   visit("artifacts")
   visit("api/v2/evidence")
   visit("api/v2/runs")
+  visit("api/v3/evidence")
+  visit("api/v3/runs")
   // Check the complete population before performing any replacement or withdrawal.
   for (const [relative, bytes] of existing) {
     if (expected.get(relative)?.equals(bytes)) continue
@@ -362,9 +371,13 @@ export function generateApi(outDir?: string): {
   const featuresJson = loadFeaturesJson()
   const backendMeta = loadBackendMeta()
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
-  const byTarget = new Map(Object.entries(published.selectedByBackend))
-  type PublicVersion = (typeof published.projection.current)[string]
+  const published = publicResults(
+    projection,
+    compatibilityTargets(projection, contentDir),
+    historicalCompatibilityTargets(projection.historical, contentDir),
+  )
+  const byTarget = new Map(Object.entries(published.historicalByBackend))
+  type PublicVersion = (typeof published.projection.historical.current)[string]
   type RunRef = Pick<
     PublicVersion,
     | "runId"
@@ -417,17 +430,16 @@ export function generateApi(outDir?: string): {
   }
   const refs = {
     current: Object.fromEntries(
-      Object.entries(published.projection.current).map(([key, version]) => [key, ref(version)]),
+      Object.entries(published.projection.historical.current).map(([key, version]) => [key, ref(version)]),
     ),
     versions: Object.fromEntries(
-      Object.entries(published.projection.versions).map(([key, versions]) => [key, versions.map(ref)]),
+      Object.entries(published.projection.historical.versions).map(([key, versions]) => [key, versions.map(ref)]),
     ),
     history: Object.fromEntries(
-      Object.entries(published.projection.history).map(([key, versions]) => [key, versions.map(ref)]),
+      Object.entries(published.projection.historical.history).map(([key, versions]) => [key, versions.map(ref)]),
     ),
     exclusions: published.projection.exclusions,
   }
-  writeEvidence(outDir ?? publicDir, published.documents, runDocuments)
   // Catalog metadata stays available, but only reviewed, conclusive observations become v1 result keys.
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
@@ -491,12 +503,14 @@ export function generateApi(outDir?: string): {
   const apiData: ApiData = {
     version: 1,
     generated:
-      Object.values(projection.current)
+      Object.values(projection.historical.current)
         .map((v) => v.measuredAt)
         .sort()
         .at(-1) ?? "",
     methodology: {
-      revision: "2026-09-28",
+      revision: "2026-10-20-historical-only",
+      historicalOnly: true,
+      v3: "/api/v3/data.json",
       v2: "/api/v2/data.json",
       methods: "/contribute#what-a-probe-can-establish",
       keyPolicy:
@@ -512,8 +526,8 @@ export function generateApi(outDir?: string): {
   }
 
   // Write data.json
-  const dataPath = join(targetApiDir, "data.json")
-  writeAsset(dataPath, JSON.stringify(apiData, null, 2) + "\n")
+  const historicalDataPath = join(targetApiDir, "data.json")
+  writeAsset(historicalDataPath, JSON.stringify(apiData, null, 2) + "\n")
 
   // v2 retains exact context keys and every selected cell's outcome and provenance.
   const v2Dir = outDir ? join(outDir, "api", "v2") : join(publicDir, "api", "v2")
@@ -529,10 +543,63 @@ export function generateApi(outDir?: string): {
   mkdirSync(v2Dir, { recursive: true })
   writeAsset(v2Path, v2Json)
 
+  // Only sealed schema-3 runs supply current results. Historical APIs retain their old vocabulary.
+  type CurrentVersion = (typeof published.projection.current)[string]
+  const currentRef = (version: CurrentVersion) => {
+    const url = `/api/v3/runs/${version.sha256}.json`
+    const bytes = Buffer.from(JSON.stringify(version) + "\n")
+    const prior = runDocuments.get(url)
+    if (prior && !prior.equals(bytes)) throw new Error(`Conflicting current run document ${url}`)
+    runDocuments.set(url, bytes)
+    const { results: _results, ...metadata } = version
+    return { ...metadata, url, documentSha256: createHash("sha256").update(bytes).digest("hex") }
+  }
+  const currentGroups = (groups: Record<string, CurrentVersion[]>) =>
+    Object.fromEntries(Object.entries(groups).map(([key, versions]) => [key, versions.map(currentRef)]))
+  const currentData = {
+    version: 3,
+    generated:
+      Object.values(projection.current)
+        .map((run) => run.measuredAt)
+        .sort()
+        .at(-1) ?? "",
+    methodology: {
+      revision: "2026-10-20-sealed-five-statuses",
+      statuses: CAPABILITY_STATUSES,
+      score: "Supported / all frozen catalog positions; no exclusions.",
+      completion:
+        "A context is complete only with zero TEST TODO and TEST FAILURE. Absent required contexts remain incomplete.",
+      historical: { v1: "/api/v1/data.json", v2: "/api/v2/data.json" },
+      evidence: "Captures, free-form reasons and diagnostics require the separate exact-run presentation decision.",
+    },
+    features,
+    catalogIds: [...allFeatureIds].sort(),
+    currentRunCount: published.projection.currentRunCount,
+    ...(published.projection.currentRunCount === 0 && {
+      message: "No current schema-3 runs; historical results remain available.",
+    }),
+    current: Object.fromEntries(
+      Object.entries(published.projection.current).map(([key, run]) => [key, currentRef(run)]),
+    ),
+    versions: currentGroups(published.projection.versions),
+    history: currentGroups(published.projection.history),
+    exclusions: published.projection.exclusions,
+  }
+  const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
+  mkdirSync(v3Dir, { recursive: true })
+  const dataPath = join(v3Dir, "data.json")
+  writeEvidence(outDir ?? publicDir, published.documents, runDocuments)
+  writeAsset(dataPath, JSON.stringify(currentData) + "\n")
+
   // Generate badges
   let badgeCount = 0
   for (const [slug, terminal] of Object.entries(terminals)) {
-    const svg = generateBadgeSvg(terminal.name, terminal.score.pass, terminal.score.total, terminal.score.pct)
+    const svg = generateBadgeSvg(
+      `Historical ${terminal.name}`,
+      terminal.score.pass,
+      terminal.score.total,
+      terminal.score.pct,
+    )
     writeAsset(join(targetBadgesDir, `${slug}.svg`), svg)
     badgeCount++
   }
@@ -544,10 +611,10 @@ export function generateApi(outDir?: string): {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { dataPath, badgeCount } = generateApi()
   const data = JSON.parse(readFileSync(dataPath, "utf-8")) as {
-    terminals: Record<string, unknown>
+    current: Record<string, unknown>
     features: Record<string, unknown>
   }
-  const terminalCount = Object.keys(data.terminals).length
+  const terminalCount = Object.keys(data.current).length
   const featureCount = Object.keys(data.features).length
   console.log(`Generated ${dataPath}`)
   console.log(`  ${featureCount} features, ${terminalCount} terminals`)

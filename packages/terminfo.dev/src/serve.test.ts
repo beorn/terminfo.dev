@@ -35,7 +35,7 @@ it.each(["tmux", "screen"])(
     const tty=await import("./packages/terminfo.dev/src/tty.ts")
     const owned=await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const hash="a".repeat(12),revision="b".repeat(40)
-    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest:{probeHash:hash,probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:revision}
+    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest:{catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:hash,probes:{app:unified.ALL_PROBES.map(p=>p.id).sort(),mux:unified.ALL_PROBES.map(p=>p.id).sort(),headless:[]}},collectorRevision:revision}
     const mux=process.env.TERMINFO_TEST_MUX, version=mux==="screen"?"4.09.01":"3.6"
     const target={kind:"mux",id:mux,version,os:"linux",osVersion:"fixture",outerTerminal:"kitty",mux,config:"/out/mux.conf",permissions:null}
     const outerApp={target:{...target,kind:"app",id:"kitty",version:"0.49.2",outerTerminal:null,mux:null,config:"--config NONE"},
@@ -64,7 +64,7 @@ it.each(["tmux", "screen"])(
       assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
       inBatch=true
       try{await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
-      return {rawReplies:{},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
+      return {results:options.draft.results,rawReplies:{},observations:[],assertions:[],notTested:[],ungradedDiagnostics:{},suiteComplete:false,screenshotRefs:[],textSnapshotRefs:[]}
     }}))
     const {collectProbeRun}=await import("./packages/terminfo.dev/src/serve.ts")
     const run=await collectProbeRun({ids:["device.xtversion"]})
@@ -158,7 +158,7 @@ describe("daemon HTTP boundary", () => {
           return execFile(process.execPath, ["-e", "process.stderr.write(Buffer.from([100, 0, 255, 10]));process.exit(17)"], options, callback)
         }}))
         const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
-        globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest:{probeHash:"a".repeat(12),probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:"b".repeat(40)}
+        globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest:{catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12),probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:"b".repeat(40)}
         const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
         const {createDarwinCapture} = await import("./packages/terminfo.dev/src/darwin-capture.ts")
         mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
@@ -201,8 +201,9 @@ describe("daemon HTTP boundary", () => {
       })
       expect(failure).toMatchObject({ status: 500 })
       const directory = join(privateHome, ".terminfo-dev", "http-responses")
-      const files = readdirSync(directory)
+      const files = readdirSync(directory).filter((name) => /^[a-f0-9]{64}$/.test(name))
       expect(files).toHaveLength(1)
+      expect(readdirSync(directory).some((name) => name.endsWith(".json"))).toBe(true)
       const path = join(directory, files[0]!)
       const bytes = readFileSync(path)
       const sha256 = createHash("sha256").update(bytes).digest("hex")
@@ -410,16 +411,17 @@ describe("private finite daemon startup", () => {
         }))
         const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
         globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-          manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+          manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
           collectorRevision: "b".repeat(40)
         }
         const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
         const ids = ["extensions.truecolor", "erase.line.all"]
         const run = await collectProbeRun({ ids })
-        assert.deepEqual(run.observations.map(o => o.featureId), ids)
-        assert.ok(run.observations.every(o => o.outcome === "inconclusive"))
-        assert.ok(run.observations.every(o => /Capture calibration fixture: non-solid difference/.test(o.note ?? "")))
-        assert.deepEqual(run.ungradedDiagnostics, {})
+        const selected = run.results.filter(o => ids.includes(o.featureId))
+        assert.deepEqual(selected.map(o => o.featureId).sort(), [...ids].sort())
+        assert.ok(selected.every(o => o.status === "test-todo"))
+        assert.ok(selected.every(o => /Capture calibration fixture: non-solid difference/.test(o.reason ?? "")))
+        assert.equal("ungradedDiagnostics" in run, false)
         assert.equal(calibrationCalls, 1)
         assert.equal(unexpectedCaptures, 0)
       `,
@@ -488,7 +490,7 @@ describe("private finite daemon startup", () => {
         calibrations++
         throw Object.assign(new Error("Capture calibration nonuniform columns: native fixture has unequal cell edges"), { name: "CaptureCalibrationRefused" })
       } }))
-      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const refused = await collectProbeRun({})
@@ -497,17 +499,18 @@ describe("private finite daemon startup", () => {
       // Row for row, a refused calibration IS a run with no capture adapter: every row that would
       // have asked for a frame takes the branch it would have taken with no capture at all. Only
       // the NOTE differs, and it must, because a refused run says why (@cto, 28785 REVISE must 1).
-      const withoutNote = (run) => run.observations.map(({ note, ...rest }) => rest)
+      // Compare the same retained facts while excluding the intentionally different refusal reason and wall-clock times.
+      const withoutNote = (run) => JSON.parse(JSON.stringify(run.results, (key, value) => ["reason", "startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.deepEqual(withoutNote(refused), withoutNote(bare))
-      const noAdapter = (run) => run.observations.filter((o) => /no owned capture adapter is installed in this run/.test(o.note ?? ""))
-      const named = refused.observations.filter((o) => /cell-to-pixel geometry was refused/.test(o.note ?? ""))
+      const noAdapter = (run) => run.results.filter((o) => /no owned capture adapter is installed in this run/.test(o.reason ?? ""))
+      const named = refused.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
       assert.equal(named.length, noAdapter(bare).length)
       assert.equal(noAdapter(refused).length, 0)
-      assert.ok(named.every((o) => /nonuniform columns/.test(o.note)))
-      assert.equal(refused.suiteComplete, true)
-      assert.equal(bare.suiteComplete, true)
-      assert.deepEqual(refused.ungradedDiagnostics, {})
-      assert.deepEqual(bare.ungradedDiagnostics, {})
+      assert.ok(named.every((o) => /nonuniform columns/.test(o.reason)))
+      assert.equal(refused.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
+      assert.equal(bare.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
+      assert.equal("ungradedDiagnostics" in refused, false)
+      assert.equal("ungradedDiagnostics" in bare, false)
       // No probe ever saw a capture adapter, and no origin was calibrated for one.
       assert.equal(frames, 0)
       assert.equal(calibrations, 1)
@@ -590,7 +593,7 @@ describe("private finite daemon startup", () => {
         assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
         return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
       } }))
-      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const derived = await collectProbeRun({})
@@ -603,15 +606,15 @@ describe("private finite daemon startup", () => {
       await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
       calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
       const unseen = await collectProbeRun({})
-      assert.equal(unseen.suiteComplete, true)
-      assert.deepEqual(unseen.ungradedDiagnostics, {})
+      assert.equal(unseen.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
+      assert.equal("ungradedDiagnostics" in unseen, false)
       assert.equal(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).outcome, "refused")
       assert.match(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).refusal, /paint not observed/)
       assert.deepEqual(JSON.parse(unseen.rawReplies["collector.captureCalibration"]).causes, [
         { name: "CaptureCalibrationRefused", message: calibrationFailure.message },
         { name: "Error", message: originalTimeout.message },
       ])
-      assert.ok(!unseen.observations.some(o => o.evidence === "pixels"))
+      assert.ok(!unseen.results.some(o => o.evidence === "pixels"))
       calibrationFailure = undefined
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
       reportedCellSize = null
@@ -628,14 +631,14 @@ describe("private finite daemon startup", () => {
       // The derived basis still calibrates, once per run, and its probes reach pixels.
       assert.equal(calibrations, 5)
       assert.ok(frames > 0)
-      const pixels = (run) => run.observations.filter((o) => o.evidence === "pixels")
+      const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.evidence === "pixels"), (key, value) => ["startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.ok(pixels(derived).length > 0)
       assert.deepEqual(pixels(derived), pixels(reported))
       assert.deepEqual(pixels(bare), [])
-      assert.equal(derived.suiteComplete, true)
-      assert.equal(reported.suiteComplete, true)
-      assert.deepEqual(derived.ungradedDiagnostics, {})
-      assert.deepEqual(reported.ungradedDiagnostics, {})
+      assert.equal(derived.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
+      assert.equal(reported.results.length, globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length)
+      assert.equal("ungradedDiagnostics" in derived, false)
+      assert.equal("ungradedDiagnostics" in reported, false)
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)
@@ -721,7 +724,7 @@ describe("private finite daemon startup", () => {
         calibrations++
         throw Object.assign(new Error("Capture calibration nonuniform columns: measured unequal cell edges"), { name: "CaptureCalibrationRefused" })
       } }))
-      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { probeHash: "a".repeat(12),
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
         probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const measured = []
@@ -737,10 +740,10 @@ describe("private finite daemon startup", () => {
         if (shape.expect === "refused") {
           assert.equal(thrown, null, shape.name + " must complete, not throw: " + String(thrown === null ? "" : thrown.message))
           const fact = JSON.parse(run.rawReplies["collector.captureCalibration"])
-          const named = run.observations.filter((o) => /cell-to-pixel geometry was refused/.test(o.note ?? ""))
+          const named = run.results.filter((o) => /cell-to-pixel geometry was refused/.test(o.reason ?? ""))
           measured.push({ name: shape.name, kind: "refused", outcome: fact.outcome, refusal: fact.refusal,
-            complete: run.suiteComplete, ungraded: Object.keys(run.ungradedDiagnostics ?? {}).length,
-            named: named.length, firstNamed: named.length > 0 ? named[0].note : "" })
+            complete: run.results.length === globalThis.__TERMINFO_BUNDLED_SUITE__.manifest.catalogIds.length, ungraded: Number("ungradedDiagnostics" in run),
+            named: named.length, firstNamed: named.length > 0 ? named[0].reason : "" })
         } else {
           measured.push({ name: shape.name, kind: thrown === null ? "completed" : "threw",
             error: thrown === null ? null : thrown.name, message: String(thrown === null ? "" : thrown.message) })
@@ -794,7 +797,7 @@ describe("private finite daemon startup", () => {
       let launch
       let terminal={name:"kitty",version:"",os:"linux",osVersion:"fixture"}
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => terminal }))
@@ -810,7 +813,7 @@ describe("private finite daemon startup", () => {
         }
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({...unified,runProbeBatch:async options=>({
-        rawReplies:options.ids.includes("device.xtversion")?{"device.xtversion":"feature-owned reply"}:{},
+        results:options.draft.results,rawReplies:{"fixture.selected":JSON.stringify(options.ids),...(options.ids.includes("device.xtversion")?{"device.xtversion":"feature-owned reply"}:{})},
         observations:options.ids.map(featureId=>({featureId})), assertions:[],screenshotRefs:[],ungradedDiagnostics:{},suiteComplete:false,
         ...(launch && { appLaunch: launch })
       })}))
@@ -824,8 +827,8 @@ describe("private finite daemon startup", () => {
       const run=await collectProbeRun({ids,terminalAppOwner:{}})
       assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
       assert.equal(run.target.version,"0.49.2")
-      assert.deepEqual(run.observations.map(o=>o.featureId),ids)
-      assert.equal(run.suiteComplete,false)
+      assert.deepEqual(JSON.parse(run.rawReplies["fixture.selected"]),ids)
+      assert.ok(run.results.every(row=>row.status==="test-todo"))
       assert.equal(run.rawReplies["device.xtversion"],undefined)
       assert.equal(run.rawReplies["collector.xtversion"],raw)
       assert.deepEqual(calls,["\\x1b[18t","\\x1b[>0q"])
@@ -911,7 +914,7 @@ describe("private finite daemon startup", () => {
       let captureKind = "absent"
       let reads = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
@@ -951,7 +954,7 @@ describe("private finite daemon startup", () => {
             })
           }
           return {
-            rawReplies: {},
+            results: options.draft.results, rawReplies: {},
             observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
             assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
           }
@@ -965,7 +968,7 @@ describe("private finite daemon startup", () => {
       assert.equal(captureKind, retained ? "text-cells" : "absent")
       assert.equal(reads, 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
-      assert.equal(run.observations.filter(observation => observation.evidence === "text").length, 0)
+      assert.equal(run.results.filter(observation => observation.evidence === "text").length, 0)
       if (retained) {
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
@@ -1052,7 +1055,7 @@ describe("private finite daemon startup", () => {
       let captureKind = "absent"
       let captured = false
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
@@ -1096,14 +1099,14 @@ describe("private finite daemon startup", () => {
               pending.catch(() => {}) // The original promise is asserted below, including its error.
               await Promise.resolve()
               assert.equal(reads, 0, "text readback ran before the selected output completed")
-              assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).length, 0)
+              assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
               if (expectation === "write-error") {
                 const failure = new Error("selected output completion failed")
                 const errorSeen = new Promise(resolve => out.once("error", resolve))
                 finishWrite(failure)
                 await assert.rejects(pending, error => error === failure)
                 assert.equal(reads, 0)
-                assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).length, 0)
+                assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
                 assert.equal(await errorSeen, failure)
               } else {
                 finishWrite()
@@ -1118,7 +1121,7 @@ describe("private finite daemon startup", () => {
             }
           }
           return {
-            rawReplies: {},
+            results: options.draft.results, rawReplies: {},
             observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
             assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
           }
@@ -1134,14 +1137,15 @@ describe("private finite daemon startup", () => {
         const run = await collectProbeRun({ ids: [expectation === "timeout" ? "erase.character" : "device.xtversion"], out })
         if (expectation === "timeout") {
           assert.equal(reads, 0, "an unacknowledged capture must not read console cells")
-          assert.equal(queryWrites, 1, JSON.stringify({ observations: run.observations, diagnostics: run.ungradedDiagnostics }))
-          const row = run.observations.find(row => row.featureId === "erase.character")
-          assert.equal(row.outcome, "error")
+          assert.equal(queryWrites, 1, JSON.stringify({ results: run.results }))
+          const row = run.results.find(row => row.featureId === "erase.character")
+          assert.equal(row.status, "test-failure")
           assert.equal(row.evidence, "text")
-          assert.match(row.note, /timeout.*7 bytes/u)
+          assert.ok(row.checks.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
+          assert.match(row.reason, /Text criterion requires a declared claim and terminal-owned macOS cell observer/u)
           const trace = JSON.parse(run.rawReplies[row.rawReplyRef])
           assert.ok(trace.queries.some(query => query.sequence === "\\x1b[6n" && query.reason === "timeout" && query.raw === "partial"))
-          assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).length, 0)
+          assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
           process.exit(0)
         }
         assert.equal(captureKind, "text-cells")
@@ -1203,7 +1207,7 @@ describe("private finite daemon startup", () => {
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let detectedName = fixture.id, receiptAppId = fixture.id, batchCalls = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
@@ -1232,7 +1236,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({ ...unified,
         runProbeBatch: async options => { batchCalls++; return ({
-          rawReplies: {},
+          results: options.draft.results, rawReplies: {},
           appLaunch: fixture.platform === "win32" ? {
             platform: "win32",
             executablePath: "D:\\\\a\\\\_temp\\\\alacritty\\\\alacritty.exe",
@@ -1295,7 +1299,7 @@ describe("private finite daemon startup", () => {
           const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
           const tty = await import("./packages/terminfo.dev/src/tty.ts")
           globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-            manifest: { probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+            manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
             collectorRevision: "b".repeat(40)
           }
           mock.module("./packages/terminfo.dev/src/tty.ts", () => ({
@@ -1303,7 +1307,7 @@ describe("private finite daemon startup", () => {
           }))
           mock.module("./packages/terminfo.dev/src/probes/unified.ts", () => ({
             ...unified, runProbeBatch: async options => ({
-              rawReplies: { selected: options.ids ?? null }, observations: (options.ids ?? []).map(featureId => ({ featureId })),
+              results: options.draft.results, rawReplies: { selected: options.ids ?? null }, observations: (options.ids ?? []).map(featureId => ({ featureId })),
               assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
             })
           }))
@@ -1319,14 +1323,12 @@ describe("private finite daemon startup", () => {
       expect(response.status).toBe(200)
       const run = (await response.json()) as {
         rawReplies: { selected: string[] | null }
-        observations: { featureId: string }[]
-        suiteComplete: boolean
+        results: { featureId: string; status: string }[]
       }
       expect(run.rawReplies.selected).toEqual(selection ? JSON.parse(selection) : null)
-      expect(run.observations.map((observation: { featureId: string }) => observation.featureId)).toEqual(
-        selection ? JSON.parse(selection) : [],
-      )
-      expect(run.suiteComplete).toBe(false)
+      expect(run.results).toHaveLength(273)
+      expect(new Set(run.results.map((result) => result.featureId)).size).toBe(273)
+      expect(run.results.every((result) => result.status === "test-todo")).toBe(true)
     },
   )
 

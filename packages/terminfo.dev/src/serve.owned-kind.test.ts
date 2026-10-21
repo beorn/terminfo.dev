@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterAll, beforeAll, expect, test, vi } from "vitest"
+import { loadFeatures } from "@terminfo/catalog"
 import { ALL_PROBES } from "./probes/unified.ts"
 
 const environment = {
@@ -18,6 +19,11 @@ const environment = {
   TERMINFO_PROBE_HASH: process.env.TERMINFO_PROBE_HASH,
   TERMINFO_SOURCE_REVISION: process.env.TERMINFO_SOURCE_REVISION,
 }
+// The disabled observer still checkpoints its draft through private custody; isolate that owner.
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:os")>()),
+  homedir: () => directory,
+}))
 const directory = mkdtempSync(join(tmpdir(), "terminfo-linux-dual-receipt-"))
 const provenance = join(directory, "runtime-provenance.json")
 const clipboard = join(directory, "clipboard-fixture.json")
@@ -31,6 +37,7 @@ beforeAll(async () => {
       sourceRevision: "b".repeat(40),
       generatedAt: "2026-10-10T00:00:00Z",
       adapterVersion: "test",
+      catalogIds: Object.keys(loadFeatures(join(import.meta.dirname, "../../..", "content"))).sort(),
       probes: { app: ALL_PROBES.map((probe) => probe.id).sort(), headless: [], mux: [] },
     },
     collectorRevision: "b".repeat(40),

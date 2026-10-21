@@ -8,7 +8,8 @@ next: false
 import { useData } from 'vitepress'
 import { computed, ref } from 'vue'
 import { data } from '../data/probes.data'
-import { aggregateCells, barVerdict, isStaleRelation, staleCaption, supportedShare, tier1Included } from '../data/release-scope.ts'
+import { publicResultFor } from '../data/public-results'
+import { aggregateCurrentResults, currentCoverageSentence, isStaleRelation, staleCaption, currentSupportedShare } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -16,15 +17,17 @@ const categories = p.categories ? JSON.parse(p.categories) : []
 const versions = p.versions ? JSON.parse(p.versions) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
 const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
-const runSha = ref(defaultRun?.sha256 || '')
-const selectedRun = computed(() => runs.find(run => run.sha256 === runSha.value))
-const counts = computed(() => selectedRun.value?.counts)
-const namedNotTested = computed(() => selectedRun.value?.notTestedCoverage?.namedCount ?? 0)
-const libraryOnlyIds = computed(() => data.releaseScope.libraryOnlyIds)
-const measuredBar = computed(() => aggregateCells(data.releaseTable[selectedRun.value?.runId] ?? {}, data.releaseScope.scoredIds))
-const measuredShare = computed(() => supportedShare(measuredBar.value))
-const includedIds = tier1Included(data.featureDescriptions, data.releaseScope.scoredIds)
-const measuredVerdict = computed(() => barVerdict(aggregateCells(data.releaseTable[selectedRun.value?.runId] ?? {}, includedIds)))
+const historicalRuns = JSON.parse(p.historicalRuns || '[]')
+const recordedRuns = [...runs, ...historicalRuns]
+const runSha = ref(defaultRun?.sha256 || historicalRuns[0]?.sha256 || '')
+const selectedRun = computed(() => recordedRuns.find(run => run.sha256 === runSha.value))
+const historicalRun = computed(() => selectedRun.value && selectedRun.value.schemaVersion !== 3)
+const measuredBar = computed(() => selectedRun.value?.schemaVersion === 3 ? aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds) : undefined)
+const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
+function featureNote(id) {
+  const result = publicResultFor(selectedRun.value, id)
+  return result && ('note' in result ? result.note : result.reason) || ''
+}
 const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
 function runLabel(run) {
@@ -157,52 +160,40 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<div v-if="!isHistorical && selectedRun" class="score-card">
+<p v-if="!defaultRun && !isHistorical">No current schema-3 run. Historical results remain available below.</p>
+<p v-if="historicalRun">Historical evidence uses the five display states; unresolved observations require a rerun. It is not a current schema-3 result.</p>
+
+<div v-if="measuredBar" class="score-card">
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
-  <p v-if="data.suiteMove.treeMovedPastRelease" class="stale-line">The tree has moved past the release suite; a new collection would mint {{ data.suiteMove.treeSuiteId }}.</p>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
-  <p v-if="measuredVerdict" class="result-verdict">{{ measuredVerdict.text }} · <span class="result-verdict-detail">{{ measuredVerdict.pct }}% of the {{ measuredVerdict.denominator }} included capabilities read decisive</span></p>
-  <p class="result-share-label">{{ measuredShare }} · measured per terminal</p>
+  <p class="result-share-label">{{ measuredShare }}</p>
+  <p>{{ currentCoverageSentence(measuredBar) }}</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts.inconclusive" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.inconclusive / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts.untested" class="result-share-not-tested" :style="{ width: `${measuredBar.counts.untested / measuredBar.denominator * 100}%` }"></span>
-    <span v-if="measuredBar.counts.error" class="result-share-error" :style="{ width: `${measuredBar.counts.error / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts.untestable" class="result-share-inconclusive" :style="{ width: `${measuredBar.counts.untestable / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['test-todo']" class="result-share-not-tested" :style="{ width: `${measuredBar.counts['test-todo'] / measuredBar.denominator * 100}%` }"></span>
+    <span v-if="measuredBar.counts['test-failure']" class="result-share-error" :style="{ width: `${measuredBar.counts['test-failure'] / measuredBar.denominator * 100}%` }"></span>
   </div>
-  <details class="result-counting">
-    <summary>Result counts and how to read them</summary>
-    <ul class="result-counts">
-    <li><strong>{{ measuredBar.counts.supported }}</strong> supported <small>Positive evidence</small></li>
-    <li><strong>{{ measuredBar.counts.unsupported }}</strong> unsupported <small>Negative evidence</small></li>
-    <li><strong>{{ measuredBar.counts.inconclusive }}</strong> Untestable <small>Reviewed: this context cannot measure it</small></li>
-    <li><strong>{{ measuredBar.counts.untested }}</strong> TEST TODO <small>No reviewed measurement</small></li>
-    <li><strong>{{ measuredBar.counts.error }}</strong> TEST FAILURE <small>Attempt did not establish a result</small></li>
-    </ul>
-  <p class="score-detail">TEST TODO means the probe was not attempted; TEST FAILURE means an attempted probe did not establish a result. This distribution is not an overall compatibility score. <a href="/contribute#reading-results">How to read results</a></p>
-    <p v-if="libraryOnlyIds.length" class="score-detail">{{ libraryOnlyIds.length }} {{ libraryOnlyIds.length === 1 ? 'row is' : 'rows are' }} library-only and not scored in apps: {{ libraryOnlyIds.join(', ') }}.</p>
-    <p>{{ counts.catalog }} catalog features are classified across the five labels above.</p>
-    <p v-if="counts.conclusive">Among {{ counts.conclusive }} results with a recorded Supported or Unsupported value, {{ counts.supported }} were Supported and {{ counts.unsupported }} were Unsupported.</p>
-    <p v-else>No Supported or Unsupported results in this reviewed run.</p>
-  </details>
+  <p>Run {{ selectedRun.complete ? 'complete' : 'incomplete' }}. Completion and capability support are separate.</p>
 </div>
 
 <details v-if="selectedRun" class="run-context">
   <summary>Test environment and recorded versions</summary>
 
-  <p>Recorded suite: {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} results recorded. A recorded result does not mean its check ran. Results from different suites are not directly comparable.</p>
-  <div v-if="runs.length > 1" class="run-picker">
+  <p>Recorded suite: {{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}. Results from different suites are not directly comparable.</p>
+  <div v-if="recordedRuns.length > 1" class="run-picker">
     <label for="reviewed-run">Version and configuration</label>
     <select id="reviewed-run" v-model="runSha">
-      <option v-for="run in runs" :key="run.sha256" :value="run.sha256">{{ runLabel(run) }}</option>
+      <option v-for="run in recordedRuns" :key="run.sha256" :value="run.sha256">{{ run.schemaVersion === 3 ? 'Current' : 'Historical' }} · {{ runLabel(run) }}</option>
     </select>
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>
 
   <dl>
-    <dt>Run</dt><dd><a href="/api/v2/data.json">{{ selectedRun.sha256 }}</a></dd>
-    <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }} · {{ selectedRun.suite.observed }}/{{ selectedRun.suite.expected ?? '?' }} outcomes recorded</dd>
+    <dt>Run</dt><dd><a :href="selectedRun.schemaVersion === 3 ? '/api/v3/data.json' : '/api/v2/data.json'">{{ selectedRun.sha256 }}</a></dd>
+    <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}</dd>
     <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
     <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>
     <dt>Permissions</dt><dd>{{ selectedRun.target.permissions || 'No explicit override recorded' }}</dd>
@@ -226,7 +217,7 @@ const breadcrumbParent = (() => {
         <th>Version</th>
         <th>Support</th>
         <th class="version-pct-header">Score</th>
-        <th class="version-counts-header">Results with a recorded Supported or Unsupported value</th>
+        <th class="version-counts-header">Catalog capabilities</th>
       </tr>
     </thead>
     <tbody>
@@ -238,7 +229,7 @@ const breadcrumbParent = (() => {
           </div>
         </td>
         <td class="version-pct">{{ v.pct == null ? 'No score' : `${v.pct}%` }}</td>
-        <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No Supported or Unsupported results' }}</td>
+        <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No current score' }}</td>
       </tr>
     </tbody>
   </table>
@@ -246,7 +237,7 @@ const breadcrumbParent = (() => {
 
 <p v-if="selectedRun">Select a result to see its notes and evidence. Results marked “Images” include screenshots.</p>
 
-<div v-for="cat in categories" :key="cat.name" class="category-section">
+<div v-for="cat in selectedRun ? categories : []" :key="cat.name" class="category-section">
 
 <h2 :id="cat.name">{{ cat.label }}</h2>
 
@@ -262,8 +253,8 @@ const breadcrumbParent = (() => {
     <tr v-for="f in cat.features" :key="f.id">
       <td :data-tooltip="featureTooltip(f)"><a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a></td>
       <td class="result-cell"><ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="p.backendName"
-        :version="selectedRun" :cell="selectedRun?.cells[f.id]" display="text" /></td>
-      <td class="note-cell">{{ selectedRun?.cells[f.id]?.note || '' }}</td>
+        :version="selectedRun" :cell="publicResultFor(selectedRun, f.id)" display="text" /></td>
+      <td class="note-cell">{{ featureNote(f.id) }}</td>
     </tr>
   </tbody>
 </table>

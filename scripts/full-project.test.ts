@@ -10,8 +10,17 @@
  */
 import { describe, expect, it } from "vitest"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
+import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
 import type { ContextCandidate } from "../docs/data/run-selection.ts"
 import type { CensusContext } from "../docs/data/full-census.ts"
+
+const recorded = (ids: readonly string[], status: CapabilityStatus = "test-todo"): CapabilityResult[] =>
+  ids.map((featureId) => ({
+    featureId,
+    status,
+    attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+    checks: [],
+  }))
 
 const suite = "suite-current"
 const catalogIds = ["a.one", "a.two", "b.one"]
@@ -28,7 +37,7 @@ function candidate(
     suiteId: suite,
     suiteFreshness: "current",
     suiteRelation: "release",
-    cells: {},
+    results: recorded(catalogIds),
     states: {},
     ...overrides,
   }
@@ -48,23 +57,20 @@ describe("full-scope rows", () => {
           kind: "app",
           terminalId: "kitty",
           os: "linux",
-          states: { "a.one": "supported", "a.two": "unsupported", "b.one": "untested" },
+          results: [...recorded(["a.one"], "supported"), ...recorded(["a.two"], "unsupported"), ...recorded(["b.one"])],
         }),
       ],
       requiredSuiteId: suite,
-      designExclusions: [],
-      missingDefinitions: [],
     })
     const [row] = rows.contexts
     expect(row?.collected).toBe(true)
     if (!row?.collected) throw new Error("expected a collected row")
-    expect(row.result.fraction).toBe("2/3")
-    expect(row.result.ceiling).toBe("3/3")
-    expect(row.result.included).toBe(false)
+    expect(row.result.fraction).toBe("1/3")
+    expect(row.result.complete).toBe(false)
     expect(row.observations).toEqual([
       { id: "a.one", state: "supported", method: null, note: null, reason: null },
       { id: "a.two", state: "unsupported", method: null, note: null, reason: null },
-      { id: "b.one", state: "untested", method: null, note: null, reason: null },
+      { id: "b.one", state: "test-todo", method: null, note: null, reason: null },
     ])
     expect(rows.collected).toBe(1)
     expect(rows.notCollected).toBe(0)
@@ -114,22 +120,21 @@ describe("full-scope rows", () => {
     })
   })
 
-  it("applies reviewed instrument limits to one context only", () => {
+  it("keeps reviewed Untestable in the full denominator and can finish with no supported capabilities", () => {
     const rows = buildFullProjectRows({
       census: [app],
       catalogIds,
-      candidates: [candidate({ kind: "app", terminalId: "kitty", os: "linux", states: { "a.one": "supported" } })],
+      candidates: [
+        candidate({ kind: "app", terminalId: "kitty", os: "linux", results: recorded(catalogIds, "untestable") }),
+      ],
       requiredSuiteId: suite,
-      instrumentLimitsFor: (context) =>
-        context.context === "kitty/linux" ? [{ id: "a.two", cause: "no capture on this host" }] : [],
-      designExclusions: [],
-      missingDefinitions: [],
     })
-    const [row] = rows.contexts
-    if (!row?.collected) throw new Error("expected a collected row")
-    expect(row.result.denominator).toBe(2)
-    expect(row.result.ceiling).toBe("2/3")
-    expect(row.result.excluded).toEqual([{ id: "a.two", cause: "instrument" }])
+    const row = rows.contexts[0]
+    if (!row?.collected) throw new Error("expected collected row")
+    expect(row.result.denominator).toBe(3)
+    expect(row.result.fraction).toBe("0/3")
+    expect(row.result.complete).toBe(true)
+    expect(rows.complete).toBe(true)
   })
 
   it("carries the run's own observation method and words for every catalog row", () => {
@@ -141,26 +146,54 @@ describe("full-scope rows", () => {
           kind: "app",
           terminalId: "kitty",
           os: "linux",
-          states: { "a.one": "inconclusive" },
-          cells: {
-            "a.one": { outcome: "unknown", evidence: "text cells", note: "terminal never answered", reason: "timeout" },
-          },
+          results: recorded(catalogIds).map((result) =>
+            result.featureId === "a.one"
+              ? { ...result, status: "test-failure", evidence: "text", reason: "terminal never answered; timeout" }
+              : result,
+          ),
         }),
       ],
       requiredSuiteId: suite,
-      designExclusions: [],
-      missingDefinitions: [],
     })
     const [row] = rows.contexts
     if (!row?.collected) throw new Error("expected a collected row")
     expect(row.observations[0]).toEqual({
       id: "a.one",
-      state: "inconclusive",
-      method: "text cells",
-      note: "terminal never answered",
-      reason: "timeout",
+      state: "test-failure",
+      method: "text",
+      note: null,
+      reason: "terminal never answered; timeout",
     })
     expect(row.observations).toHaveLength(catalogIds.length)
+  })
+
+  // The old excluded-denominator fixtures cannot prove the strengthened 33 × 273 finish rule.
+  it("requires all 9009 recorded positions and zero TODO/failure in every context", () => {
+    const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
+    const census = Array.from({ length: 33 }, (_, index): CensusContext => ({
+      context: `terminal-${index}/linux`,
+      terminalId: `terminal-${index}`,
+      os: "linux",
+      kind: "app",
+    }))
+    const candidates = census.map((context) =>
+      candidate({
+        kind: context.kind,
+        terminalId: context.terminalId,
+        os: context.os,
+        results: recorded(ids, "unsupported"),
+      }),
+    )
+    const finished = buildFullProjectRows({ census, catalogIds: ids, candidates, requiredSuiteId: suite })
+    expect(finished.recordedPositions).toBe(9009)
+    expect(finished.complete).toBe(true)
+    expect(finished.contexts.every((row) => row.collected && row.result.fraction === "0/273")).toBe(true)
+    candidates[32]!.results![272]!.status = "test-todo"
+    const pending = buildFullProjectRows({ census, catalogIds: ids, candidates, requiredSuiteId: suite })
+    expect(pending.recordedPositions).toBe(9009)
+    expect(pending.complete).toBe(false)
+    candidates[32]!.results![272]!.status = "test-failure"
+    expect(buildFullProjectRows({ census, catalogIds: ids, candidates, requiredSuiteId: suite }).complete).toBe(false)
   })
 
   it("refuses a missing required suite", () => {

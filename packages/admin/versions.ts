@@ -5,6 +5,7 @@ import { createHash } from "node:crypto"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
+import { loadFeatures } from "@terminfo/catalog"
 import { ALL_PROBES, TEXT_QUALIFICATION_SPEC, type ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -17,6 +18,11 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/probes/headless-identity.ts",
   "packages/probes/termless-root.ts",
   "packages/admin/versions.ts",
+  "packages/admin/app-harness.ts",
+  "packages/admin/src/terminal-app-receipt.ts",
+  "packages/terminfo.dev/src/terminal-app-window.ts",
+  "packages/terminfo.dev/src/probe-output.ts",
+  "scripts/admit-run.ts",
   "packages/terminfo.dev/src/probes/unified.ts",
   "packages/terminfo.dev/src/tty.ts",
   "packages/terminfo.dev/src/linux-clipboard.ts",
@@ -40,6 +46,24 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/terminfo.dev/src/identity-guard.ts",
   "packages/run-parser/src/index.ts",
   "packages/run-parser/src/app-launch.ts",
+  "scripts/release1-collection.ts",
+  "scripts/interpretations.ts",
+  "scripts/linux-container-run.sh",
+  "scripts/owned-app-remote-run.ts",
+  "scripts/hosted-runner-receipt.ts",
+  "packages/terminfo.dev/src/daemon-client.ts",
+  "packages/terminfo.dev/src/index.tsx",
+  "packages/terminfo.dev/src/submit.ts",
+  "packages/admin/src/admit-collected-run.ts",
+  "packages/admin/src/app.ts",
+  "packages/admin/src/here.ts",
+  "packages/admin/src/mux.ts",
+  "packages/admin/src/server.ts",
+  "packages/catalog/src/index.ts",
+  "docs/data/full-census.ts",
+  "content/terminals.json",
+  ".github/workflows/macos-measurement.yml",
+  ".github/workflows/windows-measurement.yml",
 ]
 const VERSIONS_PATH = join(REPO_ROOT, "versions.json")
 
@@ -64,6 +88,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export interface ProbeSuiteSnapshot {
   probeHash: string
   adapterVersion: string
+  catalogIds: string[]
   probes: ProbeSuiteManifest["probes"]
   textClaims?: string[]
   textQualification?: ProbeSuiteManifest["textQualification"]
@@ -74,6 +99,9 @@ export interface ProbeSuiteSnapshot {
 /** Compute suite identity and applicable membership from the same live inputs. */
 export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnapshot {
   const hash = createHash("md5")
+  const catalogIds = Object.keys(loadFeatures(join(repoRoot, "content"))).sort()
+  hash.update("catalogIds")
+  hash.update(JSON.stringify(catalogIds))
 
   const probeFiles = readdirSync(join(repoRoot, "packages", "probes"))
     .filter((f) => f.endsWith(".probe.ts"))
@@ -117,6 +145,7 @@ export function probeSuiteSnapshot(repoRoot: string = REPO_ROOT): ProbeSuiteSnap
     ...(textClaims.length === 0 ? {} : { textClaims, textQualification: TEXT_QUALIFICATION_SPEC }),
     probeHash: hash.digest("hex").slice(0, 12),
     adapterVersion,
+    catalogIds,
     probes: { app, headless, mux: [...app] },
     sourcePaths,
   }
@@ -136,6 +165,7 @@ export function derivedSuiteManifest(
     probeHash: snapshot.probeHash,
     adapterVersion: snapshot.adapterVersion,
     probes: snapshot.probes,
+    catalogIds: [...snapshot.catalogIds],
     ...(snapshot.textClaims === undefined ? {} : { textClaims: snapshot.textClaims }),
     ...(snapshot.textQualification === undefined ? {} : { textQualification: snapshot.textQualification }),
     ...(freeze === undefined ? {} : { freeze: { release: freeze.release, at: freeze.at } }),
@@ -148,6 +178,8 @@ function collectorCommittedInputs(snapshot: ProbeSuiteSnapshot): string[] {
     "packages/terminfo.dev/src",
     "packages/terminfo.dev/bin/terminfo.mjs",
     "packages/admin/versions.ts",
+    "packages/admin/app-harness.ts",
+    "scripts/admit-run.ts",
     "packages/run-parser/src",
     "packages/run-parser/package.json",
     "scripts/build-cli.ts",

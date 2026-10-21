@@ -59,7 +59,7 @@ vi.mock("../../terminfo.dev/src/terminal-app-window.ts", async (importOriginal) 
   parseKittyIdentity: vi.fn(),
 }))
 vi.mock("./admit-collected-run.ts", () => ({
-  admitCollectedRun: vi.fn(),
+  admitCollectedRun: vi.fn(() => "/private/content/terminal-app.json"),
   retainCollectedRun: vi.fn(() => "/private/out/terminal-app.json"),
 }))
 
@@ -102,7 +102,8 @@ beforeEach(() => {
     path: "/private/http-responses/digest",
     sha256: "d".repeat(64),
     run: {
-      schemaVersion: 2,
+      schemaVersion: 3,
+      intendedContext: { kind: "app", id: "terminal-app", version: "2.15" },
       runId: "private-run",
       origin: { kind: "collector" },
       target: {
@@ -119,14 +120,20 @@ beforeEach(() => {
       identity: "unverified",
       suiteId: "suite",
       probeHash: "hash",
-      suiteComplete: false,
       sourceRevision: "source",
       measuredAt: "2026-09-28T00:00:00.000Z",
       rawReplies: { "collector.httpResponseSha256": "d".repeat(64) },
       assertions: [],
       screenshotRefs: [],
-      observations: [],
-      ungradedDiagnostics: {},
+      results: [
+        {
+          featureId: "sgr.bold",
+          status: "test-todo",
+          attempt: { scope: "none" },
+          checks: [],
+          reason: "Required test missing",
+        },
+      ],
     },
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
@@ -147,7 +154,9 @@ describe("probe app --output", () => {
     expect(admitCollectedRun).not.toHaveBeenCalled()
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
-    expect(lines).toContain("  0/0 explicit observations (retained)")
+    expect(lines).toContain(
+      "  0/1 supported (0%) · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (retained)",
+    )
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
   })
 
@@ -158,7 +167,9 @@ describe("probe app --output", () => {
     expect(retainCollectedRun).not.toHaveBeenCalled()
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
-    expect(lines).toContain("  0/0 explicit observations (admitted)")
+    expect(lines).toContain(
+      "  0/1 supported (0%) · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (admitted)",
+    )
   })
 })
 

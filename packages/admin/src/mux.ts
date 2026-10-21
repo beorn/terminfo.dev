@@ -1,3 +1,8 @@
+import {
+  aggregateCurrentResults,
+  currentCoverageSentence,
+  currentSupportedShare,
+} from "../../../docs/data/release-scope.ts"
 /**
  * Mux probe mechanism — test feature pass-through of terminal multiplexers.
  *
@@ -125,7 +130,7 @@ async function probeDaemon(
   muxId: string,
   version: string,
   outputDirectory?: string,
-): Promise<{ total: number; observed: number }> {
+): Promise<{ summary: string; mode: string }> {
   try {
     const res = await requestDaemonProbe(daemon)
 
@@ -133,11 +138,20 @@ async function probeDaemon(
     console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
     const data = retained.run
     const intended = { kind: "mux" as const, id: muxId, version }
-    if (outputDirectory !== undefined) retainCollectedRun(data, retained.path, intended, outputDirectory)
-    else admitCollectedRun(data, retained.path, intended)
-    const observed = data.observations.length
-    const total = observed + Object.keys(data.ungradedDiagnostics ?? {}).length
-    return { total, observed }
+    const source =
+      outputDirectory !== undefined
+        ? retainCollectedRun(data, retained.path, intended, outputDirectory)
+        : admitCollectedRun(data, retained.path, intended)
+    const mode = source.endsWith(".draft.json")
+      ? "pending-review"
+      : outputDirectory === undefined
+        ? "admitted"
+        : "private, unadmitted"
+    const aggregate = aggregateCurrentResults(
+      data.results,
+      data.results.map((result) => result.featureId),
+    )
+    return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)}`, mode }
   } catch (err) {
     console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
     throw err
@@ -168,9 +182,7 @@ async function runMux(
     if (!daemon) throw new Error("Owned daemon did not register within 30s")
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, mux.id, version, opts.output)
-    console.log(
-      `  ${result.observed}/${result.total} explicit observations (${opts.output !== undefined ? "private, unadmitted" : "admitted"})`,
-    )
+    console.log(`  ${result.summary} (${result.mode})`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }

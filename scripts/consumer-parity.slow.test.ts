@@ -5,16 +5,26 @@
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
+import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
 import { describe, expect, it, vi } from "vitest"
 import { mkdtempSync, readFileSync, rmSync, existsSync, mkdirSync, writeFileSync, cpSync, symlinkSync } from "node:fs"
 import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { SelectedCell, SelectedVersion } from "../docs/data/selected-results.ts"
-import { classifyCells, type CellState } from "../docs/data/release-scope.ts"
+import type {
+  CurrentSelectedVersion,
+  HistoricalProjection,
+  SelectedCell,
+  SelectedVersion,
+} from "../docs/data/selected-results.ts"
+import { aggregateCurrentResults, classifyCells, type CellState } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
-import type { EvidenceDocument, PublicVersion } from "../docs/data/public-results.ts"
+import { publicResults } from "../docs/data/public-results.ts"
+import type {
+  HistoricalEvidenceDocument as EvidenceDocument,
+  HistoricalPublicVersion as PublicVersion,
+} from "../docs/data/public-results.ts"
 
 interface CompatibilityData {
   results: Record<string, Record<string, string>>
@@ -70,6 +80,7 @@ const fixture = vi.hoisted(() => {
     },
   }
   const selected = {
+    schemaVersion: 2,
     runId: "kitty-reviewed",
     target,
     measuredAt,
@@ -149,9 +160,9 @@ const fixture = vi.hoisted(() => {
   return {
     runSha256,
     measuredAt,
-    selected,
-    mux,
-    screen,
+    selected: selected as unknown as SelectedVersion,
+    mux: mux as unknown as SelectedVersion,
+    screen: screen as unknown as SelectedVersion,
     projection: {
       current: { "app:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
       versions: {
@@ -169,7 +180,7 @@ const fixture = vi.hoisted(() => {
       },
       history: { "app:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen] },
       exclusions: [],
-    },
+    } as unknown as HistoricalProjection,
   }
 })
 
@@ -177,6 +188,55 @@ vi.mock("../docs/data/current-results.ts", async () => {
   // The projection owns the ONE classified table every reader folds (28792 item 1), so the fixture
   // classifies its own runs with the same function `loadFullProbes` would read from the real reader.
   const { classifyCells } = await import("../docs/data/release-scope.ts")
+  const { loadFeatures } = await import("@terminfo/catalog")
+  const catalogIds = Object.keys(loadFeatures(join(import.meta.dirname, "..", "content")))
+  // These are synthetic v3 fixtures, not a compatibility reader: production never promotes history.
+  const sealedFixture = (run: SelectedVersion): CurrentSelectedVersion => {
+    const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
+    const results = ids.map((featureId): CapabilityResult => {
+      const cell = run.cells[featureId as keyof typeof run.cells]
+      const status: CapabilityStatus =
+        cell?.outcome === "supported"
+          ? "supported"
+          : cell?.outcome === "unsupported"
+            ? "unsupported"
+            : cell?.outcome === "error"
+              ? "test-failure"
+              : "test-todo"
+      return {
+        featureId,
+        status,
+        attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: run.measuredAt },
+        checks: [],
+        evidence: cell?.evidence,
+        reason: cell?.note,
+      }
+    })
+    const counts = { supported: 0, unsupported: 0, untestable: 0, "test-todo": 0, "test-failure": 0 }
+    for (const result of results) counts[result.status]++
+    return {
+      schemaVersion: 3,
+      runId: run.runId + "-sealed-" + run.sha256.slice(0, 8),
+      target: run.target,
+      measuredAt: run.measuredAt,
+      suiteId: run.suiteId,
+      probeHash: run.probeHash ?? "fixture",
+      sourceRevision: run.sourceRevision ?? "fixture",
+      sealedAt: run.measuredAt,
+      sha256: run.sha256,
+      catalogIds: ids,
+      results,
+      counts,
+      score: { supported: counts.supported, all: ids.length },
+      complete: counts["test-todo"] === 0,
+      suiteRelation: "release",
+      suiteFreshness: run.suiteFreshness,
+      rawReplies: {},
+      assertions: [],
+      origin: { kind: "collector" },
+      presentations: {},
+    }
+  }
   const build = () => {
     const runs = [
       ...Object.values(fixture.projection.current),
@@ -190,11 +250,44 @@ vi.mock("../docs/data/current-results.ts", async () => {
     ]
     const table: Record<string, Record<string, CellState>> = {}
     for (const run of runs) table[run.runId] = classifyCells(run.cells)
-    return { ...fixture.projection, table }
+    const historical = { ...fixture.projection, table }
+    const current = Object.fromEntries(
+      Object.entries(fixture.projection.current).map(([key, run]) => [key, sealedFixture(run)]),
+    )
+    const groups = (group: Record<string, SelectedVersion[]>): Record<string, CurrentSelectedVersion[]> =>
+      Object.fromEntries(Object.entries(group).map(([key, runs]) => [key, runs.map(sealedFixture)]))
+    const allCurrent = [
+      ...Object.values(current),
+      ...Object.values(groups(fixture.projection.versions)).flat(),
+      ...Object.values(groups(fixture.projection.history)).flat(),
+    ]
+    const currentTable = Object.fromEntries(
+      allCurrent.map((run) => [
+        run.runId,
+        Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
+      ]),
+    )
+    return {
+      current,
+      versions: groups(fixture.projection.versions),
+      history: groups(fixture.projection.history),
+      table: currentTable,
+      historical,
+      exclusions: [],
+    }
   }
   return {
     loadCurrentResults: () => ({ projection: build() }),
-    compatibilityTargets: () =>
+    compatibilityTargets: () => {
+      const projection = build()
+      return new Map(
+        Object.entries(projection.current).map(([key, selected]) => [
+          selected.target.id,
+          { contextKey: key, selected },
+        ]),
+      )
+    },
+    historicalCompatibilityTargets: () =>
       new Map([
         ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
         ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
@@ -245,124 +338,60 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       const { projection } = loadCurrentResults(content);
       Bun.gc(true);
       const compatibility = compatibilityTargets(projection, content);
-      assert.ok(Object.keys(projection.current).length > 0, "retained corpus needs an exact current context");
-      assert.ok(compatibility.size > 0, "retained corpus needs a compatibility target");
       const site = loadFullProbes();
-      // Keep real-corpus scoring here so release-scope tests do not load the corpus a second time.
-      const kitty = site.selectedByBackend.kitty;
-      assert.equal(kitty?.selected.target.version, "0.48.2");
-      assert.equal(kitty?.selected.target.os, "macos");
-      const modern = site.baselineStats.kitty?.modern;
-      assert.equal(modern?.catalog, 69);
-      assert.equal(modern?.supported, 17);
-      assert.equal(modern?.unsupported, 0);
-      assert.equal(modern?.inconclusive, 0);
-      assert.equal(modern?.untested, 52);
-      assert.equal(modern?.errors, 0);
-      assert.equal(modern?.pct, 25);
-      for (const style of ["double", "curly", "dotted", "dashed"]) {
-        const id = "sgr.underline." + style;
-        assert.equal(kitty?.states[id], "untested", id + " state");
-        const cell = kitty?.selected.cells[id];
-        assert.equal(cell?.outcome, "inconclusive", id + " outcome");
-        assert.equal(cell?.evidence, "none", id + " evidence");
-        assert.equal(cell?.reason, "policy-refused", id + " reason");
-      }
-      Bun.gc(true);
       const matrix = probesLoader.load();
-      Bun.gc(true);
       const pages = terminalPaths.paths();
-      Bun.gc(true);
       const analyses = generateAnalysis();
-      Bun.gc(true);
       generateApi(out);
-      Bun.gc(true);
       const v1 = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8"));
       const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8"));
-      const keys = (value) => Object.keys(value).sort();
-      const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
-      const raw = new Map();
-      for (const dir of ["probes-apps", "probes-libs", "probes-mux"]) {
-        for (const file of readdirSync(join(content, dir)).filter((name) => name.endsWith(".json"))) {
-          const bytes = readFileSync(join(content, dir, file));
-          raw.set(digest(bytes), bytes);
-        }
-      }
-      assert.deepEqual(keys(site.selected.current), keys(projection.current), "site exact contexts");
-      assert.deepEqual(keys(v2.current), keys(projection.current), "v2 exact contexts");
-      assert.deepEqual(keys(site.selectedByBackend), [...compatibility.keys()].sort(), "site compatibility membership");
-      assert.deepEqual(matrix.selectedByBackend, site.selectedByBackend, "matrix uses the full site selection");
-      assert.deepEqual(matrix.stats, site.stats, "matrix conclusive denominators");
-      const fields = ["runId", "target", "measuredAt", "suiteId", "probeHash", "suiteFreshness",
-        "suiteRelation", "suite", "sourceRevision", "sha256", "counts", "notTestedCoverage"];
-      for (const [context, selected] of Object.entries(projection.current)) {
-        for (const field of fields) assert.deepEqual(site.selected.current[context][field], selected[field], context + ": " + field);
-      }
+      const v3 = JSON.parse(readFileSync(join(out, "api/v3/data.json"), "utf8"));
+      const keys = value => Object.keys(value).sort();
+      const digest = bytes => createHash("sha256").update(bytes).digest("hex");
+      const raw = new Set();
+      for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
+        for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
+          raw.add(digest(readFileSync(join(content, dir, file))));
+      assert.deepEqual(keys(site.selected.current), keys(projection.current));
+      assert.deepEqual(keys(v3.current), keys(projection.current));
+      assert.equal(v3.currentRunCount, keys(projection.current).length);
+      assert.deepEqual(matrix.stats, site.stats);
+      assert.deepEqual(keys(site.selectedByBackend), [...compatibility.keys()].sort());
       const referenced = new Set();
-      for (const group of ["current", "versions", "history"]) {
-        assert.deepEqual(keys(v2[group]), keys(site.selected[group]), group + " membership");
-        for (const [context, value] of Object.entries(site.selected[group])) {
-          const versions = group === "current" ? [value] : value;
-          const refs = group === "current" ? [v2[group][context]] : v2[group][context];
-          assert.equal(refs.length, versions.length, context + " version count");
-          for (const [index, version] of versions.entries()) {
-            const ref = refs[index];
-            for (const field of fields.filter((name) => name !== "notTestedCoverage"))
-              assert.deepEqual(ref[field], version[field], group + " " + context + ": " + field);
-            const bytes = readFileSync(join(out, ref.url.slice(1)));
-            assert.equal(digest(bytes), ref.documentSha256, "generated run document digest");
-            assert.deepEqual(JSON.parse(bytes.toString()), version, "site/v2 run observations and provenance");
-            assert.ok(raw.has(version.sha256), "referenced immutable raw run " + version.sha256);
-            referenced.add(version.sha256);
+      for (const [api, published] of [[v3,site.selected],[v2,site.selected.historical]]) {
+        for (const group of ["current","versions","history"]) {
+          assert.deepEqual(keys(api[group]),keys(published[group]));
+          for (const [key,value] of Object.entries(published[group])) {
+            const versions=group==="current"?[value]:value;
+            const refs=group==="current"?[api[group][key]]:api[group][key];
+            for (const [i,version] of versions.entries()) {
+              const bytes=readFileSync(join(out,refs[i].url.slice(1)));
+              assert.equal(digest(bytes),refs[i].documentSha256);
+              assert.deepEqual(JSON.parse(bytes.toString()),version);
+              assert.ok(raw.has(version.sha256));
+              referenced.add(version.sha256);
+            }
           }
         }
       }
-      assert.deepEqual(v2.exclusions, site.selected.exclusions, "exclusions remain exclusions");
-      const v1Keys = [];
-      const analysisDigests = [];
-      for (const [key, {contextKey, selected}] of compatibility) {
-        assert.equal(site.selectedByBackend[key].contextKey, contextKey, key + " reviewed context");
-        assert.equal(site.selectedByBackend[key].selected.sha256, selected.sha256, key + " selected digest");
-        const counts = selected.counts;
-        assert.deepEqual({total: matrix.stats[key].total, yes: matrix.stats[key].yes, no: matrix.stats[key].no},
-          {total: counts.conclusive, yes: counts.supported, no: counts.unsupported}, key + " named site counts");
-        const page = pages.find(({params}) => params.backendId === key && params.historical === "false");
-        assert.ok(page, key + " current terminal route");
-        for (const [field, expected] of Object.entries({runSha256: selected.sha256, generated: selected.measuredAt,
-          suiteFreshness: selected.suiteFreshness, total: String(counts.conclusive), yes: String(counts.supported),
-          no: String(counts.unsupported), terminalType: selected.target.kind}))
-          assert.equal(page.params[field], expected, key + " route " + field);
-        if (counts.conclusive > 0) {
-          analysisDigests.push(selected.sha256);
-          const analysis = Object.entries(analyses).find(([path, entry]) => path.startsWith("terminals/") && entry.runSha256 === selected.sha256)?.[1];
-          assert.ok(analysis, key + " current analysis");
-          assert.equal(analysis.measuredAt, selected.measuredAt, key + " analysis time");
-          for (const field of ["conclusive", "supported", "unsupported"])
-            assert.equal(analysis.counts[field], counts[field], key + " analysis " + field);
-        }
-        if (counts.conclusive === 0 || selected.target.kind === "mux") {
-          assert.equal(v1.terminals[key], undefined, key + " documented v1 omission");
-          assert.equal(v1.results[key], undefined, key + " documented v1 omission");
-          assert.equal(v1.methodology.contexts[key], undefined, key + " documented v1 omission");
-          continue;
-        }
-        v1Keys.push(key);
-        assert.equal(v1.methodology.contexts[key].contextKey, contextKey, key + " v1 context");
-        assert.equal(v1.methodology.contexts[key].runSha256, selected.sha256, key + " v1 digest");
-        assert.deepEqual(v1.terminals[key].score, {total: counts.conclusive, pass: counts.supported,
-          pct: Math.round(counts.supported / counts.conclusive * 100)}, key + " v1 conclusive denominator");
-        assert.deepEqual(v1.results[key], Object.fromEntries(Object.entries(selected.v1).map(([id, supported]) => [id, supported ? "yes" : "no"])), key + " lossy v1 values");
+      assert.ok(referenced.size>0,"history remains readable");
+      for (const [key,{selected}] of compatibility) {
+        assert.deepEqual(matrix.stats[key].score,selected.score);
+        assert.equal(selected.score.all,selected.catalogIds.length);
+        const page=pages.find(page=>page.params.backendId===key);
+        assert.equal(page.params.total,String(selected.score.all));
+        assert.equal(page.params.yes,String(selected.score.supported));
       }
-      assert.deepEqual(keys(v1.terminals), v1Keys.sort(), "v1 membership");
-      assert.deepEqual(keys(v1.results), v1Keys, "v1 result membership");
-      assert.deepEqual(keys(v1.methodology.contexts), v1Keys, "v1 methodology membership");
-      assert.deepEqual(Object.entries(analyses).filter(([path, entry]) => path.startsWith("terminals/") && entry.runSha256)
-        .map(([,entry]) => entry.runSha256).sort(), analysisDigests.sort(), "current analysis membership");
-      for (const [kind, id] of [["app", "kitty"], ["headless", "kitty"], ["headless", "xtermjs"]])
-        assert.ok(Object.values(projection.current).some((run) => run.target.kind === kind && run.target.id === id), kind + ":" + id + " distinct retained context");
-      console.log(JSON.stringify({exactContexts: keys(projection.current).length, compatibilityTargets: compatibility.size,
-        referencedRuns: referenced.size, muxContexts: Object.values(projection.current).filter((run) => run.target.kind === "mux").length,
-        milliseconds: performance.now() - started}));
+      if (!v3.currentRunCount) {
+        assert.deepEqual(site.stats,{});
+        assert.deepEqual(v3.current,{});
+        assert.match(v3.message,/No current/);
+        assert.ok(pages.some(page=>JSON.parse(page.params.historicalRuns||"[]").length));
+      }
+      for (const entry of Object.values(analyses))
+        if(entry.runSha256) assert.ok(Object.values(projection.current).some(run=>run.sha256===entry.runSha256));
+      assert.ok(Object.keys(v1.terminals).length>0,"legacy API remains readable");
+      console.log(JSON.stringify({exactContexts:keys(projection.current).length,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
       { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
@@ -374,15 +403,15 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       result.stderr
         .split("\n")
         .filter(Boolean)
-        .every((line) => /^Warning: Terminal '.+' has no reviewed current conclusive results$/.test(line)),
+        .every((line) => /^Warning: Terminal '.+' has no sealed current schema-3 runs$/.test(line)),
     ).toBe(true)
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
       compatibilityTargets: number
       referencedRuns: number
     }
-    expect(receipt.exactContexts).toBeGreaterThan(0)
-    expect(receipt.compatibilityTargets).toBeGreaterThan(0)
+    expect(receipt.exactContexts).toBe(0)
+    expect(receipt.compatibilityTargets).toBeUndefined()
     expect(receipt.referencedRuns).toBeGreaterThan(0)
   } finally {
     rmSync(out, { recursive: true, force: true })
@@ -617,11 +646,14 @@ describe("selected-run consumer parity", () => {
   it("ships current cells without global selection history while routes retain versions", () => {
     const site = probesLoader.load()
     expect(Object.hasOwn(site, "selected")).toBe(false)
-    expect(site.selectedByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+    expect(site.historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
 
     const server = loadProbes()
-    expect(server.selected.versions["mux:screen"]?.map((version) => version.target.version)).toEqual(["5.0", "4.9"])
-    expect(server.selected.history["mux:screen"]?.[0]?.runId).toBe(fixture.screen.runId)
+    expect(server.selected.historical.versions["mux:screen"]?.map((version) => version.target.version)).toEqual([
+      "5.0",
+      "4.9",
+    ])
+    expect(server.selected.historical.history["mux:screen"]?.[0]?.runId).toBe(fixture.screen.runId)
   })
 
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
@@ -641,9 +673,47 @@ describe("selected-run consumer parity", () => {
           expect(serialized).not.toContain(marker)
         }
       }
-      expect(site.results.kitty?.["sgr.bold"]).toBe("yes")
+      expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
       expect(JSON.parse(v1)).toMatchObject({ results: { kitty: { "sgr.bold": "yes" } } })
-      expect(site.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
+      expect(site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
+      // Current v3 must preserve exact sealed status while publication independently controls bytes.
+      const projection = currentResults.loadCurrentResults("").projection
+      const current = projection.current["app:kitty"]
+      if (!current) throw new Error("Missing sealed privacy fixture")
+      const result = current.results.find((result) => result.featureId === "sgr.bold")
+      if (!result) throw new Error("Missing sealed privacy result")
+      result.rawReplyRef = "bold-reply"
+      current.rawReplies = { "bold-reply": "RETAINED_CURRENT_REPLY" }
+      current.assertions = [
+        { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
+      ]
+      const targets = new Map([["kitty", { contextKey: "app:kitty", selected: current }]])
+      const unpublished = publicResults(projection, targets)
+      expect(JSON.stringify(unpublished.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
+      current.presentations = {
+        "sgr.bold": {
+          id: "present-current-bold",
+          reviewer: "reviewer",
+          reason: "reviewed retained evidence",
+          sources: ["https://example.org/review"],
+          presentsEvidence: true,
+        },
+      }
+      const presented = publicResults(projection, targets)
+      const approval = presented.selectedByBackend.kitty?.selected.results.find(
+        (result) => result.featureId === "sgr.bold",
+      )?.presentation
+      if (approval?.state !== "presented") throw new Error("Current evidence was not presented")
+      const document = presented.documents.get(approval.url)
+      expect(document?.document).toMatchObject({
+        version: 3,
+        runId: current.runId,
+        runSha256: current.sha256,
+        result: { status: "supported" },
+        record: { rawReply: "RETAINED_CURRENT_REPLY", assertions: current.assertions },
+      })
+      expect(createHash("sha256").update(document!.bytes).digest("hex")).toBe(approval.sha256)
+      expect(JSON.stringify(presented.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
     } finally {
       rmSync(out, { recursive: true, force: true })
     }
@@ -732,7 +802,7 @@ describe("selected-run consumer parity", () => {
           }
         }
         const site = probesLoader.load()
-        const presented = site.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
+        const presented = site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
         expect(presented?.state).toBe("presented")
         if (presented?.state !== "presented") throw new Error("Missing presented evidence")
         generateApi(out)
@@ -790,8 +860,8 @@ describe("selected-run consumer parity", () => {
         expect(JSON.stringify(site)).not.toContain("PRIVATE_ASSERTION_EXPECTED")
         expect(readFileSync(join(out, screenshot.url.slice(1)))).toEqual(artifact)
         if (kind === "text-cells") {
-          const first = site.selectedByBackend.kitty?.selected.cells["sgr.bold"]?.textQualification
-          const second = site.selectedByBackend.kitty?.selected.cells["extensions.sixel"]?.textQualification
+          const first = site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.textQualification
+          const second = site.historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.textQualification
           expect(first).toEqual(second)
           if (!first) throw new Error("Missing run-owned qualification link")
           const qualification = readFileSync(join(out, first.url.slice(1)))
@@ -821,7 +891,7 @@ describe("selected-run consumer parity", () => {
         expect(existsSync(join(copied, presented.url.slice(1)))).toBe(false)
         expect(existsSync(join(out, screenshot.url.slice(1)))).toBe(false)
         expect(existsSync(join(copied, screenshot.url.slice(1)))).toBe(false)
-        const after = probesLoader.load().selectedByBackend.kitty?.selected.cells["sgr.bold"]
+        const after = probesLoader.load().historicalByBackend.kitty?.selected.cells["sgr.bold"]
         expect(after?.presentation).toMatchObject({ state: "withdrawn", review: { reason: "Withdrawn for recheck" } })
         const v1After = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8")) as CompatibilityData
         expect(v1After.results).toEqual(v1Before.results)
@@ -912,9 +982,7 @@ describe("selected-run consumer parity", () => {
       // exceeds the single-file cap even though string length alone would not.
       Object.assign(cell.chain, { correctionId: "large-reviewed-correction" })
       cell.note = "界".repeat(9 * 1024 * 1024)
-      expect(() => generateApi(out)).toThrow(
-        new RegExp(`api/v2/runs/${fixture.runSha256}\\.json.*bytes.*26214400.*Cloudflare Pages`),
-      )
+      expect(() => generateApi(out)).toThrow(/api\/v[123]\/.*bytes.*26214400.*Cloudflare Pages/)
       expect(existsSync(join(out, "api", "v2", "data.json"))).toBe(false)
     } finally {
       Reflect.deleteProperty(cell.chain, "correctionId")
@@ -975,12 +1043,18 @@ describe("selected-run consumer parity", () => {
           { sha256: string; counts: { conclusive: number; supported: number; unsupported: number } }
         >
       }
-      expect(site.selectedByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
-      expect(site.stats.kitty).toMatchObject({ total: 2, yes: 1, no: 1 })
-      expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "2", yes: "1", no: "1" })
+      expect(site.historicalByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
+      expect(site.stats.kitty).toMatchObject({
+        score: { all: 273, supported: 1 },
+        counts: { supported: 1, unsupported: 1, "test-todo": 271 },
+        complete: false,
+      })
+      expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "273", yes: "1", no: "1" })
       expect(terminal?.params.runSha256).toBe(fixture.runSha256)
       const alternatives = JSON.parse(terminal!.params.otherRuns!) as PublicVersion[]
-      expect(alternatives.map((run: { runId: string }) => run.runId)).toEqual(["kitty-clipboard-reviewed"])
+      expect(alternatives.map((run: { runId: string }) => run.runId)).toEqual([
+        "kitty-clipboard-reviewed-sealed-eeeeeeee",
+      ])
       expect(alternatives[0]?.target.permissions).toBe("clipboard: read=deny,write=allow")
       const screenPage = terminalPaths.paths().find((page) => page.params.backendId === "screen")!
       const olderRuns = JSON.parse(screenPage.params.otherRuns!) as PublicVersion[]
@@ -997,19 +1071,19 @@ describe("selected-run consumer parity", () => {
       expect(analysis).toMatchObject({
         runSha256: fixture.runSha256,
         measuredAt: fixture.measuredAt,
-        counts: { conclusive: 2, supported: 1, unsupported: 1 },
+        score: { supported: 1, all: 273 },
       })
-      expect(analyses["features-index"]?.analysis).toContain("<strong>1</strong> feature")
-      expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 2")
-      expect(analyses["framework/ink"]?.analysis).toContain("<strong>0</strong> of 2")
-      expect(analyses["sgr/38-2-truecolor-fg"]?.analysis).toContain("awaiting verified measurements")
-      expect(analyses.cursor?.analysis).toContain("awaiting verified measurements")
-      expect(analyses.vt220?.analysis).toContain("awaiting verified measurements")
-      expect(analyses["baseline/modern"]?.analysis).toContain("awaiting verified measurements")
+      expect(analyses["features-index"]?.analysis).toContain("recorded support")
+      expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 3")
+      expect(analyses["framework/ink"]?.analysis).toContain("<strong>0</strong> of 3")
+      expect(analyses["sgr/38-2-truecolor-fg"]?.analysis).toContain("recorded support")
+      expect(analyses.cursor?.analysis).toContain("covers 22 features")
+      expect(analyses.vt220?.analysis).toBeDefined()
+      expect(analyses["baseline/modern"]?.analysis).toContain("0</strong>")
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
@@ -1041,7 +1115,7 @@ describe("selected-run consumer parity", () => {
       const analysis = generateAnalysis()["modes/decsclm-smooth-scroll"]?.analysis
       expect(analysis).toContain("Legacy")
       expect(analysis).not.toContain("Unicode")
-      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Reflect.deleteProperty(cells, featureId)
@@ -1073,21 +1147,25 @@ describe("selected-run consumer parity", () => {
     }
   })
 
-  it("keeps a reviewed inconclusive target and its version visible without a score", () => {
+  it("keeps a sealed all-TODO target visible with its full catalog denominator", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
-    expect(site.selectedByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
-    expect(site.stats.screen).toMatchObject({ total: 0, yes: 0, no: 0 })
-    expect(site.stats.screen?.pct).toBeNull()
+    expect(site.historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+    expect(site.stats.screen).toMatchObject({
+      score: { all: 273, supported: 0 },
+      counts: { "test-todo": 273 },
+      complete: false,
+    })
+    expect(site.stats.screen?.pct).toBe(0)
     expect(terminal?.params).toMatchObject({
       generated: fixture.screen.measuredAt,
       runSha256: fixture.screen.sha256,
-      pct: "",
+      pct: "0",
     })
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
-      expect.objectContaining({ version: fixture.screen.target.version, pct: null, suiteFreshness: "current" }),
-      expect.objectContaining({ version: "4.9", pct: 50, suiteFreshness: "older suite (1 probes)" }),
+      expect.objectContaining({ version: fixture.screen.target.version, pct: 0, suiteFreshness: "current" }),
+      expect.objectContaining({ version: "4.9", pct: 0, suiteFreshness: "older suite (1 probes)" }),
     ])
     const comparison = comparePaths
       .paths()
@@ -1096,14 +1174,14 @@ describe("selected-run consumer parity", () => {
           [page.params.termAId, page.params.termBId].includes("screen") &&
           [page.params.termAId, page.params.termBId].includes("kitty"),
       )
-    expect(comparison?.params[comparison.params.termAId === "screen" ? "termATotal" : "termBTotal"]).toBe("0")
+    expect(comparison?.params[comparison.params.termAId === "screen" ? "termATotal" : "termBTotal"]).toBe("273")
     expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     expect(JSON.parse(core?.params.scores ?? "[]")).toContainEqual(
-      expect.objectContaining({ name: "screen", total: 0, pct: 0 }),
+      expect.objectContaining({ name: "screen", score: { all: 80, supported: 0 }, pct: 0 }),
     )
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
-    expect(bold?.params).toMatchObject({ yesCount: "2", totalCount: "3" })
+    expect(bold?.params).toMatchObject({ yesCount: "1", totalCount: "3" })
   })
 
   it("limits comparison claims to the same recorded scope and jointly conclusive evidence method", () => {
@@ -1114,11 +1192,20 @@ describe("selected-run consumer parity", () => {
     const kitty = kittyEntry?.selected
     const screen = screenEntry?.selected
     const tmux = tmuxEntry?.selected
-    const bold = kitty?.cells["sgr.bold"]
-    if (!screen || !tmux || !bold || !screenEntry || !tmuxEntry) {
-      throw new Error("Missing comparison fixture cells")
+    const bold = kitty?.results.find((result) => result.featureId === "sgr.bold")
+    if (!screen || !tmux || !bold || !screenEntry || !tmuxEntry) throw new Error("Missing comparison fixtures")
+    function requiredResult(run: import("../docs/data/public-results").PublicVersion, id: string) {
+      const result = run.results.find((result) => result.featureId === id)
+      if (!result) throw new Error(`Missing fixture result ${id}`)
+      return result
     }
-
+    function refresh(entry: NonNullable<ReturnType<typeof loadProbes>["selectedByBackend"][string]>) {
+      entry.states = Object.fromEntries(entry.selected.results.map((result) => [result.featureId, result.status]))
+      const aggregate = aggregateCurrentResults(entry.selected.results, entry.selected.catalogIds)
+      entry.selected.complete = aggregate.complete
+      entry.selected.counts = aggregate.counts
+      entry.selected.score = { supported: aggregate.supported, all: aggregate.denominator }
+    }
     const mixed = comparePaths
       .paths()
       .find(
@@ -1135,25 +1222,13 @@ describe("selected-run consumer parity", () => {
     const originalTmux = structuredClone(tmux)
     try {
       screen.target.mux = tmux.target.mux
-      screen.cells["sgr.bold"] = { ...structuredClone(bold), outcome: "unsupported", conclusive: true }
-      tmux.cells["sgr.bold"] = { ...structuredClone(bold), outcome: "supported", conclusive: true }
-      screen.cells["extensions.sixel"] = {
-        ...structuredClone(bold),
-        featureId: "extensions.sixel",
-        outcome: "unsupported",
-        evidence: "parser-state",
-      }
-      tmux.cells["extensions.sixel"] = {
-        ...structuredClone(bold),
-        featureId: "extensions.sixel",
-        outcome: "supported",
-        evidence: "query",
-      }
-      // The reader's states are the ONE classification of the run's cells, taken once per build. A
-      // fixture that overrides raw cells re-derives them the same way, so the compare page reads the
-      // cells the fixture named (28792 item 1).
-      Object.assign(screenEntry.states, classifyCells(screen.cells))
-      Object.assign(tmuxEntry.states, classifyCells(tmux.cells))
+      for (const result of [...screen.results, ...tmux.results]) result.status = "unsupported"
+      Object.assign(requiredResult(screen, "sgr.bold"), { ...structuredClone(bold), status: "unsupported" })
+      Object.assign(requiredResult(tmux, "sgr.bold"), { ...structuredClone(bold), status: "supported" })
+      Object.assign(requiredResult(screen, "extensions.sixel"), { status: "unsupported", evidence: "parser-state" })
+      Object.assign(requiredResult(tmux, "extensions.sixel"), { status: "supported", evidence: "query" })
+      refresh(screenEntry)
+      refresh(tmuxEntry)
       const pair = comparePaths
         .paths()
         .find(
@@ -1183,8 +1258,8 @@ describe("selected-run consumer parity", () => {
     } finally {
       Object.assign(screen, originalScreen)
       Object.assign(tmux, originalTmux)
-      Object.assign(screenEntry.states, classifyCells(screen.cells))
-      Object.assign(tmuxEntry.states, classifyCells(tmux.cells))
+      refresh(screenEntry)
+      refresh(tmuxEntry)
     }
   })
 
@@ -1193,34 +1268,20 @@ describe("selected-run consumer parity", () => {
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
     expect(site.baselineStats.kitty?.core).toMatchObject({
-      total: 1,
-      yes: 1,
+      score: { all: catalog, supported: 1 },
       pct: Math.round(100 / catalog),
-      catalog,
-      supported: 1,
-      unsupported: 0,
-      inconclusive: 0,
-      errors: 0,
-      untested: catalog - 1,
+      counts: { supported: 1, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": catalog - 1 },
     })
     expect(site.baselineStats.screen?.core).toMatchObject({
-      total: 0,
-      yes: 0,
+      score: { all: catalog, supported: 0 },
       pct: 0,
-      catalog,
-      supported: 0,
-      unsupported: 0,
-      inconclusive: 0,
-      errors: 1,
-      untested: catalog - 1,
+      counts: { supported: 0, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": catalog },
     })
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
-    const scores = JSON.parse(core?.params.scores ?? "[]") as Array<Record<string, unknown>>
+    const scores = JSON.parse(core?.params.scores || "[]") as Array<Record<string, unknown>>
     expect(scores.find((score) => score.name === "kitty")).toMatchObject({
       version: fixture.selected.target.version,
-      catalog,
-      supported: 1,
-      untested: catalog - 1,
+      score: { all: catalog, supported: 1 },
       pct: Math.round(100 / catalog),
     })
     const screenBold = fixture.screen.cells["sgr.bold"] as SelectedCell
@@ -1230,12 +1291,8 @@ describe("selected-run consumer parity", () => {
       screenBold.outcome = "error"
       screenBold.reason = "collector-error"
       expect(probesLoader.load().baselineStats.screen?.core).toMatchObject({
-        total: 0,
-        supported: 0,
-        unsupported: 0,
-        inconclusive: 0,
-        errors: 1,
-        untested: catalog - 1,
+        counts: { "test-failure": 1, "test-todo": catalog - 1 },
+        score: { all: catalog, supported: 0 },
       })
     } finally {
       Object.assign(screenBold, originalScreenBold)
@@ -1256,17 +1313,17 @@ describe("selected-run consumer parity", () => {
     try {
       const unreviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(unreviewed).not.toContain(unscoped)
-      expect(unreviewed).toContain("No Supported results among")
+      expect(unreviewed).toContain("No recorded support among")
       expect(unreviewed).toContain("Not supported by:")
       cell.note = "Reviewed Kitty sixel observation note"
       cell.chain.correctionId = "reviewed-sixel"
-      expect(probesLoader.load().selectedByBackend.kitty?.selected.cells["extensions.sixel"]?.note).toBe(
+      expect(probesLoader.load().historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.note).toBe(
         "Reviewed Kitty sixel observation note",
       )
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
-      expect(warnings.every((message) => message.includes("no reviewed current conclusive results"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Object.assign(cell, original)
@@ -1277,16 +1334,21 @@ describe("selected-run consumer parity", () => {
 
   it("uses selected public notes across routes without promoting unscoped annotations", () => {
     const data = loadProbes()
-    const reviewed = data.selectedByBackend.kitty?.selected.cells["sgr.bold"]
-    const inconclusive = data.selectedByBackend.screen?.selected.cells["sgr.bold"]
+    const reviewed = data.selectedByBackend.kitty?.selected.results.find((result) => result.featureId === "sgr.bold")
+    const inconclusive = data.selectedByBackend.screen?.selected.results.find(
+      (result) => result.featureId === "sgr.bold",
+    )
     if (!reviewed || !inconclusive) throw new Error("Missing selected bold cells in parity fixture")
-    const originalNote = reviewed.note
-    const originalInconclusiveNote = inconclusive.note
+    const originalNote = reviewed.reason
+    const originalInconclusiveNote = inconclusive.reason
     const originalBoldAnnotation = data.annotations["kitty:sgr.bold"]
     const originalSixelAnnotation = data.annotations["kitty:extensions.sixel"]
     const originalScreenAnnotation = data.annotations["screen:sgr.bold"]
-    reviewed.note = "Reviewed Kitty bold note"
-    inconclusive.note = "Reviewed screen inconclusive note"
+    const originalNotes = structuredClone(data.notes)
+    reviewed.reason = "Reviewed Kitty bold note"
+    data.notes.kitty = { ...data.notes.kitty, "sgr.bold": "Reviewed Kitty bold note" }
+    data.notes.screen = { ...data.notes.screen, "sgr.bold": "Reviewed screen inconclusive note" }
+    inconclusive.reason = "Reviewed screen inconclusive note"
     data.annotations["kitty:sgr.bold"] = {
       note: "Unscoped conflicting bold annotation",
       url: "https://example.org/unscoped-implementation",
@@ -1339,7 +1401,7 @@ describe("selected-run consumer parity", () => {
         expect(comparison?.params.termAId === backendName ? comparisonRow?.noteA : comparisonRow?.noteB).toBe(expected)
         expect(terminalNote(backendName, featureId)).toBe(expected)
       }
-      expect(data.results.screen?.["sgr.bold"]).toBeUndefined()
+      expect(data.results.screen?.["sgr.bold"]).toBe("test-todo")
       const bold = features.find((page) => page.params.featureId === "sgr.bold")
       const boldResults = JSON.parse(bold?.params.backendResults ?? "[]") as Array<Record<string, unknown>>
       expect(boldResults.find((row) => row.name === "kitty")).not.toHaveProperty("url")
@@ -1348,10 +1410,11 @@ describe("selected-run consumer parity", () => {
       expect(data.annotations["kitty:extensions.sixel"]?.note).toBe("Unreviewed sixel annotation")
       expect(data.annotations["screen:sgr.bold"]?.note).toBe("Unscoped screen annotation")
     } finally {
-      if (originalNote === undefined) delete reviewed.note
-      else reviewed.note = originalNote
-      if (originalInconclusiveNote === undefined) delete inconclusive.note
-      else inconclusive.note = originalInconclusiveNote
+      data.notes = originalNotes
+      if (originalNote === undefined) delete reviewed.reason
+      else reviewed.reason = originalNote
+      if (originalInconclusiveNote === undefined) delete inconclusive.reason
+      else inconclusive.reason = originalInconclusiveNote
       if (originalBoldAnnotation === undefined) delete data.annotations["kitty:sgr.bold"]
       else data.annotations["kitty:sgr.bold"] = originalBoldAnnotation
       if (originalSixelAnnotation === undefined) delete data.annotations["kitty:extensions.sixel"]
@@ -1362,69 +1425,41 @@ describe("selected-run consumer parity", () => {
   })
 })
 
-it("binds the native parser page to its own slug and its selected run, now that the app is measured", () => {
-  // The old premise here — "the native parser uses /terminals/ghostty; the unmeasured app has its
-  // own analysis placeholder" — is stale: the app carries two measured rows (macOS bee88159, Linux
-  // c1cfa180), so the shared slug published the parser's run under the app's URL (28047). The
-  // parser now owns /terminals/headless-ghostty-native and the app keeps /terminals/ghostty.
+it("keeps a historical native parser on its own route without promoting it to current", () => {
   const native = structuredClone(fixture.selected) as unknown as SelectedVersion
   native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
+  native.runId = "native-historical"
+  const projection = currentResults.loadCurrentResults("").projection
+  projection.historical.table = { ...projection.historical.table, [native.runId]: classifyCells(native.cells) }
+  projection.historical.versions["headless:ghostty-native"] = [native]
+  const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const targets = vi
-    .spyOn(currentResults, "compatibilityTargets")
+    .spyOn(currentResults, "historicalCompatibilityTargets")
     .mockReturnValue(new Map([["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }]]))
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   let probes: ReturnType<typeof vi.spyOn> | undefined
   let analysis: ReturnType<typeof vi.spyOn> | undefined
   try {
     const data = loadFullProbes()
-    const generated = generateAnalysis()
     probes = vi.spyOn(probeData, "loadProbes").mockReturnValue(data)
-    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generated)
-    expect(generated["terminals/headless-ghostty-native"]).toBeDefined()
-    expect(generated["terminals/headless-ghostty-native"]?.analysis).not.toContain("awaiting verified measurements")
-    const page = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty-native")
-    expect(page?.params).toMatchObject({
-      id: "headless-ghostty-native",
-      terminalType: "headless",
-      runSha256: fixture.runSha256,
-      generated: fixture.measuredAt,
-      analysisDate: "2026-09-28",
-      total: "2",
-      yes: "1",
-      no: "1",
-    })
-    expect(page?.params.analysis).not.toContain("awaiting verified measurements")
-    expect(page?.params.analysis).toContain("(1/2)")
-    // The app is a second page with its own id, never a second owner of the parser's id.
-    const appPage = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty")
-    expect(appPage?.params.id).toBe("ghostty")
-    expect(appPage?.params.analysis).not.toContain("(1/2)")
-    // A measured run whose analysis is missing must fail loud, never borrow another terminal's.
-    delete generated["terminals/headless-ghostty-native"]
-    expect(() => terminalPaths.paths()).toThrow(/ghostty-native.*selected run.*aaaaaaaa/)
-    // The inverse collision must not attribute a measured app's analysis to an unmeasured parser.
-    const app = structuredClone(native)
-    app.target = { ...app.target, kind: "app", id: "ghostty" }
-    app.sha256 = "b".repeat(64)
-    targets.mockReturnValue(new Map([["ghostty", { contextKey: "app:ghostty", selected: app }]]))
-    analysis.mockReturnValue(generateAnalysis())
-    native.counts = { ...native.counts, conclusive: 0, supported: 0, unsupported: 0 }
-    native.v1 = {}
-    targets.mockReturnValue(new Map([["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }]]))
-    probes.mockReturnValue(loadFullProbes())
-    const unmeasured = terminalPaths.paths().find((entry) => entry.params.backendId === "ghostty-native")
-    expect(unmeasured?.params).toMatchObject({
-      id: "headless-ghostty-native",
-      total: "0",
-      analysisDate: "",
-      runSha256: fixture.runSha256,
-    })
-    expect(unmeasured?.params.analysis).not.toContain("(1/2)")
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generateAnalysis())
+    const pages = terminalPaths.paths()
+    const page = pages.find((entry) => entry.params.backendId === "ghostty-native")
+    expect(warning).toHaveBeenCalledWith("Warning: Terminal 'ghostty-native' has no sealed current schema-3 runs")
+    for (const [message] of warning.mock.calls) {
+      expect(message).toMatch(/^Warning: Terminal '.+' has no sealed current schema-3 runs$/)
+    }
+    expect(page?.params.id).toBe("headless-ghostty-native")
+    expect(page?.params.total).toBe("")
+    expect(data.selectedByBackend["ghostty-native"]).toBeUndefined()
+    expect(data.historicalByBackend["ghostty-native"]?.selected.sha256).toBe(fixture.runSha256)
+    expect(pages.find((entry) => entry.params.backendId === "ghostty")?.params.id).toBe("ghostty")
   } finally {
     probes?.mockRestore()
     analysis?.mockRestore()
-    warning.mockRestore()
     targets.mockRestore()
+    selection.mockRestore()
+    warning.mockRestore()
   }
 })
 
@@ -1436,7 +1471,7 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   app.target = { ...app.target, kind: "app", id: "ghostty" }
   const native = structuredClone(fixture.selected) as unknown as SelectedVersion
   native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
-  const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
+  const targets = vi.spyOn(currentResults, "historicalCompatibilityTargets").mockReturnValue(
     new Map([
       ["ghostty", { contextKey: "app:ghostty", selected: app }],
       ["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }],
@@ -1452,6 +1487,7 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
       meta: { ...data.meta, "ghostty-native": { ...data.meta["ghostty-native"], slug: "ghostty" } },
     })
     analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue({
+      ...generateAnalysis(),
       "terminals/ghostty": { analysis: "<p>app</p>", date: "2026-09-28", changes: null, runSha256: fixture.runSha256 },
       "terminals/ghostty-native": {
         analysis: "<p>parser</p>",

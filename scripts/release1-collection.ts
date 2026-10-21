@@ -10,7 +10,7 @@
  * Remaining platform routes and native qualification are unfinished. No deploy.
  */
 import { execFileSync, spawnSync } from "node:child_process"
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import {
   closeSync,
   existsSync,
@@ -25,6 +25,11 @@ import {
 import { dirname, join, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse } from "yaml"
+import { initializeRunDraft, recordCollectionFailure, type RunDraft } from "@terminfo/probe-defs"
+import { buildFullProjectRows } from "../docs/data/full-project.ts"
+import { aggregateCurrentResults, currentCoverageSentence, type CurrentAggregate } from "../docs/data/release-scope.ts"
+import { decodeCollectorDraft } from "@terminfo/run-parser"
+import { saveDaemonProbeRun } from "../packages/terminfo.dev/src/daemon-client.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { fullContextCensus, type CensusContext } from "../docs/data/full-census.ts"
 import { parseRun, parseSuiteManifest } from "@terminfo/run-parser"
@@ -34,10 +39,11 @@ import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from
 import {
   classifyDevelopmentRun,
   readVerifiedArtifact,
-  statesFor,
+  historicalStatesFor as statesFor,
+  statesFor as currentStatesFor,
   type SelectedVersion,
 } from "../docs/data/selected-results.ts"
-import { activeInterpretations, parseInterpretations } from "./interpretations.ts"
+import { parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
@@ -335,15 +341,18 @@ export interface CollectionPass {
   }
   contexts: Array<{
     context: CollectionContext
-    status: "classified" | "admitted" | "failed"
+    status: "not-started" | "pending-review" | "classified" | "admitted" | "failed"
     rawRun?: string
     directory?: string
     admittedPath?: string
     classification?: ReturnType<typeof classifyDevelopmentRun>
+    summary?: CurrentAggregate
     transport?: CollectionPass["transport"]
     error?: string
+    reason?: string
   }>
   errors: string[]
+  complete: boolean
 }
 
 /**
@@ -477,9 +486,7 @@ export async function collectPass(
   const sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim()
   const catalogIds = Object.keys(loadFeatures(CONTENT))
   const interpretationsPath = join(CONTENT, "interpretations.json")
-  const interpretations = activeInterpretations(
-    parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds),
-  )
+  parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalogIds)
   const inputSha256: Record<string, string> = {}
   for (const path of new Set([
     ...snapshot.sourcePaths.map((path) => join(ROOT, path)),
@@ -522,12 +529,41 @@ export async function collectPass(
     catalogIds,
     contexts: [],
     errors: [],
+    complete: false,
+  }
+  const drafts = new Map<string, { draft: RunDraft; path: string }>()
+  for (const context of census) {
+    const draft = initializeRunDraft({
+      runId: randomBytes(16).toString("hex"),
+      sourceRevision,
+      manifest: derivedSuiteManifest(snapshot),
+      intendedContext: {
+        kind: context.kind,
+        id: context.id,
+        os: context.kind === "headless" ? process.platform : context.os,
+      },
+    })
+    const path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
+    writeFileSync(path, `${JSON.stringify(draft, null, 2)}\n`, { flag: "wx" })
+    drafts.set(coverageKey(context.kind, context.id, context.os), { draft, path })
   }
   const suites = new Map([[snapshot.probeHash, derivedSuiteManifest(snapshot)]])
   const files = new Map<string, string[]>()
   const failures = new Map<string, string>()
   try {
-    const collected = await collectHeadlessRuns([], join(directory, "headless"))
+    const collected = await collectHeadlessRuns(
+      [],
+      join(directory, "headless"),
+      new Map(
+        census
+          .filter((context) => context.kind === "headless")
+          .map((context) => {
+            const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
+            if (!handed) throw new Error(`Missing initialized headless context ${context.id}`)
+            return [context.id, handed]
+          }),
+      ),
+    )
     for (const failure of collected.failures) failures.set(failure.backend, failure.error)
     for (const path of collected.runs) {
       try {
@@ -556,16 +592,21 @@ export async function collectPass(
     snapshot.probeHash,
     inputSha256[join(ROOT, "bun.lock")] as string,
     pass.errors,
+    drafts,
   )
   for (const context of census) {
-    const row: CollectionPass["contexts"][number] = { context, status: "failed" }
+    const row: CollectionPass["contexts"][number] = { context, status: "not-started" }
     pass.contexts.push(row)
+    const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
+    if (!handed) throw new Error(`Context ${context.id} lost initialized draft`)
+    let startedAt: string | undefined
     try {
       let path: string
       if (context.route === "linux-container") {
         const output = join(directory, "linux", context.id)
         row.directory = output
         mkdirSync(output, { recursive: true })
+        startedAt = new Date().toISOString()
         runChild(
           [
             "bash",
@@ -583,12 +624,14 @@ export async function collectPass(
             stdout: join(output, "launcher.stdout.log"),
             stderr: join(output, "launcher.stderr.log"),
           },
+          { TERMINFO_CAPTURE_RUN_ID: handed.draft.runId },
         )
         const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
         if (runs.length !== 1 || !runs[0]) {
           throw new Error(`Linux launcher produced ${runs.length} run directories in ${output}; expected exactly one`)
         }
-        path = realpathSync(join(output, runs[0].name, "raw", "v2-run.json"))
+        const finalPath = join(output, runs[0].name, "raw", "v3-run.json")
+        path = realpathSync(existsSync(finalPath) ? finalPath : join(output, runs[0].name, "raw", "v3-run.draft.json"))
         if (!path.startsWith(`${output}${sep}`)) {
           throw new Error(`Linux raw output escaped its private context: ${path}`)
         }
@@ -597,10 +640,16 @@ export async function collectPass(
         row.directory = output
         mkdirSync(output, { recursive: true })
         const command = ownedAppCommand(context, output, ownedApp, sourceRevision)
-        runChild(command.argv, command.label, {
-          stdout: join(output, "launcher.stdout.log"),
-          stderr: join(output, "launcher.stderr.log"),
-        })
+        startedAt = new Date().toISOString()
+        runChild(
+          command.argv,
+          command.label,
+          {
+            stdout: join(output, "launcher.stdout.log"),
+            stderr: join(output, "launcher.stderr.log"),
+          },
+          { TERMINFO_CAPTURE_RUN_ID: handed.draft.runId },
+        )
         // One home for the transport's artifacts: the driver writes the run JSON and the receipt
         // into <output>/transport, so the collector reads them from exactly there.
         const runsDirectory = ownedAppRunsDirectory(output, ownedApp.runner)
@@ -644,15 +693,60 @@ export async function collectPass(
         )
       }
       row.rawRun = path
+      const raw = readFileSync(path, "utf8")
+      const header = JSON.parse(raw) as { schemaVersion?: unknown; sealedAt?: unknown }
+      if (header.schemaVersion === 3 && header.sealedAt === undefined) {
+        const decoded = decodeCollectorDraft(path, raw, derivedSuiteManifest(snapshot), sourceRevision)
+        if (decoded.run.runId !== handed.draft.runId) {
+          throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
+        }
+        if (
+          decoded.run.target?.kind !== context.kind ||
+          decoded.run.target.id !== context.id ||
+          (context.kind !== "headless" && decoded.run.target.os !== context.os)
+        ) {
+          throw new Error(
+            `raw draft does not identify the expected current schema-3 ${context.kind}:${context.id} context`,
+          )
+        }
+        if (
+          decoded.run.results.some((result) =>
+            result.checks.some((check) => check.id === "review" && check.status === "test-todo"),
+          ) &&
+          Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture."))
+        ) {
+          row.status = "pending-review"
+          row.reason = "Valid capture; required review pending (unsealed TEST TODO)"
+          continue
+        }
+        path = saveDaemonProbeRun(
+          {
+            ...decoded.run,
+            rawReplies: {
+              ...decoded.run.rawReplies,
+              "collector.httpResponseSha256": decoded.run.rawReplies["collector.httpResponseSha256"] ?? decoded.sha256,
+            },
+          },
+          dirname(path),
+        )
+        if (path.endsWith(".draft.json")) {
+          row.rawRun = path
+          row.status = "pending-review"
+          row.reason = "Valid capture; required review pending (unsealed TEST TODO)"
+          continue
+        }
+        row.rawRun = path
+      }
       const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
       if (
-        run.schemaVersion !== 2 ||
+        run.schemaVersion !== 3 ||
         run.target.kind !== context.kind ||
         run.target.id !== context.id ||
         (context.kind !== "headless" && run.target.os !== context.os)
       ) {
-        throw new Error(`raw run does not identify the expected v2 ${context.kind}:${context.id} context`)
+        throw new Error(`raw run does not identify the expected current schema-3 ${context.kind}:${context.id} context`)
       }
+      if (run.runId !== handed.draft.runId) throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
       if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
       if (run.sourceRevision !== sourceRevision) {
         throw new Error(`raw source ${run.sourceRevision} differs from pass source ${sourceRevision}`)
@@ -661,12 +755,25 @@ export async function collectPass(
       for (const ref of run.textSnapshotRefs) {
         textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
       }
-      row.classification = classifyDevelopmentRun(run, interpretations, { textSnapshots })
+      if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
+      row.summary = aggregateCurrentResults(run.results, run.catalogIds)
+      row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
     } catch (error) {
       row.error = `${labelOf(context)}: ${error instanceof Error ? error.message : String(error)}`
+      const retained = JSON.parse(readFileSync(handed.path, "utf8")) as RunDraft
+      if (startedAt) recordCollectionFailure(retained, startedAt, row.error, snapshot.probes[context.kind])
+      row.status = retained.results.some((result) => result.status === "test-failure") ? "failed" : "not-started"
+      if (!startedAt) {
+        for (const result of retained.results) if (result.status === "test-todo") result.reason = row.error
+      }
+      writeFileSync(handed.path, `${JSON.stringify(retained, null, 2)}\n`)
     }
   }
+  pass.complete =
+    pass.contexts.length === 33 &&
+    catalogIds.length === 273 &&
+    pass.contexts.every((row) => row.summary?.complete === true)
   for (const [path, hash] of Object.entries(inputSha256)) {
     try {
       if (createHash("sha256").update(readFileSync(path)).digest("hex") !== hash) {
@@ -735,6 +842,7 @@ function collectHostedArtifacts(
   probeHash: string,
   lockSha256: string,
   errors: string[],
+  drafts: ReadonlyMap<string, { draft: RunDraft; path: string }>,
 ): Map<string, { directory: string; path?: string; error?: string }> {
   const results = new Map<string, { directory: string; path?: string; error?: string }>()
   const root = join(directory, "hosted")
@@ -775,7 +883,26 @@ function collectHostedArtifacts(
       const dispatchLogs = logs(output, "dispatch")
       const response =
         runChild(
-          ["gh", "workflow", "run", `${workflow}.yml`, "--repo", "beorn/terminfo.dev", "--ref", branch],
+          [
+            "gh",
+            "workflow",
+            "run",
+            `${workflow}.yml`,
+            "--repo",
+            "beorn/terminfo.dev",
+            "--ref",
+            branch,
+            "--field",
+            `capture_run_ids=${JSON.stringify(
+              Object.fromEntries(
+                contexts.map((context) => {
+                  const initialized = drafts.get(coverageKey(context.kind, context.id, context.os))
+                  if (!initialized) throw new Error(`Missing hosted context draft ${context.id}`)
+                  return [context.id, initialized.draft.runId]
+                }),
+              ),
+            )}`,
+          ],
           workflow,
           dispatchLogs,
         ) + readFileSync(dispatchLogs.stderr, "utf8")
@@ -992,7 +1119,7 @@ function linuxLedgerEntry(
  * context with no committed run at all is left for the census to report as uncollectable, named.
  */
 export function linuxLedger(contentDir: string): LinuxLedger {
-  const projection = loadCurrentResults(contentDir).projection
+  const projection = loadCurrentResults(contentDir).projection.historical
   const reviewed = loadDefaultContextPolicy(contentDir)
   const exclusions = new Map(projection.exclusions.map((entry) => [entry.runId, entry.reason]))
   const current = new Map<string, Array<{ key: string; selected: SelectedVersion }>>()
@@ -1033,6 +1160,7 @@ export function linuxLedger(contentDir: string): LinuxLedger {
 
 /** Admission supplies the validated target; coverage needs no second raw-run parser. */
 export interface ProducedRun {
+  readonly runId?: string
   readonly target: Pick<AdmissionPlan["target"], "kind" | "id" | "os">
 }
 
@@ -1052,7 +1180,7 @@ export function admitProducedRuns(
   const produced: ProducedRun[] = []
   for (const plan of plans) {
     admitRun(plan)
-    const run = { target: plan.target }
+    const run = { target: plan.target, runId: plan.runId }
     produced.push(run)
     onAdmitted?.(run, plan.destination)
   }
@@ -1105,7 +1233,12 @@ function planLines(census: readonly CollectionContext[]): string[] {
 const labelOf = (entry: CollectionContext): string =>
   entry.kind === "headless" ? `${entry.id} [headless]` : `${entry.id}/${entry.os}`
 
-function runChild(argv: readonly string[], label: string, logs?: { stdout: string; stderr: string }): string {
+function runChild(
+  argv: readonly string[],
+  label: string,
+  logs?: { stdout: string; stderr: string },
+  environment?: Record<string, string>,
+): string {
   const [command, ...rest] = argv
   if (command === undefined) throw new Error(`${label}: no command to run`)
   const stdout = logs ? openSync(logs.stdout, "wx") : undefined
@@ -1114,6 +1247,7 @@ function runChild(argv: readonly string[], label: string, logs?: { stdout: strin
     stderr = logs ? openSync(logs.stderr, "wx") : undefined
     const result = spawnSync(command, rest, {
       cwd: ROOT,
+      ...(environment && { env: { ...process.env, ...environment } }),
       stdio: stdout === undefined || stderr === undefined ? "inherit" : ["ignore", stdout, stderr],
     })
     const retained = logs ? `; logs retained at ${dirname(logs.stderr)}` : ""
@@ -1212,12 +1346,18 @@ if (import.meta.main) {
         ...(ownedAppKnownHosts === undefined ? {} : { knownHosts: ownedAppKnownHosts }),
         ...(ownedAppRemoveStage ? { removeStage: true } : {}),
       })
-      console.log(`${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}`)
+      console.log(
+        `${pass.mode === "admit" ? "Final collection" : "Private development"} pass: ${pass.directory}; cohort ${pass.complete ? "complete" : "incomplete"}`,
+      )
       for (const row of pass.contexts) {
-        console.log(`${labelOf(row.context)}: ${row.status}${row.error ? ` — ${row.error}` : ""}`)
+        console.log(
+          `${labelOf(row.context)}: ${row.status}${row.reason || row.error ? ` — ${row.reason ?? row.error}` : ""}`,
+        )
       }
       for (const error of pass.errors) console.error(error)
-      if (pass.errors.length || pass.contexts.some((row) => row.status === "failed")) process.exitCode = 1
+      if (!pass.complete || pass.errors.length || pass.contexts.some((row) => row.status === "failed")) {
+        process.exitCode = 1
+      }
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       process.exitCode = 1
@@ -1247,7 +1387,44 @@ if (import.meta.main) {
           : `Contexts with no run in this pass — ${gaps.length} of ${census.length}, each named, none read as 0%:`,
       )
       for (const gap of gaps) console.log(`  ${labelOf(gap.context)}: ${gap.reason}`)
-      runChild(["bun", "run", "decisive-share"], "decisive-share")
+      const projection = loadCurrentResults(CONTENT).projection
+      const admittedIds = new Set(produced.map((run) => run.runId))
+      const admitted = Object.entries(projection.versions).flatMap(([key, versions]) =>
+        versions.filter((run) => admittedIds.has(run.runId)).map((run) => ({ key, run })),
+      )
+      const requiredSuiteId = frozenSuite ?? admitted[0]?.run.suiteId
+      if (!requiredSuiteId) {
+        throw new Error(
+          "No current schema-3 admitted executions; historical results cannot complete the current collection",
+        )
+      }
+      const coverage = buildFullProjectRows({
+        census: fullContextCensus(CONTENT).contexts,
+        catalogIds: Object.keys(loadFeatures(CONTENT)),
+        requiredSuiteId,
+        candidates: admitted.map(({ key, run }) =>
+          candidateFromSelected(key, run, currentStatesFor(projection, run.runId)),
+        ),
+        reviewed: loadDefaultContextPolicy(CONTENT),
+      })
+      for (const { key, run } of admitted) {
+        console.log(
+          `  ${key} ${run.runId}: ${currentCoverageSentence(run)}; ${run.score.supported}/${run.score.all} Supported / all`,
+        )
+      }
+      const sources = new Set(admitted.map(({ run }) => run.sourceRevision))
+      const complete =
+        gaps.length === 0 &&
+        coverage.contexts.length === 33 &&
+        coverage.catalogRows === 273 &&
+        coverage.recordedPositions === 9009 &&
+        coverage.complete &&
+        sources.size === 1
+      console.log(`Current source: ${[...sources].join(", ") || "none"}; suite ${requiredSuiteId}`)
+      console.log(
+        `Current execution: ${coverage.collected}/33 contexts, ${coverage.recordedPositions}/9009 recorded positions; ${complete ? "complete: zero TEST TODO and TEST FAILURE" : "incomplete: fresh current execution or required checks remain"}`,
+      )
+      if (!complete) process.exitCode = 1
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error))
       process.exitCode = 1

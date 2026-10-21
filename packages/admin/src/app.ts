@@ -1,3 +1,8 @@
+import {
+  aggregateCurrentResults,
+  currentCoverageSentence,
+  currentSupportedShare,
+} from "../../../docs/data/release-scope.ts"
 /**
  * App probe mechanism — launch macOS terminal apps with serve daemon, probe via HTTP.
  *
@@ -493,7 +498,7 @@ interface ProbeOptions {
 async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
-): Promise<{ total: number; observed: number; mode: "retained" | "admitted" }> {
+): Promise<{ summary: string; mode: "retained" | "admitted" | "pending-review" }> {
   const { appId, version, ownedWindow, outputDirectory, launcherStderr } = options
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
@@ -542,16 +547,19 @@ async function probeDaemon(
       }),
     },
   }
-  const mode = outputDirectory === undefined ? "admitted" : "retained"
+  let mode: "retained" | "admitted" | "pending-review" = outputDirectory === undefined ? "admitted" : "retained"
   if (outputDirectory !== undefined) {
     const source = retainCollectedRun(run, retained.path, { kind: "app", id: appId, version }, outputDirectory)
     console.log(`  Retained private development run ${source}`)
   } else {
-    admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
+    const source = admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
+    if (source.endsWith(".draft.json")) mode = "pending-review"
   }
-  const observed = run.observations.length
-  const total = observed + Object.keys(run.ungradedDiagnostics ?? {}).length
-  return { total, observed, mode }
+  const aggregate = aggregateCurrentResults(
+    run.results,
+    run.results.map((result) => result.featureId),
+  )
+  return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)}`, mode }
 }
 
 // ── Run one app ──
@@ -649,7 +657,7 @@ async function runApp(
       outputDirectory: opts.output,
       launcherStderr: launch.launcherStderr,
     })
-    console.log(`  ${result.observed}/${result.total} explicit observations (${result.mode})`)
+    console.log(`  ${result.summary} (${result.mode})`)
     outcome = { success: true }
   } catch (err) {
     outcome = { success: false, error: err instanceof Error ? err.message : String(err) }

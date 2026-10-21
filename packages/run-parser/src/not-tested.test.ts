@@ -115,3 +115,128 @@ describe("named not-tested coverage", () => {
     expect(run.observations.map((item) => item.featureId)).toEqual(catalog)
   })
 })
+
+// The approved runtime contract requires explicit TODO initialization and required-check
+// precedence. Historical coverage tests above cannot catch a reader inventing these statuses.
+describe("execution-owned five statuses", () => {
+  it("initializes every frozen catalogue member without inventing measured identity or a criterion", async () => {
+    const { initializeRunDraft } = await import("@terminfo/probe-defs")
+    const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
+    const draft = initializeRunDraft({
+      runId: "runtime-initialization",
+      sourceRevision: "2".repeat(40),
+      manifest: { ...suite, catalogIds: ids },
+      intendedContext: { kind: "headless", id: "xtermjs" },
+    })
+    expect(draft.schemaVersion).toBe(3)
+    expect(draft.results.map((result) => result.featureId)).toEqual(ids)
+    expect(draft.results.every((result) => result.status === "test-todo")).toBe(true)
+    expect(draft.results.every((result) => result.attempt.scope === "none" && result.checks.length === 0)).toBe(true)
+    expect(draft).not.toHaveProperty("target")
+    expect(draft).not.toHaveProperty("provenance")
+    expect(draft).not.toHaveProperty("sealedAt")
+  })
+
+  it.each([
+    ["supported", "test-todo", "test-todo"],
+    ["supported", "test-failure", "test-failure"],
+    ["test-failure", "test-todo", "test-failure"],
+    ["supported", "unsupported", "unsupported"],
+    ["supported", "supported", "supported"],
+  ] as const)("retains required-check precedence for %s plus %s", async (first, second, expected) => {
+    const { finalizeCapabilityResult } = await import("@terminfo/probe-defs")
+    const checks = [first, second].map((status, index) => ({
+      id: `check-${index}`,
+      status,
+      attempt:
+        status === "test-todo"
+          ? { scope: "none" as const }
+          : { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" },
+      ...(status === "test-todo" || status === "test-failure" ? { reason: "required check incomplete" } : {}),
+    }))
+    const result = finalizeCapabilityResult({
+      featureId: "sgr.bold",
+      attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+      checks,
+    })
+    expect(result.status).toBe(expected)
+    expect(result.checks).toEqual(checks)
+  })
+})
+
+// Current v3 totality is over immutable catalogue membership, not only callable arms.
+// Historical v2 completeness above cannot detect omission of a catalogue-only capability.
+describe("sealed current runs", () => {
+  const currentSuite = { ...suite, catalogIds: catalog }
+  const current = () => {
+    const { observations: _old, notTested: _coverage, suiteComplete: _membership, ...metadata } = baseRun()
+    return {
+      ...metadata,
+      schemaVersion: 3,
+      intendedContext: { kind: "app", id: "kitty" },
+      sealedAt: "2026-10-21T05:00:01.000Z",
+      results: catalog.map((featureId) => ({
+        featureId,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Missing implementation",
+      })),
+    }
+  }
+  it("reads recorded TODO without deriving status from today's catalogue or callback schedule", () => {
+    const raw = current()
+    const loaded = parseRun(
+      "current.json",
+      JSON.stringify(raw),
+      ["new-live-id"],
+      new Map([[suite.probeHash, currentSuite]]),
+    )
+    expect(loaded.schemaVersion).toBe(3)
+    expect(loaded.results).toEqual(raw.results)
+    expect(loaded.catalogIds).toEqual(catalog)
+  })
+  it("rejects missing/duplicate frozen results and an unsealed draft", () => {
+    const parseCurrent = (value: object) =>
+      parseRun("current.json", JSON.stringify(value), catalog, new Map([[suite.probeHash, currentSuite]]))
+    const raw = current()
+    expect(() => parseCurrent({ ...raw, results: raw.results.slice(1) })).toThrow(/catalogue membership/)
+    expect(() =>
+      parseCurrent({ ...raw, results: [raw.results[0], ...raw.results.slice(1, 2), raw.results[0]] }),
+    ).toThrow(/duplicate/)
+    expect(() => parseCurrent({ ...raw, sealedAt: undefined })).toThrow(/sealedAt/)
+  })
+  // Current support must retain the same raw-state binding as historical measurements;
+  // enum/totality validation alone would permit an assertion with no captured bytes.
+  it("does not accept a current support assertion without its bound raw evidence", () => {
+    const raw = current()
+    const first = raw.results[0]!
+    const supported = {
+      ...first,
+      status: "supported",
+      evidence: "parser-state",
+      attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+      checks: [
+        {
+          id: "criterion",
+          status: "supported",
+          attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+          assertionRefs: [0],
+        },
+      ],
+    }
+    expect(() =>
+      parseRun(
+        "unbound-current.json",
+        JSON.stringify({
+          ...raw,
+          results: [supported, ...raw.results.slice(1)],
+          assertions: [{ featureId: "alpha", kind: "positive", expected: "bold=true", observed: "bold=true" }],
+          rawReplies: {},
+        }),
+        catalog,
+        new Map([[suite.probeHash, currentSuite]]),
+      ),
+    ).toThrow(/raw|bound/)
+  })
+})

@@ -77,7 +77,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[f.id] ?? "unknown"
-          const note = data.selectedByBackend[b.name]?.selected.cells[f.id]?.note ?? ""
+          const note = data.notes[b.name]?.[f.id] ?? ""
           results[b.name] = { result, note }
         }
         return {
@@ -101,7 +101,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
-          const note = data.selectedByBackend[b.name]?.selected.cells[fid]?.note ?? ""
+          const note = data.notes[b.name]?.[fid] ?? ""
           results[b.name] = { result, note }
         }
         featureRows.push({
@@ -155,7 +155,7 @@ export default {
         const results: Record<string, { result: string; note: string }> = {}
         for (const b of sortedBackends) {
           const result = data.results[b.name]?.[fid] ?? "unknown"
-          const note = data.selectedByBackend[b.name]?.selected.cells[fid]?.note ?? ""
+          const note = data.notes[b.name]?.[fid] ?? ""
           results[b.name] = { result, note }
         }
         return {

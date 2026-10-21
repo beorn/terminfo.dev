@@ -58,6 +58,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         generatedAt: "2026-09-28T00:00:00.000Z",
         freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
+        catalogIds: fixtureFeatures,
         probes: {
           app: fixtureFeatures.slice(0, 4),
           headless: fixtureFeatures.slice(0, 4),
@@ -66,7 +67,9 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       }),
     )
     const run = {
-      schemaVersion: 2,
+      schemaVersion: 3,
+      sealedAt: "2026-09-28T12:00:01.000Z",
+      intendedContext: { kind: "app", id: "kitty", version: "0.46.2" },
       runId: "reviewed-kitty",
       target: {
         kind: "app",
@@ -82,7 +85,6 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       identity: "verified",
       suiteId: snapshot.probeHash,
       probeHash: snapshot.probeHash,
-      suiteComplete: true,
       sourceRevision: "2".repeat(40),
       measuredAt: "2026-09-28T12:00:00.000Z",
       origin: { kind: "collector" },
@@ -109,17 +111,31 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         },
       ],
       screenshotRefs: [],
-      observations: [
-        {
-          featureId: "cursor.position",
-          outcome: "supported",
-          evidence: "parser-state",
-          rawReplyRef: "cursor.position",
-        },
-        { featureId: "sgr.bold", outcome: "unsupported", evidence: "parser-state", rawReplyRef: "sgr.bold" },
-        { featureId: "extensions.query", outcome: "inconclusive", reason: "timeout", evidence: "query" },
-        { featureId: "modes.autowrap", outcome: "error", reason: "collector-error", evidence: "query" },
-      ],
+      results: fixtureFeatures.map((featureId, index) => {
+        const attempt = { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" }
+        const status =
+          index === 0 ? "supported" : index === 1 ? "unsupported" : index === 4 ? "test-todo" : "test-failure"
+        return {
+          featureId,
+          status,
+          attempt: status === "test-todo" ? { scope: "none" } : attempt,
+          checks:
+            status === "test-todo"
+              ? []
+              : [
+                  {
+                    id: "criterion",
+                    status,
+                    attempt,
+                    ...(index < 2 && { assertionRefs: [index], rawReplyRef: featureId }),
+                  },
+                ],
+          ...(index < 2 && { evidence: "parser-state", rawReplyRef: featureId }),
+          ...(index === 2 && { reason: "timeout" }),
+          ...(index === 3 && { reason: "collector-error" }),
+          ...(index === 4 && { reason: "Missing implementation" }),
+        }
+      }),
     }
     const runPath = join(root, "content", "probes-apps", "reviewed.json")
     const runBytes = JSON.stringify(run)
@@ -131,11 +147,12 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       measuredAt: "2026-09-28T13:00:00.000Z",
       rawReplies: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" },
       assertions: [],
-      observations: run.observations.map(({ featureId }) => ({
+      results: run.results.map(({ featureId }) => ({
         featureId,
-        outcome: "inconclusive",
-        reason: "timeout",
-        evidence: "query",
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Missing implementation",
       })),
     }
     const inconclusivePath = join(root, "content", "probes-apps", "inconclusive.json")
@@ -178,14 +195,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     const reviewed = Object.values(projection.current).find((selected) => selected.runId === run.runId)
     expect(reviewed, JSON.stringify(projection.exclusions)).toBeDefined()
     expect(Object.values(projection.current).map((selected) => selected.runId)).toContain(inconclusiveRun.runId)
-    expect(reviewed?.counts).toMatchObject({
-      catalog: 5,
-      tested: 4,
-      notTested: 1,
-      conclusive: 2,
-      supported: 1,
-      unsupported: 1,
-    })
+    expect(reviewed?.counts).toEqual({ supported: 1, unsupported: 1, untestable: 0, "test-todo": 1, "test-failure": 2 })
 
     const invoke = () =>
       spawnSync(process.execPath, [join(root, "run.ts")], { cwd: root, encoding: "utf8", timeout: 15_000 })
@@ -203,24 +213,24 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(normal).not.toBe(allInconclusive)
     const matrix = plain.split("Feature comparison")[1]?.split("Observation reasons and notes")[0]
     expect(matrix).toBeDefined()
-    expect(matrix).toContain("YES supported · NO unsupported · INC inconclusive · ERR error · NT not tested")
+    expect(matrix).toContain("YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE")
     const labels = contexts.map((match) => match[1])
     const stateRow = (id: string) => {
       const line = matrix?.split("\n").find((row) => row.trimStart().startsWith(id))
       expect(line, `missing matrix row ${id}`).toBeDefined()
-      const tokens = line?.match(/\b(?:YES|NO|INC|ERR|NT)\b/g)
+      const tokens = line?.match(/\b(?:YES|NO|UNTEST|TODO|FAIL)\b/g)
       expect(tokens, `states for ${id}`).toHaveLength(2)
       return Object.fromEntries(labels.map((label, index) => [label, tokens?.[index]]))
     }
-    expect(stateRow("cursor.position")).toMatchObject({ [normal!]: "YES", [allInconclusive!]: "INC" })
-    expect(stateRow("sgr.bold")).toMatchObject({ [normal!]: "NO", [allInconclusive!]: "INC" })
-    expect(stateRow("extensions.query")).toMatchObject({ [normal!]: "INC", [allInconclusive!]: "INC" })
-    expect(stateRow("modes.autowrap")).toMatchObject({ [normal!]: "ERR", [allInconclusive!]: "INC" })
-    expect(stateRow("sgr.italic")).toMatchObject({ [normal!]: "NT", [allInconclusive!]: "NT" })
+    expect(stateRow("cursor.position")).toMatchObject({ [normal!]: "YES", [allInconclusive!]: "TODO" })
+    expect(stateRow("sgr.bold")).toMatchObject({ [normal!]: "NO", [allInconclusive!]: "TODO" })
+    expect(stateRow("extensions.query")).toMatchObject({ [normal!]: "FAIL", [allInconclusive!]: "TODO" })
+    expect(stateRow("modes.autowrap")).toMatchObject({ [normal!]: "FAIL", [allInconclusive!]: "TODO" })
+    expect(stateRow("sgr.italic")).toMatchObject({ [normal!]: "TODO", [allInconclusive!]: "TODO" })
     expect(plain).toContain(`${normal} extensions.query: timeout`)
     expect(plain).toContain(`${normal} modes.autowrap: collector-error`)
-    expect(plain).toContain("1/2 50%")
-    expect(plain).toContain("no conclusive score")
+    expect(plain).toContain("1/5 Supported / all (20%)")
+    expect(plain).toContain("0/5 Supported / all (0%)")
     expect(plain).not.toContain("NaN")
     expect(plain).toContain("Ungraded history:")
     expect(plain).toContain("Excluded runs:")

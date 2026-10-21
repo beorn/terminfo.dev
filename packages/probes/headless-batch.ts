@@ -2,8 +2,10 @@
 /* oxlint-disable typescript/no-deprecated -- Current Termless resolve() adapters expose TerminalBackend lifecycle; Emulator does not yet replace that loader. */
 
 import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@termless/core"
-import { readHyperlinkMetadata } from "@terminfo/probe-defs"
+import { readHyperlinkMetadata, recordExecutedCapability } from "@terminfo/probe-defs"
 import type {
+  CapabilityResult,
+  RunDraft,
   NotTestedCoverage,
   Observation,
   ObservationEvidence,
@@ -105,6 +107,7 @@ export function createTermlessContext(backend: TerminalBackend): TermlessContext
 }
 
 interface Batch {
+  results: CapabilityResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
@@ -285,8 +288,19 @@ export async function collectBatch(
   createBackend: () => Promise<TerminalBackend>,
   backendName: string,
   definitions: readonly ProbeDefinition[],
+  draft?: Pick<RunDraft, "results">,
+  onCheckpoint?: (batch: Batch) => void,
 ): Promise<Batch> {
   const batch: Batch = {
+    results:
+      draft?.results ??
+      definitions.map((probe) => ({
+        featureId: probe.id,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Required callback has not started",
+      })),
     rawReplies: {},
     observations: [],
     assertions: [],
@@ -297,11 +311,26 @@ export async function collectBatch(
     if (!probe.termless) continue
     process.stderr.write(`headless ${backendName} probe ${probe.id}\n`)
     let backend: TerminalBackend | undefined
+    const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
+    const activeIndex = batch.results.findIndex((result) => result.featureId === probe.id)
+    const active = batch.results[activeIndex]
+    if (!active) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
+    batch.results[activeIndex] = {
+      ...active,
+      attempt,
+      reason: "Callback attempt started; no result recorded yet",
+    }
+    onCheckpoint?.(batch)
+    let callbackChecks: ProbeResult["checks"]
+    let criterionBranch: string | undefined
     try {
       backend = await createBackend()
       backend.init({ cols: 80, rows: 24 })
       const ctx = createTermlessContext(backend)
-      recordResult(batch, probe, probe.termless(ctx))
+      const callback = probe.termless(ctx)
+      callbackChecks = callback.checks
+      criterionBranch = callback.criterionBranch
+      recordResult(batch, probe, callback)
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
       if (carriesError(probe.termlessObservationEvidence)) {
@@ -320,13 +349,38 @@ export async function collectBatch(
         }
       }
     } finally {
+      const observation = batch.observations.find((entry) => entry.featureId === probe.id)
+      const diagnostic = batch.ungradedDiagnostics[probe.id]
+      const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)
+      const result = recordExecutedCapability({
+        featureId: probe.id,
+        attempt,
+        observation,
+        diagnostic,
+        coverage,
+        assertions: batch.assertions,
+        checks: callbackChecks,
+        criterionBranch,
+      })
+      const index = batch.results.findIndex((entry) => entry.featureId === probe.id)
+      if (index < 0) throw new Error(`Headless callback ${probe.id} is outside the initialized catalogue`)
+      batch.results[index] = result
       // Engine reset is a measured behavior, not a guarantee of fixture isolation.
       // A cleanup failure aborts the worker instead of sealing a misleading run.
       try {
         backend?.destroy()
       } catch (cause) {
-        throw new Error(`headless ${backendName} probe ${probe.id}: backend cleanup failed`, { cause })
+        const reason = `headless ${backendName} probe ${probe.id}: backend cleanup failed`
+        batch.results[index] = {
+          ...result,
+          status: "test-failure",
+          reason,
+          checks: [...result.checks, { id: "cleanup", status: "test-failure", attempt, reason }],
+        }
+        onCheckpoint?.(batch)
+        throw new Error(reason, { cause })
       }
+      onCheckpoint?.(batch)
     }
   }
   return batch

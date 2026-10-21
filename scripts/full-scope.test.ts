@@ -1,243 +1,88 @@
 /**
- * @failure The project's one arithmetic owner could count an overlapping exclusion twice, score a
- *   missing definition as an exclusion, print a score over an empty denominator, or let the 90% bar
- *   and NOT COLLECTED drift into second copies.
- * @level l2
- * @consumer the full-273 project scope arithmetic (docs/data/full-scope.ts, step 7)
- * @source-grep the real-catalog case pins 273 rows, the 13 design exclusions and the three missing
- *   definitions, so catalog drift fails here instead of silently changing every context's ceiling.
+ * @failure Current scores exclude unfinished capabilities, count Unsupported as support,
+ *   or hide a group's TODO/failure behind a complete aggregate.
+ * @level l1
+ * @consumer Full273 page and batch collection through docs/data/full-scope.ts
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
 import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import {
-  DESIGN_EXCLUSION_IDS,
-  INSTRUMENT_LIMITS,
-  MISSING_DEFINITION_IDS,
-  notCollected,
-  scopeAggregate,
-  type ScopeInput,
-} from "../docs/data/full-scope.ts"
-
-const cells = (entries: Record<string, "supported" | "unsupported" | "inconclusive" | "error" | "untested">) => entries
-
-describe("full-catalog scope arithmetic", () => {
-  it("prints score, denominator, ceiling and inclusion together over the whole catalog", () => {
-    const result = scopeAggregate({
-      scope: "kitty/linux",
-      catalogIds: ["a.one", "a.two", "a.three", "b.one", "b.two", "b.three"],
-      cells: cells({
-        "a.one": "supported",
-        "a.two": "unsupported",
-        "a.three": "inconclusive",
-        "b.one": "supported",
-        "b.two": "supported",
-      }),
-      designExclusions: [],
-      missingDefinitions: [],
-    })
-    expect(result.catalogRows).toBe(6)
-    expect(result.denominator).toBe(6)
-    expect(result.decisive).toBe(4)
-    expect(result.fraction).toBe("4/6")
-    expect(result.pct).toBe(67)
-    expect(result.ceiling).toBe("6/6")
-    expect(result.included).toBe(false)
-  })
-
-  it("counts a design and an instrument exclusion once and keeps both causes named", () => {
-    const result = scopeAggregate({
-      scope: "kitty/linux",
-      catalogIds: ["a.one", "a.two", "a.three", "b.one"],
-      cells: cells({ "a.one": "supported", "a.two": "supported", "a.three": "untested", "b.one": "supported" }),
-      designExclusions: ["a.two"],
-      instrumentLimits: [
-        { id: "a.two", cause: "one reviewed limit" },
-        { id: "b.one", cause: "second limit" },
-      ],
-      missingDefinitions: [],
-    })
-    expect(result.excluded.map((entry) => entry.id)).toEqual(["a.two", "b.one"])
-    expect(result.denominator).toBe(2)
-    expect(result.decisive).toBe(1)
-    expect(result.fraction).toBe("1/2")
-    expect(result.ceiling).toBe("2/4")
-    expect(result.counts.untested).toBe(1)
-    expect(result.excludedObservations).toEqual([
-      { id: "a.two", cause: "design", state: "supported" },
-      { id: "b.one", cause: "instrument", state: "supported" },
+import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import { scopeAggregate } from "../docs/data/full-scope.ts"
+const results = (entries: Record<string, CapabilityStatus>): CapabilityResult[] =>
+  Object.entries(entries).map(([featureId, status]) => ({
+    featureId,
+    status,
+    checks: [],
+    attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+  }))
+// Retired exclusion tests could pass while unfinished current rows disappeared from the denominator.
+describe("current full-catalogue scope arithmetic", () => {
+  it("counts every exact status over all capabilities, with only Supported in the numerator", () => {
+    const entries = {
+      "a.positive": "supported",
+      "a.negative": "unsupported",
+      "a.impossible": "untestable",
+      "b.pending": "test-todo",
+      "b.broken": "test-failure",
+    } as const
+    const value = scopeAggregate({ scope: "kitty/linux", catalogIds: Object.keys(entries), results: results(entries) })
+    expect(value.fraction).toBe("1/5")
+    expect(value.pct).toBe(20)
+    expect(value.denominator).toBe(5)
+    expect(value.counts).toEqual({ supported: 1, unsupported: 1, untestable: 1, "test-todo": 1, "test-failure": 1 })
+    expect(value.complete).toBe(false)
+    expect(value.groups.map((group) => [group.key, group.fraction, group.pct, group.complete])).toEqual([
+      ["a", "1/3", 33, true],
+      ["b", "0/2", 0, false],
     ])
-    expect(result.groups.find((group) => group.key === "b")).toMatchObject({
-      denominator: 0,
-      fraction: "",
-      pct: null,
-      ceiling: "0/1",
-      verdict: null,
-      included: false,
+  })
+  it("finishes all Unsupported at zero Supported without removing a capability", () => {
+    const value = scopeAggregate({
+      scope: "negative",
+      catalogIds: ["a.one", "b.two"],
+      results: results({ "a.one": "unsupported", "b.two": "unsupported" }),
     })
+    expect(value).toMatchObject({ fraction: "0/2", denominator: 2, pct: 0, complete: true })
+    expect(value.groups.every((group) => group.complete)).toBe(true)
   })
-
-  it("keeps a missing definition in the denominator and names it as open work", () => {
-    const result = scopeAggregate({
-      scope: "kitty/linux",
-      catalogIds: ["a.one", "a.two"],
-      cells: cells({ "a.one": "supported" }),
-      designExclusions: [],
-      missingDefinitions: ["a.two"],
-    })
-    expect(result.denominator).toBe(2)
-    expect(result.decisive).toBe(1)
-    expect(result.missingDefinitions).toEqual(["a.two"])
-    expect(result.counts.untested).toBe(1)
-  })
-
-  it("refuses a missing definition that was also excluded", () => {
-    expect(() =>
-      scopeAggregate({
-        scope: "kitty/linux",
-        catalogIds: ["a.one"],
-        cells: cells({}),
-        designExclusions: ["a.one"],
-        missingDefinitions: ["a.one"],
-      }),
-    ).toThrow(/missing definition a\.one is excluded/)
-  })
-
-  it("refuses an exclusion that is not a catalog row, naming it", () => {
-    expect(() =>
-      scopeAggregate({
-        scope: "kitty/linux",
-        catalogIds: ["a.one"],
-        cells: cells({}),
-        designExclusions: ["a.two"],
-        missingDefinitions: [],
-      }),
-    ).toThrow(/design exclusion a\.two is not a catalog row/)
-  })
-
-  it("refuses a zero denominator instead of printing an empty score", () => {
-    expect(() =>
-      scopeAggregate({
-        scope: "kitty/linux",
-        catalogIds: ["a.one"],
-        cells: cells({}),
-        designExclusions: ["a.one"],
-        missingDefinitions: [],
-      }),
-    ).toThrow(/zero denominator/)
-  })
-
-  it("refuses an instrument limit with no cause", () => {
-    expect(() =>
-      scopeAggregate({
-        scope: "kitty/linux",
-        catalogIds: ["a.one"],
-        cells: cells({}),
-        designExclusions: [],
-        instrumentLimits: [{ id: "a.one", cause: " " }],
-        missingDefinitions: [],
-      }),
-    ).toThrow(/carries no cause/)
-  })
-
-  it("scores each group separately with its own ceiling", () => {
-    const result = scopeAggregate({
-      scope: "kitty/linux",
-      catalogIds: ["a.one", "a.two", "b.one", "b.two", "b.three"],
-      cells: cells({ "a.one": "supported", "a.two": "supported", "b.one": "supported", "b.two": "error" }),
-      designExclusions: ["b.three"],
-      missingDefinitions: [],
-    })
-    expect(result.groups.map((group) => [group.key, group.fraction, group.ceiling, group.included])).toEqual([
-      ["a", "2/2", "2/2", true],
-      ["b", "1/2", "2/3", false],
-    ])
-    expect(result.groups.find((group) => group.key === "b")?.counts).toEqual({
-      supported: 1,
-      unsupported: 0,
-      inconclusive: 0,
-      error: 1,
-      untested: 0,
-    })
-  })
-
-  it("passes only at or above the ninety percent bar", () => {
-    const ids = Array.from({ length: 10 }, (_, index) => `a.row${index}`)
-    const pass = scopeAggregate({
-      scope: "pass",
+  it.each(["test-todo", "test-failure"] as const)(
+    "never completes with required %s even at ninety percent support",
+    (status) => {
+      const ids = Array.from({ length: 10 }, (_, index) => "a.row" + index)
+      const value = scopeAggregate({
+        scope: "unfinished",
+        catalogIds: ids,
+        results: results(Object.fromEntries(ids.map((id, index) => [id, index === 0 ? status : "supported"]))),
+      })
+      expect(value.fraction).toBe("9/10")
+      expect(value.pct).toBe(90)
+      expect(value.complete).toBe(false)
+    },
+  )
+  it("keeps all273 catalogue rows including old design/instrument limits and missing implementations", () => {
+    const ids = Object.keys(loadFeatures(join(import.meta.dirname, "..", "content")))
+    expect(ids).toHaveLength(273)
+    expect(ids).toContain("device.env-term")
+    expect(ids).toContain("extensions.osc133-a")
+    const value = scopeAggregate({
+      scope: "full-catalogue",
       catalogIds: ids,
-      cells: Object.fromEntries(ids.map((id, index) => [id, index === 0 ? "inconclusive" : "supported"])),
-      designExclusions: [],
-      missingDefinitions: [],
+      results: results(Object.fromEntries(ids.map((id) => [id, "test-todo"]))),
     })
-    expect(pass.pct).toBe(90)
-    expect(pass.included).toBe(true)
-    const fail = scopeAggregate({
-      scope: "fail",
-      catalogIds: ids,
-      cells: Object.fromEntries(ids.map((id, index) => [id, index < 2 ? "inconclusive" : "supported"])),
-      designExclusions: [],
-      missingDefinitions: [],
-    })
-    expect(fail.pct).toBe(80)
-    expect(fail.included).toBe(false)
+    expect(value).toMatchObject({ catalogRows: 273, denominator: 273, fraction: "0/273", complete: false })
+    expect(value.counts["test-todo"]).toBe(273)
+    expect(value.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
   })
-
-  it("renders NOT COLLECTED with its cause and no score", () => {
-    const row = notCollected("kitty/linux", "no selected run")
-    expect(row).toEqual({ scope: "kitty/linux", collected: false, cause: "no selected run" })
-    expect(() => notCollected("kitty/linux", " ")).toThrow(/must name its cause/)
-  })
-
-  it("covers the real catalog: 273 rows, 13 design exclusions, three missing definitions", () => {
-    const catalog = loadFeatures(join(import.meta.dirname, "..", "content"))
-    const catalogIds = Object.keys(catalog)
-    expect(catalogIds).toHaveLength(273)
-    const input: ScopeInput = {
-      scope: "real catalog",
-      catalogIds,
-      cells: cells({}),
+  it("refuses absent, duplicate or foreign result membership instead of synthesizing a status", () => {
+    const input = { scope: "membership", catalogIds: ["a.one", "b.two"] }
+    for (const rows of [
+      results({ "a.one": "supported" }),
+      [...results({ "a.one": "supported" }), ...results({ "a.one": "unsupported" })],
+      results({ "a.one": "supported", "c.foreign": "test-todo" }),
+    ]) {
+      expect(() => scopeAggregate({ ...input, results: rows })).toThrow(/frozen catalogue membership/)
     }
-    const result = scopeAggregate(input)
-    expect(new Set(result.excluded.map((entry) => entry.id))).toEqual(new Set(DESIGN_EXCLUSION_IDS))
-    expect(result.denominator).toBe(273 - DESIGN_EXCLUSION_IDS.length)
-    expect(result.missingDefinitions).toEqual(MISSING_DEFINITION_IDS)
-    expect(result.ceiling).toBe("260/273")
-    expect(result.decisive).toBe(0)
-    expect(result.included).toBe(false)
-  })
-
-  it("names sixteen real catalog rows as instrument limits, each cause saying what would observe it", () => {
-    const catalog = loadFeatures(join(import.meta.dirname, "..", "content"))
-    const catalogIds = new Set(Object.keys(catalog))
-    const ids = INSTRUMENT_LIMITS.map((limit) => limit.id)
-    expect(ids).toHaveLength(16)
-    expect(new Set(ids).size).toBe(16)
-    for (const id of ids) expect(catalogIds.has(id), id).toBe(true)
-    for (const { id, cause } of INSTRUMENT_LIMITS) {
-      // "No query exists" alone is not a cause: a limit names what WOULD observe it, and that this
-      // release does not build it (2026-10-18 @cto ruling, correction 1).
-      expect(cause, id).toMatch(/adapter|fixture/)
-      expect(cause, id).toMatch(/this release does not build/)
-    }
-    // A row leaves a denominator for one reason only: the reviewed sets never overlap.
-    for (const id of ids) expect(DESIGN_EXCLUSION_IDS, id).not.toContain(id)
-  })
-
-  it("leaves a denominator only where the caller applies the limits, and names each one", () => {
-    const catalogIds = [...INSTRUMENT_LIMITS.slice(0, 2).map((limit) => limit.id), "sgr.bold"]
-    const result = scopeAggregate({
-      scope: "limit context",
-      catalogIds,
-      cells: cells({ "sgr.bold": "supported" }),
-      designExclusions: [],
-      instrumentLimits: INSTRUMENT_LIMITS.filter((limit) => catalogIds.includes(limit.id)),
-      missingDefinitions: [],
-    })
-    expect(result.denominator).toBe(1)
-    expect(result.excluded.map((entry) => entry.cause)).toEqual(["instrument", "instrument"])
-    expect(result.instrumentLimitCount).toBe(2)
-    expect(result.pct).toBe(100)
   })
 })

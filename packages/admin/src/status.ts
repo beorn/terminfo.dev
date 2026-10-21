@@ -1,3 +1,4 @@
+import { currentCoverageSentence } from "../../../docs/data/release-scope.ts"
 /**
  * Status command — show installed backends, reviewed current results, and saved archives.
  */
@@ -49,7 +50,7 @@ export async function handleStatus(): Promise<void> {
   const headless = current.filter(([, run]) => run.target.kind === "headless")
   const apps = current.filter(([, run]) => run.target.kind === "app")
   const muxes = current.filter(([, run]) => run.target.kind === "mux")
-  const headlessFeatures = new Set(headless.flatMap(([, run]) => Object.keys(run.cells)))
+  const headlessFeatures = new Set(headless.flatMap(([, run]) => run.catalogIds))
 
   console.log("\nterminfo.dev status\n")
   console.log(`  Probe hash:       ${hash}`)
@@ -67,13 +68,11 @@ export async function handleStatus(): Promise<void> {
   console.log(`    Contexts: ${current.length} (${headless.length} headless, ${apps.length} app, ${muxes.length} mux)`)
   console.log(`    Headless observed feature IDs: ${headlessFeatures.size}`)
   for (const [key, run] of current) {
-    const cells = Object.values(run.cells)
-    const inconclusive = cells.filter((cell) => cell.outcome === "inconclusive").length
-    const errors = cells.filter((cell) => cell.outcome === "error").length
     console.log(
-      `    ${key} ${run.target.version} (${run.runId}): ${run.counts.tested} tested, ${run.counts.notTested} not tested${run.notTestedCoverage.namedCount ? ` (${run.notTestedCoverage.namedCount} named: no observable)` : ""}, ${run.counts.conclusive} conclusive (${run.counts.supported} supported, ${run.counts.unsupported} unsupported), ${inconclusive} inconclusive, ${errors} error`,
+      `    ${key} ${run.target.version} (${run.runId}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run)} · ${run.complete ? "complete" : "incomplete"}`,
     )
   }
+  if (current.length === 0) console.log("    No current schema-3 runs; historical results remain available.")
   console.log(`    Excluded archived runs: ${projection.exclusions.length}`)
 
   console.log("\n  Saved archive files:")

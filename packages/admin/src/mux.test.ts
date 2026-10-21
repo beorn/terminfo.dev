@@ -11,7 +11,7 @@ import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
 import { execSync } from "node:child_process"
 import { expect, it, vi } from "vitest"
-import type { ProbeRun } from "@terminfo/probe-defs"
+import type { CapturedRunDraft, HistoricalProbeRun } from "@terminfo/probe-defs"
 import { handleMux } from "./mux.ts"
 import {
   createProbeRun,
@@ -48,12 +48,33 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
   mkdirSync(wrapper)
   const log = vi.spyOn(console, "log").mockImplementation(() => {})
   vi.spyOn(console, "error").mockImplementation(() => {})
-  const run = JSON.parse(
+  const historical = JSON.parse(
     readFileSync(
       new URL("../../../content/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json", import.meta.url),
       "utf8",
     ),
-  ) as ProbeRun
+  ) as HistoricalProbeRun
+  const {
+    observations: _observations,
+    notTested: _notTested,
+    ungradedDiagnostics: _diagnostics,
+    suiteComplete: _complete,
+    ...metadata
+  } = historical
+  const run: CapturedRunDraft = {
+    ...metadata,
+    schemaVersion: 3,
+    intendedContext: { kind: "mux", id: "tmux", version: "3.6a" },
+    results: [
+      {
+        featureId: "sgr.bold",
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Synthetic route fixture; not measured",
+      },
+    ],
+  }
   // Only transport/persistence is exercised: this synthetic identity is not native mux evidence.
   run.target = { ...run.target, kind: "mux", id: "tmux", version: "3.6a" }
   const bytes = JSON.stringify(run)

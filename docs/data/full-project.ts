@@ -10,15 +10,15 @@
  */
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
-import type { CellState } from "./release-scope.ts"
+import type { CapabilityStatus } from "@terminfo/probe-defs"
 import { reviewedContextFor } from "./current-results.ts"
-import { DESIGN_EXCLUSION_IDS, MISSING_DEFINITION_IDS, scopeAggregate, type ScopeResult } from "./full-scope.ts"
+import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import type { CensusContext, ContextKind } from "./full-census.ts"
 
 /** One catalog row of a collected context, with its state and the run's own method and words. */
 export interface ObservationRow {
   id: string
-  state: CellState
+  state: CapabilityStatus
   /** The observation method the run recorded (pixel, text cell, query/reply), when it names one. */
   method: string | null
   note: string | null
@@ -63,6 +63,8 @@ export interface FullProjectRows {
   contexts: readonly FullContextRow[]
   collected: number
   notCollected: number
+  complete: boolean
+  recordedPositions: number
 }
 
 /**
@@ -77,9 +79,6 @@ export function buildFullProjectRows(args: {
   candidates: readonly ContextCandidate[]
   requiredSuiteId: string
   reviewed?: Readonly<Record<string, { contextKey: string }>>
-  instrumentLimitsFor?: (context: CensusContext) => readonly { id: string; cause: string }[]
-  designExclusions?: readonly string[]
-  missingDefinitions?: readonly string[]
 }): FullProjectRows {
   if (!args.requiredSuiteId) throw new Error("the full-scope reader needs the suite it scores against")
   const rows = args.census.map((context): FullContextRow => buildRow(context, args))
@@ -89,6 +88,8 @@ export function buildFullProjectRows(args: {
     contexts: rows,
     collected: rows.filter((row) => row.collected).length,
     notCollected: rows.filter((row) => !row.collected).length,
+    complete: rows.length > 0 && rows.every((row) => row.collected && row.result.complete),
+    recordedPositions: rows.reduce((sum, row) => sum + (row.collected ? row.result.catalogRows : 0), 0),
   }
 }
 
@@ -99,9 +100,6 @@ function buildRow(
     candidates: readonly ContextCandidate[]
     requiredSuiteId: string
     reviewed?: Readonly<Record<string, { contextKey: string }>>
-    instrumentLimitsFor?: (context: CensusContext) => readonly { id: string; cause: string }[]
-    designExclusions?: readonly string[]
-    missingDefinitions?: readonly string[]
   },
 ): FullContextRow {
   const base = { context: context.context, terminalId: context.terminalId, os: context.os, kind: context.kind }
@@ -147,6 +145,11 @@ function buildRow(
       cause: `selected run is on suite ${picked.run.suiteId}; required ${args.requiredSuiteId}`,
     }
   }
+  const results = picked.run.results
+  if (!results) {
+    return { ...base, collected: false, cause: "selected run is historical; current schema-3 results required" }
+  }
+  const byId = new Map(results.map((result) => [result.featureId, result]))
   return {
     ...base,
     collected: true,
@@ -161,18 +164,16 @@ function buildRow(
     result: scopeAggregate({
       scope: context.context,
       catalogIds: args.catalogIds,
-      cells: picked.run.states,
-      designExclusions: args.designExclusions ?? DESIGN_EXCLUSION_IDS,
-      instrumentLimits: args.instrumentLimitsFor?.(context) ?? [],
-      missingDefinitions: args.missingDefinitions ?? MISSING_DEFINITION_IDS,
+      results,
     }),
     observations: args.catalogIds.map((id) => {
-      const cell = picked.run.cells[id]
+      const cell = byId.get(id)
+      if (!cell) throw new Error(`Current run ${picked.run.runId} lacks frozen capability ${id}`)
       return {
         id,
-        state: picked.run.states[id] ?? "untested",
+        state: cell.status,
         method: cell?.evidence ?? null,
-        note: cell?.note ?? null,
+        note: null,
         reason: cell?.reason ?? null,
       }
     }),

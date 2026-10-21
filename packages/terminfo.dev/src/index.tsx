@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readRawDaemonProbeResponse, requestDaemonProbe } from "./daemon-client.ts"
+import { readRetainedDaemonProbeResponse, requestDaemonProbe, finalizeCollectedDraft } from "./daemon-client.ts"
 /**
  * terminfo.dev CLI — can your terminal do that?
  *
@@ -26,13 +26,18 @@ import { renderString } from "silvery"
 import { version as packageVersion } from "../package.json" with { type: "json" }
 import { detectTerminal } from "./detect.ts"
 import { ALL_PROBES } from "./probes/unified.ts"
+import {
+  aggregateCurrentResults,
+  currentCoverageSentence,
+  currentSupportedShare,
+} from "../../../docs/data/release-scope.ts"
 import { DetectView } from "./views/DetectView.tsx"
-import { decodeCollectorRun } from "@terminfo/run-parser"
+import { decodeCollectorRun, decodeCollectorDraft } from "@terminfo/run-parser"
 import { createDraft } from "./submit.ts"
 import { probeOutputStream } from "./probe-output.ts"
 import { getCliSuiteProbeHash } from "./serve.ts"
 
-/** Collect the same explicit v2 run as the daemon endpoint. */
+/** Collect the same current draft as the daemon endpoint; finalization follows all enrichment. */
 async function runProbes(out?: NodeJS.WriteStream) {
   const { collectProbeRun, getTrustedSuiteReceipt } = await import("./serve.ts")
   const run = await collectProbeRun(out ? { out } : {})
@@ -118,7 +123,17 @@ program
         }
         const daemon = targets[0]
         if (!daemon) throw new Error("Selected daemon registration disappeared")
-        const decoded = await readRawDaemonProbeResponse(await requestDaemonProbe(daemon))
+        const retained = await readRetainedDaemonProbeResponse(await requestDaemonProbe(daemon))
+        const captured = finalizeCollectedDraft(retained.run)
+        const raw = `${JSON.stringify(captured)}\n`
+        const { getTrustedSuiteReceipt } = await import("./serve.ts")
+        const receipt = getTrustedSuiteReceipt()
+        const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
+          "daemon final writer",
+          raw,
+          receipt.manifest,
+          receipt.collectorRevision,
+        )
         if (opts.output) {
           writeFileSync(opts.output, decoded.raw, { flag: "wx", mode: 0o600 })
           console.error(
@@ -131,7 +146,7 @@ program
         return
       }
 
-      // Default: collect an unreviewed v2 run in this terminal.
+      // Default: collect the current execution contract in this terminal.
       const out = probeOutputStream(opts)
       let collected: Awaited<ReturnType<typeof runProbes>>
       try {
@@ -145,8 +160,9 @@ program
           })
         }
       }
-      const raw = `${JSON.stringify(collected.run)}\n`
-      const decoded = decodeCollectorRun(
+      const captured = finalizeCollectedDraft(collected.run)
+      const raw = `${JSON.stringify(captured)}\n`
+      const decoded = (captured.sealedAt === undefined ? decodeCollectorDraft : decodeCollectorRun)(
         "inline collector",
         raw,
         collected.receipt.manifest,
@@ -165,11 +181,11 @@ program
         return
       }
       const data = decoded.run
+      const aggregate = aggregateCurrentResults(data.results, collected.receipt.manifest.catalogIds ?? [])
+      console.log(`${data.target.id} ${data.target.version}: ${currentSupportedShare(aggregate)}`)
+      console.log(currentCoverageSentence(aggregate))
       console.log(
-        `${data.target.id} ${data.target.version}: ${data.observations.length}/${ALL_PROBES.length} recorded outcomes (including inconclusive checks)`,
-      )
-      console.log(
-        `Run ${data.runId} is unreviewed${data.suiteComplete ? "" : " and partial"}; use --json for raw evidence and any policy refusals.`,
+        `Run ${data.runId}: ${"sealedAt" in data ? "sealed" : "required review pending; unsealed draft"}; ${aggregate.complete ? "complete" : "incomplete"}; identity unverified.`,
       )
     },
   )
@@ -178,7 +194,7 @@ program
 
 program
   .command("submit")
-  .description("Prepare an offline draft and adjacent raw attachment from one unreviewed v2 run; nothing is sent")
+  .description("Prepare an offline contribution and exact raw attachment; nothing is sent")
   .argument("<raw>", "Exact raw JSON file from test --output")
   .option("--draft <file>", "Write an offline Markdown draft")
   .actionMerged(async (opts: { raw: string; draft?: string }) => {

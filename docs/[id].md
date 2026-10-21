@@ -5,6 +5,7 @@ next: false
 ---
 
 <script setup>
+import { publicResultFor } from './data/public-results'
 import { useData } from 'vitepress'
 import { data } from './data/probes.data'
 const { params } = useData()
@@ -64,6 +65,8 @@ function platformIcons(b) {
 
 <div class="category-page">
 
+<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
+
 <nav class="breadcrumb">
   <a :href="p.pageType === 'tag' ? '/standards' : '/features'">{{ p.pageType === 'tag' ? 'Standards' : 'Features' }}</a>
   <span class="sep">›</span>
@@ -119,7 +122,7 @@ function platformIcons(b) {
       </td>
       <td v-for="b in appBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
@@ -150,7 +153,7 @@ function platformIcons(b) {
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
         <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="b.label"
-          :version="data.selectedByBackend[b.name]?.selected" :cell="data.selectedByBackend[b.name]?.selected.cells[f.id]" />
+          :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
   </tbody>
