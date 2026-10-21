@@ -209,8 +209,8 @@ export interface OwnedTerminal {
   readonly clipboard?: LinuxClipboardAdapter
   readGeometry(): Promise<GeometryMeasurement>
   /** The arm's own cell read where a raster cannot answer: the hosted Windows arm reads the
-   * visible window from the console host's buffer, and the two macOS terminals whose pixel geometry
-   * cannot be calibrated answer with their own text snapshot, which carries no attributes by
+   * visible window from the console host's buffer, and Terminal.app answers with its own text
+   * snapshot, which carries no attributes by
    * construction. Absent on every other arm, where the pixel capture is the read. A macOS app's read
    * is not decisive until that app's hosted rows pass the five shapes — a mid-line gap, a trailing
    * gap, a soft wrap, an empty last row, and prior scrollback — with the empty-last-row shape run
@@ -784,13 +784,13 @@ export async function createOwnedTerminal(options: {
     hostedReceiptSha256 = receipt.sha256
   }
   let clipboard: LinuxClipboardAdapter | undefined
-  // The two macOS terminals that answer no cell geometry: their read is the app's own text
-  // snapshot, selected by the owned tab's TTY. Every other Darwin app keeps the capture path.
+  // Terminal.app reads its own text snapshot, selected by the owned tab's TTY. iTerm2 contents
+  // joins soft rows and loses blank-cell positions, so it uses the existing raster path.
   const darwinTextApp: TerminalTextApp | undefined =
     binding.platform === "darwin"
       ? terminalApp
         ? "terminal-app"
-        : hostedApp?.id === "terminal-app" || hostedApp?.id === "iterm2"
+        : hostedApp?.id === "terminal-app"
           ? hostedApp.id
           : undefined
       : undefined
