@@ -381,10 +381,10 @@ export const UTF8_DECODE_SAMPLE = "\u00eb"
  */
 export async function measureUtf8Decoding(): Promise<Utf8DecodingReading> {
   return withTTYOperation(async () => {
-    currentTTYOutput().write("\x1b7")
+    writeTTY("\x1b7")
     let painted = false
     try {
-      currentTTYOutput().write("\x1b[2;1H")
+      writeTTY("\x1b[2;1H")
       const origin = await queryCursorPosition()
       if (origin === null) return "silent"
       // Answered, but not at the cell this measurement paints: nothing can be read from it.
@@ -393,7 +393,7 @@ export async function measureUtf8Decoding(): Promise<Utf8DecodingReading> {
       // sample's own note for why neither reading can come from a width policy).
       // Default SGR first: an erase inherits the current background, so a glyph painted in a
       // caller's colours would leave a coloured blank behind instead of the screen it found.
-      currentTTYOutput().write(`\x1b[0m${UTF8_DECODE_SAMPLE}`)
+      writeTTY(`\x1b[0m${UTF8_DECODE_SAMPLE}`)
       painted = true
       const position = await queryCursorPosition()
       if (position === null) return "silent"
@@ -415,8 +415,8 @@ export async function measureUtf8Decoding(): Promise<Utf8DecodingReading> {
       // the measurement erases exactly the cells it painted -- ECH 2 covers the one UTF-8 cell and
       // the two ISO-8859-1 cells -- before restoring the cursor, and no later row can inherit a
       // stray glyph. (#28752, @cto)
-      if (painted) currentTTYOutput().write("\x1b[2;1H\x1b[2X")
-      currentTTYOutput().write("\x1b8")
+      if (painted) writeTTY("\x1b[2;1H\x1b[2X")
+      writeTTY("\x1b8")
     }
   })
 }
