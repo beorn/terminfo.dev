@@ -65,7 +65,9 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its truthful observatio
     await owner.dispose()
   `
   const result = spawnSync(process.execPath, ["-e", script], {
-    cwd: join(import.meta.dirname, "../../.."), encoding: "utf8", timeout: 20_000,
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    timeout: 20_000,
   })
   expect(result.status, result.stderr).toBe(0)
 })

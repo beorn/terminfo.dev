@@ -2240,10 +2240,16 @@ it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic time
           rawBase64: Buffer.from(raw).toString("base64"),
           reason: fault === "unknown reply" ? "reply" : "sentinel",
         }),
-        ...(fault === "unknown reply" ? [] : [expect.objectContaining({
-          sequence: "\x1b[?25$p", raw: diagnostic, rawBase64: Buffer.from(diagnostic).toString("base64"),
-          reason: diagnostic ? "reply" : "timeout",
-        })]),
+        ...(fault === "unknown reply"
+          ? []
+          : [
+              expect.objectContaining({
+                sequence: "\x1b[?25$p",
+                raw: diagnostic,
+                rawBase64: Buffer.from(diagnostic).toString("base64"),
+                reason: diagnostic ? "reply" : "timeout",
+              }),
+            ]),
       ],
     })
     expect(captureRaw).not.toHaveBeenCalled()
