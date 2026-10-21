@@ -1506,6 +1506,40 @@ it("keeps a historical native parser on its own route without promoting it to cu
   }
 })
 
+it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the app", () => {
+  // Operator 2026-10-21 (30608): a headless Ghostty core is the library, never the app that embeds it.
+  // The WASM core is measured under the app entry, so its label comes from that entry's headlessLabels.
+  const projection = currentResults.loadCurrentResults("").projection
+  const base = Object.values(projection.current)[0]
+  if (!base) throw new Error("the fixture projection has no current run")
+  const as = (contextKey: string, kind: CurrentSelectedVersion["target"]["kind"], id: string) => {
+    const selected = structuredClone(base)
+    selected.target = { ...selected.target, kind, id }
+    // Public results cache mapped runs by run id, so each target needs its own sealed run and status row.
+    selected.runId = `${base.runId}-${contextKey}`
+    projection.current[contextKey] = selected
+    projection.table[selected.runId] = projection.table[base.runId] ?? {}
+    return { contextKey, selected }
+  }
+  const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
+  const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
+    new Map([
+      ["ghostty", as("app:ghostty", "app", "ghostty")],
+      ["headless-ghostty", as("headless:ghostty", "headless", "ghostty")],
+      ["ghostty-native", as("headless:ghostty-native", "headless", "ghostty-native")],
+    ]),
+  )
+  try {
+    const { meta } = loadFullProbes()
+    expect(meta["headless-ghostty"]?.label).toBe("libghostty-vt (WASM)")
+    expect(meta["ghostty-native"]?.label).toBe("libghostty-vt (native)")
+    expect(meta.ghostty?.label).toBe("Ghostty")
+  } finally {
+    targets.mockRestore()
+    selection.mockRestore()
+  }
+})
+
 it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   // The guard 28047 adds, on the pair it was written for: before the fix the app 'ghostty' and the
   // headless parser 'ghostty-native' both minted page id 'ghostty', so VitePress wrote one run over

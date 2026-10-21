@@ -201,7 +201,8 @@ export function loadFullProbes(): ProbeData {
   for (const feature of features) (categories[feature.category] ??= []).push(feature)
 
   const meta = loadBackendMeta()
-  for (const [id, terminal] of Object.entries(loadTerminals(contentDir))) {
+  const catalog = loadTerminals(contentDir)
+  for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
   for (const [key, { selected }] of byTarget) {
@@ -209,7 +210,10 @@ export function loadFullProbes(): ProbeData {
     if (key !== id) {
       meta[key] = {
         ...meta[id],
-        label: `${meta[id]?.label ?? id} (${selected.target.kind})`,
+        // A headless backend measured under an app entry takes that entry's declared label for it.
+        label:
+          (selected.target.kind === "headless" ? catalog[id]?.headlessLabels?.[id] : undefined) ??
+          `${meta[id]?.label ?? id} (${selected.target.kind})`,
         slug: key,
       }
     }

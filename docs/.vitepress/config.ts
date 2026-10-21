@@ -141,7 +141,7 @@ function buildSidebar() {
 
   // These comparisons have reviewed headless runs on both sides.
   const compareItems: Array<{ text: string; link: string }> = [
-    { text: "Headless: Ghostty vs Kitty", link: "/compare/headless-ghostty-vs-headless-kitty" },
+    { text: "Headless: libghostty-vt (WASM) vs Kitty", link: "/compare/headless-ghostty-vs-headless-kitty" },
     { text: "Headless: libvterm vs vt100 (Rust)", link: "/compare/libvterm-vs-vt100-rust" },
     { text: "Headless: vt100.js vs vt100 (Rust)", link: "/compare/vt100-js-vs-vt100-rust" },
     { text: "Headless: vt220.js vs vterm.js", link: "/compare/vt220-js-vs-vterm-js" },

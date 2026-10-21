@@ -76,6 +76,8 @@ export interface TerminalRecord {
   body: string
   kind?: string
   headlessBackends?: string[]
+  /** Display label per headless backend measured under this entry, keyed by a `headlessBackends` id. */
+  headlessLabels?: Record<string, string>
   manifestBackend?: string
   platforms?: string[]
   repo?: string
@@ -127,6 +129,28 @@ function optionalStringArray(path: string, id: string, field: string, value: unk
     throw new Error(`${path}: entry "${id}" has a non-string-array "${field}"`)
   }
   return value as string[]
+}
+
+/** Labels for this entry's own headless backends: every key must be one of its `headlessBackends`. */
+function optionalHeadlessLabels(
+  path: string,
+  id: string,
+  value: unknown,
+  backends: string[] | undefined,
+): Record<string, string> | undefined {
+  if (value === undefined) return undefined
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${path}: entry "${id}" has a non-object "headlessLabels"`)
+  }
+  for (const [backend, label] of Object.entries(value)) {
+    if (typeof label !== "string" || label === "") {
+      throw new Error(`${path}: entry "${id}" has a non-string "headlessLabels.${backend}"`)
+    }
+    if (!backends?.includes(backend)) {
+      throw new Error(`${path}: entry "${id}" labels "${backend}", which is not one of its "headlessBackends"`)
+    }
+  }
+  return value as Record<string, string>
 }
 
 function optionalBoolean(path: string, id: string, field: string, value: unknown): boolean | undefined {
@@ -183,6 +207,7 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
 }
 
 function parseTerminal(path: string, id: string, raw: Record<string, unknown>): TerminalRecord {
+  const headlessBackends = optionalStringArray(path, id, "headlessBackends", raw.headlessBackends)
   return {
     label: requireString(path, id, "label", raw.label),
     slug: requireString(path, id, "slug", raw.slug),
@@ -190,7 +215,8 @@ function parseTerminal(path: string, id: string, raw: Record<string, unknown>): 
     description: requireString(path, id, "description", raw.description),
     body: requireString(path, id, "body", raw.body),
     kind: optionalString(path, id, "kind", raw.kind),
-    headlessBackends: optionalStringArray(path, id, "headlessBackends", raw.headlessBackends),
+    headlessBackends,
+    headlessLabels: optionalHeadlessLabels(path, id, raw.headlessLabels, headlessBackends),
     manifestBackend: optionalString(path, id, "manifestBackend", raw.manifestBackend),
     platforms: optionalStringArray(path, id, "platforms", raw.platforms),
     repo: optionalString(path, id, "repo", raw.repo),
