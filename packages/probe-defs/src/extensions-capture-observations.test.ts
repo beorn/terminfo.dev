@@ -53,7 +53,7 @@ function find(id: string) {
 // SGR-background reference (sixel-capture.test.ts), so it no longer records unasserted frames.
 const capturedIds = ["extensions.iterm2-images"] as const
 
-test.each(capturedIds)("%s records control+target pixels as honest, unasserted inconclusive evidence", async (id) => {
+test.each(capturedIds)("%s binds control+target pixels while visual review remains pending", async (id) => {
   const { context, writes, frames } = captureApp(24, 80)
   const result = await find(id).term!(context)
   expect(result.observation).toMatchObject({
@@ -61,7 +61,19 @@ test.each(capturedIds)("%s records control+target pixels as honest, unasserted i
     reason: "insufficient-evidence",
     evidence: "pixels",
   })
-  expect(result.assertions).toBeUndefined()
+  expect(result.pass).toBe(false)
+  expect(result.criterionBranch).toBe("visual-review")
+  expect(result.checks).toEqual([
+    { id: "capture", status: "supported", assertionRefs: [0] },
+    { id: "review", status: "test-todo", reason: expect.any(String) },
+  ])
+  expect(result.assertions).toEqual([
+    {
+      kind: "positive",
+      expected: expect.any(String),
+      observed: JSON.stringify({ control: frames[0], target: frames[1] }),
+    },
+  ])
   expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
   expect(result.observation?.frames).toHaveLength(2)
   expect(writes.length).toBeGreaterThan(0)
@@ -105,7 +117,19 @@ test("extensions.font-ligatures captures a spaced control and a contiguous opera
     reason: "insufficient-evidence",
     evidence: "pixels",
   })
-  expect(result.assertions).toBeUndefined()
+  expect(result.pass).toBe(false)
+  expect(result.criterionBranch).toBe("visual-review")
+  expect(result.checks).toEqual([
+    { id: "capture", status: "supported", assertionRefs: [0] },
+    { id: "review", status: "test-todo", reason: expect.any(String) },
+  ])
+  expect(result.assertions).toEqual([
+    {
+      kind: "positive",
+      expected: expect.any(String),
+      observed: JSON.stringify({ control: frames[0], target: frames[1] }),
+    },
+  ])
   expect(frames.map(({ role }) => role)).toEqual(["control", "target"])
   expect(result.observation?.frames).toHaveLength(2)
   expect(writes.some((write) => write.includes("! = - > = > < = = ="))).toBe(true)

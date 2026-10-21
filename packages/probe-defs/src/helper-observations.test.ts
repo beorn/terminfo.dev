@@ -233,7 +233,22 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
     target: "sgr.bold",
   })
   expect(captured.observation?.frames).toHaveLength(2)
-  expect(captured.assertions).toBeUndefined()
+  expect(captured.pass).toBe(false)
+  expect(captured.criterionBranch).toBe("visual-review")
+  expect(captured.checks).toEqual([
+    { id: "capture", status: "supported", assertionRefs: [0] },
+    { id: "review", status: "test-todo", reason: expect.any(String) },
+  ])
+  expect(captured.assertions).toEqual([
+    {
+      kind: "positive",
+      expected: expect.any(String),
+      observed: JSON.stringify({
+        control: captured.observation?.frames?.[0],
+        target: captured.observation?.frames?.[1],
+      }),
+    },
+  ])
   expect(roles).toEqual(["control", "target"])
   expect(captureWrites.length).toBeGreaterThan(0)
 })

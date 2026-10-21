@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { decodeCollectorRun, parseRun, parseSuiteManifest } from "./index.ts"
+import { decodeHistoricalCollectorRun, parseRun, parseSuiteManifest } from "./index.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 const FEATURE = "erase.el"
@@ -349,7 +349,7 @@ describe("run-owned text qualification ingestion", () => {
     expect(loaded.textQualificationSpec).toEqual(spec)
     expect(loaded.textClaims).toEqual([FEATURE])
     expect(
-      decodeCollectorRun(
+      decodeHistoricalCollectorRun(
         "collector.json",
         JSON.stringify(textRun({ textQualification: qualification })),
         declared,

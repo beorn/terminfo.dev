@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { decodeCollectorRun, parseRun, parseRunProvenance } from "./index.ts"
+import { decodeHistoricalCollectorRun, parseRun, parseRunProvenance } from "./index.ts"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 
 const target = {
@@ -90,7 +90,7 @@ describe("parseRunProvenance version token", () => {
     const parse = (value: unknown) => parseRun("mux.json", JSON.stringify(value), [], suites)
     expect(parse(raw)).toMatchObject({ outerApp })
     // The daemon save path rebuilds the public run; parsing alone cannot catch a dropped proof.
-    const decoded = decodeCollectorRun(
+    const decoded = decodeHistoricalCollectorRun(
       "mux.json",
       JSON.stringify({ ...raw, suiteId: expected.probeHash }),
       suites.get(expected.probeHash)!,
