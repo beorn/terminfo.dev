@@ -190,6 +190,29 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
   expect(result.response).toContain(payload)
 })
 
+/**
+ * @failure a forbid-only SGR claim stores an empty expected token, so the stored evidence cannot say
+ *   which codes the terminal was required NOT to report.
+ * @level l1
+ * @consumer the stored assertion text of reset.sgr, sgr.reset, sgr.fg.default and sgr.bg.default.
+ * @testonly none
+ *
+ * reset.sgr requires nothing and forbids bold, italic and inverse, so its expected text names those
+ * codes instead of being empty. sgr.selective-reset.italic still requires bold, so its expected text
+ * is the required code alone and is unchanged.
+ */
+test("a forbid-only SGR claim names the forbidden codes in its expected text", async () => {
+  const ctx = kittyContext(true)
+  const result = await termProbe("reset.sgr")(ctx)
+  expect(result.assertions?.[0]?.expected).toContain("reset.sgr: DECRQSS reports none of 1;3;7 after")
+})
+
+test("an SGR claim that requires a code keeps the required code as its expected text", async () => {
+  const ctx = kittyContext(true)
+  const result = await termProbe("sgr.selective-reset.italic")(ctx)
+  expect(result.assertions?.[0]?.expected).toContain("DECRQSS reports 1 after")
+})
+
 test("reset.sgr is a negative when the terminal keeps reporting the styles after the reset", async () => {
   const ctx = kittyContext(true, false)
   const result = await termProbe("reset.sgr")(ctx)
