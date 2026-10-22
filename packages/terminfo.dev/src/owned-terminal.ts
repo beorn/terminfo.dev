@@ -46,13 +46,10 @@ export type GeometrySource =
   | "stty size on a /proc/self/fd reopen of the verified output device"
   | "stty size on a /dev/fd reopen of the verified output device"
   | "GetConsoleScreenBufferInfo on the collector's own CONOUT$"
-  | "`mode con` on the collector's own console"
   | "unavailable: no verified output device"
 
-/** The two named Windows reads, in the design's order. Recorded per measurement, so a run says
- * WHICH read answered instead of naming the primary when the fallback did. */
+/** The one Windows read (#30731). */
 const WINDOWS_FFI_SOURCE = "GetConsoleScreenBufferInfo on the collector's own CONOUT$" as const
-const WINDOWS_MODE_CON_SOURCE = "`mode con` on the collector's own console" as const
 
 export type GeometryMeasurement =
   | {
@@ -666,10 +663,8 @@ async function readBoundGeometry(
 }
 
 /**
- * The Windows geometry read. The source names WHICH read answered (the ffi console read, or the
- * `mode con` fallback) rather than claiming the primary; with neither answering, the result is
- * `unavailable` carrying both attempts' diagnostics, so the caller keeps today's loud note instead
- * of grading on a guessed size.
+ * The Windows geometry read: the ffi console read alone. When it fails, the result is `unavailable`
+ * carrying its diagnostic, so the caller keeps today's loud note instead of grading on a guessed size.
  */
 async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>): Promise<GeometryMeasurement> {
   const at = new Date().toISOString()
@@ -679,7 +674,7 @@ async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>
     return {
       status: "measured",
       at,
-      source: read.via === "ffi" ? WINDOWS_FFI_SOURCE : WINDOWS_MODE_CON_SOURCE,
+      source: WINDOWS_FFI_SOURCE,
       rows: read.rows,
       cols: read.cols,
       stdout: "",
