@@ -549,7 +549,9 @@ export interface DarwinMuxAttachmentProof {
     uid: number
     startedAtEpochSeconds: number
     executablePath: string
-    ttyRdev: number
+    /** r13 measured no controlling terminal on the outer terminal (a GUI process), so the last row —
+     * and only the last row — may be null. Every other row names one. */
+    ttyRdev: number | null
   }[]
   executable: { path: string; sha256: string; version: string }
   config: { path: string; sha256: string }

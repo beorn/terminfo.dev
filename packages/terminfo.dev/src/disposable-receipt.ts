@@ -359,17 +359,37 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
       const row = fields(object(source, key, where), ["pid", "startedAtEpochSeconds"], `${where} ${key}`)
       return { pid: pidOf(row, `${where} ${key}`), startedAtEpochSeconds: birth(row, `${where} ${key}`) }
     }
+    /** D4.5: a TTY is optional only on the row the run measured with none. On Darwin "no TTY" is not
+     * zero — the kernel writes NODEV (0xffffffff) — so both 0 and NODEV refuse, named, never admitted
+     * as an integer the shared zero check could miss. */
+    const ttyRdev = (row: Record<string, unknown>, subject: string, required: boolean): number | null => {
+      const value = row.ttyRdev
+      if (value === null) {
+        if (required) fail(subject, "has no TTY")
+        return null
+      }
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) fail(subject, "has no TTY")
+      if (value === 0 || value === 0xffffffff) fail(subject, "has no TTY")
+      return value
+    }
+    const requiredTty = (row: Record<string, unknown>, subject: string): number => {
+      const value = ttyRdev(row, subject, true)
+      if (value === null) fail(subject, "has no TTY")
+      return value
+    }
     const ttyBirthProcess = (key: string) => {
-      const row = fields(object(source, key, where), ["pid", "startedAtEpochSeconds", "ttyRdev"], `${where} ${key}`)
+      const subject = `${where} ${key}`
+      const row = fields(object(source, key, where), ["pid", "startedAtEpochSeconds", "ttyRdev"], subject)
       return {
-        pid: pidOf(row, `${where} ${key}`),
-        startedAtEpochSeconds: birth(row, `${where} ${key}`),
-        ttyRdev: integer(row.ttyRdev, 0, `${where} ${key}`),
+        pid: pidOf(row, subject),
+        startedAtEpochSeconds: birth(row, subject),
+        ttyRdev: requiredTty(row, subject),
       }
     }
     if (!Array.isArray(source.chain) || source.chain.length < 3) {
       fail(where, "chain must include the collector, the mux, the login hop and the outer app")
     }
+    const lastIndex = source.chain.length - 1
     const chain = source.chain.map((input, index) => {
       const subject = `${where} chain[${index}]`
       const row = fields(input, ["pid", "ppid", "uid", "startedAtEpochSeconds", "executablePath", "ttyRdev"], subject)
@@ -379,7 +399,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
         uid: integer(row.uid, 0, subject),
         startedAtEpochSeconds: birth(row, subject),
         executablePath: path(row, "executablePath", subject),
-        ttyRdev: integer(row.ttyRdev, 0, subject),
+        ttyRdev: ttyRdev(row, subject, index !== lastIndex),
       }
     })
     // D4.4: every hop's parent is the next row, so the chain is the measured ancestry, not a list.
@@ -425,7 +445,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     )
     return proof
   }
-  if (source.platform !== "linux") fail(where, "platform must be linux")
+  if (source.platform !== "linux") fail(where, "platform must be linux or darwin")
   const mux = oneOf(source, "mux", ["tmux", "screen"], where) as LinuxMuxAttachmentProof["mux"]
   const bootId = text(source, "bootId", where)
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(bootId)) fail(where, "invalid bootId")
@@ -486,7 +506,7 @@ function assertMuxChain<Identity extends { pid: number }>(
     outerShell: Identity & { ttyRdev: number }
     outerTerminal: Identity
     attachedClient: { ttyRdev: number }
-    chain: readonly (Identity & { executablePath: string; ttyRdev: number })[]
+    chain: readonly (Identity & { executablePath: string; ttyRdev: number | null })[]
     executable: { path: string }
   },
   sameProcess: (a: Identity, b: Identity) => boolean,
@@ -511,7 +531,7 @@ function assertMuxChain<Identity extends { pid: number }>(
     const rootHop = login as unknown as { pid: number; ppid: number; uid: number; executablePath: string }
     if (rootHop.executablePath !== "/usr/bin/login") fail(where, "chain root hop is not /usr/bin/login")
     if (rootHop.uid !== 0) fail(where, "chain root hop is not uid 0")
-    if (rootHop.ppid !== last.pid) fail(where, "login hop does not name the outer terminal as its parent")
+    // Its parent is checked by the arm's ppid walk (D4.4), which refuses a break anywhere in the chain.
   }
   const shell = chain.at(-shellFromEnd)
   if (!shell || !sameProcess(shell, proof.outerShell) || shell.ttyRdev !== proof.outerShell.ttyRdev) {
