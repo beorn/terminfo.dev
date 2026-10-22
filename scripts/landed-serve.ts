@@ -85,23 +85,61 @@ function build(target: string): void {
   clearMarker?.()
 }
 
-const target = landingRevision()
-if (servedRevision() !== target) build(target)
+/**
+ * Resolve one request path inside the dist the way Cloudflare Pages does for this site's clean URLs: an exact file
+ * wins, then `<path>.html`, then `<path>/index.html`. `<path>.html` deliberately outranks a same-named directory,
+ * because VitePress builds `cleanUrls: true` pages that sit beside a directory of the same name (`cursor.html` plus
+ * `cursor/`), and a directory must never shadow its own page. Returns null for a miss, a malformed escape, or a path
+ * that escapes the dist; the caller answers 404, never 500 (30757).
+ */
+export function resolveServedPath(distDir: string, requestPath: string): string | null {
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(requestPath)
+  } catch {
+    return null
+  }
+  const relative = decoded.endsWith("/") ? `${decoded}index.html` : decoded
+  const candidate = resolve(distDir, `.${relative}`)
+  if (!candidate.startsWith(distDir + "/")) return null
+  if (isFile(candidate)) return candidate
+  const withHtml = `${candidate}.html`
+  if (!decoded.endsWith(".html") && isFile(withHtml)) return withHtml
+  if (isDirectory(candidate)) {
+    const index = join(candidate, "index.html")
+    if (isFile(index)) return index
+  }
+  return null
+}
 
-const notFound = join(distDir, "404.html")
-console.log(`terminfo-site: serving ${distDir} (${target.slice(0, 10)}) at http://${hostname}:${port}/`)
-Bun.serve({
-  hostname,
-  port,
-  fetch(request) {
+function isFile(path: string): boolean {
+  const stat = statSync(path, { throwIfNoEntry: false })
+  return stat !== undefined && stat.isFile()
+}
+
+function isDirectory(path: string): boolean {
+  const stat = statSync(path, { throwIfNoEntry: false })
+  return stat !== undefined && stat.isDirectory()
+}
+
+/** The read-only GET/HEAD handler over one dist directory; exported so the tests drive the real routing. */
+export function createPreviewHandler(distDir: string): (request: Request) => Response {
+  const notFound = join(distDir, "404.html")
+  return (request) => {
     if (request.method !== "GET" && request.method !== "HEAD") return new Response("read-only", { status: 405 })
-    let urlPath = decodeURIComponent(new URL(request.url).pathname)
-    if (urlPath.endsWith("/")) urlPath += "index.html"
-    const candidate = resolve(distDir, "." + urlPath)
-    let file = candidate.startsWith(distDir + "/") ? candidate : notFound
-    const stat = statSync(file, { throwIfNoEntry: false })
-    if (stat === undefined) file = notFound
-    else if (stat.isDirectory()) file = join(file, "index.html")
-    return new Response(Bun.file(file), { status: file === notFound ? 404 : 200 })
-  },
-})
+    const resolved = resolveServedPath(distDir, new URL(request.url).pathname)
+    return resolved === null
+      ? new Response(Bun.file(notFound), { status: 404 })
+      : new Response(Bun.file(resolved), { status: 200 })
+  }
+}
+
+function serveLanded(): void {
+  const target = landingRevision()
+  if (servedRevision() !== target) build(target)
+
+  console.log(`terminfo-site: serving ${distDir} (${target.slice(0, 10)}) at http://${hostname}:${port}/`)
+  Bun.serve({ hostname, port, fetch: createPreviewHandler(distDir) })
+}
+
+if (import.meta.main) serveLanded()
