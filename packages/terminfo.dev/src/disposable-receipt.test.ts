@@ -414,10 +414,10 @@ const darwinProof = () => {
     attachedClient: { pid: 55802, startedAtEpochSeconds: 1792678808, ttyRdev: 268435456 },
     chain: [
       hop(collector, server, 501, 1792678808, "/Users/codi/.bun/bin/bun", 268435459),
-      hop(server, shell, 501, 1792678807, "/usr/local/Cellar/tmux/3.7/bin/tmux", 268435456),
+      hop(server, shell, 501, 1792678808, "/usr/local/Cellar/tmux/3.7/bin/tmux", 268435456),
       hop(shell, login, 501, 1792678807, "/bin/bash", 268435456),
-      hop(login, owner, 0, 1792678806, "/usr/bin/login", 268435456),
-      hop(owner, 1, 501, 1792678806, "/Applications/Ghostty.app/Contents/MacOS/ghostty", null),
+      hop(login, owner, 0, 1792678807, "/usr/bin/login", 268435456),
+      hop(owner, 55757, 501, 1792678806, "/Applications/Ghostty.app/Contents/MacOS/ghostty", null),
     ],
     executable: { path: "/usr/local/Cellar/tmux/3.7/bin/tmux", sha256: digest("tmux"), version: "3.7" },
     config: { path: "/tmp/run/tmux.conf", sha256: digest("") },
