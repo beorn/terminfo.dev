@@ -286,11 +286,18 @@ describe("Ghostty cli-process arm", () => {
 
   test("launches through the binary with the run-scoped config marker and owns the GUI process", async () => {
     vi.mocked(resolveOwnedProcessByMarker).mockReturnValue(ownedWindow)
-    await handleApp("ghostty", {})
-    expect(writeFileSync).toHaveBeenCalledWith("/private/run/ghostty-private-run", "", {
-      flag: "wx",
-      mode: 0o600,
+    // D2: the script carries the run id, as createProbeRun names it.
+    vi.mocked(createProbeRun).mockReturnValue({
+      id: "private-run",
+      directory: "/private/run",
+      scriptPath: "/private/run/serve-private-run.sh",
     })
+    await handleApp("ghostty", {})
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/private/run/ghostty-private-run",
+      "command = /private/run/serve-private-run.sh\nconfirm-close-surface = false\nquit-after-last-window-closed = true\nwindow-save-state = never\n",
+      { flag: "wx", mode: 0o600 },
+    )
     expect(runScopedMarker).toHaveBeenCalledWith({
       appName: "Ghostty",
       runId: "private-run",
@@ -299,7 +306,7 @@ describe("Ghostty cli-process arm", () => {
     })
     expect(spawn).toHaveBeenCalledWith(
       "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-      ["--config-file", "/private/run/ghostty-private-run", "-e", "/private/run/serve.sh"],
+      ["--config-default-files=false", "--config-file=/private/run/ghostty-private-run"],
       { detached: true, stdio: "ignore", env: expect.any(Object) },
     )
     expect(openSync).not.toHaveBeenCalled()
@@ -326,6 +333,19 @@ describe("Ghostty cli-process arm", () => {
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
   })
 
+  // D2: the script reaches Ghostty only through the run file's unquoted `command` line, so a path that
+  // is relative, belongs to another run or holds anything outside [A-Za-z0-9/._-] refuses by name.
+  test.each([
+    { name: "a relative path", scriptPath: "private-run/serve.sh" },
+    { name: "another run's script", scriptPath: "/private/run/serve-other-run.sh" },
+    { name: "a space", scriptPath: "/private/run/serve private-run.sh" },
+  ])("refuses $name before writing the run file", ({ scriptPath }) => {
+    expect(() => prepareCliLaunch("ghostty", { id: "private-run", directory: "/private/run", scriptPath })).toThrow(
+      /^Ghostty script path .*; no launch$/,
+    )
+    expect(writeFileSync).not.toHaveBeenCalled()
+  })
+
   test("returns the spawned child and records a failed first descriptor close while attempting both closes", () => {
     const child = { unref: vi.fn() }
     vi.mocked(spawn).mockReturnValue(child as unknown as ReturnType<typeof spawn>)
@@ -339,7 +359,7 @@ describe("Ghostty cli-process arm", () => {
     const prepared = prepareCliLaunch("ghostty", {
       id: "private-run",
       directory: "/private/run",
-      scriptPath: "/private/run/serve.sh",
+      scriptPath: "/private/run/serve-private-run.sh",
     })
     const launched = launchPreparedCli(prepared, "/private/run")
 
@@ -379,7 +399,7 @@ describe("Ghostty cli-process arm", () => {
     const prepared = prepareCliLaunch("ghostty", {
       id: "private-run",
       directory: "/private/run",
-      scriptPath: "/private/run/serve.sh",
+      scriptPath: "/private/run/serve-private-run.sh",
     })
 
     let failure: unknown
@@ -412,7 +432,7 @@ describe("Ghostty cli-process arm", () => {
     const prepared = prepareCliLaunch("ghostty", {
       id: "private-run",
       directory: "/private/run",
-      scriptPath: "/private/run/serve.sh",
+      scriptPath: "/private/run/serve-private-run.sh",
     })
 
     let failure: unknown

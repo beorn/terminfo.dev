@@ -99,7 +99,7 @@ beforeEach(() => {
   vi.mocked(createProbeRun).mockReturnValue({
     id: "private-run",
     directory: "/private/run",
-    scriptPath: "/private/run/serve.sh",
+    scriptPath: "/private/run/serve-private-run.sh",
   })
   vi.mocked(launchTerminalWindow).mockReturnValue(window)
   vi.mocked(findOwnedDaemon).mockResolvedValue({ filepath: "/private/registration", registration })
@@ -199,7 +199,15 @@ describe("kitty owned launch", () => {
     await handleApp("kitty", { output: "/private/out" })
     expect(spawn).toHaveBeenCalledWith(
       "/Applications/kitty.app/Contents/MacOS/kitty",
-      ["--detach", "--instance-group", "terminfo-private-run", "-1", "--", "/bin/bash", "/private/run/serve.sh"],
+      [
+        "--detach",
+        "--instance-group",
+        "terminfo-private-run",
+        "-1",
+        "--",
+        "/bin/bash",
+        "/private/run/serve-private-run.sh",
+      ],
       expect.anything(),
     )
     const request = vi.mocked(requestDaemonProbe).mock.calls[0]?.[1]

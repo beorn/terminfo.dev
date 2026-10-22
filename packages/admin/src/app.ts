@@ -15,7 +15,7 @@ import {
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
-import { dirname, join } from "node:path"
+import { dirname, isAbsolute, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
   createProbeRun,
@@ -92,6 +92,32 @@ const BUN = process.execPath // use the same bun that's running us
 /** Ghostty's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
 const ghosttyConfigPath = (run: ProbeRun): string => join(run.directory, `ghostty-${run.id}`)
 
+/**
+ * The ONE argv every owned Ghostty launch uses (@cto D2, #30518). Ghostty's args.zig reads only
+ * `--key=value`, so the two-token `--config-file <path>` this replaces was never read, and `-e` on a
+ * direct spawn raised Ghostty's "Allow Ghostty to execute" alert. The run file's `command` runs the script.
+ */
+const ghosttyLaunchArgv = (runFile: string): string[] => ["--config-default-files=false", `--config-file=${runFile}`]
+
+/** D2: the run file is exactly four lines. Its `command` line is unquoted, so the script path must be
+ * absolute, carry this run's id and hold only [A-Za-z0-9/._-]; anything else refuses by name. */
+function ghosttyRunFile(run: ProbeRun): string {
+  const script = run.scriptPath
+  const outside = [...new Set([...script].filter((char) => !/[A-Za-z0-9/._-]/.test(char)))]
+  if (!isAbsolute(script) || !script.includes(run.id) || outside.length > 0) {
+    throw new Error(
+      `Ghostty script path ${JSON.stringify(script)} must be absolute, carry run id ${run.id} and hold only [A-Za-z0-9/._-] (outside: ${JSON.stringify(outside)}); no launch`,
+    )
+  }
+  const lines = [
+    `command = ${script}`,
+    "confirm-close-surface = false",
+    "quit-after-last-window-closed = true",
+    "window-save-state = never",
+  ]
+  return `${lines.join("\n")}\n`
+}
+
 /** WezTerm's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
 const weztermConfigPath = (run: ProbeRun): string => join(run.directory, `wezterm-${run.id}.lua`)
 
@@ -154,10 +180,10 @@ const APPS: AppDef[] = [
       executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       markerFlag: "--config-file",
       markerValue: ghosttyConfigPath,
-      prepare: (_run, markerValue) => {
-        writeFileSync(markerValue, "", { flag: "wx", mode: 0o600 })
+      prepare: (run, markerValue) => {
+        writeFileSync(markerValue, ghosttyRunFile(run), { flag: "wx", mode: 0o600 })
       },
-      args: (script, markerValue) => ["--config-file", markerValue, "-e", script],
+      args: (_script, markerValue) => ghosttyLaunchArgv(markerValue),
     },
   },
   {
