@@ -32,6 +32,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; dist is this test's own mkdtemp scratch root
   rmSync(dist, { recursive: true, force: true })
 })
 
