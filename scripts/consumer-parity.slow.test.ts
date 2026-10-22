@@ -1,7 +1,7 @@
 /**
  * @failure Consumers disagree about admitted runs, unscoped annotations leak into commentary, or malformed metadata silently omits analysis sections.
  * @level l2
- * @consumer Site matrix, terminal paths, v1/v2 API and generated analysis.
+ * @consumer Site matrix, terminal paths, v3 API, frozen v1 bytes and generated analysis.
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
@@ -32,16 +32,7 @@ import type {
 import { aggregateCurrentResults, classifyCells, type CellState } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import type {
-  HistoricalEvidenceDocument as EvidenceDocument,
-  HistoricalPublicVersion as PublicVersion,
-} from "../docs/data/public-results.ts"
-
-interface CompatibilityData {
-  results: Record<string, Record<string, string>>
-  terminals: Record<string, unknown>
-  notes: Record<string, Record<string, string>>
-}
+import type { HistoricalPublicVersion as PublicVersion } from "../docs/data/public-results.ts"
 
 const fixture = vi.hoisted(() => {
   const runSha256 = "a".repeat(64)
@@ -354,6 +345,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       const started = performance.now();
       const content = ${JSON.stringify(join(root, "content"))};
       const out = ${JSON.stringify(out)};
+      const frozenV1Dir = ${JSON.stringify(join(root, "docs/public/api/v1"))};
       // Each real loader retains the whole corpus; reclaim prior temporary parse objects between consumers.
       const { projection } = loadCurrentResults(content);
       Bun.gc(true);
@@ -363,8 +355,6 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       const pages = terminalPaths.paths();
       const analyses = generateAnalysis();
       generateApi(out);
-      const v1 = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8"));
-      const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8"));
       const v3 = JSON.parse(readFileSync(join(out, "api/v3/data.json"), "utf8"));
       const keys = value => Object.keys(value).sort();
       const digest = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -378,7 +368,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       assert.deepEqual(matrix.stats, site.stats);
       assert.deepEqual(keys(site.selectedByBackend), [...compatibility.keys()].sort());
       const referenced = new Set();
-      for (const [api, published] of [[v3,site.selected],[v2,site.selected.historical]]) {
+      for (const [api, published] of [[v3,site.selected]]) {
         for (const group of ["current","versions","history"]) {
           assert.deepEqual(keys(api[group]),keys(published[group]));
           for (const [key,value] of Object.entries(published[group])) {
@@ -410,7 +400,10 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       }
       for (const entry of Object.values(analyses))
         if(entry.runSha256) assert.ok(Object.values(projection.current).some(run=>run.sha256===entry.runSha256));
-      assert.ok(Object.keys(v1.terminals).length>0,"legacy API remains readable");
+      // @cto f71ed475: v1 is frozen bytes on disk, never a generator output.
+      const frozenV1 = JSON.parse(readFileSync(join(frozenV1Dir, "data.json"), "utf8"));
+      assert.equal(frozenV1.version,1);
+      assert.ok(Object.keys(frozenV1.terminals).length>0,"frozen v1 bytes remain readable");
       let schema3Files = 0;
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
         for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
@@ -622,7 +615,7 @@ it("analysis validation refuses stale live values and key drift but labels histo
 }, 30_000)
 
 describe("selected-run consumer parity", () => {
-  it("publishes v2 run references that resolve to digest-verified full run documents", () => {
+  it("publishes v3 run references that resolve to digest-verified full run documents", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-run-documents-"))
     try {
       generateApi(out)
@@ -639,14 +632,18 @@ describe("selected-run consumer parity", () => {
         url: string
         documentSha256: string
       }
-      const v2 = JSON.parse(readFileSync(join(out, "api", "v2", "data.json"), "utf8")) as {
+      const v3 = JSON.parse(readFileSync(join(out, "api", "v3", "data.json"), "utf8")) as {
         current: Record<string, RunReference>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
       }
-      const refs = [v2.current["app:kitty"], v2.versions["mux:screen"]?.[0], v2.history["app:kitty"]?.[0]]
+      const refs = [
+        ...Object.values(v3.current),
+        ...Object.values(v3.versions).flat(),
+        ...Object.values(v3.history).flat(),
+      ]
+      expect(refs.length).toBeGreaterThan(0)
       for (const ref of refs) {
-        if (!ref) throw new Error("Expected current, version and history run references")
         expect(ref).toMatchObject({
           runId: expect.any(String),
           target: expect.any(Object),
@@ -657,14 +654,14 @@ describe("selected-run consumer parity", () => {
           sourceRevision: expect.any(String),
           sha256: expect.any(String),
           counts: expect.any(Object),
-          url: expect.stringMatching(/^\/api\/v2\/runs\/[a-f0-9]{64}\.json$/),
+          url: expect.stringMatching(/^\/api\/v3\/runs\/[a-f0-9]{64}\.json$/),
           documentSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
         })
         const documentBytes = readFileSync(join(out, ref.url))
         expect(createHash("sha256").update(documentBytes).digest("hex")).toBe(ref.documentSha256)
         const document = JSON.parse(documentBytes.toString("utf8")) as Record<string, unknown>
         expect(document).toMatchObject({ runId: ref.runId, sha256: ref.sha256, target: ref.target })
-        expect(document.cells).toBeDefined()
+        expect(document.results).toBeDefined()
       }
     } finally {
       rmSync(out, { recursive: true, force: true })
@@ -674,39 +671,35 @@ describe("selected-run consumer parity", () => {
   // 30565: a displayed run's trace is a lazy file beside its run document; a summary never holds one.
   it("writes each displayed run's trace beside its run document and reports trace bytes and files", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-run-traces-"))
-    // With no current selection for screen, its page displays the historical run, which gets a v2 trace.
-    const current = currentResults.compatibilityTargets(currentResults.loadCurrentResults("").projection, "")
-    const targets = vi
-      .spyOn(currentResults, "compatibilityTargets")
-      .mockReturnValue(new Map([...current].filter(([key]) => key !== "screen")))
     try {
       generateApi(out)
       const listed = (dir: string) =>
         existsSync(join(out, dir)) ? readdirSync(join(out, dir)).map((name) => `/${dir}/${name}`) : []
       const read = (url: string) => readFileSync(join(out, url), "utf8")
+      // Every published API version the build writes, so the check follows the build, not a fixed prefix.
+      const versions = readdirSync(join(out, "api")).filter((name) => /^v\d+$/.test(name))
       const receipts: string[] = []
-      for (const url of [...listed("api/v2/runs"), ...listed("api/v3/runs")]) {
-        const run = JSON.parse(read(url)) as { sha256: string; trace?: { url: string; sha256: string } }
-        if (!run.trace) continue
-        const bytes = readFileSync(join(out, run.trace.url))
-        expect(createHash("sha256").update(bytes).digest("hex")).toBe(run.trace.sha256)
-        expect(JSON.parse(bytes.toString("utf8"))).toMatchObject({ version: 1, runSha256: run.sha256 })
-        receipts.push(run.trace.url)
+      for (const version of versions) {
+        for (const url of listed(`api/${version}/runs`)) {
+          const run = JSON.parse(read(url)) as { sha256: string; trace?: { url: string; sha256: string } }
+          if (!run.trace) continue
+          const bytes = readFileSync(join(out, run.trace.url))
+          expect(createHash("sha256").update(bytes).digest("hex")).toBe(run.trace.sha256)
+          expect(JSON.parse(bytes.toString("utf8"))).toMatchObject({ version: 1, runSha256: run.sha256 })
+          receipts.push(run.trace.url)
+        }
       }
       // Every trace file is exactly one run document's receipt.
-      const traces = [...listed("api/v2/traces"), ...listed("api/v3/traces")]
+      const traces = versions.flatMap((version) => listed(`api/${version}/traces`))
       expect(traces.sort()).toEqual(receipts.sort())
       const cellsOf = (url: string) => (JSON.parse(read(url)) as { cells: Record<string, unknown> }).cells
       const cell = (url: string, featureId: string) => cellsOf(url)[featureId]
       expect(cell(`/api/v3/traces/${fixture.selected.sha256}.json`, "sgr.bold")).toMatchObject({ status: "supported" })
-      expect(cell(`/api/v2/traces/${fixture.screen.sha256}.json`, "sgr.bold")).toMatchObject({
-        outcome: "inconclusive",
-      })
       const report = assertDeploymentLimits(out)
       expect(report.traceFiles).toBe(traces.length)
       expect(report.traceBytes).toBe(traces.reduce((total, url) => total + statSync(join(out, url)).size, 0))
-      const summaries = ["api/v1/data.json", "api/v2/data.json", "api/v3/data.json"]
-      expect(Object.keys(report.dataJsonBytes).sort()).toEqual(summaries)
+      const summaries = Object.keys(report.dataJsonBytes)
+      expect(summaries).toContain("api/v3/data.json")
       for (const path of summaries) {
         const summary = read(path)
         expect(report.dataJsonBytes[path]).toBe(Buffer.byteLength(summary))
@@ -714,7 +707,6 @@ describe("selected-run consumer parity", () => {
         for (const url of traces) expect(summary).not.toContain(JSON.stringify(cellsOf(url)))
       }
     } finally {
-      targets.mockRestore()
       rmSync(out, { recursive: true, force: true })
     }
   })
@@ -740,9 +732,8 @@ describe("selected-run consumer parity", () => {
     try {
       const site = probesLoader.load()
       generateApi(out)
-      const v1 = readFileSync(join(out, "api", "v1", "data.json"), "utf8")
-      const v2 = readFileSync(join(out, "api", "v2", "data.json"), "utf8")
-      for (const serialized of [JSON.stringify(site), v1, v2]) {
+      const v3 = readFileSync(join(out, "api", "v3", "data.json"), "utf8")
+      for (const serialized of [JSON.stringify(site), v3]) {
         for (const marker of [
           "STORED_ASSERTION_EXPECTED",
           "PRIVATE_DIAGNOSTIC",
@@ -753,7 +744,6 @@ describe("selected-run consumer parity", () => {
         }
       }
       expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
-      expect(JSON.parse(v1)).toMatchObject({ results: { kitty: { "sgr.bold": "yes" } } })
       expect(site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
       // Current v3 must preserve exact sealed status while publication independently controls bytes.
       const projection = currentResults.loadCurrentResults("").projection
@@ -863,222 +853,6 @@ describe("selected-run consumer parity", () => {
       rmSync(out, { recursive: true, force: true })
     }
   })
-
-  it.each(["pixels", "text-cells"] as const)(
-    "presents approved %s evidence and withdraws its generated files",
-    (kind) => {
-      const out = mkdtempSync(join(tmpdir(), "terminfo-presentation-approved-"))
-      const copied = mkdtempSync(join(tmpdir(), "terminfo-presentation-copied-public-"))
-      const cell = fixture.selected.cells["sgr.bold"] as unknown as SelectedCell
-      const original = structuredClone(cell)
-      const selected = fixture.selected as unknown as SelectedVersion
-      const other = fixture.selected.cells["extensions.sixel"] as unknown as SelectedCell
-      const originalOther = structuredClone(other)
-      const png = Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=",
-        "base64",
-      )
-      const artifact = kind === "text-cells" ? Buffer.from("A  \n B ", "utf8") : png
-      const digest = createHash("sha256").update(artifact).digest("hex")
-      const screenshot = { url: `/artifacts/${digest}.${kind === "text-cells" ? "txt" : "png"}`, sha256: digest }
-      const frame = {
-        role: "target" as const,
-        label: "retained text",
-        capturedAt: 2,
-        kind: "text-cells" as const,
-        sha256: digest,
-      }
-      const imageReader = vi
-        .spyOn(selectedResults, "readVerifiedArtifact")
-        .mockImplementation((_content, ref, _run, artifactKind) => {
-          expect(ref).toBe(`sha256:${digest}`)
-          expect(artifactKind ?? "screenshot").toBe(kind === "text-cells" ? "text-snapshot" : "screenshot")
-          return artifact
-        })
-      try {
-        cell.presentation = {
-          decision: {
-            id: "present-bold",
-            reviewer: "reviewer",
-            reason: "checked original evidence",
-            sources: ["https://example.org/review"],
-            presentsEvidence: true,
-          },
-          original: {
-            observation: {
-              featureId: "sgr.bold",
-              outcome: original.outcome,
-              evidence: original.evidence,
-              note: original.note,
-            },
-            record: { ...original.record, ...(kind === "text-cells" ? { frames: [frame] } : { screenshot }) },
-          },
-        }
-        cell.chain.correctionId = "correct-bold"
-        cell.note = "Reviewed correction note"
-        cell.record = { rawReply: "CORRECTION_OTHER_FEATURE_RAW", assertions: [] }
-        if (kind === "text-cells") {
-          cell.evidence = "text"
-          const rawFrame = {
-            kind: "text-cells" as const,
-            role: "target" as const,
-            ref: `sha256:${digest}`,
-            capturedAt: 2,
-            label: "retained text",
-            cellDigest: `sha256:${digest}`,
-            frameDigest: `sha256:${digest}`,
-            cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
-          }
-          Object.assign(selected, {
-            textQualification: {
-              version: 1,
-              recipe: "macos-text-cells-v1",
-              grid: { rows: 2, cols: 3 },
-              shapes: [{ shape: "mid-line-gap", frames: [{ ...rawFrame, role: "control", capturedAt: 1 }, rawFrame] }],
-            },
-          })
-          other.evidence = "text"
-          other.presentation = {
-            decision: { ...cell.presentation.decision, id: "present-sixel" },
-            original: {
-              observation: { featureId: other.featureId, outcome: other.outcome, evidence: "text" },
-              record: { assertions: [], frames: [frame] },
-            },
-          }
-        }
-        const site = probesLoader.load()
-        const presented = site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.presentation
-        expect(presented?.state).toBe("presented")
-        if (presented?.state !== "presented") throw new Error("Missing presented evidence")
-        expect(presented.url).toBe(`/api/v2/evidence/${fixture.runSha256}.json#sgr.bold`)
-        const docUrl = presented.url.split("#")[0]!
-        generateApi(out)
-        const evidenceFile = join(out, docUrl.slice(1))
-        const bytes = readFileSync(evidenceFile)
-        expect(createHash("sha256").update(bytes).digest("hex")).toBe(presented.sha256)
-        const document = JSON.parse(bytes.toString("utf8")) as EvidenceDocument
-        expect(document).toMatchObject({
-          runId: fixture.selected.runId,
-          runSha256: fixture.runSha256,
-          cells: {
-            "sgr.bold": {
-              featureId: "sgr.bold",
-            },
-          },
-        })
-        const cellDoc = document.cells["sgr.bold"]!
-        expect(cellDoc.record.rawReply).toBe(original.record.rawReply)
-        expect(bytes.toString("utf8")).not.toContain("CORRECTION_OTHER_FEATURE_RAW")
-        expect(cellDoc.observation.note).toBe(original.note)
-        // CTO condition4 explicitly preserves the historical PNG document bytes, including key order.
-        if (kind === "pixels") {
-          expect(bytes.toString("utf8")).toBe(
-            JSON.stringify(
-              {
-                version: 2,
-                runId: fixture.selected.runId,
-                runSha256: fixture.runSha256,
-                cells: {
-                  "sgr.bold": {
-                    featureId: "sgr.bold",
-                    observation: {
-                      featureId: "sgr.bold",
-                      outcome: "supported",
-                      evidence: "query",
-                      note: "unchecked collector note /home/fixture/private",
-                    },
-                    record: {
-                      screenshot,
-                      rawReply: "\u001b[1;2R",
-                      assertions: [
-                        {
-                          featureId: "sgr.bold",
-                          kind: "positive",
-                          expected: "STORED_ASSERTION_EXPECTED",
-                          observed: "\u001b[1;2R",
-                        },
-                      ],
-                    },
-                    review: {
-                      id: "present-bold",
-                      reviewer: "reviewer",
-                      reason: "checked original evidence",
-                      sources: ["https://example.org/review"],
-                    },
-                  },
-                },
-              },
-              null,
-              2,
-            ) + "\n",
-          )
-        }
-        expect(JSON.stringify(site)).not.toContain("STORED_ASSERTION_EXPECTED")
-        expect(readFileSync(join(out, screenshot.url.slice(1)))).toEqual(artifact)
-        if (kind === "pixels") {
-          // When other cells remain unreviewed on the displayed current run, both the run's trace and the
-          // presented cell's artifact are written together.
-          expect(existsSync(join(out, "api/v3/traces", `${fixture.runSha256}.json`))).toBe(true)
-        }
-        if (kind === "text-cells") {
-          const first = site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.textQualification
-          const second = site.historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.textQualification
-          expect(first).toEqual(second)
-          if (!first) throw new Error("Missing run-owned qualification link")
-          const qualification = readFileSync(join(out, first.url.slice(1)))
-          expect(createHash("sha256").update(qualification).digest("hex")).toBe(first.sha256)
-          expect(JSON.parse(qualification.toString("utf8"))).toMatchObject({
-            runId: fixture.selected.runId,
-            qualification: { shapes: [{ shape: "mid-line-gap" }] },
-          })
-          expect(cellDoc.record.frames).toEqual([{ ...frame, url: screenshot.url }])
-          expect(document.cells["extensions.sixel"]?.record.frames).toEqual([{ ...frame, url: screenshot.url }])
-          if (!other.presentation) throw new Error("Missing second presented text result")
-          other.presentation.decision.presentsEvidence = false
-        }
-        const v1Before = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8")) as CompatibilityData
-        expect(v1Before.notes.kitty?.["sgr.bold"]).toBe("Reviewed correction note")
-
-        // A new staged build may start with a previous docs/public snapshot copied into it.
-        cpSync(out, copied, { recursive: true })
-        cell.presentation.decision = {
-          ...cell.presentation.decision,
-          id: "withdraw-bold",
-          reason: "Withdrawn for recheck",
-          presentsEvidence: false,
-        }
-        generateApi(out)
-        generateApi(copied)
-        expect(existsSync(evidenceFile)).toBe(false)
-        expect(existsSync(join(copied, docUrl.slice(1)))).toBe(false)
-        expect(existsSync(join(out, screenshot.url.slice(1)))).toBe(false)
-        expect(existsSync(join(copied, screenshot.url.slice(1)))).toBe(false)
-        const after = probesLoader.load().historicalByBackend.kitty?.selected.cells["sgr.bold"]
-        expect(after?.presentation).toMatchObject({ state: "withdrawn", review: { reason: "Withdrawn for recheck" } })
-        const v1After = JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8")) as CompatibilityData
-        expect(v1After.results).toEqual(v1Before.results)
-        expect(v1After.terminals).toEqual(v1Before.terminals)
-        expect(v1After.notes.kitty?.["sgr.bold"]).toBe("Reviewed correction note")
-
-        Reflect.deleteProperty(cell.chain, "correctionId")
-        cell.note = original.note
-        cell.presentation.decision.presentsEvidence = true
-        generateApi(out)
-        expect(JSON.parse(readFileSync(join(out, "api/v1/data.json"), "utf8"))).toMatchObject({
-          notes: { kitty: { "sgr.bold": original.note } },
-        })
-      } finally {
-        imageReader.mockRestore()
-        Object.assign(cell, original)
-        delete cell.presentation
-        Object.assign(other, originalOther)
-        delete other.presentation
-        delete selected.textQualification
-        rmSync(out, { recursive: true, force: true })
-        rmSync(copied, { recursive: true, force: true })
-      }
-    },
-  )
 
   it("fails by path if copied static evidence was never owned by the generator", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-unapproved-artifact-"))
@@ -1664,9 +1438,9 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
   }
 })
 
-it("names historical-only headless Ghostty cores libghostty-vt on the site and in /api/v1", () => {
-  // @chief 2026-10-21 (30608): today every Ghostty run is historical-only, and /api/v1 names a headless
-  // core as the site does, so one name has one home.
+it("names historical-only headless Ghostty cores libghostty-vt on the site", () => {
+  // @chief 2026-10-21 (30608): every Ghostty run is historical-only, and the site names a headless
+  // core as its own row, so one name has one home. v1 is frozen bytes and no longer generated.
   const projection = currentResults.loadCurrentResults("").projection
   const as = (contextKey: string, kind: SelectedVersion["target"]["kind"], id: string) => {
     const selected = structuredClone(fixture.selected) as unknown as SelectedVersion
@@ -1685,7 +1459,6 @@ it("names historical-only headless Ghostty cores libghostty-vt on the site and i
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const targets = vi.spyOn(currentResults, "historicalCompatibilityTargets").mockReturnValue(historical)
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
-  const out = mkdtempSync(join(tmpdir(), "terminfo-api-labels-"))
   try {
     const { meta, selectedByBackend } = loadFullProbes()
     expect(selectedByBackend["headless-ghostty"]).toBeUndefined()
@@ -1693,18 +1466,10 @@ it("names historical-only headless Ghostty cores libghostty-vt on the site and i
     expect(meta["headless-ghostty"]).toEqual({ label: "libghostty-vt (WASM)", slug: "headless-ghostty" })
     expect(meta["ghostty-native"]?.label).toBe("libghostty-vt (native)")
     expect(meta.ghostty?.label).toBe("Ghostty")
-    generateApi(out)
-    const v1 = JSON.parse(readFileSync(join(out, "api", "v1", "data.json"), "utf8")) as {
-      terminals: Record<string, { name: string }>
-    }
-    expect(v1.terminals["headless-ghostty"]?.name).toBe("libghostty-vt (WASM)")
-    expect(v1.terminals["ghostty-native"]?.name).toBe("libghostty-vt (native)")
-    expect(v1.terminals.ghostty?.name).toBe("Ghostty")
   } finally {
     warning.mockRestore()
     targets.mockRestore()
     selection.mockRestore()
-    rmSync(out, { recursive: true, force: true })
   }
 })
 

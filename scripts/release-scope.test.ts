@@ -112,7 +112,7 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     expect(() => cohortIds(catalog, categories, ["nonesuch" as never], { excludingTier1: false })).toThrow(
       /asks for slice nonesuch, which no category carries/,
     )
-    // The same exclusion over classics drops exactly the two rows the candidate-2 count treats as
+    // The same exclusion over classics drops exactly the two rows the candidate cohort count treats as
     // not new (125 catalog rows, 123 new), so the option is the tier filter and nothing else.
     expect(cohortIds(catalog, categories, ["classics"], { excludingTier1: true })).toHaveLength(123)
   })

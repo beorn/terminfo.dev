@@ -183,7 +183,7 @@ const breadcrumbParent = (() => {
   </div>
 
   <dl>
-    <dt>Run</dt><dd><a :href="selectedRun.schemaVersion === 3 ? '/api/v3/data.json' : '/api/v2/data.json'">{{ selectedRun.sha256 }}</a></dd>
+    <dt>Run</dt><dd><a href="/api/v3/data.json">{{ selectedRun.sha256 }}</a></dd>
     <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}</dd>
     <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
     <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>

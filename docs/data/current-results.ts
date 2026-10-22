@@ -130,8 +130,8 @@ function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): s
  * sixteen times) when it needed one read (28792 item 1 — project once per build).
  *
  * The memo cannot live at module scope: VitePress bundles each data loader's module graph separately
- * (seven `*.paths.ts` files, `probes.data.ts`, `candidate-2.data.ts` and `config.ts` each carry their
- * own copy of this module), so a module-level Map would still read the corpus once per BUNDLE. The
+ * (seven `*.paths.ts` files, `probes.data.ts` and `config.ts` each carry their own copy of this
+ * module), so a module-level Map would still read the corpus once per BUNDLE. The
  * cache therefore hangs off `globalThis` under a registered symbol, which every copy in one process
  * shares — the corpus is read once per process.
  *

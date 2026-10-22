@@ -205,14 +205,13 @@ export function loadFullProbes(): ProbeData {
   for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
-  // A target published apart from its catalog entry gets its own name and slug, current or historical-only.
-  // A historical-only one takes nothing else: its entry's prose describes the app, not this target.
-  const historicalOnly = Object.entries(published.historicalByBackend).filter(([key]) => !byTarget.has(key))
-  for (const [key, { selected }] of [...byTarget, ...historicalOnly]) {
+  // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
+  // not a matrix row any more; it gets no metadata and no page.
+  for (const [key, { selected }] of byTarget) {
     const id = selected.target.id
     if (key !== id) {
       const label = targetLabel(catalog, id, selected.target.kind, meta[id]?.label)
-      meta[key] = byTarget.has(key) ? { ...meta[id], label, slug: key } : { label, slug: key }
+      meta[key] = { ...meta[id], label, slug: key }
     }
   }
   const annotations = loadAnnotations()
