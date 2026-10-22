@@ -455,7 +455,13 @@ it.each([
             "default",
             output,
           ],
-          expect.anything(),
+          // 30657: the launcher's host readback refuses without the pass's suite and source revision.
+          expect.objectContaining({
+            env: expect.objectContaining({
+              TERMINFO_PROBE_HASH: pass.probeHash,
+              TERMINFO_SOURCE_REVISION: pass.sourceRevision,
+            }),
+          }),
         )
         expect(row?.status).toBe("failed")
         expect(row?.error).toContain(`${id}/linux`)

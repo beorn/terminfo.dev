@@ -624,7 +624,12 @@ export async function collectPass(
             stdout: join(output, "launcher.stdout.log"),
             stderr: join(output, "launcher.stderr.log"),
           },
-          { TERMINFO_CAPTURE_RUN_ID: handed.draft.runId },
+          // The launcher's host readback (getTrustedSuiteReceipt) refuses without this pass's suite and source.
+          {
+            TERMINFO_CAPTURE_RUN_ID: handed.draft.runId,
+            TERMINFO_PROBE_HASH: snapshot.probeHash,
+            TERMINFO_SOURCE_REVISION: sourceRevision,
+          },
         )
         const runs = readdirSync(output, { withFileTypes: true }).filter((entry) => entry.isDirectory())
         if (runs.length !== 1 || !runs[0]) {
