@@ -403,8 +403,18 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
         if (a && b && !sameCellColor(neutral, a) && !sameRgb(a, b)) {
           return parserStateResult(true, expected, state)
         }
-        // Both named colors left the cell at the measured default: the backend ignored them.
-        if (sameCellColor(neutral, a) && sameCellColor(neutral, b)) return parserStateResult(false, expected, state)
+        // Both named colors left the cell at an exposed default: the backend ignored them. A neutral
+        // and two targets that all read no color show nothing about the color field, so that is a
+        // coverage record, as in the truecolor and default-color arms (#30701, @cto cd391424).
+        if (neutral && sameCellColor(neutral, a) && sameCellColor(neutral, b)) {
+          return parserStateResult(false, expected, state)
+        }
+        if (!neutral && !a && !b) {
+          return notTestedResult(
+            `the ${channel} color field in the headless readback (neutral, SGR ${firstCode} and SGR ${secondCode} cells all read no color)`,
+            state,
+          )
+        }
         return parserStateResult(
           null,
           expected,
@@ -450,7 +460,10 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const x = indexedFirst[channel]
         const y = indexedSecond[channel]
         // #30701, @cto ruling C: direct RGB that does not read back its fed value is a reference that
-        // cannot be calibrated (TEST TODO); a calibrated reference the indices miss is a custom palette.
+        // cannot be calibrated (TEST TODO). A calibrated reference the indices miss is a custom indexed
+        // palette OR an adapter that does not resolve indices to RGB (wezterm reports an index as
+        // {r: index, g: 0, b: 0}; #30703), so it stays inconclusive until an in-probe control shows the
+        // adapter resolves indices (@cto cd391424).
         if (!a || !b || !sameRgb(a, first) || !sameRgb(b, second)) {
           return notTestedResult(
             `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
@@ -459,10 +472,10 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         if (x && y && sameRgb(x, a) && sameRgb(y, b)) return parserStateResult(true, expected, state)
         return parserStateResult(
-          false,
+          null,
           expected,
           state,
-          "Direct RGB references matched; indices 67 and 173 did not resolve to them (a custom indexed palette)",
+          "Direct RGB references matched; indices 67 and 173 did not resolve to them: a custom indexed palette, or an adapter that does not resolve indices",
         )
       },
       sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr], requireTokens: [`${sgr}:5:67`] }, (ctx) =>

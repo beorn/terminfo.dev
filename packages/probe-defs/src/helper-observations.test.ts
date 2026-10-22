@@ -758,11 +758,19 @@ test("named ANSI color probes require distinct exposed selection, without theme 
       first: { char: "X" },
       second: { char: "Y" },
     })
-    // #30701 (@cto ruling C): both named colors at the measured default is a measured ignore, and a
-    // default reported as absent (undefined) still differs from two exposed colors.
-    const ignored = run(null, null)
+    // #30701 (@cto cd391424): both named colors equal to an EXPOSED neutral is a measured ignore; a
+    // neutral and two targets all reading no color show nothing about the color field (coverage
+    // record); a default reported as absent (undefined) still differs from two exposed colors.
+    const ignored = run(lowRed, lowRed, ["C", "X", "Y"], lowRed)
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
+    const unshown = run(null, null)
+    expect(unshown?.observation, id).toBeUndefined()
+    expect(unshown?.assertions, id).toBeUndefined()
+    expect(unshown?.notTested, id).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringContaining(`the ${channel} color field`),
+    })
     const absentDefault = probe.termless(
       headless({
         getCell: (_row, col) => ({
@@ -819,11 +827,13 @@ test("indexed cube colors require two exact direct-RGB reference controls", () =
       directFirst: { char: "A" },
       indexedSecond: { char: "Y" },
     })
-    // #30701 (@cto ruling C): calibrated direct RGB that the indices miss is a custom palette, a
-    // measured negative; direct RGB that misses its fed value is an uncalibrated reference (TEST TODO).
+    // #30701 (@cto cd391424): calibrated direct RGB that the indices miss is a custom palette OR an
+    // adapter that does not resolve indices, so it stays inconclusive naming both; direct RGB that
+    // misses its fed value is an uncalibrated reference (TEST TODO).
     for (const palette of [run([first, first], [first, second]), run([null, null], [first, second])]) {
-      expect(palette?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
-      expect(palette?.assertions, id).toMatchObject([{ kind: "negative", observed: palette?.response }])
+      expect(palette?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(palette?.observation?.note, id).toContain("does not resolve indices")
+      expect(palette?.assertions, id).toBeUndefined()
     }
     const uncalibrated = run([first, second], [null, null])
     expect(uncalibrated?.observation, id).toBeUndefined()
