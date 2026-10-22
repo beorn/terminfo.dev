@@ -3,7 +3,8 @@
  *   unreadable probes dir passes a contract that had nothing to measure.
  * @level l0
  * @consumer 28453 group harness adopters (28454); 2026-10-09 @dev/10 review.
- * @reach fs-walk vendor/terminfo.dev/content/probes-apps/ vendor/terminfo.dev/content/probes-mux/ /tmp/group-harness-*
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/** vendor/terminfo.dev/content/probes-mux/**
+ * @reach fs-walk <fixture-only: /tmp/group-harness-*>
  * @testonly none
  */
 import { expect, test } from "vitest"

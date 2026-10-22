@@ -2,7 +2,7 @@
  * @failure A run can be admitted against a suite this tree does not run, so its manifest is computed from the wrong probe-defs; or a concurrent admission of the same run can overwrite different bytes; or the run can be misnamed; or the ownership receipt a run cites can go unread, so a hand-typed identity that nothing measured is admitted beside the run it claims to authorize.
  * @level l1
  * @consumer The one declare-and-admit entry point (27859)
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/**
  * @reach fs-walk <fixture-only: mkdtempSync run, destination, and Git authoring directories>
  * @testonly none
  */

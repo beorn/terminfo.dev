@@ -4,7 +4,7 @@
  * @consumer Site data and JSON API use the canonical reviewed-run selector.
  * @reach fs-walk <fixture-only: walks temporary scratch fixtures for run selection>
  * @testonly none
- * @reach fs-walk vendor/terminfo.dev/content/probes-apps/ vendor/terminfo.dev/content/probes-mux/ vendor/terminfo.dev/content/probes-libs/
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/** vendor/terminfo.dev/content/probes-mux/** vendor/terminfo.dev/content/probes-libs/**
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"

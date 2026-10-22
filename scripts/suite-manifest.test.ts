@@ -2,7 +2,7 @@
  * @failure A suite declaration can be overwritten with new metadata or a wrong applicable probe set; a manifest may carry half of the legacy provenance; the composed-tree check may go red because the tree's own suite is uncited; a declare may run on a commit origin/main already holds; or a development build may demand a declaration commit for the derived in-development suite.
  * @level l1
  * @consumer Current probe suite manifest producer, admission, and deploy validation
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/** vendor/terminfo.dev/packages/terminfo.dev/src/**
  * @reach fs-walk <fixture-only: mkdtempSync Git repos prove the declare guard and the cited-manifest gate>
  * @testonly none
  */

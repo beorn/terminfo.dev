@@ -3,7 +3,7 @@
  * @level l1
  * @consumer Region-readback kind rows (charsets, editing, erase, scrollback, text) in the app/headless probe table.
  * @reach runs each kind row's parser arm on real xterm.js through the production headless context
- * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/
+ * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/**
  * @note the collector makes a FRESH backend per probe (`headless-batch.ts`:286), so a row's fixture
  * never inherits the previous row's terminal state and one row cannot mask another.
  * @testonly none

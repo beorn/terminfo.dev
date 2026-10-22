@@ -4,7 +4,7 @@
  *   reaching only currently-inconclusive refusals.
  * @level l2
  * @consumer 27919 admitted-run regrade of device.decrqss
- * @reach fs-walk vendor/terminfo.dev/content/probes-apps/ vendor/terminfo.dev/content/probes-mux/
+ * @reach fs-walk vendor/terminfo.dev/content/probes-apps/** vendor/terminfo.dev/content/probes-mux/**
  * @testonly none
  */
 import { readdirSync, readFileSync } from "node:fs"

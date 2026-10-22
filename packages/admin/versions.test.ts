@@ -3,7 +3,7 @@
  * @level l1
  * @consumer Headless probe cache and selected-run suite identity
  * @testonly none
- * @reach fs-walk vendor/terminfo.dev/content/features.json vendor/terminfo.dev/packages/probe-defs/src/ vendor/terminfo.dev/packages/probes/ vendor/terminfo.dev/packages/terminfo.dev/src/ vendor/terminfo.dev/packages/run-parser/src/ vendor/terminfo.dev/packages/admin/
+ * @reach fs-walk vendor/terminfo.dev/content/features.json vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/** vendor/terminfo.dev/packages/terminfo.dev/src/** vendor/terminfo.dev/packages/run-parser/src/** vendor/terminfo.dev/packages/admin/**
  */
 import { readFileSync } from "node:fs"
 import { dirname, join, relative } from "node:path"

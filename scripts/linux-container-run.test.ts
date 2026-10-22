@@ -3,7 +3,7 @@
  * @level l1 — invokes the real shell receipt composer on owned temporary files.
  * @consumer scripts/linux-container-run.sh host-side run receipt and prerequisite handling.
  * @reach fs-walk <fixture-only: readdir enumerates the owned temporary run output only>
- * @reach fs-walk vendor/terminfo.dev/scripts/
+ * @reach fs-walk vendor/terminfo.dev/scripts/**
  * @testonly none
  */
 

@@ -3,7 +3,7 @@
  *   person's home folder, so the public repository and site published that host's folder layout (30568).
  * @level l1
  * @consumer The committed content/ tree, which the repository and the site's API publish as it is
- * @reach fs-walk vendor/terminfo.dev/content/
+ * @reach fs-walk vendor/terminfo.dev/content/**
  * @reach fs-walk <fixture-only: mkdtempSync content trees>
  * @testonly none
  */

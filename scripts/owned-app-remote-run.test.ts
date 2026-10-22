@@ -6,7 +6,7 @@
  * @level l1 — runs the real driver against owned temporary trees and PATH shims for ssh/rsync.
  * @consumer scripts/owned-app-remote-run.ts and the local-owned-app branch of release1-collection.
  * @reach fs-walk <fixture-only: one owned temporary fixture tree per test>
- * @reach fs-walk vendor/terminfo.dev/scripts/
+ * @reach fs-walk vendor/terminfo.dev/scripts/**
  * @testonly none
  * @source-grep artifact equality, not source semantics: the fixture stages the identity script
  *   (scripts/owned-host-identity.ts) as the remote's own file, and the test compares the emitted
