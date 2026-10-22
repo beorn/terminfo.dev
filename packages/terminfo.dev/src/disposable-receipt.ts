@@ -2,7 +2,12 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { PLACEHOLDER, parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
-import type { AppLaunchReceipt, LinuxMuxAttachmentProof, MuxAttachmentProof } from "@terminfo/probe-defs"
+import type {
+  AppLaunchReceipt,
+  DarwinMuxAttachmentProof,
+  LinuxMuxAttachmentProof,
+  MuxAttachmentProof,
+} from "@terminfo/probe-defs"
 
 /**
  * A disposable-ownership receipt is what authorizes mutate+readback against a terminal (27832).
@@ -336,15 +341,94 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     ],
     where,
   )
-  if (source.platform !== "linux") fail(where, "platform must be linux")
-  const mux = oneOf(source, "mux", ["tmux", "screen"], where) as LinuxMuxAttachmentProof["mux"]
-  const bootId = text(source, "bootId", where)
-  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(bootId)) fail(where, "invalid bootId")
   const id = (key: string) => {
     const result = text(source, key, where)
     if (!RUN_ID.test(result)) fail(where, `invalid ${key}`)
     return result
   }
+  if (source.platform === "darwin") {
+    const birth = (row: Record<string, unknown>, subject: string): number => {
+      const value = row.startedAtEpochSeconds
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+        fail(subject, "startedAtEpochSeconds must be a whole epoch second")
+      }
+      return value
+    }
+    const pidOf = (row: Record<string, unknown>, subject: string): number => integer(row.pid, 2, subject)
+    const birthProcess = (key: string) => {
+      const row = fields(object(source, key, where), ["pid", "startedAtEpochSeconds"], `${where} ${key}`)
+      return { pid: pidOf(row, `${where} ${key}`), startedAtEpochSeconds: birth(row, `${where} ${key}`) }
+    }
+    const ttyBirthProcess = (key: string) => {
+      const row = fields(object(source, key, where), ["pid", "startedAtEpochSeconds", "ttyRdev"], `${where} ${key}`)
+      return {
+        pid: pidOf(row, `${where} ${key}`),
+        startedAtEpochSeconds: birth(row, `${where} ${key}`),
+        ttyRdev: integer(row.ttyRdev, 0, `${where} ${key}`),
+      }
+    }
+    if (!Array.isArray(source.chain) || source.chain.length < 3) {
+      fail(where, "chain must include the collector, the mux, the login hop and the outer app")
+    }
+    const chain = source.chain.map((input, index) => {
+      const subject = `${where} chain[${index}]`
+      const row = fields(input, ["pid", "ppid", "uid", "startedAtEpochSeconds", "executablePath", "ttyRdev"], subject)
+      return {
+        pid: pidOf(row, subject),
+        ppid: integer(row.ppid, 0, subject),
+        uid: integer(row.uid, 0, subject),
+        startedAtEpochSeconds: birth(row, subject),
+        executablePath: path(row, "executablePath", subject),
+        ttyRdev: integer(row.ttyRdev, 0, subject),
+      }
+    })
+    // D4.4: every hop's parent is the next row, so the chain is the measured ancestry, not a list.
+    for (const [index, hop] of chain.slice(0, -1).entries()) {
+      const next = chain[index + 1]
+      if (!next || hop.ppid !== next.pid) {
+        fail(`${where} chain[${index}]`, `ppid ${hop.ppid} does not name the next process`)
+      }
+    }
+    const executable = fields(source.executable, ["path", "sha256", "version"], `${where} executable`)
+    const config = fields(source.config, ["path", "sha256"], `${where} config`)
+    const proof: DarwinMuxAttachmentProof = {
+      platform: "darwin",
+      mux: oneOf(source, "mux", ["tmux", "screen"], where) as DarwinMuxAttachmentProof["mux"],
+      bootId: text(source, "bootId", where),
+      receiptSha256: measured(source, "receiptSha256", where, { digest: true }),
+      launchRunId: id("launchRunId"),
+      captureRunId: id("captureRunId"),
+      preflightCollector: birthProcess("preflightCollector"),
+      outerShell: ttyBirthProcess("outerShell"),
+      outerTerminal: birthProcess("outerTerminal"),
+      collector: ttyBirthProcess("collector"),
+      attachedClient: ttyBirthProcess("attachedClient"),
+      chain,
+      executable: {
+        path: path(executable, "path", `${where} executable`),
+        sha256: measured(executable, "sha256", where, { digest: true }),
+        version: text(executable, "version", where),
+      },
+      config: {
+        path: path(config, "path", `${where} config`),
+        sha256: measured(config, "sha256", where, { digest: true }),
+      },
+      socketPath: path(source, "socketPath", where),
+      session: text(source, "session", where),
+    }
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(proof.bootId)) fail(where, "invalid bootId")
+    assertMuxChain<{ pid: number; startedAtEpochSeconds: number }>(
+      where,
+      proof,
+      (a, b) => a.pid === b.pid && a.startedAtEpochSeconds === b.startedAtEpochSeconds,
+      3,
+    )
+    return proof
+  }
+  if (source.platform !== "linux") fail(where, "platform must be linux")
+  const mux = oneOf(source, "mux", ["tmux", "screen"], where) as LinuxMuxAttachmentProof["mux"]
+  const bootId = text(source, "bootId", where)
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(bootId)) fail(where, "invalid bootId")
   if (!Array.isArray(source.chain) || source.chain.length < 2) fail(where, "chain must include collector and outer app")
   const chain = source.chain.map((input, index) => {
     const subject = `${where} chain[${index}]`
@@ -406,6 +490,9 @@ function assertMuxChain<Identity extends { pid: number }>(
     executable: { path: string }
   },
   sameProcess: (a: Identity, b: Identity) => boolean,
+  /** 2 on Linux (shell immediately before the terminal); 3 on Darwin, where the measured login hop sits
+   * between them. `shellBelowLogin` names the root hop the Darwin arm requires. */
+  shellFromEnd: 2 | 3 = 2,
 ): void {
   const { chain } = proof
   const first = chain[0]
@@ -417,9 +504,18 @@ function assertMuxChain<Identity extends { pid: number }>(
   if (!sameProcess(last, proof.outerTerminal)) {
     fail(where, "chain does not end at the declared outer terminal identity")
   }
-  const shell = chain.at(-2)
+  if (shellFromEnd === 3) {
+    // D4.3: the measured root allowance, in exactly this form and no wider.
+    const login = chain.at(-2)
+    if (!login) fail(where, "chain has no hop below the outer shell")
+    const rootHop = login as unknown as { pid: number; ppid: number; uid: number; executablePath: string }
+    if (rootHop.executablePath !== "/usr/bin/login") fail(where, "chain root hop is not /usr/bin/login")
+    if (rootHop.uid !== 0) fail(where, "chain root hop is not uid 0")
+    if (rootHop.ppid !== last.pid) fail(where, "login hop does not name the outer terminal as its parent")
+  }
+  const shell = chain.at(-shellFromEnd)
   if (!shell || !sameProcess(shell, proof.outerShell) || shell.ttyRdev !== proof.outerShell.ttyRdev) {
-    fail(where, "outer shell identity or TTY is absent immediately before the outer terminal")
+    fail(where, "outer shell identity or TTY is absent immediately below the outer terminal")
   }
   if (new Set(chain.map((row) => row.pid)).size !== chain.length) fail(where, "chain repeats a process")
   if (
@@ -432,7 +528,7 @@ function assertMuxChain<Identity extends { pid: number }>(
   if (proof.attachedClient.ttyRdev !== proof.outerShell.ttyRdev) {
     fail(where, "attached client TTY differs from outer shell")
   }
-  const muxProcesses = chain.slice(1, -2)
+  const muxProcesses = chain.slice(1, -shellFromEnd)
   if (muxProcesses.length === 0) fail(where, "chain has no declared mux process between collector and outer shell")
   for (const row of muxProcesses) {
     if (row.executablePath !== proof.executable.path) {

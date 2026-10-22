@@ -51,6 +51,7 @@ export type {
   OuterAppProof,
   MuxAttachmentProof,
   LinuxMuxAttachmentProof,
+  DarwinMuxAttachmentProof,
   RunProvenance,
   Interpretation,
 } from "./types.ts"

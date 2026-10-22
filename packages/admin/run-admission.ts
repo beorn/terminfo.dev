@@ -285,6 +285,9 @@ function identityDecision(
 
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
 function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
+  // The Linux clipboard-fixture join. Darwin rows are refused earlier by the mux platform gate
+  // (mux-platform-unqualified, CTO 41878c53), so an arm that reaches here fails closed, named.
+  if (attachment.platform !== "linux") return false
   const fixtureSource = run.rawReplies["collector.clipboardFixture"]
   const preflightSource = run.outerApp?.rawReplies["collector.preflightIdentity"]
   if (!fixtureSource || !preflightSource || !run.outerApp?.provenance) return false

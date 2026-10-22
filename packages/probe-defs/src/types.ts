@@ -529,9 +529,36 @@ export interface LinuxMuxAttachmentProof {
   session: string
 }
 
-/** One arm per platform, keyed by `platform` (#30518 D4). The Darwin arm is written only from codimac's
- * measured chain; until it lands, Linux is the only arm. */
-export type MuxAttachmentProof = LinuxMuxAttachmentProof
+/** The Darwin arm, written only from codimac's measured chain (#30518 D4). Birth is
+ * `startedAtEpochSeconds` (D3); the root hop is the measured `/usr/bin/login`, and every row names a TTY. */
+export interface DarwinMuxAttachmentProof {
+  platform: "darwin"
+  mux: "tmux" | "screen"
+  bootId: string
+  receiptSha256: string
+  launchRunId: string
+  captureRunId: string
+  preflightCollector: { pid: number; startedAtEpochSeconds: number }
+  outerShell: { pid: number; startedAtEpochSeconds: number; ttyRdev: number }
+  outerTerminal: { pid: number; startedAtEpochSeconds: number }
+  collector: { pid: number; startedAtEpochSeconds: number; ttyRdev: number }
+  attachedClient: { pid: number; startedAtEpochSeconds: number; ttyRdev: number }
+  chain: {
+    pid: number
+    ppid: number
+    uid: number
+    startedAtEpochSeconds: number
+    executablePath: string
+    ttyRdev: number
+  }[]
+  executable: { path: string; sha256: string; version: string }
+  config: { path: string; sha256: string }
+  socketPath: string
+  session: string
+}
+
+/** One arm per platform, keyed by `platform` (#30518 D4). */
+export type MuxAttachmentProof = LinuxMuxAttachmentProof | DarwinMuxAttachmentProof
 
 /** Raw run records are immutable; review decisions live in Interpretation. */
 export interface HistoricalProbeRun {

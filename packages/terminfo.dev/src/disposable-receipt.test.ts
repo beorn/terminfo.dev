@@ -377,3 +377,89 @@ test("an owned host is sampled for the os its caller names, with no hosted-runne
   expect(refusal).toBe("Owned host identity machineIdSha256: source /etc/machine-id has no command to measure it")
   expect(refusal).not.toMatch(/Hosted|hosted|RUNNER_OS/)
 })
+
+// D4 (@cto 6710987a): the Darwin arm is the union's second member, parsed by the same positional checks,
+// with pid plus the birth second as identity and r13's measured login hop as the only root allowance.
+const darwinChain = () => {
+  const hop = (
+    pid: number,
+    ppid: number,
+    uid: number,
+    ttyRdev: number,
+    startedAtEpochSeconds: number,
+    executablePath: string,
+  ) => ({
+    pid,
+    ppid,
+    uid,
+    executablePath,
+    ttyRdev,
+    startedAtEpochSeconds,
+  })
+  const owner = 55770
+  const login = 55771
+  const shell = 55772
+  const server = 55800
+  const collector = 55803
+  return {
+    platform: "darwin" as const,
+    mux: "tmux" as const,
+    bootId: "A1B2C3D4-1111-2222-3333-444455556666",
+    receiptSha256: digest("owner-launch-record"),
+    launchRunId: "12".repeat(16),
+    captureRunId: "34".repeat(16),
+    preflightCollector: { pid: 95, startedAtEpochSeconds: 1792678700 },
+    outerShell: { pid: shell, startedAtEpochSeconds: 1792678701, ttyRdev: 34816 },
+    outerTerminal: { pid: owner, startedAtEpochSeconds: 1792678702 },
+    collector: { pid: collector, startedAtEpochSeconds: 1792678808, ttyRdev: 268435459 },
+    attachedClient: { pid: 55802, startedAtEpochSeconds: 1792678805, ttyRdev: 34816 },
+    chain: [
+      hop(collector, server, 501, 268435459, 1792678808, "/Users/codi/.bun/bin/bun"),
+      hop(server, shell, 501, 34816, 1792678710, "/opt/homebrew/bin/tmux"),
+      hop(shell, login, 501, 34816, 1792678701, "/bin/bash"),
+      hop(login, owner, 0, 34816, 1792678701, "/usr/bin/login"),
+      hop(owner, 1, 501, 34816, 1792678702, "/Applications/Ghostty.app/Contents/MacOS/ghostty"),
+    ],
+    executable: { path: "/opt/homebrew/bin/tmux", sha256: digest("tmux"), version: "3.7" },
+    config: { path: "/tmp/run/tmux.conf", sha256: digest("") },
+    socketPath: "/tmp/run/mux.sock",
+    session: "owned",
+  }
+}
+
+test("the Darwin mux arm parses r13's measured chain and refuses every deviation by name", () => {
+  const proof = darwinChain()
+  expect(parseMuxAttachmentProof(proof)).toEqual(proof)
+  const row = (pid: number) => proof.chain.find((hop) => hop.pid === pid)!
+  for (const invalid of [
+    // A root hop that is not /usr/bin/login refuses; so does a login that is not root.
+    { ...proof, chain: proof.chain.map((hop) => (hop.pid === 55771 ? { ...hop, executablePath: "/bin/bash" } : hop)) },
+    { ...proof, chain: proof.chain.map((hop) => (hop.pid === 55771 ? { ...hop, uid: 501 } : hop)) },
+    // The login hop must name the outer terminal as its parent, and the shell must sit under login.
+    { ...proof, chain: proof.chain.map((hop) => (hop.pid === 55771 ? { ...hop, ppid: 1 } : hop)) },
+    { ...proof, chain: proof.chain.map((hop) => (hop.pid === 55772 ? { ...hop, ppid: 1 } : hop)) },
+    // A ppid break anywhere in the chain refuses.
+    { ...proof, chain: proof.chain.map((hop) => (hop.pid === 55800 ? { ...hop, ppid: 99999 } : hop)) },
+    // The mux rows between collector and shell must name the declared mux executable.
+    {
+      ...proof,
+      chain: proof.chain.map((hop) => (hop.pid === 55800 ? { ...hop, executablePath: "/usr/bin/foreign" } : hop)),
+    },
+    // Identity is pid plus the birth second: the same pid at another second is another process.
+    { ...proof, outerShell: { ...proof.outerShell, startedAtEpochSeconds: 1792678702 } },
+    // The attached client must sit on the shell's PTY.
+    { ...proof, attachedClient: { ...proof.attachedClient, ttyRdev: 268435459 } },
+    // Collector and shell must name distinct PTYs.
+    { ...proof, collector: { ...proof.collector, ttyRdev: 34816 } },
+    { ...proof, chain: proof.chain.slice(1) },
+    { ...proof, chain: [...proof.chain, row(55770)] },
+    // A birth second is required on every row, and a Linux-shaped Darwin proof refuses.
+    { ...proof, chain: proof.chain.map((hop) => (hop.pid === 55803 ? { ...hop, startedAtEpochSeconds: 0 } : hop)) },
+    { ...proof, collector: { pid: 55803, startTicks: "1234", ttyRdev: 268435459 } },
+    { ...proof, extra: true },
+  ]) {
+    expect(() => parseMuxAttachmentProof(invalid)).toThrow(/mux attachment/)
+  }
+  // A Linux proof with no login hop keeps the shell-at-[-2] rule: adding a login row to it refuses.
+  expect(() => parseMuxAttachmentProof({ ...proof, platform: "linux" })).toThrow(/mux attachment/)
+})
