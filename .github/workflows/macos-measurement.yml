@@ -691,7 +691,7 @@ jobs:
             const { appId, run, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
             try {
               const prefix = appId === "cursor" ? "cursor" : "vscode";
-              // The script carries the run id (#30518 D2), so it is selected by the run's own name.
+              // The script carries the run id (#30518 D2), so it is selected by the recorded name.
               const selected = new Set([basename(run.scriptPath), "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs"]);
               for await (const path of new Bun.Glob("**/*.log").scan({ cwd: run.directory })) selected.add(path);
               for (const path of selected) {
