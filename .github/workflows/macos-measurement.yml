@@ -201,6 +201,41 @@ jobs:
           test -d "$APP_BUNDLE" || { echo "Required terminal bundle missing: $APP_BUNDLE" >&2; exit 1; }
           if [ "$APP_ID" != terminal-app ]; then sudo xattr -cr "$APP_BUNDLE"; fi
 
+      # The image grants Screen Recording to Terminal, /bin/bash and the runner agent only. Terminal.app
+      # holds its own grant, and Ghostty, Alacritty, WezTerm and Warp are spawned from this shell, so the
+      # agent stays their TCC responsible process. iTerm2 and cmux open through LaunchServices and the two
+      # editors answer TCC as themselves (run 39701460666 TCC log: accessing=<app bundle id>), so their
+      # screencapture is refused. Grant those four the way the image's configure-tccdb-macos.sh grants
+      # Terminal: an access row in both TCC databases, and a replayd approval for macOS 15's reminder.
+      - name: Grant Screen Recording to apps that are their own responsible process
+        if: matrix.id == 'iterm2' || matrix.id == 'cmux' || matrix.id == 'cursor' || matrix.id == 'com.microsoft.VSCode'
+        env:
+          APP_BUNDLE: ${{ matrix.bundle }}
+        run: |
+          set -euo pipefail
+          plist="$APP_BUNDLE/Contents/Info.plist"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
+          executable="$APP_BUNDLE/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")"
+          requirement="$(codesign --display -r- "$APP_BUNDLE" | sed -n 's/^designated => //p')"
+          test -n "$requirement" || { echo "Screen Recording grant: $APP_BUNDLE has no designated requirement" >&2; exit 1; }
+          printf '%s\n' "$requirement" | csreq -r- -b "$RUNNER_TEMP/screen-capture.csreq"
+          csreq_hex="$(xxd -p "$RUNNER_TEMP/screen-capture.csreq" | tr -d '\n')"
+          now="$(date +%s)"
+          row="'kTCCServiceScreenCapture','$bundle_id',0,2,4,1,X'$csreq_hex',NULL,0,'UNUSED',NULL,0,$now,NULL,NULL,'UNUSED',$now"
+          grant() {
+            local db="${*: -1}"
+            "$@" "INSERT OR REPLACE INTO access VALUES($row);"
+            granted="$("$@" "SELECT auth_value FROM access WHERE service='kTCCServiceScreenCapture' AND client='$bundle_id';")"
+            test "$granted" = 2 || { echo "Screen Recording grant for $bundle_id did not read back from $db (got '$granted')" >&2; exit 1; }
+            printf 'Screen Recording granted to %s in %s\n' "$bundle_id" "$db"
+          }
+          grant sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db"
+          grant sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+          approvals="$HOME/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist"
+          mkdir -p "$(dirname "$approvals")"
+          defaults write "$approvals" "$executable" -date "3024-01-01 00:00:00 +0000"
+          defaults read "$approvals" "$executable"
+
       - name: Launch, emit the receipt, and collect as the last mutating step
         id: collect
         env:
@@ -501,7 +536,8 @@ jobs:
           node --experimental-strip-types "$APPARATUS/scripts/hosted-runner-receipt.ts" emit "$OUT/job-start.json" "$OUT/host-measured.json"
           # The receipt exists before strict parsing. Release collection ONLY after producer success.
           touch "$OUT/collector-ready"
-          for attempt in {1..300}; do
+          # WezTerm's collect step measured 200 s, 200 s, 307 s and >333 s (30655); 600 s keeps it inside the bound.
+          for attempt in {1..600}; do
             if [ -f "$OUT/collector-exit" ]; then
               status="$(cat "$OUT/collector-exit")"
               test "$status" = 0 || {
@@ -520,7 +556,7 @@ jobs:
             fi
             sleep 1
           done
-          echo "$APP_ID collector did not finish within 300 seconds; see launcher/collector artifacts" >&2
+          echo "$APP_ID collector did not finish within 600 seconds; see launcher/collector artifacts" >&2
           if [ "$APP_ID" = iterm2 ]; then echo 'iterm_failure=true' >> "$GITHUB_OUTPUT"; fi
           exit 1
 

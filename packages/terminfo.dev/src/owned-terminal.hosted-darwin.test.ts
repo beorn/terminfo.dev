@@ -28,9 +28,9 @@ const ids = {
   expectedLaunchRunId: "b".repeat(32),
 }
 
-// The app mapping/ancestry tests cannot detect advertising lossy exported text as exact cells.
+// The app mapping/ancestry tests cannot see which read the real owner selects for a hosted app.
 // Exercise the real owner; only OS reads are fixtures, not its adapter-selection decision.
-test.each(["iterm2", "terminal-app"])("hosted %s selects its truthful observation adapter", (app) => {
+test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (app) => {
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
@@ -61,7 +61,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its truthful observatio
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.hostedAppPid, 4242)
-    assert.equal(typeof owner.readCells, app === "iterm2" ? "undefined" : "function")
+    assert.equal(typeof owner.readCells, "function")
     await owner.dispose()
   `
   const result = spawnSync(process.execPath, ["-e", script], {

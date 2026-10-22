@@ -768,3 +768,70 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
 
 // The generated-command subprocess above owns the stdout/stderr contract (27917 / 28533).
 // It replaces the literal-redirection regex, which misclassified stderr append as stdout output.
+
+// 30655: iTerm2, cmux and the two editors are their own TCC responsible process, so the image's
+// Screen Recording grants never reach their screencapture. No other test runs the grant step: this
+// executes it with the macOS commands as fixtures, proving it grants the bundle's own identifier in
+// both TCC databases before launch and fails the job when a grant does not read back.
+test.each(["granted", "unreadable"] as const)(
+  "Screen Recording grant step for self-responsible apps: %s",
+  (scenario) => {
+    const steps = parse(readFileSync(join(root, ".github/workflows/macos-measurement.yml"), "utf8")).jobs[
+      "measure-macos"
+    ].steps as { name?: string; id?: string; if?: string; run: string }[]
+    const grant = steps.find((step) => step.name?.startsWith("Grant Screen Recording"))
+    if (!grant) throw new Error("the macOS workflow has no Screen Recording grant step")
+    expect(steps.indexOf(grant)).toBeLessThan(steps.findIndex((step) => step.id === "collect"))
+    for (const id of ["iterm2", "cmux", "cursor", "com.microsoft.VSCode"]) {
+      expect(grant.if).toContain(`matrix.id == '${id}'`)
+    }
+    const directory = mkdtempSync(join(tmpdir(), "screen-grant-"))
+    const bin = join(directory, "bin")
+    const journal = join(directory, "journal")
+    mkdirSync(bin)
+    const fixture = (name: string, body: string) =>
+      writeFileSync(join(bin, name), `#!/bin/bash\nprintf '%s\\0' ${name} "$@" >> ${shellQuote(journal)}\n${body}\n`, {
+        mode: 0o755,
+      })
+    try {
+      fixture("PlistBuddy", `case "$2" in *Identifier) echo com.example.term ;; *) echo Term ;; esac`)
+      fixture("codesign", `echo 'designated => identifier "com.example.term"'`)
+      fixture("csreq", `printf 'csreq' > "$3"`)
+      fixture("xxd", `od -An -tx1 "$2" | tr -d ' '`)
+      fixture("sudo", `exec "$@"`)
+      fixture("sqlite3", `case "$2" in SELECT*) ${scenario === "granted" ? "echo 2" : "true"} ;; esac`)
+      fixture("defaults", "")
+      const run = spawnSync(
+        "/bin/bash",
+        ["-c", grant.run.replaceAll("/usr/libexec/PlistBuddy", join(bin, "PlistBuddy"))],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            HOME: directory,
+            RUNNER_TEMP: directory,
+            APP_BUNDLE: "/Applications/Term.app",
+          },
+        },
+      )
+      const calls = readFileSync(journal, "utf8").split("\0").join(" ")
+      expect(run.status, run.stderr).toBe(scenario === "granted" ? 0 : 1)
+      const system = "/Library/Application Support/com.apple.TCC/TCC.db"
+      const user = `${directory}/Library/Application Support/com.apple.TCC/TCC.db`
+      expect(calls).toContain(
+        `sudo sqlite3 ${system} INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','com.example.term',0,2,4,1,X'${Buffer.from("csreq").toString("hex")}'`,
+      )
+      if (scenario === "granted") {
+        expect(calls).toContain(`sqlite3 ${user} INSERT OR REPLACE`)
+        expect(calls).toContain("defaults write")
+        expect(calls).toContain("/Applications/Term.app/Contents/MacOS/Term -date")
+      } else {
+        expect(run.stderr).toContain(`Screen Recording grant for com.example.term did not read back from ${system}`)
+        expect(calls).not.toContain(`sqlite3 ${user}`)
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
