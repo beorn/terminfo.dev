@@ -10,9 +10,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test, vi } from "vitest"
 import * as captureCore from "./capture-core.ts"
-import { censusDarwinWindows, createDarwinCapture, selectDarwinWindow, requireDarwinScale } from "./darwin-capture.ts"
+import { censusDarwinWindows, createDarwinCapture, requireDarwinScale } from "./darwin-capture.ts"
 
 const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
+/** The capture target alone, as the selection tests read it. */
+const selectDarwinWindow = (rows: unknown, appPid: number) => censusDarwinWindows(rows, appPid).selected.window
 
 test("Darwin capture admits exactly one measured app window and scale one", () => {
   const own = { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 80, height: 63 } }
@@ -72,7 +74,6 @@ test("Darwin census retains every owned layer-0 window with its disposition", ()
     owned(12, 5000, { ownerPid: 99 }),
   ]
   const census = censusDarwinWindows(rows, 41)
-  expect(census.selected.window).toEqual(selectDarwinWindow(rows, 41))
   expect(census.ownedWindows.map((row) => [row.window.id, row.disposition])).toEqual([
     [10, "transparent"],
     [9, "offscreen"],

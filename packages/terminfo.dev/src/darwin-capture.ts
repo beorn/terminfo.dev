@@ -114,11 +114,6 @@ export function censusDarwinWindows(rows: unknown, appPid: number): DarwinWindow
   return { selected, ownedWindows }
 }
 
-/** The capture target alone. */
-export function selectDarwinWindow(rows: unknown, appPid: number): DarwinWindow {
-  return censusDarwinWindows(rows, appPid).selected.window
-}
-
 export function requireDarwinScale(window: DarwinWindow, pixels: { width: number; height: number }): void {
   if (pixels.width !== window.bounds.width || pixels.height !== window.bounds.height) {
     throw new Error(

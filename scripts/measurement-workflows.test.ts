@@ -14,7 +14,7 @@ import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
 import { parse, stringify } from "yaml"
 import { shellQuote } from "../packages/terminfo.dev/src/daemon-client.ts"
-import { selectDarwinWindow } from "../packages/terminfo.dev/src/darwin-capture.ts"
+import { censusDarwinWindows } from "../packages/terminfo.dev/src/darwin-capture.ts"
 import { expect, test } from "vitest"
 
 const root = join(import.meta.dirname, "..")
@@ -752,6 +752,7 @@ test("macOS workflow's two-window diagnostic grep matches the census refusal the
   // JavaScript, so the translation below is honest only while the pattern stays inside that alphabet.
   expect(source, "the grep pattern uses only literal text and .*").toMatch(/^[A-Za-z0-9 ;.*]+$/)
   const pattern = new RegExp(source)
+  const selectDarwinWindow = (rows: unknown, appPid: number) => censusDarwinWindows(rows, appPid).selected.window
   const twin = (id: number) => ({
     id,
     ownerPid: 41,
