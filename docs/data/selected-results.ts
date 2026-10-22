@@ -661,8 +661,12 @@ const contextKey = (t: ProbeTarget): string =>
     t.permissions,
   ])
 
-/** Distinct contexts per `<kind>:<id>` across the given runs: the group size `projectedContextKey` keys by. */
-function countContexts(runs: readonly LoadedRun[]): Map<string, Set<string>> {
+/**
+ * Distinct contexts per `<kind>:<id>` across the given runs: the group size `projectedContextKey` keys by.
+ * Count over EVERY run the corpus holds for the target, legacy and schema 3, and pass the one result to
+ * both projections; a projection counting its own runs keys one context two ways (30661).
+ */
+export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<string>> {
   const counts = new Map<string, Set<string>>()
   for (const run of runs) {
     const stem = `${run.target.kind}:${run.target.id}`
@@ -739,7 +743,7 @@ export function projectHistoricalResults(
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
   policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
-  contextCounts: ReadonlyMap<string, ReadonlySet<string>> = countContexts(runs),
+  contextCounts: ReadonlyMap<string, ReadonlySet<string>>,
 ): HistoricalProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null

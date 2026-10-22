@@ -39,7 +39,7 @@ import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { retainCaptureBinding } from "@terminfo/run-parser"
 import { textQualificationFixtures } from "@terminfo/probe-defs"
-import { projectHistoricalResults } from "../docs/data/selected-results.ts"
+import { countContexts, projectHistoricalResults } from "../docs/data/selected-results.ts"
 import { buildHistoricalReport as buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,
@@ -1240,7 +1240,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
-    const history = projectHistoricalResults([run], [], catalogIds, { currentProbeHash: probeHash })
+    const history = projectHistoricalResults([run], [], catalogIds, { currentProbeHash: probeHash }, countContexts([run]))
     expect(Object.keys(history.table[run.runId]!).length).toBeGreaterThan(0)
   } finally {
     rmSync(directory, { recursive: true, force: true })
