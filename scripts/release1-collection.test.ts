@@ -437,7 +437,32 @@ it.each([
         expect(pass.errors.some((error) => error.includes(input) && /changed|ENOENT/.test(error))).toBe(true)
       }
       expect(collector).toHaveBeenCalledTimes(1)
-      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(5)
+      expect(launcher.mock.calls.filter(([command]) => command === "bash")).toHaveLength(7)
+      // Both Linux mux rows run inside the Kitty container through the launcher's --mux arm.
+      for (const id of ["tmux", "screen"]) {
+        const row = pass.contexts.find(
+          (entry) => entry.context.kind === "mux" && entry.context.id === id && entry.context.os === "linux",
+        )
+        const output = join(pass.directory, "linux", id)
+        expect(launcher).toHaveBeenCalledWith(
+          "bash",
+          [
+            "scripts/linux-container-run.sh",
+            "--target",
+            "kitty",
+            "--preset",
+            "current",
+            "--clipboard-profile",
+            "default",
+            "--mux",
+            id,
+            output,
+          ],
+          expect.objectContaining({ env: expect.objectContaining({ TERMINFO_PROBE_HASH: pass.probeHash }) }),
+        )
+        // The fixture suite has no mux probes, so the launcher failure is the row error, not a test-failure.
+        expect(row?.error).toMatch(new RegExp(`${id}/linux.*exited 17`))
+      }
       for (const id of Object.keys(LEDGER)) {
         const row = pass.contexts.find(
           (entry) => entry.context.kind === "app" && entry.context.id === id && entry.context.os === "linux",
@@ -577,6 +602,19 @@ describe("release 1 collection census", () => {
     expect(command.status, command.stderr).toBe(0)
     expect(command.stdout.split("\n")[0]).toContain("18 app, 4 mux, 11 headless")
   }, 30_000)
+
+  it("routes each Linux mux row through the Kitty container's --mux arm and keeps each macOS mux row detached", () => {
+    for (const id of ["tmux", "screen"]) {
+      const linux = census().find((entry) => entry.kind === "mux" && entry.id === id && entry.os === "linux")
+      expect(linux?.route).toBe("linux-container")
+      expect(linux?.command).toBe(
+        `bash scripts/linux-container-run.sh --target kitty --preset current --clipboard-profile default --mux ${id} <outdir>`,
+      )
+      expect(linux?.uncollectable).toBeNull()
+      const macos = census().find((entry) => entry.kind === "mux" && entry.id === id && entry.os === "macos")
+      expect(macos?.route).toBe("mux")
+    }
+  })
 
   it("compares the manifest's engine set with the catalog's instead of a hardcoded count", () => {
     // The catalog is the authority on how many engines exist; a dropped or added engine still

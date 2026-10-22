@@ -129,6 +129,24 @@ export function presetFor(id: string, version: string): "default" | "baseline" |
   return version === KITTY_BASELINE_VERSION ? "baseline" : "current"
 }
 
+/**
+ * The launcher flags a live pass declares for a Linux row, never read from historical runs. A mux row runs
+ * inside the Kitty the Kitty row measures: the launcher's `--mux` arm starts tmux or Screen in that PTY and
+ * proves the attachment, and refuses any other outer terminal.
+ */
+function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
+  const target = kind === "mux" ? "kitty" : id
+  return [
+    "--target",
+    target,
+    "--preset",
+    target === "kitty" ? "current" : "default",
+    "--clipboard-profile",
+    "default",
+    ...(kind === "mux" ? ["--mux", id] : []),
+  ]
+}
+
 const linuxRow = (id: string, entry: LinuxLedgerEntry | undefined): CollectionContext => {
   if (entry === undefined) {
     return {
@@ -246,7 +264,18 @@ function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[
   const contexts: CollectionContext[] = []
   for (const { terminalId: id, os, kind } of expected) {
     if (kind === "headless") continue
-    if (kind === "mux") {
+    if (kind === "mux" && os === "linux") {
+      contexts.push({
+        id,
+        os,
+        kind: "mux",
+        route: "linux-container",
+        command: `bash scripts/linux-container-run.sh ${linuxLiveArgs(kind, id).join(" ")} <outdir>`,
+        requires: null,
+        sourceRun: null,
+        uncollectable: null,
+      })
+    } else if (kind === "mux") {
       contexts.push({
         id,
         os,
@@ -515,7 +544,7 @@ export async function collectPass(
           ...context,
           uncollectable: null,
           requires: null,
-          command: `bash scripts/linux-container-run.sh --target ${context.id} --preset ${context.id === "kitty" ? "current" : "default"} --clipboard-profile default <private-output>`,
+          command: `bash scripts/linux-container-run.sh ${linuxLiveArgs(context.kind, context.id).join(" ")} <private-output>`,
         }
       : context,
   )
@@ -608,17 +637,7 @@ export async function collectPass(
         mkdirSync(output, { recursive: true })
         startedAt = new Date().toISOString()
         runChild(
-          [
-            "bash",
-            "scripts/linux-container-run.sh",
-            "--target",
-            context.id,
-            "--preset",
-            context.id === "kitty" ? "current" : "default",
-            "--clipboard-profile",
-            "default",
-            output,
-          ],
+          ["bash", "scripts/linux-container-run.sh", ...linuxLiveArgs(context.kind, context.id), output],
           `${labelOf(context)} Linux collection`,
           {
             stdout: join(output, "launcher.stdout.log"),
