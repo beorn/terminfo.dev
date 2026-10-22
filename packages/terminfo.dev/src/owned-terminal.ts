@@ -15,6 +15,7 @@ import {
   type ConsoleCellRead,
   type ConsoleHostLookup,
 } from "./windows-console-cells.ts"
+import { kernelExecPath } from "./darwin-kernel-exec.ts"
 import { readTerminalTextSnapshot, type TerminalTextApp, type TerminalTextRead } from "./darwin-terminal-text.ts"
 import { readConsoleGeometry } from "./windows-console-geometry.ts"
 import {
@@ -268,7 +269,19 @@ export type HostedDarwinAppId =
   | "warp"
   | "cmux"
 export type HostedDarwinApp = { id: HostedDarwinAppId; comm: string }
-export type AncestryRow = { pid: number; ppid: number; comm: string }
+export type AncestryRow = {
+  pid: number
+  ppid: number
+  /** argv0 as the kernel prints it. Screen's backend shows `SCREEN` here; the executed path is below. */
+  comm: string
+  /** The kernel's executed path for this pid, or null when neither reader answered (#30518 Screen arm).
+   * Absent off Darwin, where there is no such read; never guessed from `comm`. */
+  kernelExecutable?: string | null
+  kernelExecutableReader?: "proc_pidpath" | "KERN_PROCARGS2" | null
+  kernelExecutableError?: string | null
+  /** Every reader's outcome for this pid, so a refusal can name what each one said (#30518 A3). */
+  kernelExecutableAttempts?: { reader: string; result: number | string | null; error: string | null }[]
+}
 
 const HOSTED_DARWIN_EXECUTABLE: Record<string, HostedDarwinApp> = {
   Terminal: { id: "terminal-app", comm: "Terminal" },
@@ -371,7 +384,16 @@ function readProcessAncestry(startPid: number): AncestryRow[] {
     if (!pidText || !ppidText || comm === undefined) {
       throw new Error(`Hosted Darwin ancestry ps parse failed for pid ${pid}: ${JSON.stringify(line)}`)
     }
-    const row = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
+    const row: AncestryRow = { pid: Number(pidText), ppid: Number(ppidText), comm: comm.trim() }
+    if (process.platform === "darwin") {
+      // #30518: the kernel path travels with every row, and an unanswered read stays a recorded
+      // fact — the Screen arm refuses by name instead of falling back to the argv0 in `comm`.
+      const kernel = kernelExecPath(row.pid)
+      row.kernelExecutable = kernel.path
+      row.kernelExecutableReader = kernel.reader
+      row.kernelExecutableError = kernel.error
+      row.kernelExecutableAttempts = kernel.attempts
+    }
     rows.push(row)
     if (hostedDarwinCommBase(row.comm) === "launchd" || row.pid === 1 || row.ppid === 0 || row.ppid === row.pid) break
     pid = row.ppid

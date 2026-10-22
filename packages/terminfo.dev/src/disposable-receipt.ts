@@ -373,10 +373,6 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     return result
   }
   if (source.platform === "darwin") {
-    // @cto e5016c9f: Screen's Darwin shape is unqualified — 7 hops, a uid-0 pane login and a
-    // TTY-less /usr/bin/SCREEN (r13b). It refuses by name here, before any shape rule can run, so
-    // the refusal names the arm instead of whichever rule happened to fail first.
-    if (source.mux === "screen") fail(where, "darwin screen arm unqualified")
     const birth = (row: Record<string, unknown>, subject: string): number => {
       const value = row.startedAtEpochSeconds
       if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
@@ -424,16 +420,100 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
       fail(where, "chain must include the collector, the mux, the login hop and the outer app")
     }
     const lastIndex = source.chain.length - 1
+    const chainKeys = ["pid", "ppid", "uid", "startedAtEpochSeconds", "executablePath", "ttyRdev"] as const
+    const kernelKeys = [
+      "kernelExecutable",
+      "kernelExecutableReader",
+      "kernelExecutableError",
+      "kernelExecutableAttempts",
+    ] as const
+    /** #30518: the kernel-executed path travels with a row, never in place of `executablePath` (argv0).
+     * A submitted row may omit the whole group — that is the tmux reader this cut keeps — but a group
+     * that is present must be complete, so a half-written record cannot read as "reader not run". */
+    const kernel = (
+      input: unknown,
+      subject: string,
+    ): Partial<{
+      kernelExecutable: string | null
+      kernelExecutableReader: "proc_pidpath" | "KERN_PROCARGS2" | null
+      kernelExecutableError: string | null
+      kernelExecutableAttempts: { reader: string; result: number | string | null; error: string | null }[]
+    }> => {
+      if (!isRecord(input) || !Object.hasOwn(input, "kernelExecutable")) {
+        return {}
+      }
+      for (const key of kernelKeys) if (!Object.hasOwn(input, key)) fail(subject, `kernel group is missing ${key}`)
+      const executable = input.kernelExecutable
+      const resolved = executable === null ? null : path(input, "kernelExecutable", subject)
+      const reader = input.kernelExecutableReader
+      if (reader !== null && reader !== "proc_pidpath" && reader !== "KERN_PROCARGS2") {
+        fail(subject, "kernelExecutableReader must name proc_pidpath, KERN_PROCARGS2 or null")
+      }
+      const error = input.kernelExecutableError
+      if (error !== null && typeof error !== "string") fail(subject, "kernelExecutableError must be text or null")
+      // R3 (@cto): kernelExecPath produces only two shapes — a path with its reader and no error, or
+      // no path with the reason. Anything else is not a read, so it refuses instead of grading.
+      if (resolved !== null && reader === null) fail(subject, "a kernel executable path names no reader")
+      if (resolved === null && reader !== null) fail(subject, "kernelExecutableReader names a reader but no path")
+      if (resolved !== null && error !== null) fail(subject, "a kernel executable path carries an error")
+      if (resolved === null && reader === null && error === null) {
+        fail(subject, "a kernel read with no path names neither a reader nor an error")
+      }
+      const attempts = input.kernelExecutableAttempts
+      if (!Array.isArray(attempts)) fail(subject, "kernelExecutableAttempts must be an array")
+      for (const [index, attempt] of attempts.entries()) {
+        const row = fields(attempt, ["reader", "result", "error"], `${subject} kernelExecutableAttempts[${index}]`)
+        text(row, "reader", `${subject} kernelExecutableAttempts[${index}]`)
+        const result = row.result
+        if (result !== null && typeof result !== "string" && typeof result !== "number") {
+          fail(`${subject} kernelExecutableAttempts[${index}]`, "result must be a number, text or null")
+        }
+        if (row.error !== null && typeof row.error !== "string") {
+          fail(`${subject} kernelExecutableAttempts[${index}]`, "error must be text or null")
+        }
+      }
+      return {
+        kernelExecutable: resolved,
+        kernelExecutableReader: reader,
+        kernelExecutableError: error,
+        kernelExecutableAttempts: attempts as {
+          reader: string
+          result: number | string | null
+          error: string | null
+        }[],
+      }
+    }
+    /** Darwin argv0 is not always a path: Screen's pane login runs as the bare word `login` (@cto
+     * 12:11 PDT, Q2 NO to a command path), and the kernel path beside it is what proves the binary.
+     * This keeps the argv0 verbatim and refuses only a shape that is neither a path nor a command word. */
+    const argv0 = (row: Record<string, unknown>, subject: string): string => {
+      const result = text(row, "executablePath", subject)
+      if (result.includes("\0") || /\s/.test(result)) {
+        fail(subject, "executablePath must be a path or a bare command word")
+      }
+      return result
+    }
     const chain = source.chain.map((input, index) => {
       const subject = `${where} chain[${index}]`
-      const row = fields(input, ["pid", "ppid", "uid", "startedAtEpochSeconds", "executablePath", "ttyRdev"], subject)
+      const keys = isRecord(input) ? Object.keys(input) : []
+      const carriesKernel = keys.some((key) => (kernelKeys as readonly string[]).includes(key))
+      if (!isRecord(input) || keys.length !== chainKeys.length + (carriesKernel ? kernelKeys.length : 0)) {
+        fail(subject, "invalid fields")
+      }
+      const base = carriesKernel ? [...chainKeys, ...kernelKeys] : [...chainKeys]
+      const row = fields(input, base, subject)
       return {
         pid: pidOf(row, subject),
         ppid: integer(row.ppid, 0, subject),
         uid: integer(row.uid, 0, subject),
         startedAtEpochSeconds: birth(row, subject),
-        executablePath: path(row, "executablePath", subject),
-        ttyRdev: ttyRdev(row, subject, index !== lastIndex),
+        // R1 (@cto): only Screen's own argv0 is not a path. Every other Darwin row — including every
+        // tmux row, which may carry no kernel group — keeps the absolute-path rule it had.
+        executablePath: source.mux === "screen" ? argv0(row, subject) : path(row, "executablePath", subject),
+        // Screen's backend (chain[2]) deliberately owns no PTY, so the screen arm is the one chain
+        // whose measured row 2 may carry no TTY; assertScreenChain proves that shape is exactly 7 rows.
+        ttyRdev: ttyRdev(row, subject, index !== lastIndex && !(source.mux === "screen" && index === 2)),
+        ...kernel(row, subject),
       }
     })
     // D4.4: every hop's parent is the next row, so the chain is the measured ancestry, not a list.
@@ -471,12 +551,17 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
       session: text(source, "session", where),
     }
     if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(proof.bootId)) fail(where, "invalid bootId")
-    assertMuxChain<{ pid: number; startedAtEpochSeconds: number }>(
-      where,
-      proof,
-      (a, b) => a.pid === b.pid && a.startedAtEpochSeconds === b.startedAtEpochSeconds,
-      3,
-    )
+    const sameProcess = (
+      a: { pid: number; startedAtEpochSeconds: number },
+      b: { pid: number; startedAtEpochSeconds: number },
+    ) => a.pid === b.pid && a.startedAtEpochSeconds === b.startedAtEpochSeconds
+    if (proof.mux === "screen") {
+      // Screen's rows prove themselves through the kernel path, so its arm is a whole arm: it owns
+      // every custody rule below rather than sharing the argv0 rules that name the wrong field.
+      assertScreenChain(where, proof, sameProcess)
+    } else {
+      assertMuxChain<{ pid: number; startedAtEpochSeconds: number }>(where, proof, sameProcess, 3)
+    }
     return proof
   }
   if (source.platform !== "linux") fail(where, "platform must be linux or darwin")
@@ -598,6 +683,153 @@ function assertMuxChain<Identity extends { pid: number }>(
     if (row.executablePath !== proof.executable.path) {
       fail(where, `chain process ${row.pid} does not name the declared mux executable`)
     }
+  }
+}
+
+/** The one version line Screen's arm admits (#30518 A4): Apple's 4.00.03 build measured on r14. Any
+ * other build refuses by name - an unqualified version is not a smaller claim, it is a different
+ * program whose chain shape nothing here measured. */
+const SCREEN_VERSION = /(?:^|\n)Screen version 4\.00\.03(?=[\s(]|$)/
+
+/** The pane login's kernel path (R1/R2). argv0 is bare `login` on Darwin, so this path is the only
+ * evidence that the uid-0 hop below the mux is the login program and not something renamed to it. */
+const SCREEN_PANE_LOGIN = "/usr/bin/login"
+
+/**
+ * Screen's Darwin arm (#30518, @cto e29901ef with A1-A4). Seven rows, child to parent: collector,
+ * pane login, mux server, mux client, outer shell, root login, outer app. The frontend forks a backend
+ * and the backend renames itself `SCREEN`, so the mux path is read from the kernel, never from argv0;
+ * the pane TTY and the attachment are read from the rows themselves, never from a screen query.
+ *
+ * Every refusal names the rule and the pid it read, because the honesty of this arm is that each field
+ * was measured: a uid-0 row whose kernel read went unanswered refuses by name rather than falling back
+ * to argv0. R1-R4 are the four positional rules the r14 run measured true; the shape comparison against
+ * r13b (r5) stays in the harness and is deliberately not a production admission rule.
+ */
+function assertScreenChain<Identity extends { pid: number; startedAtEpochSeconds: number }>(
+  where: string,
+  proof: {
+    collector: Identity & { ttyRdev: number }
+    outerShell: Identity & { ttyRdev: number }
+    outerTerminal: Identity
+    attachedClient: Identity & { ttyRdev: number }
+    chain: readonly (Identity & {
+      ppid: number
+      uid: number
+      ttyRdev: number | null
+      executablePath: string
+      kernelExecutable?: string | null
+      kernelExecutableReader?: "proc_pidpath" | "KERN_PROCARGS2" | null
+      kernelExecutableError?: string | null
+    })[]
+    executable: { path: string; version: string }
+  },
+  sameProcess: (a: Identity, b: Identity) => boolean,
+): void {
+  const chain = proof.chain
+  if (chain.length !== 7) fail(where, `screen chain has ${chain.length} rows; the measured shape has 7`)
+  if (new Set(chain.map((row) => row.pid)).size !== chain.length) fail(where, "chain repeats a process")
+  const collectorRow = chain[0]
+  const paneLogin = chain[1]
+  const server = chain[2]
+  const client = chain[3]
+  const shell = chain[4]
+  const login = chain[5]
+  const owner = chain[6]
+  if (!collectorRow || !paneLogin || !server || !client || !shell || !login || !owner) {
+    fail(where, "screen chain is missing a named role")
+  }
+  // A1: the kernel read is required on every row, and an unanswered one is named rather than skipped.
+  for (const [index, row] of chain.entries()) {
+    if (typeof row.kernelExecutable !== "string" || !row.kernelExecutable.startsWith("/")) {
+      fail(
+        `${where} chain[${index}]`,
+        `pid ${row.pid} has no kernel executable path (reader ${row.kernelExecutableReader ?? "did not answer"}: ${row.kernelExecutableError ?? "no reason recorded"})`,
+      )
+    }
+  }
+  if (!SCREEN_VERSION.test(proof.executable.version)) {
+    fail(
+      where,
+      `screen executable version is not the admitted 4.00.03 line: ${JSON.stringify(proof.executable.version)}`,
+    )
+  }
+  // R1: the pane login sits under the server, on the collector's own PTY, and is the login program.
+  if (paneLogin.uid !== 0) fail(`${where} chain[1]`, `pane login pid ${paneLogin.pid} is uid ${paneLogin.uid}, not 0`)
+  if (paneLogin.ppid !== server.pid) {
+    fail(
+      `${where} chain[1]`,
+      `pane login pid ${paneLogin.pid} has parent ${paneLogin.ppid}, not the server ${server.pid}`,
+    )
+  }
+  if (paneLogin.ttyRdev === null || paneLogin.ttyRdev !== collectorRow.ttyRdev) {
+    fail(`${where} chain[1]`, `pane login pid ${paneLogin.pid} is not on the collector's TTY`)
+  }
+  if (paneLogin.kernelExecutable !== SCREEN_PANE_LOGIN) {
+    fail(
+      `${where} chain[1]`,
+      `pane login pid ${paneLogin.pid} kernel path is ${String(paneLogin.kernelExecutable)}, not ${SCREEN_PANE_LOGIN}`,
+    )
+  }
+  // R2: exactly two uid-0 rows, both in a named role and both the login program; everything else
+  // carries the collector's uid, so a root-owned mux cannot ride an unnamed exception.
+  const rootRows = chain.filter((row) => row.uid === 0)
+  if (rootRows.length !== 2 || !rootRows.includes(paneLogin) || !rootRows.includes(login)) {
+    fail(
+      where,
+      `screen chain has uid-0 rows ${JSON.stringify(rootRows.map((row) => row.pid))}; exactly the pane login and the root login are allowed`,
+    )
+  }
+  if (login.kernelExecutable !== SCREEN_PANE_LOGIN) {
+    fail(
+      `${where} chain[5]`,
+      `root login pid ${login.pid} kernel path is ${String(login.kernelExecutable)}, not ${SCREEN_PANE_LOGIN}`,
+    )
+  }
+  for (const [index, row] of chain.entries()) {
+    if (index === 1 || index === 5) continue
+    if (row.uid !== collectorRow.uid) {
+      fail(`${where} chain[${index}]`, `uid ${row.uid} is not the collector's uid ${collectorRow.uid}`)
+    }
+  }
+  // R3: the backend (server) owns no PTY, its parent is the frontend (client), the client owns the
+  // owner TTY, and both are the kernel's own mux binary - SCREEN's argv0 is not evidence.
+  if (server.ttyRdev !== null) fail(`${where} chain[2]`, `server pid ${server.pid} carries TTY ${server.ttyRdev}`)
+  if (server.ppid !== client.pid) {
+    fail(`${where} chain[2]`, `server pid ${server.pid} has parent ${server.ppid}, not the client ${client.pid}`)
+  }
+  if (client.ttyRdev === null || client.ttyRdev !== shell.ttyRdev) {
+    fail(`${where} chain[3]`, `client pid ${client.pid} is not on the outer shell's TTY`)
+  }
+  for (const [index, row] of [
+    [2, server],
+    [3, client],
+  ] as const) {
+    if (row.kernelExecutable !== proof.executable.path) {
+      fail(
+        `${where} chain[${index}]`,
+        `mux pid ${row.pid} kernel path is ${String(row.kernelExecutable)}, not ${proof.executable.path}`,
+      )
+    }
+  }
+  // R4: the client is the server's parent and the outer shell's child; the attachment comes from
+  // these rows, never from a screen query.
+  if (client.ppid !== shell.pid) {
+    fail(`${where} chain[3]`, `client pid ${client.pid} has parent ${client.ppid}, not the outer shell ${shell.pid}`)
+  }
+  if (!sameProcess(collectorRow, proof.collector) || collectorRow.ttyRdev !== proof.collector.ttyRdev) {
+    fail(where, "chain collector identity or TTY differs from collector")
+  }
+  if (collectorRow.ttyRdev === proof.outerShell.ttyRdev) {
+    fail(where, "collector and outer shell must name distinct PTYs")
+  }
+  if (!sameProcess(shell, proof.outerShell)) fail(where, "chain outer shell is not the declared outer shell")
+  if (shell.ttyRdev !== proof.outerShell.ttyRdev) {
+    fail(where, "chain outer shell TTY differs from the declared outer shell")
+  }
+  if (!sameProcess(owner, proof.outerTerminal)) fail(where, "chain does not end at the declared outer terminal")
+  if (!sameProcess(client, proof.attachedClient) || client.ttyRdev !== proof.attachedClient.ttyRdev) {
+    fail(where, "the attached client is not the row the chain measured as the server's parent")
   }
 }
 

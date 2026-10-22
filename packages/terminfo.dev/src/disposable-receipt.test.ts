@@ -501,18 +501,195 @@ test("the Darwin mux arm parses r13's measured chain and refuses each deviation 
   )
 })
 
-// @cto e5016c9f: Darwin Screen is unqualified, and it refuses by name BEFORE any shape rule, so a
-// Screen proof that also breaks a shape rule still reports the arm rather than the rule that fired.
-test("the Darwin arm refuses Screen by name before it reads a single shape rule", () => {
-  const proof = darwinProof()
-  expect(() => parseMuxAttachmentProof({ ...proof, mux: "screen" })).toThrow(/darwin screen arm unqualified/)
+// #30518 (@cto e29901ef, r14 measurement 2c1d269c): Screen's seven measured rows, child to parent.
+// The backend is `/usr/bin/SCREEN` with no PTY and the frontend `/usr/bin/screen` owns ttys000, so the
+// mux is proved by the kernel's executed path and never by argv0; the pane login is on the collector's
+// own PTY and both uid-0 rows resolve to /usr/bin/login.
+const screenProof = () => {
+  const kernel = (
+    path: string,
+    error: string | null = null,
+    reader: "proc_pidpath" | "KERN_PROCARGS2" | null = "proc_pidpath",
+  ) => ({
+    kernelExecutable: path,
+    kernelExecutableReader: path === null ? null : reader,
+    kernelExecutableError: error,
+    kernelExecutableAttempts: [{ reader: reader ?? "proc_pidpath", result: path === null ? -1 : path.length, error }],
+  })
+  const hop = (
+    pid: number,
+    ppid: number,
+    uid: number,
+    startedAtEpochSeconds: number,
+    executablePath: string,
+    ttyRdev: number | null,
+    executable: string,
+  ) => ({ pid, ppid, uid, startedAtEpochSeconds, executablePath, ttyRdev, ...kernel(executable) })
+  const owner = 40673
+  const login = 40674
+  const shell = 40675
+  const client = 40703
+  const server = 40704
+  const paneLogin = 40705
+  const collector = 40706
+  const ttys003 = 268435459
+  const ttys000 = 268435456
+  return {
+    platform: "darwin" as const,
+    mux: "screen" as const,
+    bootId: "A1B2C3D4-1111-2222-3333-444455556666",
+    receiptSha256: digest("owner-launch-record"),
+    launchRunId: "12".repeat(16),
+    captureRunId: "34".repeat(16),
+    preflightCollector: { pid: 95, startedAtEpochSeconds: 1792678700 },
+    outerShell: { pid: shell, startedAtEpochSeconds: 1792678807, ttyRdev: ttys000 },
+    outerTerminal: { pid: owner, startedAtEpochSeconds: 1792678806 },
+    collector: { pid: collector, startedAtEpochSeconds: 1792678808, ttyRdev: ttys003 },
+    attachedClient: { pid: client, startedAtEpochSeconds: 1792678806, ttyRdev: ttys000 },
+    chain: [
+      hop(collector, paneLogin, 501, 1792678808, "/Users/codi/.bun/bin/bun", ttys003, "/Users/codi/.bun/bin/bun"),
+      hop(paneLogin, server, 0, 1792678808, "login", ttys003, "/usr/bin/login"),
+      hop(server, client, 501, 1792678807, "/usr/bin/SCREEN", null, "/usr/bin/screen"),
+      hop(client, shell, 501, 1792678806, "/usr/bin/screen", ttys000, "/usr/bin/screen"),
+      hop(shell, login, 501, 1792678807, "/bin/bash", ttys000, "/bin/bash"),
+      hop(login, owner, 0, 1792678805, "/usr/bin/login", ttys000, "/usr/bin/login"),
+      hop(
+        owner,
+        40672,
+        501,
+        1792678806,
+        "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+        null,
+        "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      ),
+    ],
+    executable: {
+      path: "/usr/bin/screen",
+      sha256: digest("screen"),
+      version: "Screen version 4.00.03 (FAU) 23-Oct-06",
+    },
+    config: { path: "/tmp/run/screenrc", sha256: digest("") },
+    socketPath: "/tmp/run/screen",
+    session: "owned",
+  }
+}
+
+// The seven rows r14 measured (chain-check.observation.json c6eaf865): R1-R4 hold, so the arm admits.
+test("the Screen arm admits r14's seven measured rows", () => {
+  const proof = screenProof()
+  expect(parseMuxAttachmentProof(proof)).toEqual(proof)
+})
+
+test("the Screen arm refuses each R1-R4 departure by name, over kernel paths", () => {
+  const proof = screenProof()
+  const withRow = (pid: number, change: Record<string, unknown>) => ({
+    ...proof,
+    chain: proof.chain.map((hop) => (hop.pid === pid ? { ...hop, ...change } : hop)),
+  })
+  const cases: [unknown, RegExp][] = [
+    // R1: the pane login is uid 0 under the server, on the collector's own PTY, and is the login program.
+    [withRow(40705, { uid: 501 }), /chain\[1\].*pane login pid 40705 is uid 501, not 0/],
+    [withRow(40705, { ttyRdev: 268435456 }), /chain\[1\].*pane login pid 40705 is not on the collector's TTY/],
+    [
+      withRow(40705, { kernelExecutable: "/bin/bash" }),
+      /chain\[1\].*kernel path is \/bin\/bash, not \/usr\/bin\/login/,
+    ],
+    // A1: argv0 is not evidence. The pane login whose kernel read went unanswered refuses by name,
+    // naming the reader and its errno, even though its argv0 is already `login`.
+    [
+      withRow(40705, {
+        kernelExecutable: null,
+        kernelExecutableReader: null,
+        kernelExecutableError: "returned 0, errno 1",
+      }),
+      /chain\[1\].*pid 40705 has no kernel executable path \(reader did not answer: returned 0, errno 1\)/,
+    ],
+    // R3 (@cto): the group is one measurement, so its four fields must agree with each other.
+    [
+      withRow(40705, { kernelExecutable: null, kernelExecutableReader: "proc_pidpath" }),
+      /kernelExecutableReader names a reader but no path/,
+    ],
+    [
+      withRow(40705, {
+        kernelExecutable: "/usr/bin/login",
+        kernelExecutableError: "proc_pidpath: returned 0, errno 1",
+      }),
+      /a kernel executable path carries an error/,
+    ],
+    [
+      withRow(40705, { kernelExecutable: null, kernelExecutableReader: null, kernelExecutableError: null }),
+      /a kernel read with no path names neither a reader nor an error/,
+    ],
+    [
+      withRow(40705, { kernelExecutable: "/usr/bin/login", kernelExecutableReader: null }),
+      /a kernel executable path names no reader/,
+    ],
+    // R2: exactly two uid-0 rows, both the login program; a third root row is not an exception.
+    [withRow(40675, { uid: 0 }), /uid-0 rows .*40705,40675.*; exactly the pane login and the root login/],
+    [
+      withRow(40674, { kernelExecutable: "/usr/bin/su" }),
+      /chain\[5\].*root login pid 40674 kernel path is \/usr\/bin\/su, not \/usr\/bin\/login/,
+    ],
+    // R3: the backend owns no PTY, its parent is the frontend, and both are the kernel's own binary.
+    [withRow(40704, { ttyRdev: 268435456 }), /chain\[2\].*server pid 40704 carries TTY 268435456/],
+    [
+      withRow(40704, { kernelExecutable: "/usr/bin/SCREEN" }),
+      /chain\[2\].*mux pid 40704 kernel path is \/usr\/bin\/SCREEN, not \/usr\/bin\/screen/,
+    ],
+    [
+      withRow(40703, { kernelExecutable: "/usr/local/bin/screen" }),
+      /chain\[3\].*mux pid 40703 kernel path is \/usr\/local\/bin\/screen, not \/usr\/bin\/screen/,
+    ],
+    [withRow(40703, { ttyRdev: 268435459 }), /chain\[3\].*client pid 40703 is not on the outer shell's TTY/],
+    // R2 (@cto): the shell row's TTY is the declared outer shell's, not a second opinion beside it.
+    [
+      { ...proof, outerShell: { ...proof.outerShell, ttyRdev: 268435458 } },
+      /chain outer shell TTY differs from the declared outer shell/,
+    ],
+    // R4: the attachment IS the row measured as the server's parent - never a separate screen query.
+    [
+      { ...proof, attachedClient: { ...proof.attachedClient, pid: 40704 } },
+      /the attached client is not the row the chain measured as the server's parent/,
+    ],
+    // The ppid walk refuses a break before any rule can misread it.
+    [withRow(40704, { ppid: 99999 }), /chain\[2\].*ppid 99999 does not name the next process/],
+    [withRow(40703, { ppid: 99999 }), /chain\[3\].*ppid 99999 does not name the next process/],
+  ]
+  for (const [invalid, refusal] of cases) {
+    expect(() => parseMuxAttachmentProof(invalid), String(refusal)).toThrow(refusal)
+  }
+})
+
+test("the Screen arm admits one version line and one chain length", () => {
+  const proof = screenProof()
+  const version = (text: string) => ({ ...proof, executable: { ...proof.executable, version: text } })
+  expect(() => parseMuxAttachmentProof(version("Screen version 5.0.1 (GNU) 20-Aug-24"))).toThrow(
+    /screen executable version is not the admitted 4\.00\.03 line/,
+  )
+  expect(() => parseMuxAttachmentProof(version("screen 4.00.03"))).toThrow(/not the admitted 4\.00\.03 line/)
+  // The measured line survives a trailing build suffix on either stream.
+  expect(parseMuxAttachmentProof(version("Screen version 4.00.03\r\n")).executable.version).toBe(
+    "Screen version 4.00.03\r\n",
+  )
+  // R1 (@cto): argv0 tolerance stops at the Screen arm. The r13 tmux shell row that is not a path
+  // refuses exactly as it did before this arm existed.
   expect(() =>
     parseMuxAttachmentProof({
-      ...proof,
-      mux: "screen",
-      chain: proof.chain.map((hop) => (hop.pid === 55800 ? { ...hop, ppid: 99999, uid: 0 } : hop)),
+      ...darwinProof(),
+      chain: darwinProof().chain.map((hop) => (hop.pid === 55772 ? { ...hop, executablePath: "bash" } : hop)),
     }),
-  ).toThrow(/darwin screen arm unqualified/)
+  ).toThrow(/chain\[2\]\): executablePath must be an absolute path/)
+  // An eighth row is not the measured shape, even when every other rule would pass.
+  const extra = {
+    ...proof,
+    chain: [
+      ...proof.chain.slice(0, 5),
+      { ...proof.chain[5], pid: 40707, ppid: 40674, executablePath: "/bin/zsh", kernelExecutable: "/bin/zsh" },
+      ...proof.chain.slice(5),
+    ],
+  }
+  extra.chain[4] = { ...extra.chain[4]!, ppid: 40707 }
+  expect(() => parseMuxAttachmentProof(extra)).toThrow(/screen chain has 8 rows; the measured shape has 7/)
 })
 
 // D3 (@cto 72e4b60b): `parseLstart` is the only lstart reader, so each refusal is proved by its text.
