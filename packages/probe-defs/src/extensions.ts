@@ -1614,6 +1614,23 @@ export const extensionsProbes: ProbeDefinition[] = [
         const expected = "Two distinct direct-RGB foreground samples match their requested values"
         const same = (a: typeof first | null, b: typeof first) =>
           a !== null && a !== undefined && a.r === b.r && a.g === b.g && a.b === b.b
+        const framed =
+          baseline.char === "C" &&
+          controlFirst.char === "A" &&
+          controlSecond.char === "B" &&
+          targetFirst.char === "X" &&
+          targetSecond.char === "Y"
+        if (framed && (!targetFirst.fg || !targetSecond.fg)) {
+          // #30701, @cto ruling C: an RGB target that reads no color is a measured ignore while the
+          // independent controls show two distinct colors; without them the channel is not shown.
+          if (controlFirst.fg && controlSecond.fg && !sameRgbCells(controlFirst.fg, controlSecond.fg)) {
+            return parserStateResult(false, expected, state)
+          }
+          return notTestedResult(
+            "independent foreground color controls (SGR 31 and 34) distinguishable in the headless readback",
+            state,
+          )
+        }
         if (
           baseline.char !== "C" ||
           controlFirst.char !== "A" ||

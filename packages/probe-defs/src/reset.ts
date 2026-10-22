@@ -3,6 +3,7 @@ import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import {
   decrpmReading,
+  notTestedResult,
   parserStateResult,
   probe,
   queryDecrpm,
@@ -50,10 +51,24 @@ export const resetProbes: ProbeDefinition[] = [
         const after = ctx.getCell(0, 1)
         const state = { before, after }
         const expected = "SGR 0 clears measured bold, italic, and inverse styling on Y"
-        if (before.char !== "X" || after.char !== "Y" || !before.bold || !before.italic || !before.inverse) {
+        if (before.char !== "X" || after.char !== "Y") {
           return parserStateResult(null, expected, state, "Styled control or reset cell was not measured")
         }
-        return parserStateResult(!after.bold && !after.italic && !after.inverse, expected, state)
+        // #30701, @cto ruling C: graded on the styles the control measurably shows. A style field the
+        // adapter never populates is left out, and a control that shows none has no observable.
+        const styles = (["bold", "italic", "inverse"] as const).filter((style) => before[style] === true)
+        if (styles.length === 0) {
+          return notTestedResult("bold, italic and inverse on the styled control cell in the headless readback", state)
+        }
+        const unshown = (["bold", "italic", "inverse"] as const).filter((style) => before[style] !== true)
+        return parserStateResult(
+          styles.every((style) => !after[style]),
+          expected,
+          state,
+          unshown.length > 0
+            ? `Graded on ${styles.join(" and ")}; ${unshown.join(" and ")} not shown by the styled control`
+            : undefined,
+        )
       },
       async (ctx) => {
         // The shared DECRQSS readback decides this SGR-state claim structurally wherever the
@@ -219,6 +234,14 @@ export const resetProbes: ProbeDefinition[] = [
         ctx.feed("Hello")
         ctx.feed("\x1b[!p")
         const after = ctx.getMode("applicationCursor")
+        // #30701, @cto ruling C: a getMode that reports no applicationCursor state is a field the backend
+        // does not expose (TEST TODO); an exposed mode that stayed off is still unmeasured.
+        if (typeof before !== "boolean") {
+          return notTestedResult("the application-cursor mode (DECCKM) state in the headless getMode readback", {
+            before,
+            after,
+          })
+        }
         return parserStateResult(
           before ? !after : null,
           "DECSTR clears an enabled application-cursor mode",

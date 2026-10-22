@@ -20,7 +20,7 @@
  */
 import type { ProbeDefinition, TermlessContext } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import { isBlank, parserStateResult } from "./helpers.ts"
+import { isBlank, notTestedResult, parserStateResult } from "./helpers.ts"
 
 /** One write between the seed frame and the final read, and the cursor report it must reach. */
 export interface RegionReadbackStep {
@@ -640,6 +640,25 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
           )
         }
         if (!gridMatch(before, row.before)) {
+          // #30701, @cto ruling C: a seed whose only miss is an attribute the row paints (inverse, a
+          // background) leaves the claim's reference uncalibrated (TEST TODO naming it). Any other miss,
+          // missing characters or an attribute the seed declares absent, is a fixture that never
+          // landed, inconclusive by the row's own note.
+          const painted = new Set<string>()
+          const unpainted = row.before.map((cells) =>
+            cells.map((cell): RegionReadbackCell => {
+              if (typeof cell === "string") return cell
+              if (cell.attributes.inverse === true) painted.add("inverse")
+              if (cell.attributes.bg !== undefined) painted.add("bg")
+              return { char: cell.char, attributes: cell.attributes.inverse === false ? { inverse: false } : {} }
+            }),
+          )
+          if (painted.size > 0 && gridMatch(before, unpainted)) {
+            return notTestedResult(
+              `${row.id}: the seed's painted ${[...painted].join(" and ")} on the region cells in the headless readback (the seed characters arrived without it)`,
+              { before: responseGrid(before, row.before) },
+            )
+          }
           return parserStateResult(null, row.expected, { before: responseGrid(before, row.before) }, row.seedNote)
         }
         if (baseline !== undefined) {

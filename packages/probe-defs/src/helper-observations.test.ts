@@ -155,6 +155,43 @@ test("app reset observations require a measured effect and leave unmeasurable re
   expect(methodWrites).toEqual([])
 })
 
+// #30701 (@cto ruling C): the headless reset arms grade what the cells and modes expose. An adapter
+// that never populates italic leaves SGR 0 graded on bold and inverse; one whose getMode reports no
+// application-cursor state leaves DECSTR with no observable.
+test("headless reset.sgr grades the measured styles and reset.soft needs an exposed mode", () => {
+  const find = (id: string) => {
+    const definition = resetProbes.find((entry) => entry.id === id)
+    if (!definition?.termless) throw new Error(`Missing ${id} headless callback`)
+    return definition.termless
+  }
+  const sgr = (before: Partial<typeof baseCell>, after: Partial<typeof baseCell> = {}) =>
+    find("reset.sgr")(
+      headless({
+        getCell: (_row, col) => ({
+          ...baseCell,
+          ...[
+            { char: "X", ...before },
+            { char: "Y", ...after },
+          ][col],
+        }),
+      }),
+    )
+  expect(sgr({ bold: true, inverse: true }).observation).toMatchObject({
+    outcome: "supported",
+    evidence: "parser-state",
+    note: expect.stringContaining("italic"),
+  })
+  expect(sgr({ bold: true, inverse: true }, { inverse: true }).observation).toMatchObject({ outcome: "unsupported" })
+  const unstyled = sgr({})
+  expect(unstyled.observation).toBeUndefined()
+  expect(unstyled.notTested?.noObservable).toContain("styled control")
+  const soft = find("reset.soft")(headless({ getMode: () => null as unknown as boolean }))
+  expect(soft.observation).toBeUndefined()
+  expect(soft.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("DECCKM") })
+  // An exposed mode that stayed off is unmeasured, never a coverage record.
+  expect(find("reset.soft")(headless()).observation).toMatchObject({ outcome: "inconclusive" })
+})
+
 test("SGR consumption stays inconclusive while headless cell state supports an assertion", async () => {
   const probe = sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold)
   if (!probe.term || !probe.termless) throw new Error("SGR needs both callbacks")
@@ -388,10 +425,11 @@ test("underline color needs an observed color, not only an underline or a consum
         }),
       }),
     )
-    expect(unexposed.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "parser-state",
+    // #30701: a cell fed SGR 58 that reports no underline color is a missing field (TEST TODO).
+    expect(unexposed.observation, id).toBeUndefined()
+    expect(unexposed.notTested, id).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringContaining("cell.underlineColor"),
     })
     expect(unexposed.assertions, id).toBeUndefined()
 
@@ -450,7 +488,11 @@ test("indexed underline color follows two distinct measured palette controls", a
     )
 
   const unexposed = run(undefined, undefined)
-  expect(unexposed.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(unexposed.observation).toBeUndefined()
+  expect(unexposed.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining("cell.underlineColor"),
+  })
   expect(unexposed.assertions).toBeUndefined()
 
   const matched = run(index5, index4)
@@ -490,7 +532,8 @@ test("underline color reset needs both an observed colored before cell and defau
   const missingBefore = probe.termless(
     withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
   )
-  expect(missingBefore.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(missingBefore.observation).toBeUndefined()
+  expect(missingBefore.notTested?.noObservable).toContain("cell.underlineColor")
   expect(missingBefore.assertions).toBeUndefined()
 
   const missingAfter = probe.termless(
@@ -517,7 +560,7 @@ test("underline color reset needs both an observed colored before cell and defau
   expect(stillColored.assertions).toMatchObject([{ kind: "negative", observed: stillColored.response }])
 })
 
-test("a null underline color from an adapter with no color readback is not unsupported", () => {
+test("a null underline color from an adapter with no color readback is TEST TODO, not unsupported", () => {
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb", "sgr.underline-color-indexed"]) {
     const probe = sgrProbes.find((item) => item.id === id)
     if (!probe?.termless) throw new Error(`missing ${id} callback`)
@@ -536,7 +579,11 @@ test("a null underline color from an adapter with no color readback is not unsup
         }),
       }),
     )
-    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.notTested, id).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringContaining("cell.underlineColor"),
+    })
     expect(result.assertions, id).toBeUndefined()
   }
 })
@@ -629,15 +676,46 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
     const unobservedSetup = probe.termless(
       headless({ getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "" }) }),
     )
-    expect(unobservedSetup.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-    })
+    // #30701: a styled setup that shows none of the attributes has no observable (TEST TODO).
+    expect(unobservedSetup.observation, id).toBeUndefined()
+    expect(unobservedSetup.notTested?.reason, id).toBe("no-semantic-observable")
     expect(unobservedSetup.assertions, id).toBeUndefined()
     if (erasedSentinel) {
       const lost = read(erasedSentinel)
       expect(lost.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     }
+  }
+})
+
+// #30701 (@cto ruling C): a reset is graded on the setup attributes the cell measurably shows. Each row
+// is an adapter shape from the 11-engine headless collection: one with no italic and no dim field,
+// one with no dim field, one with no faint field whose SGR 2 replaces bold, and one that keeps
+// intensity exclusive (SGR 2 replaces bold, the field is present).
+test.each([
+  ["sgr.reset", { bold: true, underline: "single" }, {}, "supported", "italic"],
+  ["sgr.selective-reset.bold", { bold: true, italic: true }, { italic: true }, "supported", "dim"],
+  ["sgr.selective-reset.bold", { dim: true, italic: true }, { italic: true }, "supported", "bold"],
+  ["sgr.selective-reset.bold", { italic: true }, { italic: true }, "todo", "bold and dim"],
+  ["sgr.selective-reset.bold", { bold: true }, {}, "todo", "dim and italic"],
+  ["sgr.selective-reset.italic", { bold: true }, { bold: true }, "todo", "italic"],
+  ["sgr.selective-reset.bold", { bold: true, italic: true }, { bold: true, italic: true }, "unsupported", "dim"],
+] as const)("%s grades setup %o reset to %o on the measured attributes: %s", (id, before, after, outcome, unshown) => {
+  const probe = sgrProbes.find((item) => item.id === id)
+  if (!probe?.termless) throw new Error(`missing ${id} callback`)
+  const result = probe.termless(
+    headless({
+      getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "", ...[{}, before, after][col] }),
+    }),
+  )
+  if (outcome === "todo") {
+    expect(result.observation).toBeUndefined()
+    expect(result.notTested).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringContaining(unshown),
+    })
+  } else {
+    expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+    expect(result.observation?.note).toContain(unshown)
   }
 })
 
@@ -680,9 +758,23 @@ test("named ANSI color probes require distinct exposed selection, without theme 
       first: { char: "X" },
       second: { char: "Y" },
     })
+    // #30701 (@cto ruling C): both named colors at the measured default is a measured ignore, and a
+    // default reported as absent (undefined) still differs from two exposed colors.
+    const ignored = run(null, null)
+    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
+    const absentDefault = probe.termless(
+      headless({
+        getCell: (_row, col) => ({
+          ...baseCell,
+          char: ["C", "X", "Y"][col] ?? "",
+          [channel]: [undefined, lowRed, lowBlue][col],
+        }),
+      }),
+    )
+    expect(absentDefault.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
     for (const uncertain of [
       run(lowRed, lowRed),
-      run(null, null),
       run(lowRed, lowBlue, ["C", "?", "Y"]),
       run(lowRed, lowBlue, ["C", "X", "Y"], lowRed),
     ]) {
@@ -727,14 +819,18 @@ test("indexed cube colors require two exact direct-RGB reference controls", () =
       directFirst: { char: "A" },
       indexedSecond: { char: "Y" },
     })
-    for (const uncertain of [
-      run([first, first], [first, second]),
-      run([null, null], [first, second]),
-      run([first, second], [null, null]),
-    ]) {
-      expect(uncertain?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-      expect(uncertain?.assertions, id).toBeUndefined()
+    // #30701 (@cto ruling C): calibrated direct RGB that the indices miss is a custom palette, a
+    // measured negative; direct RGB that misses its fed value is an uncalibrated reference (TEST TODO).
+    for (const palette of [run([first, first], [first, second]), run([null, null], [first, second])]) {
+      expect(palette?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+      expect(palette?.assertions, id).toMatchObject([{ kind: "negative", observed: palette?.response }])
     }
+    const uncalibrated = run([first, second], [null, null])
+    expect(uncalibrated?.observation, id).toBeUndefined()
+    expect(uncalibrated?.notTested, id).toEqual({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringContaining("direct RGB"),
+    })
   }
 })
 
@@ -770,10 +866,18 @@ test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB",
     const wrong = run([red, blue])
     expect(wrong?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     expect(wrong?.assertions, id).toMatchObject([{ kind: "negative", observed: wrong?.response }])
-    for (const uncertain of [run([red, blue], [red, red]), run([null, null]), run([first, second], [red, first])]) {
+    for (const uncertain of [run([red, blue], [red, red]), run([first, second], [red, first])]) {
       expect(uncertain?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
       expect(uncertain?.assertions, id).toBeUndefined()
     }
+    // #30701 (@cto ruling C): targets that read no color are a measured ignore while the controls are
+    // calibrated, and have no observable when the controls show no color either (TEST TODO).
+    const ignored = run([null, null])
+    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
+    const uncalibrated = run([null, null], [null, null])
+    expect(uncalibrated?.observation, id).toBeUndefined()
+    expect(uncalibrated?.notTested?.noObservable, id).toContain("color controls")
   }
 })
 
@@ -800,8 +904,10 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     const ignored = run([baseline, colored, colored])
     expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
+    // #30701 (@cto ruling C): a setup that reads back as the default leaves the reset no reference.
     const uncalibrated = run([baseline, baseline, baseline])
-    expect(uncalibrated?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(uncalibrated?.observation, id).toBeUndefined()
+    expect(uncalibrated?.notTested?.noObservable, id).toContain("setup cell")
     expect(uncalibrated?.assertions, id).toBeUndefined()
   }
 })

@@ -1,5 +1,6 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import {
+  notTestedResult,
   parserStateResult,
   sameRgb,
   sgrProbe,
@@ -15,6 +16,14 @@ import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
+
+/**
+ * An adapter that does not populate `underlineColor` reports null on every cell, so a cell fed an
+ * explicit SGR 58 color that reads back none has no observable for the claim (a coverage record,
+ * TEST TODO), never a negative (#30701, @cto ruling C: TEST TODO only where the cell field is missing).
+ */
+const UNDERLINE_COLOR_UNEXPOSED =
+  "the underline color field (cell.underlineColor): the headless readback reports none on a cell fed an explicit SGR 58 color"
 
 /**
  * Prefer the terminal's own DECRQSS SGR report over the pixel/cursor fallback path. A terminal that
@@ -181,6 +190,8 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
         const target = ctx.getCell(0, 2)
         const state = { blueControl, greenControl, target }
         const expected = `${id}: X has explicit rgb(255,0,128) underline distinct from the reset/default B cell`
+        const framed = blueControl.char === "A" && greenControl.char === "B" && target.char === "X"
+        if (framed && target.underlineColor == null) return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
         if (
           blueControl.char !== "A" ||
           greenControl.char !== "B" ||
@@ -254,21 +265,32 @@ function measuredReset(
     return parserStateResult(null, expected, state, "Baseline, styled, or reset cell was not exposed")
   }
   const attributes = [...new Set([...set, ...preserve])]
+  // The claim is over the MEASURED setup attributes (#30701, @cto ruling C): an attribute the styled
+  // setup does not show (a field the adapter never populates, or an intensity the backend keeps
+  // exclusive) is left out of the grade. A measured miss is a negative; with no shown set attribute or
+  // an unshown preserved one, the claim has no observable (a coverage record, TEST TODO).
+  const shown = (attribute: ResetAttribute) => measuredAttribute(before, attribute) === true
+  const graded = attributes.filter(shown)
   if (
-    attributes.some((attribute) => measuredAttribute(baseline, attribute) !== false) ||
-    attributes.some((attribute) => measuredAttribute(before, attribute) !== true) ||
-    attributes.some((attribute) => measuredAttribute(after, attribute) === null)
+    graded.some((attribute) => measuredAttribute(baseline, attribute) !== false) ||
+    graded.some((attribute) => measuredAttribute(after, attribute) === null)
   ) {
-    return parserStateResult(
-      null,
-      expected,
-      state,
-      "Neutral baseline, styled setup, or reset readback was not measured",
-    )
+    return parserStateResult(null, expected, state, "Neutral baseline or reset readback was not measured")
   }
-  const cleared = set.every((attribute) => measuredAttribute(after, attribute) === false)
-  const retained = preserve.every((attribute) => measuredAttribute(after, attribute) === true)
-  return parserStateResult(cleared && retained, expected, state)
+  const unshown = attributes.filter((attribute) => !shown(attribute))
+  const cleared = set.filter(shown).every((attribute) => measuredAttribute(after, attribute) === false)
+  const retained = preserve.filter(shown).every((attribute) => measuredAttribute(after, attribute) === true)
+  if (cleared && retained && (!set.some(shown) || !preserve.every(shown))) {
+    return notTestedResult(`${unshown.join(" and ")} on the styled setup cell in the headless readback`, state)
+  }
+  return parserStateResult(
+    cleared && retained,
+    expected,
+    state,
+    unshown.length > 0
+      ? `Graded on the measured setup; ${unshown.join(" and ")} not shown by the styled setup`
+      : undefined,
+  )
 }
 
 async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeResult> {
@@ -376,9 +398,13 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
         const neutral = baseline[channel]
         const a = firstCell[channel]
         const b = secondCell[channel]
-        if (neutral !== undefined && a && b && !sameCellColor(neutral, a) && !sameRgb(a, b)) {
+        // An undefined neutral is the default reported as absent, which already differs from an
+        // exposed RGB value (#30701, @cto ruling C).
+        if (a && b && !sameCellColor(neutral, a) && !sameRgb(a, b)) {
           return parserStateResult(true, expected, state)
         }
+        // Both named colors left the cell at the measured default: the backend ignored them.
+        if (sameCellColor(neutral, a) && sameCellColor(neutral, b)) return parserStateResult(false, expected, state)
         return parserStateResult(
           null,
           expected,
@@ -423,14 +449,20 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const b = directSecond[channel]
         const x = indexedFirst[channel]
         const y = indexedSecond[channel]
-        if (a && b && x && y && sameRgb(a, first) && sameRgb(b, second) && sameRgb(x, a) && sameRgb(y, b)) {
-          return parserStateResult(true, expected, state)
+        // #30701, @cto ruling C: direct RGB that does not read back its fed value is a reference that
+        // cannot be calibrated (TEST TODO); a calibrated reference the indices miss is a custom palette.
+        if (!a || !b || !sameRgb(a, first) || !sameRgb(b, second)) {
+          return notTestedResult(
+            `direct RGB ${channel} readback matching the fed value (SGR ${sgr};2 reference cells A and B)`,
+            state,
+          )
         }
+        if (x && y && sameRgb(x, a) && sameRgb(y, b)) return parserStateResult(true, expected, state)
         return parserStateResult(
-          null,
+          false,
           expected,
           state,
-          "RGB reference was not calibrated, or the backend may use a custom indexed palette",
+          "Direct RGB references matched; indices 67 and 173 did not resolve to them (a custom indexed palette)",
         )
       },
       sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr], requireTokens: [`${sgr}:5:67`] }, (ctx) =>
@@ -478,15 +510,24 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         }
         const x = targetFirst[channel]
         const y = targetSecond[channel]
-        if (!x || !y) return parserStateResult(null, expected, state, "RGB target readback was absent")
+        const a = controlFirst[channel]
+        const b = controlSecond[channel]
+        const calibrated = !!a && !!b && !sameRgb(a, b)
+        if (!x || !y) {
+          // #30701, @cto ruling C: a target that reads no color is a measured ignore while the
+          // independent controls show two distinct colors; without them the channel is not shown.
+          if (calibrated) return parserStateResult(false, expected, state)
+          return notTestedResult(
+            `independent ${channel} color controls (SGR ${ordinary[0]} and ${ordinary[1]}) distinguishable in the headless readback`,
+            state,
+          )
+        }
         const preceding = controlSecond[channel]
         if (!preceding || sameRgb(preceding, first)) {
           return parserStateResult(null, expected, state, "The preceding color can mimic an ignored first RGB request")
         }
         if (sameRgb(x, first) && sameRgb(y, second)) return parserStateResult(true, expected, state)
-        const a = controlFirst[channel]
-        const b = controlSecond[channel]
-        if (a && b && !sameRgb(a, b)) return parserStateResult(false, expected, state)
+        if (calibrated) return parserStateResult(false, expected, state)
         return parserStateResult(null, expected, state, "Independent color-channel calibration was absent")
       },
       sgrTermReadback(
@@ -529,7 +570,12 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         const changed = before[channel]
         const resetColor = after[channel]
         if (!changed || sameCellColor(baseColor, changed) || resetColor === undefined) {
-          return parserStateResult(null, expected, state, "Distinct colored setup or reset color readback was absent")
+          // #30701, @cto ruling C: the colored X is the reference the reset is read against; a setup
+          // that reads back as the default leaves the reset with no observable (TEST TODO).
+          return notTestedResult(
+            `a colored ${channel} setup cell (SGR ${setup}) distinct from the default, and the reset cell's ${channel}, in the headless readback`,
+            state,
+          )
         }
         return parserStateResult(sameCellColor(baseColor, resetColor), expected, state)
       },
@@ -618,6 +664,10 @@ export const sgrProbes: ProbeDefinition[] = [
         }
         const expected =
           "SGR 58 index 5/4 underline colors match the opposite SGR 38 palette controls, not their same-foreground defaults"
+        const framed = default4.char === "A" && target5.char === "X" && default5.char === "B" && target4.char === "Y"
+        if (framed && target5.underlineColor == null && target4.underlineColor == null) {
+          return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
+        }
         if (
           default4.char !== "A" ||
           target5.char !== "X" ||
@@ -678,6 +728,8 @@ export const sgrProbes: ProbeDefinition[] = [
         const state = { baseline, before, after }
         const expected =
           "X has explicit underline rgb(255,0,128); SGR 59 restores Y to the measured reset-state C color"
+        const framed = baseline.char === "C" && before.char === "X" && after.char === "Y"
+        if (framed && before.underlineColor == null) return notTestedResult(UNDERLINE_COLOR_UNEXPOSED, state)
         if (
           baseline.char !== "C" ||
           before.char !== "X" ||

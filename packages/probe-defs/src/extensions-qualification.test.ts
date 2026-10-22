@@ -50,6 +50,29 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
   expect(result.assertions).toBeUndefined()
 })
 
+// #30701 (@cto ruling C): a framed fixture whose RGB targets read no color is a measured ignore while
+// the SGR 31/34 controls are distinct, and has no observable when the controls show no color either.
+test("extensions.truecolor grades unexposed RGB targets against the independent controls", () => {
+  const definition = callback("extensions.truecolor")
+  const run = (controls: readonly ({ r: number; g: number; b: number } | null)[]) =>
+    definition.termless!({
+      feed: () => undefined,
+      getCell: (_row: number, col: number) => ({
+        char: ["C", "A", "B", "X", "Y"][col] ?? "",
+        fg: [null, ...controls, null, null][col] ?? null,
+        bg: null,
+      }),
+    } as unknown as TermlessContext)
+  const ignored = run([
+    { r: 128, g: 0, b: 0 },
+    { r: 0, g: 0, b: 128 },
+  ])
+  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const monochrome = run([null, null])
+  expect(monochrome.observation).toBeUndefined()
+  expect(monochrome.notTested?.noObservable).toContain("color controls")
+})
+
 test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle as sgr.fg.truecolor", async () => {
   const definition = callback("extensions.truecolor")
   const sgrQuery = "\x1bP$qm\x1b\\"

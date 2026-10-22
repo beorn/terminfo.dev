@@ -850,10 +850,14 @@ test("background erase measures a blank target that carries the seeded backgroun
   expect(run(background, background, "X").observation).toMatchObject({ outcome: "unsupported" })
   // A different colour is not the seeded one: the relative claim is exact on this adapter.
   expect(run(background, other).observation).toMatchObject({ outcome: "unsupported" })
-  // The seed itself was not measured, so no verdict may be read from it.
+  // #30701 (@cto ruling C): the seed characters arrived without the painted background, so the claim's
+  // reference is uncalibrated: a coverage record naming it (TEST TODO), never a verdict.
   const unseeded = run(null, background)
-  expect(unseeded.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-  expect(String(unseeded.observation?.note)).toBe(row.seedNote)
+  expect(unseeded.observation).toBeUndefined()
+  expect(unseeded.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining("the seed's painted bg"),
+  })
   expect(unseeded.assertions).toBeUndefined()
   // A seed whose measured character is not the row's own means the fixture never landed, so nothing
   // may be graded from it.
