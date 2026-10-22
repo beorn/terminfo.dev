@@ -3904,7 +3904,7 @@
       "featureId": "modes.application-cursor",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -3912,7 +3912,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.application-cursor",
@@ -3980,7 +3980,7 @@
       "featureId": "modes.bracketed-paste",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -3988,7 +3988,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.bracketed-paste",
@@ -4100,7 +4100,7 @@
       "featureId": "modes.focus-tracking",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -4108,7 +4108,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.focus-tracking",
@@ -4174,7 +4174,7 @@
       "featureId": "modes.mouse-all",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -4182,7 +4182,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.mouse-all",
@@ -4200,7 +4200,7 @@
       "featureId": "modes.mouse-sgr",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -4208,7 +4208,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.mouse-sgr",
@@ -4226,7 +4226,7 @@
       "featureId": "modes.mouse-tracking",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -4234,7 +4234,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.mouse-tracking",
@@ -4320,7 +4320,7 @@
       "featureId": "modes.utf8-mouse-1005",
       "attempt": {
         "scope": "probe",
-        "startedAt": "2026-10-22T15:06:32.418Z"
+        "startedAt": "2026-10-22T16:53:03.323Z"
       },
       "checks": [
         {
@@ -4328,7 +4328,7 @@
           "status": "untestable",
           "attempt": {
             "scope": "probe",
-            "startedAt": "2026-10-22T15:06:32.418Z"
+            "startedAt": "2026-10-22T16:53:03.323Z"
           },
           "assertionRefs": [],
           "rawReplyRef": "modes.utf8-mouse-1005",
@@ -7312,5 +7312,5 @@
   "origin": {
     "kind": "collector"
   },
-  "sealedAt": "2026-10-22T16:48:58.625Z"
+  "sealedAt": "2026-10-22T17:02:14.504Z"
 }
