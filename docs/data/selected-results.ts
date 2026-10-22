@@ -661,10 +661,23 @@ const contextKey = (t: ProbeTarget): string =>
     t.permissions,
   ])
 
+/** Distinct contexts per `<kind>:<id>` across the given runs: the group size `projectedContextKey` keys by. */
+function countContexts(runs: readonly LoadedRun[]): Map<string, Set<string>> {
+  const counts = new Map<string, Set<string>>()
+  for (const run of runs) {
+    const stem = `${run.target.kind}:${run.target.id}`
+    const contexts = counts.get(stem) ?? new Set<string>()
+    contexts.add(contextKey(run.target))
+    counts.set(stem, contexts)
+  }
+  return counts
+}
+
 /**
  * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
  * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
- * behind an id-level key. `run-selection.ts` reads this shape back to tell a stale reviewed row from a
+ * behind an id-level key. The group spans every run of the target, legacy and schema 3, so one context
+ * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
 export function projectedContextKey(target: ProbeTarget, contextCount: number): string {
@@ -726,6 +739,7 @@ export function projectHistoricalResults(
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
   policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
+  contextCounts: ReadonlyMap<string, ReadonlySet<string>> = countContexts(runs),
 ): HistoricalProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   const releaseSuiteId = policy.releaseSuiteId ?? null
@@ -776,14 +790,6 @@ export function projectHistoricalResults(
       throw new Error(`presentation ${entry.id} conflicts with active ${prior} for ${entry.runId}/${entry.featureId}`)
     }
     presented.set(key, entry.id)
-  }
-  const contextCounts = new Map<string, Set<string>>()
-  for (const run of runs) {
-    const stem = `${run.target.kind}:${run.target.id}`
-    if (!contextCounts.has(stem)) contextCounts.set(stem, new Set())
-    const contexts = contextCounts.get(stem)
-    if (!contexts) fail(run.path, `missing context group for ${stem}`)
-    contexts.add(contextKey(run.target))
   }
   const keyFor = (run: LoadedRun): string => {
     const stem = `${run.target.kind}:${run.target.id}`
@@ -905,6 +911,10 @@ export function projectResults(
       throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
     }
   }
+  // 30661: one context count for both projections, every run of the target, legacy and schema 3. Counted per
+  // projection, alacritty's one schema-3 context was the bare stem while its three legacy contexts carried
+  // full keys, and no reviewed default-context row could name the Windows context for both readers.
+  const contexts = countContexts(runs)
   const historical = projectHistoricalResults(
     runs.filter((run) => run.schemaVersion !== 3),
     interpretations.filter(
@@ -912,6 +922,7 @@ export function projectResults(
     ),
     catalogIds,
     policy,
+    contexts,
   )
   const currentRuns = runs.filter((run) => run.schemaVersion === 3)
   const releaseSuiteId = policy.releaseSuiteId ?? null
@@ -919,13 +930,6 @@ export function projectResults(
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
     ids.add(run.runId)
-  }
-  const contexts = new Map<string, Set<string>>()
-  for (const run of currentRuns) {
-    const stem = `${run.target.kind}:${run.target.id}`
-    const values = contexts.get(stem) ?? new Set<string>()
-    values.add(contextKey(run.target))
-    contexts.set(stem, values)
   }
   const projection: SelectedProjection = {
     current: {},
