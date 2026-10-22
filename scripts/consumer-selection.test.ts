@@ -28,7 +28,7 @@ import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import type { HistoricalPublicVersion } from "../docs/data/public-results.ts"
+import type { PublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
 import { probeHash } from "../packages/admin/versions.ts"
@@ -51,19 +51,8 @@ function stubProjection(current: Record<string, StubRun>, history: Record<string
   return { current, history, table } as unknown as SelectedProjection
 }
 
-interface RunReference extends Pick<
-  HistoricalPublicVersion,
-  | "runId"
-  | "target"
-  | "measuredAt"
-  | "suiteId"
-  | "probeHash"
-  | "suiteFreshness"
-  | "suite"
-  | "sourceRevision"
-  | "sha256"
-  | "counts"
-> {
+/** A v3 run reference is the published run without its results; the payload carries no historical fields. */
+interface RunReference extends Omit<PublicVersion, "results"> {
   url: string
   documentSha256: string
 }
@@ -376,7 +365,8 @@ describe("consumer selection", () => {
       }
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
-        expectedGroup: Record<string, HistoricalPublicVersion> | Record<string, HistoricalPublicVersion[]>,
+        // The expected side is the published projection itself: it has no url/documentSha256 yet.
+        expectedGroup: Record<string, PublicVersion> | Record<string, PublicVersion[]>,
       ) => {
         expect(Object.keys(actual).sort()).toEqual(Object.keys(expectedGroup).sort())
         for (const [key, expectedValue] of Object.entries(expectedGroup)) {
@@ -405,7 +395,7 @@ describe("consumer selection", () => {
           })
         }
       }
-      assertGroup(v3.current, expected.current as Record<string, HistoricalPublicVersion>)
+      assertGroup(v3.current, expected.current)
       assertGroup(v3.versions, expected.versions)
       assertGroup(v3.history, expected.history)
       expect(v3.exclusions).toEqual(expected.exclusions)
