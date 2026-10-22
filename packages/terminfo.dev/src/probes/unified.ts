@@ -662,6 +662,8 @@ export async function runProbeBatch(
           events: calibrationEvents,
           captures: calibrationCaptures,
         })
+        // A run-fatal calibration error drops this batch, so the failure draft keeps the trace only from here (30666).
+        options.onCheckpoint?.(batch)
       }
       capturePrepared = true
       if (captureGeometry) context.captureGeometry = captureGeometry

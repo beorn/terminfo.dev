@@ -552,6 +552,8 @@ describe("private finite daemon startup", () => {
     const result = runHostedDarwinFixture(`
       import { mock } from "bun:test"
       import assert from "node:assert/strict"
+      import { readdirSync, readFileSync } from "node:fs"
+      import { join } from "node:path"
       Object.defineProperty(process, "platform", { value: "darwin" })
       const tty = await import("./packages/terminfo.dev/src/tty.ts")
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
@@ -599,8 +601,13 @@ describe("private finite daemon startup", () => {
             trace: { captureCommand: "fixture" } }, decoded: { width: 1, height: 1, rgba: Buffer.alloc(4) } }
         }
       }) }))
-      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry }) => {
+      mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async ({ pixelGeometry, captureRaw }) => {
         calibrations++
+        // A restore timeout has already taken its screenshots; the failure draft must keep them (30666).
+        if (calibrationFailure?.name === "CaptureRestoreFailed") {
+          await captureRaw("restore grid paint", Date.now() + 1000)
+          await captureRaw("restore grid paint confirmation", Date.now() + 1000)
+        }
         if (calibrationFailure) throw calibrationFailure
         assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
         return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
@@ -612,8 +619,16 @@ describe("private finite daemon startup", () => {
       reportedCellSize = "\\x1b[6;13;6t"
       const reported = await collectProbeRun({})
       const originalTimeout = new Error("solid grid paint witness timeout")
-      calibrationFailure = Object.assign(new Error("Capture calibration restore failed", { cause: originalTimeout }), { name: "CaptureRestoreFailed" })
+      calibrationFailure = Object.assign(new Error("Capture calibration restore failed: Capture calibration restore grid paint: paint witness timeout after capture", { cause: originalTimeout }), { name: "CaptureRestoreFailed" })
       await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
+      const failed = readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter((name) => name.endsWith(".draft.json"))
+        .map((name) => JSON.parse(readFileSync(join(process.env.TERMINFO_CAPTURE_DIRECTORY, name), "utf8")))
+        .filter((draft) => draft.rawReplies["collector.failure"] === calibrationFailure.message)
+      assert.equal(failed.length, 1)
+      assert.deepEqual(JSON.parse(failed[0].rawReplies["collector.captureCalibration.trace"] ?? "{}").captures?.map(({ frame }) => [frame.label, frame.capturedAt, frame.ref]), [
+        ["restore grid paint", 1, "sha256:" + "f".repeat(64)],
+        ["restore grid paint confirmation", 1, "sha256:" + "f".repeat(64)],
+      ])
       calibrationFailure = new Error("Original capture adapter I/O failure", { cause: originalTimeout })
       await assert.rejects(collectProbeRun({}), error => error === calibrationFailure)
       calibrationFailure = Object.assign(new Error("Capture calibration paint not observed: solid grid paint witness timeout", { cause: originalTimeout }), { name: "CaptureCalibrationRefused" })
