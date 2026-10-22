@@ -1476,17 +1476,25 @@ it("does not name a historical-only target on the site", () => {
 })
 
 it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
-  // The guard 28047 adds, on the pair it was written for: before the fix the app 'ghostty' and the
-  // headless parser 'ghostty-native' both minted page id 'ghostty', so VitePress wrote one run over
-  // the other's URL and nothing failed. Restore that shape and require a build error naming both keys.
-  const app = structuredClone(fixture.selected) as unknown as SelectedVersion
-  app.target = { ...app.target, kind: "app", id: "ghostty" }
-  const native = structuredClone(fixture.selected) as unknown as SelectedVersion
-  native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
+  // Guard 28047, rebuilt on the same current-row fixture the other parity tests use: two current
+  // targets whose catalog names map to one slug must fail the build loudly, naming both rows.
+  const projection = currentResults.loadCurrentResults("").projection
+  const base = Object.values(projection.current)[0]
+  if (!base) throw new Error("the fixture projection has no current run")
+  const as = (contextKey: string, kind: CurrentSelectedVersion["target"]["kind"], id: string) => {
+    const selected = structuredClone(base)
+    selected.target = { ...selected.target, kind, id }
+    selected.runId = `${base.runId}-${contextKey}`
+    selected.sha256 = createHash("sha256").update(contextKey).digest("hex")
+    projection.current[contextKey] = selected
+    projection.table = { ...projection.table, [selected.runId]: projection.table[base.runId] ?? {} }
+    return { contextKey, selected }
+  }
+  const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
     new Map([
-      ["ghostty", { contextKey: "app:ghostty", selected: app }],
-      ["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }],
+      ["ghostty", as("app:ghostty", "app", "ghostty")],
+      ["ghostty-native", as("headless:ghostty-native", "headless", "ghostty-native")],
     ]),
   )
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -1496,18 +1504,21 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
     const data = loadFullProbes()
     probes = vi.spyOn(probeData, "loadProbes").mockReturnValue({
       ...data,
-      meta: { ...data.meta, "ghostty-native": { ...data.meta["ghostty-native"], slug: "ghostty" } },
-    })
-    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue({
-      ...generateAnalysis(),
-      "terminals/ghostty": { analysis: "<p>app</p>", date: "2026-09-28", changes: null, runSha256: fixture.runSha256 },
-      "terminals/ghostty-native": {
-        analysis: "<p>parser</p>",
-        date: "2026-09-28",
-        changes: null,
-        runSha256: fixture.runSha256,
+      // The two rows share one published slug, which is what mints one page id twice.
+      meta: {
+        ...data.meta,
+        ghostty: { label: "Ghostty", slug: "ghostty" },
+        "ghostty-native": { label: "libghostty-vt (native)", slug: "ghostty" },
       },
-    } as unknown as ReturnType<typeof probeData.loadAnalysis>)
+    })
+    // Any analysis key the builder asks for resolves; the assertion under test is the page-id guard.
+    const genericAnalysis = { analysis: "<p>analysis</p>", date: "2026-09-28", changes: null, runSha256: fixture.runSha256 }
+    const analysisBase = generateAnalysis()
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(
+      new Proxy(analysisBase, {
+        get: (target, key) => (typeof key === "string" ? (target[key] ?? genericAnalysis) : Reflect.get(target, key)),
+      }) as unknown as ReturnType<typeof probeData.loadAnalysis>,
+    )
     let message = ""
     try {
       terminalPaths.paths()
@@ -1516,10 +1527,12 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
     }
     expect(message).toContain("mint the id 'ghostty'")
     expect(message).toContain("'ghostty-native'")
+    expect(message).not.toBe("")
   } finally {
     probes?.mockRestore()
     analysis?.mockRestore()
     warning.mockRestore()
     targets.mockRestore()
+    selection.mockRestore()
   }
 })
