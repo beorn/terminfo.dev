@@ -9,6 +9,7 @@ import {
   cropPositionRefusal,
 } from "./region-readback.ts"
 import {
+  notTestedResult,
   parserStateResult,
   probe,
   REPLY_AFTER_SENTINEL_NOTE,
@@ -610,8 +611,11 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   // measurable without pixels because the effect is an ATTRIBUTE on cells the parser already holds:
   // the same DECCARA over the same coordinates must mark exactly the rectangle under DECSACE 2, and
   // the reading-order span from its top-left to its bottom-right under DECSACE 0. The stream frame is
-  // the control that proves the setting was honoured rather than ignored; when the two frames agree
-  // the extent modes are indistinguishable here and the row is inconclusive BY NAME, never a pass.
+  // the control that proves the setting was honoured rather than ignored. When the two frames agree it
+  // is never a pass, and the pair says why (#30702): both frames on the stream pattern measure DECSACE
+  // 2 ignored, both on the rectangle pattern measure the stream extent ignored, and either is a measured
+  // negative, not an inconclusive. No inverse cell in either frame means DECCARA itself was not
+  // honoured, so the extent has no observable (TEST TODO); any other agreeing pair is inconclusive by name.
   {
     ...probe(
       "editing.decsace",
@@ -637,11 +641,31 @@ const editingProbeDefinitions: ProbeDefinition[] = [
           )
         }
         if (rectPattern === streamPattern) {
+          const patterns = { rect: rectPattern, stream: streamPattern }
+          if (streamPattern === DECSACE_STREAM_PATTERN) {
+            return parserStateResult(
+              false,
+              DECSACE_EXPECTED,
+              patterns,
+              "DECSACE 2 was ignored: the rectangle frame shows the stream extent",
+            )
+          }
+          if (rectPattern === DECSACE_RECTANGLE_PATTERN) {
+            return parserStateResult(
+              false,
+              DECSACE_EXPECTED,
+              patterns,
+              "DECSACE 0 was ignored: the stream frame shows the rectangle extent",
+            )
+          }
+          if (!rectPattern.includes("#")) {
+            return notTestedResult("DECCARA not honoured, extent unobservable", { rect, stream })
+          }
           return parserStateResult(
             null,
             DECSACE_EXPECTED,
             { rect, stream },
-            "Both DECSACE extent modes left the same frame; the setting is not measurable on this parser",
+            "Both DECSACE extent modes left the same frame, which is neither the rectangle nor the stream extent",
           )
         }
         return parserStateResult(

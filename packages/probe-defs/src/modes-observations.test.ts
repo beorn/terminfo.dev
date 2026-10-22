@@ -330,6 +330,7 @@ test("DECAWM refuses one-row geometry before a second-row read and enables its o
 type Alt1049Scenario =
   | "roundtrip"
   | "ignored-entry"
+  | "uncleared-entry"
   | "erasure-mimic"
   | "marker-leak"
   | "broken-exit"
@@ -338,8 +339,15 @@ type Alt1049Scenario =
   | "cleanup-failure"
   | "constant-cursor"
 
-/** Minimal primary/alternate model: only the two seeded spans, the ALT marker and the cursor. */
-function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5) {
+/**
+ * Minimal primary/alternate model: only the two seeded spans, the ALT marker and the cursor. `mode`
+ * selects the private mode whose CSI ? h/l the model answers (1049 by default; ?47 and ?1047 share
+ * the roundtrip, #30702). The model restores the parked cursor on every exit, so a ?47/?1047 grade
+ * that changes under "broken-cursor" or "constant-cursor" would be grading a cursor it never saved.
+ */
+function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5, mode: 47 | 1047 | 1049 = 1049) {
+  const enter = `\x1b[?${mode}h`
+  const leave = `\x1b[?${mode}l`
   const writes: string[] = []
   const pad = (text: string) => (text + " ".repeat(cols)).slice(0, cols)
   const blank = " ".repeat(cols)
@@ -360,15 +368,16 @@ function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5) {
       if (sequence === "\x1b[2J\x1b[1;1HPRIMARY-A") primaryA = pad("PRIMARY-A")
       else if (sequence === "\x1b[3;1HPRIMARY-B") primaryB = pad("PRIMARY-B")
       else if (sequence === "\x1b[5;7H") cursor = { ...saved }
-      else if (sequence === "\x1b[?1049h") {
+      else if (sequence === enter) {
         if (scenario !== "ignored-entry") {
           onAlt = true
           cursor = { x: 0, y: 0 }
-          altA = blank
-          altB = blank
+          // An alternate buffer that keeps earlier content: neither blank nor the primary seed.
+          altA = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
+          altB = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
         }
       } else if (sequence === "\x1b[1;1HALT-MARK") altA = pad("ALT-MARK")
-      else if (sequence === "\x1b[?1049l") {
+      else if (sequence === leave) {
         if (scenario !== "broken-exit") {
           onAlt = false
           if (scenario === "erasure-mimic") {
@@ -378,7 +387,7 @@ function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5) {
           if (scenario === "marker-leak") primaryA = pad("ALT-MARK")
           if (scenario !== "broken-cursor") cursor = { ...saved }
         }
-      } else if (sequence === "\x1b[?1049l\x1b[0m") {
+      } else if (sequence === leave + "\x1b[0m") {
         if (scenario === "cleanup-failure") throw new Error("cleanup failed")
         onAlt = false
       }
@@ -470,6 +479,76 @@ test("1049 readback failure is inconclusive while a cleanup failure stays loud",
   expect(writes.at(-1)).toBe("\x1b[?1049l\x1b[0m")
   const cleanup = alt1049Context("cleanup-failure")
   expect(() => definition.termless!(cleanup.context)).toThrow("cleanup failed")
+})
+
+const ALT_SWAP = [
+  ["modes.altscreen-47", 47],
+  ["modes.altscreen-1047", 1047],
+] as const
+
+function altSwapHeadless(id: (typeof ALT_SWAP)[number][0]) {
+  const definition = modesProbes.find((item) => item.id === id)
+  if (!definition?.termless) throw new Error(`Missing ${id} headless callback`)
+  return definition.termless
+}
+
+test.each(ALT_SWAP)("%s grades the full seeded roundtrip supported from cells and saves no cursor", (id, mode) => {
+  for (const scenario of ["roundtrip", "broken-cursor", "constant-cursor"] as const) {
+    const { context, writes } = alt1049Context(scenario, 20, 5, mode)
+    const result = altSwapHeadless(id)(context)
+    expect(result.observation, scenario).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(result.assertions, scenario).toMatchObject([{ kind: "positive" }])
+    expect(writes, scenario).toContain(`\x1b[?${mode}h`)
+    expect(writes, scenario).not.toContain("\x1b[?1049h")
+    expect(writes.at(-1), scenario).toBe(`\x1b[?${mode}l\x1b[0m`)
+  }
+  // Without a saved-cursor claim the fixture needs only the two seeded rows.
+  const threeRows = alt1049Context("roundtrip", 20, 3, mode)
+  expect(altSwapHeadless(id)(threeRows.context).observation).toMatchObject({ outcome: "supported" })
+})
+
+test.each(ALT_SWAP)(
+  "%s grades an ignored entry, an erasure, a leaked marker and a lost exit unsupported",
+  (id, mode) => {
+    for (const scenario of ["ignored-entry", "erasure-mimic", "marker-leak", "broken-exit"] as const) {
+      const { context, writes } = alt1049Context(scenario, 20, 5, mode)
+      const result = altSwapHeadless(id)(context)
+      expect(result.observation, scenario).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+      expect(result.assertions, scenario).toMatchObject([{ kind: "negative" }])
+      expect(writes.at(-1), scenario).toBe(`\x1b[?${mode}l\x1b[0m`)
+    }
+  },
+)
+
+test("?47 leaves alternate clearing implementation-defined while ?1047 must clear on entry", () => {
+  const legacy = altSwapHeadless("modes.altscreen-47")(alt1049Context("uncleared-entry", 20, 5, 47).context)
+  expect(legacy.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const clearing = altSwapHeadless("modes.altscreen-1047")(alt1049Context("uncleared-entry", 20, 5, 1047).context)
+  expect(clearing.observation).toMatchObject({
+    outcome: "unsupported",
+    note: "CSI ? 1047 h did not clear the seeded primary spans",
+  })
+})
+
+test.each(ALT_SWAP)("%s stays inconclusive on an undersized grid or an unavailable readback", (id, mode) => {
+  for (const [cols, rows] of [
+    [6, 5],
+    [20, 2],
+  ] as const) {
+    const { context, writes } = alt1049Context("roundtrip", cols, rows, mode)
+    const result = altSwapHeadless(id)(context)
+    expect(result.observation, `${cols}x${rows}`).toMatchObject({
+      outcome: "inconclusive",
+      reason: "insufficient-evidence",
+    })
+    expect(result.assertions, `${cols}x${rows}`).toBeUndefined()
+    expect(writes, `${cols}x${rows}`).toEqual([])
+  }
+  const { context, writes } = alt1049Context("readback-failure", 20, 5, mode)
+  const failed = altSwapHeadless(id)(context)
+  expect(failed.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(failed.assertions).toBeUndefined()
+  expect(writes.at(-1)).toBe(`\x1b[?${mode}l\x1b[0m`)
 })
 
 test("alt-screen exit capture frames the primary, alternate and restored buffers", async () => {

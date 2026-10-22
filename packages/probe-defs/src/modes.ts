@@ -433,32 +433,56 @@ function alt1049SpanBlank(ctx: TermlessContext, row: number, length: number): bo
   return true
 }
 
+/** What one alternate-screen mode promises; ?47, ?1047 and ?1049 share the one seeded roundtrip below. */
+interface AltScreenMode {
+  /** The private mode the roundtrip sets and resets: CSI ? <mode> h enters, CSI ? <mode> l leaves. */
+  readonly mode: 47 | 1047 | 1049
+  /** Entry must blank the seeded spans (1049, 1047); ?47 leaves clearing implementation-defined. */
+  readonly clearsOnEnter: boolean
+  /** Only 1049 saves the cursor on entry and restores it on exit. */
+  readonly savesCursor: boolean
+}
+
+const ALT_SCREEN_1049: AltScreenMode = { mode: 1049, clearsOnEnter: true, savesCursor: true }
+const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: true, savesCursor: false }
+const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, savesCursor: false }
+
 /**
- * One measured 1049 roundtrip shared by the enter and exit callbacks. Existing ctx only: feed,
- * getCell, getCursor, getScrollback and cols. No rows API and no entry-homing requirement.
- * BOTH callbacks grade supported only when the entire seeded roundtrip holds: blank alternate
- * spans, distinct ALT-MARK readback, exact PRIMARY-A/PRIMARY-B restoration, ALT-MARK absent from
- * the restored position, and saved-cursor restoration. Inadequate geometry, an unmeasured seed,
- * an unavailable readback and an unattributed restoration failure are inconclusive; a negative needs
- * measured setup plus a feature-specific failed assertion. Cleanup returns to normal mode in
- * finally and stays loud: a cleanup failure is never swallowed into a result.
+ * One measured alternate-screen roundtrip, shared by the 1049 enter and exit callbacks and by the
+ * ?47 and ?1047 callbacks (#30702). Existing ctx only: feed, getCell, getCursor, getScrollback and
+ * cols. No rows API and no entry-homing requirement. EVERY callback grades supported only when the
+ * entire seeded roundtrip holds: alternate spans that left the primary seed (blank for the clearing
+ * modes 1049 and 1047; ?47's clearing is implementation-defined, so its spans only must not still
+ * show the seed), distinct ALT-MARK readback, exact PRIMARY-A/PRIMARY-B restoration, ALT-MARK absent
+ * from the restored position, and, for 1049 alone, saved-cursor restoration. Inadequate geometry,
+ * an unmeasured seed, an unavailable readback and an unattributed restoration failure are
+ * inconclusive; a negative needs measured setup plus a feature-specific failed assertion. 1049
+ * splits enter and exit into two features, so its restoration failure cannot be attributed to
+ * either; ?47 and ?1047 are each ONE swap feature (phase "roundtrip"), so a measured restoration
+ * failure is that feature's own negative. Cleanup leaves the mode in finally and stays loud: a
+ * cleanup failure is never swallowed into a result.
  */
-function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): ProbeResult {
-  const expected =
-    phase === "enter"
-      ? "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)"
-      : "CSI ? 1049 l restores the primary buffer and the saved cursor"
+function altScreenRoundtrip(
+  ctx: TermlessContext,
+  screen: AltScreenMode,
+  phase: "enter" | "exit" | "roundtrip",
+  expected: string,
+): ProbeResult {
+  const enter = `\x1b[?${screen.mode}h`
+  const leave = `\x1b[?${screen.mode}l`
   const rows = ctx.getScrollback().screenLines
   const cols = ctx.cols
   const needed = Math.max(ALT_1049_SEED_A.length, ALT_1049_SEED_B.length, ALT_1049_MARK.length)
-  // Pre-cursor parks at row 4/col 6 (\x1b[5;7H): the measured geometry must cover the seeds,
-  // the marker AND that saved cursor, so 5 rows are required, not just 3.
-  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 5 || cols < needed) {
+  // Pre-cursor parks at row 4/col 6 (\x1b[5;7H): 1049's measured geometry must cover the seeds,
+  // the marker AND that saved cursor, so 5 rows are required, not just 3. A mode that saves no
+  // cursor needs only the seeded rows.
+  const minRows = screen.savesCursor ? 5 : 3
+  if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < minRows || cols < needed) {
     return parserStateResult(
       null,
       expected,
       { rows, cols, needed },
-      "1049 fixture needs at least 5 visible rows and " + needed + " columns",
+      `${screen.mode} fixture needs at least ${minRows} visible rows and ${needed} columns`,
     )
   }
   ctx.feed("\x1b[2J\x1b[1;1H" + ALT_1049_SEED_A)
@@ -477,10 +501,13 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
   if (seedA !== ALT_1049_SEED_A || seedB !== ALT_1049_SEED_B) {
     return parserStateResult(null, expected, { rows, cols, seedA, seedB }, "Primary seed was not measured")
   }
-  // The saved-cursor claim is only measurable if the pre-cursor was actually parked at the
-  // commanded row 4/col 6. A constant getCursor would make before==after trivially true, so an
+  // The saved-cursor claim (1049 only) is only measurable if the pre-cursor was actually parked at
+  // the commanded row 4/col 6. A constant getCursor would make before==after trivially true, so an
   // unmeasured or mismatched pre-cursor is setup failure, checked before 1049h is fed.
-  if (!Number.isSafeInteger(before.x) || !Number.isSafeInteger(before.y) || before.x !== 6 || before.y !== 4) {
+  if (
+    screen.savesCursor &&
+    (!Number.isSafeInteger(before.x) || !Number.isSafeInteger(before.y) || before.x !== 6 || before.y !== 4)
+  ) {
     return parserStateResult(
       null,
       expected,
@@ -489,29 +516,39 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
     )
   }
   try {
-    ctx.feed("\x1b[?1049h")
+    ctx.feed(enter)
     let blankA: boolean
     let blankB: boolean
+    let seedShown: boolean
     try {
       blankA = alt1049SpanBlank(ctx, 0, ALT_1049_SEED_A.length)
       blankB = alt1049SpanBlank(ctx, 2, ALT_1049_SEED_B.length)
+      seedShown =
+        readAlt1049Span(ctx, 0, ALT_1049_SEED_A.length) === ALT_1049_SEED_A ||
+        readAlt1049Span(ctx, 2, ALT_1049_SEED_B.length) === ALT_1049_SEED_B
     } catch (error) {
       return alt1049ReadbackInconclusive(expected, "Alternate-buffer readback failed", error)
     }
-    if (!blankA || !blankB) {
+    // A clearing mode must show blank seeded spans. ?47 leaves clearing implementation-defined, so
+    // only a span that still shows its primary seed fails its entry; other alternate content passes.
+    const entered = screen.clearsOnEnter ? blankA && blankB : !seedShown
+    if (!entered) {
+      const state = { seedA, seedB, blankA, blankB, ...(!screen.clearsOnEnter && { seedShown }) }
       if (phase === "exit") {
         return parserStateResult(
           null,
           expected,
-          { seedA, seedB, blankA, blankB },
+          state,
           "Entry did not clear the seeded primary spans; exit cannot be attributed",
         )
       }
       return parserStateResult(
         false,
         expected,
-        { seedA, seedB, blankA, blankB },
-        "CSI ? 1049 h did not clear the seeded primary spans",
+        state,
+        screen.clearsOnEnter
+          ? `CSI ? ${screen.mode} h did not clear the seeded primary spans`
+          : `CSI ? ${screen.mode} h left a seeded primary span visible`,
       )
     }
     ctx.feed("\x1b[1;1H" + ALT_1049_MARK)
@@ -524,7 +561,7 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
     if (mark !== ALT_1049_MARK) {
       return parserStateResult(null, expected, { mark }, "Alternate marker was not measured")
     }
-    ctx.feed("\x1b[?1049l")
+    ctx.feed(leave)
     let restoredA: string
     let restoredB: string
     let leaked: boolean
@@ -542,24 +579,105 @@ function altScreen1049Roundtrip(ctx: TermlessContext, phase: "enter" | "exit"): 
     if (restoredA !== ALT_1049_SEED_A) failures.push("PRIMARY-A not restored")
     if (restoredB !== ALT_1049_SEED_B) failures.push("PRIMARY-B not restored")
     if (leaked) failures.push("ALT-MARK leaked into the restored position")
-    if (after.x !== before.x || after.y !== before.y) failures.push("saved cursor not restored")
+    if (screen.savesCursor && (after.x !== before.x || after.y !== before.y)) {
+      failures.push("saved cursor not restored")
+    }
     if (failures.length === 0) return parserStateResult(true, expected, state, undefined)
+    if (phase === "roundtrip") {
+      // One swap feature owns both directions, so a primary that did not come back, or a marker
+      // that reached it, after a measured seed, entry and marker is its own negative.
+      return parserStateResult(false, expected, state, `${screen.mode} roundtrip failed: ` + failures.join("; "))
+    }
     return parserStateResult(
       null,
       expected,
       state,
-      "1049 roundtrip failed: " +
+      `${screen.mode} roundtrip failed: ` +
         failures.join("; ") +
         "; cannot attribute failure to enter or exit: blank spans and ALT-MARK do not distinguish an alternate buffer from erasure, and cursor mismatch does not distinguish save from restore",
     )
   } finally {
-    ctx.feed("\x1b[?1049l\x1b[0m")
+    ctx.feed(leave + "\x1b[0m")
   }
 }
 
 function alt1049ReadbackInconclusive(expected: string, note: string, error: unknown): ProbeResult {
   const message = error instanceof Error ? error.message : String(error)
   return parserStateResult(null, expected, { readbackError: message }, note)
+}
+
+/** Row 1's seed for the margin fixture: one glyph in each of columns 1-8. */
+const LR_MARGIN_SEED = "ABCDEFGH"
+/** ICH at column 3 with no margins shifts C-G right one column and pushes H off column 8. */
+const LR_MARGIN_UNBOUNDED = "AB CDEFG"
+/** The same ICH under DECSLRM 3;6 shifts only columns 3-6: F drops at the right margin, G and H stay. */
+const LR_MARGIN_BOUNDED = "AB CDEGH"
+const LR_MARGIN_EXPECTED =
+  "Left-right margin mode constrains horizontal operations: ICH at column 3 under DECSLRM 3;6 drops F at column 6 and leaves G and H in columns 7-8"
+
+/**
+ * Headless DECLRMM read-back (#30702): DECSLRM 3;6 under ?69h, then ICH at column 3, read back from
+ * row 1's cells inside AND outside the margins. Honoured margins confine the shift to columns 3-6, so
+ * F drops at the right margin and G and H stay in columns 7-8; ignored margins shift the whole row
+ * exactly as the control does. The control runs the same ICH with no margins first, so a backend
+ * whose readback does not show ICH shifting the row has no observable for the claim (a coverage
+ * record, TEST TODO) rather than a negative. Cleanup resets the margins while ?69 is still set,
+ * where CSI s is DECSLRM rather than a cursor save, then leaves the mode.
+ */
+function leftRightMarginHeadless(ctx: TermlessContext): ProbeResult {
+  const width = LR_MARGIN_SEED.length
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < width) {
+    return parserStateResult(null, LR_MARGIN_EXPECTED, { cols: ctx.cols }, "Measured grid needs eight columns")
+  }
+  const readRow = (): string => {
+    let text = ""
+    for (let col = 0; col < width; col += 1) {
+      const char = ctx.getCell(0, col).char
+      text += isBlank(char) ? " " : char
+    }
+    return text
+  }
+  let margins = false
+  try {
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H" + LR_MARGIN_SEED)
+    const seed = readRow()
+    if (seed !== LR_MARGIN_SEED) {
+      return parserStateResult(null, LR_MARGIN_EXPECTED, { seed }, "Margin seed ABCDEFGH was not measured")
+    }
+    ctx.feed("\x1b[1;3H\x1b[@")
+    const control = readRow()
+    if (control !== LR_MARGIN_UNBOUNDED) {
+      return notTestedResult(
+        "ICH shifting row 1 right from column 3 in the headless readback (control frame not calibrated)",
+        {
+          seed,
+          control,
+        },
+      )
+    }
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H" + LR_MARGIN_SEED)
+    margins = true
+    ctx.feed("\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[@")
+    const target = readRow()
+    const state = { seed, control, margins: "3-6", target }
+    if (target === LR_MARGIN_BOUNDED) return parserStateResult(true, LR_MARGIN_EXPECTED, state)
+    if (target === LR_MARGIN_UNBOUNDED) {
+      return parserStateResult(
+        false,
+        LR_MARGIN_EXPECTED,
+        state,
+        "ICH under DECSLRM 3;6 shifted the whole row, exactly as the control without margins did",
+      )
+    }
+    return parserStateResult(
+      null,
+      LR_MARGIN_EXPECTED,
+      state,
+      "ICH under margins 3-6 left neither the bounded nor the unbounded shift",
+    )
+  } finally {
+    ctx.feed((margins ? "\x1b[s" : "") + "\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+  }
 }
 
 const DECSSCLS_JUMP = "\x1b[9 p"
@@ -940,13 +1058,26 @@ async function decsscls(ctx: TermContext): Promise<ProbeResult> {
 
 export const modesProbes: ProbeDefinition[] = [
   // Alt screen enter — measured roundtrip (narrow CTO-approved 1049 slice)
-  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) => altScreen1049Roundtrip(ctx, "enter")),
+  decrpmModeProbe("modes.alt-screen.enter", 1049, (ctx) =>
+    altScreenRoundtrip(
+      ctx,
+      ALT_SCREEN_1049,
+      "enter",
+      "CSI ? 1049 h switches to a cleared alternate buffer (full seeded roundtrip)",
+    ),
+  ),
 
   // Alt screen exit
   {
     ...probe(
       "modes.alt-screen.exit",
-      (ctx) => altScreen1049Roundtrip(ctx, "exit"),
+      (ctx) =>
+        altScreenRoundtrip(
+          ctx,
+          ALT_SCREEN_1049,
+          "exit",
+          "CSI ? 1049 l restores the primary buffer and the saved cursor",
+        ),
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 3) {
           return {
@@ -1265,19 +1396,7 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.left-right-margin",
-      (ctx) => {
-        ctx.feed("\x1b[?69h")
-        const mode = ctx.getMode("leftRightMargin")
-        // #30574: the runtime getter can be null despite its current boolean type.
-        const pass = mode === null ? null : mode === true
-        ctx.feed("\x1b[?69l")
-        return parserStateResult(
-          null,
-          "Left-right margin mode constrains horizontal operations",
-          { mode: pass },
-          "Mode metadata does not measure margins",
-        )
-      },
+      (ctx) => leftRightMarginHeadless(ctx),
       async (ctx) => {
         const refusal = captureRefusal(ctx, 2, 8, "Left/right margin")
         if (refusal) return refusal
@@ -1334,22 +1453,7 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.altscreen-47",
-      (ctx) => {
-        ctx.feed("\x1b[?47h")
-        const enteredMode = ctx.getMode("altScreen")
-        // #30574: keep unknown runtime state distinct from a measured false.
-        const entered = enteredMode === null ? null : enteredMode === true
-        ctx.feed("\x1b[?47l")
-        const exitedMode = ctx.getMode("altScreen")
-        // #30574: unknown is not a measured failure to leave the alternate screen.
-        const exited = exitedMode === null ? null : exitedMode === false
-        return parserStateResult(
-          null,
-          "?47 swaps the visible screen buffer",
-          { entered, exited },
-          "Mode metadata does not measure the buffer",
-        )
-      },
+      (ctx) => altScreenRoundtrip(ctx, ALT_SCREEN_47, "roundtrip", "?47 swaps the visible screen buffer"),
       async (ctx) => {
         const refusal = captureRefusal(ctx, 1, 8, "?47 alternate screen")
         if (refusal) return refusal
@@ -1411,22 +1515,8 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.altscreen-1047",
-      (ctx) => {
-        ctx.feed("\x1b[?1047h")
-        const enteredMode = ctx.getMode("altScreen")
-        // #30574: keep unknown runtime state distinct from a measured false.
-        const entered = enteredMode === null ? null : enteredMode === true
-        ctx.feed("\x1b[?1047l")
-        const exitedMode = ctx.getMode("altScreen")
-        // #30574: unknown is not a measured failure to leave the alternate screen.
-        const exited = exitedMode === null ? null : exitedMode === false
-        return parserStateResult(
-          null,
-          "?1047 swaps and clears the visible alternate buffer",
-          { entered, exited },
-          "Mode metadata does not measure the buffer",
-        )
-      },
+      (ctx) =>
+        altScreenRoundtrip(ctx, ALT_SCREEN_1047, "roundtrip", "?1047 swaps and clears the visible alternate buffer"),
       async (ctx) => {
         const refusal = captureRefusal(ctx, 1, 8, "?1047 alternate screen")
         if (refusal) return refusal

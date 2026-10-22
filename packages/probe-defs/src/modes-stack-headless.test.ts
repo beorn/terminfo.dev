@@ -1,9 +1,11 @@
 /**
  * @failure The six XT stack probes grade a headless engine on DA1 responsiveness instead of the
  *   saved/restored state, or grade a backend that reports no attributes, palette or wrap state as a
- *   negative.
+ *   negative; or the left/right margin probe grades mode metadata instead of an ICH its margins
+ *   confine, or grades a backend whose ICH shows no shift as a negative.
  * @level l1
- * @consumer Headless Modes observations for the six XT stack cells on every termless engine (#30700).
+ * @consumer Headless Modes observations for the six XT stack cells and the left/right margin cell on
+ *   every termless engine (#30700, #30702).
  * @testonly none
  */
 import { expect, test } from "vitest"
@@ -29,12 +31,16 @@ interface ScreenOptions {
   wrapOff?: boolean
   /** Output the backend emits for every stack operation (a misbehaving engine). */
   stackOutput?: string
+  /** The backend implements DECLRMM (?69) and DECSLRM. */
+  margins?: boolean
+  /** The backend implements ICH. */
+  insertChars?: boolean
 }
 
 const DEFAULT_INDEX_1: Rgb = { r: 205, g: 0, b: 0 }
-const TOKEN = /\x1b\][^\x07]*\x07|\x1b\[[0-9;?#]*[A-Za-z{}]|[^\x1b]/gu
+const TOKEN = /\x1b\][^\x07]*\x07|\x1b\[[0-9;?#]*[A-Za-z{}@]|[^\x1b]/gu
 
-/** A tiny parser with exactly the state the six stack fixtures write and read back. */
+/** A tiny parser with exactly the state the six stack fixtures and the margin fixture write and read back. */
 function fakeScreen(options: ScreenOptions = {}) {
   const cols = options.cols ?? 8
   const rows = options.rows ?? 3
@@ -45,6 +51,8 @@ function fakeScreen(options: ScreenOptions = {}) {
   const osc4 = options.osc4 ?? true
   const wrapOff = options.wrapOff ?? true
   const stackOutput = options.stackOutput ?? ""
+  const margins = options.margins ?? true
+  const insertChars = options.insertChars ?? true
   const blank = () => ({ char: " ", bold: false, italic: false, fg: null as Rgb | null })
   let cells = Array.from({ length: rows }, () => Array.from({ length: cols }, blank))
   const palette = new Map<number, Rgb>([[1, { ...DEFAULT_INDEX_1 }]])
@@ -57,6 +65,9 @@ function fakeScreen(options: ScreenOptions = {}) {
   let savedWrap: boolean | null = null
   let cursor = { x: 0, y: 0 }
   let pendingWrap = false
+  let leftRightMode = false
+  let leftMargin = 0
+  let rightMargin = cols - 1
   const feeds: string[] = []
 
   const put = (char: string) => {
@@ -133,14 +144,53 @@ function fakeScreen(options: ScreenOptions = {}) {
       case "\x1b]104\x07":
         palette.set(1, { ...DEFAULT_INDEX_1 })
         return ""
-      default:
+      case "\x1b[?69h":
+        if (margins) leftRightMode = true
+        return ""
+      case "\x1b[?69l":
+        leftRightMode = false
+        leftMargin = 0
+        rightMargin = cols - 1
+        return ""
+      default: {
         if (token.startsWith("\x1b]4;1;")) {
           if (osc4) palette.set(1, parseRgb(token))
+          return ""
+        }
+        const cup = /^\x1b\[(\d+);(\d+)H$/u.exec(token)
+        if (cup) {
+          cursor = { x: Number(cup[2]) - 1, y: Number(cup[1]) - 1 }
+          pendingWrap = false
+          return ""
+        }
+        // CSI Pl;Pr s is DECSLRM only under DECLRMM (it homes the cursor); otherwise it saves the cursor.
+        const slrm = /^\x1b\[(\d*);?(\d*)s$/u.exec(token)
+        if (slrm) {
+          if (leftRightMode) {
+            leftMargin = Number(slrm[1] || 1) - 1
+            rightMargin = Number(slrm[2] || cols) - 1
+            cursor = { x: 0, y: 0 }
+            pendingWrap = false
+          }
+          return ""
+        }
+        const ich = /^\x1b\[(\d*)@$/u.exec(token)
+        if (ich) {
+          const row = cells[cursor.y]
+          if (!row) throw new Error("cursor row off the grid")
+          const inside = !leftRightMode || (cursor.x >= leftMargin && cursor.x <= rightMargin)
+          if (insertChars && inside) {
+            const end = leftRightMode ? rightMargin : cols - 1
+            const count = Math.min(Number(ich[1] || 1), end - cursor.x + 1)
+            for (let col = end; col >= cursor.x + count; col -= 1) row[col] = row[col - count] ?? blank()
+            for (let col = cursor.x; col < cursor.x + count; col += 1) row[col] = blank()
+          }
           return ""
         }
         if (token.startsWith("\x1b")) throw new Error(`unmodelled sequence ${JSON.stringify(token)}`)
         put(token)
         return ""
+      }
     }
   }
   const feedCapture = (text: string): string => {
@@ -166,6 +216,7 @@ function fakeScreen(options: ScreenOptions = {}) {
     feeds,
     depth: () => sgrSaved.length + paletteSaved.length,
     wrap: () => autoWrap,
+    margins: () => ({ leftRightMode, leftMargin, rightMargin }),
   }
 }
 
@@ -261,4 +312,45 @@ test.each(ALL)("%s keeps a stack operation that answers as an invalid reply and 
   })
   expect(screen.depth(), id).toBe(0)
   expect(screen.wrap(), id).toBe(true)
+})
+
+const MARGIN = "modes.left-right-margin"
+
+test.each([
+  ["honoured margins", "supported", {}, "AB CDEGH"],
+  ["ignored margins", "unsupported", { margins: false }, "AB CDEFG"],
+] as const)("%s grade %s from row 1's cells inside and outside DECSLRM 3;6", (_label, outcome, options, target) => {
+  const screen = fakeScreen(options)
+  const result = headless(MARGIN)(screen.context)
+  expect(result.pass).toBe(outcome === "supported")
+  expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+  if (outcome === "unsupported") expect(result.observation?.note).toContain("shifted the whole row")
+  expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
+  expect(JSON.parse(result.response ?? "{}")).toMatchObject({ seed: "ABCDEFGH", control: "AB CDEFG", target })
+  expect(screen.feeds.join("")).toContain("\x1b[?69h\x1b[3;6s\x1b[1;3H\x1b[@")
+  expect(screen.feeds.at(-1)).toBe("\x1b[s\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+  expect(screen.margins()).toEqual({ leftRightMode: false, leftMargin: 0, rightMargin: 7 })
+})
+
+test("modes.left-right-margin records a readback whose ICH shows no shift as no observable (TEST TODO)", () => {
+  const screen = fakeScreen({ insertChars: false })
+  const result = headless(MARGIN)(screen.context)
+  expect(result.pass).toBe(false)
+  expect(result.observation).toBeUndefined()
+  expect(result.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("ICH") })
+  expect(result.assertions).toBeUndefined()
+  expect(screen.feeds.join("")).not.toContain("\x1b[?69h")
+  expect(screen.feeds.at(-1)).toBe("\x1b[?69l\x1b[0m\x1b[2J\x1b[H")
+})
+
+test("modes.left-right-margin stays inconclusive on a grid narrower than its eight-column seed, before any bytes", () => {
+  const screen = fakeScreen({ cols: 7 })
+  const result = headless(MARGIN)(screen.context)
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    note: "Measured grid needs eight columns",
+  })
+  expect(result.assertions).toBeUndefined()
+  expect(screen.feeds).toEqual([])
 })

@@ -2,7 +2,9 @@
  * @failure Editing capture fixtures advertised a cell-readback claim the application collector
  *   cannot make: they returned only a cursor-position measurement, with no pre-edit control or
  *   post-edit target a reviewer could judge. A missing capture branch must not silently change
- *   the cursor-only fallback, and an undersized terminal must refuse before writing.
+ *   the cursor-only fallback, and an undersized terminal must refuse before writing. The DECSACE
+ *   parser arm must classify its recorded frame pair: a measured ignore of either extent is a
+ *   negative, and a DECCARA that inverts nothing leaves the extent unobservable (#30702).
  * @level l1
  * @consumer App probe pixel frames for editing operations.
  * @testonly none
@@ -14,7 +16,7 @@ import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { captureStabilityPair } from "./region-readback.ts"
 import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ObservationFrame, ProbeDefinition, TermContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, TermContext, TermlessContext } from "./types.ts"
 
 const CAPTURE_IDS = [
   "editing.insert-chars",
@@ -413,6 +415,62 @@ test("editing.decsace parser arm refuses a grid below its 2x8 fixture", () => {
   const exact = definition.termless!(termless(2, 8))
   expect(exact.observation?.outcome).toBe("supported")
   expect(String(exact.assertions?.[0]?.observed)).toContain("##")
+})
+
+const DECSACE_RECT = ".##.....|.##....."
+const DECSACE_STREAM = ".#######|###....."
+
+/**
+ * A 2x8 headless model whose cells after each DECSACE extent's DECCARA carry exactly the declared
+ * inverse pattern, so a test states the frame pair a terminal recorded and reads the arm's class.
+ */
+function decsacePairContext(rect: string, stream: string): TermlessContext {
+  const chars = ["abcdefgh", "ijklmnop"]
+  let pattern = ""
+  return headlessContext({
+    cols: 8,
+    feed: (text) => {
+      if (text.includes("\x1b[2*x")) pattern = rect
+      else if (text.includes("\x1b[0*x")) pattern = stream
+    },
+    getCell: (row, col) =>
+      ({ char: chars[row]?.[col] ?? " ", inverse: pattern.split("|")[row]?.[col] === "#" }) as ReturnType<
+        TermlessContext["getCell"]
+      >,
+    getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
+  })
+}
+
+test.each([
+  ["the honoured pair", "supported", DECSACE_RECT, DECSACE_STREAM, undefined],
+  ["both frames on the stream pattern", "unsupported", DECSACE_STREAM, DECSACE_STREAM, "DECSACE 2 was ignored"],
+  ["both frames on the rectangle pattern", "unsupported", DECSACE_RECT, DECSACE_RECT, "DECSACE 0 was ignored"],
+] as const)("editing.decsace grades %s %s from the recorded frames", (_label, outcome, rect, stream, note) => {
+  const result = find("editing.decsace").termless!(decsacePairContext(rect, stream))
+  expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+  if (note) expect(String(result.observation?.note)).toContain(note)
+  expect(result.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
+  expect(JSON.parse(result.response ?? "{}")).toEqual({ rect, stream })
+})
+
+test("editing.decsace with no inverse cell in either frame records the extent as unobservable (TEST TODO)", () => {
+  const none = "........|........"
+  const result = find("editing.decsace").termless!(decsacePairContext(none, none))
+  expect(result.pass).toBe(false)
+  expect(result.observation).toBeUndefined()
+  expect(result.notTested).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: "DECCARA not honoured, extent unobservable",
+  })
+  expect(result.assertions).toBeUndefined()
+})
+
+test("editing.decsace keeps any other agreeing pair inconclusive by name, never a pass", () => {
+  const corner = ".#......|........"
+  const result = find("editing.decsace").termless!(decsacePairContext(corner, corner))
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("neither the rectangle nor the stream extent")
+  expect(result.assertions).toBeUndefined()
 })
 
 test("editing.decsace without a capture adapter still clears its DECSACE extent", async () => {
