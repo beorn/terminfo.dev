@@ -114,7 +114,7 @@ Probe: "SGR bold"
 
 ## App Terminal Overlap
 
-Kitty and Ghostty have headless parser results too, but neither has a sealed current run, so neither is on the site yet (#30759: only current runs get a page). Alacritty and WezTerm have headless results here only; these do not establish app rendering. The linked result page's badge names the measured mode.
+Kitty and Ghostty have headless parser results too, but neither has a sealed current run, so neither appears on this site yet: a terminal is listed here only once it has a current, sealed measurement. Alacritty and WezTerm have headless results here only; these do not establish app rendering. The linked result page's badge names the measured mode.
 
 The two test types answer different questions:
 

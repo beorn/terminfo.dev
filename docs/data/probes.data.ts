@@ -104,8 +104,8 @@ export interface ProbeData {
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
   historicalByBackend: Record<string, HistoricalPublicCurrentResult>
-  currentRunCount: number
   historicalTable: Readonly<Record<string, Readonly<Record<string, CellState>>>>
+  currentRunCount: number
   releaseScope: ReleaseScope & { line: string }
   releaseBars: Record<string, CurrentAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
@@ -293,8 +293,8 @@ export function loadFullProbes(): ProbeData {
     selected: published.projection,
     selectedByBackend,
     historicalByBackend: published.historicalByBackend,
-    currentRunCount: published.projection.currentRunCount,
     historicalTable: projection.historical.table,
+    currentRunCount: published.projection.currentRunCount,
     releaseScope,
     releaseBars,
     releaseShares,
@@ -311,8 +311,13 @@ export function loadFullProbes(): ProbeData {
 }
 
 export default {
-  load(): Omit<ProbeData, "selected"> {
-    const { selected: _selected, ...client } = loadFullProbes()
+  /**
+   * #30759 Slice A (@cto 13cc5eef, ruling (b)): the historical run projection is not part of the
+   * client payload — it is ~5.6 MB of schema-2 runs that no route can select any more. It stays
+   * available to build-time readers through loadFullProbes().
+   */
+  load(): Omit<ProbeData, "selected" | "historicalByBackend" | "historicalTable"> {
+    const { selected: _selected, historicalByBackend: _historical, historicalTable: _table, ...client } = loadFullProbes()
     return client
   },
 }

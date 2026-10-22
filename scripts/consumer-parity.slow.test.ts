@@ -742,7 +742,7 @@ describe("selected-run consumer parity", () => {
   it("ships current cells without global selection history while routes retain versions", () => {
     const site = probesLoader.load()
     expect(Object.hasOwn(site, "selected")).toBe(false)
-    expect(site.historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+    expect(loadFullProbes().historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
 
     const server = loadProbes()
     expect(server.selected.historical.versions["mux:screen"]?.map((version) => version.target.version)).toEqual([
@@ -772,7 +772,7 @@ describe("selected-run consumer parity", () => {
         }
       }
       expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
-      expect(site.historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
+      expect(loadFullProbes().historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
       // Current v3 must preserve exact sealed status while publication independently controls bytes.
       const projection = currentResults.loadCurrentResults("").projection
       const current = projection.current["app:kitty"]
@@ -986,7 +986,7 @@ describe("selected-run consumer parity", () => {
       const v3 = JSON.parse(readFileSync(join(out, "api", "v3", "data.json"), "utf8")) as {
         current: Record<string, { sha256: string }>
       }
-      expect(site.historicalByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
+      expect(loadFullProbes().historicalByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
       expect(site.stats.kitty).toMatchObject({
         score: { all: 273, supported: 1 },
         counts: { supported: 1, unsupported: 1, "test-todo": 271 },
@@ -1090,7 +1090,7 @@ describe("selected-run consumer parity", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
-    expect(site.historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+    expect(loadFullProbes().historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
     expect(site.stats.screen).toMatchObject({
       score: { all: 273, supported: 0 },
       counts: { "test-todo": 273 },
@@ -1256,7 +1256,7 @@ describe("selected-run consumer parity", () => {
       expect(unreviewed).toContain("Not supported by:")
       cell.note = "Reviewed Kitty sixel observation note"
       cell.chain.correctionId = "reviewed-sixel"
-      expect(probesLoader.load().historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.note).toBe(
+      expect(loadFullProbes().historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.note).toBe(
         "Reviewed Kitty sixel observation note",
       )
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
@@ -1392,7 +1392,7 @@ it("keeps a historical native parser on its own route without promoting it to cu
     expect(page?.params.id).toBe("headless-ghostty-native")
     expect(page?.params.total).toBe("")
     expect(data.selectedByBackend["ghostty-native"]).toBeUndefined()
-    expect(data.historicalByBackend["ghostty-native"]?.selected.sha256).toBe(fixture.runSha256)
+    expect(loadFullProbes().historicalByBackend["ghostty-native"]?.selected.sha256).toBe(fixture.runSha256)
     expect(pages.find((entry) => entry.params.backendId === "ghostty")?.params.id).toBe("ghostty")
   } finally {
     probes?.mockRestore()
@@ -1483,7 +1483,7 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   app.target = { ...app.target, kind: "app", id: "ghostty" }
   const native = structuredClone(fixture.selected) as unknown as SelectedVersion
   native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
-  const targets = vi.spyOn(currentResults, "historicalCompatibilityTargets").mockReturnValue(
+  const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
     new Map([
       ["ghostty", { contextKey: "app:ghostty", selected: app }],
       ["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }],

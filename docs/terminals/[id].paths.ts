@@ -40,15 +40,6 @@ export default {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
 
-    const historicalBackends = Object.entries(data.historicalByBackend)
-      .filter(([key]) => !data.selectedByBackend[key])
-      .map(([key, entry]) => ({
-        name: key,
-        version: entry.selected.target.version,
-        engine: "",
-        type: entry.selected.target.kind,
-        ...(entry.selected.target.os && { platforms: [entry.selected.target.os] }),
-      }))
     // #30759 Slice A (@cto f1504b5c R2): only a current run gets a page, so a historical-only
     // target can neither be listed nor have its run data serialized into a page bundle.
     const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {

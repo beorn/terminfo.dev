@@ -26,15 +26,8 @@ const categoryFilter = ref('all')
 const baselineFilter = ref('all')
 const platformFilter = ref('all')
 
-// Use the same current-first selection as terminal detail pages. History stays historical.
-// #30759 Slice A: only a current run is displayed; a historical-only target has no row.
+// Only a current run is displayed; a historical-only target has no row.
 const displayedSelections = { ...data.selectedByBackend }
-const historicalBackends = []
-  .filter(([name]) => !data.selectedByBackend[name])
-  .map(([name, { selected }]) => ({
-    name, version: selected.target.version, type: selected.target.kind,
-    platforms: selected.target.os ? [selected.target.os] : [],
-  }))
 
 // Baseline metadata for filter dropdown
 const baselineOptions = [
