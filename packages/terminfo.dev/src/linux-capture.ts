@@ -38,6 +38,24 @@ function digest(bytes: Buffer): string {
 }
 
 /**
+ * The PNG conversion a capture writes (#30764). Two things made identical pixels hash differently:
+ * magick stamps `tIME` and `date:*` text into every conversion, and it copies the XWD window name
+ * into a `tEXt comment` — 715 of the 2,724 duplicate-image groups on main, measured 2026-10-22,
+ * differ only by that name ("Alacritty", "bun", "osc0-icon-title"). Excluding the date and time
+ * chunks and clearing the comment gives one evidence hash per screen; `-strip` would do the same but
+ * also drops cHRM and bKGD, which describe the pixels.
+ */
+export const PNG_CONVERSION_ARGS = [
+  "xwd:-",
+  "-define",
+  "png:exclude-chunks=date,time",
+  "-set",
+  "comment",
+  "",
+  "png:-",
+] as const
+
+/**
  * The terminal's own drawing surface in one captured frame: the region the terminal painted, which
  * is the text area's container and nothing else.
  *
@@ -244,11 +262,7 @@ export async function createLinuxCapture(directory: string, executable: LiveExec
     if (before !== geometry) throw new Error(`Capture window ${windowId} geometry changed during ${featureId}`)
     const original = await command("xwd", ["-id", windowId, "-nobdrs", "-silent"])
     const capturedAt = Date.now()
-    // Date and time chunks are the only thing that separates two captures of identical pixels:
-    // magick stamps tIME and date:* text into every PNG, so a rerun of an unchanged screen minted
-    // a new evidence hash and a full new file set (#30764). Exclude exactly those chunks rather
-    // than -strip, which would also drop the image profile data.
-    const png = await command("magick", ["xwd:-", "-define", "png:exclude-chunks=date,time", "png:-"], original)
+    const png = await command("magick", [...PNG_CONVERSION_ARGS], original)
     if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
       throw new Error(`Capture conversion did not produce PNG bytes for ${featureId}`)
     }

@@ -20,7 +20,14 @@ import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
-import { createLinuxCapture, drawnSurface, screenPixels, textAreaOrigin, windowPixels } from "./linux-capture.ts"
+import {
+  createLinuxCapture,
+  drawnSurface,
+  PNG_CONVERSION_ARGS,
+  screenPixels,
+  textAreaOrigin,
+  windowPixels,
+} from "./linux-capture.ts"
 
 import { capturePixels, cellRectangle, command, finishCapture, type CapturedFrame } from "./capture-core.ts"
 
@@ -348,44 +355,94 @@ test.runIf(process.platform === "linux")(
     writeFileSync(release, "continue")
     const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
     await capture({ featureId: "fixture", role: "control", label: "fixture frame" })
-    // -strip would also drop the image profile data; the date and time chunks are the whole defect.
     // Later magick calls decode the frame for pixels; the conversion is the first one.
-    expect(readFileSync(argsPath, "utf8").trim().split("\n").slice(0, 4)).toEqual([
-      "xwd:-",
-      "-define",
-      "png:exclude-chunks=date,time",
-      "png:-",
+    expect(readFileSync(argsPath, "utf8").trim().split("\n").slice(0, PNG_CONVERSION_ARGS.length)).toEqual([
+      ...PNG_CONVERSION_ARGS,
     ])
   },
 )
 
 /**
- * Two runs of an unchanged screen must mint one evidence hash. ImageMagick is only on the capture
- * hosts, so this proof runs where it exists and names the missing binary elsewhere rather than
- * passing on a fixture that would agree with itself.
+ * Two runs of an unchanged screen must mint one evidence hash, whatever window name the XWD carries.
+ * ImageMagick is only on the capture hosts (flakes runtimeTools, not the plain shell PATH), so the
+ * proof runs where it exists; the test's own NAME carries that reason, because a skipIf reports only
+ * that it skipped.
  */
 const realMagick = (() => {
   const probe = spawnSync("magick", ["-version"], { encoding: "utf8" })
   return probe.status === 0 ? "magick" : undefined
 })()
 
+/** The XWD's window-name field, rewritten to a different name of the caller's choosing. */
+function renamedXwd(screen: Buffer, name: string): Buffer {
+  const headerSize = screen.readUInt32BE(0)
+  if (headerSize < 100 || headerSize > screen.length) throw new Error(`Unusable XWD header size ${headerSize}`)
+  const header = Buffer.alloc(100 + name.length + 1)
+  screen.copy(header, 0, 0, 100)
+  header.write(name, 100, "latin1")
+  header.writeUInt32BE(100 + name.length + 1, 0)
+  return Buffer.concat([header, screen.subarray(headerSize)])
+}
+
+/** Every chunk of a PNG as `TYPE` or `TYPE:key` for the text chunks, in file order. */
+function pngChunks(png: Buffer): string[] {
+  if (png.subarray(0, 8).toString("latin1") !== "\x89PNG\r\n\x1a\n") throw new Error("Not a PNG")
+  const keys: string[] = []
+  let at = 8
+  while (at < png.length) {
+    const length = png.readUInt32BE(at)
+    const type = png.subarray(at + 4, at + 8).toString("latin1")
+    if (type === "tEXt" || type === "iTXt" || type === "zTXt") {
+      const body = png.subarray(at + 8, at + 8 + length)
+      keys.push(`${type}:${body.subarray(0, body.indexOf(0)).toString("latin1")}`)
+    } else keys.push(type)
+    at += 12 + length
+    if (type === "IEND") break
+  }
+  return keys
+}
+
+/** One text chunk's value, or undefined when the chunk is absent. */
+function pngTextValue(png: Buffer, key: string): string | undefined {
+  let at = 8
+  while (at < png.length) {
+    const length = png.readUInt32BE(at)
+    const type = png.subarray(at + 4, at + 8).toString("latin1")
+    const body = png.subarray(at + 8, at + 8 + length)
+    const split = body.indexOf(0)
+    if (type === "tEXt" && split >= 0 && body.subarray(0, split).toString("latin1") === key) {
+      return body.subarray(split + 1).toString("latin1")
+    }
+    at += 12 + length
+    if (type === "IEND") break
+  }
+  return undefined
+}
+
 test.skipIf(realMagick === undefined)(
-  "two conversions of the same screen give one sha256, and the same screen without the exclusion does not (#30764)",
+  "no tIME, no date text and no window name reach the PNG, so one screen keeps one sha256 (#30764; skipped where magick is not on PATH)",
   () => {
     const screen = spawnSync("magick", ["-size", "40x20", "xc:red", "xwd:-"]).stdout
     expect(screen.length).toBeGreaterThan(0)
-    const convert = (args: string[]) =>
-      createHash("sha256")
-        .update(spawnSync("magick", args, { input: screen }).stdout)
-        .digest("hex")
-    // Past one whole second, so a stamped clock would have moved between the two conversions.
-    const tick = () => spawnSync("sleep", ["1.1"])
-    const fixed = convert(["xwd:-", "-define", "png:exclude-chunks=date,time", "png:-"])
-    tick()
-    expect(convert(["xwd:-", "-define", "png:exclude-chunks=date,time", "png:-"])).toBe(fixed)
-    const plain = convert(["xwd:-", "png:-"])
-    tick()
-    expect(convert(["xwd:-", "png:-"])).not.toBe(plain)
+    const convert = (input: Buffer, args: readonly string[]) =>
+      spawnSync("magick", [...args], { input, env: { ...process.env, SOURCE_DATE_EPOCH: "" } }).stdout
+    const fixed = convert(renamedXwd(screen, "first-window"), PNG_CONVERSION_ARGS)
+    const renamed = convert(renamedXwd(screen, "second-window"), PNG_CONVERSION_ARGS)
+
+    expect(pngChunks(fixed)).not.toContain("tIME")
+    expect(pngChunks(fixed).filter((key) => /^(tEXt|iTXt|zTXt):date:/.test(key))).toEqual([])
+    // The comment chunk stays, but the window name inside it does not.
+    expect(pngTextValue(fixed, "comment")).toBe("")
+    // The whole point: identical pixels under a different window name are the same evidence.
+    expect(createHash("sha256").update(renamed).digest("hex")).toBe(createHash("sha256").update(fixed).digest("hex"))
+
+    // Control: without the exclusion the same input is unstable, and that is what the tIME assert sees.
+    const plain = pngChunks(convert(renamedXwd(screen, "first-window"), ["xwd:-", "png:-"]))
+    expect(plain).toContain("tIME")
+    expect(plain).toContain("tEXt:comment")
+    expect(pngTextValue(convert(renamedXwd(screen, "first-window"), ["xwd:-", "png:-"]), "comment")).toBe(
+      "first-window",
+    )
   },
   60_000,
 )
