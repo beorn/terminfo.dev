@@ -292,16 +292,14 @@ export function decisiveCells(counts: { readonly supported: number; readonly uns
 export const NOT_MEASURED_TEXT = "Not measured yet"
 
 /**
- * The readout of one backend × baseline row, for both pages that draw it (#30763): a decided row
- * prints its percentage and the fraction behind it, byte-identically wherever it appears; a row
- * whose run decided nothing prints the not-measured words instead of a false "0%", and keeps what
- * the row looked at in its title. Nothing else gets a title.
+ * The one thing both baseline pages share for a row that decided nothing (#30763): the not-measured
+ * words, with what the row looked at in its title. A row with any decisive cell returns undefined and
+ * each page keeps its own decided-row text, byte-identical to what it printed before the fix — the
+ * defect is the false "0%", and nothing beside it may move.
  */
-export function baselineRowReadout(
+export function notMeasuredReadout(
   counts: Readonly<Record<CapabilityStatus, number>>,
-  score: { readonly supported: number; readonly all: number },
-  pct: number,
-): { text: string; title?: string } {
-  if (decisiveCells(counts) === 0) return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }
-  return { text: `${pct}% · ${score.supported}/${score.all}` }
+): { text: string; title: string } | undefined {
+  if (decisiveCells(counts) > 0) return undefined
+  return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }
 }

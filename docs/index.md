@@ -19,7 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { baselineRowReadout, currentCoverageSentence, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { currentCoverageSentence, NOT_MEASURED_TEXT, notMeasuredReadout, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -171,11 +171,15 @@ function coverageLabel(backendName) {
   return currentCoverageSentence(bar)
 }
 
-// #30763: one readout for these rows on every page that draws them; a missing baseline row has none.
+// #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
+// it printed before the fix.
 function baselineRow(backendName, baseline) {
   const stats = data.baselineStats[backendName]?.[baseline]
   if (!stats) return { text: '', title: undefined }
-  return baselineRowReadout(stats.counts, stats.score, stats.pct)
+  return notMeasuredReadout(stats.counts) ?? {
+    text: `${stats.pct}% · ${stats.score.supported}/${stats.score.all} supported / all`,
+    title: undefined,
+  }
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available

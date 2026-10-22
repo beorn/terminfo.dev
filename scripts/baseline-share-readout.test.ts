@@ -8,7 +8,7 @@
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 import { describe, expect, it } from "vitest"
 import { loadFullProbes } from "../docs/data/probes.data.ts"
-import { baselineRowReadout, decisiveCells, NOT_MEASURED_TEXT } from "../docs/data/release-scope.ts"
+import { decisiveCells, NOT_MEASURED_TEXT, notMeasuredReadout } from "../docs/data/release-scope.ts"
 
 const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
   supported: 0,
@@ -20,11 +20,11 @@ const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<Capa
 })
 
 describe("#30763 baseline row readout", () => {
-  it("names the three shapes in literal text", () => {
+  it("owns only the not-measured branch; a decided row is the page's own text", () => {
     // Windows Terminal's rich row: 88 TEST TODO + 11 TEST FAILURE, nothing decided.
     const held = counts({ "test-todo": 88, "test-failure": 11 })
     expect(decisiveCells(held)).toBe(0)
-    expect(baselineRowReadout(held, { supported: 0, all: 99 }, 0)).toEqual({
+    expect(notMeasuredReadout(held)).toEqual({
       text: NOT_MEASURED_TEXT,
       title: "0 Supported · 0 Unsupported · 0 Untestable · 88 TEST TODO · 11 TEST FAILURE",
     })
@@ -33,11 +33,11 @@ describe("#30763 baseline row readout", () => {
     // vt220.js rich: 36 judged unsupported, so its zero is a measured zero.
     const judged = counts({ unsupported: 36, untestable: 12, "test-todo": 33, "test-failure": 18 })
     expect(decisiveCells(judged)).toBe(36)
-    expect(baselineRowReadout(judged, { supported: 0, all: 99 }, 0)).toEqual({ text: "0% · 0/99" })
+    expect(notMeasuredReadout(judged)).toBeUndefined()
 
     // Alacritty on Windows rich: the one rich cell it genuinely supports.
     const oneSupported = counts({ supported: 1, "test-todo": 81, "test-failure": 17 })
-    expect(baselineRowReadout(oneSupported, { supported: 1, all: 99 }, 1)).toEqual({ text: "1% · 1/99" })
+    expect(notMeasuredReadout(oneSupported)).toBeUndefined()
   })
 
   it("reads the real rows it was filed for, and no decided row lost its number", () => {
@@ -45,15 +45,21 @@ describe("#30763 baseline row readout", () => {
     const row = (backend: string, baseline: string) => {
       const stats = site.baselineStats[backend]?.[baseline]
       if (!stats) throw new Error(`Missing ${backend} ${baseline} baseline stats`)
-      return baselineRowReadout(stats.counts, stats.score, stats.pct)
+      return notMeasuredReadout(stats.counts)
     }
     expect(site.baselineStats["windows-terminal"]).toBeDefined()
     expect(row("windows-terminal", "rich")).toEqual({
       text: NOT_MEASURED_TEXT,
       title: "0 Supported · 0 Unsupported · 0 Untestable · 88 TEST TODO · 11 TEST FAILURE",
     })
-    expect(row("vt220", "rich")).toEqual({ text: "0% · 0/99" })
-    expect(row("vt100-rust", "rich")).toEqual({ text: "0% · 0/99" })
-    expect(row("app-alacritty", "rich")).toEqual({ text: "1% · 1/99" })
+    expect(row("windows-terminal", "core")).toEqual({
+      text: NOT_MEASURED_TEXT,
+      title: "0 Supported · 0 Unsupported · 0 Untestable · 77 TEST TODO · 3 TEST FAILURE",
+    })
+    // The honest zeros stay decided, so both pages keep their own text for them.
+    expect(row("vt220", "rich")).toBeUndefined()
+    expect(row("vt100", "rich")).toBeUndefined()
+    expect(row("vt100-rust", "rich")).toBeUndefined()
+    expect(row("app-alacritty", "rich")).toBeUndefined()
   }, 30_000)
 })

@@ -7,7 +7,7 @@ next: false
 <script setup>
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { baselineRowReadout, currentCoverageSentence, publicResultFor } from '../data/release-scope'
+import { currentCoverageSentence, notMeasuredReadout, publicResultFor } from '../data/release-scope'
 const { params } = useData()
 const p = params.value
 
@@ -64,10 +64,13 @@ function coverageLabel(s) {
   return `${currentCoverageSentence(s)} / ${s.score.all} capabilities`
 }
 
-// #30763: the home page's baseline cards read these rows through the same function, so one row can
-// never print two different numbers (or two different not-measured words).
+// #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
+// it printed before the fix.
 function shareRow(s) {
-  return baselineRowReadout(s.counts, s.score, s.pct)
+  return notMeasuredReadout(s.counts) ?? {
+    text: `${s.score.supported}/${s.score.all} supported (${s.pct ?? 0}%)`,
+    title: undefined,
+  }
 }
 
 function platformIcon(os) {
