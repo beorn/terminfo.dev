@@ -329,9 +329,10 @@ describe("text frames — admitted only as what they are", () => {
 // 30035 AC2/AC3: these records enter through the public parser, outside feature observations.
 // Existing frame cases cannot detect dropped qualification or claims borrowed from the live suite.
 describe("run-owned text qualification ingestion", () => {
-  const spec = { version: 1, recipe: "macos-text-cells-v1" }
+  const spec = { version: 2, recipes: ["macos-text-cells-v1", "windows-terminal-text-cells-v1"] }
   const shape = { shape: "mid-line-gap", frames: [textFrame("control", 1), textFrame("target", 2)] }
-  const qualification = { ...spec, grid: { rows: 4, cols: 12 }, shapes: [shape] }
+  const qualification = { version: 2, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes: [shape] }
+  const ownership = { cell: { row: 1, col: 1 }, host: "\u0001", observerRow: "\u263a           " }
   const manifest = { probeHash: SUITE, adapterVersion: "3.3.1", probes: { app: [FEATURE], headless: [], mux: [] } }
 
   it("carries a partial qualification and only the cited suite's declarations", () => {
@@ -361,15 +362,32 @@ describe("run-owned text qualification ingestion", () => {
     expect(parseSuiteManifest("old.json", JSON.stringify(manifest))).toEqual(manifest)
   })
 
-  it("retains a future version and recipe so the selector can name their mismatch", () => {
+  it("retains a run's future version and recipe so the selector can name their mismatch", () => {
     const future = { ...qualification, version: 7, recipe: "future-recipe" }
     expect(parse(textRun({ textQualification: future })).textQualification).toEqual(future)
-    expect(
-      parseSuiteManifest(
-        "future-suite.json",
-        JSON.stringify({ ...manifest, textQualification: { version: 7, recipe: "future-recipe" } }),
-      ).textQualification,
-    ).toEqual({ version: 7, recipe: "future-recipe" })
+  })
+
+  // #30720 (@cto 79a35617): new suites write one form; the single-recipe form is read only where it was written.
+  it("reads the single-recipe declaration only for the two committed suites that wrote it", () => {
+    const single = { version: 1, recipe: "macos-text-cells-v1" }
+    for (const probeHash of ["448ce7769d2c", "f9450b3bc56a"]) {
+      expect(
+        parseSuiteManifest("committed.json", JSON.stringify({ ...manifest, probeHash, textQualification: single }))
+          .textQualification,
+      ).toEqual(single)
+    }
+    expect(() => parseSuiteManifest("new.json", JSON.stringify({ ...manifest, textQualification: single }))).toThrow(
+      /textQualification version 1 is read only for suites 448ce7769d2c and f9450b3bc56a/u,
+    )
+  })
+
+  it("carries the console-host ownership witness as two raw reads, never as frames", () => {
+    const windows = {
+      ...qualification,
+      recipe: "windows-terminal-text-cells-v1",
+      shapes: [shape, { shape: "console-host-ownership", ownership }],
+    }
+    expect(parse(textRun({ textQualification: windows })).textQualification).toEqual(windows)
   })
 
   it.each([
@@ -383,6 +401,16 @@ describe("run-owned text qualification ingestion", () => {
     [{ ...qualification, shapes: [{ ...shape, shape: "unknown" }] }, /invalid textQualification shape/u],
     [{ ...qualification, shapes: [{ ...shape, reason: "unavailable" }] }, /textQualification.*frames.*reason/u],
     [{ ...qualification, shapes: [{ shape: "soft-wrap", reason: "" }] }, /textQualification.*reason/u],
+    [
+      { ...qualification, shapes: [{ shape: "console-host-ownership", frames: shape.frames }] },
+      /console-host-ownership witness/u,
+    ],
+    [
+      { ...qualification, shapes: [{ shape: "console-host-ownership", ownership: { ...ownership, host: 1 } }] },
+      /console-host-ownership witness/u,
+    ],
+    [{ ...qualification, shapes: [{ ...shape, ownership }] }, /frames, reason and ownership/u],
+    [{ ...qualification, shapes: [{ shape: "soft-wrap", ownership }] }, /soft-wrap cannot carry an ownership witness/u],
     [
       {
         ...qualification,
@@ -404,8 +432,21 @@ describe("run-owned text qualification ingestion", () => {
   it.each([
     [{ textClaims: ["foreign"], textQualification: spec }, /textClaims.*app suite membership/u],
     [{ textClaims: [FEATURE, FEATURE], textQualification: spec }, /invalid suite textClaims/u],
-    [{ textClaims: [FEATURE], textQualification: { version: 0, recipe: spec.recipe } }, /textQualification.*version/u],
+    [
+      { textClaims: [FEATURE], textQualification: { version: 0, recipes: spec.recipes } },
+      /textQualification.*version/u,
+    ],
     [{ textClaims: [FEATURE], textQualification: { ...spec, pass: true } }, /textQualification.*field pass/u],
+    [{ textClaims: [FEATURE], textQualification: { version: 7, recipes: spec.recipes } }, /textQualification version/u],
+    [{ textClaims: [FEATURE], textQualification: { version: 2, recipes: [] } }, /textQualification recipes/u],
+    [
+      {
+        textClaims: [FEATURE],
+        textQualification: { version: 2, recipes: ["macos-text-cells-v1", "macos-text-cells-v1"] },
+      },
+      /textQualification recipes/u,
+    ],
+    [{ textClaims: [FEATURE], textQualification: { version: 2, recipe: "macos-text-cells-v1" } }, /field recipe/u],
   ])("refuses malformed trusted suite declarations", (metadata, reason) => {
     expect(() => parseSuiteManifest("suite.json", JSON.stringify({ ...manifest, ...metadata }))).toThrow(reason)
   })

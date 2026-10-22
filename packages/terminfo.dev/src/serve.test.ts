@@ -1062,6 +1062,7 @@ describe("private finite daemon startup", () => {
           geometryAtGrant: { status: "measured", rows: 24, cols: 80 },
           hostedAppId: "kitty",
           summary: "owned fixture",
+          ...(arm === "darwinHosted" && { textRecipe: "macos-text-cells-v1" }),
           readCells: async () => { reads += 1; return { status: "refused", reason: "no retention directory in this run" } },
           dispose: async () => {}
         })
@@ -1278,7 +1279,7 @@ describe("private finite daemon startup", () => {
           assert.equal(row.status, "test-failure")
           assert.equal(row.evidence, "text")
           assert.ok(row.checks.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
-          assert.match(row.reason, /Text criterion requires a declared claim and terminal-owned macOS cell observer/u)
+          assert.match(row.reason, /Text criterion requires a declared claim and a terminal-owned cell observer/u)
           const trace = JSON.parse(run.rawReplies[row.rawReplyRef])
           assert.ok(trace.queries.some(query => query.sequence === "\\x1b[6n" && query.reason === "timeout" && query.raw === "partial"))
           assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
