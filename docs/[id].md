@@ -65,8 +65,6 @@ function platformIcons(b) {
 
 <div class="category-page">
 
-<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
-
 <nav class="breadcrumb">
   <a :href="p.pageType === 'tag' ? '/standards' : '/features'">{{ p.pageType === 'tag' ? 'Standards' : 'Features' }}</a>
   <span class="sep">›</span>

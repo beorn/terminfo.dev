@@ -219,7 +219,7 @@ const breadcrumbParent = (() => {
             <div class="version-bar-fill" :style="{ width: v.total ? (v.yes / v.total * 100) + '%' : '0%' }"></div>
           </div>
         </td>
-        <td class="version-pct">{{ v.pct == null ? 'No score' : `${v.pct}%` }}</td>
+        <td class="version-pct">{{ v.pct == null ? '' : `${v.pct}%` }}</td>
         <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No current score' }}</td>
       </tr>
     </tbody>

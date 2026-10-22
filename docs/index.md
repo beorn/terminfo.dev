@@ -223,11 +223,6 @@ function backendTooltip(name, version) {
 }
 </script>
 
-<div class="problem-summary">
-
-<p v-if="data.currentRunCount === 0">No current schema-3 runs. <a href="/terminals">Historical results</a> are shown below for review.</p>
-</div>
-
 <div v-if="sortedBackends.length === 0" class="no-data">
   <p>No current or historical measurements are available yet.</p>
 </div>
@@ -291,7 +286,7 @@ function backendTooltip(name, version) {
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
         <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? '' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
       </div>
     </div>
   </a>
@@ -402,7 +397,7 @@ function backendTooltip(name, version) {
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
         <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? 'No score' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
+        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? '' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
       </div>
     </div>
   </a>
