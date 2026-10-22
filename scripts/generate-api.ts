@@ -314,7 +314,7 @@ export function generateApi(outDir?: string): {
       score: "Supported / all frozen catalog positions; no exclusions.",
       completion:
         "A context is complete only with zero TEST TODO and TEST FAILURE. Absent required contexts remain incomplete.",
-      historical: { v1: "/api/v1/data.json", v2: "/api/v2/data.json" },
+      historical: { v1: "/api/v1/data.json" },
       evidence: "Captures, free-form reasons and diagnostics require the separate exact-run presentation decision.",
     },
     features,
