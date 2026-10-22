@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { createHash } from "node:crypto"
+import { spawnSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, test } from "vitest"
@@ -151,6 +152,7 @@ printf 'xwd-window-%s' "\$id"`,
   executable(
     join(directory, "magick"),
     `if [ "$1" = -version ]; then printf 'ImageMagick test\\n'; exit 0; fi
+if [ -n "\${TEST_CAPTURE_MAGICK_ARGS:-}" ]; then printf '%s\\n' "$@" >> "$TEST_CAPTURE_MAGICK_ARGS"; fi
 cat > "$TEST_CAPTURE_STDIN"
 if [ "${"$"}TEST_CAPTURE_FAIL" = conversion ]; then printf 'conversion failed\\n' >&2; exit 19; fi
 rgba=
@@ -207,6 +209,7 @@ cat "$TEST_CAPTURE_PNG"`,
   process.env.TEST_CAPTURE_PNG = png
   process.env.TEST_CAPTURE_FAIL = ""
   process.env.TEST_CAPTURE_XWD_SIZE = join(directory, "xwd-size")
+  process.env.TEST_CAPTURE_MAGICK_ARGS = ""
   return { directory, started, finished, release, stdin, png }
 }
 
@@ -238,6 +241,7 @@ afterEach(() => {
     "TEST_CAPTURE_FORCE_CAPTURE",
     "TEST_CAPTURE_XWD_SIZE",
     "TEST_CAPTURE_CHROME_ROWS",
+    "TEST_CAPTURE_MAGICK_ARGS",
   ]) {
     delete process.env[key]
   }
@@ -332,6 +336,58 @@ test.runIf(process.platform === "linux")(
       "executable digest mismatch",
     )
   },
+)
+
+test.runIf(process.platform === "linux")(
+  "the capture conversion excludes the PNG date and time chunks (#30764)",
+  async () => {
+    const { directory, release } = fixture()
+    const argsPath = join(directory, "magick-args")
+    process.env.TEST_CAPTURE_MAGICK_ARGS = argsPath
+    // The fixture xwd waits for this file before it hands over the frame, as a real capture does.
+    writeFileSync(release, "continue")
+    const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
+    await capture({ featureId: "fixture", role: "control", label: "fixture frame" })
+    // -strip would also drop the image profile data; the date and time chunks are the whole defect.
+    // Later magick calls decode the frame for pixels; the conversion is the first one.
+    expect(readFileSync(argsPath, "utf8").trim().split("\n").slice(0, 4)).toEqual([
+      "xwd:-",
+      "-define",
+      "png:exclude-chunks=date,time",
+      "png:-",
+    ])
+  },
+)
+
+/**
+ * Two runs of an unchanged screen must mint one evidence hash. ImageMagick is only on the capture
+ * hosts, so this proof runs where it exists and names the missing binary elsewhere rather than
+ * passing on a fixture that would agree with itself.
+ */
+const realMagick = (() => {
+  const probe = spawnSync("magick", ["-version"], { encoding: "utf8" })
+  return probe.status === 0 ? "magick" : undefined
+})()
+
+test.skipIf(realMagick === undefined)(
+  "two conversions of the same screen give one sha256, and the same screen without the exclusion does not (#30764)",
+  () => {
+    const screen = spawnSync("magick", ["-size", "40x20", "xc:red", "xwd:-"]).stdout
+    expect(screen.length).toBeGreaterThan(0)
+    const convert = (args: string[]) =>
+      createHash("sha256")
+        .update(spawnSync("magick", args, { input: screen }).stdout)
+        .digest("hex")
+    // Past one whole second, so a stamped clock would have moved between the two conversions.
+    const tick = () => spawnSync("sleep", ["1.1"])
+    const fixed = convert(["xwd:-", "-define", "png:exclude-chunks=date,time", "png:-"])
+    tick()
+    expect(convert(["xwd:-", "-define", "png:exclude-chunks=date,time", "png:-"])).toBe(fixed)
+    const plain = convert(["xwd:-", "png:-"])
+    tick()
+    expect(convert(["xwd:-", "png:-"])).not.toBe(plain)
+  },
+  60_000,
 )
 
 /** One captured frame painted a colour per pixel, exactly as the collector's rgba buffer holds it. */
