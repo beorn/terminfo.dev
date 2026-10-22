@@ -404,6 +404,34 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       const frozenV1 = JSON.parse(readFileSync(join(frozenV1Dir, "data.json"), "utf8"));
       assert.equal(frozenV1.version,1);
       assert.ok(Object.keys(frozenV1.terminals).length>0,"frozen v1 bytes remain readable");
+      // #30759 R1 (@cto f1504b5c): the freeze is a byte freeze, so every published file is pinned.
+      const frozenV1Expected = {
+        'badges/alacritty.svg': '45f894484ac9a1192ee3985e52e3c82490fdcdec4882886385b9e585c4814cea',
+        'badges/cmux.svg': '2a961bc8af1fb81c8dde897b79572a9afc50e3ca7f4d5a405195e582be416869',
+        'badges/cursor.svg': 'a628a0322a51ce584c930fa854872789d5af12644328f5c0acf7da01bfd91c36',
+        'badges/ghostty.svg': '0e98926e37fd0c6a7cb2c24b1c4cc4d035d6f629995868edf9492f98b3a42300',
+        'badges/iterm2-app.svg': 'd08a49f10a6f89bc8068d8931884437ebe968fa73d199fe281edee7376ccf269',
+        'badges/iterm2.svg': '41f90de165e0d9e5dfb513cb8e549ba2a62434e016f0b6926167a87e446bcd6f',
+        'badges/kitty-app.svg': '919e8dad562d8f769bacc7b1a16fa10379e4c1dce6cbf83e50a76a540558e793',
+        'badges/kitty.svg': 'f230e15729a199c11246513c3ee36ae898219ddd3c9958968b2495c754588423',
+        'badges/terminal-app.svg': 'b52c490086640d834e1d43046d418f10b3f6d1041b7efb1abbdd8520ec47ed45',
+        'badges/vs-code.svg': '3e0c3e3a1bf16c126a362d1ede6965b65ed2355d5e368703f49e9dfc32f7c493',
+        'badges/vt100.svg': 'b93d0fe8ddcf8acd0f5649e0a6642117e8d7221540ac46d7a3948aa6e195383a',
+        'badges/vterm.svg': '71f3b79d4bea0a227a8825cc492236194a6938ac4b1343e8865534151441333b',
+        'badges/warp.svg': '6c02ecae2d6187296e3713c2d52ff671b5d2de3e9bb86f31bec453df5c2bee48',
+        'badges/wezterm.svg': '34ca63fe52d619803a46bea8513835d8acf35778f80a5b5f23ac97fd9e098a6c',
+        'data.json': '188ad4c77469de4c9fde6a7a8525f8b6ee31447e3ba03dc1c105e51cbc3fca2e',
+      };
+      const frozenV1Actual = {};
+      const walkFrozen = (relative) => {
+        for (const entry of readdirSync(join(frozenV1Dir, relative), { withFileTypes: true })) {
+          const child = relative === "" ? entry.name : relative + "/" + entry.name;
+          if (entry.isDirectory()) walkFrozen(child);
+          else frozenV1Actual[child] = digest(readFileSync(join(frozenV1Dir, child)));
+        }
+      };
+      walkFrozen("");
+      assert.deepEqual(frozenV1Actual, frozenV1Expected);
       let schema3Files = 0;
       for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
         for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
@@ -869,7 +897,8 @@ describe("selected-run consumer parity", () => {
 
   it("withdraws an owned run document after its last public projection reference is removed", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-stale-run-"))
-    const runPath = join(out, "api", "v2", "runs", `${fixture.runSha256}.json`)
+    // #30759 Slice A: v2 is gone, so the withdrawal rule is exercised on the v3 run documents.
+    const runPath = join(out, "api", "v3", "runs", `${fixture.runSha256}.json`)
     const current = fixture.projection.current["app:kitty"]
     const versions = fixture.projection.versions["app:kitty"]
     const history = fixture.projection.history["app:kitty"]
@@ -909,24 +938,9 @@ describe("selected-run consumer parity", () => {
     }
   }, 30_000)
 
-  it("refuses an API asset above the deployment byte limit before writing it", () => {
-    const out = mkdtempSync(join(tmpdir(), "terminfo-api-size-"))
-    const cell = fixture.selected.cells["sgr.bold"]!
-    const originalNote = cell.note
-    try {
-      // A reviewed correction note is public run content. The raw UTF-8 body
-      // exceeds the single-file cap even though string length alone would not.
-      Object.assign(cell.chain, { correctionId: "large-reviewed-correction" })
-      cell.note = "界".repeat(9 * 1024 * 1024)
-      expect(() => generateApi(out)).toThrow(/api\/v[123]\/.*bytes.*26214400.*Cloudflare Pages/)
-      expect(existsSync(join(out, "api", "v2", "data.json"))).toBe(false)
-    } finally {
-      Reflect.deleteProperty(cell.chain, "correctionId")
-      cell.note = originalNote
-      rmSync(out, { recursive: true, force: true })
-    }
-  })
-
+  // #30759 Slice A: the oversized-asset case was a v1/v2 reviewed-note projection. With both
+  // generators deleted there is no API document built from a note, so the cap is covered by the
+  // site-asset rejection below and by assertDeploymentLimits' own tests.
   // An empty deployment directory is a wrong build target, not evidence of spare capacity.
   it("refuses an empty deployment tree instead of certifying the wrong directory", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-empty-deploy-"))
@@ -968,16 +982,9 @@ describe("selected-run consumer parity", () => {
       const analyses = generateAnalysis()
       const analysis = analyses["terminals/kitty"]
       generateApi(out)
-      const v1 = JSON.parse(readFileSync(join(out, "api", "v1", "data.json"), "utf8")) as {
-        results: Record<string, Record<string, string>>
-        terminals: Record<string, { score: { total: number; pass: number } }>
-        methodology: { contexts: Record<string, { contextKey: string; runSha256: string }> }
-      }
-      const v2 = JSON.parse(readFileSync(join(out, "api", "v2", "data.json"), "utf8")) as {
-        current: Record<
-          string,
-          { sha256: string; counts: { conclusive: number; supported: number; unsupported: number } }
-        >
+      // #30759 Slice A: v3 is the only generated consumer; v1 is frozen bytes and v2 is deleted.
+      const v3 = JSON.parse(readFileSync(join(out, "api", "v3", "data.json"), "utf8")) as {
+        current: Record<string, { sha256: string }>
       }
       expect(site.historicalByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
       expect(site.stats.kitty).toMatchObject({
@@ -996,14 +1003,8 @@ describe("selected-run consumer parity", () => {
       const olderRuns = JSON.parse(screenPage.params.otherRuns!) as PublicVersion[]
       expect(olderRuns.map((run) => run.target.version)).toEqual(["4.9"])
       expect(terminal?.params.terminalType).toBe("app")
-      expect(v1.results.kitty).toEqual({ "sgr.bold": "yes", "extensions.sixel": "no" })
-      expect(v1.terminals.kitty?.score).toMatchObject({ total: 2, pass: 1 })
-      expect(v1.methodology.contexts.kitty).toMatchObject({ contextKey: "app:kitty", runSha256: fixture.runSha256 })
-      expect(v2.current["app:kitty"]?.sha256).toBe(fixture.runSha256)
-      expect(v2.current["mux:tmux"]?.sha256).toBe(fixture.mux.sha256)
-      expect(v1.terminals.tmux).toBeUndefined()
-      expect(v1.results.tmux).toBeUndefined()
-      expect(v2.current["app:kitty"]?.counts).toMatchObject({ conclusive: 2, supported: 1, unsupported: 1 })
+      expect(v3.current["app:kitty"]?.sha256).toBe(fixture.runSha256)
+      expect(v3.current["mux:tmux"]?.sha256).toBe(fixture.mux.sha256)
       expect(analysis).toMatchObject({
         runSha256: fixture.runSha256,
         measuredAt: fixture.measuredAt,
@@ -1438,9 +1439,9 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
   }
 })
 
-it("names historical-only headless Ghostty cores libghostty-vt on the site", () => {
-  // @chief 2026-10-21 (30608): every Ghostty run is historical-only, and the site names a headless
-  // core as its own row, so one name has one home. v1 is frozen bytes and no longer generated.
+it("does not name a historical-only target on the site", () => {
+  // #30759 Slice A (@cto f1504b5c): the site renders the frozen suite only, so a target with no
+  // current run gets no row and no metadata. This replaces the 30608 test that named the core row.
   const projection = currentResults.loadCurrentResults("").projection
   const as = (contextKey: string, kind: SelectedVersion["target"]["kind"], id: string) => {
     const selected = structuredClone(fixture.selected) as unknown as SelectedVersion
@@ -1460,12 +1461,13 @@ it("names historical-only headless Ghostty cores libghostty-vt on the site", () 
   const targets = vi.spyOn(currentResults, "historicalCompatibilityTargets").mockReturnValue(historical)
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   try {
-    const { meta, selectedByBackend } = loadFullProbes()
+    // Metadata is a catalog lookup and may still exist; what must not exist is a row or a page.
+    const { backends, selectedByBackend } = loadFullProbes()
     expect(selectedByBackend["headless-ghostty"]).toBeUndefined()
-    // Name and slug only: the app entry's description and body describe the app, not its core.
-    expect(meta["headless-ghostty"]).toEqual({ label: "libghostty-vt (WASM)", slug: "headless-ghostty" })
-    expect(meta["ghostty-native"]?.label).toBe("libghostty-vt (native)")
-    expect(meta.ghostty?.label).toBe("Ghostty")
+    const rows = backends.map((backend) => backend.name)
+    expect(rows).not.toContain("ghostty")
+    expect(rows).not.toContain("headless-ghostty")
+    expect(rows).not.toContain("ghostty-native")
   } finally {
     warning.mockRestore()
     targets.mockRestore()

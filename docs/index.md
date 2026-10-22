@@ -27,8 +27,9 @@ const baselineFilter = ref('all')
 const platformFilter = ref('all')
 
 // Use the same current-first selection as terminal detail pages. History stays historical.
-const displayedSelections = { ...data.historicalByBackend, ...data.selectedByBackend }
-const historicalBackends = Object.entries(data.historicalByBackend)
+// #30759 Slice A: only a current run is displayed; a historical-only target has no row.
+const displayedSelections = { ...data.selectedByBackend }
+const historicalBackends = []
   .filter(([name]) => !data.selectedByBackend[name])
   .map(([name, { selected }]) => ({
     name, version: selected.target.version, type: selected.target.kind,
@@ -62,7 +63,7 @@ function releaseSharePct(backendName) {
 
 // Sort backends by that one basis (highest first), then by name so the order is deterministic.
 const sortedBackends = computed(() => {
-  return [...data.backends, ...historicalBackends].sort((a, b) => {
+  return [...data.backends].sort((a, b) => {
     const delta = releaseSharePct(b.name) - releaseSharePct(a.name)
     return delta !== 0 ? delta : a.name.localeCompare(b.name)
   })
