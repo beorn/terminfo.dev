@@ -368,16 +368,16 @@ describe("run-owned text qualification ingestion", () => {
   })
 
   // #30720 (@cto 79a35617): new suites write one form; the single-recipe form is read only where it was written.
-  it("reads the single-recipe declaration only for the two committed suites that wrote it", () => {
+  it("reads the single-recipe declaration only for the three committed suites that wrote it", () => {
     const single = { version: 1, recipe: "macos-text-cells-v1" }
-    for (const probeHash of ["448ce7769d2c", "f9450b3bc56a"]) {
+    for (const probeHash of ["448ce7769d2c", "f9450b3bc56a", "8165331b5bee"]) {
       expect(
         parseSuiteManifest("committed.json", JSON.stringify({ ...manifest, probeHash, textQualification: single }))
           .textQualification,
       ).toEqual(single)
     }
     expect(() => parseSuiteManifest("new.json", JSON.stringify({ ...manifest, textQualification: single }))).toThrow(
-      /textQualification version 1 is read only for suites 448ce7769d2c and f9450b3bc56a/u,
+      /textQualification version 1 is read only for suites 448ce7769d2c, f9450b3bc56a, 8165331b5bee/u,
     )
   })
 

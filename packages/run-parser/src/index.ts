@@ -442,8 +442,9 @@ export function parseObservationFrames(
   return frames
 }
 
-/** The two committed suites that declared one recipe (version 1). Every later suite writes version 2. */
-const VERSION_1_TEXT_QUALIFICATION_SUITES = ["448ce7769d2c", "f9450b3bc56a"]
+/** The three committed suites that declared one recipe (version 1), the last of them the 2026-10-21 common cut's
+ * (30661). Every later suite writes version 2. */
+const VERSION_1_TEXT_QUALIFICATION_SUITES = ["448ce7769d2c", "f9450b3bc56a", "8165331b5bee"]
 
 /** A run's version and recipe: the header both its witnesses and its suite's declaration name. */
 function parseTextQualificationHeader(
@@ -467,7 +468,7 @@ function parseTextQualificationSpec(value: unknown, path: string, probeHash: str
     if (!VERSION_1_TEXT_QUALIFICATION_SUITES.includes(probeHash)) {
       fail(
         path,
-        `textQualification version 1 is read only for suites ${VERSION_1_TEXT_QUALIFICATION_SUITES.join(" and ")}`,
+        `textQualification version 1 is read only for suites ${VERSION_1_TEXT_QUALIFICATION_SUITES.join(", ")}`,
       )
     }
     const { recipe } = parseTextQualificationHeader(value, path, ["version", "recipe"])
