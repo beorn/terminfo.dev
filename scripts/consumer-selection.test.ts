@@ -35,6 +35,7 @@ import { publicResults } from "../docs/data/public-results.ts"
 import type { HistoricalPublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
+import { probeHash } from "../packages/admin/versions.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */
 type StubRun = { target: { kind: string; id: string; os?: string; permissions?: string | null } }
@@ -112,31 +113,104 @@ function writeFrozenSuite(content: string, probeHash: string): void {
 
 describe("consumer selection", () => {
   it("keeps an all-history corpus readable without inventing current schema-3 results", () => {
-    const content = join(import.meta.dirname, "..", "content")
-    const { projection } = loadCurrentResults(content)
-    expect(Object.keys(projection.current)).toHaveLength(0)
-    const published = publicResults(projection, compatibilityTargets(projection, content))
-    expect(published.projection.current).toEqual({})
-    expect(Object.values(published.projection.historical.history).flat().length).toBeGreaterThan(0)
-    const out = mkdtempSync(join(tmpdir(), "terminfo-zero-current-"))
+    // The corpus with no current run is built from the live content, never read from it: every run on the
+    // current schema or the tree's suite is left out, so the state the test proves survives admissions.
+    // A child process builds and reads the corpus; the loaders retain the whole corpus, and a second copy
+    // in this worker would cross the vitest RSS cap.
+    const source = join(import.meta.dirname, "..")
+    const root = mkdtempSync(join(tmpdir(), "terminfo-zero-current-"))
     try {
-      const { dataPath } = generateApi(out)
-      const current = JSON.parse(readFileSync(dataPath, "utf8")) as {
+      mkdirSync(join(root, "scripts"))
+      copyFileSync(join(source, "scripts", "generate-api.ts"), join(root, "scripts", "generate-api.ts"))
+      for (const name of ["docs", "node_modules", "packages"]) symlinkSync(join(source, name), join(root, name), "dir")
+      writeFileSync(
+        join(root, "scripts", "zero-current.ts"),
+        [
+          'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs"',
+          'import { join } from "node:path"',
+          'import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"',
+          'import { publicResults } from "../docs/data/public-results.ts"',
+          'import { probeHash } from "../packages/admin/versions.ts"',
+          'import { generateApi } from "./generate-api.ts"',
+          "const [liveContent, root] = process.argv.slice(2)",
+          'const content = join(root, "content")',
+          "mkdirSync(content)",
+          "const currentSuite = probeHash()",
+          "const isCurrent = (run) => run.schemaVersion === 3 || run.probeHash === currentSuite",
+          "const excludedRunIds = new Set()",
+          "for (const entry of readdirSync(liveContent, { withFileTypes: true })) {",
+          "  const from = join(liveContent, entry.name)",
+          "  const to = join(content, entry.name)",
+          "  if (entry.isFile()) copyFileSync(from, to)",
+          '  else if (entry.name.startsWith("probes-")) {',
+          "    mkdirSync(to)",
+          "    for (const file of readdirSync(from)) {",
+          '      if (!file.endsWith(".json")) continue',
+          '      const run = JSON.parse(readFileSync(join(from, file), "utf8"))',
+          "      if (isCurrent(run)) { if (run.runId) excludedRunIds.add(run.runId); continue }",
+          '      symlinkSync(join(from, file), join(to, file), "file")',
+          "    }",
+          '  } else if (entry.name === "receipts") {',
+          "    mkdirSync(to)",
+          '    for (const file of readdirSync(from)) if (!excludedRunIds.has(file.replace(/\\.json$/, ""))) symlinkSync(join(from, file), join(to, file), "file")',
+          '  } else symlinkSync(from, to, "dir")',
+          "}",
+          "// Precondition, re-read from the fixture itself: runs exist, and none of them is current.",
+          'const fixtureRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))',
+          'const currentFixtureRuns = fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8")))).length',
+          "const { projection } = loadCurrentResults(content)",
+          "const published = publicResults(projection, compatibilityTargets(projection, content))",
+          'const out = join(root, "out")',
+          "const { dataPath } = generateApi(out)",
+          'const current = JSON.parse(readFileSync(dataPath, "utf8"))',
+          'const historical = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8"))',
+          "console.log(JSON.stringify({",
+          "  fixtureRuns: fixtureRuns.length,",
+          "  currentFixtureRuns,",
+          "  projectionCurrent: Object.keys(projection.current).length,",
+          "  publishedCurrent: Object.keys(published.projection.current).length,",
+          "  publishedHistory: Object.values(published.projection.historical.history).flat().length,",
+          "  currentRunCount: current.currentRunCount,",
+          "  currentKeys: Object.keys(current.current).length,",
+          "  message: current.message,",
+          "  v2History: Object.values(historical.history).flat().length,",
+          "}))",
+          "",
+        ].join("\n"),
+      )
+      const child = spawnSync(
+        process.execPath,
+        [join(root, "scripts", "zero-current.ts"), join(source, "content"), root],
+        {
+          encoding: "utf8",
+          maxBuffer: 4 * 1024 * 1024,
+        },
+      )
+      expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0)
+      const receipt = JSON.parse(child.stdout.trim().split("\n").at(-1) ?? "") as {
+        fixtureRuns: number
+        currentFixtureRuns: number
+        projectionCurrent: number
+        publishedCurrent: number
+        publishedHistory: number
         currentRunCount: number
-        current: Record<string, unknown>
+        currentKeys: number
         message: string
+        v2History: number
       }
-      expect(current.currentRunCount).toBe(0)
-      expect(current.current).toEqual({})
-      expect(current.message).toContain("No current")
-      const historical = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
-        history: Record<string, unknown[]>
-      }
-      expect(Object.values(historical.history).flat().length).toBeGreaterThan(0)
+      expect(receipt.fixtureRuns).toBeGreaterThan(0)
+      expect(receipt.currentFixtureRuns).toBe(0)
+      expect(receipt.projectionCurrent).toBe(0)
+      expect(receipt.publishedCurrent).toBe(0)
+      expect(receipt.publishedHistory).toBeGreaterThan(0)
+      expect(receipt.currentRunCount).toBe(0)
+      expect(receipt.currentKeys).toBe(0)
+      expect(receipt.message).toContain("No current")
+      expect(receipt.v2History).toBeGreaterThan(0)
     } finally {
-      rmSync(out, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true })
     }
-  }, 30_000)
+  }, 120_000)
 
   it("refuses failed discovery and corrupt retained radar records without changing prior findings", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-discovery-errors-"))
@@ -301,22 +375,28 @@ describe("consumer selection", () => {
       generateApi(out)
       const contentDir = join(import.meta.dirname, "..", "content")
       const projection = loadCurrentResults(contentDir).projection
-      const expected = publicResults(
+      const published = publicResults(
         projection,
         compatibilityTargets(projection, contentDir),
         historicalCompatibilityTargets(projection.historical, contentDir),
-      ).projection.historical
+      ).projection
+      const expected = published.historical
       const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
         current: Record<string, RunReference>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
         exclusions: unknown[]
       }
-      const expectedRuns = new Map<string, HistoricalPublicVersion>()
-      const allExpectedVersions = [
+      // Every retained run document is reassembled from one of the two public tables: a schema-3 run from
+      // the current projection, a legacy run from the historical one.
+      const expectedRuns = new Map<string, { sha256: string }>()
+      const allExpectedVersions: Array<{ sha256: string }> = [
         ...Object.values(expected.current),
         ...Object.values(expected.versions).flat(),
         ...Object.values(expected.history).flat(),
+        ...Object.values(published.current),
+        ...Object.values(published.versions).flat(),
+        ...Object.values(published.history).flat(),
       ]
       for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
       const retainedFiles = ["probes-apps", "probes-mux", "probes-libs"].flatMap((dir) =>
@@ -392,10 +472,10 @@ describe("consumer selection", () => {
       expect(legacy.length).toBeGreaterThan(0)
       expect(legacy.every((entry) => entry.counts.conclusive === 0)).toBe(true)
       if (!site.selectedByBackend.kitty) {
+        // No current kitty run: kitty is scored nowhere, whatever other targets the corpus holds as current.
         expect(site.results.kitty).toBeUndefined()
         expect(site.stats.kitty).toBeUndefined()
-        expect(api.currentRunCount).toBe(0)
-        expect(api.current).toEqual({})
+        expect(Object.keys(api.current).filter((key) => key.startsWith("app:kitty"))).toEqual([])
         expect(analysis["terminals/kitty"]?.analysis).toContain("No current schema-3")
       }
       if (api.currentRunCount === 0) {

@@ -411,7 +411,11 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       for (const entry of Object.values(analyses))
         if(entry.runSha256) assert.ok(Object.values(projection.current).some(run=>run.sha256===entry.runSha256));
       assert.ok(Object.keys(v1.terminals).length>0,"legacy API remains readable");
-      console.log(JSON.stringify({exactContexts:keys(projection.current).length,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
+      let schema3Files = 0;
+      for (const dir of ["probes-apps", "probes-libs", "probes-mux"])
+        for (const file of readdirSync(join(content, dir)).filter(name => name.endsWith(".json")))
+          if (JSON.parse(readFileSync(join(content, dir, file), "utf8")).schemaVersion === 3) schema3Files += 1;
+      console.log(JSON.stringify({exactContexts:keys(projection.current).length,schema3Files,referencedRuns:referenced.size,milliseconds:performance.now()-started}));
     `,
       ],
       { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 2 * 1024 * 1024 },
@@ -427,10 +431,14 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
     ).toBe(true)
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
+      schema3Files: number
       compatibilityTargets: number
       referencedRuns: number
     }
-    expect(receipt.exactContexts).toBe(0)
+    // Current contexts come from sealed schema-3 run files and from nothing else: none without a file,
+    // at least one once a file exists, never more contexts than files.
+    expect(receipt.exactContexts > 0).toBe(receipt.schema3Files > 0)
+    expect(receipt.exactContexts).toBeLessThanOrEqual(receipt.schema3Files)
     expect(receipt.compatibilityTargets).toBeUndefined()
     expect(receipt.referencedRuns).toBeGreaterThan(0)
   } finally {

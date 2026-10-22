@@ -39,10 +39,13 @@
       ]
     },
     "app:alacritty": {
-      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"macos\",\"26.6.2\",null,null,null,null]",
-      "reviewer": "@cto (27916 AC2 ruling)",
-      "reason": "Same rule as the kitty and ghostty rows: until 27916 AC2 admitted the controlled-Linux run, the macOS hardware run was alacritty's only current context, so naming it the default leaves the site's alacritty page unmoved when the Linux container run becomes current alongside it. Both contexts stay readable as Release 1 bar rows (27917). 28240: the 9918f283 macOS document carried placeholder digests and is retired; this row cites the 28216 re-collection.",
-      "sources": ["content/probes-apps/alacritty-0.17.0-macos-d436c4ecd6e652a3427f245cda6b1204.json"]
+      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"windows\",\"10.0.26100\",null,null,null,null]",
+      "reviewer": "@cto (ruling d06f9a8c, 2026-10-22)",
+      "reason": "Only context of app:alacritty on suite 8165331b: hosted Windows run 20eb3ab6 (10-21 common cut). The macOS hardware row (d436c4ec) and the Linux container runs are on older suites. Re-record to the macOS context when a current-suite macOS run admits (final cut, #30711).",
+      "sources": [
+        "content/probes-apps/alacritty-0.17.0-windows-20eb3ab6d830e196eb3fa08dade7740a.json",
+        "content/receipts/20eb3ab6d830e196eb3fa08dade7740a.json"
+      ]
     },
     "app:wezterm": {
       "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/xnhj580cb50yzv8qk89i9f6c4vlvr4y6-wezterm-0-unstable-2026-09-29/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun <terminfo-linux-runner> test --serve \",null]",

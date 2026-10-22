@@ -10,9 +10,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  countContexts,
   loadSelectedResults as loadCurrentSelectedResults,
   parseInterpretations,
-  projectHistoricalResults as projectResults,
+  projectHistoricalResults,
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission, planAdmission } from "./admit-run.ts"
@@ -33,6 +34,14 @@ import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json
 // These immutable v1/v2 fixtures exercise the explicit historical reader and historical public API.
 const loadSelectedResults = (...args: Parameters<typeof loadCurrentSelectedResults>) =>
   loadCurrentSelectedResults(...args).historical
+
+/** The fixtures' corpus is the runs they pass, so the context count comes from those same runs. */
+const projectResults = (
+  runs: Parameters<typeof projectHistoricalResults>[0],
+  interpretations: Parameters<typeof projectHistoricalResults>[1],
+  catalogIds: Parameters<typeof projectHistoricalResults>[2],
+  policy: Parameters<typeof projectHistoricalResults>[3],
+) => projectHistoricalResults(runs, interpretations, catalogIds, policy, countContexts(runs))
 
 const catalog = ["cursor.position", "extensions.graphics", "extensions.query"]
 /** 28240: the app-launch receipt parser refuses a placeholder digest (one repeated character), so
