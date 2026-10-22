@@ -26,8 +26,12 @@ const reply = (overrides: Partial<PowerShellReply>): PowerShellReply => ({
   timedOut: false,
   ...overrides,
 })
-const units = (rows: readonly string[]) =>
-  JSON.stringify({ status: "read", rows: rows.map((row) => Array.from(row, (unit) => unit.charCodeAt(0))) })
+const units = (rows: readonly string[], documentEnded = false) =>
+  JSON.stringify({
+    status: "read",
+    documentEnded,
+    rows: rows.map((row) => Array.from(row, (unit) => unit.charCodeAt(0))),
+  })
 const answer = (stdout: string) => () => reply({ stdout })
 
 describe("windowsTerminalTextScript", () => {
@@ -39,6 +43,7 @@ describe("windowsTerminalTextScript", () => {
     expect(script).toContain(`$pairs = ${String(SETTLE_PAIRS)}`)
     expect(script).toContain("'TermControl'")
     expect(script).toContain("while ($read.Count -lt $rows)")
+    expect(script).toContain("$visible.CompareEndpoints($end, $document, $end)")
     expect(() => windowsTerminalTextScript(0, 30)).toThrow(/pid is not a count/u)
     expect(() => windowsTerminalTextScript(8856, 2.5)).toThrow(/rows is not a count/u)
   })
@@ -47,7 +52,25 @@ describe("windowsTerminalTextScript", () => {
 describe("readWindowsTerminalRows", () => {
   it("returns the raw rows, control characters included, exactly as the terminal reported them", () => {
     const rows = ["☺  ", "abc"]
-    expect(readWindowsTerminalRows({ pid: 1, rows: 2, run: answer(units(rows)) })).toEqual({ status: "read", rows })
+    expect(readWindowsTerminalRows({ pid: 1, rows: 2, run: answer(units(rows)) })).toEqual({
+      status: "read",
+      rows,
+      documentEnded: false,
+    })
+  })
+
+  // AC2 run 39782783915: on a cleared screen WT's document ends below its last written row, so the visible
+  // range held 2 rows of 30. Short is complete only at the document's end.
+  it("accepts fewer rows only when the visible range stopped at the document's end", () => {
+    expect(readWindowsTerminalRows({ pid: 1, rows: 3, run: answer(units(["ab "], true)) })).toEqual({
+      status: "read",
+      rows: ["ab "],
+      documentEnded: true,
+    })
+    expect(readWindowsTerminalRows({ pid: 1, rows: 1, run: answer(units(["ab ", "cd "], true)) })).toEqual({
+      status: "refused",
+      reason: "UI Automation returned 2 rows where the measured screen has 1",
+    })
   })
 
   it.each([
@@ -57,7 +80,11 @@ describe("readWindowsTerminalRows", () => {
       "exposes 0 TermControl elements",
     ],
     [
-      answer(JSON.stringify({ status: "read", rows: [[0x10000], [65]] })),
+      answer(JSON.stringify({ status: "read", documentEnded: false, rows: [[0x10000], [65]] })),
+      "Windows Terminal returned an unrecognised snapshot",
+    ],
+    [
+      answer(JSON.stringify({ status: "read", rows: [[65], [66]] })),
       "Windows Terminal returned an unrecognised snapshot",
     ],
     [answer("not json"), "Windows Terminal did not return a snapshot: not json"],
@@ -82,6 +109,15 @@ describe("readWindowsTerminalText", () => {
       status: "read",
       app: "windows-terminal",
       cells: { cols: 3, rows: 2, text: ["ab ", "   "], paddedRows: [], droppedLines: 0 },
+    })
+  })
+
+  it("maps the rows below the document's end as blank rows and records them as padded", () => {
+    const read = readWindowsTerminalText({ pid: 1, rows: 3, cols: 3, run: answer(units(["ab "], true)) })
+    expect(read).toEqual({
+      status: "read",
+      app: "windows-terminal",
+      cells: { cols: 3, rows: 3, text: ["ab ", "   ", "   "], paddedRows: [2, 3], droppedLines: 0 },
     })
   })
 

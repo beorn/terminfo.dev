@@ -35,7 +35,12 @@ export const SETTLE_PAIRS = 4
 export type PowerShellReply = OsascriptReply
 
 export type WindowsTerminalRows =
-  | { readonly status: "read"; readonly rows: readonly string[] }
+  | {
+      readonly status: "read"
+      readonly rows: readonly string[]
+      /** The visible range stopped at WT's document end, so every screen row past `rows` is blank. */
+      readonly documentEnded: boolean
+    }
   | { readonly status: "refused"; readonly reason: string }
 
 /**
@@ -84,6 +89,7 @@ try {
   $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
   $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
   $line = [System.Windows.Automation.Text.TextUnit]::Line
+  $document = $pattern.DocumentRange
   function Read-Screen {
     $ranges = $pattern.GetVisibleRanges()
     if ($ranges.Length -ne 1) { throw ('the TermControl reports ' + $ranges.Length + ' visible ranges; exactly one is required') }
@@ -98,15 +104,19 @@ try {
       $read.Add($unit.GetText(-1))
       if ($cursor.Move($line, 1) -eq 0) { break }
     }
-    return ,$read.ToArray()
+    # WT ends its document below the later of the last non-space character and the cursor, and clamps
+    # the visible range there: every row below that end holds no character (UiaTextRangeBase 1.21).
+    $ended = $visible.CompareEndpoints($end, $document, $end) -ge 0
+    return @{ rows = $read.ToArray(); ended = $ended }
   }
   for ($pair = 0; $pair -lt $pairs; $pair++) {
     $first = Read-Screen
     Start-Sleep -Milliseconds $gapMs
     $second = Read-Screen
-    if (Same $first $second) {
-      $encoded = foreach ($text in $second) { '[' + (@($text.ToCharArray() | ForEach-Object { [int]$_ }) -join ',') + ']' }
-      Send ('{"status":"read","rows":[' + (@($encoded) -join ',') + ']}')
+    if ($first.ended -eq $second.ended -and (Same $first.rows $second.rows)) {
+      $encoded = foreach ($text in $second.rows) { '[' + (@($text.ToCharArray() | ForEach-Object { [int]$_ }) -join ',') + ']' }
+      $ended = if ($second.ended) { 'true' } else { 'false' }
+      Send ('{"status":"read","documentEnded":' + $ended + ',"rows":[' + (@($encoded) -join ',') + ']}')
       exit 0
     }
   }
@@ -182,15 +192,19 @@ export function readWindowsTerminalRows(options: WindowsTerminalTextOptions): Wi
     return { status: "refused", reason }
   }
   const rows = parsed.status === "read" && "rows" in parsed ? unitRows(parsed.rows) : undefined
-  if (rows === undefined) return { status: "refused", reason: "Windows Terminal returned an unrecognised snapshot" }
-  // Fewer rows means the visible range ended early; the script never returns more.
-  if (rows.length !== options.rows) {
+  const documentEnded = "documentEnded" in parsed ? parsed.documentEnded : undefined
+  if (rows === undefined || typeof documentEnded !== "boolean") {
+    return { status: "refused", reason: "Windows Terminal returned an unrecognised snapshot" }
+  }
+  // Fewer rows is a complete screen only when the visible range stopped at the document's end (AC2 run
+  // 39782783915: 2 rows of 30 on a cleared screen); anywhere else it ended early, and the read refuses.
+  if (rows.length > options.rows || (rows.length < options.rows && !documentEnded)) {
     return {
       status: "refused",
       reason: `UI Automation returned ${String(rows.length)} rows where the measured screen has ${String(options.rows)}`,
     }
   }
-  return { status: "read", rows }
+  return { status: "read", rows, documentEnded }
 }
 
 /** Read Windows Terminal's screen and map it onto cells with the macOS snapshot's own mapping. */
@@ -199,8 +213,11 @@ export function readWindowsTerminalText(
 ): TerminalTextRead {
   const read = readWindowsTerminalRows(options)
   if (read.status === "refused") return read
-  // Nothing above the screen is read, so nothing is dropped; WT keeps trailing blanks, so no row is padded.
-  const cells = mapSnapshotToCells(read.rows, options.cols, options.rows, 0)
+  // Nothing above the screen is read, so nothing is dropped. WT keeps a row's trailing blanks, but the
+  // rows below its document's end are not in the document: each is blank, and the mapping pads and
+  // records it as a padded row.
+  const below = Array.from({ length: options.rows - read.rows.length }, () => "")
+  const cells = mapSnapshotToCells([...read.rows, ...below], options.cols, options.rows, 0)
   if (typeof cells === "string") return { status: "refused", reason: cells }
   return { status: "read", app: "windows-terminal", cells }
 }
