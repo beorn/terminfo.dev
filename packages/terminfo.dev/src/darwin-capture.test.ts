@@ -127,11 +127,21 @@ test("Darwin capture falls back to a region capture of the window bounds when th
     })
   try {
     const adapter = await createDarwinCapture(directory, { appPid: 41 })
+    // #30392 C1/C3: the census taken at install is carried out of the adapter, and it is the same
+    // census the first frame was taken against — the selected window by id and bounds, not a re-read.
     const { result } = await adapter.captureRaw({
       featureId: "extensions.truecolor",
       role: "control",
       label: "diagnostic",
     })
+    expect(adapter.installCensus.window).toEqual({
+      id: 7,
+      ownerPid: 41,
+      layer: 0,
+      bounds: { x: 12, y: 31, width: 1000, height: 677 },
+    })
+    expect(adapter.installCensus.takenAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/)
+    expect(adapter.installCensus.ownedWindows).toEqual((result.trace as { ownedWindows: unknown }).ownedWindows)
     expect(calls.map((args) => args.slice(0, -1))).toEqual([
       ["-l", "7", "-o", "-x", "-t", "png"],
       ["-x", "-R", "12,31,1000,677", "-t", "png"],
@@ -209,6 +219,15 @@ test.each(["command failure", "missing output"])(
       })
     try {
       const adapter = await createDarwinCapture(directory, { appPid: 41 })
+      // #30392 C1/C2: this fixture answers the install census and the pre-capture census differently,
+      // so the recorded observations prove which read was kept; a refused capture adds no third read.
+      expect(adapter.installCensus.observations).toEqual({
+        sharingState: 1,
+        memoryUsage: 4096,
+        alpha: null,
+        onscreen: null,
+      })
+      expect(censuses).toBe(1)
       let caught: unknown
       try {
         await adapter.captureRaw({ featureId: "extensions.truecolor", role: "control", label: "diagnostic" })

@@ -43,7 +43,7 @@ import { COMPLETE_DA2, COMPLETE_XTVERSION, resolveMeasuredAppVersion } from "./i
 import { withRawMode, withTTYOperation, drainStdin, queryOutcome, queryWithSentinelOutcome } from "./tty.ts"
 import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCapture } from "./probes/unified.ts"
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
-import { createDarwinCapture } from "./darwin-capture.ts"
+import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
 import { collectTextQualification, recordTextQualificationChecks } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
@@ -301,6 +301,11 @@ interface CaptureCalibrationQuery {
  */
 interface CaptureCalibrationFact {
   outcome: "installed" | "refused"
+  /** The census the adapter took AT INSTALL, before the pre-flight asked anything: the selected window,
+   * its observations and every owned layer-0 window, plus takenAt. It proves the verified app pid owned
+   * one visible layer-0 window at that moment — never that a frame showed the terminal (@cto 2026-10-22,
+   * #30392 C1). Present on both branches: a refusal is exactly when the census is worth having. */
+  installCensus?: DarwinInstallCensus
   /** The one basis the geometry rests on, present exactly when a capture adapter was installed. */
   basis?: PixelGeometrySource
   /** The measured geometry a frame request is checked against, present on the same terms as basis. */
@@ -558,6 +563,9 @@ export async function collectProbeRun(
       const appPid = terminal.appPid
       if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
+      // C1: one install census, taken before the adapter could refuse anything. C2: a refused frame never
+      // adds its own preCapture census here — those stay in their traces, unmerged.
+      const { installCensus } = darwinCapture
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
       const noGeometry = (message: string) => {
@@ -609,6 +617,7 @@ export async function collectProbeRun(
               basis: context.captureGeometry.source,
               geometry: textOrigin.pixelGeometry,
               queries,
+              installCensus,
             }
           } catch (cause) {
             const error = cause instanceof Error ? cause : new Error(String(cause))
@@ -625,7 +634,7 @@ export async function collectProbeRun(
               seen.add(current)
               causes.push({ name: current.name, message: current.message })
             }
-            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
+            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes, installCensus }
           }
         }
       }

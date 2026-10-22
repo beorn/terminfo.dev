@@ -593,9 +593,16 @@ describe("private finite daemon startup", () => {
           return { raw: reply, rawBase64: Buffer.from(reply).toString("base64"), match: pattern.exec(reply), reason: pattern.test(reply) ? "reply" : "sentinel" }
         }
       }))
+      const installCensus = {
+        window: { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 120, height: 30 } },
+        observations: { sharingState: null, memoryUsage: null, alpha: 1, onscreen: true },
+        ownedWindows: [],
+        takenAt: "2026-10-22T20:00:00.000Z",
+      }
       mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({ createDarwinCapture: async () => ({
         capture: async () => { frames++; throw new Error("no frame may be requested for a refused calibration") },
-        captureRaw: async () => { frames++; throw new Error("no frame may be requested for a refused calibration") }
+        captureRaw: async () => { frames++; throw new Error("no frame may be requested for a refused calibration") },
+        installCensus,
       }) }))
       mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({ calibrateCaptureOrigin: async () => {
         calibrations++
@@ -638,6 +645,9 @@ describe("private finite daemon startup", () => {
         ["\\x1b[18t", "reply", "\\x1b[8;30;120t"]
       ])
       assert.match(fact.refusal, /Capture calibration nonuniform columns/)
+      // #30392 C1/C3: a REFUSED calibration records the install census too — that is exactly the run
+      // where a reader needs to know which window the app owned before anything was asked.
+      assert.deepEqual(fact.installCensus, installCensus)
     `)
     expect(result.stderr).toBe("")
     expect(result.status).toBe(0)

@@ -30,6 +30,23 @@ export interface DarwinWindowCensus {
   ownedWindows: DarwinOwnedWindow[]
 }
 
+/** The census the adapter measured when it was installed, before any pre-flight query: the existing
+ * census object (the selected window, its observations, and every owned layer-0 window) plus the
+ * moment it was taken. It proves the app owned exactly one visible layer-0 window AT INSTALL; it says
+ * nothing about a frame's content or about a later window (@cto 2026-10-22, #30392 C1). */
+export interface DarwinInstallCensus {
+  /** The selected owned window, exactly as the install census measured it. */
+  window: DarwinWindow
+  observations: {
+    sharingState: number | null
+    memoryUsage: number | null
+    alpha: number | null
+    onscreen: boolean | null
+  }
+  ownedWindows: DarwinOwnedWindow[]
+  takenAt: string
+}
+
 type DarwinCensusRow = Omit<DarwinOwnedWindow, "disposition">
 
 const SCREENCAPTURE = "/usr/sbin/screencapture"
@@ -170,8 +187,9 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
       ownedWindows,
     }
   }
-  const selected = await census()
-  const { window } = selected
+  const installed = await census()
+  const installCensus: DarwinInstallCensus = { ...installed, takenAt: new Date().toISOString() }
+  const { window } = installed
   await command("magick", ["-version"])
   mkdirSync(directory, { recursive: true, mode: 0o700 })
   const assertOwned = async (deadline?: number) => {
@@ -227,7 +245,7 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     const fail = (summary: string, attempt: ScreencaptureAttempt, refused?: ScreencaptureAttempt): never => {
       const captureContext = {
         measuredAppPid: appPid,
-        selectedWindow: { ...window, ...selected.observations },
+        selectedWindow: { ...window, ...installed.observations },
         preCaptureWindow: { ...preCapture.window, ...preCapture.observations },
         ownedWindows: preCapture.ownedWindows,
       }
@@ -305,5 +323,5 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     })
     return { decoded, result }
   }
-  return { capture, captureRaw }
+  return { capture, captureRaw, installCensus }
 }
