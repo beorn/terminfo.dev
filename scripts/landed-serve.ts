@@ -97,6 +97,7 @@ export function resolveServedPath(distDir: string, requestPath: string): string 
   try {
     decoded = decodeURIComponent(requestPath)
   } catch {
+    // silent-fallback-allow: malformed URI percent-encoding in an HTTP request path is a client 404 miss, not a server error (30757)
     return null
   }
   const relative = decoded.endsWith("/") ? `${decoded}index.html` : decoded
