@@ -13,6 +13,7 @@ import {
   textQualificationFixtures,
   TEXT_QUALIFICATION_SPEC,
   type CapturedRunDraft,
+  type ConsoleBufferOwner,
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import { recordTextQualificationChecks } from "./text-qualification.ts"
@@ -264,9 +265,11 @@ describe("textCellsFrame — one screen, one rectangle, one set of bytes", () =>
   })
 })
 
+const TEXT_SHAPES = ["mid-line-gap", "trailing-gap", "soft-wrap", "prior-scrollback", "empty-last-row"] as const
+
 // Current status must be fixed at execution. Historical-only qualification tests missed a live
 // text Supported result whose mapping oracle was absent or attempted and broken.
-it("records text qualification attempts before seal, distinguishing absent and broken oracles", () => {
+const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner } = {}) => {
   const featureId = "text.overwrite"
   const manifest = {
     probeHash: "text-suite",
@@ -288,7 +291,7 @@ it("records text qualification attempts before seal, distinguishing absent and b
       kind: "app",
       id: "iterm2",
       version: "1",
-      os: "macos",
+      os: overrides.os ?? "macos",
       osVersion: null,
       outerTerminal: null,
       mux: null,
@@ -306,6 +309,7 @@ it("records text qualification attempts before seal, distinguishing absent and b
     attempt,
     evidence: "text",
     checks: [{ id: "criterion", status: "supported", attempt }],
+    ...(overrides.host && { host: overrides.host }),
   }
   const fixtures = textQualificationFixtures(4, 12)
   if (typeof fixtures === "string") throw new Error(fixtures)
@@ -323,6 +327,11 @@ it("records text qualification attempts before seal, distinguishing absent and b
       frames: [frame(fixture.controlRows, "control"), frame(fixture.targetRows, "target")],
     })),
   }
+  return { run, manifest, snapshots, attempt }
+}
+
+it("records text qualification attempts before seal, distinguishing absent and broken oracles", () => {
+  const { run, manifest, snapshots, attempt } = executionRun()
   const qualified = structuredClone(run)
   recordTextQualificationChecks(qualified, manifest, snapshots, attempt)
   expect(qualified.results[0]!.status).toBe("supported")
@@ -334,10 +343,65 @@ it("records text qualification attempts before seal, distinguishing absent and b
     scope: "none",
   })
   const corrupted = new Map(snapshots)
-  corrupted.set(run.textQualification.shapes[0]!.frames![0]!.ref, Buffer.from("wrong grid"))
+  corrupted.set(run.textQualification!.shapes[0]!.frames![0]!.ref, Buffer.from("wrong grid"))
   recordTextQualificationChecks(run, manifest, corrupted, attempt)
   expect(run.results[0]!.status).toBe("test-failure")
   expect(run.results[0]!.checks.find((check) => check.id === "text-qualification")?.reason).toContain(
     "expected character grid",
   )
+})
+
+// 30035 AC3: each missing shape witness must be refused by the execution writer, and an unattempted
+// run must stay TEST TODO rather than becoming TEST FAILURE.
+it("refuses a character verdict for each missing shape witness through the execution writer", () => {
+  for (const shape of TEXT_SHAPES) {
+    const { run, manifest, snapshots, attempt } = executionRun()
+    run.textQualification = {
+      ...run.textQualification!,
+      shapes: run.textQualification!.shapes.filter((witness) => witness.shape !== shape),
+    }
+    recordTextQualificationChecks(run, manifest, snapshots, attempt)
+    const result = run.results[0]!
+    expect(result.status, shape).toBe("test-failure")
+    expect(result.status, shape).not.toBe("supported")
+    expect(result.status, shape).not.toBe("unsupported")
+    expect(result.checks.find((check) => check.id === "text-qualification")?.reason, shape).toContain(
+      `missing text qualification shape ${shape}`,
+    )
+  }
+  const { run, manifest, snapshots } = executionRun()
+  run.textQualification = {
+    ...run.textQualification!,
+    shapes: run.textQualification!.shapes.filter((witness) => witness.shape !== TEXT_SHAPES[0]),
+  }
+  recordTextQualificationChecks(run, manifest, snapshots)
+  expect(run.results[0]!.status).toBe("test-todo")
+  expect(run.results[0]!.checks.find((check) => check.id === "text-qualification")?.attempt).toEqual({
+    scope: "none",
+  })
+})
+
+// 30035 AC4: console-host and Windows text can never be graded as the terminal's verdict.
+it("records Windows and console-host text as TEST TODO through the execution writer", () => {
+  const cases = [
+    executionRun({ os: "windows" }),
+    executionRun({
+      host: {
+        image: "OpenConsole.exe",
+        executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+        executableSha256: `sha256:${"a".repeat(64)}`,
+      },
+    }),
+  ]
+  for (const { run, manifest, snapshots, attempt } of cases) {
+    recordTextQualificationChecks(run, manifest, snapshots, attempt)
+    const result = run.results[0]!
+    expect(result.status).toBe("test-todo")
+    expect(result.status).not.toBe("supported")
+    expect(result.status).not.toBe("unsupported")
+    expect(result.reason).toBe("Text criterion requires a declared claim and terminal-owned macOS cell observer")
+    const check = result.checks.find((entry) => entry.id === "text-qualification")
+    expect(check?.status).toBe("test-todo")
+    expect(check?.attempt).toEqual({ scope: "none" })
+  }
 })
