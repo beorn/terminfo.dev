@@ -373,6 +373,10 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     return result
   }
   if (source.platform === "darwin") {
+    // @cto e5016c9f: Screen's Darwin shape is unqualified — 7 hops, a uid-0 pane login and a
+    // TTY-less /usr/bin/SCREEN (r13b). It refuses by name here, before any shape rule can run, so
+    // the refusal names the arm instead of whichever rule happened to fail first.
+    if (source.mux === "screen") fail(where, "darwin screen arm unqualified")
     const birth = (row: Record<string, unknown>, subject: string): number => {
       const value = row.startedAtEpochSeconds
       if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
@@ -394,7 +398,11 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
         if (required) fail(subject, "has no TTY")
         return null
       }
-      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) fail(subject, "has no TTY")
+      // A wrong type or a negative is not a measured "no TTY": name the shape the reader needs, so a
+      // string like "ttys000" points at the cause instead of reading as an absent device (@cto e5016c9f).
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+        fail(subject, "ttyRdev must be a device number or null")
+      }
       if (value === 0 || value === 0xffffffff) fail(subject, "has no TTY")
       return value
     }
@@ -532,7 +540,7 @@ function assertMuxChain<Identity extends { pid: number }>(
     outerShell: Identity & { ttyRdev: number }
     outerTerminal: Identity
     attachedClient: { ttyRdev: number }
-    chain: readonly (Identity & { executablePath: string; ttyRdev: number | null })[]
+    chain: readonly (Identity & { executablePath: string; ttyRdev: number | null; uid?: number })[]
     executable: { path: string }
   },
   sameProcess: (a: Identity, b: Identity) => boolean,
@@ -551,13 +559,23 @@ function assertMuxChain<Identity extends { pid: number }>(
     fail(where, "chain does not end at the declared outer terminal identity")
   }
   if (shellFromEnd === 3) {
-    // D4.3: the measured root allowance, in exactly this form and no wider.
+    // D4.3: the measured root allowance — exactly one uid-0 /usr/bin/login below the outer shell.
     const login = chain.at(-2)
     if (!login) fail(where, "chain has no hop below the outer shell")
     const rootHop = login as unknown as { pid: number; ppid: number; uid: number; executablePath: string }
     if (rootHop.executablePath !== "/usr/bin/login") fail(where, "chain root hop is not /usr/bin/login")
     if (rootHop.uid !== 0) fail(where, "chain root hop is not uid 0")
     // Its parent is checked by the arm's ppid walk (D4.4), which refuses a break anywhere in the chain.
+    // The allowance is exactly that one hop: every other row carries the collector's uid (@cto
+    // e5016c9f), so a root-owned mux server or shell cannot ride the login hop's exception.
+    const collectorUid = first.uid
+    if (collectorUid === undefined) fail(where, "chain collector carries no uid")
+    for (const [index, row] of chain.entries()) {
+      if (index === chain.length - 2) continue
+      if (row.uid !== collectorUid) {
+        fail(`${where} chain[${index}]`, `uid ${row.uid} is not the collector's uid ${collectorUid}`)
+      }
+    }
   }
   const shell = chain.at(-shellFromEnd)
   if (!shell || !sameProcess(shell, proof.outerShell) || shell.ttyRdev !== proof.outerShell.ttyRdev) {

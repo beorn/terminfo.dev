@@ -464,11 +464,17 @@ test("the Darwin mux arm parses r13's measured chain and refuses each deviation 
       /collector and outer shell must name distinct PTYs/,
     ],
     [{ ...proof, chain: proof.chain.slice(1) }, /chain collector identity or TTY differs from collector/],
+    // @cto e5016c9f: the root allowance is one login hop. Every other row carries the collector's uid,
+    // so a root-owned server or shell cannot ride it.
+    [withHop(55800, { uid: 0 }), /chain\[1\]\): uid 0 is not the collector's uid 501/],
+    [withHop(55772, { uid: 0 }), /chain\[2\]\): uid 0 is not the collector's uid 501/],
     // Only the measured outer terminal may have no TTY, and "no TTY" is never 0 or NODEV.
     [withHop(55772, { ttyRdev: null }), /chain\[2\]\): has no TTY/],
     [withHop(55770, { ttyRdev: 0xffffffff }), /chain\[4\]\): has no TTY/],
     [withHop(55770, { ttyRdev: 0 }), /chain\[4\]\): has no TTY/],
     [{ ...proof, outerShell: { ...proof.outerShell, ttyRdev: null } }, /outerShell\): has no TTY/],
+    // A wrong-typed device is not a measured absence; the refusal points at the shape it needs.
+    [withHop(55772, { ttyRdev: "ttys000" }), /chain\[2\]\): ttyRdev must be a device number or null/],
     // D3 birth seconds are whole seconds on every row, and a Linux-shaped row refuses.
     [withHop(55803, { startedAtEpochSeconds: 0 }), /chain\[0\]\): startedAtEpochSeconds must be a whole epoch second/],
     [
@@ -492,4 +498,18 @@ test("the Darwin mux arm parses r13's measured chain and refuses each deviation 
   expect(() => parseMuxAttachmentProof(withLogin)).toThrow(
     /outer shell identity or TTY is absent immediately below the outer terminal/,
   )
+})
+
+// @cto e5016c9f: Darwin Screen is unqualified, and it refuses by name BEFORE any shape rule, so a
+// Screen proof that also breaks a shape rule still reports the arm rather than the rule that fired.
+test("the Darwin arm refuses Screen by name before it reads a single shape rule", () => {
+  const proof = darwinProof()
+  expect(() => parseMuxAttachmentProof({ ...proof, mux: "screen" })).toThrow(/darwin screen arm unqualified/)
+  expect(() =>
+    parseMuxAttachmentProof({
+      ...proof,
+      mux: "screen",
+      chain: proof.chain.map((hop) => (hop.pid === 55800 ? { ...hop, ppid: 99999, uid: 0 } : hop)),
+    }),
+  ).toThrow(/darwin screen arm unqualified/)
 })
