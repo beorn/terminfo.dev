@@ -1240,7 +1240,13 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
-    const history = projectHistoricalResults([run], [], catalogIds, { currentProbeHash: probeHash }, countContexts([run]))
+    const history = projectHistoricalResults(
+      [run],
+      [],
+      catalogIds,
+      { currentProbeHash: probeHash },
+      countContexts([run]),
+    )
     expect(Object.keys(history.table[run.runId]!).length).toBeGreaterThan(0)
   } finally {
     rmSync(directory, { recursive: true, force: true })

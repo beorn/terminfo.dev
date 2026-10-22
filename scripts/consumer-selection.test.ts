@@ -178,10 +178,14 @@ describe("consumer selection", () => {
           "",
         ].join("\n"),
       )
-      const child = spawnSync(process.execPath, [join(root, "scripts", "zero-current.ts"), join(source, "content"), root], {
-        encoding: "utf8",
-        maxBuffer: 4 * 1024 * 1024,
-      })
+      const child = spawnSync(
+        process.execPath,
+        [join(root, "scripts", "zero-current.ts"), join(source, "content"), root],
+        {
+          encoding: "utf8",
+          maxBuffer: 4 * 1024 * 1024,
+        },
+      )
       expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0)
       const receipt = JSON.parse(child.stdout.trim().split("\n").at(-1) ?? "") as {
         fixtureRuns: number
