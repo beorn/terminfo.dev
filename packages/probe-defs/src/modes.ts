@@ -437,14 +437,18 @@ function alt1049SpanBlank(ctx: TermlessContext, row: number, length: number): bo
 interface AltScreenMode {
   /** The private mode the roundtrip sets and resets: CSI ? <mode> h enters, CSI ? <mode> l leaves. */
   readonly mode: 47 | 1047 | 1049
-  /** Entry must blank the seeded spans (1049, 1047); ?47 leaves clearing implementation-defined. */
+  /**
+   * Entry must blank the seeded spans. Only ?1049 promises that: xterm clears ?1047's alternate buffer
+   * on EXIT (DECRST 1047, "clearing screen first if in the Alternate Screen Buffer"), and ?47 leaves
+   * clearing implementation-defined, so both grade entry by the primary seeds not showing (#30702).
+   */
   readonly clearsOnEnter: boolean
   /** Only 1049 saves the cursor on entry and restores it on exit. */
   readonly savesCursor: boolean
 }
 
 const ALT_SCREEN_1049: AltScreenMode = { mode: 1049, clearsOnEnter: true, savesCursor: true }
-const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: true, savesCursor: false }
+const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: false, savesCursor: false }
 const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, savesCursor: false }
 
 /**
@@ -529,8 +533,9 @@ function altScreenRoundtrip(
     } catch (error) {
       return alt1049ReadbackInconclusive(expected, "Alternate-buffer readback failed", error)
     }
-    // A clearing mode must show blank seeded spans. ?47 leaves clearing implementation-defined, so
-    // only a span that still shows its primary seed fails its entry; other alternate content passes.
+    // A clearing mode must show blank seeded spans. ?47 and ?1047 leave entry clearing implementation-
+    // defined, so only a span that still shows its primary seed fails their entry; other alternate
+    // content passes.
     const entered = screen.clearsOnEnter ? blankA && blankB : !seedShown
     if (!entered) {
       const state = { seedA, seedB, blankA, blankB, ...(!screen.clearsOnEnter && { seedShown }) }

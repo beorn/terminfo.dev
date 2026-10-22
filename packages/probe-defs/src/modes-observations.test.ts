@@ -520,14 +520,23 @@ test.each(ALT_SWAP)(
   },
 )
 
-test("?47 leaves alternate clearing implementation-defined while ?1047 must clear on entry", () => {
-  const legacy = altSwapHeadless("modes.altscreen-47")(alt1049Context("uncleared-entry", 20, 5, 47).context)
-  expect(legacy.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
-  const clearing = altSwapHeadless("modes.altscreen-1047")(alt1049Context("uncleared-entry", 20, 5, 1047).context)
-  expect(clearing.observation).toMatchObject({
+test.each(ALT_SWAP)(
+  "%s leaves alternate clearing on entry implementation-defined (xterm clears ?1047 on exit, #30702)",
+  (id, mode) => {
+    const stale = altSwapHeadless(id)(alt1049Context("uncleared-entry", 20, 5, mode).context)
+    expect(stale.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(stale.assertions).toMatchObject([{ kind: "positive" }])
+  },
+)
+
+test("?1049 must clear the alternate buffer on entry: a stale alternate buffer fails it", () => {
+  const result = alt1049Probe("enter").termless!(alt1049Context("uncleared-entry").context)
+  expect(result.observation).toMatchObject({
     outcome: "unsupported",
-    note: "CSI ? 1047 h did not clear the seeded primary spans",
+    evidence: "parser-state",
+    note: "CSI ? 1049 h did not clear the seeded primary spans",
   })
+  expect(result.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test.each(ALT_SWAP)("%s stays inconclusive on an undersized grid or an unavailable readback", (id, mode) => {

@@ -615,7 +615,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
   // is never a pass, and the pair says why (#30702): both frames on the stream pattern measure DECSACE
   // 2 ignored, both on the rectangle pattern measure the stream extent ignored, and either is a measured
   // negative, not an inconclusive. No inverse cell in either frame means DECCARA itself was not
-  // honoured, so the extent has no observable (TEST TODO); any other agreeing pair is inconclusive by name.
+  // honoured, so the extent has no observable (TEST TODO); any other pair, agreeing or differing, is
+  // inconclusive by name.
   {
     ...probe(
       "editing.decsace",
@@ -668,10 +669,15 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             "Both DECSACE extent modes left the same frame, which is neither the rectangle nor the stream extent",
           )
         }
+        const pair = { rect: rectPattern, stream: streamPattern }
+        if (rectPattern === DECSACE_RECTANGLE_PATTERN && streamPattern === DECSACE_STREAM_PATTERN) {
+          return parserStateResult(true, DECSACE_EXPECTED, pair)
+        }
         return parserStateResult(
-          rectPattern === DECSACE_RECTANGLE_PATTERN && streamPattern === DECSACE_STREAM_PATTERN,
+          null,
           DECSACE_EXPECTED,
-          { rect: rectPattern, stream: streamPattern },
+          pair,
+          `The two DECSACE frames differ but are not the rectangle and stream extents: rect=${rectPattern} stream=${streamPattern}`,
         )
       },
       async (ctx) => {

@@ -473,6 +473,20 @@ test("editing.decsace keeps any other agreeing pair inconclusive by name, never 
   expect(result.assertions).toBeUndefined()
 })
 
+test("editing.decsace keeps a differing pair that is not the two extents inconclusive by name, never a verdict", () => {
+  for (const [rect, stream] of [
+    [DECSACE_STREAM, DECSACE_RECT],
+    [DECSACE_RECT, ".#......|........"],
+  ] as const) {
+    const label = `rect ${rect} stream ${stream}`
+    const result = find("editing.decsace").termless!(decsacePairContext(rect, stream))
+    expect(result.observation, label).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(String(result.observation?.note), label).toContain("differ but are not the rectangle and stream extents")
+    expect(result.assertions, label).toBeUndefined()
+    expect(JSON.parse(result.response ?? "{}"), label).toEqual({ rect, stream })
+  }
+})
+
 test("editing.decsace without a capture adapter still clears its DECSACE extent", async () => {
   const { context, writes } = captureContext(24, 80, false)
   const result = await find("editing.decsace").term!(context)

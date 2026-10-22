@@ -62,9 +62,13 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   expect.soft(writes).not.toContain("\x1b[?7l")
   expect.soft(writes).not.toContain("\x1b[?2031l")
   expect.soft(JSON.parse(batch.rawReplies["modes.application-keypad"]!)).toMatchObject({ on: null, off: null })
-  expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({ mode: null })
+  // #30702: the margin and alternate-screen arms read the cells, so their raw state is the seeded frames.
+  expect.soft(JSON.parse(batch.rawReplies["modes.left-right-margin"]!)).toMatchObject({
+    seed: "ABCDEFGH",
+    margins: "3-6",
+  })
   for (const id of ["modes.altscreen-47", "modes.altscreen-1047"]) {
-    expect.soft(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ entered: null, exited: null })
+    expect.soft(JSON.parse(batch.rawReplies[id]!), id).toMatchObject({ seedA: "PRIMARY-A", seedB: "PRIMARY-B" })
   }
   expect(batch.results.find((row) => row.featureId === "modes.application-keypad")).toMatchObject({
     status: "test-todo",
