@@ -1478,7 +1478,9 @@ it("does not name a historical-only target on the site", () => {
 it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   // Guard 28047, rebuilt on the same current-row fixture the other parity tests use: two current
   // targets whose catalog names map to one slug must fail the build loudly, naming both rows.
-  const projection = currentResults.loadCurrentResults("").projection
+  // The loader memoizes on globalThis, so the rows below are written into a clone and cannot outlive
+  // mockRestore into a later test.
+  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
   const base = Object.values(projection.current)[0]
   if (!base) throw new Error("the fixture projection has no current run")
   const as = (contextKey: string, kind: CurrentSelectedVersion["target"]["kind"], id: string) => {
@@ -1491,10 +1493,12 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
     return { contextKey, selected }
   }
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
+  const app = as("app:ghostty", "app", "ghostty")
+  const native = as("headless:ghostty-native", "headless", "ghostty-native")
   const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
     new Map([
-      ["ghostty", as("app:ghostty", "app", "ghostty")],
-      ["ghostty-native", as("headless:ghostty-native", "headless", "ghostty-native")],
+      ["ghostty", app],
+      ["ghostty-native", native],
     ]),
   )
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
@@ -1511,14 +1515,23 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
         "ghostty-native": { label: "libghostty-vt (native)", slug: "ghostty" },
       },
     })
-    // Any analysis key the builder asks for resolves; the assertion under test is the page-id guard.
-    const genericAnalysis = { analysis: "<p>analysis</p>", date: "2026-09-28", changes: null, runSha256: fixture.runSha256 }
-    const analysisBase = generateAnalysis()
-    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(
-      new Proxy(analysisBase, {
-        get: (target, key) => (typeof key === "string" ? (target[key] ?? genericAnalysis) : Reflect.get(target, key)),
-      }) as unknown as ReturnType<typeof probeData.loadAnalysis>,
-    )
+    // One explicit entry per minted run — the builder finds analysis by selected run sha, and a
+    // catch-all would also answer a lookup that should have failed.
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue({
+      ...generateAnalysis(),
+      "terminals/ghostty": {
+        analysis: "<p>app</p>",
+        date: "2026-09-28",
+        changes: null,
+        runSha256: app.selected.sha256,
+      },
+      "terminals/ghostty-native": {
+        analysis: "<p>parser</p>",
+        date: "2026-09-28",
+        changes: null,
+        runSha256: native.selected.sha256,
+      },
+    } as unknown as ReturnType<typeof probeData.loadAnalysis>)
     let message = ""
     try {
       terminalPaths.paths()

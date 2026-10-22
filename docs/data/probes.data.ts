@@ -104,8 +104,8 @@ export interface ProbeData {
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
   historicalByBackend: Record<string, HistoricalPublicCurrentResult>
-  historicalTable: Readonly<Record<string, Readonly<Record<string, CellState>>>>
   currentRunCount: number
+  historicalTable: Readonly<Record<string, Readonly<Record<string, CellState>>>>
   releaseScope: ReleaseScope & { line: string }
   releaseBars: Record<string, CurrentAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
@@ -180,7 +180,14 @@ function loadBackendMeta(): Record<string, BackendMeta> {
   return meta
 }
 
-declare const data: Omit<ProbeData, "selected">
+/**
+ * #30759 Slice A: the client payload is exactly what `load()` returns — the full projection and both
+ * historical maps stay behind at build time. One alias names it for both the loader and the `data`
+ * a page imports, so a field `load()` drops can never stay advertised in the client-side type.
+ */
+export type ClientProbeData = Omit<ProbeData, "selected" | "historicalByBackend" | "historicalTable">
+
+declare const data: ClientProbeData
 export { data }
 
 export function loadFullProbes(): ProbeData {
@@ -293,8 +300,8 @@ export function loadFullProbes(): ProbeData {
     selected: published.projection,
     selectedByBackend,
     historicalByBackend: published.historicalByBackend,
-    historicalTable: projection.historical.table,
     currentRunCount: published.projection.currentRunCount,
+    historicalTable: projection.historical.table,
     releaseScope,
     releaseBars,
     releaseShares,
@@ -316,8 +323,13 @@ export default {
    * client payload — it is ~5.6 MB of schema-2 runs that no route can select any more. It stays
    * available to build-time readers through loadFullProbes().
    */
-  load(): Omit<ProbeData, "selected" | "historicalByBackend" | "historicalTable"> {
-    const { selected: _selected, historicalByBackend: _historical, historicalTable: _table, ...client } = loadFullProbes()
+  load(): ClientProbeData {
+    const {
+      selected: _selected,
+      historicalByBackend: _historical,
+      historicalTable: _table,
+      ...client
+    } = loadFullProbes()
     return client
   },
 }
