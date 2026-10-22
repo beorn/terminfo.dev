@@ -366,6 +366,21 @@ export function requireHostedDarwinAppAncestor(
   return named
 }
 
+/**
+ * One line naming every hop the hosted Darwin proof walked, kernel path included, so a run's
+ * collector.log carries the chain #30392 Acceptance 4 cites instead of only the refusal that used it.
+ * A row whose kernel read failed says so by name rather than printing argv0 as if it were the path.
+ */
+export function formatHostedDarwinAncestry(rows: AncestryRow[]): string {
+  return rows
+    .map((row) => {
+      const hop = `${String(row.pid)}:${row.comm.trim()}`
+      if (row.kernelExecutableError) return `${hop} <kernel-error: ${row.kernelExecutableError}>`
+      return row.kernelExecutable ? `${hop} <${row.kernelExecutable}>` : hop
+    })
+    .join(" <- ")
+}
+
 function readProcessAncestry(startPid: number): AncestryRow[] {
   const rows: AncestryRow[] = []
   const seen = new Set<number>()
@@ -755,7 +770,11 @@ export async function createOwnedTerminal(options: {
     }
     hostedApp = hostedDarwinAppFromExecutablePath(executablePath)
     binding = darwinHostedOutput(out)
-    hostedAncestor = requireHostedDarwinAppAncestor(hostedApp.comm, readProcessAncestry(process.pid), executablePath)
+    const ancestry = readProcessAncestry(process.pid)
+    // Prints before the app check, so a refusal by requireHostedDarwinAppAncestor still leaves the
+    // measured chain in the artifact; the binding itself runs earlier, on darwinHostedOutput.
+    process.stderr.write(`Hosted Darwin measured process ancestry: ${formatHostedDarwinAncestry(ancestry)}\n`)
+    hostedAncestor = requireHostedDarwinAppAncestor(hostedApp.comm, ancestry, executablePath)
     hostedReceiptSha256 = receipt.sha256
     hostedPid1Comm = execFileSync("/bin/ps", ["-p", "1", "-o", "comm="], {
       encoding: "utf8",

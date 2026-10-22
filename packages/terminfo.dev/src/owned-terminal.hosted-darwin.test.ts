@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process"
 import { afterEach, expect, test } from "vitest"
 import {
   createOwnedTerminal,
+  formatHostedDarwinAncestry,
   hostedDarwinAppFromExecutablePath,
   requireHostedDarwinAppAncestor,
 } from "./owned-terminal.ts"
@@ -158,6 +159,38 @@ test("requireHostedDarwinAppAncestor accepts the named app and refuses a wrong a
   ]
   expect(() => requireHostedDarwinAppAncestor("iTerm2", none)).toThrow(
     /Hosted Darwin ancestry never reached iTerm2; found zsh \(pid 100\), sshd \(pid 90\), launchd \(pid 80\)/,
+  )
+})
+
+// #30392 Acceptance 4 cites the collector's tty= entry together with the chain to the app pid; the
+// run already walked that chain, so the line must name every hop and never pass argv0 off as the path.
+// Rows are in producer order, exactly as readProcessAncestry builds them: self first, then each parent
+// up to launchd, so the arrows point the way the run walks.
+test("formatHostedDarwinAncestry names every hop with its kernel path and a failed read by name", () => {
+  const rows = [
+    {
+      pid: 3207,
+      ppid: 2444,
+      comm: "bun",
+      kernelExecutableError: "proc_pidpath: returned 0, errno 1",
+    },
+    {
+      pid: 2444,
+      ppid: 1,
+      comm: "stable",
+      kernelExecutable: "/Applications/Warp.app/Contents/MacOS/stable",
+      kernelExecutableReader: "proc_pidpath" as const,
+    },
+    {
+      pid: 1,
+      ppid: 0,
+      comm: "/sbin/launchd",
+      kernelExecutable: "/sbin/launchd",
+      kernelExecutableReader: "proc_pidpath" as const,
+    },
+  ]
+  expect(formatHostedDarwinAncestry(rows)).toBe(
+    "3207:bun <kernel-error: proc_pidpath: returned 0, errno 1> <- 2444:stable </Applications/Warp.app/Contents/MacOS/stable> <- 1:/sbin/launchd </sbin/launchd>",
   )
 })
 
