@@ -1,6 +1,7 @@
 import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
 import {
   parserStateResult,
+  sameRgb,
   sgrProbe,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
@@ -14,10 +15,6 @@ import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
 import { COLOUR_CAPTURE, colourCaptureVerdict } from "./sgr-colour-capture.ts"
 
 const requestedUnderlineColor = { r: 255, g: 0, b: 128 }
-
-function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
-  return a.r === b.r && a.g === b.g && a.b === b.b
-}
 
 /**
  * Prefer the terminal's own DECRQSS SGR report over the pixel/cursor fallback path. A terminal that

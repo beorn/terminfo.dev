@@ -39,6 +39,11 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
   }
 }
 
+/** Channel-exact equality of two reported cell colors. */
+export function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b
+}
+
 /**
  * The probe ran and retained raw state, but this environment exposes no applicable observable for
  * the claim. This is a coverage/applicability record, never a fifth measurement outcome.

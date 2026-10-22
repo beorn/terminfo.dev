@@ -13,6 +13,7 @@ import {
   queryDecrpm,
   readHyperlinkMetadata,
   replyFrame,
+  sameRgb as sameRgbCells,
   sentinelNegativeResult,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
@@ -494,10 +495,6 @@ function sameRgb(left: string, right: string): boolean {
   const actual = channels(left)
   const expected = channels(right)
   return actual.every((channel, index) => channel === expected[index])
-}
-
-function sameRgbCells(left: { r: number; g: number; b: number }, right: { r: number; g: number; b: number }): boolean {
-  return left.r === right.r && left.g === right.g && left.b === right.b
 }
 
 function probeForeground(before: string): string {

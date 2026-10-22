@@ -15,6 +15,7 @@ import {
   parserStateResult,
   notTestedResult,
   osInputReviewResult,
+  sameRgb,
   isBlank,
   queryDecrpm,
   decrpmReading,
@@ -224,6 +225,188 @@ async function xtColorStackCapture(ctx: TermContext, id: string): Promise<ProbeR
   } finally {
     if (pushed) ctx.write("\x1b[#Q")
     ctx.write("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/** A stack operation that produced output: the invalid-reply record the read-back arms keep. */
+function stackOutputResult(output: string): ProbeResult {
+  return {
+    pass: false,
+    response: output,
+    observation: {
+      outcome: "inconclusive",
+      reason: "invalid-reply",
+      evidence: "query",
+      note: "Unexpected output during stack operation",
+    },
+  }
+}
+
+type StackCell = ReturnType<TermlessContext["getCell"]>
+
+/** Bold-only and italic-only are the two shapes the SGR-stack fixture discriminates between. */
+function boldOnly(cell: StackCell): boolean {
+  return cell.bold === true && cell.italic !== true
+}
+
+function italicOnly(cell: StackCell): boolean {
+  return cell.italic === true && cell.bold !== true
+}
+
+/**
+ * Headless SGR-stack read-back (#30700): the pixel capture's frame, read from the parser's cells. B
+ * is written bold, then the push, SGR 0, italic X, the pop, Y. A working roundtrip leaves Y
+ * bold-only (bold restored, italic cleared); an ignored push/pop leaves Y italic-only. The control
+ * writes the same cells with no stack ops, so a backend that does not report bold or italic, or
+ * whose SGR 0 does not clear bold, reads as "not calibrated" rather than as a negative.
+ */
+function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): ProbeResult {
+  const expected = `${id}: ${label} leaves Y bold-only (bold restored by the pop, italic cleared)`
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 3) {
+    return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs three columns")
+  }
+  const readBXY = () => ({ b: ctx.getCell(0, 0), x: ctx.getCell(0, 1), y: ctx.getCell(0, 2) })
+  const charsIntact = (cells: ReturnType<typeof readBXY>) =>
+    cells.b.char === "B" && cells.x.char === "X" && cells.y.char === "Y"
+  let pushed = false
+  try {
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB\x1b[0m\x1b[3mXY\x1b[0m")
+    const control = readBXY()
+    if (!charsIntact(control) || !boldOnly(control.b) || !italicOnly(control.x) || !italicOnly(control.y)) {
+      return parserStateResult(null, expected, { control }, "Bold and italic cell readback was not calibrated")
+    }
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB")
+    const pushOutput = ctx.feedCapture("\x1b[#{")
+    pushed = true
+    if (pushOutput.length > 0) return stackOutputResult(pushOutput)
+    ctx.feed("\x1b[0m\x1b[3mX")
+    const popOutput = ctx.feedCapture("\x1b[#}")
+    pushed = false
+    if (popOutput.length > 0) return stackOutputResult(popOutput)
+    ctx.feed("Y\x1b[0m")
+    const target = readBXY()
+    const state = { control, target }
+    if (!charsIntact(target))
+      return parserStateResult(null, expected, state, "Stack sequence disturbed the B, X, Y cells")
+    if (boldOnly(target.y)) return parserStateResult(true, expected, state)
+    if (italicOnly(target.y)) return parserStateResult(false, expected, state)
+    return parserStateResult(null, expected, state, "Y after the pop is neither bold-only nor italic-only")
+  } finally {
+    if (pushed) ctx.feed("\x1b[#}")
+    ctx.feed("\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+/**
+ * Headless XTSAVE/XTRESTORE read-back (#30700): the pixel capture's overflow fixture, read from
+ * cells. Every frame writes exactly `cols` Xs then one `!`: with auto-wrap off the `!` overwrites
+ * the last column and row 2 stays empty; with wrap on it lands at row 2, column 1. Two controls
+ * calibrate both wrap states before the target saves wrap on, disables it and restores it, so a
+ * backend that cannot show either state reads as "not calibrated" rather than as a negative.
+ */
+function xtModeSaveHeadless(ctx: TermlessContext, id: string): ProbeResult {
+  const expected = `${id}: the ${ctx.cols}-column overflow ! wraps to row 2 after DECAWM is saved on, disabled and restored`
+  const rows = ctx.getScrollback().screenLines
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2 || !Number.isSafeInteger(rows) || rows < 2) {
+    return parserStateResult(null, expected, { rows, cols: ctx.cols }, "Measured grid needs two rows and two columns")
+  }
+  const xs = "X".repeat(ctx.cols)
+  const overflow = () => ({ last: ctx.getCell(0, ctx.cols - 1), next: ctx.getCell(1, 0) })
+  const wrapped = (frame: ReturnType<typeof overflow>) => frame.last.char === "X" && frame.next.char === "!"
+  const stayed = (frame: ReturnType<typeof overflow>) => frame.last.char === "!" && frame.next.char !== "!"
+  try {
+    ctx.feed(`\x1b[?7l\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    const off = overflow()
+    ctx.feed(`\x1b[?7h\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    const on = overflow()
+    if (!stayed(off) || !wrapped(on)) {
+      return parserStateResult(
+        null,
+        expected,
+        { rows, cols: ctx.cols, off, on },
+        "Auto-wrap off and on controls were not both measured",
+      )
+    }
+    const saveOutput = ctx.feedCapture("\x1b[?7s")
+    if (saveOutput.length > 0) return stackOutputResult(saveOutput)
+    ctx.feed("\x1b[?7l")
+    const restoreOutput = ctx.feedCapture("\x1b[?7r")
+    if (restoreOutput.length > 0) return stackOutputResult(restoreOutput)
+    ctx.feed(`\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
+    const target = overflow()
+    const state = { rows, cols: ctx.cols, off, on, target, autoWrap: ctx.getMode("autoWrap") }
+    if (wrapped(target)) return parserStateResult(true, expected, state)
+    if (stayed(target)) return parserStateResult(false, expected, state)
+    return parserStateResult(null, expected, state, "Overflow ! after the restore landed in neither wrap state")
+  } finally {
+    ctx.feed("\x1b[?7h\x1b[0m\x1b[2J\x1b[H")
+  }
+}
+
+const COLOR_STACK_BLUE = { r: 0, g: 0, b: 255 }
+const COLOR_STACK_GREEN = { r: 0, g: 255, b: 0 }
+
+/**
+ * Headless XTPUSHCOLORS/XTPOPCOLORS read-back (#30700): the pixel capture's palette fixture, read
+ * from cells. Calibration redefines index 1 blue, draws and reads a cell, then green and reads
+ * again, which proves OSC 4 moves the reported foreground at all. The target sets the blue
+ * baseline, pushes, redefines index 1 green, prints X, pops and prints Y. Y alone is graded, read
+ * before any later palette change can recolor it: blue means the pop restored the saved palette,
+ * green means it did not. X is never graded, because a correct pop may recolor it (turn362).
+ */
+function xtColorStackHeadless(ctx: TermlessContext, id: string): ProbeResult {
+  const expected = `${id}: Y printed through index 1 after the pop reads the blue baseline, not the pushed green`
+  if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 2) {
+    return parserStateResult(null, expected, { cols: ctx.cols }, "Measured grid needs two columns")
+  }
+  let pushed = false
+  try {
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07\x1b[38;5;1mA")
+    const blue = ctx.getCell(0, 0)
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mB")
+    const green = ctx.getCell(0, 0)
+    const calibration = { blue, green }
+    if (
+      blue.char !== "A" ||
+      green.char !== "B" ||
+      !blue.fg ||
+      !green.fg ||
+      !sameRgb(blue.fg, COLOR_STACK_BLUE) ||
+      !sameRgb(green.fg, COLOR_STACK_GREEN)
+    ) {
+      return parserStateResult(
+        null,
+        expected,
+        calibration,
+        "OSC 4 redefinition of palette index 1 was not measured in the cell readback",
+      )
+    }
+    ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07")
+    const pushOutput = ctx.feedCapture("\x1b[#P")
+    pushed = true
+    if (pushOutput.length > 0) return stackOutputResult(pushOutput)
+    ctx.feed("\x1b]4;1;rgb:00/ff/00\x07\x1b[38;5;1mX")
+    const popOutput = ctx.feedCapture("\x1b[#Q")
+    pushed = false
+    if (popOutput.length > 0) return stackOutputResult(popOutput)
+    ctx.feed("\x1b[38;5;1mY\x1b[0m")
+    const x = ctx.getCell(0, 0)
+    const y = ctx.getCell(0, 1)
+    const state = { calibration, x, y }
+    if (x.char !== "X" || y.char !== "Y" || !y.fg) {
+      return parserStateResult(null, expected, state, "X and Y cells after the pop were not exposed")
+    }
+    if (sameRgb(y.fg, COLOR_STACK_BLUE)) return parserStateResult(true, expected, state)
+    if (sameRgb(y.fg, COLOR_STACK_GREEN)) return parserStateResult(false, expected, state)
+    return parserStateResult(
+      null,
+      expected,
+      state,
+      "Y after the pop matches neither the blue baseline nor the pushed green",
+    )
+  } finally {
+    if (pushed) ctx.feed("\x1b[#Q")
+    ctx.feed("\x1b]104\x07\x1b[0m\x1b[2J\x1b[H")
   }
 }
 
@@ -1526,40 +1709,11 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // XTPUSHSGR — push SGR stack (CSI # {)
-  // Sequence consumed without producing output. Verify terminal stays responsive afterward.
+  // Headless: cell read-back of the push/pop roundtrip; terminal: pixel capture of the same frame.
   {
     ...probe(
       "modes.xtpushsgr",
-      (ctx) => {
-        // Capture any output during the push — should be empty.
-        const pushOut = ctx.feedCapture("\x1b[#{")
-        if (pushOut.length > 0) {
-          return {
-            pass: false,
-            response: pushOut,
-            observation: {
-              outcome: "inconclusive",
-              reason: "invalid-reply",
-              evidence: "query",
-              note: "Unexpected output during stack operation",
-            },
-          }
-        }
-        // Verify the terminal is still responsive by issuing a DA1 query.
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        // Pop to leave clean state.
-        ctx.feed("\x1b[#}")
-        return {
-          pass: false,
-          response: probeResponse,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "DA1 responsiveness does not measure saved/restored stack state",
-          },
-        }
-      },
+      (ctx) => xtSgrStackHeadless(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR"),
       async (ctx) => {
         if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpushsgr", "XTPUSHSGR (CSI # {) then XTPOPSGR")
         ctx.write("\x1b[#{")
@@ -1587,37 +1741,11 @@ export const modesProbes: ProbeDefinition[] = [
   },
 
   // XTPOPSGR — pop SGR stack (CSI # })
-  // Push first so the pop is meaningful, then verify responsiveness.
+  // Push first so the pop is meaningful; both arms grade the roundtrip, never responsiveness.
   {
     ...probe(
       "modes.xtpopsgr",
-      (ctx) => {
-        ctx.feed("\x1b[#{")
-        const popOut = ctx.feedCapture("\x1b[#}")
-        if (popOut.length > 0) {
-          return {
-            pass: false,
-            response: popOut,
-            observation: {
-              outcome: "inconclusive",
-              reason: "invalid-reply",
-              evidence: "query",
-              note: "Unexpected output during stack operation",
-            },
-          }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        return {
-          pass: false,
-          response: probeResponse,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "DA1 responsiveness does not measure saved/restored stack state",
-          },
-        }
-      },
+      (ctx) => xtSgrStackHeadless(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push"),
       async (ctx) => {
         if (ctx.capture) return xtSgrStackCapture(ctx, "modes.xtpopsgr", "XTPOPSGR (CSI # }) after a push")
         ctx.write("\x1b[#{")
@@ -1645,34 +1773,7 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtsave",
-      (ctx) => {
-        const saveOut = ctx.feedCapture("\x1b[?7s")
-        if (saveOut.length > 0) {
-          return {
-            pass: false,
-            response: saveOut,
-            observation: {
-              outcome: "inconclusive",
-              reason: "invalid-reply",
-              evidence: "query",
-              note: "Unexpected output during stack operation",
-            },
-          }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        // Restore to leave clean state.
-        ctx.feed("\x1b[?7r")
-        return {
-          pass: false,
-          response: probeResponse,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "DA1 responsiveness does not measure saved/restored stack state",
-          },
-        }
-      },
+      (ctx) => xtModeSaveHeadless(ctx, "modes.xtsave"),
       async (ctx) => {
         if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtsave")
         ctx.write("\x1b[?7s")
@@ -1703,33 +1804,7 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtrestore",
-      (ctx) => {
-        ctx.feed("\x1b[?7s")
-        const restoreOut = ctx.feedCapture("\x1b[?7r")
-        if (restoreOut.length > 0) {
-          return {
-            pass: false,
-            response: restoreOut,
-            observation: {
-              outcome: "inconclusive",
-              reason: "invalid-reply",
-              evidence: "query",
-              note: "Unexpected output during stack operation",
-            },
-          }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        return {
-          pass: false,
-          response: probeResponse,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "DA1 responsiveness does not measure saved/restored stack state",
-          },
-        }
-      },
+      (ctx) => xtModeSaveHeadless(ctx, "modes.xtrestore"),
       async (ctx) => {
         if (ctx.capture) return xtModeSaveCapture(ctx, "modes.xtrestore")
         ctx.write("\x1b[?7s")
@@ -1757,34 +1832,7 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtpushcolors",
-      (ctx) => {
-        const pushOut = ctx.feedCapture("\x1b[#P")
-        if (pushOut.length > 0) {
-          return {
-            pass: false,
-            response: pushOut,
-            observation: {
-              outcome: "inconclusive",
-              reason: "invalid-reply",
-              evidence: "query",
-              note: "Unexpected output during stack operation",
-            },
-          }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        // Pop to leave clean state.
-        ctx.feed("\x1b[#Q")
-        return {
-          pass: false,
-          response: probeResponse,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "DA1 responsiveness does not measure saved/restored stack state",
-          },
-        }
-      },
+      (ctx) => xtColorStackHeadless(ctx, "modes.xtpushcolors"),
       async (ctx) => {
         if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpushcolors")
         ctx.write("\x1b[#P")
@@ -1815,33 +1863,7 @@ export const modesProbes: ProbeDefinition[] = [
   {
     ...probe(
       "modes.xtpopcolors",
-      (ctx) => {
-        ctx.feed("\x1b[#P")
-        const popOut = ctx.feedCapture("\x1b[#Q")
-        if (popOut.length > 0) {
-          return {
-            pass: false,
-            response: popOut,
-            observation: {
-              outcome: "inconclusive",
-              reason: "invalid-reply",
-              evidence: "query",
-              note: "Unexpected output during stack operation",
-            },
-          }
-        }
-        const probeResponse = ctx.feedCapture("\x1b[c")
-        return {
-          pass: false,
-          response: probeResponse,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "DA1 responsiveness does not measure saved/restored stack state",
-          },
-        }
-      },
+      (ctx) => xtColorStackHeadless(ctx, "modes.xtpopcolors"),
       async (ctx) => {
         if (ctx.capture) return xtColorStackCapture(ctx, "modes.xtpopcolors")
         ctx.write("\x1b[#P")
