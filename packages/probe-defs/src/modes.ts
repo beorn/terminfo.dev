@@ -583,13 +583,16 @@ function altScreenRoundtrip(
       return alt1049ReadbackInconclusive(expected, "Restored-primary readback failed", error)
     }
     // DECRST 1047 clears the alternate buffer on exit (xterm ctlseqs), so that mode enters once more
-    // after the measured restore and reads the marker span: ALT-MARK gone is the clear, ALT-MARK still
-    // shown is the feature's own negative. No other mode promises an exit clear (#30702).
+    // after the measured restore and reads the marker span: a BLANK span is the clear, ALT-MARK still
+    // shown is the feature's own negative, and any other content (a partial clear) is inconclusive by
+    // name. No other mode promises an exit clear (#30702).
     let reentered: string | undefined
+    let reenteredBlank = false
     if (screen.clearsOnExit) {
       ctx.feed(enter)
       try {
         reentered = readAlt1049Span(ctx, 0, ALT_1049_MARK.length)
+        reenteredBlank = alt1049SpanBlank(ctx, 0, ALT_1049_MARK.length)
       } catch (error) {
         return alt1049ReadbackInconclusive(expected, "Re-entered alternate-buffer readback failed", error)
       } finally {
@@ -619,7 +622,17 @@ function altScreenRoundtrip(
         `ALT-MARK still shown on re-entry: CSI ? ${screen.mode} l did not clear the alternate buffer on exit`,
       )
     }
-    if (failures.length === 0) return parserStateResult(true, expected, state, undefined)
+    if (failures.length === 0) {
+      if (screen.clearsOnExit && !reenteredBlank) {
+        return parserStateResult(
+          null,
+          expected,
+          state,
+          `Re-entered alternate buffer shows other content, neither blank nor ALT-MARK: ${JSON.stringify(reentered)}`,
+        )
+      }
+      return parserStateResult(true, expected, state, undefined)
+    }
     if (phase === "roundtrip") {
       // One swap feature owns both directions, so a primary that did not come back, or a marker
       // that reached it, after a measured seed, entry and marker is its own negative.

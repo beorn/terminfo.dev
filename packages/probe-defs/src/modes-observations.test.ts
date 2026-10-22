@@ -332,6 +332,7 @@ type Alt1049Scenario =
   | "ignored-entry"
   | "uncleared-entry"
   | "uncleared-exit"
+  | "stale-exit"
   | "erasure-mimic"
   | "marker-leak"
   | "broken-exit"
@@ -375,11 +376,16 @@ function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5, mode: 47
           onAlt = true
           cursor = { x: 0, y: 0 }
           entries += 1
-          // An alternate buffer that keeps earlier content: neither blank nor the primary seed. An exit
-          // that did not clear leaves the marker in place for the second entry to find.
-          if (scenario !== "uncleared-exit" || entries === 1) {
-            altA = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
-            altB = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
+          // An alternate buffer that keeps earlier content at the first entry: neither blank nor the
+          // primary seed (a ?1047 exit clear leaves the second entry blank). An exit that did not clear
+          // leaves the marker in place for the second entry to find; a partial clear leaves other content.
+          if (scenario === "stale-exit" && entries > 1) {
+            altA = pad("STALE-ALT")
+            altB = pad("STALE-ALT")
+          } else if (scenario !== "uncleared-exit" || entries === 1) {
+            const stale = scenario === "uncleared-entry" && entries === 1
+            altA = stale ? pad("STALE-ALT") : blank
+            altB = stale ? pad("STALE-ALT") : blank
           }
         }
       } else if (sequence === "\x1b[1;1HALT-MARK") altA = pad("ALT-MARK")
@@ -564,6 +570,16 @@ test("?1047 must clear the alternate buffer on exit: a marker that survives re-e
   const legacy = alt1049Context("uncleared-exit", 20, 5, 47)
   expect(altSwapHeadless("modes.altscreen-47")(legacy.context).observation).toMatchObject({ outcome: "supported" })
   expect(legacy.writes.filter((write) => write === "\x1b[?47h")).toHaveLength(1)
+})
+
+test("?1047 re-entry that shows other content, neither blank nor ALT-MARK, is inconclusive by name", () => {
+  const { context, writes } = alt1049Context("stale-exit", 20, 5, 1047)
+  const result = altSwapHeadless("modes.altscreen-1047")(context)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(String(result.observation?.note)).toContain("neither blank nor ALT-MARK")
+  expect(result.assertions).toBeUndefined()
+  expect(JSON.parse(result.response ?? "{}")).toMatchObject({ reentered: "STALE-AL" })
+  expect(writes.at(-1)).toBe("\x1b[?1047l\x1b[0m")
 })
 
 test.each(ALT_SWAP)("%s stays inconclusive on an undersized grid or an unavailable readback", (id, mode) => {
