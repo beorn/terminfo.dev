@@ -469,7 +469,9 @@ describe("candidate-2 page: wiring", () => {
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group missing")
     expect(unicode.included).toBe(false)
-    expect(unicode.heldBy.map((row) => row.context)).toEqual([])
+    // 30720: windows-terminal/windows's Unicode replies are the console host's, so all four cells are
+    // held below the bar; that measured hold lowers the claim in the open.
+    expect(unicode.heldBy.map((row) => row.context)).toEqual(["windows-terminal/windows"])
     // The hold kitty/macos carried is kept in history and named as dark, never dropped.
     expect(unicode.darkHeldBy.map((row) => row.context)).toEqual(["kitty/macos"])
   })
@@ -711,13 +713,14 @@ describe("candidate-2 page: wiring", () => {
     expect(page).not.toContain("every measured context ({{ group.includedOn.length }})")
     const measured = data.contexts.filter((row) => row.published).length
     expect(outside.filter((group) => group.heldBy.length < measured).length).toBeGreaterThan(0)
-    // No measured context holds Unicode on the frozen suite c24025ea22fc: the one run that held it,
-    // kitty/macos on 67ad1f1d1580, is ineligible now that candidate 2 reads c24025ea22fc. The
-    // historical witness below still exercises an included group without a per-context claim.
+    // On the frozen suite c24025ea22fc the only measured Unicode hold is windows-terminal/windows,
+    // whose replies are the console host's (30720). The run that held it before, kitty/macos on
+    // 67ad1f1d1580, is ineligible now that candidate 2 reads c24025ea22fc. The historical witness
+    // below still exercises an included group without a per-context claim.
     const unicode = data.groups.find((group) => group.key === "unicode")
     if (!unicode) throw new Error("unicode group is missing")
     expect(unicode.included).toBe(false)
-    expect(unicode.heldBy.map((row) => row.context)).toEqual([])
+    expect(unicode.heldBy.map((row) => row.context)).toEqual(["windows-terminal/windows"])
     expect(unicode.includedOn).toEqual([])
     const historicalUnicode = historicalData.groups.find((group) => group.key === "unicode")
     expect(historicalUnicode?.included).toBe(true)
