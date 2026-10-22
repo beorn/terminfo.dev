@@ -204,6 +204,9 @@ export interface OwnedTerminal {
   readonly summary: string
   /** The PID of the receipt-named hosted app, measured from this collector's process ancestry. */
   readonly hostedAppPid?: number
+  /** The PID of the asserted owner process, which assertOwnedProcess proved is this collector's
+   * ancestor running the asserted executable with this launch run's marker. */
+  readonly processOwnerPid?: number
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   readonly clipboard?: LinuxClipboardAdapter
@@ -677,6 +680,7 @@ export async function createOwnedTerminal(options: {
   let hostedApp: HostedDarwinApp | undefined
   let hostedWindowsApp: HostedWindowsApp | undefined
   let hostedAncestor: AncestryRow | undefined
+  let processOwnerPid: number | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
   /** The console host whose buffer the Windows cell read sees, or the reason none could be
@@ -714,6 +718,7 @@ export async function createOwnedTerminal(options: {
       process.pid,
       assertion.provider,
     )
+    processOwnerPid = assertion.ownerPid
     binding = darwinOutput(out, assertion.tty)
   } else if (darwinHosted) {
     if (process.platform !== "darwin") throw new Error("Owned Darwin hosted terminal requires Darwin")
@@ -849,6 +854,7 @@ export async function createOwnedTerminal(options: {
       geometrySource: source,
       summary,
       ...(hostedAncestor && { hostedAppPid: hostedAncestor.pid }),
+      ...(processOwnerPid !== undefined && { processOwnerPid }),
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
       async readGeometry() {

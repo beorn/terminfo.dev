@@ -369,7 +369,106 @@ function runHostedDarwinFixture(script: string) {
   })
 }
 
+/**
+ * Collect through the owned-process arm on Darwin with a capture directory. The real collector and
+ * batch run; the owner proof, the capture adapter and the calibration are recording fixtures, so the
+ * script reports which app PID the adapter was installed for, how often calibration ran, and any
+ * refusal. `ownerPid` is the pid the verified owner reports; undefined is an owner with none.
+ */
+function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
+  home = mkdtempSync(join(tmpdir(), "terminfo-serve-process-capture-"))
+  const ownerPidField = ownerPid === undefined ? "" : `processOwnerPid: ${ownerPid},`
+  const script = `
+    import { mock } from "bun:test"
+    Object.defineProperty(process, "platform", { value: "darwin" })
+    const tty = await import("./packages/terminfo.dev/src/tty.ts")
+    const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const geometry = { status: "measured", rows: 24, cols: 80 }
+    const appPids = []
+    let calibrationCalls = 0
+    mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
+      detectTerminal: () => ({ name: "ghostty", version: "1.3.1", os: "macos", osVersion: "fixture" })
+    }))
+    mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
+      ownedTerminalVerifiedFor: () => true,
+      createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", ${ownerPidField}
+        summary: "owned process fixture", readGeometry: async () => geometry, dispose: async () => {} })
+    }))
+    mock.module("./packages/terminfo.dev/src/tty.ts", () => ({ ...tty,
+      withRawMode: async callback => callback(), drainStdin: async () => {},
+      queryWithSentinelOutcome: async (sequence, pattern) => {
+        const raw = sequence.includes("[18t") ? "\\x1b[8;24;80t"
+          : sequence.includes("[16t") ? "\\x1b[6;17;8t"
+          : sequence.includes("[14t") ? "\\x1b[4;408;640t"
+          : "\\x1bP>|ghostty 1.3.1\\x1b\\\\"
+        return { raw, rawBase64: Buffer.from(raw).toString("base64"), match: pattern.exec(raw), reason: "reply" }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/darwin-capture.ts", () => ({
+      createDarwinCapture: async (_directory, options) => {
+        appPids.push(options.appPid)
+        const refuse = async () => { throw new Error("capture must retain the calibration refusal") }
+        return { capture: refuse, captureRaw: refuse }
+      }
+    }))
+    mock.module("./packages/terminfo.dev/src/capture-calibration.ts", () => ({
+      calibrateCaptureOrigin: async () => {
+        calibrationCalls++
+        const error = new Error("Capture calibration fixture: refused")
+        error.name = "CaptureCalibrationRefused"
+        throw error
+      }
+    }))
+    const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
+    globalThis.__TERMINFO_BUNDLED_SUITE__ = {
+      manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+      collectorRevision: "b".repeat(40)
+    }
+    const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
+    let refusal
+    try {
+      await collectProbeRun({ ids: ["extensions.truecolor", "erase.line.all"], processOwner: { provider: "ghostty" } })
+    } catch (error) {
+      refusal = error.message
+    }
+    console.log("RESULT " + JSON.stringify({ appPids, calibrationCalls, refusal }))
+  `
+  const result = spawnSync(process.execPath, ["-e", script], {
+    cwd: packageRoot,
+    env: {
+      ...process.env,
+      HOME: home,
+      TERMINFO_CAPTURE_DIRECTORY: join(home, "captures"),
+      TERMINFO_DISPOSABLE_RECEIPT: "",
+      TERMINFO_RUNTIME_PROVENANCE: "",
+      TERMINFO_CLIPBOARD_FIXTURE_RECEIPT: "",
+    },
+    encoding: "utf8",
+    timeout: 10_000,
+  })
+  const line = /RESULT (\{.*\})/.exec(result.stdout)?.[1]
+  if (!line) throw new Error(`process capture fixture printed no RESULT line; stderr: ${result.stderr}`)
+  return { stderr: result.stderr, observed: JSON.parse(line) as unknown }
+}
+
 describe("private finite daemon startup", () => {
+  // @cto D5 (#30518): the owned-process arm captures through the SAME Darwin pixel install as the
+  // hosted arm, for the pid its owner proof verified, and refuses by name when there is none.
+  it("installs the Darwin pixel capture for the owned process arm on its verified owner pid", () => {
+    const { stderr, observed } = runDarwinProcessCaptureFixture(4242)
+    expect(observed).toEqual({ appPids: [4242], calibrationCalls: 1 })
+    expect(stderr).toBe("")
+  })
+
+  it("refuses an owned-process capture by name when the verified owner reports no pid", () => {
+    const { observed } = runDarwinProcessCaptureFixture(undefined)
+    expect(observed).toEqual({
+      appPids: [],
+      calibrationCalls: 0,
+      refusal: "Verified owned process has no measured app PID for capture",
+    })
+  })
+
   it("reports the same named capture refusal for the first and later probes when Darwin calibration fails", () => {
     home = mkdtempSync(join(tmpdir(), "terminfo-serve-calibration-"))
     const result = spawnSync(

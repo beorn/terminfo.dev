@@ -401,14 +401,17 @@ export async function collectProbeRun(
       processOwner: options.processOwner,
       platform: process.platform,
     })
-    if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted") {
-      throw new Error("Darwin capture directory requires a verified hosted-runner terminal receipt")
+    if (process.platform === "darwin" && captureDirectory && kind !== "darwinHosted" && kind !== "process") {
+      throw new Error("Darwin capture directory requires a verified hosted-runner receipt or owned process")
     }
-    // A hosted capture is a runner-owned terminal, not a controlled Linux run: macOS names
-    // darwinHosted and Windows names windowsHosted, and neither can supply Linux runtime provenance.
-    const hostedCapture = Boolean(captureDirectory) && (kind === "darwinHosted" || kind === "windowsHosted")
+    // A hosted capture is a runner-owned terminal and a Darwin owned-process capture is an app the
+    // owner proof verified; neither is a controlled Linux run, so neither can supply Linux runtime
+    // provenance. macOS names darwinHosted or process, and Windows names windowsHosted.
+    const nonLinuxCapture =
+      Boolean(captureDirectory) &&
+      (kind === "darwinHosted" || kind === "windowsHosted" || (kind === "process" && process.platform === "darwin"))
     const provenancePath = process.env.TERMINFO_RUNTIME_PROVENANCE
-    if ((captureDirectory || clipboardReceipt) && !provenancePath && !hostedCapture) {
+    if ((captureDirectory || clipboardReceipt) && !provenancePath && !nonLinuxCapture) {
       throw new Error("Controlled Linux collection requires runtime provenance")
     }
     if (provenancePath && !captureDirectory && !clipboardReceipt) {
@@ -446,7 +449,7 @@ export async function collectProbeRun(
     const executableSource = outerApp?.provenance ?? provenanceSource
     const executable = executableSource ? measuredExecutable(executableSource) : undefined
     const measuredTerminal = muxTarget ? { name: muxTarget.id, version: muxTarget.version } : terminal
-    if ((captureDirectory || clipboardReceipt) && !executable && !hostedCapture) {
+    if ((captureDirectory || clipboardReceipt) && !executable && !nonLinuxCapture) {
       throw new Error("Controlled Linux collection lacks measured executable")
     }
     let capture: ProbeCapture | undefined
@@ -542,6 +545,128 @@ export async function collectProbeRun(
     let preflightDarwinCapture: (() => Promise<void>) | undefined
     let captureCalibration: CaptureCalibrationFact | undefined
     let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
+    /**
+     * The ONE Darwin pixel-capture install, for the hosted arm and the owned-process arm alike (@cto
+     * D5, #30518): the adapter captures `appPid`, the pid that arm's owner proof verified.
+     *
+     * The cells read comes FIRST. When the terminal can read its own cells that is its capture path, and
+     * a pixel adapter installed afterwards would replace a text frame with a calibration these apps
+     * refuse by design, so preflight and the pixel install are skipped entirely.
+     */
+    const installDarwinCapture = async (terminal: OwnedTerminal, appPid: number | undefined, owner: string) => {
+      if (installTextCapture(terminal) || !captureDirectory) return
+      if (!appPid) throw new Error(`${owner} has no measured app PID for capture`)
+      const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
+      let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
+      let calibrationError: Error | undefined
+      const noGeometry = (message: string) => {
+        const error = new Error(`Darwin capture calibration refused: ${message}`)
+        error.name = "UndeclaredTerminalGeometry"
+        return error
+      }
+      // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
+      // already measured: the adapter never queries the terminal itself, so the geometry it checks a
+      // frame request against and the geometry the origin was calibrated on can never diverge.
+      const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
+        capture = async (checkpoint) => {
+          if (calibrationError) throw calibrationError
+          if (!checkpoint.cells && !checkpoint.pixelGeometry) {
+            const result = await darwinCapture.captureRaw(checkpoint)
+            return result.result
+          }
+          if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
+          const geometry = textOrigin.pixelGeometry
+          if (
+            checkpoint.pixelGeometry &&
+            (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
+              checkpoint.pixelGeometry.cellHeight !== geometry.cellHeight ||
+              checkpoint.pixelGeometry.textWidth !== geometry.textWidth ||
+              checkpoint.pixelGeometry.textHeight !== geometry.textHeight)
+          ) {
+            throw noGeometry("terminal pixel geometry changed after origin calibration")
+          }
+          return darwinCapture.capture(checkpoint, textOrigin)
+        }
+        prepareCapture = async ({ context, featureId, recordCapture }) => {
+          try {
+            textOrigin = await calibrateCaptureOrigin({
+              ctx: context,
+              pixelGeometry: reportedGeometry,
+              timeoutMs: DEFAULT_TIMEOUT_MS,
+              captureRaw: async (label, deadline) => {
+                const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
+                recordCapture(result.result)
+                return result.decoded
+              },
+            })
+            context.captureGeometry = {
+              geometry: textOrigin.pixelGeometry,
+              source: "measured by complete raster calibration",
+            }
+            captureCalibration = {
+              outcome: "installed",
+              basis: context.captureGeometry.source,
+              geometry: textOrigin.pixelGeometry,
+              queries,
+            }
+          } catch (cause) {
+            const error = cause instanceof Error ? cause : new Error(String(cause))
+            if (error.name !== "CaptureCalibrationRefused") throw error
+            calibrationError = error
+            context.captureGeometryRefusal = error.message
+            const causes: Array<{ name: string; message: string }> = []
+            const seen = new Set<Error>()
+            for (
+              let current: unknown = error;
+              current instanceof Error && !seen.has(current);
+              current = current.cause
+            ) {
+              seen.add(current)
+              causes.push({ name: current.name, message: current.message })
+            }
+            captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
+          }
+        }
+      }
+      preflightDarwinCapture = async () => {
+        const queries: CaptureCalibrationQuery[] = []
+        const report = await queryPixelGeometry({
+          queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
+            const outcome = await queryWithSentinelOutcome(sequence, pattern, timeoutMs)
+            queries.push({
+              sequence,
+              reason: outcome.reason,
+              raw: outcome.raw,
+              rawBase64: outcome.rawBase64,
+            })
+            return outcome
+          },
+        })
+        if ("missing" in report) {
+          // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
+          // rounds 1-2). A TIMEOUT - nothing answered at all, DA1 included - is a property of THIS
+          // run, never of the terminal, so the batch aborts loudly, by name, carrying the replies it
+          // read: the failure itself is evidence, and the run is repeated. A sentinel is NOT this
+          // case: tty.ts measures it as DA1 answered and then silence, the terminal's own negative,
+          // so it completes below as a named refusal.
+          if (report.transient) {
+            const read = queries
+              .map((query) => `${query.sequence} = ${query.reason} (${JSON.stringify(query.raw)})`)
+              .join("; ")
+            const error = new Error(
+              `Darwin capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
+            )
+            error.name = "TerminalGeometryUnmeasurable"
+            throw error
+          }
+          // An intrinsic missing report is not a missing measurement: the existing calibration
+          // now measures the complete raster. A transient query failure still aborts above.
+          installCapture(undefined, queries)
+          return
+        }
+        installCapture(report.geometry, queries)
+      }
+    }
     if (captureDirectory && process.platform === "linux") {
       if (!executable) throw new Error("Configured Linux capture lacks measured executable")
       capture = await createLinuxCapture(captureDirectory, executable)
@@ -580,6 +705,7 @@ export async function collectProbeRun(
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
         process: options.processOwner,
       })
+      await installDarwinCapture(ownedTerminal, ownedTerminal.processOwnerPid, "Verified owned process")
     } else if (kind === "darwinHosted") {
       if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
       ownedTerminal = await createOwnedTerminal({
@@ -589,123 +715,7 @@ export async function collectProbeRun(
         darwinHosted: { receiptPath: hostedReceipt },
       })
       assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
-      // The cells read comes FIRST. When this arm can read its own cells that is its capture path, and
-      // a pixel adapter installed afterwards would replace a text frame with a calibration these apps
-      // refuse by design, so preflight and the pixel install are skipped entirely.
-      if (!installTextCapture(ownedTerminal) && captureDirectory) {
-        const appPid = ownedTerminal.hostedAppPid
-        if (!appPid) throw new Error("Verified hosted Darwin terminal has no measured app PID for capture")
-        const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
-        let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
-        let calibrationError: Error | undefined
-        const noGeometry = (message: string) => {
-          const error = new Error(`Darwin capture calibration refused: ${message}`)
-          error.name = "UndeclaredTerminalGeometry"
-          return error
-        }
-        // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
-        // already measured: the adapter never queries the terminal itself, so the geometry it checks a
-        // frame request against and the geometry the origin was calibrated on can never diverge.
-        const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
-          capture = async (checkpoint) => {
-            if (calibrationError) throw calibrationError
-            if (!checkpoint.cells && !checkpoint.pixelGeometry) {
-              const result = await darwinCapture.captureRaw(checkpoint)
-              return result.result
-            }
-            if (!textOrigin) throw noGeometry("no witnessed text-area origin is available")
-            const geometry = textOrigin.pixelGeometry
-            if (
-              checkpoint.pixelGeometry &&
-              (checkpoint.pixelGeometry.cellWidth !== geometry.cellWidth ||
-                checkpoint.pixelGeometry.cellHeight !== geometry.cellHeight ||
-                checkpoint.pixelGeometry.textWidth !== geometry.textWidth ||
-                checkpoint.pixelGeometry.textHeight !== geometry.textHeight)
-            ) {
-              throw noGeometry("terminal pixel geometry changed after origin calibration")
-            }
-            return darwinCapture.capture(checkpoint, textOrigin)
-          }
-          prepareCapture = async ({ context, featureId, recordCapture }) => {
-            try {
-              textOrigin = await calibrateCaptureOrigin({
-                ctx: context,
-                pixelGeometry: reportedGeometry,
-                timeoutMs: DEFAULT_TIMEOUT_MS,
-                captureRaw: async (label, deadline) => {
-                  const result = await darwinCapture.captureRaw({ featureId, role: "control", label }, deadline)
-                  recordCapture(result.result)
-                  return result.decoded
-                },
-              })
-              context.captureGeometry = {
-                geometry: textOrigin.pixelGeometry,
-                source: "measured by complete raster calibration",
-              }
-              captureCalibration = {
-                outcome: "installed",
-                basis: context.captureGeometry.source,
-                geometry: textOrigin.pixelGeometry,
-                queries,
-              }
-            } catch (cause) {
-              const error = cause instanceof Error ? cause : new Error(String(cause))
-              if (error.name !== "CaptureCalibrationRefused") throw error
-              calibrationError = error
-              context.captureGeometryRefusal = error.message
-              const causes: Array<{ name: string; message: string }> = []
-              const seen = new Set<Error>()
-              for (
-                let current: unknown = error;
-                current instanceof Error && !seen.has(current);
-                current = current.cause
-              ) {
-                seen.add(current)
-                causes.push({ name: current.name, message: current.message })
-              }
-              captureCalibration = { outcome: "refused", queries, refusal: error.message, causes }
-            }
-          }
-        }
-        preflightDarwinCapture = async () => {
-          const queries: CaptureCalibrationQuery[] = []
-          const report = await queryPixelGeometry({
-            queryWithSentinelOutcome: async (sequence, pattern, timeoutMs) => {
-              const outcome = await queryWithSentinelOutcome(sequence, pattern, timeoutMs)
-              queries.push({
-                sequence,
-                reason: outcome.reason,
-                raw: outcome.raw,
-                rawBase64: outcome.rawBase64,
-              })
-              return outcome
-            },
-          })
-          if ("missing" in report) {
-            // Only the terminal's OWN answer may complete as a no-capture run (@cto, 28785 REVISE
-            // rounds 1-2). A TIMEOUT - nothing answered at all, DA1 included - is a property of THIS
-            // run, never of the terminal, so the batch aborts loudly, by name, carrying the replies it
-            // read: the failure itself is evidence, and the run is repeated. A sentinel is NOT this
-            // case: tty.ts measures it as DA1 answered and then silence, the terminal's own negative,
-            // so it completes below as a named refusal.
-            if (report.transient) {
-              const read = queries
-                .map((query) => `${query.sequence} = ${query.reason} (${JSON.stringify(query.raw)})`)
-                .join("; ")
-              const error = new Error(
-                `Darwin capture calibration could not be measured: ${report.missing}. A needed reply timed out, so REPEAT THE RUN. Replies read: ${read}`,
-              )
-              error.name = "TerminalGeometryUnmeasurable"
-              throw error
-            }
-            // An intrinsic missing report is not a missing measurement: the existing calibration
-            // now measures the complete raster. A transient query failure still aborts above.
-            installCapture(undefined, queries)
-            return
-          }
-          installCapture(report.geometry, queries)
-        }
-      }
+      await installDarwinCapture(ownedTerminal, ownedTerminal.hostedAppPid, "Verified hosted Darwin terminal")
     } else if (kind === "windowsHosted") {
       if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
       // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:

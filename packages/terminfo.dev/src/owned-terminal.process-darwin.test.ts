@@ -122,6 +122,8 @@ function runDarwinArm(scenario: {
       assert.deepEqual(summary.processOwnerAssertion, assertion)
       assert.equal(summary.ownerAssertionSource, "authenticated-admin-request")
       assert.equal(summary.ownedOwnerAssertion, undefined)
+      // The pid serve's Darwin capture adopts is the one this proof checked, never a second reading.
+      assert.equal(owner.processOwnerPid, assertion.ownerPid)
       console.log("GRANTED " + summary.outputBinding.tabTty)
     } catch (error) {
       console.log("REFUSED " + error.message)
