@@ -96,7 +96,7 @@ function readMeasured(observed?: string): MeasuredStep[] | undefined {
   try {
     parsed = JSON.parse(observed)
   } catch {
-    return undefined
+    throw new Error("observed assertion is JSON-shaped but does not parse")
   }
   if (!isRecord(parsed) || !Array.isArray(parsed.measured)) return undefined
   const steps: MeasuredStep[] = []

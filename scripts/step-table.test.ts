@@ -118,6 +118,12 @@ describe("the popover step table", () => {
     expect(describeStepTable(other)).toBeUndefined()
   })
 
+  it("throws when a JSON-shaped observed assertion does not parse", () => {
+    const broken = source(terminalApp, "supported")
+    broken.assertions = [{ kind: "positive", expected: "row 1, col 120", observed: "{broken" }]
+    expect(() => describeStepTable(broken)).toThrow("observed assertion is JSON-shaped but does not parse")
+  })
+
   it("keeps short repeats literal so control sequences stay readable", () => {
     expect(compressBytes("AAB")).toBe("AAB")
     expect(compressBytes("\x1b[?45h")).toBe("ESC [ ?45 h")
