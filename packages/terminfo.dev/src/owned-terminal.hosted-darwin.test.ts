@@ -60,7 +60,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
     const owner = await createOwnedTerminal({ captureRunId: "a".repeat(32), expectedLaunchRunId: "b".repeat(32),
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
     assert.equal(owner.hostedAppId, app)
-    assert.equal(owner.hostedAppPid, 4242)
+    assert.equal(owner.appPid, 4242)
     assert.equal(typeof owner.readCells, "function")
     await owner.dispose()
   `

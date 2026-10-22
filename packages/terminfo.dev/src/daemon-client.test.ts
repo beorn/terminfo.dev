@@ -112,6 +112,8 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
     const socket = join(launch.directory, `cursor-${launch.id}`, "3.25-main.sock")
     expect(Buffer.byteLength(socket)).toBeLessThan(103)
     expect(launch.id).toMatch(/^[0-9a-f]{32}$/)
+    // Ghostty's run file names the script unquoted, scoped to this run (#30518 D2).
+    expect(launch.scriptPath).toBe(join(launch.directory, `serve-${launch.id}.sh`))
     expect(lstatSync(launch.directory).mode & 0o077).toBe(0)
   } finally {
     if (launch) removeProbeRun(launch)

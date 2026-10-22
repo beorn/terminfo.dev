@@ -377,7 +377,7 @@ function runHostedDarwinFixture(script: string) {
  */
 function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
   home = mkdtempSync(join(tmpdir(), "terminfo-serve-process-capture-"))
-  const ownerPidField = ownerPid === undefined ? "" : `processOwnerPid: ${ownerPid},`
+  const ownerPidField = ownerPid === undefined ? "" : `appPid: ${ownerPid},`
   const script = `
     import { mock } from "bun:test"
     Object.defineProperty(process, "platform", { value: "darwin" })
@@ -465,7 +465,7 @@ describe("private finite daemon startup", () => {
     expect(observed).toEqual({
       appPids: [],
       calibrationCalls: 0,
-      refusal: "Verified owned process has no measured app PID for capture",
+      refusal: "Verified process terminal has no measured app PID for capture",
     })
   })
 
@@ -491,7 +491,7 @@ describe("private finite daemon startup", () => {
         mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
           ownedTerminalVerifiedFor: () => true,
           createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture",
-            hostedAppPid: 42, hostedAppId: "ghostty", summary: "owned fixture", readGeometry: async () => geometry, dispose: async () => {} })
+            appPid: 42, hostedAppId: "ghostty", summary: "owned fixture", readGeometry: async () => geometry, dispose: async () => {} })
         }))
         mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt,
           readDisposableReceipt: () => undefined
@@ -577,7 +577,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705, hostedAppId: "terminal-app",
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", appPid: 5705, hostedAppId: "terminal-app",
           summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
@@ -666,7 +666,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 42, hostedAppId: "alacritty",
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", appPid: 42, hostedAppId: "alacritty",
           summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))
@@ -810,7 +810,7 @@ describe("private finite daemon startup", () => {
       }))
       mock.module("./packages/terminfo.dev/src/owned-terminal.ts", () => ({ ...owned,
         ownedTerminalVerifiedFor: () => true,
-        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", hostedAppPid: 5705, hostedAppId: "terminal-app",
+        createOwnedTerminal: async () => ({ geometryAtGrant: geometry, geometrySource: "fixture", appPid: 5705, hostedAppId: "terminal-app",
           summary: "{}", readGeometry: async () => geometry, dispose: async () => {} })
       }))
       mock.module("./packages/terminfo.dev/src/disposable-receipt.ts", () => ({ ...receipt, readDisposableReceipt: () => undefined }))

@@ -547,15 +547,16 @@ export async function collectProbeRun(
     let input: Awaited<ReturnType<typeof createLinuxInput>> | undefined
     /**
      * The ONE Darwin pixel-capture install, for the hosted arm and the owned-process arm alike (@cto
-     * D5, #30518): the adapter captures `appPid`, the pid that arm's owner proof verified.
+     * D5, #30518): the adapter photographs the terminal's `appPid`, the pid that arm's owner proof verified.
      *
      * The cells read comes FIRST. When the terminal can read its own cells that is its capture path, and
      * a pixel adapter installed afterwards would replace a text frame with a calibration these apps
      * refuse by design, so preflight and the pixel install are skipped entirely.
      */
-    const installDarwinCapture = async (terminal: OwnedTerminal, appPid: number | undefined, owner: string) => {
+    const installDarwinCapture = async (terminal: OwnedTerminal) => {
       if (installTextCapture(terminal) || !captureDirectory) return
-      if (!appPid) throw new Error(`${owner} has no measured app PID for capture`)
+      const appPid = terminal.appPid
+      if (!appPid) throw new Error(`Verified ${kind} terminal has no measured app PID for capture`)
       const darwinCapture = await createDarwinCapture(captureDirectory, { appPid })
       let textOrigin: Awaited<ReturnType<typeof calibrateCaptureOrigin>> | undefined
       let calibrationError: Error | undefined
@@ -705,7 +706,7 @@ export async function collectProbeRun(
         expectedLaunchRunId: options.expectedLaunchRunId ?? process.env.TERMINFO_RUN_ID ?? "",
         process: options.processOwner,
       })
-      await installDarwinCapture(ownedTerminal, ownedTerminal.processOwnerPid, "Verified owned process")
+      await installDarwinCapture(ownedTerminal)
     } else if (kind === "darwinHosted") {
       if (!hostedReceipt) throw new Error("Owned Darwin hosted terminal requires a github-hosted-runner receipt")
       ownedTerminal = await createOwnedTerminal({
@@ -715,7 +716,7 @@ export async function collectProbeRun(
         darwinHosted: { receiptPath: hostedReceipt },
       })
       assertHostedIdentity(terminal.name, ownedTerminal, "Darwin")
-      await installDarwinCapture(ownedTerminal, ownedTerminal.hostedAppPid, "Verified hosted Darwin terminal")
+      await installDarwinCapture(ownedTerminal)
     } else if (kind === "windowsHosted") {
       if (!hostedReceipt) throw new Error("Owned Windows hosted terminal requires a github-hosted-runner receipt")
       // The Windows arm has no pixel capture (that stays Darwin-only), so it is the geometry-only arm:

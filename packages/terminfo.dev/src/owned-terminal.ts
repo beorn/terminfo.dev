@@ -202,11 +202,10 @@ export interface OwnedTerminal {
   readonly geometryAtGrant: GeometryMeasurement
   readonly geometrySource: Exclude<GeometrySource, "unavailable: no verified output device">
   readonly summary: string
-  /** The PID of the receipt-named hosted app, measured from this collector's process ancestry. */
-  readonly hostedAppPid?: number
-  /** The PID of the asserted owner process, which assertOwnedProcess proved is this collector's
-   * ancestor running the asserted executable with this launch run's marker. */
-  readonly processOwnerPid?: number
+  /** The verified PID of the app whose window holds this terminal, which a Darwin capture photographs.
+   * A hosted arm measures the receipt-named app in this collector's process ancestry; the owned-process
+   * arm takes the owner that assertOwnedProcess proved. Absent on every other arm. */
+  readonly appPid?: number
   /** Canonical identity from the hosted receipt's executable mapping, shared by both platforms. */
   readonly hostedAppId?: HostedDarwinAppId | HostedWindowsAppId
   readonly clipboard?: LinuxClipboardAdapter
@@ -849,12 +848,12 @@ export async function createOwnedTerminal(options: {
       }),
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
+    const appPid = hostedAncestor?.pid ?? processOwnerPid
     const owner: OwnedTerminal = {
       geometryAtGrant,
       geometrySource: source,
       summary,
-      ...(hostedAncestor && { hostedAppPid: hostedAncestor.pid }),
-      ...(processOwnerPid !== undefined && { processOwnerPid }),
+      ...(appPid !== undefined && { appPid }),
       ...(hostedAppId && { hostedAppId }),
       ...(clipboard && { clipboard }),
       async readGeometry() {

@@ -214,7 +214,7 @@ test("windowsHosted grants ownership to an alacritty.exe ancestor from a portabl
     alacrittyTable,
     `
       assert.equal(owner.hostedAppId, "alacritty")
-      assert.equal(owner.hostedAppPid, 4684)
+      assert.equal(owner.appPid, 4684)
       const summary = JSON.parse(owner.summary)
       assert.equal(summary.windowsHosted.appId, "alacritty")
       assert.deepEqual(summary.windowsHosted.ancestor, { pid: 4684, ppid: 9644, comm: "alacritty.exe" })
