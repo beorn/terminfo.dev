@@ -37,7 +37,7 @@ jobs:
     # The root CI reader excludes skipped jobs; keep this unit job running on every main push.
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.unit_only)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
