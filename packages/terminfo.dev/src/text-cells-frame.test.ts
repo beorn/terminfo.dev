@@ -354,6 +354,10 @@ it("records text qualification attempts before seal, distinguishing absent and b
 // 30035 AC3: each missing shape witness must be refused by the execution writer, and an unattempted
 // run must stay TEST TODO rather than becoming TEST FAILURE.
 it("refuses a character verdict for each missing shape witness through the execution writer", () => {
+  const fixtures = textQualificationFixtures(4, 12)
+  if (typeof fixtures === "string") throw new Error(fixtures)
+  // A sixth shape added to the fixtures must fail here rather than be silently skipped by the loop.
+  expect([...TEXT_SHAPES].sort()).toEqual(fixtures.map((fixture) => fixture.shape).sort())
   for (const shape of TEXT_SHAPES) {
     const { run, manifest, snapshots, attempt } = executionRun()
     run.textQualification = {
