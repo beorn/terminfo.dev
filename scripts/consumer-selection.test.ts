@@ -26,11 +26,7 @@ import probesLoader from "../docs/data/probes.data.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
-import {
-  compatibilityTargets,
-  historicalCompatibilityTargets,
-  loadCurrentResults,
-} from "../docs/data/current-results.ts"
+import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import type { HistoricalPublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
@@ -163,7 +159,6 @@ describe("consumer selection", () => {
           'const out = join(root, "out")',
           "const { dataPath } = generateApi(out)",
           'const current = JSON.parse(readFileSync(dataPath, "utf8"))',
-          'const historical = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8"))',
           "console.log(JSON.stringify({",
           "  fixtureRuns: fixtureRuns.length,",
           "  currentFixtureRuns,",
@@ -173,7 +168,6 @@ describe("consumer selection", () => {
           "  currentRunCount: current.currentRunCount,",
           "  currentKeys: Object.keys(current.current).length,",
           "  message: current.message,",
-          "  v2History: Object.values(historical.history).flat().length,",
           "}))",
           "",
         ].join("\n"),
@@ -196,7 +190,6 @@ describe("consumer selection", () => {
         currentRunCount: number
         currentKeys: number
         message: string
-        v2History: number
       }
       expect(receipt.fixtureRuns).toBeGreaterThan(0)
       expect(receipt.currentFixtureRuns).toBe(0)
@@ -206,7 +199,6 @@ describe("consumer selection", () => {
       expect(receipt.currentRunCount).toBe(0)
       expect(receipt.currentKeys).toBe(0)
       expect(receipt.message).toContain("No current")
-      expect(receipt.v2History).toBeGreaterThan(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -368,42 +360,20 @@ describe("consumer selection", () => {
     }
   })
 
-  // Exercises all consumers over retained history; this is a correctness check, not a latency assertion.
-  it("reassembles all retained run documents from the exact public projection", () => {
+  // Exercises the site, the generator and the projection together; a correctness check, not a latency one.
+  it("resolves every v3 run reference to a digest-verified run document", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-run-parity-"))
     try {
-      generateApi(out)
+      const { dataPath } = generateApi(out)
       const contentDir = join(import.meta.dirname, "..", "content")
       const projection = loadCurrentResults(contentDir).projection
-      const published = publicResults(
-        projection,
-        compatibilityTargets(projection, contentDir),
-        historicalCompatibilityTargets(projection.historical, contentDir),
-      ).projection
-      const expected = published.historical
-      const v2 = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
+      const expected = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
+      const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
         current: Record<string, RunReference>
         versions: Record<string, RunReference[]>
         history: Record<string, RunReference[]>
         exclusions: unknown[]
       }
-      // Every retained run document is reassembled from one of the two public tables: a schema-3 run from
-      // the current projection, a legacy run from the historical one.
-      const expectedRuns = new Map<string, { sha256: string }>()
-      const allExpectedVersions: Array<{ sha256: string }> = [
-        ...Object.values(expected.current),
-        ...Object.values(expected.versions).flat(),
-        ...Object.values(expected.history).flat(),
-        ...Object.values(published.current),
-        ...Object.values(published.versions).flat(),
-        ...Object.values(published.history).flat(),
-      ]
-      for (const version of allExpectedVersions) expectedRuns.set(version.sha256, version)
-      const retainedFiles = ["probes-apps", "probes-mux", "probes-libs"].flatMap((dir) =>
-        readdirSync(join(contentDir, dir)).filter((name) => name.endsWith(".json") && name !== "unified.json"),
-      )
-      expect(expectedRuns.size).toBe(retainedFiles.length)
-
       const assertGroup = (
         actual: Record<string, RunReference> | Record<string, RunReference[]>,
         expectedGroup: Record<string, HistoricalPublicVersion> | Record<string, HistoricalPublicVersion[]>,
@@ -424,11 +394,10 @@ describe("consumer selection", () => {
               suiteId: version.suiteId,
               probeHash: version.probeHash,
               suiteFreshness: version.suiteFreshness,
-              suite: version.suite,
               sourceRevision: version.sourceRevision,
               sha256: version.sha256,
               counts: version.counts,
-              url: `/api/v2/runs/${version.sha256}.json`,
+              url: `/api/v3/runs/${version.sha256}.json`,
             })
             const bytes = readFileSync(join(out, ref.url))
             expect(createHash("sha256").update(bytes).digest("hex")).toBe(ref.documentSha256)
@@ -436,15 +405,37 @@ describe("consumer selection", () => {
           })
         }
       }
-      assertGroup(v2.current, expected.current)
-      assertGroup(v2.versions, expected.versions)
-      assertGroup(v2.history, expected.history)
-      expect(v2.exclusions).toEqual(expected.exclusions)
-      expect(expectedRuns.size).toBeGreaterThan(0)
+      assertGroup(v3.current, expected.current as Record<string, HistoricalPublicVersion>)
+      assertGroup(v3.versions, expected.versions)
+      assertGroup(v3.history, expected.history)
+      expect(v3.exclusions).toEqual(expected.exclusions)
+      expect(Object.keys(v3.current).length).toBeGreaterThan(0)
     } finally {
       rmSync(out, { recursive: true, force: true })
     }
   }, 30_000)
+
+  // @cto f71ed475: v1 is frozen bytes committed under docs/public/api/v1, not generator output.
+  it("keeps the frozen v1 data and badge bytes on disk", () => {
+    const v1Dir = join(import.meta.dirname, "..", "docs", "public", "api", "v1")
+    const data = JSON.parse(readFileSync(join(v1Dir, "data.json"), "utf8")) as {
+      version: number
+      terminals: Record<string, { name: string }>
+      results: Record<string, unknown>
+    }
+    expect(data.version).toBe(1)
+    expect(Object.keys(data.terminals).length).toBeGreaterThan(0)
+    expect(Object.keys(data.results).sort()).toEqual(Object.keys(data.terminals).sort())
+    const badges = readdirSync(join(v1Dir, "badges")).filter((name) => name.endsWith(".svg"))
+    // The set is frozen with the data: 14 released badges, one per released slug.
+    expect(badges.length).toBe(14)
+    for (const slug of Object.keys(data.terminals)) {
+      expect(badges).toContain(`${slug}.svg`)
+    }
+    for (const badge of badges) {
+      expect(readFileSync(join(v1Dir, "badges", badge), "utf8")).toContain("<svg")
+    }
+  })
 
   it("does not score unreviewed legacy booleans as current results", () => {
     const warnings: string[] = []
@@ -457,16 +448,12 @@ describe("consumer selection", () => {
         current: Record<string, unknown>
         currentRunCount: number
       }
-      const v2Bytes = readFileSync(join(out, "api", "v2", "data.json"))
-      // The full retained dataset must fit Cloudflare Pages' single-asset limit.
-      expect(v2Bytes.byteLength).toBeLessThanOrEqual(25 * 1024 * 1024)
-      const v2 = JSON.parse(v2Bytes.toString("utf8")) as {
-        current: Record<string, unknown>
-        history: Record<string, Array<{ suiteId: string; counts: { conclusive: number } }>>
-      }
       // Share the site's analysis loader with terminal paths, as the real site does.
       const analysis = loadAnalysis()
-      const legacy = Object.values(v2.history)
+      // Legacy runs stay readable in the projection; none of them is scored as a current result.
+      const legacy = Object.values(
+        loadCurrentResults(join(import.meta.dirname, "..", "content")).projection.historical.history,
+      )
         .flat()
         .filter((entry) => entry.suiteId === "legacy")
       expect(legacy.length).toBeGreaterThan(0)
