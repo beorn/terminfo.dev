@@ -30,8 +30,6 @@ function termTooltip(r) {
 
 <div class="feature-page">
 
-<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
-
 <nav class="breadcrumb">
   <a href="/features">Features</a>
   <span class="sep">›</span>

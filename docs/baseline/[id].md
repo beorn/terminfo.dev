@@ -80,8 +80,6 @@ function platformIcons(b) {
 
 <div class="baseline-page">
 
-<p v-if="data.currentRunCount === 0">No current schema-3 runs; <a href="/terminals">historical results remain available</a>.</p>
-
 <nav class="breadcrumb">
   <span>Baselines</span>
   <span class="sep">›</span>
