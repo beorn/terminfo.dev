@@ -515,7 +515,10 @@ function publicAttempt(attempt: CapabilityResult["attempt"]): CapabilityResult["
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
-/** The API and the site consume the same current/history split and the same evidence documents. */
+/**
+ * The API and the site consume the same current/history split. Only the current v3 run documents are
+ * published: `/api/v2` was never public, so the historical branch contributes its page mapping alone.
+ */
 export function publicResults(
   projection: SelectedProjection,
   targets: ReadonlyMap<string, CurrentResult>,
@@ -528,7 +531,7 @@ export function publicResults(
     new Set([...historicalTargets].filter(([key]) => !targets.has(key)).map(([, value]) => value.selected.runId)),
   )
   const traced = new Set([...targets.values()].map((value) => value.selected.runId))
-  const documents: PublicDocuments = new Map(historical.documents)
+  const documents: PublicDocuments = new Map()
   const mapResult = (
     result: CapabilityResult,
     version: CurrentSelectedVersion,
