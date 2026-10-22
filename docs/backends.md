@@ -89,8 +89,6 @@ Full terminal applications whose VT parser can be tested headlessly. These are t
   <p class="backend-desc">The termwiz parser from WezTerm's terminal + multiplexer.</p>
 </a>
 
-
-
 </div>
 
 ## How Testing Works

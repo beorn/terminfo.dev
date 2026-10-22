@@ -772,7 +772,9 @@ describe("selected-run consumer parity", () => {
         }
       }
       expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
-      expect(loadFullProbes().historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
+      expect(loadFullProbes().historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(
+        fixture.runSha256,
+      )
       // Current v3 must preserve exact sealed status while publication independently controls bytes.
       const projection = currentResults.loadCurrentResults("").projection
       const current = projection.current["app:kitty"]
