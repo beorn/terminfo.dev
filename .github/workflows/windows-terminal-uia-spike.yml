@@ -1,0 +1,62 @@
+name: windows-terminal-uia-spike
+
+# #30720 spike (@cto verdict 5a737c28): read Windows Terminal's own text through UI Automation,
+# beside the console host's buffer. Throwaway: it lives only on spike/30720-wt-uia, runs once on
+# push, and the branch is deleted after the run.
+on:
+  push:
+    branches:
+      - spike/30720-wt-uia
+
+permissions:
+  contents: read
+
+jobs:
+  wt-uia:
+    name: Windows Terminal UI Automation spike
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Windows Terminal 1.21.2361.0 (portable, as windows-measurement.yml does)
+        run: |
+          set -euo pipefail
+          WT_DIR="$RUNNER_TEMP/windows-terminal"
+          curl -L -s -f "https://github.com/microsoft/terminal/releases/download/v1.21.2361.0/Microsoft.WindowsTerminal_1.21.2361.0_x64.zip" -o "$RUNNER_TEMP/wt.zip"
+          powershell -NoProfile -Command "Expand-Archive -Path '$RUNNER_TEMP/wt.zip' -DestinationPath '$RUNNER_TEMP/wt_unpacked' -Force"
+          mkdir -p "$WT_DIR"
+          cp -r "$RUNNER_TEMP"/wt_unpacked/terminal-*/* "$WT_DIR/"
+          touch "$WT_DIR/.portable"
+          mkdir -p "$WT_DIR/settings"
+          printf '%s\n' '{"$schema":"https://aka.ms/terminal-profiles-schema","profiles":{"defaults":{"closeOnExit":"always"}}}' > "$WT_DIR/settings/settings.json"
+          test -f "$WT_DIR/WindowsTerminal.exe" || { echo "Windows Terminal binary missing at $WT_DIR/WindowsTerminal.exe" >&2; exit 1; }
+      - name: Run the spike inside a Windows Terminal tab
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/spike-out"
+          mkdir -p "$OUT"
+          WIN_OUT="$(cygpath -w "$OUT")"
+          SCRIPT="$(cygpath -w "$GITHUB_WORKSPACE/.github/spike-30720/spike.ps1")"
+          PROBE="$(cygpath -w "$GITHUB_WORKSPACE/.github/spike-30720/reader-probe.ps1")"
+          "$RUNNER_TEMP/windows-terminal/WindowsTerminal.exe" -d "$WIN_OUT" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT" -Out "$WIN_OUT" -Probe "$PROBE" > "$OUT/launcher.log" 2>&1 &
+          for attempt in $(seq 1 600); do
+            if [ -f "$OUT/spike-exit" ]; then
+              echo "spike exit: $(cat "$OUT/spike-exit" | tr -d '\r\n ')"
+              cat "$OUT/spike.log" || true
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "spike did not finish within 600 seconds" >&2
+          cat "$OUT/spike.log" || true
+          exit 1
+      - name: Upload the spike output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wt-uia-spike-${{ github.run_id }}
+          path: ${{ runner.temp }}/spike-out
+          if-no-files-found: error
