@@ -17,6 +17,7 @@ import {
   readDisposableReceipt,
   sampleOwnedHostIdentity,
   parseMuxAttachmentProof,
+  parseLstart,
 } from "./disposable-receipt.ts"
 
 const digest = (seed: string) => createHash("sha256").update(seed).digest("hex")
@@ -512,4 +513,23 @@ test("the Darwin arm refuses Screen by name before it reads a single shape rule"
       chain: proof.chain.map((hop) => (hop.pid === 55800 ? { ...hop, ppid: 99999, uid: 0 } : hop)),
     }),
   ).toThrow(/darwin screen arm unqualified/)
+})
+
+// D3 (@cto 72e4b60b): `parseLstart` is the only lstart reader, so each refusal is proved by its text.
+test("the lstart reader takes one C-locale UTC line and refuses every other shape by name", () => {
+  // macOS ps pads the day with a space; that is the measured form and it parses.
+  expect(parseLstart("Fri Oct  2 18:07:34 2026\n")).toBe(Date.UTC(2026, 9, 2, 18, 7, 34) / 1000)
+  expect(parseLstart("Thu Oct 22 18:07:34 2026    \n")).toBe(Date.UTC(2026, 9, 22, 18, 7, 34) / 1000)
+  const notOneLine = /is not one C-locale "Www Mmm dd hh:mm:ss yyyy" line/
+  const noRealSecond = /names no real UTC second/
+  // A zero-padded day is a GNU-locale form, not the one ps emits here.
+  expect(() => parseLstart("Fri Oct 02 18:07:34 2026\n")).toThrow(notOneLine)
+  // A non-C locale names its months in its own words.
+  expect(() => parseLstart("Do Okt 22 18:07:34 2026\n")).toThrow(notOneLine)
+  expect(() => parseLstart("jeu. oct. 22 18:07:34 2026\n")).toThrow(notOneLine)
+  // A date that does not exist, and a weekday that names another day.
+  expect(() => parseLstart("Mon Feb 30 12:00:00 2026\n")).toThrow(noRealSecond)
+  expect(() => parseLstart("Wed Oct 22 18:07:34 2026\n")).toThrow(noRealSecond)
+  // Two instants in one read are not one lstart.
+  expect(() => parseLstart("Thu Oct 22 18:07:34 2026\nThu Oct 22 18:07:34 2026\n")).toThrow(notOneLine)
 })

@@ -290,19 +290,27 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
   // An arm with no join fails closed. The mux platform gate still refuses Darwin rows before this
   // point (mux-platform-unqualified, CTO 41878c53) until the arm is qualified.
   if (attachment.platform === "darwin") {
-    const source = run.rawReplies["collector.outerLaunch"]
+    // The app run measures the owner launch record (app.ts writes it into that run's rawReplies);
+    // the mux run is the row being admitted, so it reads the app's reply, as Linux reads
+    // collector.preflightIdentity (@cto 72e4b60b).
+    if (!run.outerApp) {
+      throw new ReceiptRefusal(
+        "mux-attachment-invalid",
+        `Darwin mux run ${run.runId} cites owner launch receipt ${attachment.receiptSha256} but names no outer app run`,
+      )
+    }
+    const source = run.outerApp.rawReplies["collector.outerLaunch"]
     if (source === undefined) {
       throw new ReceiptRefusal(
         "mux-attachment-invalid",
         `Darwin mux run ${run.runId} cites owner launch receipt ${attachment.receiptSha256} but has no collector.outerLaunch reply`,
       )
     }
-    const mismatch = outerLaunchMismatch(
-      source,
-      attachment,
-      readRetainedFile,
-      run.outerApp?.provenance?.executable.path,
-    )
+    const ownerExecutablePath = attachment.chain.at(-1)?.executablePath
+    if (ownerExecutablePath === undefined) {
+      throw new ReceiptRefusal("mux-attachment-invalid", `Darwin mux run ${run.runId} has no outer terminal hop`)
+    }
+    const mismatch = outerLaunchMismatch(source, attachment, ownerExecutablePath)
     if (mismatch !== null) {
       throw new ReceiptRefusal("mux-attachment-invalid", `Darwin mux receipt refused: ${mismatch}`)
     }
@@ -349,16 +357,6 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
     // Malformed retained input is a named admission refusal, never an empty/default proof.
     if (!(cause instanceof Error)) throw cause
     throw new ReceiptRefusal("mux-attachment-invalid", cause.message, cause)
-  }
-}
-
-/** Read a file the retained record names; absent is null, anything else is loud. */
-function readRetainedFile(path: string): Buffer | null {
-  try {
-    return readFileSync(path)
-  } catch (cause) {
-    if (isRecord(cause) && cause.code === "ENOENT") return null
-    throw cause
   }
 }
 

@@ -758,8 +758,13 @@ function ghosttyAutoUpdate(): {
     }
     value = read
   } catch (cause) {
-    // `defaults read` exits 1 with "does not exist" for an unset key; that is the measured absence.
-    if (typeof cause !== "object" || cause === null || (cause as { status?: unknown }).status !== 1) throw cause
+    // `defaults read` exits 1 with "does not exist" for an unset key; that exact refusal is the measured
+    // absence. Any other exit 1 (unreadable plist, bad domain) is loud, never recorded as "absent"
+    // (@cto 72e4b60b).
+    const status = typeof cause === "object" && cause !== null ? (cause as { status?: unknown }).status : undefined
+    const stderr = typeof cause === "object" && cause !== null ? (cause as { stderr?: unknown }).stderr : undefined
+    if (status !== 1) throw cause
+    if (typeof stderr !== "string" || !stderr.includes("does not exist")) throw cause
   }
   return { key: "SUEnableAutomaticChecks", value, plistPath, plistSha256 }
 }

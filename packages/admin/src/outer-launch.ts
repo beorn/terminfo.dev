@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto"
 import { isDeepStrictEqual } from "node:util"
 import type { DarwinMuxAttachmentProof } from "@terminfo/probe-defs"
+import { PLACEHOLDER } from "../../run-parser/src/app-launch.ts"
+import type { ProcessMarker } from "../../terminfo.dev/src/owned-process.ts"
 
 /**
  * The Darwin owner launch record (#30518 D4.6), as @cto revised it: the existing cli-process launch
@@ -15,7 +17,7 @@ import type { DarwinMuxAttachmentProof } from "@terminfo/probe-defs"
 export interface OuterLaunchRecord {
   launchRunId: string
   executablePath: string
-  marker: { flag: string; value: string }
+  marker: ProcessMarker
   identityFile: { path: string; sha256: string }
   outerTerminal: { pid: number; startedAtEpochSeconds: number }
   bootId: string
@@ -54,6 +56,9 @@ function text(source: Record<string, unknown>, key: string, where: string): stri
 function digest(source: Record<string, unknown>, key: string, where: string): string {
   const value = text(source, key, where)
   if (!DIGEST.test(value)) fail(`${where} ${key} must be a sha256 digest`)
+  if (PLACEHOLDER.test(value)) {
+    fail(`${where} ${key} is a placeholder: one repeated character, so no bytes were measured`)
+  }
   return value
 }
 
@@ -132,15 +137,16 @@ export function parseOuterLaunchRecord(source: string): OuterLaunchRecord {
 }
 
 /**
- * The admission join, mirroring Linux's `muxFixtureMatches`: re-hash the retained text, require the
- * proof's citation to equal it, and compare every identity the record names against the proof and
- * against the bytes still on disk. A mismatch returns its named cause; nothing falls back to a pass.
+ * The admission join, mirroring Linux's `muxFixtureMatches`: re-hash the retained text and require the
+ * proof's citation to equal it, then compare every identity the record names against the proof. It
+ * reads no file: `runApp`'s success path removes the probe run's directory, so the record's own shas
+ * are the retained bytes this join can honestly compare (@cto 72e4b60b). A mismatch returns its named
+ * cause; nothing falls back to a pass.
  */
 export function outerLaunchMismatch(
   source: string,
   proof: DarwinMuxAttachmentProof,
-  readFile: (path: string) => Buffer | null,
-  ownerExecutablePath?: string,
+  ownerExecutablePath: string,
 ): string | null {
   let record: OuterLaunchRecord
   try {
@@ -155,18 +161,8 @@ export function outerLaunchMismatch(
     return "the receipt's outer terminal differs from the proof"
   }
   if (record.bootId !== proof.bootId) return "the receipt's boot id differs from the proof"
-  if (ownerExecutablePath !== undefined && record.executablePath !== ownerExecutablePath) {
+  if (record.executablePath !== ownerExecutablePath) {
     return "the receipt's owner executable differs from the measured outer app"
-  }
-  const runFile = readFile(record.marker.value)
-  if (runFile === null) return `the run file ${record.marker.value} is absent`
-  if (createHash("sha256").update(runFile).digest("hex") !== record.runFileSha256) {
-    return "the run file's bytes differ from the receipt's sha256"
-  }
-  const identity = readFile(record.identityFile.path)
-  if (identity === null) return `the identity file ${record.identityFile.path} is absent`
-  if (createHash("sha256").update(identity).digest("hex") !== record.identityFile.sha256) {
-    return "the identity file's bytes differ from the receipt's sha256"
   }
   return null
 }

@@ -107,16 +107,15 @@ const withCitation = () => {
 test("the record parses strictly and admits only the run, owner and bytes it names", () => {
   const { source, proof: cited } = withCitation()
   expect(parseOuterLaunchRecord(source)).toMatchObject({ launchRunId: proof.launchRunId, bootId: proof.bootId })
-  const read = (path: string) => files().get(path) ?? null
-  expect(outerLaunchMismatch(source, cited, read, GHOSTTY)).toBeNull()
+  expect(outerLaunchMismatch(source, cited, GHOSTTY)).toBeNull()
 
   // Every case re-cites its own text, so the citation check cannot mask the rule under test.
   const cases: [string, string, RegExp][] = [
-    // Another run's receipt: the marker no longer carries this run's id.
+    // Another run's receipt.
     [
       "another run's marker",
       source.replaceAll(proof.launchRunId, "ffffffffffffffffffffffffffffffff"),
-      /does not carry the run id|names another run/,
+      /the receipt names another run/,
     ],
     // The owner binary differs from the measured outer app.
     [
@@ -136,19 +135,46 @@ test("the record parses strictly and admits only the run, owner and bytes it nam
   ]
   for (const [name, text, refusal] of cases) {
     const altered = { ...cited, receiptSha256: digest(text) }
-    expect(outerLaunchMismatch(text, altered, read, GHOSTTY), name).toMatch(refusal)
+    expect(outerLaunchMismatch(text, altered, GHOSTTY), name).toMatch(refusal)
   }
   // A proof replaying a receipt it does not cite is refused before any field is compared.
-  expect(outerLaunchMismatch(source, { ...cited, receiptSha256: digest("other") }, read, GHOSTTY)).toMatch(
+  expect(outerLaunchMismatch(source, { ...cited, receiptSha256: digest("other") }, GHOSTTY)).toMatch(
     /cites another receipt/,
   )
-  // Bytes that no longer match the receipt are named, never a pass.
-  const rewritten = (path: string) =>
-    path === RUN_FILE ? Buffer.from("command = /tmp/elsewhere.sh\n") : (files().get(path) ?? null)
-  expect(outerLaunchMismatch(source, cited, rewritten, GHOSTTY)).toMatch(/run file's bytes differ/)
-  const newIdentity = (path: string) =>
-    path === IDENTITY_FILE ? Buffer.from("/dev/ttys001\n") : (files().get(path) ?? null)
-  expect(outerLaunchMismatch(source, cited, newIdentity, GHOSTTY)).toMatch(/identity file's bytes differ/)
-  // Absent bytes are named, never a pass.
-  expect(outerLaunchMismatch(source, cited, () => null, GHOSTTY)).toMatch(/run file .* is absent/)
+})
+
+// @cto 72e4b60b: the join reads no file (the probe run's directory is removed on success), so every
+// shape refusal is proved at the parser, by name.
+test("the record refuses each malformed field by name", () => {
+  const base = JSON.parse(record()) as Record<string, unknown>
+  const cases: [string, Record<string, unknown>, RegExp][] = [
+    // The marker must carry this run's id, not merely be well formed.
+    [
+      "marker without the run id",
+      { ...base, marker: { flag: "--config-file", value: "/tmp/terminfo-run-abc/ghostty-ffff" } },
+      /marker value does not carry the run id|does not carry the run id/,
+    ],
+    [
+      "relative identity path",
+      { ...base, identityFile: { path: "owner-tty.txt", sha256: digest("x") } },
+      /must be absolute/,
+    ],
+    [
+      "autoUpdate value",
+      { ...base, autoUpdate: { ...(base.autoUpdate as object), value: "2" } },
+      /autoUpdate value must be "0", "1" or "absent"/,
+    ],
+    [
+      "autoUpdate plistSha256",
+      { ...base, autoUpdate: { ...(base.autoUpdate as object), plistSha256: "nope" } },
+      /plistSha256 must be a sha256 digest or null/,
+    ],
+    ["bootId", { ...base, bootId: "not-a-uuid" }, /bootId is not a UUID/],
+    ["missing key", Object.fromEntries(Object.entries(base).filter(([key]) => key !== "bootId")), /must have exactly/],
+    // A digest of one repeated character is the placeholder rule's, never a measurement.
+    ["placeholder digest", { ...base, runFileSha256: "0".repeat(64) }, /is a placeholder/],
+  ]
+  for (const [name, value, refusal] of cases) {
+    expect(() => parseOuterLaunchRecord(JSON.stringify(value)), name).toThrow(refusal)
+  }
 })
