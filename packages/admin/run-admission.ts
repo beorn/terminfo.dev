@@ -35,6 +35,7 @@ import { activeInterpretations, applies, nonempty, parseInterpretations } from "
 import { loadFeatures } from "@terminfo/catalog"
 
 import { probeSuiteSnapshot } from "./versions.ts"
+import { outerLaunchMismatch } from "./src/outer-launch.ts"
 import {
   bindReceiptToRun,
   HOSTED_IDENTITY_SOURCES,
@@ -285,6 +286,37 @@ function identityDecision(
 
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
 function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
+  // Darwin joins against its own owner launch record (§D4.6); Linux against the clipboard fixture.
+  // An arm with no join fails closed. The mux platform gate still refuses Darwin rows before this
+  // point (mux-platform-unqualified, CTO 41878c53) until the arm is qualified.
+  if (attachment.platform === "darwin") {
+    // The app run measures the owner launch record (app.ts writes it into that run's rawReplies);
+    // the mux run is the row being admitted, so it reads the app's reply, as Linux reads
+    // collector.preflightIdentity (@cto 72e4b60b).
+    if (!run.outerApp) {
+      throw new ReceiptRefusal(
+        "mux-attachment-invalid",
+        `Darwin mux run ${run.runId} cites owner launch receipt ${attachment.receiptSha256} but names no outer app run`,
+      )
+    }
+    const source = run.outerApp.rawReplies["collector.outerLaunch"]
+    if (source === undefined) {
+      throw new ReceiptRefusal(
+        "mux-attachment-invalid",
+        `Darwin mux run ${run.runId} cites owner launch receipt ${attachment.receiptSha256} but has no collector.outerLaunch reply`,
+      )
+    }
+    const ownerExecutablePath = attachment.chain.at(-1)?.executablePath
+    if (ownerExecutablePath === undefined) {
+      throw new ReceiptRefusal("mux-attachment-invalid", `Darwin mux run ${run.runId} has no outer terminal hop`)
+    }
+    const mismatch = outerLaunchMismatch(source, attachment, ownerExecutablePath)
+    if (mismatch !== null) {
+      throw new ReceiptRefusal("mux-attachment-invalid", `Darwin mux receipt refused: ${mismatch}`)
+    }
+    return true
+  }
+  if (attachment.platform !== "linux") return false
   const fixtureSource = run.rawReplies["collector.clipboardFixture"]
   const preflightSource = run.outerApp?.rawReplies["collector.preflightIdentity"]
   if (!fixtureSource || !preflightSource || !run.outerApp?.provenance) return false

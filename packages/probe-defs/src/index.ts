@@ -50,6 +50,8 @@ export type {
   CapturedRunDraft,
   OuterAppProof,
   MuxAttachmentProof,
+  LinuxMuxAttachmentProof,
+  DarwinMuxAttachmentProof,
   RunProvenance,
   Interpretation,
 } from "./types.ts"

@@ -3,11 +3,11 @@ import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
-import type { ClipboardFixture, MuxAttachmentProof, ProbeResult, TermContext } from "@terminfo/probe-defs"
+import type { ClipboardFixture, LinuxMuxAttachmentProof, ProbeResult, TermContext } from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
 
 type MuxReceiptTarget = Pick<
-  MuxAttachmentProof,
+  LinuxMuxAttachmentProof,
   | "mux"
   | "bootId"
   | "preflightCollector"
@@ -17,7 +17,7 @@ type MuxReceiptTarget = Pick<
   | "config"
   | "socketPath"
   | "session"
-> & { kind: "mux"; collector: Pick<MuxAttachmentProof["collector"], "pid" | "startTicks"> }
+> & { kind: "mux"; collector: Pick<LinuxMuxAttachmentProof["collector"], "pid" | "startTicks"> }
 
 interface ClipboardReceipt {
   schemaVersion: 1
@@ -51,7 +51,7 @@ export interface LinuxClipboardAdapter {
   readonly config: string
   readonly permissions: string
   readonly summary: string
-  readonly muxAttachmentProof?: MuxAttachmentProof
+  readonly muxAttachmentProof?: LinuxMuxAttachmentProof
   assertOwned(): Promise<void>
   withClipboardFixture(
     work: Parameters<NonNullable<TermContext["withClipboardFixture"]>>[0],
@@ -150,7 +150,7 @@ function processExecutable(pid: number): string {
   }
 }
 
-type ProcessIdentity = MuxAttachmentProof["chain"][number] & { ppid: number }
+type ProcessIdentity = LinuxMuxAttachmentProof["chain"][number] & { ppid: number }
 
 function processIdentity(pid: number): ProcessIdentity {
   const executablePath = processExecutable(pid)
@@ -516,7 +516,7 @@ export async function createLinuxClipboardAdapter(
   const env = { ...process.env, DISPLAY: receipt.display.name }
   const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim()
   let grantChain: ProcessIdentity[] | undefined
-  let muxAttachmentProof: MuxAttachmentProof | undefined
+  let muxAttachmentProof: LinuxMuxAttachmentProof | undefined
   async function assertOwned(): Promise<void> {
     const chain = ancestorOfCollector(receipt.terminal.pid)
     if (

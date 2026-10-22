@@ -25,7 +25,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import type { MuxAttachmentProof } from "@terminfo/probe-defs"
+import type { LinuxMuxAttachmentProof } from "@terminfo/probe-defs"
 import { bindReceiptToRun, parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const launcher = fileURLToPath(new URL("./linux-container-run.sh", import.meta.url))
@@ -238,7 +238,7 @@ mux_receipt_target "$2" "$$" "$PPID" "$$" tmux "$BASH" 3.7c "$3" "$4" "terminfo-
     )
     expect(result.status, result.stderr).toBe(0)
     const target = JSON.parse(result.stdout) as Pick<
-      MuxAttachmentProof,
+      LinuxMuxAttachmentProof,
       | "preflightCollector"
       | "collector"
       | "outerShell"

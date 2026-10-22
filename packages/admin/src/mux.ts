@@ -15,8 +15,7 @@ import {
 
 import { writeFileSync } from "node:fs"
 import { execSync, spawnSync } from "node:child_process"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { join } from "node:path"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -30,13 +29,10 @@ import {
   type ProbeRun,
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
-import { sourceSuiteEnvironment } from "../versions.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { serveCommand } from "./serve-command.ts"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = join(__dirname, "..", "..", "..")
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
-const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
 
 // ── Multiplexer definitions ──
 
@@ -47,8 +43,6 @@ interface MuxDef {
   start: (binary: string, sessionName: string, scriptPath: string) => void
   kill: (binary: string, sessionName: string) => void
 }
-
-const BUN = process.execPath
 
 const MUXES: MuxDef[] = [
   {
@@ -135,8 +129,7 @@ function whichBinary(name: string): string | null {
  * so the daemon inside the mux detects the mux as the terminal.
  */
 function writeServeScript(run: ProbeRun): void {
-  const suite = sourceSuiteEnvironment()
-  const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
+  const serveCmd = serveCommand(run)
   writeFileSync(
     run.scriptPath,
     [

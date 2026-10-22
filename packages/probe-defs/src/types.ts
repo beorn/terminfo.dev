@@ -510,7 +510,7 @@ export interface OuterAppProof {
 }
 
 /** Snapshot verified by the live Linux owner, retained for historical joins without live PID queries. */
-export interface MuxAttachmentProof {
+export interface LinuxMuxAttachmentProof {
   platform: "linux"
   mux: "tmux" | "screen"
   bootId: string
@@ -528,6 +528,39 @@ export interface MuxAttachmentProof {
   socketPath: string
   session: string
 }
+
+/** The Darwin arm, written only from codimac's measured chain (#30518 D4). Birth is
+ * `startedAtEpochSeconds` (D3); the root hop is the measured `/usr/bin/login`, and every row names a TTY. */
+export interface DarwinMuxAttachmentProof {
+  platform: "darwin"
+  mux: "tmux" | "screen"
+  bootId: string
+  receiptSha256: string
+  launchRunId: string
+  captureRunId: string
+  preflightCollector: { pid: number; startedAtEpochSeconds: number }
+  outerShell: { pid: number; startedAtEpochSeconds: number; ttyRdev: number }
+  outerTerminal: { pid: number; startedAtEpochSeconds: number }
+  collector: { pid: number; startedAtEpochSeconds: number; ttyRdev: number }
+  attachedClient: { pid: number; startedAtEpochSeconds: number; ttyRdev: number }
+  chain: {
+    pid: number
+    ppid: number
+    uid: number
+    startedAtEpochSeconds: number
+    executablePath: string
+    /** r13 measured no controlling terminal on the outer terminal (a GUI process), so the last row —
+     * and only the last row — may be null. Every other row names one. */
+    ttyRdev: number | null
+  }[]
+  executable: { path: string; sha256: string; version: string }
+  config: { path: string; sha256: string }
+  socketPath: string
+  session: string
+}
+
+/** One arm per platform, keyed by `platform` (#30518 D4). */
+export type MuxAttachmentProof = LinuxMuxAttachmentProof | DarwinMuxAttachmentProof
 
 /** Raw run records are immutable; review decisions live in Interpretation. */
 export interface HistoricalProbeRun {

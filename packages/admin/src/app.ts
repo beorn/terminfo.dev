@@ -14,9 +14,9 @@ import {
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, isAbsolute, join } from "node:path"
-import { fileURLToPath } from "node:url"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -31,9 +31,11 @@ import {
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
-import { sourceSuiteEnvironment } from "../versions.ts"
+import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
+import { serveCommand } from "./serve-command.ts"
+import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
 import {
@@ -49,10 +51,7 @@ import {
 import type { ProcessOwnerAssertion } from "../../terminfo.dev/src/owned-terminal.ts"
 import { runScopedMarker, type ProcessMarker } from "../../terminfo.dev/src/owned-process.ts"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = join(__dirname, "..", "..", "..")
 const DAEMON_DIR = join(homedir(), ".terminfo-dev", "daemons")
-const CLI_ENTRY = join(ROOT, "packages", "admin", "src", "index.ts")
 
 // ── App definitions ──
 
@@ -61,7 +60,6 @@ interface AppDef {
   id: string // used in result filenames
   appPath: string
   binaryPath: string // direct path to the executable
-  launchArgs: (cmd: string) => string[] // args to run a command inside the terminal
   bundleId: string
   /** A GUI app whose CLI hands the window to an already-resolved owner process. The owner is proven by
    * the run-scoped marker in its argv, never by the CLI shim's pid, which may exit after the handoff.
@@ -84,10 +82,12 @@ interface AppDef {
     /** Run-scoped files the marker refers to, written once the marker is validated and before the
      * launch. A marker that names a config file needs that file to exist; no other app needs this. */
     prepare?: (run: ProbeRun, markerValue: string) => void
+    /** The capture route this recipe is ruled for (#30518 D5). Declared only where a frame route is
+     * ruled — today Ghostty's owned process arm. It hands the collector
+     * TERMINFO_CAPTURE_DIRECTORY=<run>/artifacts; an app that declares nothing keeps no capture. */
+    capture?: "artifact-directory"
   }
 }
-
-const BUN = process.execPath // use the same bun that's running us
 
 /** Ghostty's disposable config file, named with the run id so the marker satisfies runScopedMarker. */
 const ghosttyConfigPath = (run: ProbeRun): string => join(run.directory, `ghostty-${run.id}`)
@@ -171,11 +171,11 @@ const APPS: AppDef[] = [
     id: "ghostty",
     appPath: "/Applications/Ghostty.app",
     binaryPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-    launchArgs: (script) => ["-e", script],
     bundleId: "com.mitchellh.ghostty",
     // The binary is the GUI process itself; the run-scoped config file in its argv is the marker the
     // owner is resolved from, never the spawned handle, which a running instance can absorb.
     cliLaunch: {
+      capture: "artifact-directory",
       spawnPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
       markerFlag: "--config-file",
@@ -191,7 +191,6 @@ const APPS: AppDef[] = [
     id: "iterm2",
     appPath: "/Applications/iTerm.app",
     binaryPath: "", // iTerm2 uses AppleScript (its own API, not System Events)
-    launchArgs: () => [],
     bundleId: "com.googlecode.iterm2",
   },
   {
@@ -199,7 +198,6 @@ const APPS: AppDef[] = [
     id: "terminal-app",
     appPath: "/System/Applications/Utilities/Terminal.app",
     binaryPath: "", // Terminal.app uses AppleScript (its own API)
-    launchArgs: () => [],
     bundleId: "com.apple.Terminal",
   },
   {
@@ -207,7 +205,6 @@ const APPS: AppDef[] = [
     id: "kitty",
     appPath: "/Applications/kitty.app",
     binaryPath: KITTY_BINARY_PATH,
-    launchArgs: (script) => ["--hold", script],
     bundleId: "net.kovidgoyal.kitty",
   },
   {
@@ -215,7 +212,6 @@ const APPS: AppDef[] = [
     id: "wezterm",
     appPath: "/Applications/WezTerm.app",
     binaryPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
-    launchArgs: (script) => ["start", "--always-new-process", "--", "/bin/bash", script],
     bundleId: "com.github.wez.wezterm",
     // The CLI execs into this GUI binary, which is the process that carries the marker in its argv.
     cliLaunch: {
@@ -242,7 +238,6 @@ const APPS: AppDef[] = [
     id: "cursor",
     appPath: "/Applications/Cursor.app",
     binaryPath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
-    launchArgs: () => [],
     bundleId: "com.todesktop.230313mzl4w4u92",
     cliLaunch: {
       spawnPath: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
@@ -286,7 +281,6 @@ const APPS: AppDef[] = [
     id: "com.microsoft.VSCode",
     appPath: "/Applications/Visual Studio Code.app",
     binaryPath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
-    launchArgs: () => [],
     bundleId: "com.microsoft.VSCode",
     cliLaunch: {
       spawnPath: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
@@ -331,7 +325,6 @@ const APPS: AppDef[] = [
     id: "warp",
     appPath: "/Applications/Warp.app",
     binaryPath: "", // Warp doesn't support direct command launch
-    launchArgs: () => [],
     bundleId: "dev.warp.Warp-Stable",
   },
 ]
@@ -491,8 +484,9 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
-  const suite = sourceSuiteEnvironment()
-  const serveCmd = `TERMINFO_RUN_ID=${run.id} TERMINFO_PROBE_HASH=${suite.TERMINFO_PROBE_HASH} TERMINFO_SOURCE_REVISION=${suite.TERMINFO_SOURCE_REVISION} exec ${shellQuote(BUN)} ${shellQuote(CLI_ENTRY)} probe server --start`
+  const captureDirectory =
+    app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
+  const serveCmd = serveCommand(run, captureDirectory)
   const identityPath =
     app.id === "kitty"
       ? join(run.directory, "owner-identity.txt")
@@ -514,31 +508,21 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     return launchPreparedCli(prepareCliLaunch(app.id, run))
   }
 
-  if (app.binaryPath && existsSync(app.binaryPath)) {
-    if (app.id === "kitty") {
-      // A run-unique instance group, no single-instance reuse, and a detached launch: measured 0-byte
-      // stderr and a window that outlives the launcher, which the recorded kitty pid closes.
-      const instanceGroup = `terminfo-${run.id}`
-      const launched = spawnSync(
-        app.binaryPath,
-        ["--detach", "--instance-group", instanceGroup, "-1", "--", "/bin/bash", run.scriptPath],
-        { encoding: "utf8", timeout: 15_000 },
+  if (app.id === "kitty" && existsSync(app.binaryPath)) {
+    // A run-unique instance group, no single-instance reuse, and a detached launch: measured 0-byte
+    // stderr and a window that outlives the launcher, which the recorded kitty pid closes.
+    const instanceGroup = `terminfo-${run.id}`
+    const launched = spawnSync(
+      app.binaryPath,
+      ["--detach", "--instance-group", instanceGroup, "-1", "--", "/bin/bash", run.scriptPath],
+      { encoding: "utf8", timeout: 15_000 },
+    )
+    if (launched.error || launched.status !== 0) {
+      throw new Error(
+        `kitty launch failed: ${launched.error?.message ?? launched.stderr?.trim() ?? `exit ${String(launched.status)}`}`,
       )
-      if (launched.error || launched.status !== 0) {
-        throw new Error(
-          `kitty launch failed: ${launched.error?.message ?? launched.stderr?.trim() ?? `exit ${String(launched.status)}`}`,
-        )
-      }
-      return { proc: null, identityPath, instanceGroup, launcherStderr: String(launched.stderr ?? "") }
     }
-    // Any other runnable binary still spawns its own launcher and keeps the child handle for close.
-    const child = spawn(app.binaryPath, app.launchArgs(run.scriptPath), {
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env },
-    })
-    child.unref()
-    return { proc: child }
+    return { proc: null, identityPath, instanceGroup, launcherStderr: String(launched.stderr ?? "") }
   }
 
   if (app.id === "iterm2") {
@@ -602,13 +586,15 @@ interface ProbeOptions {
   outputDirectory?: string
   /** The detached kitty launcher's stderr, retained with the run whether or not it is empty. */
   launcherStderr?: string
+  /** The Darwin owner launch record's exact text, retained as collector.outerLaunch (#30518 D4.6). */
+  outerLaunch?: string
 }
 
 async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "admitted" | "pending-review" }> {
-  const { appId, version, ownedWindow, outputDirectory, launcherStderr } = options
+  const { appId, version, ownedWindow, outputDirectory, launcherStderr, outerLaunch } = options
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
   assertOwnedTerminalWindow(ownedWindow, daemon.pid)
@@ -640,6 +626,7 @@ async function probeDaemon(
     ...(appLaunch && { origin: { ...data.origin, appLaunch: appLaunch.receipt } }),
     rawReplies: {
       ...data.rawReplies,
+      ...(outerLaunch !== undefined && { "collector.outerLaunch": outerLaunch }),
       "collector.identityCheck": JSON.stringify(identityCheck),
       ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
       ...(launcherStderr !== undefined && {
@@ -729,6 +716,80 @@ function processOwnerAssertion(
   }
 }
 
+/** sha256 of a file's exact bytes; an unreadable file is loud, never an empty digest. */
+function fileSha256(path: string, what: string): string {
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex")
+  } catch (cause) {
+    throw new Error(`${what} ${path} is unreadable: ${cause instanceof Error ? cause.message : String(cause)}`)
+  }
+}
+
+/** D3: the owner's birth is one C-locale UTC `ps -o lstart=` line, read from the process the marker resolved. */
+function processBirthSeconds(pid: number): number {
+  return parseLstart(
+    String(
+      execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8",
+        env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+      }),
+    ),
+  )
+}
+
+/** Ghostty's update-check setting, read once and never written (D4.6). An absent key is a value. */
+function ghosttyAutoUpdate(): {
+  key: "SUEnableAutomaticChecks"
+  value: "0" | "1" | "absent"
+  plistPath: string
+  plistSha256: string | null
+} {
+  const plistPath = join(homedir(), "Library", "Preferences", "com.mitchellh.ghostty.plist")
+  const plistSha256 = existsSync(plistPath) ? fileSha256(plistPath, "Ghostty preferences") : null
+  let value: "0" | "1" | "absent" = "absent"
+  try {
+    const read = String(
+      execFileSync("/usr/bin/defaults", ["read", "com.mitchellh.ghostty", "SUEnableAutomaticChecks"], {
+        encoding: "utf8",
+      }),
+    ).trim()
+    if (read !== "0" && read !== "1") {
+      throw new Error(`SUEnableAutomaticChecks read ${JSON.stringify(read)}, not 0 or 1`)
+    }
+    value = read
+  } catch (cause) {
+    // `defaults read` exits 1 with "does not exist" for an unset key; that exact refusal is the measured
+    // absence. Any other exit 1 (unreadable plist, bad domain) is loud, never recorded as "absent"
+    // (@cto 72e4b60b).
+    const status = typeof cause === "object" && cause !== null ? (cause as { status?: unknown }).status : undefined
+    const stderr = typeof cause === "object" && cause !== null ? (cause as { stderr?: unknown }).stderr : undefined
+    if (status !== 1) throw cause
+    if (typeof stderr !== "string" || !stderr.includes("does not exist")) throw cause
+  }
+  return { key: "SUEnableAutomaticChecks", value, plistPath, plistSha256 }
+}
+
+/**
+ * The Darwin owner launch record (#30518 D4.6): measured here, by the side that resolved the owner
+ * and wrote the run file, then serialised once as strict JSON. It is retained as
+ * `collector.outerLaunch` and its source text is what a mux proof cites as receiptSha256.
+ */
+function measureOuterLaunchRecord(run: ProbeRun, launch: AppLaunch, ownerPid: number): string {
+  if (launch.identityPath === undefined || launch.marker === undefined || launch.executablePath === undefined) {
+    throw new Error("Darwin capture launch has no cli-process launch record (identity path, marker or owner binary)")
+  }
+  return serializeOuterLaunchRecord({
+    launchRunId: run.id,
+    executablePath: launch.executablePath,
+    marker: launch.marker,
+    identityFile: { path: launch.identityPath, sha256: fileSha256(launch.identityPath, "owner identity record") },
+    outerTerminal: { pid: ownerPid, startedAtEpochSeconds: processBirthSeconds(ownerPid) },
+    bootId: String(execFileSync("/usr/sbin/sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf8" })).trim(),
+    runFileSha256: fileSha256(launch.marker.value, "run file"),
+    autoUpdate: ghosttyAutoUpdate(),
+  })
+}
+
 async function runApp(
   app: AppDef,
   opts: { force?: boolean; output?: string },
@@ -758,6 +819,20 @@ async function runApp(
       app.id === "kitty" ? ownedKittyWindow(app, launch) : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
+    const outerLaunch =
+      app.cliLaunch?.capture === "artifact-directory"
+        ? measureOuterLaunchRecord(
+            run,
+            launch,
+            ownedWindow.provider === "cli-process" || ownedWindow.provider === "kitty"
+              ? ownedWindow.provider === "kitty"
+                ? ownedWindow.kittyPid
+                : ownedWindow.ownerPid
+              : (() => {
+                  throw new Error(`${app.name} declares a capture route but its owned window has no process owner`)
+                })(),
+          )
+        : undefined
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, {
       appId: app.id,
@@ -765,6 +840,7 @@ async function runApp(
       ownedWindow,
       outputDirectory: opts.output,
       launcherStderr: launch.launcherStderr,
+      outerLaunch,
     })
     console.log(`  ${result.summary} (${result.mode})`)
     outcome = { success: true }
