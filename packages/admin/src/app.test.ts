@@ -50,9 +50,14 @@ vi.mock("node:sqlite", () => ({
   }),
 }))
 vi.mock("node:child_process", () => ({
-  execFileSync: vi.fn((file, args) =>
-    String(file).endsWith("/wezterm") && args[0] === "--version" ? "wezterm 2.15\n" : "2.15\n",
-  ),
+  execFileSync: vi.fn((file, args) => {
+    const binary = String(file)
+    // D3/D4.6 measurements the owner launch record reads on a Darwin host.
+    if (binary === "/bin/ps") return "Thu Oct 22 14:20:06 2026\n"
+    if (binary === "/usr/sbin/sysctl") return "a1b2c3d4-1111-2222-3333-444455556666\n"
+    if (binary === "/usr/bin/defaults") return "0\n"
+    return binary.endsWith("/wezterm") && args[0] === "--version" ? "wezterm 2.15\n" : "2.15\n"
+  }),
   execSync: vi.fn(() => "2.15\n"),
   spawn: vi.fn(),
 }))
@@ -337,6 +342,19 @@ describe("Ghostty cli-process arm", () => {
       },
     })
     expect(closeOwnedTerminalWindow).toHaveBeenCalledWith(ownedWindow)
+    // D4.6: the owner launch record is measured once and retained as the reply a mux proof cites.
+    const retained = vi.mocked(saveDaemonProbeRun).mock.calls[0]?.[0] as { rawReplies?: Record<string, string> }
+    const record = retained.rawReplies?.["collector.outerLaunch"]
+    expect(record).toBeDefined()
+    expect(JSON.parse(String(record))).toMatchObject({
+      launchRunId: "private-run",
+      executablePath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+      marker: { flag: "--config-file", value: "/private/run/ghostty-private-run" },
+      outerTerminal: { pid: 777, startedAtEpochSeconds: 1792678806 },
+      bootId: "a1b2c3d4-1111-2222-3333-444455556666",
+      autoUpdate: { key: "SUEnableAutomaticChecks", value: "0", plistSha256: expect.any(String) },
+    })
+    expect(record).toBe(JSON.stringify(JSON.parse(String(record))))
   })
 
   // D2: the script reaches Ghostty only through the run file's unquoted `command` line, so a path that

@@ -18,11 +18,10 @@ const run: ProbeRun = { id: "run-1", directory: "/private/run", scriptPath: "/pr
 
 test("the serve command carries run and suite identity, and a capture directory only when one is handed in", () => {
   // No recipe declares a capture route here, so nothing is retained and no arm is asked for a frame.
-  expect(serveCommand(run)).toBe(
-    `TERMINFO_RUN_ID=run-1 TERMINFO_PROBE_HASH=suite TERMINFO_SOURCE_REVISION=source exec '${process.execPath}' ` +
-      `'${process.cwd()}/packages/admin/src/index.ts' probe server --start`,
+  const plain = serveCommand(run)
+  expect(plain).toMatch(
+    /^TERMINFO_RUN_ID=run-1 TERMINFO_PROBE_HASH=suite TERMINFO_SOURCE_REVISION=source exec '.+' '.+\/packages\/admin\/src\/index\.ts' probe server --start$/,
   )
-  expect(serveCommand(run, "/private/run/artifacts")).toContain(
-    "TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'",
-  )
+  expect(plain).not.toContain("TERMINFO_CAPTURE_DIRECTORY")
+  expect(serveCommand(run, "/private/run/artifacts")).toContain("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'")
 })

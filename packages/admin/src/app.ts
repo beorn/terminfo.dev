@@ -14,6 +14,7 @@ import {
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { dirname, isAbsolute, join } from "node:path"
 import {
@@ -30,9 +31,11 @@ import {
 } from "../../terminfo.dev/src/daemon-client.ts"
 import { homedir } from "node:os"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
+import { parseLstart } from "../../terminfo.dev/src/disposable-receipt.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 import { serveCommand } from "./serve-command.ts"
+import { serializeOuterLaunchRecord } from "./outer-launch.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
 import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
 import {
@@ -481,7 +484,8 @@ export function launchPreparedCli(prepared: PreparedCliLaunch, diagnosticDirecto
 }
 
 function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
-  const captureDirectory = app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
+  const captureDirectory =
+    app.cliLaunch?.capture === "artifact-directory" ? join(run.directory, "artifacts") : undefined
   const serveCmd = serveCommand(run, captureDirectory)
   const identityPath =
     app.id === "kitty"
@@ -582,13 +586,15 @@ interface ProbeOptions {
   outputDirectory?: string
   /** The detached kitty launcher's stderr, retained with the run whether or not it is empty. */
   launcherStderr?: string
+  /** The Darwin owner launch record's exact text, retained as collector.outerLaunch (#30518 D4.6). */
+  outerLaunch?: string
 }
 
 async function probeDaemon(
   daemon: DaemonRegistration,
   options: ProbeOptions,
 ): Promise<{ summary: string; mode: "retained" | "admitted" | "pending-review" }> {
-  const { appId, version, ownedWindow, outputDirectory, launcherStderr } = options
+  const { appId, version, ownedWindow, outputDirectory, launcherStderr, outerLaunch } = options
   const appLaunch =
     ownedWindow.provider === "terminal-app" ? captureTerminalAppReceipt(ownedWindow, daemon.pid, version) : null
   assertOwnedTerminalWindow(ownedWindow, daemon.pid)
@@ -620,6 +626,7 @@ async function probeDaemon(
     ...(appLaunch && { origin: { ...data.origin, appLaunch: appLaunch.receipt } }),
     rawReplies: {
       ...data.rawReplies,
+      ...(outerLaunch !== undefined && { "collector.outerLaunch": outerLaunch }),
       "collector.identityCheck": JSON.stringify(identityCheck),
       ...(appLaunch && { "collector.appLaunchTrace": JSON.stringify(appLaunch.trace) }),
       ...(launcherStderr !== undefined && {
@@ -709,6 +716,75 @@ function processOwnerAssertion(
   }
 }
 
+/** sha256 of a file's exact bytes; an unreadable file is loud, never an empty digest. */
+function fileSha256(path: string, what: string): string {
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex")
+  } catch (cause) {
+    throw new Error(`${what} ${path} is unreadable: ${cause instanceof Error ? cause.message : String(cause)}`)
+  }
+}
+
+/** D3: the owner's birth is one C-locale UTC `ps -o lstart=` line, read from the process the marker resolved. */
+function processBirthSeconds(pid: number): number {
+  return parseLstart(
+    String(
+      execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], {
+        encoding: "utf8",
+        env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+      }),
+    ),
+  )
+}
+
+/** Ghostty's update-check setting, read once and never written (D4.6). An absent key is a value. */
+function ghosttyAutoUpdate(): {
+  key: "SUEnableAutomaticChecks"
+  value: "0" | "1" | "absent"
+  plistPath: string
+  plistSha256: string | null
+} {
+  const plistPath = join(homedir(), "Library", "Preferences", "com.mitchellh.ghostty.plist")
+  const plistSha256 = existsSync(plistPath) ? fileSha256(plistPath, "Ghostty preferences") : null
+  let value: "0" | "1" | "absent" = "absent"
+  try {
+    const read = String(
+      execFileSync("/usr/bin/defaults", ["read", "com.mitchellh.ghostty", "SUEnableAutomaticChecks"], {
+        encoding: "utf8",
+      }),
+    ).trim()
+    if (read !== "0" && read !== "1") {
+      throw new Error(`SUEnableAutomaticChecks read ${JSON.stringify(read)}, not 0 or 1`)
+    }
+    value = read
+  } catch (cause) {
+    // `defaults read` exits 1 with "does not exist" for an unset key; that is the measured absence.
+    if (typeof cause !== "object" || cause === null || (cause as { status?: unknown }).status !== 1) throw cause
+  }
+  return { key: "SUEnableAutomaticChecks", value, plistPath, plistSha256 }
+}
+
+/**
+ * The Darwin owner launch record (#30518 D4.6): measured here, by the side that resolved the owner
+ * and wrote the run file, then serialised once as strict JSON. It is retained as
+ * `collector.outerLaunch` and its source text is what a mux proof cites as receiptSha256.
+ */
+function measureOuterLaunchRecord(run: ProbeRun, launch: AppLaunch, ownerPid: number): string {
+  if (launch.identityPath === undefined || launch.marker === undefined || launch.executablePath === undefined) {
+    throw new Error("Darwin capture launch has no cli-process launch record (identity path, marker or owner binary)")
+  }
+  return serializeOuterLaunchRecord({
+    launchRunId: run.id,
+    executablePath: launch.executablePath,
+    marker: launch.marker,
+    identityFile: { path: launch.identityPath, sha256: fileSha256(launch.identityPath, "owner identity record") },
+    outerTerminal: { pid: ownerPid, startedAtEpochSeconds: processBirthSeconds(ownerPid) },
+    bootId: String(execFileSync("/usr/sbin/sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf8" })).trim(),
+    runFileSha256: fileSha256(launch.marker.value, "run file"),
+    autoUpdate: ghosttyAutoUpdate(),
+  })
+}
+
 async function runApp(
   app: AppDef,
   opts: { force?: boolean; output?: string },
@@ -738,6 +814,20 @@ async function runApp(
       app.id === "kitty" ? ownedKittyWindow(app, launch) : (launch.terminalWindow ?? ownedCliProcessWindow(launch))
     if (ownedWindow === undefined) throw new Error(`${app.name} produced no owned window for this run`)
     launch.terminalWindow = ownedWindow
+    const outerLaunch =
+      app.cliLaunch?.capture === "artifact-directory"
+        ? measureOuterLaunchRecord(
+            run,
+            launch,
+            ownedWindow.provider === "cli-process" || ownedWindow.provider === "kitty"
+              ? ownedWindow.provider === "kitty"
+                ? ownedWindow.kittyPid
+                : ownedWindow.ownerPid
+              : (() => {
+                  throw new Error(`${app.name} declares a capture route but its owned window has no process owner`)
+                })(),
+          )
+        : undefined
     console.log(`  Probing on port ${daemon.registration.port}...`)
     const result = await probeDaemon(daemon.registration, {
       appId: app.id,
@@ -745,6 +835,7 @@ async function runApp(
       ownedWindow,
       outputDirectory: opts.output,
       launcherStderr: launch.launcherStderr,
+      outerLaunch,
     })
     console.log(`  ${result.summary} (${result.mode})`)
     outcome = { success: true }

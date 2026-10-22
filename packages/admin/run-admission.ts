@@ -35,6 +35,7 @@ import { activeInterpretations, applies, nonempty, parseInterpretations } from "
 import { loadFeatures } from "@terminfo/catalog"
 
 import { probeSuiteSnapshot } from "./versions.ts"
+import { outerLaunchMismatch } from "./src/outer-launch.ts"
 import {
   bindReceiptToRun,
   HOSTED_IDENTITY_SOURCES,
@@ -285,8 +286,28 @@ function identityDecision(
 
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
 function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
-  // The Linux clipboard-fixture join. Darwin rows are refused earlier by the mux platform gate
-  // (mux-platform-unqualified, CTO 41878c53), so an arm that reaches here fails closed, named.
+  // Darwin joins against its own owner launch record (§D4.6); Linux against the clipboard fixture.
+  // An arm with no join fails closed. The mux platform gate still refuses Darwin rows before this
+  // point (mux-platform-unqualified, CTO 41878c53) until the arm is qualified.
+  if (attachment.platform === "darwin") {
+    const source = run.rawReplies["collector.outerLaunch"]
+    if (source === undefined) {
+      throw new ReceiptRefusal(
+        "mux-attachment-invalid",
+        `Darwin mux run ${run.runId} cites owner launch receipt ${attachment.receiptSha256} but has no collector.outerLaunch reply`,
+      )
+    }
+    const mismatch = outerLaunchMismatch(
+      source,
+      attachment,
+      readRetainedFile,
+      run.outerApp?.provenance?.executable.path,
+    )
+    if (mismatch !== null) {
+      throw new ReceiptRefusal("mux-attachment-invalid", `Darwin mux receipt refused: ${mismatch}`)
+    }
+    return true
+  }
   if (attachment.platform !== "linux") return false
   const fixtureSource = run.rawReplies["collector.clipboardFixture"]
   const preflightSource = run.outerApp?.rawReplies["collector.preflightIdentity"]
@@ -328,6 +349,16 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
     // Malformed retained input is a named admission refusal, never an empty/default proof.
     if (!(cause instanceof Error)) throw cause
     throw new ReceiptRefusal("mux-attachment-invalid", cause.message, cause)
+  }
+}
+
+/** Read a file the retained record names; absent is null, anything else is loud. */
+function readRetainedFile(path: string): Buffer | null {
+  try {
+    return readFileSync(path)
+  } catch (cause) {
+    if (isRecord(cause) && cause.code === "ENOENT") return null
+    throw cause
   }
 }
 

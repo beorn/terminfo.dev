@@ -285,6 +285,32 @@ function oneOf(source: Record<string, unknown>, key: string, allowed: readonly s
   return value
 }
 
+/** D3 (@cto 6710987a): `LC_ALL=C TZ=UTC ps -o lstart= -p <pid>` to whole epoch seconds. Anything but
+ * one C-locale UTC instant refuses by name: no sub-second reader is measured, so none is offered. */
+const LS_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const LS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+export function parseLstart(raw: string): number {
+  const match =
+    /^ *(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([ 1-3][0-9]|[1-9]) ([0-2][0-9]):([0-5][0-9]):([0-5][0-9]) ([0-9]{4}) *\n?$/.exec(
+      raw,
+    )
+  if (!match) throw new Error(`lstart ${JSON.stringify(raw)} is not one C-locale "Www Mmm dd hh:mm:ss yyyy" line`)
+  const [, weekday, month, day, hour, minute, second, year] = match
+  const monthIndex = LS_MONTHS.indexOf(month ?? "")
+  const ms = Date.UTC(Number(year), monthIndex, Number(day), Number(hour), Number(minute), Number(second))
+  const at = new Date(ms)
+  if (
+    at.getUTCFullYear() !== Number(year) ||
+    at.getUTCMonth() !== monthIndex ||
+    at.getUTCDate() !== Number(day) ||
+    at.getUTCHours() !== Number(hour) ||
+    LS_WEEKDAYS[at.getUTCDay()] !== weekday
+  ) {
+    throw new Error(`lstart ${JSON.stringify(raw)} names no real UTC second`)
+  }
+  return ms / 1000
+}
+
 /** Parse retained custody data only. Live process authority remains in the existing Linux owner. */
 export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
   const where = "mux attachment"

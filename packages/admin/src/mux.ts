@@ -15,7 +15,7 @@ import {
 
 import { writeFileSync } from "node:fs"
 import { execSync, spawnSync } from "node:child_process"
-import { dirname, join } from "node:path"
+import { join } from "node:path"
 import {
   createProbeRun,
   findOwnedDaemon,
@@ -43,7 +43,6 @@ interface MuxDef {
   start: (binary: string, sessionName: string, scriptPath: string) => void
   kill: (binary: string, sessionName: string) => void
 }
-
 
 const MUXES: MuxDef[] = [
   {
