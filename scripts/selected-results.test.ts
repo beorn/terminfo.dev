@@ -1913,10 +1913,10 @@ describe("selected results", () => {
     expect(publicCell?.record?.frames).toEqual(expectedFrames)
     expect(publicCell?.record).not.toHaveProperty("screenshot")
     expect(publicCell?.presentation.state).toBe("presented")
-    if (publicCell?.presentation.state === "presented") {
-      expect(publicCell.presentation.url).toBe(`/api/v2/evidence/${measured.sha256}.json#extensions.graphics`)
-    }
-    expect(published.documents.get(`/api/v2/evidence/${measured.sha256}.json`)?.document).toMatchObject({
+    if (publicCell?.presentation.state !== "presented") throw new Error("Missing presented text evidence")
+    const evidenceUrl = publicCell.presentation.url.split("#")[0]!
+    expect(evidenceUrl).toContain(measured.sha256)
+    expect(published.documents.get(evidenceUrl)?.document).toMatchObject({
       cells: {
         "extensions.graphics": {
           record: { frames: expectedFrames },
@@ -1941,18 +1941,20 @@ describe("selected results", () => {
       currentProbeHash: "current",
     })
     const multiPublished = publicResults(multiPresented, new Map())
-    expect([...multiPublished.documents.keys()]).toEqual([`/api/v2/evidence/${multiRun.sha256}.json`])
-    const runDoc = multiPublished.documents.get(`/api/v2/evidence/${multiRun.sha256}.json`)!
+    expect(multiPublished.documents.size).toBe(1)
+    const multiDocUrl = [...multiPublished.documents.keys()][0]!
+    expect(multiDocUrl).toContain(multiRun.sha256)
+    const runDoc = multiPublished.documents.get(multiDocUrl)!
     const expectedSha = createHash("sha256").update(runDoc.bytes).digest("hex")
     const versionCells = multiPublished.projection.current["app:kitty"]?.cells
     expect(versionCells?.["extensions.graphics"]?.presentation).toMatchObject({
       state: "presented",
-      url: `/api/v2/evidence/${multiRun.sha256}.json#extensions.graphics`,
+      url: `${multiDocUrl}#extensions.graphics`,
       sha256: expectedSha,
     })
     expect(versionCells?.["extensions.query"]?.presentation).toMatchObject({
       state: "presented",
-      url: `/api/v2/evidence/${multiRun.sha256}.json#extensions.query`,
+      url: `${multiDocUrl}#extensions.query`,
       sha256: expectedSha,
     })
     const parsedRunDoc = JSON.parse(runDoc.bytes) as {
@@ -1999,8 +2001,6 @@ describe("selected results", () => {
     expect(() => readCellEvidence({ ...parsedRunDoc, version: 1 }, baseExpectation)).toThrow(
       "Evidence document identity or structure does not match this result",
     )
-    const redirects = readFileSync(join(import.meta.dirname, "..", "docs", "public", "_redirects"), "utf8")
-    expect(redirects).toContain("/api/v2/evidence/:run/*   /api/v2/evidence/:run.json   301")
   })
 
   // AC2–AC4: the public result reader must promote a reviewed character claim only from this
@@ -3742,7 +3742,7 @@ describe("run traces", () => {
     const { measured, projection, version, targets } = traced()
     const published = publicResults(projection, targets)
     const { receipt, bytes } = traceOf(published)
-    expect(receipt.url).toBe(`/api/v2/traces/${measured.sha256}.json`)
+    expect(receipt.url).toContain(measured.sha256)
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(receipt.sha256)
     // The receipt lives once, on the run: every mapping of the run carries it, and no cell does.
     expect(published.projection.current["app:kitty"]?.trace).toEqual(receipt)

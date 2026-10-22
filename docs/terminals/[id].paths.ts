@@ -40,16 +40,9 @@ export default {
     const data = loadProbes()
     const allAnalysis = loadAnalysis()
 
-    const historicalBackends = Object.entries(data.historicalByBackend)
-      .filter(([key]) => !data.selectedByBackend[key])
-      .map(([key, entry]) => ({
-        name: key,
-        version: entry.selected.target.version,
-        engine: "",
-        type: entry.selected.target.kind,
-        ...(entry.selected.target.os && { platforms: [entry.selected.target.os] }),
-      }))
-    const pages: Array<{ params: Record<string, string> }> = [...data.backends, ...historicalBackends].map((b) => {
+    // #30759 Slice A (@cto f1504b5c R2): only a current run gets a page, so a historical-only
+    // target can neither be listed nor have its run data serialized into a page bundle.
+    const pages: Array<{ params: Record<string, string> }> = data.backends.map((b) => {
       const meta = data.meta[b.name] ?? {}
       const stats = data.stats[b.name]
       if (data.selectedByBackend[b.name] && !stats) {
@@ -156,14 +149,6 @@ export default {
           categories: JSON.stringify(categories),
           versions: JSON.stringify(versions),
           otherRuns: JSON.stringify(otherRuns),
-          historicalRuns: JSON.stringify(
-            Object.values(data.selected.historical.versions)
-              .flat()
-              .filter((run) => {
-                const reference = selected?.target ?? data.historicalByBackend[b.name]?.selected.target
-                return reference && run.target.id === reference.id && run.target.kind === reference.kind
-              }),
-          ),
           analysis: linkifyContentExcluding(a?.analysis ?? "", new Set([`/terminals/${slug}`])),
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",

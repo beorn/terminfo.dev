@@ -115,11 +115,11 @@ jobs:
           trap 'rm -f "$readback_file"' EXIT
           curl --fail --show-error --silent --connect-timeout 10 --max-time 30 \
             -H 'Cache-Control: no-cache' \
-            "https://terminfo.dev/api/v1/build.json?run=$GITHUB_RUN_ID&attempt=$GITHUB_RUN_ATTEMPT" -o "$readback_file"
+            "https://terminfo.dev/build.json?run=$GITHUB_RUN_ID&attempt=$GITHUB_RUN_ATTEMPT" -o "$readback_file"
           python3 - "$readback_file" <<'PY'
           import json, os, sys
           try:
-              with open("docs/.vitepress/dist/api/v1/build.json") as archive:
+              with open("docs/.vitepress/dist/build.json") as archive:
                   expected = json.load(archive)
               with open(sys.argv[1]) as response:
                   actual = json.load(response)

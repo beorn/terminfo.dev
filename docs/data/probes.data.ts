@@ -180,7 +180,14 @@ function loadBackendMeta(): Record<string, BackendMeta> {
   return meta
 }
 
-declare const data: Omit<ProbeData, "selected">
+/**
+ * #30759 Slice A: the client payload is exactly what `load()` returns — the full projection and both
+ * historical maps stay behind at build time. One alias names it for both the loader and the `data`
+ * a page imports, so a field `load()` drops can never stay advertised in the client-side type.
+ */
+export type ClientProbeData = Omit<ProbeData, "selected" | "historicalByBackend" | "historicalTable">
+
+declare const data: ClientProbeData
 export { data }
 
 export function loadFullProbes(): ProbeData {
@@ -205,14 +212,13 @@ export function loadFullProbes(): ProbeData {
   for (const [id, terminal] of Object.entries(catalog)) {
     meta[id] = { ...meta[id], ...terminal }
   }
-  // A target published apart from its catalog entry gets its own name and slug, current or historical-only.
-  // A historical-only one takes nothing else: its entry's prose describes the app, not this target.
-  const historicalOnly = Object.entries(published.historicalByBackend).filter(([key]) => !byTarget.has(key))
-  for (const [key, { selected }] of [...byTarget, ...historicalOnly]) {
+  // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
+  // not a matrix row any more; it gets no metadata and no page.
+  for (const [key, { selected }] of byTarget) {
     const id = selected.target.id
     if (key !== id) {
       const label = targetLabel(catalog, id, selected.target.kind, meta[id]?.label)
-      meta[key] = byTarget.has(key) ? { ...meta[id], label, slug: key } : { label, slug: key }
+      meta[key] = { ...meta[id], label, slug: key }
     }
   }
   const annotations = loadAnnotations()
@@ -312,8 +318,18 @@ export function loadFullProbes(): ProbeData {
 }
 
 export default {
-  load(): Omit<ProbeData, "selected"> {
-    const { selected: _selected, ...client } = loadFullProbes()
+  /**
+   * #30759 Slice A (@cto 13cc5eef, ruling (b)): the historical run projection is not part of the
+   * client payload — it is ~5.6 MB of schema-2 runs that no route can select any more. It stays
+   * available to build-time readers through loadFullProbes().
+   */
+  load(): ClientProbeData {
+    const {
+      selected: _selected,
+      historicalByBackend: _historical,
+      historicalTable: _table,
+      ...client
+    } = loadFullProbes()
     return client
   },
 }
