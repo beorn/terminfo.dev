@@ -66,12 +66,14 @@ function fakeScreen(options: ScreenOptions = {}) {
       pendingWrap = false
     }
     const fg = fgIndex === null ? null : { ...(palette.get(fgIndex) ?? { r: 0, g: 0, b: 0 }) }
-    cells[cursor.y][cursor.x] = { char, bold, italic, fg }
+    const row = cells[cursor.y]
+    if (!row) throw new Error("cursor row off the grid")
+    row[cursor.x] = { char, bold, italic, fg }
     if (cursor.x === cols - 1) pendingWrap = true
     else cursor = { ...cursor, x: cursor.x + 1 }
   }
   const parseRgb = (osc: string): Rgb => {
-    const [r, g, b] = osc.slice(osc.indexOf("rgb:") + 4, -1).split("/")
+    const [r = "0", g = "0", b = "0"] = osc.slice(osc.indexOf("rgb:") + 4, -1).split("/")
     return { r: parseInt(r, 16), g: parseInt(g, 16), b: parseInt(b, 16) }
   }
   const apply = (token: string): string => {

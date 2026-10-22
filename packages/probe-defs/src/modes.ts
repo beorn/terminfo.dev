@@ -286,8 +286,9 @@ function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): Pr
     ctx.feed("Y\x1b[0m")
     const target = readBXY()
     const state = { control, target }
-    if (!charsIntact(target))
+    if (!charsIntact(target)) {
       return parserStateResult(null, expected, state, "Stack sequence disturbed the B, X, Y cells")
+    }
     if (boldOnly(target.y)) return parserStateResult(true, expected, state)
     if (italicOnly(target.y)) return parserStateResult(false, expected, state)
     return parserStateResult(null, expected, state, "Y after the pop is neither bold-only nor italic-only")
