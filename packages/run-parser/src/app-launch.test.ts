@@ -13,7 +13,9 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { parseAppLaunchReceipt } from "./app-launch.ts"
 
-const REPO_ROOT = join(import.meta.dirname, "..", "..", "..")
+// Checked-in copy of the measured run (#30764 M4): the old round leaves content/ on Friday, and this
+// suite must keep reading a real recorded receipt.
+const FIXTURES = join(import.meta.dirname, "..", "..", "..", "test-fixtures")
 const ZEROS = "0".repeat(64)
 const LETTERS = "a".repeat(64)
 const MEASURED = "alacritty-0.17.0-macos-976d8f5c37c0fb4426205993a0c08da1.json"
@@ -42,7 +44,7 @@ const RETIRED: Record<string, Record<string, unknown>> = {
 }
 
 function appLaunchOf(name: string): Record<string, unknown> {
-  const path = join(REPO_ROOT, "content", "probes-apps", name)
+  const path = join(FIXTURES, "probes-apps", name)
   const document = JSON.parse(readFileSync(path, "utf8")) as { origin: { appLaunch: Record<string, unknown> } }
   return document.origin.appLaunch
 }

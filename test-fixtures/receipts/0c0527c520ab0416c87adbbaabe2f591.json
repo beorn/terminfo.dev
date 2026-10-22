@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-15T22:43:25Z",
+  "runId": "af218868912e12c31ab50c0e8a403b8e",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "ghostty",
+    "version": "1.3.1",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/ghostty-org/ghostty/archive/refs/tags/v1.3.1.tar.gz",
+    "sri": "sha256-WzF6g7Br5Bsm/SmrqD03zabkB+3H3g7XRgv+0HvejyQ=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-+ddMmUe9Jjkun4qqW8XFXVgwVZdVHsGWcQzndgIlBjQ=",
+    "revision": "refs/tags/v1.3.1"
+  },
+  "runnerArtifact": {
+    "sha256": "2a7b6bd4a7ad3e537eb7111763a6540ba22b38d8a3f27842b8b3721db15fa5fb",
+    "narSha256": "sha256-OVWrWBPextR+hl/U3vTp1FuwIGMoU2HAlkMhwqHVcTQ=",
+    "frozenRunnerSha256": "6fc5805af8d1153c7d92de6db4feac6ec05dc3fbe67d64f95ec0dec9176a4226",
+    "buildReceiptSha256": "aa0ae3c1be77eaee0c26c65f416517231b9a110b065cfa0d7ad21f69c0dbc97a",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "0fb194cf6cea",
+      "collectorRevision": "7e7c2917520ca742fd002c39c8c49961d417657e",
+      "manifestSha256": "f2ba949195f31c1d76f21844810f09fe3bb90ec9b1cf4391b542604317f0b2e4",
+      "bundleSha256": "628c73e1d035f139579373859c08ca2a97a1c417c742f63b113ee76b2c426b83"
+    },
+    "rootBunLockSha256": "b601b151ec0ed3ca0fd04c3a74e10c23e285b8f442032d3436e803cbd5b5d2a4"
+  },
+  "runtime": {
+    "imageId": "sha256:c0b4df0c875d775a60d7178a6d42884a7fc9809645b790b9f76e0c3fee48ce0b",
+    "imageTarSha256": "c81f6c02b52e1eba2cdfb3ae18566ebba8211e9171cae2bad1707ab84c005ef8",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "7e7c2917520ca742fd002c39c8c49961d417657e",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "cce96dcc4768318a9978778c4acbe0bdcf370743",
+    "suiteHash": "0fb194cf6cea"
+  },
+  "status": "raw-unreviewed-history"
+}

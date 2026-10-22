@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "beebaeaa05db8e3a8eed72f3fe648a87",
+  "collectedAt": "2026-10-19T15:13:49.125Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/task/luna3-macos-wezterm-software-cli",
+    "githubRunId": "39275868085",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "118139896041"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000048830",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20261013.0424.1",
+    "trackingId": "github_6056e741-d528-4275-ad98-1fbfd7fa2802"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "83ef46fa6bd50d2888ab7961ff84c39420f6419283895d5a72cfe7ebd046f685",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "7dba08c2d58b330632a4a92836fb7e992e6538cc547c30fb560a963e6781b23e"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "83ef46fa6bd50d2888ab7961ff84c39420f6419283895d5a72cfe7ebd046f685",
+      "productUuidSha256": "6d710d84ee7cb0f090799d914dfadc8c3c97418aaeec1739cc30afce06ecfcaa",
+      "bootIdSha256": "7dba08c2d58b330632a4a92836fb7e992e6538cc547c30fb560a963e6781b23e"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/Ghostty.app",
+    "cfBundleShortVersionString": "1.3.1",
+    "cfBundleVersion": "15212",
+    "executablePath": "/Applications/Ghostty.app/Contents/MacOS/ghostty",
+    "executableSha256": "3460be6d0c80504ffafe0dbb06f60cb1e8fb680a564a97a1aa5b95b48b8e30ac",
+    "sourceArtifact": {
+      "path": "/Users/runner/Library/Caches/Homebrew/downloads/8fe2cba53d068b28af123ef9f642165e92b509fefc34c94bd9d1bd0c5dd21a94--Ghostty.dmg",
+      "sha256": "18cff2b0a6cee90eead9c7d3064e808a252a40baf214aa752c1ecb793b8f5f69"
+    }
+  }
+}

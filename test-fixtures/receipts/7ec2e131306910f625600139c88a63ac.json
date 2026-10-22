@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-16T03:19:37Z",
+  "runId": "0e6a95ca84f7f058c9cb744c82d95ba8",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "wezterm",
+    "version": "0-unstable-2026-09-29",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/wezterm/wezterm.git",
+    "sri": "sha256-1pyff6suIIzcO6Sopf2Qz/isso4YonbZsaKUqOU8NO8=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-u1cB9tKZ0nVmV8UHi6zq0esnSFX4flh3K0JjIQh5CE8=",
+    "revision": "cab25161054c50fd6c705db4ceefef0f1e5a9575"
+  },
+  "runnerArtifact": {
+    "sha256": "708710e8b1d4ed4459cd272173e5a2857354ab3d8bc4d557a5cde224bb897e0c",
+    "narSha256": "sha256-wcDU+cwRruGR893a+xdX2Qi5F3Hw1lkT/A5totYg9oM=",
+    "frozenRunnerSha256": "451cf7f21d8dc4a8f36d6f00363ac0ee87fde45cc5cb40353fe3d8c03e5ff643",
+    "buildReceiptSha256": "c8fa5b38b7ad963c858bb46033d195186bb0bb4c0517321b096e968b8d724556",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "a155eed86ac9",
+      "collectorRevision": "6e11d239e0761db2b3eb5af32012ff200a2b2935",
+      "manifestSha256": "57e9a0bf9f95345a6c9b26db3713b26675c0d90b869a0271104c57f3bea35963",
+      "bundleSha256": "e5dfb728d8bf451d4e2aa452a6b58516fc416e3dca8a6864c5ff381dad7dd346"
+    },
+    "rootBunLockSha256": "b25078770f252837bf9a1ad119631c4e90d9cdc8dd861cf5c84c2bded5c60668"
+  },
+  "runtime": {
+    "imageId": "sha256:93e1e0e8020338705760ed5dcbc971e18694eb44344b79cb4712924db78fda3a",
+    "imageTarSha256": "2d778dd56770fdffdfffa6a67c71cdcb7e457999863742d4a3c2d48c5acad729",
+    "arch": "amd64",
+    "nixLockRevision": "a9b81777a697e45855b9dd90fd90fc0818ba89d7",
+    "sourceRevision": "6e11d239e0761db2b3eb5af32012ff200a2b2935",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "748db8ef3f26cd844f8f6ea0fa268ff274f119d2",
+    "suiteHash": "a155eed86ac9"
+  },
+  "status": "raw-unreviewed-history"
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "8ff3e0f5b3dda9d2872d91ae4f5c6c9a",
+  "collectedAt": "2026-10-10T18:10:24.717Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "windows-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/windows-measurement.yml@refs/heads/main",
+    "githubRunId": "38074622083",
+    "githubRunAttempt": "1",
+    "job": "measure-windows",
+    "jobId": "114278889032"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045827",
+    "os": "Windows",
+    "arch": "X64",
+    "imageOS": "win25-vs2026",
+    "imageVersion": "20260925.250.1",
+    "trackingId": "github_61515adb-6f5a-4c3f-8713-5a71ada7541e"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "3d449dd3abacbe225a28bf516bae09e017c36cf4994394564d2e9a96ffef399b",
+      "productUuidSha256": "a16f78a88165e6c82abecc00cfdf982029d449975da4dc88cc5050786f7f653d",
+      "bootIdSha256": "eacb52b1ca948f625550bcb64770652624425ea4c6206c6893fdcbd49ba295df"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "3d449dd3abacbe225a28bf516bae09e017c36cf4994394564d2e9a96ffef399b",
+      "productUuidSha256": "a16f78a88165e6c82abecc00cfdf982029d449975da4dc88cc5050786f7f653d",
+      "bootIdSha256": "eacb52b1ca948f625550bcb64770652624425ea4c6206c6893fdcbd49ba295df"
+    }
+  }
+}

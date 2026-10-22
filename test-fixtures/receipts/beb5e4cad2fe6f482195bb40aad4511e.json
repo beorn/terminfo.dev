@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "d30af769b021625750be4b11bdc05ec2",
+  "collectedAt": "2026-10-11T00:52:29.187Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/task/dev3-splus2-collect",
+    "githubRunId": "38099868955",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "114353399373"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045972",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20260907.0351.1",
+    "trackingId": "github_f34cbda3-33bc-4dfa-8d55-008d090552d9"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "02aa1bd6002b31fdf06413e43e2fb28a517776fd87cba5f55c23079ca5b06f0d",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "a293d7c7ee1867a439c84b4f354c82ae9b09792ed1c6135fccc466f3fb7b7611"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "02aa1bd6002b31fdf06413e43e2fb28a517776fd87cba5f55c23079ca5b06f0d",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "a293d7c7ee1867a439c84b4f354c82ae9b09792ed1c6135fccc466f3fb7b7611"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/System/Applications/Utilities/Terminal.app",
+    "cfBundleShortVersionString": "2.15",
+    "cfBundleVersion": "470.2",
+    "executablePath": "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+    "executableSha256": "c5f23927d33d886d3a3e39b4ef76381b1971a9cc74523f7ebf5e60affaf8fa8b",
+    "sourceArtifact": {
+      "kind": "sealed-macos-system-volume",
+      "macOSBuild": "25G83",
+      "snapshotUUID": "4BA28550-50CA-4170-8F57-FA5A3B86D564",
+      "snapshotName": "com.apple.os.update-60587424F5399FC05D957DF05B4D2F65543462495C77AEF520F790FBB57CB212",
+      "sealed": true,
+      "codeSignature": {
+        "identifier": "com.apple.Terminal",
+        "cdHash": "113489a0a7a509813484c5e5be854fa5f55a6553",
+        "strictVerified": true
+      }
+    }
+  }
+}

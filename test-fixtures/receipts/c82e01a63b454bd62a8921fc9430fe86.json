@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "github-hosted-runner",
+  "runId": "82bee6a67e374004f83f4ba32ec6c6c4",
+  "collectedAt": "2026-10-09T00:09:57.038Z",
+  "job": {
+    "repository": "beorn/terminfo.dev",
+    "workflow": "macos-measurement",
+    "workflowRef": "beorn/terminfo.dev/.github/workflows/macos-measurement.yml@refs/heads/task/dev3-28216-macos-launch-receipt",
+    "githubRunId": "37863296988",
+    "githubRunAttempt": "1",
+    "job": "measure-macos",
+    "jobId": "113603936113"
+  },
+  "runner": {
+    "environment": "github-hosted",
+    "name": "GitHub Actions 1000045601",
+    "os": "macOS",
+    "arch": "ARM64",
+    "imageOS": "macos26",
+    "imageVersion": "20260907.0351.1",
+    "trackingId": "github_d2123ddd-a0df-4e7e-8936-e092ca66c71a"
+  },
+  "vm": {
+    "identityAtJobStart": {
+      "machineIdSha256": "c3a4797613e9edf03bd5e94d1d86f769c4dfcffb04bfd14beb09ed3cd8a23b51",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "0124388e4a4659923864fabf2752a59e3be8ccef3c77f9362c275426bba6a1d5"
+    },
+    "identityAtCollection": {
+      "machineIdSha256": "c3a4797613e9edf03bd5e94d1d86f769c4dfcffb04bfd14beb09ed3cd8a23b51",
+      "productUuidSha256": "91ca25d342015351e3c5f63447bebfd13994a93ae7e3ec6dee701b7a556d6b1f",
+      "bootIdSha256": "0124388e4a4659923864fabf2752a59e3be8ccef3c77f9362c275426bba6a1d5"
+    }
+  },
+  "appLaunch": {
+    "bundlePath": "/Applications/iTerm.app",
+    "cfBundleShortVersionString": "3.6.11",
+    "cfBundleVersion": "3.6.11",
+    "executablePath": "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+    "executableSha256": "42824bb06b3106f5cdc8a831848a0fd0cd58da8938435035a053bcab5a83d240",
+    "sourceArtifact": {
+      "path": "/Users/runner/Library/Caches/Homebrew/downloads/e87886a58f3c6d47d6213216c2391d88414b634092f01b2ed75c3728a7bf448c--iTerm2-3_6_11.zip",
+      "sha256": "36e78c5049560eaa8e122224f6652eb4b229c61cd5e7332d6d25b5c36f7398e7"
+    }
+  }
+}

@@ -20,7 +20,9 @@ import {
   type StepSource,
 } from "../docs/data/step-table.ts"
 
-const root = join(import.meta.dirname, "..")
+// Checked-in copies of the run files this suite reads (#30764 M4): the old round leaves content/ on
+// Friday, and these assertions must keep reading a real recorded run, not a hand-written stub.
+const fixtures = join(import.meta.dirname, "..", "test-fixtures")
 
 interface StoredRun {
   results?: Array<{ featureId: string; status: string }>
@@ -29,7 +31,7 @@ interface StoredRun {
 }
 
 function storedRun(file: string): StoredRun {
-  return JSON.parse(readFileSync(join(root, "content/probes-apps", file), "utf8")) as StoredRun
+  return JSON.parse(readFileSync(join(fixtures, "probes-apps", file), "utf8")) as StoredRun
 }
 
 /** The popover's source for one cell, exactly as the component assembles it from a run's trace. */

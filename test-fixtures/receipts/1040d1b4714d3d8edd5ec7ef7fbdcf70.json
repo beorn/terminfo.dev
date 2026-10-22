@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "kind": "linux-xvfb-container",
+  "collectedAt": "2026-10-12T04:10:02Z",
+  "runId": "2c53f5698a8c2c5627f77ac079cf7150",
+  "preset": "default",
+  "clipboardProfile": "default",
+  "sentinelGraceMs": 250,
+  "declaredTarget": {
+    "kind": "app",
+    "id": "alacritty",
+    "version": "0.17.0",
+    "os": "linux"
+  },
+  "sourceArtifact": {
+    "url": "https://github.com/alacritty/alacritty/archive/refs/tags/v0.17.0.tar.gz",
+    "sri": "sha256-vfn7ZLqknQkZjkbCJ7dcu7TTPUqJIJQ8TNamE7rKKjM=",
+    "kind": "derived-source-tree",
+    "narSri": "sha256-iZtCH2DrSs6o3AG2koI2TyC3116aMlawHFkCd0TYhas=",
+    "revision": "refs/tags/v0.17.0"
+  },
+  "runnerArtifact": {
+    "sha256": "8bae453cab1015316d87fb89a5a0a2ec52ee9920af78b5be6ea655e64badb56f",
+    "narSha256": "sha256-e7truJVVxCluh2gN/c5bgKZQ/mzcfRsph0YBKwuMOf4=",
+    "frozenRunnerSha256": "1d8ec8a8436d3626b5c1fbac4a0afea95b0db8592e0e5b429a43169be12b1b5e",
+    "buildReceiptSha256": "7e507e543b07e8a6b4553988d024d27268da888aa3c1f8082a7b0bb5580f2a38",
+    "build": {
+      "schemaVersion": 1,
+      "probeHash": "c3d1fbb77561",
+      "collectorRevision": "0c67e12a5280363c3538caff64ce5199a9e0099c",
+      "manifestSha256": "db2cf33b714207904e26f0a93cae1c16fc3312101a6d16459a363ff78533688d",
+      "bundleSha256": "2eed7c7ccd03e92c0794df0161bd29d3ae29f3f855b877df1662a762036d7c1c"
+    },
+    "rootBunLockSha256": "a29e3735ab0435e1569e27d0612b0f5b142518accacc4c19b8f1deb0795b931c"
+  },
+  "runtime": {
+    "imageId": "sha256:e909a5ee08c87c983b01dc2defcf5281281e4ca354369f6aa3218b44390dc6b1",
+    "imageTarSha256": "98c58d369550006853251b2899de9965beed77b2cc5fe45d5782aeb78ec0a8ab",
+    "arch": "amd64",
+    "nixLockRevision": "ccd7db88387433a2c8cd50663c149de937d43767",
+    "sourceRevision": "0c67e12a5280363c3538caff64ce5199a9e0099c",
+    "sourceTreeStatus": "clean",
+    "rootRevision": "b7012d60fb478b88ca6e47247b15b1c5e9f782ce",
+    "suiteHash": "c3d1fbb77561"
+  },
+  "status": "raw-unreviewed-history"
+}
