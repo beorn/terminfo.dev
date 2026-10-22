@@ -11,12 +11,26 @@ export interface DarwinWindow {
   bounds: { x: number; y: number; width: number; height: number }
 }
 
-/** A census row's visibility fields; absent in a row that predates the all-windows census. */
-interface DarwinCensusRow {
+/** One layer-0 window the measured app owns, as the census saw it, and why it was or was not the capture target. */
+export interface DarwinOwnedWindow {
   window: DarwinWindow
+  /** Null in a row that predates the all-windows census or whose window server omitted the key. */
   alpha: number | null
   onscreen: boolean | null
+  sharingState: number | null
+  memoryUsage: number | null
+  /** Exactly one owned window is `selected`; every other names the rule that passed it over. */
+  disposition: "selected" | "offscreen" | "transparent" | "smaller"
 }
+
+/** The selection and the census it was made from: the proof that no other owned window was the terminal (30685). */
+export interface DarwinWindowCensus {
+  selected: DarwinOwnedWindow
+  /** Every layer-0 window the app owns, largest first, the selected one included. */
+  ownedWindows: DarwinOwnedWindow[]
+}
+
+type DarwinCensusRow = Omit<DarwinOwnedWindow, "disposition">
 
 const SCREENCAPTURE = "/usr/sbin/screencapture"
 const WINDOW_IMAGE_REFUSAL = "could not create image from window"
@@ -24,9 +38,10 @@ const WINDOW_IMAGE_REFUSAL = "could not create image from window"
 /**
  * Select the app's one visible window: owned by `appPid`, layer 0, onscreen and not fully transparent.
  * An app that keeps several such windows (cmux keeps two or three, 30390) measures its largest; two
- * sharing the largest area are indistinguishable and refuse.
+ * sharing the largest area are indistinguishable and refuse. The census of every owned layer-0 window
+ * is returned beside the selection, so a run shows which windows were passed over and why (30685).
  */
-export function selectDarwinWindow(rows: unknown, appPid: number): DarwinWindow {
+export function censusDarwinWindows(rows: unknown, appPid: number): DarwinWindowCensus {
   if (!Number.isSafeInteger(appPid) || appPid < 2 || !Array.isArray(rows)) {
     throw new Error("Darwin owned window census requires a measured app PID and window list")
   }
@@ -60,17 +75,23 @@ export function selectDarwinWindow(rows: unknown, appPid: number): DarwinWindow 
       },
       alpha: typeof value.alpha === "number" ? value.alpha : null,
       onscreen: typeof value.onscreen === "boolean" ? value.onscreen : null,
+      sharingState: typeof value.sharingState === "number" ? value.sharingState : null,
+      memoryUsage: typeof value.memoryUsage === "number" ? value.memoryUsage : null,
     }
   })
-  const owned = census.filter((row) => row.window.ownerPid === appPid && row.window.layer === 0)
-  const visible = owned.filter((row) => row.onscreen !== false && (row.alpha === null || row.alpha > 0))
   const area = (row: DarwinCensusRow) => row.window.bounds.width * row.window.bounds.height
-  const ranked = [...visible].sort((a, b) => area(b) - area(a))
-  const best = ranked[0]
-  const tied = best !== undefined && ranked.some((row) => row !== best && area(row) === area(best))
+  const owned = census
+    .filter((row) => row.window.ownerPid === appPid && row.window.layer === 0)
+    .sort((a, b) => area(b) - area(a))
+  const passedOver = (row: DarwinCensusRow): "offscreen" | "transparent" | null =>
+    row.onscreen === false ? "offscreen" : row.alpha !== null && row.alpha <= 0 ? "transparent" : null
+  const visible = owned.filter((row) => passedOver(row) === null)
+  const best = visible[0]
+  const tied = best !== undefined && visible.some((row) => row !== best && area(row) === area(best))
   if (!best || tied) {
+    // The macOS workflow greps collector.log for this wording (30624; scripts/measurement-workflows.test.ts pins it).
     throw new Error(
-      `Darwin capture requires one owned visible window for app PID ${appPid}; found ${visible.length} candidates (owned, layer 0, onscreen, alpha > 0)${tied ? " sharing the largest area" : ""}; owned layer-0 windows with point bounds, alpha and onscreen: ${JSON.stringify(owned)}`,
+      `Darwin capture requires one owned visible window for app PID ${appPid}; found ${visible.length} candidates (owned, layer 0, onscreen, alpha > 0)${tied ? " sharing the largest area" : ""}; owned layer-0 windows with point bounds, alpha, onscreen, sharingState and memoryUsage: ${JSON.stringify(owned)}`,
     )
   }
   const window = best.window
@@ -86,7 +107,16 @@ export function selectDarwinWindow(rows: unknown, appPid: number): DarwinWindow 
   ) {
     throw new Error(`Darwin owned window has invalid point bounds: ${JSON.stringify(window)}`)
   }
-  return window
+  const selected: DarwinOwnedWindow = { ...best, disposition: "selected" }
+  const ownedWindows: DarwinOwnedWindow[] = owned.map((row) =>
+    row === best ? selected : { ...row, disposition: passedOver(row) ?? "smaller" },
+  )
+  return { selected, ownedWindows }
+}
+
+/** The capture target alone. */
+export function selectDarwinWindow(rows: unknown, appPid: number): DarwinWindow {
+  return censusDarwinWindows(rows, appPid).selected.window
 }
 
 export function requireDarwinScale(window: DarwinWindow, pixels: { width: number; height: number }): void {
@@ -135,20 +165,14 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     const rows: unknown = JSON.parse(
       (await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CENSUS], undefined, deadline)).toString(),
     )
-    const window = selectDarwinWindow(rows, appPid)
-    // Selection above validates the census rows before their diagnostic fields are retained.
-    const observed = (rows as Record<string, unknown>[]).find(
-      (row) => row.id === window.id && row.ownerPid === appPid && row.layer === 0,
-    )
+    const { selected, ownedWindows } = censusDarwinWindows(rows, appPid)
+    const { window, alpha, onscreen, sharingState, memoryUsage } = selected
     return {
       window,
       // Observations may change without changing window identity; null means the census did not return a value.
-      observations: {
-        sharingState: observed?.sharingState ?? null,
-        memoryUsage: observed?.memoryUsage ?? null,
-        alpha: observed?.alpha ?? null,
-        onscreen: observed?.onscreen ?? null,
-      },
+      observations: { sharingState, memoryUsage, alpha, onscreen },
+      // Every owned layer-0 window and why only one was the target: the proof the frame shows the terminal (30685).
+      ownedWindows,
     }
   }
   const selected = await census()
@@ -210,6 +234,7 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
         measuredAppPid: appPid,
         selectedWindow: { ...window, ...selected.observations },
         preCaptureWindow: { ...preCapture.window, ...preCapture.observations },
+        ownedWindows: preCapture.ownedWindows,
       }
       const cause = attempt.cause
       const error = new Error(
@@ -248,6 +273,8 @@ export async function createDarwinCapture(directory: string, { appPid }: { appPi
     const trace = {
       platform: "darwin",
       window,
+      // The census the frame was taken under: the other owned windows and why each was passed over (30685).
+      ownedWindows: preCapture.ownedWindows,
       measuredAppPid: appPid,
       scale: 1,
       captureCommand: [producing.file, ...producing.args.slice(0, -1)],

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { expect, test, vi } from "vitest"
 import * as captureCore from "./capture-core.ts"
-import { createDarwinCapture, selectDarwinWindow, requireDarwinScale } from "./darwin-capture.ts"
+import { censusDarwinWindows, createDarwinCapture, selectDarwinWindow, requireDarwinScale } from "./darwin-capture.ts"
 
 const PNG_STUB = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0])
 
@@ -47,6 +47,47 @@ test("Darwin capture selects the largest onscreen opaque layer-0 window among se
       41,
     ),
   ).toThrow(/owned visible window.*found 0 candidates/i)
+})
+
+// 30685: a frame proves it shows the terminal only when the run names the app's other owned windows and
+// why each was passed over; the census returns that list beside the selection, largest first.
+test("Darwin census retains every owned layer-0 window with its disposition", () => {
+  const owned = (id: number, width: number, extra: Record<string, unknown> = {}) => ({
+    id,
+    ownerPid: 41,
+    layer: 0,
+    bounds: { x: 0, y: 0, width, height: 100 },
+    alpha: 1,
+    onscreen: true,
+    sharingState: 1,
+    memoryUsage: 2048,
+    ...extra,
+  })
+  const rows = [
+    owned(8, 300),
+    owned(9, 2000, { onscreen: false }),
+    owned(7, 1000),
+    owned(10, 3000, { alpha: 0 }),
+    owned(11, 4000, { layer: 25 }),
+    owned(12, 5000, { ownerPid: 99 }),
+  ]
+  const census = censusDarwinWindows(rows, 41)
+  expect(census.selected.window).toEqual(selectDarwinWindow(rows, 41))
+  expect(census.ownedWindows.map((row) => [row.window.id, row.disposition])).toEqual([
+    [10, "transparent"],
+    [9, "offscreen"],
+    [7, "selected"],
+    [8, "smaller"],
+  ])
+  expect(census.ownedWindows[2]).toBe(census.selected)
+  expect(census.selected).toEqual({
+    window: { id: 7, ownerPid: 41, layer: 0, bounds: { x: 0, y: 0, width: 1000, height: 100 } },
+    alpha: 1,
+    onscreen: true,
+    sharingState: 1,
+    memoryUsage: 2048,
+    disposition: "selected",
+  })
 })
 
 // 30390: the window server refuses an image of a window without a backing store; the same bounds are
@@ -97,6 +138,16 @@ test("Darwin capture falls back to a region capture of the window bounds when th
     expect(calls[1]?.at(-1)).not.toBe(calls[0]?.at(-1))
     expect(result.trace).toMatchObject({
       platform: "darwin",
+      ownedWindows: [
+        {
+          window: { id: 7, ownerPid: 41, layer: 0, bounds: own.bounds },
+          alpha: 1,
+          onscreen: true,
+          sharingState: null,
+          memoryUsage: null,
+          disposition: "selected",
+        },
+      ],
       measuredAppPid: 41,
       scale: 1,
       captureCommand: ["/usr/sbin/screencapture", "-x", "-R", "12,31,1000,677", "-t", "png"],
@@ -185,6 +236,7 @@ test.each(["command failure", "missing output"])(
           measuredAppPid: 41,
           selectedWindow: selected,
           preCaptureWindow: preCapture,
+          ownedWindows: [{ window: own, sharingState: 0, memoryUsage: 0, disposition: "selected" }],
         },
         file: "/usr/sbin/screencapture",
         args: captureArgs,
