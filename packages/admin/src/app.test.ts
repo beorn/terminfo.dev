@@ -298,6 +298,12 @@ describe("Ghostty cli-process arm", () => {
       "command = /private/run/serve-private-run.sh\nconfirm-close-surface = false\nquit-after-last-window-closed = true\nwindow-save-state = never\n",
       { flag: "wx", mode: 0o600 },
     )
+    // D5: Ghostty's recipe is the one ruled capture route, so its collector gets the artifact directory.
+    expect(writeFileSync).toHaveBeenCalledWith(
+      "/private/run/serve-private-run.sh",
+      expect.stringContaining("TERMINFO_CAPTURE_DIRECTORY='/private/run/artifacts'"),
+      { flag: "wx", mode: 0o700 },
+    )
     expect(runScopedMarker).toHaveBeenCalledWith({
       appName: "Ghostty",
       runId: "private-run",
