@@ -210,16 +210,32 @@ test.each([
 })
 
 test.each([
-  [SGR[0], { attributes: false }, "not calibrated"],
-  [SGR[1], { attributes: false }, "not calibrated"],
-  [SGR[0], { cols: 2 }, "three columns"],
-  [MODE[0], { wrapOff: false }, "not both measured"],
-  [MODE[1], { wrapOff: false }, "not both measured"],
-  [MODE[0], { rows: 1 }, "two rows"],
+  [SGR[0], { attributes: false }, "bold and italic"],
+  [SGR[1], { attributes: false }, "bold and italic"],
+  [MODE[0], { wrapOff: false }, "auto-wrap"],
+  [MODE[1], { wrapOff: false }, "auto-wrap"],
   [COLOR[0], { osc4: false }, "OSC 4"],
   [COLOR[1], { osc4: false }, "OSC 4"],
+] as const)("%s records a readback that cannot calibrate %o as no observable (TEST TODO)", (id, options, need) => {
+  const screen = fakeScreen(options)
+  const result = headless(id)(screen.context)
+  expect(result.pass, id).toBe(false)
+  expect(result.observation, id).toBeUndefined()
+  expect(result.notTested, id).toEqual({
+    reason: "no-semantic-observable",
+    noObservable: expect.stringContaining(need),
+  })
+  expect(result.note, id).toContain(need)
+  expect(result.assertions, id).toBeUndefined()
+  expect(screen.depth(), id).toBe(0)
+  expect(screen.wrap(), id).toBe(true)
+})
+
+test.each([
+  [SGR[0], { cols: 2 }, "three columns"],
+  [MODE[0], { rows: 1 }, "two rows"],
   [COLOR[0], { cols: 1 }, "two columns"],
-] as const)("%s stays inconclusive when %o cannot calibrate the fixture", (id, options, need) => {
+] as const)("%s stays inconclusive on an undersized grid %o before any bytes", (id, options, need) => {
   const screen = fakeScreen(options)
   const result = headless(id)(screen.context)
   expect(result.pass, id).toBe(false)
@@ -230,7 +246,7 @@ test.each([
   })
   expect(result.observation?.note, id).toContain(need)
   expect(result.assertions, id).toBeUndefined()
-  expect(screen.depth(), id).toBe(0)
+  expect(screen.feeds, id).toEqual([])
 })
 
 test.each(ALL)("%s keeps a stack operation that answers as an invalid reply and still pops its push", (id) => {

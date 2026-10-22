@@ -258,7 +258,8 @@ function italicOnly(cell: StackCell): boolean {
  * is written bold, then the push, SGR 0, italic X, the pop, Y. A working roundtrip leaves Y
  * bold-only (bold restored, italic cleared); an ignored push/pop leaves Y italic-only. The control
  * writes the same cells with no stack ops, so a backend that does not report bold or italic, or
- * whose SGR 0 does not clear bold, reads as "not calibrated" rather than as a negative.
+ * whose SGR 0 does not clear bold, has no observable for the claim (a coverage record, TEST TODO)
+ * rather than a negative.
  */
 function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): ProbeResult {
   const expected = `${id}: ${label} leaves Y bold-only (bold restored by the pop, italic cleared)`
@@ -273,7 +274,12 @@ function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): Pr
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB\x1b[0m\x1b[3mXY\x1b[0m")
     const control = readBXY()
     if (!charsIntact(control) || !boldOnly(control.b) || !italicOnly(control.x) || !italicOnly(control.y)) {
-      return parserStateResult(null, expected, { control }, "Bold and italic cell readback was not calibrated")
+      return notTestedResult(
+        "bold and italic cell attributes in the headless readback (control frame not calibrated)",
+        {
+          control,
+        },
+      )
     }
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b[1mB")
     const pushOutput = ctx.feedCapture("\x1b[#{")
@@ -303,7 +309,8 @@ function xtSgrStackHeadless(ctx: TermlessContext, id: string, label: string): Pr
  * cells. Every frame writes exactly `cols` Xs then one `!`: with auto-wrap off the `!` overwrites
  * the last column and row 2 stays empty; with wrap on it lands at row 2, column 1. Two controls
  * calibrate both wrap states before the target saves wrap on, disables it and restores it, so a
- * backend that cannot show either state reads as "not calibrated" rather than as a negative.
+ * backend that cannot show either state has no observable for the claim (a coverage record, TEST
+ * TODO) rather than a negative.
  */
 function xtModeSaveHeadless(ctx: TermlessContext, id: string): ProbeResult {
   const expected = `${id}: the ${ctx.cols}-column overflow ! wraps to row 2 after DECAWM is saved on, disabled and restored`
@@ -321,12 +328,12 @@ function xtModeSaveHeadless(ctx: TermlessContext, id: string): ProbeResult {
     ctx.feed(`\x1b[?7h\x1b[0m\x1b[2J\x1b[1;1H${xs}!`)
     const on = overflow()
     if (!stayed(off) || !wrapped(on)) {
-      return parserStateResult(
-        null,
-        expected,
-        { rows, cols: ctx.cols, off, on },
-        "Auto-wrap off and on controls were not both measured",
-      )
+      return notTestedResult("both auto-wrap states (DECAWM off and on) in the headless readback", {
+        rows,
+        cols: ctx.cols,
+        off,
+        on,
+      })
     }
     const saveOutput = ctx.feedCapture("\x1b[?7s")
     if (saveOutput.length > 0) return stackOutputResult(saveOutput)
@@ -353,7 +360,9 @@ const COLOR_STACK_GREEN = { r: 0, g: 255, b: 0 }
  * again, which proves OSC 4 moves the reported foreground at all. The target sets the blue
  * baseline, pushes, redefines index 1 green, prints X, pops and prints Y. Y alone is graded, read
  * before any later palette change can recolor it: blue means the pop restored the saved palette,
- * green means it did not. X is never graded, because a correct pop may recolor it (turn362).
+ * green means it did not. X is never graded, because a correct pop may recolor it (turn362). A
+ * readback whose colors do not follow OSC 4 has no observable for the claim (a coverage record,
+ * TEST TODO) rather than a negative.
  */
 function xtColorStackHeadless(ctx: TermlessContext, id: string): ProbeResult {
   const expected = `${id}: Y printed through index 1 after the pop reads the blue baseline, not the pushed green`
@@ -375,12 +384,7 @@ function xtColorStackHeadless(ctx: TermlessContext, id: string): ProbeResult {
       !sameRgb(blue.fg, COLOR_STACK_BLUE) ||
       !sameRgb(green.fg, COLOR_STACK_GREEN)
     ) {
-      return parserStateResult(
-        null,
-        expected,
-        calibration,
-        "OSC 4 redefinition of palette index 1 was not measured in the cell readback",
-      )
+      return notTestedResult("OSC 4 redefinition of palette index 1 reflected in the headless cell colors", calibration)
     }
     ctx.feed("\x1b[0m\x1b[2J\x1b[1;1H\x1b]4;1;rgb:00/00/ff\x07")
     const pushOutput = ctx.feedCapture("\x1b[#P")
