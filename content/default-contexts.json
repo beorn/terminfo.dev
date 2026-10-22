@@ -39,7 +39,7 @@
       ]
     },
     "app:alacritty": {
-      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"windows\",\"10.0.26100\",null,null,null,null]",
+      "contextKey": "app:alacritty",
       "reviewer": "@cto (ruling d06f9a8c, 2026-10-22)",
       "reason": "Only context of app:alacritty on suite 8165331b: hosted Windows run 20eb3ab6 (10-21 common cut). The macOS hardware row (d436c4ec) and the Linux container runs are on older suites. Re-record to the macOS context when a current-suite macOS run admits (final cut, #30711).",
       "sources": [
