@@ -942,7 +942,7 @@ onBeforeUnmount(() => {
               v-if="qualificationDocument && evidenceDocument.textQualification"
               class="result-evidence__details"
             >
-              <summary>Run’s five-shape text qualification</summary>
+              <summary>Run’s text qualification</summary>
               <p>
                 <a :href="withBase(evidenceDocument.textQualification.url)" target="_blank" rel="noopener noreferrer"
                   >Open the shared run qualification record</a
@@ -951,6 +951,11 @@ onBeforeUnmount(() => {
               <section v-for="shape in qualificationDocument.qualification.shapes" :key="shape.shape">
                 <h4>{{ shape.shape }}</h4>
                 <p v-if="shape.reason">{{ shape.reason }}</p>
+                <p v-if="shape.ownership">
+                  Console host at row {{ shape.ownership.cell.row }}, column {{ shape.ownership.cell.col }}:
+                  {{ JSON.stringify(shape.ownership.host) }} · the terminal’s row:
+                  {{ JSON.stringify(shape.ownership.observerRow.trimEnd()) }}
+                </p>
                 <figure v-for="frame in shape.frames" :key="`${frame.role}:${frame.sha256}`">
                   <figcaption>{{ frame.role }} · {{ frame.label }}</figcaption>
                   <pre class="result-evidence__text">{{ textSnapshots[frame.sha256] }}</pre>

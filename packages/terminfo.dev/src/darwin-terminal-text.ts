@@ -63,8 +63,12 @@ export interface TerminalCellGrid {
   readonly droppedLines: number
 }
 
+/** Who answered a text read: one of the macOS apps above, or Windows Terminal through UI
+ * Automation (windows-terminal-text.ts). Only the read is widened; the JXA table stays macOS's. */
+export type TerminalTextObserver = TerminalTextApp | "windows-terminal"
+
 export type TerminalTextRead =
-  | { readonly status: "read"; readonly app: TerminalTextApp; readonly cells: TerminalCellGrid }
+  | { readonly status: "read"; readonly app: TerminalTextObserver; readonly cells: TerminalCellGrid }
   | { readonly status: "refused"; readonly reason: string }
 
 export interface OsascriptReply {
