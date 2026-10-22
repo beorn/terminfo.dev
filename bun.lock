@@ -43,7 +43,7 @@
       },
       "devDependencies": {
         "tsdown": "0.23.0",
-        "typescript": "5.9.3",
+        "typescript": "6.0.3",
       },
     },
     "packages/catalog": {
@@ -54,7 +54,7 @@
       },
       "devDependencies": {
         "tsdown": "0.23.0",
-        "typescript": "5.9.3",
+        "typescript": "6.0.3",
       },
     },
     "packages/probe-defs": {
@@ -62,7 +62,7 @@
       "version": "0.0.0",
       "devDependencies": {
         "tsdown": "0.23.0",
-        "typescript": "5.9.3",
+        "typescript": "6.0.3",
       },
     },
     "packages/probes": {
@@ -97,7 +97,7 @@
       },
       "devDependencies": {
         "tsdown": "0.23.0",
-        "typescript": "5.9.3",
+        "typescript": "6.0.3",
       },
     },
     "packages/terminfo.dev": {
@@ -844,7 +844,7 @@
 
     "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
-    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "unconfig-core": ["unconfig-core@7.5.0", "", { "dependencies": { "@quansync/fs": "^1.0.0", "quansync": "^1.0.0" } }, "sha512-Su3FauozOGP44ZmKdHy2oE6LPjk51M/TRRjHv2HNCWiDvfvCoxC2lno6jevMA91MYAdCdwP05QnWdWpSbncX/w=="],
 
