@@ -331,6 +331,7 @@ type Alt1049Scenario =
   | "roundtrip"
   | "ignored-entry"
   | "uncleared-entry"
+  | "uncleared-exit"
   | "erasure-mimic"
   | "marker-leak"
   | "broken-exit"
@@ -357,6 +358,7 @@ function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5, mode: 47
   let altA = blank
   let altB = blank
   let onAlt = false
+  let entries = 0
   let cursor = { x: 0, y: 0 }
   const line = (row: number) =>
     onAlt ? (row === 0 ? altA : row === 2 ? altB : blank) : row === 0 ? primaryA : row === 2 ? primaryB : blank
@@ -372,9 +374,13 @@ function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5, mode: 47
         if (scenario !== "ignored-entry") {
           onAlt = true
           cursor = { x: 0, y: 0 }
-          // An alternate buffer that keeps earlier content: neither blank nor the primary seed.
-          altA = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
-          altB = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
+          entries += 1
+          // An alternate buffer that keeps earlier content: neither blank nor the primary seed. An exit
+          // that did not clear leaves the marker in place for the second entry to find.
+          if (scenario !== "uncleared-exit" || entries === 1) {
+            altA = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
+            altB = scenario === "uncleared-entry" ? pad("STALE-ALT") : blank
+          }
         }
       } else if (sequence === "\x1b[1;1HALT-MARK") altA = pad("ALT-MARK")
       else if (sequence === leave) {
@@ -537,6 +543,27 @@ test("?1049 must clear the alternate buffer on entry: a stale alternate buffer f
     note: "CSI ? 1049 h did not clear the seeded primary spans",
   })
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
+})
+
+test("?1047 must clear the alternate buffer on exit: a marker that survives re-entry fails it (DECRST 1047)", () => {
+  const { context, writes } = alt1049Context("uncleared-exit", 20, 5, 1047)
+  const result = altSwapHeadless("modes.altscreen-1047")(context)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(String(result.observation?.note)).toContain("did not clear the alternate buffer on exit")
+  expect(result.assertions).toMatchObject([{ kind: "negative" }])
+  expect(JSON.parse(result.response ?? "{}")).toMatchObject({ reentered: "ALT-MARK" })
+  expect(writes.filter((write) => write === "\x1b[?1047h")).toHaveLength(2)
+  expect(writes.at(-1)).toBe("\x1b[?1047l\x1b[0m")
+  // A clean roundtrip re-enters once and reads the marker gone.
+  const clean = alt1049Context("roundtrip", 20, 5, 1047)
+  const graded = altSwapHeadless("modes.altscreen-1047")(clean.context)
+  expect(graded.observation).toMatchObject({ outcome: "supported" })
+  expect(JSON.parse(graded.response ?? "{}")).toMatchObject({ reentered: " ".repeat("ALT-MARK".length) })
+  expect(clean.writes.filter((write) => write === "\x1b[?1047h")).toHaveLength(2)
+  // ?47 promises no exit clear: the same surviving marker passes, and it enters only once.
+  const legacy = alt1049Context("uncleared-exit", 20, 5, 47)
+  expect(altSwapHeadless("modes.altscreen-47")(legacy.context).observation).toMatchObject({ outcome: "supported" })
+  expect(legacy.writes.filter((write) => write === "\x1b[?47h")).toHaveLength(1)
 })
 
 test.each(ALT_SWAP)("%s stays inconclusive on an undersized grid or an unavailable readback", (id, mode) => {

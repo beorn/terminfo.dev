@@ -443,13 +443,15 @@ interface AltScreenMode {
    * clearing implementation-defined, so both grade entry by the primary seeds not showing (#30702).
    */
   readonly clearsOnEnter: boolean
+  /** Leaving must clear the alternate buffer (1047 only, DECRST 1047): a second entry shows ALT-MARK gone. */
+  readonly clearsOnExit: boolean
   /** Only 1049 saves the cursor on entry and restores it on exit. */
   readonly savesCursor: boolean
 }
 
-const ALT_SCREEN_1049: AltScreenMode = { mode: 1049, clearsOnEnter: true, savesCursor: true }
-const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: false, savesCursor: false }
-const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, savesCursor: false }
+const ALT_SCREEN_1049: AltScreenMode = { mode: 1049, clearsOnEnter: true, clearsOnExit: false, savesCursor: true }
+const ALT_SCREEN_1047: AltScreenMode = { mode: 1047, clearsOnEnter: false, clearsOnExit: true, savesCursor: false }
+const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, clearsOnExit: false, savesCursor: false }
 
 /**
  * One measured alternate-screen roundtrip, shared by the 1049 enter and exit callbacks and by the
@@ -458,7 +460,8 @@ const ALT_SCREEN_47: AltScreenMode = { mode: 47, clearsOnEnter: false, savesCurs
  * entire seeded roundtrip holds: alternate spans that left the primary seed (blank for the clearing
  * modes 1049 and 1047; ?47's clearing is implementation-defined, so its spans only must not still
  * show the seed), distinct ALT-MARK readback, exact PRIMARY-A/PRIMARY-B restoration, ALT-MARK absent
- * from the restored position, and, for 1049 alone, saved-cursor restoration. Inadequate geometry,
+ * from the restored position, for 1049 alone saved-cursor restoration, and for 1047 alone the exit
+ * clear (DECRST 1047): a second entry after the restore must show ALT-MARK gone. Inadequate geometry,
  * an unmeasured seed, an unavailable readback and an unattributed restoration failure are
  * inconclusive; a negative needs measured setup plus a feature-specific failed assertion. 1049
  * splits enter and exit into two features, so its restoration failure cannot be attributed to
@@ -579,13 +582,42 @@ function altScreenRoundtrip(
     } catch (error) {
       return alt1049ReadbackInconclusive(expected, "Restored-primary readback failed", error)
     }
-    const state = { before, seedA, seedB, mark, restoredA, restoredB, leaked, after }
+    // DECRST 1047 clears the alternate buffer on exit (xterm ctlseqs), so that mode enters once more
+    // after the measured restore and reads the marker span: ALT-MARK gone is the clear, ALT-MARK still
+    // shown is the feature's own negative. No other mode promises an exit clear (#30702).
+    let reentered: string | undefined
+    if (screen.clearsOnExit) {
+      ctx.feed(enter)
+      try {
+        reentered = readAlt1049Span(ctx, 0, ALT_1049_MARK.length)
+      } catch (error) {
+        return alt1049ReadbackInconclusive(expected, "Re-entered alternate-buffer readback failed", error)
+      } finally {
+        ctx.feed(leave)
+      }
+    }
+    const state = {
+      before,
+      seedA,
+      seedB,
+      mark,
+      restoredA,
+      restoredB,
+      leaked,
+      after,
+      ...(screen.clearsOnExit && { reentered }),
+    }
     const failures: string[] = []
     if (restoredA !== ALT_1049_SEED_A) failures.push("PRIMARY-A not restored")
     if (restoredB !== ALT_1049_SEED_B) failures.push("PRIMARY-B not restored")
     if (leaked) failures.push("ALT-MARK leaked into the restored position")
     if (screen.savesCursor && (after.x !== before.x || after.y !== before.y)) {
       failures.push("saved cursor not restored")
+    }
+    if (screen.clearsOnExit && reentered === ALT_1049_MARK) {
+      failures.push(
+        `ALT-MARK still shown on re-entry: CSI ? ${screen.mode} l did not clear the alternate buffer on exit`,
+      )
     }
     if (failures.length === 0) return parserStateResult(true, expected, state, undefined)
     if (phase === "roundtrip") {
@@ -1516,7 +1548,7 @@ export const modesProbes: ProbeDefinition[] = [
     termNeedsGeometry: true,
   },
 
-  // ?1047 — alt screen, clear on enter
+  // ?1047 — alt screen; DECRST 1047 clears the alternate buffer on EXIT (headless: graded by a second entry)
   {
     ...probe(
       "modes.altscreen-1047",
@@ -1535,7 +1567,7 @@ export const modesProbes: ProbeDefinition[] = [
             ctx.write("\x1b[?1047h\x1b[1;1HALT1047")
             const alternate = await ctx.capture!({
               role: "target",
-              label: "Alternate-screen marker ALT1047 while ?1047 is set (enter clears the alt buffer)",
+              label: "Alternate-screen marker ALT1047 while ?1047 is set",
             })
             ctx.write("\x1b[?1047l")
             const restored = await ctx.capture!({
