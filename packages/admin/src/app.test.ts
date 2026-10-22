@@ -27,7 +27,8 @@ import {
   resolveOwnedProcessByMarker,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { runScopedMarker } from "../../terminfo.dev/src/owned-process.ts"
-import { CURSOR_SKIP_ONBOARDING_PINS } from "./cursor-onboarding.ts"
+import { CURSOR_APPLICATION_USER_STORAGE_KEY, CURSOR_BUNDLE_PINS } from "./cursor-onboarding.ts"
+import { DatabaseSync } from "node:sqlite"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
@@ -40,6 +41,13 @@ vi.mock("node:fs", () => ({
   openSync: vi.fn(),
   readFileSync: vi.fn(() => "/dev/ttys009\n"),
   writeFileSync: vi.fn(),
+}))
+// Cursor's prepare seeds application storage; the real round trip lives in cursor-onboarding.test.ts.
+const sqlite = vi.hoisted(() => ({ exec: vi.fn(), run: vi.fn(), close: vi.fn() }))
+vi.mock("node:sqlite", () => ({
+  DatabaseSync: vi.fn(function () {
+    return { exec: sqlite.exec, prepare: () => ({ run: sqlite.run }), close: sqlite.close }
+  }),
 }))
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn((file, args) =>
@@ -167,8 +175,8 @@ beforeEach(() => {
   }))
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
   vi.mocked(spawn).mockReturnValue({ unref: vi.fn() } as unknown as ReturnType<typeof spawn>)
-  // Cursor's launch reads its installed bundle to prove --skip-onboarding is still honoured.
-  const shippedCursorBundle = CURSOR_SKIP_ONBOARDING_PINS.map((pin) => pin.substring).join(";")
+  // Cursor's launch reads its installed bundle to prove its pinned launch quirks are still honoured.
+  const shippedCursorBundle = CURSOR_BUNDLE_PINS.map((pin) => pin.substring).join(";")
   vi.mocked(readFileSync).mockImplementation((path) =>
     String(path).startsWith("/Applications/Cursor.app/Contents/Resources/") ? shippedCursorBundle : "/dev/ttys009\n",
   )
@@ -457,7 +465,7 @@ test.each([
       )
     if (prefix === "cursor") {
       expect([...new Set(bundleReads.map(({ path }) => path))].sort()).toEqual(
-        [...new Set(CURSOR_SKIP_ONBOARDING_PINS.map((pin) => `${appPath}/${pin.file}`))].sort(),
+        [...new Set(CURSOR_BUNDLE_PINS.map((pin) => `${appPath}/${pin.file}`))].sort(),
       )
       expect(bundleReads.every(({ order }) => order < vi.mocked(spawn).mock.invocationCallOrder[0]!)).toBe(true)
     } else {
@@ -508,6 +516,7 @@ test.each([
       `${prefix}-private-run`,
       `${prefix}-extensions`,
       `${prefix}-fixture`,
+      ...(prefix === "cursor" ? ["cursor-private-run/User", "cursor-private-run/User/globalStorage"] : []),
       ...(prefix === "vscode"
         ? [
             "vscode-private-run/User",
@@ -549,8 +558,19 @@ test.each([
         "workbench.startupEditor": "none",
         "workbench.welcomePage.experimentalOnboarding": false,
       })
+      expect(DatabaseSync).not.toHaveBeenCalled()
     } else {
-      expect(settings).toBeUndefined()
+      // Cursor's updater is Disabled before any check under update.mode "none", so no update toast.
+      expect(settings?.[2]).toEqual({ flag: "wx", mode: 0o600 })
+      expect(JSON.parse(String(settings?.[1]))).toEqual({ "update.mode": "none" })
+      // Application storage records the command-line prompt as dismissed, so it never schedules.
+      expect(DatabaseSync).toHaveBeenCalledWith("/private/run/cursor-private-run/User/globalStorage/state.vscdb")
+      expect(sqlite.run).toHaveBeenCalledWith(
+        CURSOR_APPLICATION_USER_STORAGE_KEY,
+        JSON.stringify({ cmdLineHookState: { ignored: true, timesShown: 0 } }),
+      )
+      expect(sqlite.close).toHaveBeenCalledTimes(1)
+      expect(sqlite.close.mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(spawn).mock.invocationCallOrder[0]!)
     }
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })

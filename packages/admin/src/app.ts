@@ -35,7 +35,7 @@ import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
-import { assertCursorSkipOnboardingShipped } from "./cursor-onboarding.ts"
+import { assertCursorBundlePinsShipped, dismissCursorCommandLinePrompt } from "./cursor-onboarding.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -225,8 +225,17 @@ const APPS: AppDef[] = [
       markerValue: (run) => join(run.directory, `cursor-${run.id}`),
       env: { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" },
       prepare: (run, markerValue) => {
-        assertCursorSkipOnboardingShipped("/Applications/Cursor.app")
+        assertCursorBundlePinsShipped("/Applications/Cursor.app")
         prepareEditorFixture(run, markerValue, "cursor")
+        const user = join(markerValue, "User")
+        mkdirSync(user, { mode: 0o700 })
+        // Without it the updater reaches "ready" and "New update available" covers the terminal.
+        writeFileSync(join(user, "settings.json"), JSON.stringify({ "update.mode": "none" }), {
+          flag: "wx",
+          mode: 0o600,
+        })
+        // "Want to launch Cursor from the command line?" has no setting; pinned in ./cursor-onboarding.ts.
+        dismissCursorCommandLinePrompt(markerValue)
       },
       args: (_script, markerValue) => {
         const directory = dirname(markerValue)
