@@ -201,7 +201,15 @@ export function sgrReadbackResult(
   const tokensRequired = readback.requireTokens?.every((token) => state.includes(token)) ?? true
   const ok = required && !forbidden && tokensRequired
   const observed = state.length === 0 ? "0" : state.join(";")
-  const expected = [...readback.require.map(String), ...(readback.requireTokens ?? [])].join(";")
+  const requiredCodes = [...readback.require.map(String), ...(readback.requireTokens ?? [])]
+  // A forbid-only claim (reset.sgr, sgr.reset, sgr.fg.default, sgr.bg.default) requires nothing, so its
+  // expected text names what it forbids instead of storing an empty token.
+  const expected =
+    requiredCodes.length > 0
+      ? requiredCodes.join(";")
+      : readback.forbid !== undefined && readback.forbid.length > 0
+        ? `none of ${readback.forbid.join(";")}`
+        : "0"
   return {
     pass: ok,
     response: JSON.stringify({ sgr: observed }),
