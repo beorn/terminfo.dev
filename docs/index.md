@@ -19,7 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { currentCoverageSentence, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { currentCoverageSentence, decisiveCells, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -171,6 +171,22 @@ function coverageLabel(backendName) {
   return currentCoverageSentence(bar)
 }
 
+// #30763: a backend × baseline row whose cells are all held (the Windows console host) or
+// uncollected is not a measured 0%; it measured nothing. The counts keep saying what the row
+// looked at, in the tooltip.
+function baselineShareText(backendName, baseline) {
+  const stats = data.baselineStats[backendName]?.[baseline]
+  if (!stats) return ''
+  if (decisiveCells(stats.counts) === 0) return NOT_MEASURED_TEXT
+  return `${stats.pct}% · ${stats.score.supported}/${stats.score.all} supported / all`
+}
+
+function baselineShareTitle(backendName, baseline) {
+  const stats = data.baselineStats[backendName]?.[baseline]
+  if (!stats || decisiveCells(stats.counts) > 0) return undefined
+  return currentCoverageSentence(stats)
+}
+
 // Slug helpers for SEO page links — use slug from features.json if available
 function featureSlug(id) {
   return data.featureDescriptions[id]?.slug ?? id.replace(/\./g, '-')
@@ -280,7 +296,7 @@ function backendTooltip(name, version) {
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
         <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? '' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
+        <span class="baseline-backend-pct" :title="baselineShareTitle(b.name, bl)">{{ baselineShareText(b.name, bl) }}</span>
       </div>
     </div>
   </a>
@@ -391,7 +407,7 @@ function backendTooltip(name, version) {
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
         <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct">{{ data.baselineStats[b.name]?.[bl]?.pct == null ? '' : `${data.baselineStats[b.name][bl].pct}% · ${data.baselineStats[b.name][bl].score.supported}/${data.baselineStats[b.name][bl].score.all} supported / all` }}</span>
+        <span class="baseline-backend-pct" :title="baselineShareTitle(b.name, bl)">{{ baselineShareText(b.name, bl) }}</span>
       </div>
     </div>
   </a>

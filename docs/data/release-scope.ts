@@ -270,3 +270,23 @@ export function currentCoverageSentence(aggregate: Pick<CurrentAggregate, "count
 export function currentSupportedShare(aggregate: CurrentAggregate): string {
   return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
 }
+
+/**
+ * The cells of a bar that carry a verdict about the terminal: Supported and Unsupported, the same
+ * two cells `decisiveShare` scores and `barVerdict` refuses on an empty bar. A reviewed Untestable
+ * claim says the row cannot be probed, not that the terminal was judged, and TEST TODO / TEST
+ * FAILURE decide nothing — so a bar with no decisive cell measured nothing at all (#30763).
+ */
+export function decisiveCells(counts: Record<CapabilityStatus, number>): number {
+  return counts.supported + counts.unsupported
+}
+
+/**
+ * The words a baseline row prints in place of a percentage when its run judged nothing (#30763):
+ * "0%" there reads as a measured fail for a terminal no run ever decided. The counts stay in the
+ * row's tooltip.
+ *
+ * TBD (#30763 AC5): the operator's naming menu has not ruled between "Not tested yet" and
+ * "Not measured yet"; this placeholder ships until that approval lands.
+ */
+export const NOT_MEASURED_TEXT = "Not measured yet"

@@ -7,7 +7,7 @@ next: false
 <script setup>
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
-import { currentCoverageSentence, publicResultFor } from '../data/release-scope'
+import { currentCoverageSentence, decisiveCells, NOT_MEASURED_TEXT, publicResultFor } from '../data/release-scope'
 const { params } = useData()
 const p = params.value
 
@@ -62,6 +62,13 @@ function barWidth(s, segment) {
 
 function coverageLabel(s) {
   return `${currentCoverageSentence(s)} / ${s.score.all} capabilities`
+}
+
+// #30763: a bar whose cells are all TEST TODO or TEST FAILURE judged nothing, so "0%" would read
+// as a measured fail. Same rule and wording as the home page's baseline cards.
+function shareText(s) {
+  if (decisiveCells(s.counts) === 0) return NOT_MEASURED_TEXT
+  return `${s.score.supported}/${s.score.all} supported (${s.pct}%)`
 }
 
 function platformIcon(os) {
@@ -128,7 +135,7 @@ function platformIcons(b) {
         </div>
       </div>
     </div>
-    <span class="summary-pct">{{ s.score.supported }}/{{ s.score.all }} supported ({{ s.pct ?? 0 }}%)</span>
+    <span class="summary-pct" :title="coverageLabel(s)">{{ shareText(s) }}</span>
   </div>
 </div>
 <p v-else class="no-data-inline">No app results yet.</p>
@@ -153,7 +160,7 @@ function platformIcons(b) {
         </div>
       </div>
     </div>
-    <span class="summary-pct">{{ s.score.supported }}/{{ s.score.all }} supported ({{ s.pct ?? 0 }}%)</span>
+    <span class="summary-pct" :title="coverageLabel(s)">{{ shareText(s) }}</span>
   </div>
 </div>
 
