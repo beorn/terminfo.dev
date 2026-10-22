@@ -61,7 +61,6 @@ interface AppDef {
   id: string // used in result filenames
   appPath: string
   binaryPath: string // direct path to the executable
-  launchArgs: (cmd: string) => string[] // args to run a command inside the terminal
   bundleId: string
   /** A GUI app whose CLI hands the window to an already-resolved owner process. The owner is proven by
    * the run-scoped marker in its argv, never by the CLI shim's pid, which may exit after the handoff.
@@ -171,7 +170,6 @@ const APPS: AppDef[] = [
     id: "ghostty",
     appPath: "/Applications/Ghostty.app",
     binaryPath: "/Applications/Ghostty.app/Contents/MacOS/ghostty",
-    launchArgs: (script) => ["-e", script],
     bundleId: "com.mitchellh.ghostty",
     // The binary is the GUI process itself; the run-scoped config file in its argv is the marker the
     // owner is resolved from, never the spawned handle, which a running instance can absorb.
@@ -191,7 +189,6 @@ const APPS: AppDef[] = [
     id: "iterm2",
     appPath: "/Applications/iTerm.app",
     binaryPath: "", // iTerm2 uses AppleScript (its own API, not System Events)
-    launchArgs: () => [],
     bundleId: "com.googlecode.iterm2",
   },
   {
@@ -199,7 +196,6 @@ const APPS: AppDef[] = [
     id: "terminal-app",
     appPath: "/System/Applications/Utilities/Terminal.app",
     binaryPath: "", // Terminal.app uses AppleScript (its own API)
-    launchArgs: () => [],
     bundleId: "com.apple.Terminal",
   },
   {
@@ -207,7 +203,6 @@ const APPS: AppDef[] = [
     id: "kitty",
     appPath: "/Applications/kitty.app",
     binaryPath: KITTY_BINARY_PATH,
-    launchArgs: (script) => ["--hold", script],
     bundleId: "net.kovidgoyal.kitty",
   },
   {
@@ -215,7 +210,6 @@ const APPS: AppDef[] = [
     id: "wezterm",
     appPath: "/Applications/WezTerm.app",
     binaryPath: "/Applications/WezTerm.app/Contents/MacOS/wezterm",
-    launchArgs: (script) => ["start", "--always-new-process", "--", "/bin/bash", script],
     bundleId: "com.github.wez.wezterm",
     // The CLI execs into this GUI binary, which is the process that carries the marker in its argv.
     cliLaunch: {
@@ -242,7 +236,6 @@ const APPS: AppDef[] = [
     id: "cursor",
     appPath: "/Applications/Cursor.app",
     binaryPath: "/Applications/Cursor.app/Contents/MacOS/Cursor",
-    launchArgs: () => [],
     bundleId: "com.todesktop.230313mzl4w4u92",
     cliLaunch: {
       spawnPath: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor",
@@ -286,7 +279,6 @@ const APPS: AppDef[] = [
     id: "com.microsoft.VSCode",
     appPath: "/Applications/Visual Studio Code.app",
     binaryPath: "/Applications/Visual Studio Code.app/Contents/MacOS/Code",
-    launchArgs: () => [],
     bundleId: "com.microsoft.VSCode",
     cliLaunch: {
       spawnPath: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
@@ -331,7 +323,6 @@ const APPS: AppDef[] = [
     id: "warp",
     appPath: "/Applications/Warp.app",
     binaryPath: "", // Warp doesn't support direct command launch
-    launchArgs: () => [],
     bundleId: "dev.warp.Warp-Stable",
   },
 ]
@@ -514,31 +505,21 @@ function launchWithServe(app: AppDef, run: ProbeRun): AppLaunch {
     return launchPreparedCli(prepareCliLaunch(app.id, run))
   }
 
-  if (app.binaryPath && existsSync(app.binaryPath)) {
-    if (app.id === "kitty") {
-      // A run-unique instance group, no single-instance reuse, and a detached launch: measured 0-byte
-      // stderr and a window that outlives the launcher, which the recorded kitty pid closes.
-      const instanceGroup = `terminfo-${run.id}`
-      const launched = spawnSync(
-        app.binaryPath,
-        ["--detach", "--instance-group", instanceGroup, "-1", "--", "/bin/bash", run.scriptPath],
-        { encoding: "utf8", timeout: 15_000 },
+  if (app.id === "kitty" && existsSync(app.binaryPath)) {
+    // A run-unique instance group, no single-instance reuse, and a detached launch: measured 0-byte
+    // stderr and a window that outlives the launcher, which the recorded kitty pid closes.
+    const instanceGroup = `terminfo-${run.id}`
+    const launched = spawnSync(
+      app.binaryPath,
+      ["--detach", "--instance-group", instanceGroup, "-1", "--", "/bin/bash", run.scriptPath],
+      { encoding: "utf8", timeout: 15_000 },
+    )
+    if (launched.error || launched.status !== 0) {
+      throw new Error(
+        `kitty launch failed: ${launched.error?.message ?? launched.stderr?.trim() ?? `exit ${String(launched.status)}`}`,
       )
-      if (launched.error || launched.status !== 0) {
-        throw new Error(
-          `kitty launch failed: ${launched.error?.message ?? launched.stderr?.trim() ?? `exit ${String(launched.status)}`}`,
-        )
-      }
-      return { proc: null, identityPath, instanceGroup, launcherStderr: String(launched.stderr ?? "") }
     }
-    // Any other runnable binary still spawns its own launcher and keeps the child handle for close.
-    const child = spawn(app.binaryPath, app.launchArgs(run.scriptPath), {
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env },
-    })
-    child.unref()
-    return { proc: child }
+    return { proc: null, identityPath, instanceGroup, launcherStderr: String(launched.stderr ?? "") }
   }
 
   if (app.id === "iterm2") {
