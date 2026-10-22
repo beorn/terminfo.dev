@@ -38,6 +38,7 @@ import { assertPrivateCollectionOutput } from "../packages/admin/src/admit-colle
 import { loadCurrentResults, loadDefaultContextPolicy, reviewedContextFor } from "../docs/data/current-results.ts"
 import {
   classifyDevelopmentRun,
+  consoleHostHeldResults,
   readVerifiedArtifact,
   historicalStatesFor as statesFor,
   statesFor as currentStatesFor,
@@ -780,7 +781,7 @@ export async function collectPass(
         textSnapshots.set(ref, readVerifiedArtifact(dirname(path), ref, path, "text-snapshot"))
       }
       if (!run.results || !run.catalogIds) throw new Error("Current run lacks frozen results")
-      row.summary = aggregateCurrentResults(run.results, run.catalogIds)
+      row.summary = aggregateCurrentResults(consoleHostHeldResults(run), run.catalogIds)
       row.classification = classifyDevelopmentRun(run)
       row.status = "classified"
     } catch (error) {

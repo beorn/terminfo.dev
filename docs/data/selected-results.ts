@@ -23,6 +23,7 @@ import {
   type TextQualification,
   isNonMeasuringEvidence,
   assessTextQualification,
+  finalizeCapabilityResult,
   type TextQualificationAssessment,
 } from "@terminfo/probe-defs"
 import {
@@ -59,6 +60,8 @@ export interface SelectedCell extends Observation {
   conclusive: boolean
   /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
   textQualificationReason?: string
+  /** Why the Windows console-host rule holds this cell (#30720); the cell's note says the same. */
+  consoleHostHold?: string
   record: {
     rawReply?: string
     assertions: ProbeAssertion[]
@@ -164,7 +167,11 @@ export interface HistoricalProjection {
   treeMovedPastRelease: boolean
 }
 
-/** A current row is the collector's sealed result, never an observation regraded by this reader. */
+/**
+ * A current row is the collector's sealed result, never an observation regraded by this reader, with one
+ * named exception: the Windows console-host rule (`consoleHostHeldResults`, #30720). A second exception
+ * goes to @cto first.
+ */
 export interface CurrentSelectedVersion {
   schemaVersion: 3
   runId: string
@@ -246,6 +253,96 @@ function observationRecord(run: LoadedRun, observation: Observation): SelectedCe
 
 export type { TextQualificationAssessment } from "@terminfo/probe-defs"
 
+/**
+ * #30720, @cto rulings fc63f412, 1ee8cf0b and f126327b. Under ConPTY a Windows console host (conhost.exe or
+ * OpenConsole.exe) sits between the collector and the terminal. It answers every query it implements
+ * itself, swallows most others and passes only a few through. It also answers the DA1 sentinel (ESC [ c)
+ * that ends each probe query, and it reads input in order. So within one query's stored reply, a reply
+ * before the host's DA1 is the host's, a reply after it is the terminal's, and nothing after it means the
+ * terminal was never heard from. A query with no sentinel (the cursor report ESC [ 6 n) is the host's.
+ *
+ * A Windows app's supported or unsupported verdict from a reply counts only when every query was answered
+ * after the host's DA1. Otherwise both paths hold it with the reason this returns: the current path as
+ * test-todo, the historical path as inconclusive with that note. The rule reads this run alone, never
+ * another OS's answer. A plain reply string (a DA or XTVERSION reply) keeps its own evidence rule, and a
+ * test-failure stays visible as the repair item it is.
+ *
+ * Known limit, accepted by @cto: the scope is every Windows app run, so a future Windows context whose
+ * host passes queries straight through is held here (under-counted), never mislabeled. Whoever adds such
+ * a context changes this scope on purpose.
+ */
+const DA1_QUERY = "\u001b[c"
+const DA1_REPLY = /\u001b\[\?[0-9;]*c/u
+
+function replySource(sequence: string, reply: string): "host" | "terminal" | "none" {
+  const da1 = sequence !== DA1_QUERY && sequence.endsWith(DA1_QUERY) ? DA1_REPLY.exec(reply) : null
+  if (da1 === null) return reply === "" ? "none" : "host"
+  if (da1.index > 0) return "host"
+  return da1.index + da1[0].length < reply.length ? "terminal" : "none"
+}
+
+/** The console host a reason names: a text read's recorded host, else the ownership receipt's image. */
+function consoleHostBinary(run: LoadedRun): string {
+  const hosts = new Set(
+    [...(run.results ?? []), ...run.observations].flatMap((cell) =>
+      cell.host ? [`${cell.host.image} ${cell.host.executableSha256.slice(0, "sha256:".length + 12)}`] : [],
+    ),
+  )
+  if (hosts.size > 1) throw new Error(`Run ${run.runId} names ${hosts.size} console hosts; one run has one`)
+  const [host] = hosts
+  if (host !== undefined) return host
+  const receipt = run.rawReplies["collector.terminalOwnership"]
+  const image =
+    receipt === undefined
+      ? undefined
+      : (JSON.parse(receipt) as { windowsHosted?: { consoleHost?: { image?: unknown } } }).windowsHosted?.consoleHost
+          ?.image
+  return typeof image === "string" && image !== "" ? image : "(console host binary not recorded)"
+}
+
+function consoleHostHold(
+  run: LoadedRun,
+  cell: { featureId: string; evidence?: string; rawReplyRef?: string },
+  verdict: string,
+): string | undefined {
+  if (run.target.kind !== "app" || run.target.os?.toLowerCase() !== "windows") return undefined
+  if (verdict !== "supported" && verdict !== "unsupported") return undefined
+  if ((cell.evidence !== "query" && cell.evidence !== "behavior") || cell.rawReplyRef === undefined) return undefined
+  const stored = run.rawReplies[cell.rawReplyRef]
+  if (stored === undefined) {
+    throw new Error(`Run ${run.runId}: ${cell.featureId} cites raw reply ${cell.rawReplyRef}, which the run lacks`)
+  }
+  if (!stored.startsWith("{")) return undefined
+  const queries = (JSON.parse(stored) as { queries?: unknown }).queries
+  if (!Array.isArray(queries) || queries.length === 0) return undefined
+  const sources = queries.map((query: unknown, index) => {
+    const { sequence, raw } = (query ?? {}) as { sequence?: unknown; raw?: unknown }
+    if (typeof sequence !== "string" || (raw !== undefined && typeof raw !== "string")) {
+      throw new Error(`Run ${run.runId}: ${cell.featureId} query ${index} has no readable sequence and reply`)
+    }
+    return replySource(sequence, raw ?? "")
+  })
+  if (sources.every((source) => source === "terminal")) return undefined
+  return sources.includes("host")
+    ? `answered by the Windows console host ${consoleHostBinary(run)}, not measured on the terminal`
+    : "no reply after the console host's DA1; the host may have swallowed the query"
+}
+
+/** A current run's sealed results as this reader counts them: unchanged but for the console-host rule. */
+export function consoleHostHeldResults(run: LoadedRun): CapabilityResult[] {
+  if (!run.results) throw new Error(`Run ${run.runId} has no current schema-3 results`)
+  return run.results.map((result) => {
+    const hold = consoleHostHold(run, result, result.status)
+    if (hold === undefined) return result
+    const { status: _sealed, ...unsealed } = result
+    return finalizeCapabilityResult({
+      ...unsealed,
+      checks: [...result.checks, { id: "console-host", status: "test-todo", attempt: { scope: "none" }, reason: hold }],
+      reason: hold,
+    })
+  })
+}
+
 function isConclusiveObservation(run: LoadedRun, observation: Observation, text: TextQualificationAssessment): boolean {
   return (
     !run.legacy &&
@@ -271,11 +368,13 @@ function prepareRunCells(
   const cells: Record<string, SelectedCell> = {}
   const correctedFeatures = new Set<string>()
   for (const observation of run.observations) {
+    const hold = consoleHostHold(run, observation, observation.outcome)
     cells[observation.featureId] = {
       ...observation,
       ...(run.legacy ? { note: HISTORICAL_RERUN_NOTE } : {}),
+      ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
       record: observationRecord(run, observation),
-      conclusive: isConclusiveObservation(run, observation, text),
+      conclusive: hold === undefined && isConclusiveObservation(run, observation, text),
       ...(observation.evidence === "text" &&
       run.textQualification !== undefined &&
       !text.qualified &&
@@ -365,10 +464,12 @@ function prepareRunCells(
         }
       }
     }
+    const hold = consoleHostHold(run, observation, observation.outcome)
     cells[entry.featureId] = {
       ...observation,
+      ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
       record: observationRecord(run, observation),
-      conclusive: isConclusiveObservation(run, observation, text),
+      conclusive: hold === undefined && isConclusiveObservation(run, observation, text),
       ...(observation.evidence === "text" &&
       run.textQualification !== undefined &&
       !text.qualified &&
@@ -404,7 +505,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
   return {
     mode: "development",
     runId: run.runId,
-    states: Object.fromEntries(run.results.map((result) => [result.featureId, result.status])),
+    states: Object.fromEntries(consoleHostHeldResults(run).map((result) => [result.featureId, result.status])),
   }
 }
 
@@ -843,9 +944,10 @@ export function projectResults(
     if (!run.results || !run.catalogIds || !run.sealedAt || !run.probeHash || !run.sourceRevision) {
       throw new Error(`Current run ${run.runId} lacks its sealed execution contract`)
     }
-    const aggregate = aggregateCurrentResults(run.results, run.catalogIds)
+    const results = consoleHostHeldResults(run)
+    const aggregate = aggregateCurrentResults(results, run.catalogIds)
     const counts = aggregate.counts
-    const states = Object.fromEntries(run.results.map((result) => [result.featureId, result.status]))
+    const states = Object.fromEntries(results.map((result) => [result.featureId, result.status]))
     table[run.runId] = states
     const suiteRelation: SuiteRelation =
       run.probeHash === releaseSuiteId ? "release" : run.probeHash === policy.currentProbeHash ? "tree" : "older"
@@ -884,7 +986,7 @@ export function projectResults(
       sha256: run.sha256,
       identity: run.identity,
       catalogIds: [...run.catalogIds],
-      results: globalThis.structuredClone(run.results),
+      results: globalThis.structuredClone(results),
       suiteRelation,
       rawReplies: { ...run.rawReplies },
       assertions: globalThis.structuredClone(run.assertions),

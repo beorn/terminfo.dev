@@ -212,7 +212,10 @@ export function publicHistoricalResults(
       ...(cell.reason && { reason: cell.reason }),
       ...(cell.host !== undefined && { host: cell.host }),
       ...(cell.textQualificationReason !== undefined && { textQualificationReason: cell.textQualificationReason }),
-      ...((reviewedCorrection || approved || cell.note === HISTORICAL_RERUN_NOTE) &&
+      ...((reviewedCorrection ||
+        approved ||
+        cell.note === HISTORICAL_RERUN_NOTE ||
+        cell.consoleHostHold !== undefined) &&
         cell.note !== undefined && { note: cell.note }),
       chain: {
         origin: { kind: origin.kind, ...(origin.url && /^https?:\/\//.test(origin.url) && { url: origin.url }) },
