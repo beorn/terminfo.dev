@@ -450,12 +450,42 @@ function traceReceipt(
   return { trace: { url: trace.url, sha256: trace.sha256 } }
 }
 
+/**
+ * The screen size a run measured for its own terminal, from its `collector.geometry` receipt: the corroborated
+ * size when the terminal's own reply agreed with the granted read, else the granted `stty size` measurement.
+ * The popover prints expected positions as numbers, so this — not the words "the last column" — is the only
+ * width a page may cite (#30756).
+ */
+function screenGeometry(receipt: string | undefined): { rows: number; cols: number } | undefined {
+  if (receipt === undefined) return undefined
+  const parsed = JSON.parse(receipt) as {
+    grant?: { status?: string; rows?: unknown; cols?: unknown } | null
+    corroboration?: { status?: string; rows?: unknown; cols?: unknown } | null
+  }
+  const corroborated = parsed.corroboration?.status === "agree" ? parsed.corroboration : undefined
+  const granted = parsed.grant?.status === "measured" ? parsed.grant : undefined
+  for (const candidate of [corroborated, granted]) {
+    if (candidate === undefined) continue
+    if (!Number.isSafeInteger(candidate.rows) || !Number.isSafeInteger(candidate.cols)) {
+      throw new Error(`collector.geometry recorded a size without whole rows and columns: ${receipt}`)
+    }
+    return { rows: candidate.rows as number, cols: candidate.cols as number }
+  }
+  return undefined
+}
+
 /** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
 export interface PublicCapabilityResult extends Pick<
   CapabilityResult,
   "featureId" | "status" | "attempt" | "checks" | "evidence"
 > {
   reason?: string
+  /**
+   * The Windows console-host hold this reader applied (#30720): it names the host that answered the
+   * queries, which is why the cell reads TEST TODO. Published even when the cell's own evidence prose is
+   * not approved for publication, because it explains the displayed verdict rather than adding evidence.
+   */
+  hold?: string
   record?: PublicImages
   presentation: HistoricalPublicCell["presentation"]
 }
@@ -467,6 +497,8 @@ export interface PublicVersion extends Omit<
   results: PublicCapabilityResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
   trace?: TraceReceipt
+  /** The screen size this run measured for its own terminal; absent when its receipt recorded none. */
+  screen?: { rows: number; cols: number }
 }
 
 export interface PublicProjection {
@@ -536,6 +568,7 @@ export function publicResults(
   ): PublicCapabilityResult => {
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
+    const hold = result.checks.find((check) => check.id === "console-host")?.reason
     const mapped: PublicCapabilityResult = {
       featureId: result.featureId,
       status: result.status,
@@ -549,6 +582,7 @@ export function publicResults(
       })),
       ...(result.evidence && { evidence: result.evidence }),
       ...(approved && result.reason !== undefined && { reason: result.reason }),
+      ...(hold !== undefined && { hold }),
       presentation: { state: "not-reviewed" },
     }
     if (!decision) return mapped
@@ -615,6 +649,7 @@ export function publicResults(
       results,
       ...metadata
     } = version
+    const screen = screenGeometry(version.rawReplies["collector.geometry"])
     const evidenceCells: Record<string, CellEvidence> = {}
     const mappedResults = results.map((result) => mapResult(result, version, evidenceCells))
     if (Object.keys(evidenceCells).length > 0) {
@@ -647,6 +682,7 @@ export function publicResults(
     const mapped: PublicVersion = {
       ...metadata,
       ...(traced.has(version.runId) && traceReceipt(documents, currentTrace(version))),
+      ...(screen && { screen }),
       catalogIds: [...version.catalogIds],
       counts: { ...version.counts },
       score: { ...version.score },

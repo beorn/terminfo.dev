@@ -18,7 +18,15 @@ import {
   type LoadedCellTrace,
 } from "../../data/evidence-reader"
 import { data } from "../../data/probes.data"
+import {
+  describeReplyBytes,
+  describeSentBytes,
+  describeStepTable,
+  readRecordedBytes,
+  type StepSource,
+} from "../../data/step-table"
 import { textEvidenceExplanation } from "./ungraded-explanation"
+import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
 
@@ -75,6 +83,8 @@ const evidenceLoading = ref(false)
 const evidenceError = ref<string | null>(null)
 let evidenceRequest = 0
 let evidenceController: AbortController | null = null
+// #30756 AC8: only one popover is open at a time. Module scope, because every cell is its own instance.
+let openPreviewClose: (() => void) | undefined
 const id = useId()
 const tooltipId = `${id}-preview`
 const dialogTitleId = `${id}-title`
@@ -200,6 +210,60 @@ const compactCause = computed(() => {
   if (historicalCell.value?.evidence === "text") return "our test could not capture text"
   if (historicalCell.value?.evidence === "pixels") return "Reviewed capture not available."
   return historicalCell.value?.note ?? reasonExplanation.value ?? "No retained result for this selection."
+})
+
+/**
+ * The status keyword the step table grades against. A held Windows result is displayed as TEST TODO even
+ * though its sealed status is unsupported (#30720), so the table follows the displayed status and marks the
+ * graded step `held` rather than calling the terminal failed.
+ */
+const STEP_STATUS: Record<string, string> = {
+  Supported: "supported",
+  Unsupported: "unsupported",
+  Untestable: "untestable",
+  "TEST TODO": "test-todo",
+  "TEST FAILURE": "test-failure",
+}
+const stepSource = computed<StepSource | undefined>(() => {
+  const screen = props.version && "screen" in props.version ? props.version.screen : undefined
+  const statusKeyword = currentResult.value?.status ?? STEP_STATUS[status.value.text] ?? "untestable"
+  const cell = cellTrace.value?.cell
+  if (cell) {
+    return {
+      status: statusKeyword,
+      assertions: cell.assertions ?? [],
+      ...(cell.queries && { queries: cell.queries }),
+      ...(cell.events && { events: cell.events }),
+      ...(cell.writes && { writes: cell.writes }),
+      ...(screen && { screen }),
+    }
+  }
+  const record = evidenceDocument.value?.record
+  if (record) {
+    return {
+      status: statusKeyword,
+      assertions: record.assertions,
+      ...readRecordedBytes(record.rawReply),
+      ...(screen && { screen }),
+    }
+  }
+  return undefined
+})
+const stepTable = computed(() => (stepSource.value ? describeStepTable(stepSource.value) : undefined))
+const sentBytes = computed(() => (stepSource.value ? describeSentBytes(stepSource.value) : undefined))
+const replyBytes = computed(() => (stepSource.value ? describeReplyBytes(stepSource.value) : undefined))
+const evidenceImageUrl = computed(() => previewImageUrl.value ?? referenceImageUrl.value)
+/** The one sentence under the badge: what happened, or the stored reason when the verdict is held or absent. */
+const plainResult = computed(() => {
+  const reason = readerSafeExplanation(
+    currentResult.value?.reason ?? currentResult.value?.hold ?? historicalCell.value?.note ?? featureNote.value,
+  )
+  const table = stepTable.value
+  const held = table?.rows.some((row) => row.result === "held")
+  if (held || status.value.tone === "unknown" || status.value.tone === "error") {
+    return reason ? `${status.value.text}: ${reason}` : reason
+  }
+  return table?.summary ?? reason
 })
 
 const evidenceRecord = computed(() => evidenceDocument.value?.record)
@@ -518,6 +582,8 @@ function repositionPreview(): void {
 function showPreview(): void {
   keepPreview()
   if (dialogVisible.value || !trigger.value || typeof window === "undefined") return
+  if (openPreviewClose !== undefined && openPreviewClose !== hidePreview) openPreviewClose()
+  openPreviewClose = hidePreview
   previewVisible.value = true
   previewPosition.value = { width: `${Math.min(420, window.innerWidth - 16)}px` }
   document.addEventListener("pointerdown", outsidePreview)
@@ -548,6 +614,7 @@ function hidePreview(): void {
   window.removeEventListener("resize", repositionPreview)
   keepPreview()
   previewVisible.value = false
+  if (openPreviewClose === hidePreview) openPreviewClose = undefined
 }
 
 async function openDialog(): Promise<void> {
@@ -634,7 +701,29 @@ onBeforeUnmount(() => {
           >{{ targetName
           }}<template v-if="version"> · {{ version.target.version }} · {{ version.target.os }}</template></span
         >
-        <div class="result-evidence__comparison">
+        <p v-if="plainResult && !isDecSampleResult" class="result-evidence__plain">{{ plainResult }}</p>
+        <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
+        <section v-if="stepTable" class="result-evidence__evidence">
+          <h4>Evidence</h4>
+          <img v-if="evidenceImageUrl" :src="evidenceImageUrl" :alt="`Recorded image for ${featureName}`" />
+          <div v-if="sentBytes" class="result-evidence__bytes">
+            <span class="result-evidence__bytes-label">Sent</span>
+            <code>{{ sentBytes.summary }}</code>
+            <details>
+              <summary>Full sent bytes</summary>
+              <pre>{{ sentBytes.full }}</pre>
+            </details>
+          </div>
+          <div v-if="replyBytes" class="result-evidence__bytes">
+            <span class="result-evidence__bytes-label">Reply</span>
+            <code>{{ replyBytes.summary }}</code>
+            <details>
+              <summary>Full reply bytes</summary>
+              <pre>{{ replyBytes.full }}</pre>
+            </details>
+          </div>
+        </section>
+        <div v-else class="result-evidence__comparison">
           <figure>
             <figcaption>TESTED</figcaption>
             <img v-if="previewImageUrl" :src="previewImageUrl" :alt="`Recorded ${featureName} target`" />
@@ -652,9 +741,6 @@ onBeforeUnmount(() => {
                 <pre v-if="item.pre !== undefined" class="result-evidence__trace-pre">{{ item.pre }}</pre>
                 <p v-if="item.text" class="result-evidence__trace-p">{{ item.text }}</p>
               </template>
-              <p class="result-evidence__trace-src">{{ tracePaneCopy.tested.sourceLine }}</p>
-              <p class="result-evidence__trace-src">{{ tracePaneCopy.tested.identityLine }}</p>
-              <p class="result-evidence__trace-gap">{{ tracePaneCopy.tested.notKeptLine }}</p>
             </div>
             <div v-else class="result-evidence__missing-image">
               <span>{{ readerSafeExplanation(compactCause) }}</span>
@@ -677,18 +763,6 @@ onBeforeUnmount(() => {
                 />
                 <span class="result-evidence__illustrative">Illustration</span>
               </template>
-              <div
-                v-else
-                class="result-evidence__noimg"
-                role="img"
-                :aria-label="tracePaneCopy.expected.referenceStatus"
-              >
-                <svg viewBox="0 0 40 28" aria-hidden="true">
-                  <rect x="1" y="1" width="38" height="26" rx="2" />
-                  <path d="M6 22l9-9 7 7 6-6 6 8" />
-                </svg>
-                <span>{{ tracePaneCopy.expected.referenceStatus }}</span>
-              </div>
             </div>
             <img
               v-else-if="referenceImageUrl"
@@ -705,13 +779,6 @@ onBeforeUnmount(() => {
             <pre v-else-if="assertions[0]?.expected" class="result-evidence__sample-text">{{
               assertions[0].expected
             }}</pre>
-            <div v-else class="result-evidence__missing-image" role="img" aria-label="Expected reference not recorded">
-              <svg viewBox="0 0 40 28" aria-hidden="true">
-                <rect x="1" y="1" width="38" height="26" rx="2" />
-                <path d="M6 22l9-9 7 7 6-6 6 8" />
-              </svg>
-              <span>Reference not recorded</span>
-            </div>
           </figure>
         </div>
         <details class="result-evidence__compact-details">
@@ -721,7 +788,12 @@ onBeforeUnmount(() => {
             <strong>Feature test</strong>
             <span v-if="selectionExplanation">{{ selectionExplanation }}</span>
             <span v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</span>
-            <span v-if="featureNote">{{ readerSafeExplanation(featureNote) }}</span>
+            <span v-if="historicalCell?.note">{{ readerSafeExplanation(historicalCell?.note) }}</span>
+            <template v-if="tracePaneCopy">
+              <span>{{ tracePaneCopy.tested.sourceLine }}</span>
+              <span>{{ tracePaneCopy.tested.identityLine }}</span>
+              <span>{{ tracePaneCopy.tested.notKeptLine }}</span>
+            </template>
             <template v-if="historicalCell?.textQualificationReason">
               <strong>Capture qualification</strong>
               <span>{{ readerSafeExplanation(historicalCell?.textQualificationReason) }}</span>
@@ -784,6 +856,7 @@ onBeforeUnmount(() => {
             >{{ status.text }}<template v-if="cell"> · {{ methodLabel }}</template></template
           >
         </p>
+        <p v-if="plainResult && !isDecSampleResult" class="result-evidence__plain">{{ plainResult }}</p>
         <template v-if="isDecSampleResult">
           <p>
             Supported applies only to this sample. Sol, an AI reviewer, assessed the two captured images.
@@ -901,7 +974,8 @@ onBeforeUnmount(() => {
             <p v-else-if="correction">
               This result was corrected after review. See Review history for the original result and reason.
             </p>
-            <template v-if="assertions.length">
+            <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
+            <template v-else-if="assertions.length">
               <h4>Expected and observed</h4>
               <p>Original assertion values, shown as recorded.</p>
               <ul class="result-evidence__assertions">
@@ -1137,5 +1211,67 @@ onBeforeUnmount(() => {
   white-space: pre;
   overflow-x: auto;
   user-select: text;
+}
+.result-evidence__plain {
+  margin: 4px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.result-evidence__evidence {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.result-evidence__evidence h4 {
+  margin: 0;
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+.result-evidence__evidence img {
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #17191d;
+}
+.result-evidence__bytes {
+  display: grid;
+  gap: 2px;
+}
+.result-evidence__bytes-label {
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+}
+.result-evidence__bytes code {
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+.result-evidence__bytes details {
+  font-size: 0.62rem;
+}
+.result-evidence__bytes summary {
+  cursor: pointer;
+  color: var(--vp-c-text-2);
+}
+.result-evidence__bytes pre {
+  margin: 4px 0 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--vp-c-bg-soft);
+  font-size: 0.62rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 </style>
