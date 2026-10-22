@@ -510,7 +510,7 @@ export interface OuterAppProof {
 }
 
 /** Snapshot verified by the live Linux owner, retained for historical joins without live PID queries. */
-export interface MuxAttachmentProof {
+export interface LinuxMuxAttachmentProof {
   platform: "linux"
   mux: "tmux" | "screen"
   bootId: string
@@ -528,6 +528,10 @@ export interface MuxAttachmentProof {
   socketPath: string
   session: string
 }
+
+/** One arm per platform, keyed by `platform` (#30518 D4). The Darwin arm is written only from codimac's
+ * measured chain; until it lands, Linux is the only arm. */
+export type MuxAttachmentProof = LinuxMuxAttachmentProof
 
 /** Raw run records are immutable; review decisions live in Interpretation. */
 export interface HistoricalProbeRun {

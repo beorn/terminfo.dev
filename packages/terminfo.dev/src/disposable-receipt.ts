@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { PLACEHOLDER, parseAppLaunchReceipt } from "../../run-parser/src/app-launch.ts"
-import type { AppLaunchReceipt, MuxAttachmentProof } from "@terminfo/probe-defs"
+import type { AppLaunchReceipt, LinuxMuxAttachmentProof, MuxAttachmentProof } from "@terminfo/probe-defs"
 
 /**
  * A disposable-ownership receipt is what authorizes mutate+readback against a terminal (27832).
@@ -337,7 +337,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     where,
   )
   if (source.platform !== "linux") fail(where, "platform must be linux")
-  const mux = oneOf(source, "mux", ["tmux", "screen"], where) as MuxAttachmentProof["mux"]
+  const mux = oneOf(source, "mux", ["tmux", "screen"], where) as LinuxMuxAttachmentProof["mux"]
   const bootId = text(source, "bootId", where)
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(bootId)) fail(where, "invalid bootId")
   const id = (key: string) => {
@@ -357,7 +357,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
   })
   const executable = fields(source.executable, ["path", "sha256", "version"], `${where} executable`)
   const config = fields(source.config, ["path", "sha256"], `${where} config`)
-  const proof: MuxAttachmentProof = {
+  const proof: LinuxMuxAttachmentProof = {
     platform: "linux",
     mux,
     bootId,
@@ -382,8 +382,32 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
     socketPath: path(source, "socketPath", where),
     session: text(source, "session", where),
   }
-  const sameProcess = (a: { pid: number; startTicks: string }, b: { pid: number; startTicks: string }) =>
-    a.pid === b.pid && a.startTicks === b.startTicks
+  assertMuxChain<{ pid: number; startTicks: string }>(
+    where,
+    proof,
+    (a, b) => a.pid === b.pid && a.startTicks === b.startTicks,
+  )
+  return proof
+}
+
+/**
+ * The positional custody checks every mux arm shares (#30518 D4.1). The chain runs from the collector
+ * through the declared mux processes to the outer shell, then the outer terminal; the collector, the
+ * shell and the attached client obey three PTY rules. `sameProcess` is the arm's process identity.
+ */
+function assertMuxChain<Identity extends { pid: number }>(
+  where: string,
+  proof: {
+    collector: Identity & { ttyRdev: number }
+    outerShell: Identity & { ttyRdev: number }
+    outerTerminal: Identity
+    attachedClient: { ttyRdev: number }
+    chain: readonly (Identity & { executablePath: string; ttyRdev: number })[]
+    executable: { path: string }
+  },
+  sameProcess: (a: Identity, b: Identity) => boolean,
+): void {
+  const { chain } = proof
   const first = chain[0]
   const last = chain[chain.length - 1]
   if (!first || !last) fail(where, "chain must include collector and outer app")
@@ -415,7 +439,6 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
       fail(where, `chain process ${row.pid} does not name the declared mux executable`)
     }
   }
-  return proof
 }
 
 /** The Linux half the collector can actually read: /out/host-measured.json, authored by the host
