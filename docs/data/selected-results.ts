@@ -264,8 +264,8 @@ export type { TextQualificationAssessment } from "@terminfo/probe-defs"
  * A Windows app's supported or unsupported verdict from a reply counts only when every query was answered
  * after the host's DA1. Otherwise both paths hold it with the reason this returns: the current path as
  * test-todo, the historical path as inconclusive with that note. The rule reads this run alone, never
- * another OS's answer. A plain reply string (a DA or XTVERSION reply) keeps its own evidence rule, and a
- * test-failure stays visible as the repair item it is.
+ * another OS's answer. A plain reply string (a DA or XTVERSION reply) has no sentinel either, so it is the
+ * host's, or none when empty. A test-failure stays visible as the repair item it is.
  *
  * Known limit, accepted by @cto: the scope is every Windows app run, so a future Windows context whose
  * host passes queries straight through is held here (under-counted), never mislabeled. Whoever adds such
@@ -312,16 +312,17 @@ function consoleHostHold(
   if (stored === undefined) {
     throw new Error(`Run ${run.runId}: ${cell.featureId} cites raw reply ${cell.rawReplyRef}, which the run lacks`)
   }
-  if (!stored.startsWith("{")) return undefined
-  const queries = (JSON.parse(stored) as { queries?: unknown }).queries
-  if (!Array.isArray(queries) || queries.length === 0) return undefined
-  const sources = queries.map((query: unknown, index) => {
-    const { sequence, raw } = (query ?? {}) as { sequence?: unknown; raw?: unknown }
-    if (typeof sequence !== "string" || (raw !== undefined && typeof raw !== "string")) {
-      throw new Error(`Run ${run.runId}: ${cell.featureId} query ${index} has no readable sequence and reply`)
-    }
-    return replySource(sequence, raw ?? "")
-  })
+  const queries = stored.startsWith("{") ? (JSON.parse(stored) as { queries?: unknown }).queries : undefined
+  if (stored.startsWith("{") && (!Array.isArray(queries) || queries.length === 0)) return undefined
+  const sources = Array.isArray(queries)
+    ? queries.map((query: unknown, index) => {
+        const { sequence, raw } = (query ?? {}) as { sequence?: unknown; raw?: unknown }
+        if (typeof sequence !== "string" || (raw !== undefined && typeof raw !== "string")) {
+          throw new Error(`Run ${run.runId}: ${cell.featureId} query ${index} has no readable sequence and reply`)
+        }
+        return replySource(sequence, raw ?? "")
+      })
+    : [replySource("", stored)]
   if (sources.every((source) => source === "terminal")) return undefined
   return sources.includes("host")
     ? `answered by the Windows console host ${consoleHostBinary(run)}, not measured on the terminal`

@@ -34,8 +34,8 @@ const decided: Array<[string, "supported" | "unsupported" | "test-failure", "que
   [ids[2]!, "unsupported", "query", exchange("\u001b]10;?\u0007\u001b[c", HOST_DA1)],
   // The cursor report carries no sentinel; the host answers it.
   [ids[3]!, "supported", "behavior", exchange("\u001b[6n", "\u001b[1;5R")],
-  // A plain reply string is not an exchange record and keeps its own evidence rule.
-  [ids[4]!, "supported", "query", "\u001b[?61;6;7c"],
+  // A plain reply string carries no sentinel: the host's DA, held like any unsentinelled reply.
+  [ids[4]!, "supported", "query", HOST_DA1],
   // A failed attempt stays visible as a failure: it is a repair item, not a capability claim.
   [ids[5]!, "test-failure", "query", exchange("\u001b[?u\u001b[c", `\u001b[?0u${HOST_DA1}`)],
 ]
@@ -150,17 +150,18 @@ describe("Windows console-host rule", () => {
       "supported",
       "test-todo",
       "test-todo",
-      "supported",
+      "test-todo",
       "test-failure",
     ])
     expect(byId.get(ids[0]!)?.reason).toBe(HOST_ANSWERED)
     expect(byId.get(ids[2]!)?.reason).toBe(NO_REPLY)
     expect(byId.get(ids[3]!)?.reason).toBe(HOST_ANSWERED)
+    expect(byId.get(ids[4]!)?.reason).toBe(HOST_ANSWERED)
     expect(selected.counts).toEqual({
-      supported: 2,
+      supported: 1,
       unsupported: 0,
       untestable: 0,
-      "test-todo": 270,
+      "test-todo": 271,
       "test-failure": 1,
     })
     expect(projection.table[run.runId]?.[ids[0]!]).toBe("test-todo")
@@ -170,14 +171,19 @@ describe("Windows console-host rule", () => {
   })
   it("never touches a run outside Windows", () => {
     const states = statusOf(current("macos"))
-    expect([0, 2, 3].map((index) => states[ids[index]!])).toEqual(["supported", "unsupported", "supported"])
+    expect([0, 2, 3, 4].map((index) => states[ids[index]!])).toEqual([
+      "supported",
+      "unsupported",
+      "supported",
+      "supported",
+    ])
   })
   it("makes the same historical cells inconclusive, with the hold reason as their published note", () => {
     const run = historical()
     const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash })
     const version = projection.historical.history["app:windows-terminal"]![0]!
     const cell = (index: number) => version.cells[ids[index]!]!
-    expect([0, 1, 2, 3, 4].map((index) => cell(index).conclusive)).toEqual([false, true, false, false, true])
+    expect([0, 1, 2, 3, 4].map((index) => cell(index).conclusive)).toEqual([false, true, false, false, false])
     expect(cell(0).note).toBe(HOST_ANSWERED)
     expect(cell(2).note).toBe(NO_REPLY)
     expect(cell(1).consoleHostHold).toBeUndefined()
