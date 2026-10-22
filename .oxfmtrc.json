@@ -15,6 +15,7 @@
     ".vitepress/dist/",
     "content/probes-libs/",
     "content/probes-apps/",
-    "content/probes-mux/"
+    "content/probes-mux/",
+    "docs/public/api/"
   ]
 }

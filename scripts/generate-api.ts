@@ -1,15 +1,17 @@
 /**
- * Generate the terminfo.dev JSON API and SVG badges.
+ * Generate the terminfo.dev v3 JSON API.
  *
  * Outputs:
- *   docs/public/api/v1/data.json     — conclusive compatibility projection
- *   docs/public/api/v1/badges/*.svg   — per-terminal score badges
- *   docs/public/api/v2/data.json     — exact-context outcomes and provenance
+ *   api/v3/data.json              — sealed schema-3 results
+ *   api/v3/evidence|runs|traces/  — exact-run documents and their artifacts
  *
- * Standalone `bun scripts/generate-api.ts` refreshes tracked docs/public
- * snapshots for local/dev consumers. VitePress buildEnd passes the ignored
- * build outDir so `bun run build` emits fresh deploy artifacts without
- * dirtying the source tree.
+ * `/api/v1` is frozen: its committed bytes under docs/public/api/v1/ are no
+ * longer generated. `/api/v2` was never public and has no generator.
+ *
+ * Standalone `bun scripts/generate-api.ts` writes a v3 API into the
+ * source-public tree for local inspection. VitePress buildEnd passes the
+ * ignored build outDir so `bun run build` emits fresh deploy artifacts
+ * without dirtying the source tree.
  */
 import {
   readFileSync,
@@ -24,22 +26,17 @@ import {
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import {
-  compatibilityTargets,
-  historicalCompatibilityTargets,
-  loadCurrentResults,
-} from "../docs/data/current-results.ts"
+import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { CAPABILITY_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { headlessName, loadFeatures, loadTerminals } from "@terminfo/catalog"
-import { readVerifiedArtifact, type SelectedVersion } from "../docs/data/selected-results.ts"
+import { loadFeatures } from "@terminfo/catalog"
+import { readVerifiedArtifact } from "../docs/data/selected-results.ts"
 import { publicResults, type CellEvidence, type HistoricalCellEvidence } from "../docs/data/public-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, "..")
 const docsDir = join(root, "docs")
 const publicDir = join(docsDir, "public")
-const apiDir = join(publicDir, "api", "v1")
 const contentDir = join(root, "content")
 // Cloudflare Pages Free-plan limits (25 MiB per asset, 20,000 files per deployment).
 const maxAssetBytes = 25 * 1024 * 1024
@@ -113,161 +110,23 @@ interface FeatureMeta {
   baseline?: string
 }
 
-interface ApiData {
-  version: number
-  generated: string
-  methodology: {
-    revision: string
-    v2: string
-    v3: string
-    historicalOnly: true
-    methods: string
-    keyPolicy: string
-    notesPolicy: string
-    contexts: Record<
-      string,
-      {
-        contextKey: string
-        runSha256: string
-        target: SelectedVersion["target"]
-        reviewer?: string
-        reason?: string
-        sources?: string[]
-      }
-    >
-  }
-  features: Record<
-    string,
-    {
-      name: string
-      category: string
-      slug: string
-      url?: string
-      tags?: string[]
-      baseline?: string
-    }
-  >
-  terminals: Record<
-    string,
-    {
-      name: string
-      version: string
-      type: "app" | "headless"
-      platforms?: string[]
-      url?: string
-      score: { total: number; pass: number; pct: number }
-    }
-  >
-  results: Record<string, Record<string, string>>
-  notes: Record<string, Record<string, string>>
+interface ApiFeature {
+  name: string
+  category: string
+  slug: string
+  url?: string
+  tags?: string[]
+  baseline?: string
 }
 
 // --- Loaders ---
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value)
-
-interface BackendMeta {
-  label?: string
-  url?: string
-}
 
 function loadFeaturesJson(): Record<string, FeatureMeta> {
   return loadFeatures(contentDir)
 }
 
-function loadBackendMeta(): Record<string, BackendMeta> {
-  // Try to load backends.json from @termless/core
-  const candidates = [
-    join(root, "node_modules", "@termless", "core", "backends.json"),
-    join(root, "..", "termless", "backends.json"),
-  ]
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      const raw = parseJsonStrict(p, readFileSync(p, "utf-8"))
-      if (!isRecord(raw) || !isRecord(raw.backends)) throw new Error(`${p}: missing backend metadata object`)
-      const result: Record<string, BackendMeta> = {}
-      for (const [id, value] of Object.entries(raw.backends)) {
-        if (!isRecord(value)) throw new Error(`${p}: invalid backend ${id}`)
-        if (
-          (value.label !== undefined && typeof value.label !== "string") ||
-          (value.url !== undefined && typeof value.url !== "string")
-        ) {
-          throw new Error(`${p}: invalid label or URL for ${id}`)
-        }
-        result[id] = {
-          ...(typeof value.label === "string" && { label: value.label }),
-          ...(typeof value.url === "string" && { url: value.url }),
-        }
-      }
-      return result
-    }
-  }
-  throw new Error(`Missing required backend metadata; searched ${candidates.join(", ")}`)
-}
-
-// --- Label / slug helpers ---
-
-const appLabels: Record<string, string> = {
-  ghostty: "Ghostty",
-  kitty: "Kitty",
-  iterm2: "iTerm2",
-  "terminal-app": "Terminal.app",
-  warp: "Warp",
-
-  cursor: "Cursor",
-  "com.microsoft.VSCode": "VS Code",
-  "com.todesktop.230313mzl4w4u92": "Cursor",
-}
-
-const appUrls: Record<string, string> = {
-  ghostty: "https://ghostty.org",
-  kitty: "https://sw.kovidgoyal.net/kitty/",
-  iterm2: "https://iterm2.com",
-  "terminal-app": "https://support.apple.com/guide/terminal",
-  warp: "https://www.warp.dev",
-  "com.microsoft.VSCode": "https://code.visualstudio.com",
-}
-
-// --- Badge SVG ---
-
-function badgeColor(pct: number): string {
-  if (pct >= 90) return "#4c1"
-  if (pct >= 70) return "#dfb317"
-  return "#e05d44"
-}
-
-function measureText(text: string): number {
-  // Approximate character width for Verdana 11px
-  return Math.round(text.length * 6.6 + 10)
-}
-
-function generateBadgeSvg(label: string, pass: number, total: number, pct: number): string {
-  const rightText = `${pct}% (${pass}/${total})`
-  const leftWidth = Math.max(measureText(label), 50)
-  const rightWidth = Math.max(measureText(rightText), 50)
-  const totalWidth = leftWidth + rightWidth
-  const color = badgeColor(pct)
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20">
-  <linearGradient id="s" x2="0" y2="100%">
-    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
-    <stop offset="1" stop-opacity=".1"/>
-  </linearGradient>
-  <clipPath id="r"><rect width="${totalWidth}" height="20" rx="3" fill="#fff"/></clipPath>
-  <g clip-path="url(#r)">
-    <rect width="${leftWidth}" height="20" fill="#555"/>
-    <rect x="${leftWidth}" width="${rightWidth}" height="20" fill="${color}"/>
-    <rect width="${totalWidth}" height="20" fill="url(#s)"/>
-  </g>
-  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-    <text x="${leftWidth / 2}" y="15" fill="#010101" fill-opacity=".3">${label}</text>
-    <text x="${leftWidth / 2}" y="14">${label}</text>
-    <text x="${leftWidth + rightWidth / 2}" y="15" fill="#010101" fill-opacity=".3">${rightText}</text>
-    <text x="${leftWidth + rightWidth / 2}" y="14">${rightText}</text>
-  </g>
-</svg>`
-}
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
 
 // --- Main ---
 
@@ -284,7 +143,7 @@ function writeEvidence(
     // documents by their trace path / identity header, never by `cells` (per-run evidence documents
     // also key approved cells under `cells`).
     const frames: Array<{ sha256: string; kind?: string }> = []
-    if (url.startsWith("/api/v2/traces/") || url.startsWith("/api/v3/traces/") || "identity" in document) {
+    if (url.startsWith("/api/v3/traces/") || "identity" in document) {
       // Trace documents carry no frame or screenshot artifacts.
     } else if ("qualification" in document) {
       for (const shape of document.qualification.shapes) {
@@ -314,10 +173,10 @@ function writeEvidence(
     }
   }
   for (const [url, bytes] of runDocuments) expected.set(url.slice(1), bytes)
-  const inventoryPath = join(out, "api", "v2", "evidence-files.json")
+  const inventoryPath = join(out, "api", "v3", "evidence-files.json")
   const owned = new Map<string, string>()
   const isOwnedPath = (path: string) =>
-    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v[23]\/evidence\/[a-f0-9]{64}(?:\.json|\/[A-Za-z0-9_.%~-]+\.json)|api\/v[23]\/(?:runs|traces)\/[a-f0-9]{64}\.json)$/.test(
+    /^(?:artifacts\/[a-f0-9]{64}\.(?:png|txt)|api\/v3\/evidence\/[a-f0-9]{64}(?:\.json|\/[A-Za-z0-9_.%~-]+\.json)|api\/v3\/(?:runs|traces)\/[a-f0-9]{64}\.json)$/.test(
       path,
     )
   if (existsSync(inventoryPath)) {
@@ -356,9 +215,6 @@ function writeEvidence(
     }
   }
   visit("artifacts")
-  visit("api/v2/evidence")
-  visit("api/v2/runs")
-  visit("api/v2/traces")
   visit("api/v3/evidence")
   visit("api/v3/runs")
   visit("api/v3/traces")
@@ -406,93 +262,18 @@ function writeEvidence(
 
 export function generateApi(outDir?: string): {
   dataPath: string
-  badgeCount: number
   fileCount: number
   fileLimit: number
   fileHeadroom: number
 } {
-  const targetApiDir = outDir ? join(outDir, "api", "v1") : apiDir
-  const targetBadgesDir = join(targetApiDir, "badges")
-  mkdirSync(targetBadgesDir, { recursive: true })
-
   const featuresJson = loadFeaturesJson()
-  const backendMeta = loadBackendMeta()
-  const catalog = loadTerminals(contentDir)
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(
-    projection,
-    compatibilityTargets(projection, contentDir),
-    historicalCompatibilityTargets(projection.historical, contentDir),
-  )
-  const byTarget = new Map(Object.entries(published.historicalByBackend))
-  type PublicVersion = (typeof published.projection.historical.current)[string]
-  type RunRef = Pick<
-    PublicVersion,
-    | "runId"
-    | "target"
-    | "measuredAt"
-    | "suiteId"
-    | "probeHash"
-    | "suiteFreshness"
-    | "suiteRelation"
-    | "suite"
-    | "sourceRevision"
-    | "sha256"
-    | "counts"
-  > & { url: string; documentSha256: string }
+  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
   const runDocuments = new Map<string, Buffer>()
-  const ref = (version: PublicVersion): RunRef => {
-    const url = `/api/v2/runs/${version.sha256}.json`
-    const bytes = Buffer.from(JSON.stringify(version) + "\n")
-    const prior = runDocuments.get(url)
-    if (prior && !prior.equals(bytes)) throw new Error(`Conflicting run document ${url}`)
-    runDocuments.set(url, bytes)
-    const {
-      runId,
-      target,
-      measuredAt,
-      suiteId,
-      probeHash,
-      suiteFreshness,
-      suiteRelation,
-      suite,
-      sourceRevision,
-      sha256,
-      counts,
-    } = version
-    return {
-      runId,
-      target,
-      measuredAt,
-      suiteId,
-      probeHash,
-      suiteFreshness,
-      suiteRelation,
-      suite,
-      sourceRevision,
-      sha256,
-      counts,
-      url,
-      documentSha256: createHash("sha256").update(bytes).digest("hex"),
-    }
-  }
-  const refs = {
-    current: Object.fromEntries(
-      Object.entries(published.projection.historical.current).map(([key, version]) => [key, ref(version)]),
-    ),
-    versions: Object.fromEntries(
-      Object.entries(published.projection.historical.versions).map(([key, versions]) => [key, versions.map(ref)]),
-    ),
-    history: Object.fromEntries(
-      Object.entries(published.projection.historical.history).map(([key, versions]) => [key, versions.map(ref)]),
-    ),
-    exclusions: published.projection.exclusions,
-  }
-  // Catalog metadata stays available, but only reviewed, conclusive observations become v1 result keys.
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
   // Build features map
-  const features: ApiData["features"] = {}
+  const features: Record<string, ApiFeature> = {}
   for (const id of [...allFeatureIds].sort()) {
     const meta = featuresJson[id]
     const [category] = id.split(".")
@@ -507,92 +288,7 @@ export function generateApi(outDir?: string): {
     }
   }
 
-  // Build terminals map + results + notes
-  const terminals: ApiData["terminals"] = {}
-  const results: ApiData["results"] = {}
-  const notes: ApiData["notes"] = {}
-  const contexts: ApiData["methodology"]["contexts"] = {}
-
-  for (const [key, { selected, contextKey, policy }] of byTarget) {
-    if (selected.counts.conclusive === 0) continue
-    const { kind, id, os } = selected.target
-    if (kind === "mux") continue // v1 terminal type only describes apps and headless engines; v2 carries mux targets.
-    const meta = backendMeta[id]
-    // A headless engine carries the catalog's name for it, as on the site; termless's label is the fallback.
-    const label = kind === "app" ? (appLabels[id] ?? id) : (headlessName(catalog, id) ?? meta?.label ?? id)
-    if (terminals[key]) throw new Error(`Ambiguous API terminal key ${key}: multiple selected targets`)
-    const { conclusive: total, supported: pass } = selected.counts
-    const pct = Math.round((pass / total) * 100)
-    terminals[key] = {
-      name: label,
-      version: selected.target.version,
-      type: kind === "headless" ? "headless" : "app",
-      ...(os && { platforms: [os] }),
-      ...(appUrls[id] && { url: appUrls[id] }),
-      ...(!appUrls[id] && meta?.url && { url: meta.url }),
-      score: { total, pass, pct },
-    }
-    results[key] = Object.fromEntries(
-      Object.entries(selected.v1).map(([feature, value]) => [feature, value ? "yes" : "no"]),
-    )
-    notes[key] = Object.fromEntries(
-      Object.entries(selected.cells).flatMap(([feature, cell]) =>
-        Object.hasOwn(selected.v1, feature) && cell.note ? [[feature, cell.note]] : [],
-      ),
-    )
-    contexts[key] = {
-      contextKey,
-      runSha256: selected.sha256,
-      target: selected.target,
-      ...(policy && { reviewer: policy.reviewer, reason: policy.reason, sources: policy.sources }),
-    }
-  }
-
-  // Build the API data object
-  const apiData: ApiData = {
-    version: 1,
-    generated:
-      Object.values(projection.historical.current)
-        .map((v) => v.measuredAt)
-        .sort()
-        .at(-1) ?? "",
-    methodology: {
-      revision: "2026-10-20-historical-only",
-      historicalOnly: true,
-      v3: "/api/v3/data.json",
-      v2: "/api/v2/data.json",
-      methods: "/contribute#what-a-probe-can-establish",
-      keyPolicy:
-        "Released v1 keys keep their published target kind; another kind with the same catalog ID uses kind-ID. New collisions keep the app at the bare ID. v2 uses full kind:ID contexts.",
-      notesPolicy:
-        "Collector notes appear only after exact run/feature presentation review; reviewed correction notes remain. Result keys and score meanings are unchanged.",
-      contexts,
-    },
-    features,
-    terminals,
-    results,
-    notes,
-  }
-
-  // Write data.json
-  const historicalDataPath = join(targetApiDir, "data.json")
-  writeAsset(historicalDataPath, JSON.stringify(apiData, null, 2) + "\n")
-
-  // v2 retains exact context keys and every selected cell's outcome and provenance.
-  const v2Dir = outDir ? join(outDir, "api", "v2") : join(publicDir, "api", "v2")
-  const v2Path = join(v2Dir, "data.json")
-  const v2Json =
-    JSON.stringify({
-      version: 2,
-      generated: apiData.generated,
-      methodology: apiData.methodology,
-      features,
-      ...refs,
-    }) + "\n"
-  mkdirSync(v2Dir, { recursive: true })
-  writeAsset(v2Path, v2Json)
-
-  // Only sealed schema-3 runs supply current results. Historical APIs retain their old vocabulary.
+  // Only sealed schema-3 runs supply current results.
   type CurrentVersion = (typeof published.projection.current)[string]
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
@@ -618,7 +314,7 @@ export function generateApi(outDir?: string): {
       score: "Supported / all frozen catalog positions; no exclusions.",
       completion:
         "A context is complete only with zero TEST TODO and TEST FAILURE. Absent required contexts remain incomplete.",
-      historical: { v1: "/api/v1/data.json", v2: "/api/v2/data.json" },
+      historical: { v1: "/api/v1/data.json" },
       evidence: "Captures, free-form reasons and diagnostics require the separate exact-run presentation decision.",
     },
     features,
@@ -640,32 +336,18 @@ export function generateApi(outDir?: string): {
   writeEvidence(outDir ?? publicDir, published.documents, runDocuments)
   writeAsset(dataPath, JSON.stringify(currentData) + "\n")
 
-  // Generate badges
-  let badgeCount = 0
-  for (const [slug, terminal] of Object.entries(terminals)) {
-    const svg = generateBadgeSvg(
-      `Historical ${terminal.name}`,
-      terminal.score.pass,
-      terminal.score.total,
-      terminal.score.pct,
-    )
-    writeAsset(join(targetBadgesDir, `${slug}.svg`), svg)
-    badgeCount++
-  }
-
-  return { dataPath, badgeCount, ...assertDeploymentLimits(outDir ?? publicDir) }
+  return { dataPath, ...assertDeploymentLimits(outDir ?? publicDir) }
 }
 
 // Allow standalone execution
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { dataPath, badgeCount } = generateApi()
+  const { dataPath } = generateApi()
   const data = JSON.parse(readFileSync(dataPath, "utf-8")) as {
     current: Record<string, unknown>
     features: Record<string, unknown>
   }
-  const terminalCount = Object.keys(data.current).length
+  const runCount = Object.keys(data.current).length
   const featureCount = Object.keys(data.features).length
   console.log(`Generated ${dataPath}`)
-  console.log(`  ${featureCount} features, ${terminalCount} terminals`)
-  console.log(`  ${badgeCount} badge SVGs`)
+  console.log(`  ${featureCount} features, ${runCount} current runs`)
 }

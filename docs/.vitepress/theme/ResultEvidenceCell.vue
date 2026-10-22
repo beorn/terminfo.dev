@@ -96,23 +96,9 @@ const namedCoverage = computed(() =>
 )
 
 const status = computed(() => {
-  const historicalState = historicalVersion.value
-    ? (data.historicalTable[historicalVersion.value.runId]?.[props.featureId] ?? "untested")
-    : undefined
-  // Historical presentation reads its existing evidence-aware projection; it is never current v3 evidence.
-  const state =
-    currentResult.value?.status ??
-    (historicalState
-      ? (
-          {
-            supported: "supported",
-            unsupported: "unsupported",
-            inconclusive: "untestable",
-            error: "test-failure",
-            untested: "test-todo",
-          } as const
-        )[historicalState]
-      : undefined)
+  // Pages select current runs only ([id].paths.ts), so a row's status is always the sealed v3 status.
+  // The historical table is not in the client payload; it had no reachable reader and is gone with it.
+  const state = currentResult.value?.status
   if (!state) return { text: "", icon: "–", tone: "unknown" }
   return {
     supported: { text: "Supported", icon: "✓", tone: "yes" },

@@ -213,7 +213,7 @@ export function installRenderPhaseHook(
 }
 
 /**
- * Remove the served build stamps, so no later start can serve the output of a build that breached the ceiling.
+ * Remove the served build stamp, so no later start can serve the output of a build that breached the ceiling.
  *
  * `landed-serve` calls a dist current when its own `/build.json` names this checkout's revision, and the stamp is
  * written by the build's `buildEnd` — near the END of the build. A breach after that point would otherwise leave a
@@ -224,13 +224,9 @@ export function installRenderPhaseHook(
  * freshness either way. Returns the stamps it removed, for the failure line.
  */
 export function invalidateBuildStamp(distDir: string): string[] {
-  const removed: string[] = []
-  for (const relative of ["build.json", join("api", "v1", "build.json")]) {
-    const path = join(distDir, relative)
-    if (existsSync(path)) {
-      rmSync(path, { force: true })
-      removed.push(relative)
-    }
-  }
-  return removed
+  const relative = "build.json"
+  const path = join(distDir, relative)
+  if (!existsSync(path)) return []
+  rmSync(path, { force: true })
+  return [relative]
 }

@@ -1,5 +1,5 @@
 import { defineConfig, type HeadConfig } from "vitepress"
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
@@ -676,7 +676,7 @@ export default defineConfig({
     footer: {
       message:
         'Powered by <a href="https://termless.dev">Termless</a> · Built with <a href="https://silvery.dev">Silvery</a> · <a href="https://beorn.codes/flexily">Flexily</a>' +
-        `<br><a href="/api/v1/build.json">${buildStamp(buildMetadata)}</a>`,
+        `<br><a href="/build.json">${buildStamp(buildMetadata)}</a>`,
       copyright: 'Built by <a href="https://beorn.codes">Bjørn Stabell</a>',
     },
   },
@@ -685,13 +685,10 @@ export default defineConfig({
     // Build verification must not rewrite tracked docs/public artifacts.
     // Standalone `bun scripts/generate-api.ts` refreshes source-public
     // snapshots; VitePress build owns the ignored deploy artifact.
-    const { dataPath, badgeCount } = generateApi(siteConfig.outDir)
-    console.log(`[API] Generated ${dataPath} + ${badgeCount} badges`)
+    const { dataPath } = generateApi(siteConfig.outDir)
+    console.log(`[API] Generated ${dataPath}`)
     const metadataJson = JSON.stringify(buildMetadata, null, 2) + "\n"
-    const apiDir = join(siteConfig.outDir, "api", "v1")
-    mkdirSync(apiDir, { recursive: true })
     writeFileSync(join(siteConfig.outDir, "build.json"), metadataJson)
-    writeFileSync(join(apiDir, "build.json"), metadataJson)
     console.log(`[Build] Source ${buildMetadata.sourceCommit.slice(0, 10)} · ${buildMetadata.context}`)
   },
 })
