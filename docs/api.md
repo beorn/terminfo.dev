@@ -8,7 +8,7 @@ outline: [2, 3]
 
 **`GET /api/v3/data.json`** returns the current five-status contract. Only sealed schema-3 runs appear as current results.
 
-[View current data](/api/v3/data.json) · [Historical v2](/api/v2/data.json) · [Historical v1](/api/v1/data.json)
+[View current data](/api/v3/data.json) · [Frozen v1](/api/v1/data.json)
 
 | Field                    | Meaning                                                                       |
 | ------------------------ | ----------------------------------------------------------------------------- |
@@ -47,7 +47,7 @@ An all-history corpus is a valid migration state. The v3 response contains catal
 
 > No current schema-3 runs; historical results remain available.
 
-It does not invent a current score or a completed cohort. Historical results remain readable through the versioned endpoints and terminal history pages.
+It does not invent a current score or a completed cohort. Historical results remain readable through the frozen v1 endpoint.
 
 ## Read a result
 
@@ -68,13 +68,13 @@ A missing context means there is no selected current run. A feature outside a ru
 
 Status recording, identity admission and evidence publication are separate decisions. A support review does not automatically authorize publishing captured bytes.
 
-Each result's `presentation` says whether evidence is unreviewed, withdrawn or presented. Presented evidence points to `/api/v3/evidence/<runSha256>.json#<featureId>` (or `/api/v2/evidence/<runSha256>.json#<featureId>` for historical v2 runs) and carries the SHA-256 receipt of that run's evidence document. Legacy `/api/v2/evidence/<runSha256>/<featureId>.json` URLs 301-redirect to `/api/v2/evidence/<runSha256>.json`; per-run evidence documents carry `version: 4` (v3 runs) and `version: 2` (historical v2 runs), bumped from per-cell `version: 3` and `version: 1` because the document shape changed to `cells[featureId]`.
+Each result's `presentation` says whether evidence is unreviewed, withdrawn or presented. Presented evidence points to `/api/v3/evidence/<runSha256>.json#<featureId>` and carries the SHA-256 receipt of that run's evidence document. Per-run evidence documents carry `version: 4`, bumped from per-cell `version: 3` because the document shape changed to `cells[featureId]`.
 
 Each run's evidence document keys its approved cells under `cells[featureId]` and retains the sealed result (or historical observation) plus original expected/observed assertions, raw reply and frame references. Text snapshots and screenshots retain their own hashes.
 
 Free-form execution reasons and captured diagnostics pass the existing presentation review boundary. A summary without that approval does not expose the private collector note or capture.
 
-A run a page displays carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v2/traces/<run sha256>.json` for a historical run or `/api/v3/traces/<run sha256>.json` for a current one. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
+A run a page displays carries `trace`: the URL and SHA-256 receipt of its trace document, `/api/v3/traces/<run sha256>.json`. The document names the run's SHA-256, its recorded identity and admission rule, and holds every result without a presentation decision, keyed by feature ID:
 
 - the outcome or status, the evidence method and a reason code;
 - the bytes the probe wrote, and each query's sequence and reason;
@@ -83,17 +83,15 @@ A run a page displays carries `trace`: the URL and SHA-256 receipt of its trace 
 
 A live terminal's reply (a query's `match`, an assertion's `observed`) appears only for features whose replies use a closed grammar, such as numeric reports. Other stored reply content, such as screen state or a clipboard, does not appear; a result whose stored reply the trace leaves out says `replyWithheld: true`. Notes, actions, diagnostics, captures, raw read windows and paths never appear in a trace.
 
-## Historical v1 and v2
+## Frozen v1 {#historical-v1-and-v2}
 
-**`GET /api/v2/data.json`** preserves schema-1/2 outcomes, provenance and readable evidence. Its existing `current` keys are historical defaults, not current schema-3 measurements.
+**`GET /api/v1/data.json`** is frozen. Frozen 2026-10-22, not updated; current data /api/v3/data.json. The bytes stay exactly as they are and are no longer generated.
 
-**`GET /api/v1/data.json`** preserves the released historical yes/no projection and its historical score semantics. It omits entries without a recorded Supported or Unsupported value rather than treating them as false.
-
-Both endpoints declare `methodology.historicalOnly: true` and point to v3. No new-contract status is converted into a historical boolean.
+It preserves the released historical yes/no projection and its historical score semantics. It omits entries without a recorded Supported or Unsupported value rather than treating them as false. No new-contract status is converted into a historical boolean.
 
 Historical v1 scores keep their original denominator: recorded yes/no results. They must not be compared with the v3 Supported/all score as if the bases were equal.
 
-Historical SVG badges remain at their released URLs and visibly say Historical:
+The frozen SVG badges remain at their released URLs, stay embeddable at `https://terminfo.dev/api/v1/badges/<slug>.svg`, and visibly say Historical:
 
 ```markdown
 ![Historical terminfo.dev result](https://terminfo.dev/api/v1/badges/ghostty.svg)

@@ -2,8 +2,8 @@
  * Release 1 decisive-count reader (#27909) — the instrument behind the Release 1 bar.
  *
  * No shebang: the file is mode 100644, so nothing ever executed it as a program (every caller runs
- * `bun scripts/decisive-share.ts`, or imports it), and a shebang is what the VitePress data loader
- * that consumes this reader for the candidate-2 page refuses with a syntax error.
+ * `bun scripts/decisive-share.ts`, or imports it), and a shebang is what a VitePress data loader
+ * importing this reader refuses with a syntax error.
  *
  * Read-only. Two sections:
  *
@@ -745,7 +745,7 @@ export function formatCategoryRow(
 }
 
 /**
- * Every printed line for one candidate-2 bar row: the aggregate decisive/inconclusive lines and the
+ * Every printed line for one cohort bar row: the aggregate decisive/inconclusive lines and the
  * whole-cohort remainder, then — only for a MEASURED context — the per-category block. A context with
  * no selected run (or a run on the wrong suite) prints its reason and NO category lines, because there
  * is no run to measure.

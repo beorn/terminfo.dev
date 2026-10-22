@@ -16,9 +16,10 @@ const categories = p.categories ? JSON.parse(p.categories) : []
 const versions = p.versions ? JSON.parse(p.versions) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
 const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
-const historicalRuns = JSON.parse(p.historicalRuns || '[]')
-const recordedRuns = [...runs, ...historicalRuns]
-const runSha = ref(defaultRun?.sha256 || historicalRuns[0]?.sha256 || '')
+// #30759 Slice A (@cto f1504b5c R2): the page renders current runs only, so a historical run can
+// be neither selected nor defaulted to. The historical mapping stays as dead code for Slice B.
+const recordedRuns = runs
+const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => recordedRuns.find(run => run.sha256 === runSha.value))
 const historicalRun = computed(() => selectedRun.value && selectedRun.value.schemaVersion !== 3)
 const measuredBar = computed(() => selectedRun.value?.schemaVersion === 3 ? aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds) : undefined)
@@ -183,7 +184,7 @@ const breadcrumbParent = (() => {
   </div>
 
   <dl>
-    <dt>Run</dt><dd><a :href="selectedRun.schemaVersion === 3 ? '/api/v3/data.json' : '/api/v2/data.json'">{{ selectedRun.sha256 }}</a></dd>
+    <dt>Run</dt><dd><a href="/api/v3/data.json">{{ selectedRun.sha256 }}</a></dd>
     <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}</dd>
     <dt>Target</dt><dd>{{ selectedRun.target.kind }} · {{ selectedRun.target.id }} {{ selectedRun.target.version }}</dd>
     <dt>OS</dt><dd>{{ selectedRun.target.os || 'Not recorded' }} {{ selectedRun.target.osVersion || '' }}</dd>
@@ -197,33 +198,6 @@ const breadcrumbParent = (() => {
   <summary>Analysis · {{ p.analysisDate }}</summary>
   <div class="analysis-body" v-html="p.analysis"></div>
   <p v-if="p.analysisChanges" class="analysis-changes">{{ p.analysisChanges }}</p>
-</details>
-
-<details v-if="versions.length > 1 && selectedRun?.sha256 === defaultRun?.sha256" class="version-history">
-  <summary id="version-history">Version history</summary>
-  <p>Scores summarize each version's reviewed suite; different suites are not a direct version-to-version comparison.</p>
-  <table class="version-table">
-    <thead>
-      <tr>
-        <th>Version</th>
-        <th>Support</th>
-        <th class="version-pct-header">Score</th>
-        <th class="version-counts-header">Catalog capabilities</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="v in versions" :key="v.version" :class="{ 'version-current': v.version === p.version }">
-        <td class="version-name">{{ v.version }} <small>({{ v.suiteFreshness }})</small></td>
-        <td class="version-bar-cell">
-          <div class="version-bar">
-            <div class="version-bar-fill" :style="{ width: v.total ? (v.yes / v.total * 100) + '%' : '0%' }"></div>
-          </div>
-        </td>
-        <td class="version-pct">{{ v.pct == null ? '' : `${v.pct}%` }}</td>
-        <td class="version-counts">{{ v.total ? `${v.yes} / ${v.total}` : 'No current score' }}</td>
-      </tr>
-    </tbody>
-  </table>
 </details>
 
 <p v-if="selectedRun">Select a result to see its notes and evidence. Results marked “Images” include screenshots.</p>

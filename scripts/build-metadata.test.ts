@@ -75,8 +75,8 @@ describe("website build identity", () => {
       builtAt: "2026-10-02T12:00:00.000Z",
       githubRun: { id: "42", attempt: 2 },
     }
-    const path = join(repo, "docs/.vitepress/dist/api/v1")
-    mkdirSync(path, { recursive: true })
+    const dist = join(repo, "docs/.vitepress/dist")
+    mkdirSync(dist, { recursive: true })
     let response = JSON.stringify(metadata)
     let status = 200
     const server = createServer((_request, reply) => {
@@ -89,7 +89,7 @@ describe("website build identity", () => {
       if (!address || typeof address === "string") throw new Error("HTTP fixture has no TCP address")
       const shell = block!
         .replace(/^          /gm, "")
-        .replace("https://terminfo.dev/api/v1/build.json", `http://127.0.0.1:${address.port}/api/v1/build.json`)
+        .replace("https://terminfo.dev/build.json", `http://127.0.0.1:${address.port}/build.json`)
       const cases = [
         ["matching", metadata, 200, "Verified live build identity", false],
         ["rerun", metadata, 200, "Verified live build identity", false],
@@ -111,7 +111,7 @@ describe("website build identity", () => {
       for (const [name, value, code, diagnostic, invalidArchive] of cases) {
         response = typeof value === "string" ? value : JSON.stringify(value)
         status = code
-        writeFileSync(join(path, "build.json"), JSON.stringify(invalidArchive ? value : metadata))
+        writeFileSync(join(dist, "build.json"), JSON.stringify(invalidArchive ? value : metadata))
         let exitCode = 0
         let output = ""
         try {
