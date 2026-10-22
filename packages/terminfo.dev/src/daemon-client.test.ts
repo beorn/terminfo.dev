@@ -3,7 +3,7 @@
  * @level l3
  * @consumer App and mux real-terminal collectors
  * @testonly none
- * @reach fs-walk /tmp/terminfo-owned-*
+ * @reach fs-walk <fixture-only: /tmp/terminfo-owned-*>
  */
 import { createServer, type Server } from "node:http"
 import { spawn } from "node:child_process"

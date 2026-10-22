@@ -2,7 +2,7 @@
  * @failure CLI build/hosted setup executes a global collector, or its compiled suite receipt is missing.
  * @level l1
  * @consumer Published terminfo.dev bin entry
- * @reach fs-walk .github/workflows/macos-measurement.yml .github/workflows/windows-measurement.yml
+ * @reach fs-walk vendor/terminfo.dev/.github/workflows/macos-measurement.yml vendor/terminfo.dev/.github/workflows/windows-measurement.yml
  * @testonly none
  */
 import { execFileSync, spawnSync } from "node:child_process"

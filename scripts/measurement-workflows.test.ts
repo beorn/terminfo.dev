@@ -3,7 +3,7 @@
  *   loses the owned editor launch/close ordering, or omits TERMINFO_RUN_ID and dies at collection.
  * @level l2
  * @consumer The GitHub-hosted macOS and Windows measurement collectors (27917).
- * @reach fs-walk .github/workflows/macos-measurement.yml .github/workflows/windows-measurement.yml
+ * @reach fs-walk vendor/terminfo.dev/.github/workflows/macos-measurement.yml vendor/terminfo.dev/.github/workflows/windows-measurement.yml
  * @testonly none
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"

@@ -3,7 +3,7 @@
  * @level l1
  * @consumer Real-terminal app, daemon, and inline probe batch
  * @testonly none
- * @reach fs-walk /tmp/terminfo-disposable-receipts
+ * @reach fs-walk <fixture-only: /tmp/terminfo-disposable-receipts>
  */
 import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"

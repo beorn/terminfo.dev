@@ -3,7 +3,7 @@
  * @level l3
  * @consumer Real-terminal daemon HTTP clients
  * @testonly none
- * @reach fs-walk /tmp/terminfo-serve-*
+ * @reach fs-walk <fixture-only: /tmp/terminfo-serve-*>
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process"
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"

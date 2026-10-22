@@ -3,7 +3,7 @@
  * @level l1
  * @consumer Owned Linux clipboard adapter used by the app probe batch.
  * @testonly none
- * @reach fs-walk /tmp/terminfo-clipboard-receipts
+ * @reach fs-walk <fixture-only: /tmp/terminfo-clipboard-receipts>
  */
 import { spawnSync } from "node:child_process"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
