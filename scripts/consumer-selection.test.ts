@@ -115,81 +115,94 @@ describe("consumer selection", () => {
   it("keeps an all-history corpus readable without inventing current schema-3 results", () => {
     // The corpus with no current run is built from the live content, never read from it: every run on the
     // current schema or the tree's suite is left out, so the state the test proves survives admissions.
+    // A child process builds and reads the corpus; the loaders retain the whole corpus, and a second copy
+    // in this worker would cross the vitest RSS cap.
     const source = join(import.meta.dirname, "..")
     const root = mkdtempSync(join(tmpdir(), "terminfo-zero-current-"))
     try {
       mkdirSync(join(root, "scripts"))
       copyFileSync(join(source, "scripts", "generate-api.ts"), join(root, "scripts", "generate-api.ts"))
-      writeFileSync(
-        join(root, "scripts", "run-api.ts"),
-        'import { generateApi } from "./generate-api.ts"\nconsole.log(JSON.stringify(generateApi(process.argv[2])))\n',
-      )
       for (const name of ["docs", "node_modules", "packages"]) symlinkSync(join(source, name), join(root, name), "dir")
-      const liveContent = join(source, "content")
-      const content = join(root, "content")
-      mkdirSync(content)
-      const currentSuite = probeHash()
-      const isCurrent = (run: { schemaVersion?: number; probeHash?: string }) =>
-        run.schemaVersion === 3 || run.probeHash === currentSuite
-      const excludedRunIds = new Set<string>()
-      for (const entry of readdirSync(liveContent, { withFileTypes: true })) {
-        const from = join(liveContent, entry.name)
-        const to = join(content, entry.name)
-        if (entry.isFile()) {
-          copyFileSync(from, to)
-        } else if (entry.name.startsWith("probes-")) {
-          mkdirSync(to)
-          for (const file of readdirSync(from)) {
-            if (!file.endsWith(".json")) continue
-            const run = JSON.parse(readFileSync(join(from, file), "utf8")) as {
-              schemaVersion?: number
-              probeHash?: string
-              runId?: string
-            }
-            if (isCurrent(run)) {
-              if (run.runId) excludedRunIds.add(run.runId)
-              continue
-            }
-            symlinkSync(join(from, file), join(to, file), "file")
-          }
-        } else if (entry.name === "receipts") {
-          mkdirSync(to)
-          for (const file of readdirSync(from)) {
-            if (!excludedRunIds.has(file.replace(/\.json$/, ""))) symlinkSync(join(from, file), join(to, file), "file")
-          }
-        } else {
-          symlinkSync(from, to, "dir")
-        }
-      }
-      // Precondition, re-read from the fixture itself: runs exist, and none of them is current.
-      const fixtureRuns = readdirSync(content)
-        .filter((name) => name.startsWith("probes-"))
-        .flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))
-      expect(fixtureRuns.length).toBeGreaterThan(0)
-      expect(fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8"))))).toEqual([])
-
-      const { projection } = loadCurrentResults(content)
-      expect(Object.keys(projection.current)).toHaveLength(0)
-      const published = publicResults(projection, compatibilityTargets(projection, content))
-      expect(published.projection.current).toEqual({})
-      expect(Object.values(published.projection.historical.history).flat().length).toBeGreaterThan(0)
-
-      const out = join(root, "out")
-      const api = spawnSync(process.execPath, [join(root, "scripts", "run-api.ts"), out], { encoding: "utf8" })
-      expect(api.status, `${api.stdout}\n${api.stderr}`).toBe(0)
-      const { dataPath } = JSON.parse(api.stdout.trim().split("\n").at(-1) ?? "") as { dataPath: string }
-      const current = JSON.parse(readFileSync(dataPath, "utf8")) as {
+      writeFileSync(
+        join(root, "scripts", "zero-current.ts"),
+        [
+          'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs"',
+          'import { join } from "node:path"',
+          'import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"',
+          'import { publicResults } from "../docs/data/public-results.ts"',
+          'import { probeHash } from "../packages/admin/versions.ts"',
+          'import { generateApi } from "./generate-api.ts"',
+          "const [liveContent, root] = process.argv.slice(2)",
+          'const content = join(root, "content")',
+          "mkdirSync(content)",
+          "const currentSuite = probeHash()",
+          "const isCurrent = (run) => run.schemaVersion === 3 || run.probeHash === currentSuite",
+          "const excludedRunIds = new Set()",
+          "for (const entry of readdirSync(liveContent, { withFileTypes: true })) {",
+          "  const from = join(liveContent, entry.name)",
+          "  const to = join(content, entry.name)",
+          "  if (entry.isFile()) copyFileSync(from, to)",
+          '  else if (entry.name.startsWith("probes-")) {',
+          "    mkdirSync(to)",
+          "    for (const file of readdirSync(from)) {",
+          '      if (!file.endsWith(".json")) continue',
+          '      const run = JSON.parse(readFileSync(join(from, file), "utf8"))',
+          "      if (isCurrent(run)) { if (run.runId) excludedRunIds.add(run.runId); continue }",
+          '      symlinkSync(join(from, file), join(to, file), "file")',
+          "    }",
+          '  } else if (entry.name === "receipts") {',
+          "    mkdirSync(to)",
+          '    for (const file of readdirSync(from)) if (!excludedRunIds.has(file.replace(/\\.json$/, ""))) symlinkSync(join(from, file), join(to, file), "file")',
+          '  } else symlinkSync(from, to, "dir")',
+          "}",
+          "// Precondition, re-read from the fixture itself: runs exist, and none of them is current.",
+          'const fixtureRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))',
+          'const currentFixtureRuns = fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8")))).length',
+          "const { projection } = loadCurrentResults(content)",
+          "const published = publicResults(projection, compatibilityTargets(projection, content))",
+          'const out = join(root, "out")',
+          "const { dataPath } = generateApi(out)",
+          'const current = JSON.parse(readFileSync(dataPath, "utf8"))',
+          'const historical = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8"))',
+          "console.log(JSON.stringify({",
+          "  fixtureRuns: fixtureRuns.length,",
+          "  currentFixtureRuns,",
+          "  projectionCurrent: Object.keys(projection.current).length,",
+          "  publishedCurrent: Object.keys(published.projection.current).length,",
+          "  publishedHistory: Object.values(published.projection.historical.history).flat().length,",
+          "  currentRunCount: current.currentRunCount,",
+          "  currentKeys: Object.keys(current.current).length,",
+          "  message: current.message,",
+          "  v2History: Object.values(historical.history).flat().length,",
+          "}))",
+          "",
+        ].join("\n"),
+      )
+      const child = spawnSync(process.execPath, [join(root, "scripts", "zero-current.ts"), join(source, "content"), root], {
+        encoding: "utf8",
+        maxBuffer: 4 * 1024 * 1024,
+      })
+      expect(child.status, `${child.stdout}\n${child.stderr}`).toBe(0)
+      const receipt = JSON.parse(child.stdout.trim().split("\n").at(-1) ?? "") as {
+        fixtureRuns: number
+        currentFixtureRuns: number
+        projectionCurrent: number
+        publishedCurrent: number
+        publishedHistory: number
         currentRunCount: number
-        current: Record<string, unknown>
+        currentKeys: number
         message: string
+        v2History: number
       }
-      expect(current.currentRunCount).toBe(0)
-      expect(current.current).toEqual({})
-      expect(current.message).toContain("No current")
-      const historical = JSON.parse(readFileSync(join(out, "api/v2/data.json"), "utf8")) as {
-        history: Record<string, unknown[]>
-      }
-      expect(Object.values(historical.history).flat().length).toBeGreaterThan(0)
+      expect(receipt.fixtureRuns).toBeGreaterThan(0)
+      expect(receipt.currentFixtureRuns).toBe(0)
+      expect(receipt.projectionCurrent).toBe(0)
+      expect(receipt.publishedCurrent).toBe(0)
+      expect(receipt.publishedHistory).toBeGreaterThan(0)
+      expect(receipt.currentRunCount).toBe(0)
+      expect(receipt.currentKeys).toBe(0)
+      expect(receipt.message).toContain("No current")
+      expect(receipt.v2History).toBeGreaterThan(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
