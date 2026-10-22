@@ -35,6 +35,7 @@ import { sourceSuiteEnvironment } from "../versions.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 import { KITTY_BINARY_PATH } from "./kitty-binary.ts"
+import { assertCursorSkipOnboardingShipped } from "./cursor-onboarding.ts"
 import {
   assertOwnedTerminalWindow,
   closeOwnedTerminalWindow,
@@ -223,12 +224,18 @@ const APPS: AppDef[] = [
       markerFlag: "--user-data-dir",
       markerValue: (run) => join(run.directory, `cursor-${run.id}`),
       env: { CURSOR_CLI_BLOCK_CURSOR_AGENT: "true" },
-      prepare: (run, markerValue) => prepareEditorFixture(run, markerValue, "cursor"),
+      prepare: (run, markerValue) => {
+        assertCursorSkipOnboardingShipped("/Applications/Cursor.app")
+        prepareEditorFixture(run, markerValue, "cursor")
+      },
       args: (_script, markerValue) => {
         const directory = dirname(markerValue)
         return [
           "--new-window",
           "--classic",
+          // Hidden flag: Cursor 3.25.9 out/vs/workbench/workbench.desktop.main.js maybeOnboard() returns when
+          // environmentService.skipOnboarding (args["skip-onboarding"]) is set; pinned in ./cursor-onboarding.ts.
+          "--skip-onboarding",
           "--user-data-dir",
           markerValue,
           "--extensions-dir",
@@ -253,6 +260,18 @@ const APPS: AppDef[] = [
       markerValue: (run) => join(run.directory, `vscode-${run.id}`),
       prepare: (run, markerValue) => {
         prepareEditorFixture(run, markerValue, "vscode")
+        const user = join(markerValue, "User")
+        mkdirSync(user, { mode: 0o700 })
+        writeFileSync(
+          join(user, "settings.json"),
+          JSON.stringify({
+            // Documented since 1.104: https://code.visualstudio.com/docs/copilot/setup
+            "chat.disableAIFeatures": true,
+            "workbench.startupEditor": "none",
+            "workbench.welcomePage.experimentalOnboarding": false,
+          }),
+          { flag: "wx", mode: 0o600 },
+        )
         for (const [, directory] of vscodeAdditionalStatePaths) {
           mkdirSync(join(run.directory, directory), { mode: 0o700 })
         }

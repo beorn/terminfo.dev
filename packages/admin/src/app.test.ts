@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
 import { execFileSync, execSync, spawn } from "node:child_process"
-import { closeSync, mkdirSync, openSync, writeFileSync } from "node:fs"
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
 import type { AppLaunchReceipt } from "@terminfo/probe-defs"
 import { handleApp, launchPreparedCli, prepareCliLaunch, stopLaunchedApp, type AppLaunch } from "./app.ts"
@@ -27,6 +27,7 @@ import {
   resolveOwnedProcessByMarker,
 } from "../../terminfo.dev/src/terminal-app-window.ts"
 import { runScopedMarker } from "../../terminfo.dev/src/owned-process.ts"
+import { CURSOR_SKIP_ONBOARDING_PINS } from "./cursor-onboarding.ts"
 import { verifyTerminalIdentity } from "../../terminfo.dev/src/identity-guard.ts"
 import { planAdmission, admitRun } from "../../../scripts/admit-run.ts"
 
@@ -166,6 +167,11 @@ beforeEach(() => {
   }))
   vi.mocked(stopOwnedDaemon).mockResolvedValue()
   vi.mocked(spawn).mockReturnValue({ unref: vi.fn() } as unknown as ReturnType<typeof spawn>)
+  // Cursor's launch reads its installed bundle to prove --skip-onboarding is still honoured.
+  const shippedCursorBundle = CURSOR_SKIP_ONBOARDING_PINS.map((pin) => pin.substring).join(";")
+  vi.mocked(readFileSync).mockImplementation((path) =>
+    String(path).startsWith("/Applications/Cursor.app/Contents/Resources/") ? shippedCursorBundle : "/dev/ttys009\n",
+  )
 })
 
 // The hosted caller needs recipe preparation without the local daemon. Existing handleApp
@@ -442,10 +448,25 @@ test.each([
     await handleApp(input, {})
     expect(spawn).toHaveBeenCalledTimes(1)
     const [spawnPath, args, options] = vi.mocked(spawn).mock.calls[0]!
+    const bundleReads = vi
+      .mocked(readFileSync)
+      .mock.calls.flatMap(([path], index) =>
+        String(path).startsWith(`${appPath}/Contents/Resources/`)
+          ? [{ path: String(path), order: vi.mocked(readFileSync).mock.invocationCallOrder[index]! }]
+          : [],
+      )
+    if (prefix === "cursor") {
+      expect([...new Set(bundleReads.map(({ path }) => path))].sort()).toEqual(
+        [...new Set(CURSOR_SKIP_ONBOARDING_PINS.map((pin) => `${appPath}/${pin.file}`))].sort(),
+      )
+      expect(bundleReads.every(({ order }) => order < vi.mocked(spawn).mock.invocationCallOrder[0]!)).toBe(true)
+    } else {
+      expect(bundleReads).toEqual([])
+    }
     expect(spawnPath).toBe(`${appPath}/Contents/Resources/app/bin/${helper}`)
     expect(args).toEqual([
       "--new-window",
-      ...(prefix === "cursor" ? ["--classic"] : []),
+      ...(prefix === "cursor" ? ["--classic", "--skip-onboarding"] : []),
       "--user-data-dir",
       ownedWindow.marker.value,
       "--extensions-dir",
@@ -488,7 +509,14 @@ test.each([
       `${prefix}-extensions`,
       `${prefix}-fixture`,
       ...(prefix === "vscode"
-        ? ["vscode-shared", "vscode-agent-plugins", "vscode-agents-data", "vscode-agents-extensions", "vscode-crash"]
+        ? [
+            "vscode-private-run/User",
+            "vscode-shared",
+            "vscode-agent-plugins",
+            "vscode-agents-data",
+            "vscode-agents-extensions",
+            "vscode-crash",
+          ]
         : []),
     ]
     expect(vi.mocked(mkdirSync).mock.calls).toEqual(
@@ -513,6 +541,17 @@ test.each([
         activationEvents: ["onStartupFinished"],
       }),
     )
+    const settings = writes.find(([path]) => String(path).endsWith(`${prefix}-private-run/User/settings.json`))
+    if (prefix === "vscode") {
+      expect(settings?.[2]).toEqual({ flag: "wx", mode: 0o600 })
+      expect(JSON.parse(String(settings?.[1]))).toEqual({
+        "chat.disableAIFeatures": true,
+        "workbench.startupEditor": "none",
+        "workbench.welcomePage.experimentalOnboarding": false,
+      })
+    } else {
+      expect(settings).toBeUndefined()
+    }
     const script = writes.find(([path]) => String(path).endsWith(`${prefix}-fixture/extension.cjs`))
     expect(script?.[2]).toEqual({ flag: "wx", mode: 0o600 })
     expect(script?.[1]).toBe(`const vscode = require("vscode");
