@@ -38,6 +38,15 @@
         "content/probes-apps/xterm-411-linux-7c7c91a8a9199d3f52570a85ac45e49b.json"
       ]
     },
+    "app:alacritty": {
+      "contextKey": "app:alacritty@[\"app\",\"alacritty\",\"windows\",\"10.0.26100\",null,null,null,null]",
+      "reviewer": "@cto (ruling d06f9a8c, 2026-10-22)",
+      "reason": "Only context of app:alacritty on suite 8165331b: hosted Windows run 20eb3ab6 (10-21 common cut). The macOS hardware row (d436c4ec) and the Linux container runs are on older suites. Re-record to the macOS context when a current-suite macOS run admits (final cut, #30711).",
+      "sources": [
+        "content/probes-apps/alacritty-0.17.0-windows-20eb3ab6d830e196eb3fa08dade7740a.json",
+        "content/receipts/20eb3ab6d830e196eb3fa08dade7740a.json"
+      ]
+    },
     "app:wezterm": {
       "contextKey": "app:wezterm@[\"app\",\"wezterm\",\"linux\",\"7.0.0-34-generic\",null,null,\"/nix/store/xnhj580cb50yzv8qk89i9f6c4vlvr4y6-wezterm-0-unstable-2026-09-29/bin/wezterm --config-file /home/runner/wezterm-config.lua start -- bun <terminfo-linux-runner> test --serve \",null]",
       "reviewer": "@dev/10 (automated review)",
