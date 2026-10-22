@@ -68,6 +68,7 @@ import {
 import { loadCategories, orderedCategoryIds, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   aggregateCells,
+  decisiveCells,
   d3Verdict,
   D3_VERDICT_BAR,
   tier1Included,
@@ -205,7 +206,7 @@ export function decisiveShare(
   measuredIds: readonly string[],
 ): DecisiveShare {
   const aggregate = aggregateCells(states, measuredIds)
-  const decisive = aggregate.counts.supported + aggregate.counts.unsupported
+  const decisive = decisiveCells(aggregate.counts)
   // The remainder reads the basis in ITS OWN order — error and untested rows interleaved exactly as the
   // basis names them — over the reader's classified table, so no id is classified twice.
   const remainder: RemainderRow[] = []

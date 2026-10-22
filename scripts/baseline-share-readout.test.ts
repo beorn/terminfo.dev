@@ -8,7 +8,7 @@
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 import { describe, expect, it } from "vitest"
 import { loadFullProbes } from "../docs/data/probes.data.ts"
-import { decisiveCells, NOT_MEASURED_TEXT } from "../docs/data/release-scope.ts"
+import { baselineRowReadout, decisiveCells, NOT_MEASURED_TEXT } from "../docs/data/release-scope.ts"
 
 const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
   supported: 0,
@@ -19,54 +19,41 @@ const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<Capa
   ...entries,
 })
 
-describe("#30763 baseline share readout", () => {
-  it("names both shapes: zero decisive reads not measured, decisive-but-unsupported keeps 0%", () => {
+describe("#30763 baseline row readout", () => {
+  it("names the three shapes in literal text", () => {
+    // Windows Terminal's rich row: 88 TEST TODO + 11 TEST FAILURE, nothing decided.
     const held = counts({ "test-todo": 88, "test-failure": 11 })
-    const judgedUnsupported = counts({ unsupported: 7, untestable: 12, "test-todo": 33, "test-failure": 47 })
-
     expect(decisiveCells(held)).toBe(0)
+    expect(baselineRowReadout(held, { supported: 0, all: 99 }, 0)).toEqual({
+      text: NOT_MEASURED_TEXT,
+      title: "0 Supported · 0 Unsupported · 0 Untestable · 88 TEST TODO · 11 TEST FAILURE",
+    })
     expect(NOT_MEASURED_TEXT).not.toMatch(/%/)
 
-    expect(decisiveCells(judgedUnsupported)).toBe(7)
+    // vt220.js rich: 36 judged unsupported, so its zero is a measured zero.
+    const judged = counts({ unsupported: 36, untestable: 12, "test-todo": 33, "test-failure": 18 })
+    expect(decisiveCells(judged)).toBe(36)
+    expect(baselineRowReadout(judged, { supported: 0, all: 99 }, 0)).toEqual({ text: "0% · 0/99" })
+
+    // Alacritty on Windows rich: the one rich cell it genuinely supports.
+    const oneSupported = counts({ supported: 1, "test-todo": 81, "test-failure": 17 })
+    expect(baselineRowReadout(oneSupported, { supported: 1, all: 99 }, 1)).toEqual({ text: "1% · 1/99" })
   })
 
-  it("lifts only the held rows and leaves every honest zero on the measured page", () => {
+  it("reads the real rows it was filed for, and no decided row lost its number", () => {
     const site = loadFullProbes()
-
-    const statsOf = (backend: string, baseline: string) => {
+    const row = (backend: string, baseline: string) => {
       const stats = site.baselineStats[backend]?.[baseline]
       if (!stats) throw new Error(`Missing ${backend} ${baseline} baseline stats`)
-      return stats
+      return baselineRowReadout(stats.counts, stats.score, stats.pct)
     }
-
-    // Windows Terminal: the console host holds every verdict, so no baseline of that run has a
-    // single decisive cell (a reviewed Untestable is not one).
-    for (const baseline of Object.keys(site.baselineStats["windows-terminal"] ?? {})) {
-      expect(decisiveCells(statsOf("windows-terminal", baseline).counts), baseline).toBe(0)
-      expect(statsOf("windows-terminal", baseline).pct, baseline).toBe(0)
-    }
-
-    // Alacritty on Windows follows the same hold, except the one rich cell it genuinely supports.
-    for (const baseline of ["core", "modern", "unicode", "legacy"]) {
-      expect(decisiveCells(statsOf("app-alacritty", baseline).counts), baseline).toBe(0)
-    }
-    expect(decisiveCells(statsOf("app-alacritty", "rich").counts)).toBe(1)
-
-    // The honest zeros: judged unsupported, so they keep their measured 0%.
-    expect(decisiveCells(statsOf("vt220", "rich").counts)).toBe(36)
-    expect(decisiveCells(statsOf("vt100", "rich").counts)).toBe(36)
-    expect(decisiveCells(statsOf("vt100-rust", "rich").counts)).toBe(7)
-    expect(statsOf("vt100-rust", "rich").counts.untestable).toBe(12)
-    for (const backend of ["vt220", "vt100", "vt100-rust"]) {
-      expect(statsOf(backend, "rich").pct, backend).toBe(0)
-    }
-
-    // No scoring change: every row that decides anything still prints supported/denominator.
-    for (const [backend, baselines] of Object.entries(site.baselineStats)) {
-      for (const [baseline, stats] of Object.entries(baselines)) {
-        if (decisiveCells(stats.counts) === 0) continue
-        expect(stats.pct, `${backend} ${baseline}`).toBe(Math.round((100 * stats.score.supported) / stats.score.all))
-      }
-    }
+    expect(site.baselineStats["windows-terminal"]).toBeDefined()
+    expect(row("windows-terminal", "rich")).toEqual({
+      text: NOT_MEASURED_TEXT,
+      title: "0 Supported · 0 Unsupported · 0 Untestable · 88 TEST TODO · 11 TEST FAILURE",
+    })
+    expect(row("vt220", "rich")).toEqual({ text: "0% · 0/99" })
+    expect(row("vt100-rust", "rich")).toEqual({ text: "0% · 0/99" })
+    expect(row("app-alacritty", "rich")).toEqual({ text: "1% · 1/99" })
   }, 30_000)
 })

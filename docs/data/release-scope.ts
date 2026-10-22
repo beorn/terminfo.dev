@@ -198,7 +198,7 @@ export function d3Verdict(decisive: number, denominator: number): D3Verdict {
 /** The verdict of a measured bar, or undefined when nothing was measured. */
 export function barVerdict(aggregate: CellAggregate): D3Verdict | undefined {
   if (aggregate.denominator <= 0) return undefined
-  return d3Verdict(aggregate.counts.supported + aggregate.counts.unsupported, aggregate.denominator)
+  return d3Verdict(decisiveCells(aggregate.counts), aggregate.denominator)
 }
 
 /**
@@ -272,12 +272,12 @@ export function currentSupportedShare(aggregate: CurrentAggregate): string {
 }
 
 /**
- * The cells of a bar that carry a verdict about the terminal: Supported and Unsupported, the same
- * two cells `decisiveShare` scores and `barVerdict` refuses on an empty bar. A reviewed Untestable
- * claim says the row cannot be probed, not that the terminal was judged, and TEST TODO / TEST
- * FAILURE decide nothing — so a bar with no decisive cell measured nothing at all (#30763).
+ * The cells of a bar that carry a verdict about the terminal: Supported and Unsupported. A reviewed
+ * Untestable claim says the row cannot be probed, not that the terminal was judged, and TEST TODO /
+ * TEST FAILURE decide nothing. This is the ONE owner of that sum: `barVerdict`, the decisive-share
+ * reader and the baseline row readout all call it, so no caller can drift into a second definition.
  */
-export function decisiveCells(counts: Record<CapabilityStatus, number>): number {
+export function decisiveCells(counts: { readonly supported: number; readonly unsupported: number }): number {
   return counts.supported + counts.unsupported
 }
 
@@ -290,3 +290,18 @@ export function decisiveCells(counts: Record<CapabilityStatus, number>): number 
  * "Not measured yet"; this placeholder ships until that approval lands.
  */
 export const NOT_MEASURED_TEXT = "Not measured yet"
+
+/**
+ * The readout of one backend × baseline row, for both pages that draw it (#30763): a decided row
+ * prints its percentage and the fraction behind it, byte-identically wherever it appears; a row
+ * whose run decided nothing prints the not-measured words instead of a false "0%", and keeps what
+ * the row looked at in its title. Nothing else gets a title.
+ */
+export function baselineRowReadout(
+  counts: Readonly<Record<CapabilityStatus, number>>,
+  score: { readonly supported: number; readonly all: number },
+  pct: number,
+): { text: string; title?: string } {
+  if (decisiveCells(counts) === 0) return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }
+  return { text: `${pct}% · ${score.supported}/${score.all}` }
+}

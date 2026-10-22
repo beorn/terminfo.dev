@@ -19,7 +19,7 @@ hero:
 <script setup>
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
-import { currentCoverageSentence, decisiveCells, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { baselineRowReadout, currentCoverageSentence, NOT_MEASURED_TEXT, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -91,7 +91,7 @@ function platformIcons(backendName) {
 
 function supportFraction(backendName) {
   const bar = data.releaseBars[backendName]
-  return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : data.selectedByBackend[backendName] ? 'Not measured' : 'Historical'
+  return bar?.denominator ? `${bar.counts.supported} / ${bar.denominator}` : data.selectedByBackend[backendName] ? NOT_MEASURED_TEXT : 'Historical'
 }
 
 const sortedCategories = computed(() => visibleCategoryIds(data.categoryOrder, data.categories))
@@ -171,20 +171,11 @@ function coverageLabel(backendName) {
   return currentCoverageSentence(bar)
 }
 
-// #30763: a backend × baseline row whose cells are all held (the Windows console host) or
-// uncollected is not a measured 0%; it measured nothing. The counts keep saying what the row
-// looked at, in the tooltip.
-function baselineShareText(backendName, baseline) {
+// #30763: one readout for these rows on every page that draws them; a missing baseline row has none.
+function baselineRow(backendName, baseline) {
   const stats = data.baselineStats[backendName]?.[baseline]
-  if (!stats) return ''
-  if (decisiveCells(stats.counts) === 0) return NOT_MEASURED_TEXT
-  return `${stats.pct}% · ${stats.score.supported}/${stats.score.all} supported / all`
-}
-
-function baselineShareTitle(backendName, baseline) {
-  const stats = data.baselineStats[backendName]?.[baseline]
-  if (!stats || decisiveCells(stats.counts) > 0) return undefined
-  return currentCoverageSentence(stats)
+  if (!stats) return { text: '', title: undefined }
+  return baselineRowReadout(stats.counts, stats.score, stats.pct)
 }
 
 // Slug helpers for SEO page links — use slug from features.json if available
@@ -296,7 +287,7 @@ function backendTooltip(name, version) {
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
         <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct" :title="baselineShareTitle(b.name, bl)">{{ baselineShareText(b.name, bl) }}</span>
+        <span class="baseline-backend-pct" :title="baselineRow(b.name, bl).title">{{ baselineRow(b.name, bl).text }}</span>
       </div>
     </div>
   </a>
@@ -407,7 +398,7 @@ function backendTooltip(name, version) {
           <span class="baseline-fill" :style="{ width: (data.baselineStats[b.name]?.[bl]?.pct ?? 0) + '%', background: bl === 'core' ? '#10b981' : bl === 'modern' ? '#3b82f6' : bl === 'rich' ? '#8b5cf6' : '#06b6d4' }"></span>
         </span>
         <span v-if="!data.selectedByBackend[b.name]" class="baseline-history">Historical</span>
-        <span class="baseline-backend-pct" :title="baselineShareTitle(b.name, bl)">{{ baselineShareText(b.name, bl) }}</span>
+        <span class="baseline-backend-pct" :title="baselineRow(b.name, bl).title">{{ baselineRow(b.name, bl).text }}</span>
       </div>
     </div>
   </a>
