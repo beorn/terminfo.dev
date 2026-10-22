@@ -356,8 +356,15 @@ test.runIf(process.platform === "linux")(
     const capture = await createLinuxCapture(join(directory, "frames"), liveExecutable())
     await capture({ featureId: "fixture", role: "control", label: "fixture frame" })
     // Later magick calls decode the frame for pixels; the conversion is the first one.
+    // The literal pin, not the constant: a dropped flag has to fail here even where magick is absent.
     expect(readFileSync(argsPath, "utf8").trim().split("\n").slice(0, PNG_CONVERSION_ARGS.length)).toEqual([
-      ...PNG_CONVERSION_ARGS,
+      "xwd:-",
+      "-define",
+      "png:exclude-chunks=date,time",
+      "-set",
+      "comment",
+      "",
+      "png:-",
     ])
   },
 )
