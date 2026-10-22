@@ -21,7 +21,7 @@
     "@termless/vterm": "0.10.2",
     "@termless/wezterm": "0.10.2",
     "@termless/xtermjs": "0.10.2",
-    "loggily": "0.12.0"
+    "loggily": "0.13.0"
   },
   "devDependencies": {
     "vitest": "4.1.10"

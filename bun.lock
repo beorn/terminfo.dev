@@ -9,7 +9,7 @@
         "@silvery/commander": "0.26.0",
         "@termless/core": "0.10.2",
         "commander": "15.0.0",
-        "loggily": "0.12.0",
+        "loggily": "0.13.0",
         "silvery": "0.26.0",
       },
       "devDependencies": {
@@ -36,7 +36,7 @@
         "@terminfo/catalog": "workspace:*",
         "@terminfo/probe-defs": "workspace:*",
         "@termless/core": "0.10.2",
-        "loggily": "0.12.0",
+        "loggily": "0.13.0",
         "react": "19.3.1",
         "silvery": "0.26.0",
         "terminfo.dev": "workspace:*",
@@ -83,7 +83,7 @@
         "@termless/vterm": "0.10.2",
         "@termless/wezterm": "0.10.2",
         "@termless/xtermjs": "0.10.2",
-        "loggily": "0.12.0",
+        "loggily": "0.13.0",
       },
       "devDependencies": {
         "vitest": "4.1.10",
@@ -716,7 +716,7 @@
 
     "lightningcss-win32-x64-msvc": ["lightningcss-win32-x64-msvc@1.32.0", "", { "os": "win32", "cpu": "x64" }, "sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q=="],
 
-    "loggily": ["loggily@0.12.0", "", { "peerDependencies": { "@opentelemetry/api": ">=1.0.0" }, "optionalPeers": ["@opentelemetry/api"] }, "sha512-YDjzssT/BSE8EMcMnz0NtuKsBKy4/u6/RsIyJvakByRUeIqeunEsHF58a812CYf9AITWh7IcV7KM52bZEI6+BQ=="],
+    "loggily": ["loggily@0.13.0", "", { "peerDependencies": { "@opentelemetry/api": ">=1.0.0" }, "optionalPeers": ["@opentelemetry/api"] }, "sha512-QN4YuN0ETjuYHY6zz6GhahDhMYN9mxJ1WZRhLvLGaF3aRn+cJya3rvCw3YzTNpGvRNoYGfzIrmqgNHWAsmAToQ=="],
 
     "magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
