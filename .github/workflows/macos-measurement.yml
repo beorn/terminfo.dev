@@ -680,7 +680,7 @@ jobs:
         run: |
           bun --eval "$(cat <<'HOSTED_EDITOR_CLOSE'
           const { existsSync, readFileSync, mkdirSync, copyFileSync } = require("node:fs");
-          const { join, dirname } = require("node:path");
+          const { basename, join, dirname } = require("node:path");
           const { closeOwnedTerminalWindow } = require(process.cwd() + "/packages/terminfo.dev/src/terminal-app-window.ts");
           const out = join(process.env.RUNNER_TEMP, "measurement-artifacts");
           const installer = join(process.env.RUNNER_TEMP, "editor-installer.zip");
@@ -691,7 +691,8 @@ jobs:
             const { appId, run, terminalWindow } = JSON.parse(readFileSync(record, "utf8"));
             try {
               const prefix = appId === "cursor" ? "cursor" : "vscode";
-              const selected = new Set(["serve.sh", "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs"]);
+              // The script carries the run id (#30518 D2), so it is selected by the run's own name.
+              const selected = new Set([basename(run.scriptPath), "owner-tty.txt", prefix + "-fixture/package.json", prefix + "-fixture/extension.cjs"]);
               for await (const path of new Bun.Glob("**/*.log").scan({ cwd: run.directory })) selected.add(path);
               for (const path of selected) {
                 const source = join(run.directory, path);

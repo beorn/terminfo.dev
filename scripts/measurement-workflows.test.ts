@@ -8,7 +8,7 @@
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import { runInNewContext } from "node:vm"
 import { createHash } from "node:crypto"
 import { spawnSync } from "node:child_process"
@@ -616,7 +616,8 @@ test("hosted editor caller writes the TTY command before launch and retains no i
   expect(source, "the production hosted editor caller exists").toBeDefined()
   const events: string[] = []
   const writes = new Map<string, string>()
-  const run = { id: "fixture-id", directory: "/private/run", scriptPath: "/private/run/serve.sh" }
+  // createProbeRun names the script with the run id (#30518 D2), so the retained copy must follow it.
+  const run = { id: "fixture-id", directory: "/private/run", scriptPath: "/private/run/serve-fixture-id.sh" }
   const secret = "inherited-workflow-secret-sentinel"
   const prepared = {
     spawnPath: "/editor/helper",
@@ -687,7 +688,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
       },
     },
     require: (id: string) => {
-      if (id === "node:path") return { join, dirname }
+      if (id === "node:path") return { basename, join, dirname }
       if (id === "node:fs") {
         return {
           existsSync: () => true,
@@ -710,7 +711,7 @@ test("hosted editor caller writes the TTY command before launch and retains no i
       throw new Error(`Unexpected cleanup dependency: ${id}`)
     },
   })
-  expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/serve.sh")
+  expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/serve-fixture-id.sh")
   expect(copies).toContain("/runner/measurement-artifacts/editor-launch-files/cursor-profile/logs/exthost.log")
   expect(closed).toEqual([window])
   expect(events.at(-1)).toBe("close")
