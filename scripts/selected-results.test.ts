@@ -3293,9 +3293,9 @@ describe("identity self-admission", () => {
     }
   })
 
-  // Only the measured Linux owner is approved; the Linux corpus cannot witness a Darwin leak.
+  // Missing outer-app evidence must remain a custody refusal on Darwin, without a blanket platform gate.
   it.each(muxIdentity.specimens)(
-    "keeps macOS $mux admission held pending its measured owner",
+    "refuses macOS $mux admission without retained outer-app proof",
     ({ mux, version, run: specimen }) => {
       const parsed = parseRunSource(
         "darwin-mux.json",
@@ -3308,7 +3308,7 @@ describe("identity self-admission", () => {
       )
       expect(assessRunAdmission(parsed, [], { mode: "historical" })).toMatchObject({
         accepted: false,
-        reason: "mux-platform-unqualified",
+        reason: "outer-app-proof-missing",
       })
     },
   )

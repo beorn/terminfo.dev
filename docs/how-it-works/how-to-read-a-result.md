@@ -25,6 +25,12 @@ Supported: the effect happened. Unsupported: the same kind of check showed it di
 - **… verified in engine state** — the cells, cursor or modes of a terminal engine run without a window. Not what a desktop app draws.
 - **… verified in input test** — an input action during the test and what followed. Only what that input tried.
 
+## Instruments and decisions
+
+An **instrument** is the mechanism that collected the evidence. The decision rule says what that evidence establishes. A protocol reply, engine-state reader, terminal text-buffer readback and screen capture answer different questions; they are not a ranked ladder. For example, reading a changed and restored color value can decide a color-reset claim, while a claim about the rendered color needs appropriate image evidence.
+
+A required review is a decision over retained evidence, not another instrument. A successful capture does not itself establish the visual effect. Missing authorization or a missing instrument can leave a required check unstarted; reviewing different evidence does not turn that missing measurement into Unsupported or Untestable.
+
 ## "Corrected after review"
 
 Automated image checks can decide criteria with machine-readable comparisons. When a criterion requires independent visual review, only that result remains TEST TODO until the review is complete. The reviewer compares the frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.

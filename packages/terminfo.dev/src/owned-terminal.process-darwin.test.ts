@@ -52,6 +52,7 @@ function runDarwinArm(scenario: {
   tty?: string
   /** The claim's own run id, when it differs from the worker's. */
   claimRunId?: string
+  batch?: "process" | "terminal-app" | "disposed"
 }): { status: number | null; stdout: string; stderr: string } {
   const script = `
     import { mock } from "bun:test"
@@ -98,7 +99,7 @@ function runDarwinArm(scenario: {
         throw new Error("stty is not run in this fixture")
       },
     }))
-    const { createOwnedTerminal } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
+    const { createOwnedTerminal, ownedTerminalVerifiedFor } = await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const assertion = {
       asserter: "terminfo-admin",
       launchRunId: scenario.claimRunId ?? launchRunId,
@@ -115,16 +116,60 @@ function runDarwinArm(scenario: {
         captureRunId: ${JSON.stringify(captureRunId)},
         expectedLaunchRunId: launchRunId,
         out: process.stdout,
-        process: assertion,
+        ...(scenario.batch === "terminal-app"
+          ? { terminalApp: { asserter: "terminfo-admin", launchRunId, workerPid: self, windowId: 791, tabTty: "/dev/ttys004", intendedVersion: "2.15" } }
+          : { process: assertion }),
       })
       const summary = JSON.parse(owner.summary)
       assert.equal(summary.platform, "darwin")
-      assert.deepEqual(summary.processOwnerAssertion, assertion)
+      if (scenario.batch !== "terminal-app") assert.deepEqual(summary.processOwnerAssertion, assertion)
       assert.equal(summary.ownerAssertionSource, "authenticated-admin-request")
       assert.equal(summary.ownedOwnerAssertion, undefined)
       // The pid serve's Darwin capture adopts is the one this proof checked, never a second reading.
-      assert.equal(owner.appPid, assertion.ownerPid)
-      console.log("GRANTED " + summary.outputBinding.tabTty)
+      if (scenario.batch !== "terminal-app") assert.equal(owner.appPid, assertion.ownerPid)
+      if (!scenario.batch) {
+        console.log("GRANTED " + summary.outputBinding.tabTty)
+      } else {
+        assert.equal(ownedTerminalVerifiedFor(owner, ${JSON.stringify(captureRunId)}, process.stdout), true)
+        if (scenario.batch === "disposed") {
+          await owner.dispose()
+          assert.equal(ownedTerminalVerifiedFor(owner, ${JSON.stringify(captureRunId)}, process.stdout), false)
+        }
+        delete process.env.TERMINFO_DISPOSABLE_RECEIPT
+        const { runProbeBatch } = await import("./packages/terminfo.dev/src/probes/unified.ts")
+        const replies = ${JSON.stringify([
+          "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+          "\x1b]10;rgb:aa/bb/cc\x07\x1b[?62;c",
+          "\x1b]10;rgb:0000/0000/0000\x07\x1b[?62;c",
+        ])}
+        const originalWrite = process.stdout.write
+        const writes = []
+        let read = 0
+        process.stdout.write = (text) => {
+          writes.push(text)
+          if (text === "\\x1b]10;?\\x07\\x1b[c") process.stdin.emit("data", Buffer.from(replies[read++] ?? ""))
+          return true
+        }
+        let batch
+        try {
+          batch = await runProbeBatch({
+            ids: ["extensions.osc110-reset-fg"],
+            ownedTerminal: owner,
+            captureRunId: ${JSON.stringify(captureRunId)},
+            out: process.stdout,
+            target: { kind: "app", id: "kitty", os: "macos" },
+          })
+        } finally {
+          process.stdout.write = originalWrite
+        }
+        console.log("BATCH " + JSON.stringify({
+          writes,
+          observation: batch.observations.find((row) => row.featureId === "extensions.osc110-reset-fg"),
+          result: batch.results.find((row) => row.featureId === "extensions.osc110-reset-fg"),
+          assertions: batch.assertions,
+          ownership: JSON.parse(batch.rawReplies["collector.disposableOwnership"]),
+        }))
+      }
     } catch (error) {
       console.log("REFUSED " + error.message)
     }
@@ -155,6 +200,57 @@ test("cli-process is granted by the same arm, not by a second proof", () => {
   })
   expect(result.stderr).toBe("")
   expect(result.stdout.trim()).toBe("GRANTED /dev/ttys004")
+})
+
+// Existing owner tests stop at construction; receipt-based batch tests do not carry the real
+// private grant across this boundary. These cases keep both constructor and callback real.
+test.each([
+  { batch: "process" as const, allowed: true },
+  { batch: "terminal-app" as const, allowed: false },
+  { batch: "disposed" as const, allowed: false },
+])("$batch ownership carries only its actual reset authority into the batch", ({ batch, allowed }) => {
+  const marker = { flag: "--instance-group", value: `terminfo-${launchRunId}` }
+  const result = runDarwinArm({
+    provider: "kitty",
+    workerPid: "self",
+    ownerPid: 4242,
+    marker,
+    parent: { self: 4242, "4242": 1 },
+    batch,
+  })
+  expect(result.status).toBe(0)
+  expect(result.stderr).toBe("")
+  expect(result.stdout).toMatch(/^BATCH /)
+  const recorded = JSON.parse(result.stdout.slice("BATCH ".length))
+  expect(recorded.ownership).toEqual({ kind: "shared" })
+  if (allowed) {
+    expect(recorded.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+    expect(recorded.observation.note).toContain(
+      `run-scoped process owner pid 4242, marker ${marker.flag} ${marker.value}`,
+    )
+    expect(recorded.result).toMatchObject({ status: "supported", attempt: { scope: "probe" } })
+    expect(recorded.assertions).toContainEqual(expect.objectContaining({ kind: "positive" }))
+    expect(recorded.writes).toEqual([
+      "\x1b]10;?\x07\x1b[c",
+      "\x1b]10;rgb:aa/bb/cc\x07",
+      "\x1b]10;?\x07\x1b[c",
+      "\x1b]110\x07",
+      "\x1b]10;?\x07\x1b[c",
+    ])
+  } else {
+    const refusal =
+      batch === "terminal-app"
+        ? "no verified disposable-ownership receipt was presented"
+        : "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
+    expect(recorded.writes).toEqual([])
+    expect(recorded.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "policy-refused",
+      note: `Collector refused before sending bytes because ${refusal}`,
+    })
+    expect(recorded.result).toMatchObject({ status: "test-todo", checks: [{ id: "prerequisite" }] })
+    expect(recorded.assertions).toEqual([])
+  }
 })
 
 test.each([
