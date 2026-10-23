@@ -1085,7 +1085,8 @@ describe("extensions without a complete behavior oracle", () => {
         expect(result.observation, id).toBeUndefined()
         expect(result.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
         expect(result.notTested?.noObservable, id).toBe(result.note)
-        expect(Object.values(JSON.parse(result.response ?? "null")), id).toContain(declared)
+        const recorded = JSON.parse(result.response ?? "null") as Record<string, boolean>
+        expect(Object.values(recorded), id).toContain(declared)
         expect(result.assertions ?? [], id).toEqual([])
       }
     }
