@@ -89,7 +89,7 @@ function buildSidebar() {
   const categories = new Map<string, Array<{ id: string; name: string; slug: string }>>()
   for (const [id, entry] of Object.entries(featuresData)) {
     if (id === "$comment") continue
-    const cat = id.split(".")[0]
+    const cat = id.split(".", 1).join("")
     const categoryFeatures = categories.get(cat) ?? []
     if (!categories.has(cat)) categories.set(cat, categoryFeatures)
     const slug = entry.slug ?? id.replaceAll(".", "-")
@@ -125,7 +125,7 @@ function buildSidebar() {
 
     if (entry.intermediary) {
       termMultiplexers.push(item)
-    } else if (entry.headlessBackends?.length > 0 && entry.label.endsWith(".js")) {
+    } else if (entry.headlessBackends?.length && entry.label.endsWith(".js")) {
       // JS-package terminals (vt100.js, vterm.js, xterm.js) are embeddable libraries,
       // not standalone GUI terminals like Alacritty/WezTerm which also have headless backends
       termLibraries.push(item)
@@ -189,9 +189,9 @@ function buildSidebar() {
         items: [...(categories.get(cat) ?? [])]
           .sort((a, b) => {
             // Sort by sequence number when present (OSC N, SGR N, CSI N)
-            const numA = a.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
-            const numB = b.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)
-            if (numA && numB) return parseInt(numA[1], 10) - parseInt(numB[1], 10)
+            const numA = a.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)?.[1]
+            const numB = b.name.match(/(?:^|\()(?:OSC|SGR|CSI)\s+(\d+)/)?.[1]
+            if (numA && numB) return parseInt(numA, 10) - parseInt(numB, 10)
             if (numA) return -1
             if (numB) return 1
             return a.name.localeCompare(b.name)
@@ -517,7 +517,7 @@ export default defineConfig({
         const type = params.pageType === "tag" ? "Standard" : "Category"
         pageData.title = `${params.categoryName} \u2014 Terminal Feature ${type}`
         pageData.description =
-          stripHtml(params.categoryDescription) ||
+          stripHtml(params.categoryDescription ?? "") ||
           `${params.categoryName}: ${params.featureCount} terminal features compared across backends.`
       }
     }
@@ -539,9 +539,9 @@ export default defineConfig({
     const segments = cleanPath.split("/").filter(Boolean)
     if (segments.length > 0) {
       const breadcrumbItems = [{ "@type": "ListItem", position: 1, name: "Home", item: "https://terminfo.dev/" }]
-      for (let i = 0; i < segments.length; i++) {
+      for (const [i, segment] of segments.entries()) {
         const path = segments.slice(0, i + 1).join("/")
-        const name = segments[i].replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        const name = segment.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
         breadcrumbItems.push({
           "@type": "ListItem",
           position: i + 2,
@@ -644,8 +644,8 @@ export default defineConfig({
         items: [
           { text: "All Terminals", link: "/terminals" },
           { text: "App Terminals", items: termAppTerminals },
-          { text: "Parser Backends", link: "/backends", items: termLibraries },
-          { text: "Multiplexers", link: "/multiplexers", items: termMultiplexers },
+          { text: "Parser Backends", link: "/backends" },
+          { text: "Multiplexers", link: "/multiplexers" },
           { text: "Historical", items: historicalTerminals.map(({ text, link }) => ({ text, link })) },
         ],
       },
