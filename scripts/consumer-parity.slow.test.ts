@@ -374,6 +374,13 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(Object.keys(site.selected.current),[]);
         assert.deepEqual(Object.keys(site.selected.versions),[]);
         assert.deepEqual(Object.keys(site.selected.history),[]);
+        // The row claims site, API and analysis consistency, so the empty case has to prove all
+        // three rather than the site alone: the API publishes no group either, and analysis
+        // publishes no current run.
+        assert.deepEqual(keys(v3.current),[]);
+        assert.deepEqual(keys(v3.versions),[]);
+        assert.deepEqual(keys(v3.history),[]);
+        assert.ok(Object.values(analyses).every(entry=>!entry.runSha256));
       }
       for (const [key,{selected}] of compatibility) {
         assert.deepEqual(matrix.stats[key].score,selected.score);

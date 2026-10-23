@@ -113,7 +113,7 @@ describe("consumer selection", () => {
       writeFileSync(
         join(root, "scripts", "zero-current.ts"),
         [
-          'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs"',
+          'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"',
           'import { join } from "node:path"',
           'import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"',
           'import { publicResults } from "../docs/data/public-results.ts"',
@@ -142,6 +142,32 @@ describe("consumer selection", () => {
           '    for (const file of readdirSync(from)) if (!excludedRunIds.has(file.replace(/\\.json$/, ""))) symlinkSync(join(from, file), join(to, file), "file")',
           '  } else symlinkSync(from, to, "dir")',
           "}",
+          '// #30764 left the live content with no runs at all. Plant one HISTORICAL run so the corpus',
+          '// is non-empty: this row exists to prove that a corpus holding a run, none of it current,',
+          '// still publishes no current results. An empty corpus here would make every assertion vacuous.',
+          'const plantedRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir))).length',
+          'if (plantedRuns === 0) {',
+          '  const manifests = readdirSync(join(content, "suites")).filter((file) => file.endsWith(".json")).map((file) => JSON.parse(readFileSync(join(content, "suites", file), "utf8")))',
+          '  const host = manifests.find((suite) => suite.probeHash !== currentSuite && (suite.probes?.app ?? []).includes("sgr.bold"))',
+          '  if (!host) throw new Error("no non-current suite manifest lists sgr.bold: cannot plant the historical run this row needs")',
+          '  writeFileSync(join(content, "probes-apps", "synthetic-historical.json"), JSON.stringify({',
+          '    schemaVersion: 2,',
+          '    runId: "synthetic-historical-run",',
+          '    target: { kind: "app", id: "kitty", version: "0.46.0", os: null, osVersion: null, outerTerminal: null, mux: null, config: null, permissions: null },',
+          '    identity: "verified",',
+          '    suiteId: host.probeHash,',
+          '    probeHash: host.probeHash,',
+          '    suiteComplete: false,',
+          '    sourceRevision: host.sourceRevision,',
+          '    measuredAt: "2026-10-05T00:00:00.000Z",',
+          '    origin: { kind: "collector" },',
+          '    rawReplies: {},',
+          '    assertions: [],',
+          '    screenshotRefs: [],',
+          '    observations: [{ featureId: "sgr.bold", outcome: "inconclusive", evidence: "query", reason: "timeout" }],',
+          '    notTested: [],',
+          '  }))',
+          '}',
           "// Precondition, re-read from the fixture itself: runs exist, and none of them is current.",
           'const fixtureRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))',
           'const currentFixtureRuns = fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8")))).length',
@@ -180,9 +206,10 @@ describe("consumer selection", () => {
         currentKeys: number
         message: string
       }
-      // #30764 deleted every legacy run, so the live content can carry none and the corpus is then
-      // empty. Either way no fixture run may count as current; the historical display that used to
-      // read the legacy rows is gone with #30759 AC3.
+      // The corpus is non-empty by construction (a historical run is planted when the live content
+      // carries none), so this row is not vacuous: a run exists, none of it is current, and nothing
+      // may be published as current from it.
+      expect(receipt.fixtureRuns).toBeGreaterThan(0)
       expect(receipt.currentFixtureRuns).toBe(0)
       expect(receipt.projectionCurrent).toBe(0)
       expect(receipt.publishedCurrent).toBe(0)
