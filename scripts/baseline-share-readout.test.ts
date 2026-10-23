@@ -7,7 +7,6 @@
  */
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 import { describe, expect, it } from "vitest"
-import { loadFullProbes } from "../docs/data/probes.data.ts"
 import { decisiveCells, NOT_MEASURED_TEXT, notMeasuredReadout } from "../docs/data/release-scope.ts"
 
 const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
@@ -40,26 +39,11 @@ describe("#30763 baseline row readout", () => {
     expect(notMeasuredReadout(oneSupported)).toBeUndefined()
   })
 
-  it("reads the real rows it was filed for, and no decided row lost its number", () => {
-    const site = loadFullProbes()
-    const row = (backend: string, baseline: string) => {
-      const stats = site.baselineStats[backend]?.[baseline]
-      if (!stats) throw new Error(`Missing ${backend} ${baseline} baseline stats`)
-      return notMeasuredReadout(stats.counts)
-    }
-    expect(site.baselineStats["windows-terminal"]).toBeDefined()
-    expect(row("windows-terminal", "rich")).toEqual({
-      text: NOT_MEASURED_TEXT,
-      title: "0 Supported · 0 Unsupported · 0 Untestable · 88 TEST TODO · 11 TEST FAILURE",
-    })
-    expect(row("windows-terminal", "core")).toEqual({
-      text: NOT_MEASURED_TEXT,
-      title: "0 Supported · 0 Unsupported · 0 Untestable · 77 TEST TODO · 3 TEST FAILURE",
-    })
-    // The honest zeros stay decided, so both pages keep their own text for them.
-    expect(row("vt220", "rich")).toBeUndefined()
-    expect(row("vt100", "rich")).toBeUndefined()
-    expect(row("vt100-rust", "rich")).toBeUndefined()
-    expect(row("app-alacritty", "rich")).toBeUndefined()
-  }, 30_000)
+  /**
+   * #30764 M4 removed the second case that read these numbers off the live round. That round leaves
+   * content/ on Friday, and a fixture round cannot reproduce it: with only the checked-in runs, two
+   * alacritty platforms become one ambiguous current target, which the live `default-contexts.json`
+   * rows resolve and a fixture may not invent. The row semantics stay proved above with the same
+   * literal counts, and Saturday's admission re-establishes the live numbers.
+   */
 })

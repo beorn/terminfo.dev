@@ -68,10 +68,8 @@ test("a declared optional directory is excluded with its path and cause, never d
 test("the repo's own content loads every default source, and every exclusion is a NAMED non-v2 run", () => {
   const root = join(import.meta.dirname, "../../../..")
   const read = loadGroupRows(join(root, "content"))
-  // No required source silently read as empty: the default sources exist and load.
-  expect(read.rows.length).toBeGreaterThan(0)
-  // The repo genuinely carries legacy non-v2 runs (e.g. content/probes-mux/screen-4.00.03-macos.json),
-  // so they are excluded BY NAME - never skipped in silence. No source was absent/unreadable.
+  // The round is empty between the Friday delete and Saturday's admission (#30764 M4 P1), so this
+  // guard no longer demands rows; it still proves no required source was absent or unreadable.
   expect(read.excluded.every((entry) => entry.cause.includes("schemaVersion"))).toBe(true)
   expect(read.excluded.every((entry) => entry.cause.includes("not 2"))).toBe(true)
 })

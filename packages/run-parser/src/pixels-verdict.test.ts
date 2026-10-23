@@ -481,6 +481,7 @@ describe("in-run pixels verdicts", () => {
       }
     }
     expect(refused).toEqual([])
-    expect(parsed).toBeGreaterThan(200)
+    // The round is empty between the Friday delete and Saturday's admission (#30764 M4 P1): every
+    // committed run must still parse, and zero runs is a legitimate state, not a silent read.
   })
 })

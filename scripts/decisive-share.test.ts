@@ -53,6 +53,7 @@ import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
 import { classifyCells, d3Verdict, tier1Included } from "../docs/data/release-scope.ts"
 import { loadCategories } from "../docs/data/categories.ts"
 import { loadFeatures } from "@terminfo/catalog"
+import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 
 const IDS = ["a.supported", "b.supported", "c.unsupported", "d.inconclusive", "e.error", "f.missing"]
 
@@ -118,7 +119,7 @@ function candidate(overrides: Partial<ContextCandidate> = {}): ContextCandidate 
 describe("release 1 decisive-count reader", () => {
   it("names required category, feature and frozen-suite failures instead of returning an empty report", () => {
     const contentDir = mkdtempSync(join(tmpdir(), "reader-required-content-"))
-    const real = join(import.meta.dirname, "..", "content")
+    const real = fixtureContentDir()
     const load = () => buildHistoricalReport({ contentDir, cohort: candidate2Cohort(contentDir) })
     try {
       // The cohort's suite is passed EXPLICITLY by its spec, so the registry is the first required
@@ -1315,7 +1316,7 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
     // refuse documents this reader never names, because the projection reads probes-libs and
     // probes-mux too. The empty line must be scoped or it asserts a universal admission that is false.
     const contentDir = mkdtempSync(join(tmpdir(), "reader-empty-refusals-"))
-    const real = join(import.meta.dirname, "..", "content")
+    const real = fixtureContentDir()
     try {
       for (const name of [
         "features.json",
@@ -1435,7 +1436,7 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
      * empty table the renderer can pass without reading a run.
      */
     function readerFixture(probeIds: readonly string[]): string {
-      const real = join(import.meta.dirname ?? process.cwd(), "..", "content")
+      const real = fixtureContentDir()
       const contentDir = mkdtempSync(join(tmpdir(), "reader-zero-coverage-"))
       const suites = join(contentDir, "suites")
       mkdirSync(suites)

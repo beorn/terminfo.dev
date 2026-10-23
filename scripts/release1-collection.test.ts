@@ -14,6 +14,7 @@
  */
 import { basename, dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
+import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 import { execFileSync, spawnSync } from "node:child_process"
 import * as childProcesses from "node:child_process"
 import { createHash } from "node:crypto"
@@ -136,6 +137,8 @@ const census = (engineBackends: readonly string[] = ENGINE_BACKENDS) => release1
 
 /** The committed corpus this repository ships, as the CLI reads it. */
 const CONTENT = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
+/** The checked-in round (#30764 M4): the runs, receipts and artifacts that content/ loses on Friday. */
+const ROUND = fixtureContentDir()
 
 /** The Termless manifest's engine names, as a fixture: the census takes them in, it never guesses. */
 const ENGINE_BACKENDS = [
@@ -214,7 +217,7 @@ it.each([
     const directory = mkdtempSync(join(tmpdir(), "terminfo-development-pass-"))
     const input = join(directory, "suite-input.ts")
     writeFileSync(input, "original private suite input")
-    const original = join(CONTENT, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json")
+    const original = join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json")
     const originalBytes = readFileSync(original, "utf8")
     const raw = JSON.parse(originalBytes) as { probeHash: string; sourceRevision: string }
     raw.sourceRevision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dirname(CONTENT), encoding: "utf8" }).trim()
@@ -767,7 +770,9 @@ describe("release 1 Linux launcher flags", () => {
         mkdirSync(join(fixture, dir))
       }
       // Artifact verification reads only digests cited by these runs, never enumerates this store.
-      for (const name of ["features.json", "artifacts"]) symlinkSync(join(CONTENT, name), join(fixture, name))
+      symlinkSync(join(CONTENT, "features.json"), join(fixture, "features.json"))
+      // Artifacts now live with the checked-in round (#30764 M4).
+      symlinkSync(join(ROUND, "artifacts"), join(fixture, "artifacts"))
       const path = join(CONTENT, "suites", "c3d1fbb77561.json")
       const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
       writeFileSync(
@@ -782,7 +787,7 @@ describe("release 1 Linux launcher flags", () => {
         "alacritty-0.17.0-linux-1040d1b4714d3d8edd5ec7ef7fbdcf70.json",
         "xterm-411-linux-72e684384d32131d0569dd81722a6eae.json",
       ]) {
-        const source = join(CONTENT, "probes-apps", file)
+        const source = join(ROUND, "probes-apps", file)
         const run = parseRun(
           source,
           readFileSync(source, "utf8"),
@@ -791,7 +796,7 @@ describe("release 1 Linux launcher flags", () => {
         )
         symlinkSync(source, join(fixture, "probes-apps", file))
         const receipt = `${run.runId}.json`
-        symlinkSync(join(CONTENT, "receipts", receipt), join(fixture, "receipts", receipt))
+        symlinkSync(join(ROUND, "receipts", receipt), join(fixture, "receipts", receipt))
       }
       // Raw runs, receipts and artifact bytes stay committed. Current optional policy refers to
       // newer contexts, so it belongs only to the real-corpus parity test, not these witnesses.
@@ -804,7 +809,7 @@ describe("release 1 Linux launcher flags", () => {
       for (const [id, row] of Object.entries(ledger)) {
         expect(row.version).not.toBe("")
         expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
-        expect(existsSync(join(CONTENT, row.file))).toBe(true)
+        expect(existsSync(join(ROUND, row.file))).toBe(true)
         expect(["default", "allow", "deny-read"]).toContain(row.clipboardProfile)
         expect(["default", "baseline", "current"]).toContain(row.preset)
         // A row outside the site's selection must name why it is; a selected row carries no exclusion.
@@ -1191,7 +1196,7 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     ].join("\n"),
   )
   shim("kitty", "#!/bin/sh\necho 'kitty 0.49.1'\n")
-  const producerRun = join(CONTENT, "probes-apps", "kitty-0.48.2-macos.json")
+  const producerRun = join(ROUND, "probes-apps", "kitty-0.48.2-macos.json")
   const producerBytes = readFileSync(producerRun)
   try {
     const command = ownedAppCommand(
@@ -1300,7 +1305,7 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
   async (fault) => {
     const directory = mkdtempSync(join(tmpdir(), "terminfo-pending-handoff-"))
     const specimen = JSON.parse(
-      readFileSync(join(CONTENT, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
+      readFileSync(join(ROUND, "probes-libs/xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"), "utf8"),
     )
     if (
       typeof specimen !== "object" ||

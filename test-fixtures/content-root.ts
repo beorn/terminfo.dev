@@ -8,7 +8,7 @@
  */
 import { cpSync, mkdirSync, mkdtempSync, readdirSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 
 const REPO = join(import.meta.dirname, "..")
 const FIXTURES = import.meta.dirname
@@ -18,9 +18,15 @@ const NOT_COPIED = new Set(["analysis.json", "interpretations.json", ...RUN_FOLD
 
 let cached: string | undefined
 
+/** A temporary repository root whose `content/` is the checked-in round plus the live catalogs. */
+export function fixtureRepoRoot(): string {
+  return dirname(fixtureContentDir())
+}
+
 export function fixtureContentDir(): string {
   if (cached) return cached
-  const dir = mkdtempSync(join(tmpdir(), "terminfo-fixture-content-"))
+  const dir = join(mkdtempSync(join(tmpdir(), "terminfo-fixture-")), "content")
+  mkdirSync(dir)
   for (const entry of readdirSync(join(REPO, "content"))) {
     if (NOT_COPIED.has(entry)) continue
     cpSync(join(REPO, "content", entry), join(dir, entry), { recursive: true })
@@ -30,6 +36,7 @@ export function fixtureContentDir(): string {
     cpSync(join(FIXTURES, folder), join(dir, folder), { recursive: true })
   }
   cpSync(join(FIXTURES, "receipts"), join(dir, "receipts"), { recursive: true })
+  cpSync(join(FIXTURES, "artifacts"), join(dir, "artifacts"), { recursive: true })
   cpSync(join(FIXTURES, "interpretations.json"), join(dir, "interpretations.json"))
   cached = dir
   return dir

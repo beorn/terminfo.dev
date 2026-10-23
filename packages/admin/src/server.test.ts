@@ -107,7 +107,7 @@ it("refuses an old registration without a token before sending any terminal comm
 it("retains historical HTTP bytes privately and refuses to treat them as the current collector contract", async () => {
   const root = join(import.meta.dirname, "../../..")
   fixtures.raw = readFileSync(
-    join(root, "content/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json"),
+    join(root, "test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json"),
     "utf8",
   )
   const run = JSON.parse(fixtures.raw) as { probeHash: string; sourceRevision: string }

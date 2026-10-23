@@ -91,7 +91,9 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
   const directory = temp("terminfo-admit-")
   const path = join(directory, "run.json")
   const content = join(import.meta.dirname, "..", "content")
-  const original = join(content, "probes-apps", "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json")
+  // The specimen is a checked-in copy (#30764 M4); suites and catalogs still come from content/.
+  const fixtures = join(import.meta.dirname, "..", "test-fixtures")
+  const original = join(fixtures, "probes-apps", "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json")
   const originalBytes = readFileSync(original, "utf8")
   const complete = parseJsonStrict(original, originalBytes)
   if (
@@ -112,14 +114,14 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
     Object.keys(catalog).filter((id) => !id.startsWith("$")),
     new Map([[manifest.probeHash, manifest]]),
   )
-  const hostBytes = readFileSync(join(content, "receipts", `${loaded.runId}.json`))
+  const hostBytes = readFileSync(join(fixtures, "receipts", `${loaded.runId}.json`))
   parseDisposableReceipt(hostBytes.toString("utf8"))
   const hostPath = join(directory, "host-measured.json")
   writeFileSync(hostPath, hostBytes)
   mkdirSync(join(directory, "artifacts"))
   for (const ref of loaded.screenshotRefs) {
     const filename = `${ref.slice("sha256:".length)}.png`
-    copyFileSync(join(content, "artifacts", filename), join(directory, "artifacts", filename))
+    copyFileSync(join(fixtures, "artifacts", filename), join(directory, "artifacts", filename))
   }
   // Only this test run's ID/suite are synthetic. Ownership and PNG bytes remain the committed
   // specimen's genuine retained evidence; this fixture makes no claim to have run the live suite.
@@ -341,7 +343,7 @@ test("planning refuses a missing cited ownership receipt before placement", () =
 test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce"])(
   "planning refuses dirty historical collection %s before placement",
   (runId) => {
-    const source = join(import.meta.dirname, "..", "content", "probes-apps", `kitty-0.49.2-linux-${runId}.json`)
+    const source = join(import.meta.dirname, "..", "test-fixtures", "probes-apps", `kitty-0.49.2-linux-${runId}.json`)
     const destination = join(temp("terminfo-dirty-plan-"), "run.json")
     expect(() => planAdmission(source, destination)).toThrow(/native-provenance-dirty/)
     expect(existsSync(destination)).toBe(false)
@@ -352,8 +354,9 @@ test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce
 // whole-run identity, and comparison is byte-exact; macOS parser cases cannot prove this decision.
 test("Windows admission requires its measured executable version to match exactly", () => {
   const content = join(import.meta.dirname, "..", "content")
+  const fixtures = join(import.meta.dirname, "..", "test-fixtures")
   const source = join(
-    content,
+    fixtures,
     "probes-apps",
     "windows-terminal-1.23.20211.0-windows-5ce6e5804f4f8eb592f0b83c1f68e166.json",
   )

@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { buildStamp, createBuildMetadata } from "./build-metadata.ts"
 import { CONTENT_DIR } from "../packages/admin/run-admission.ts"
 import { citedSuiteHashes } from "./suite-manifest.ts"
+import { fixtureRepoRoot } from "../test-fixtures/content-root.ts"
 
 let repo: string
 
@@ -39,9 +40,10 @@ describe("website build identity", () => {
   it("keeps admission and suite defaults rooted at the original component content directory", () => {
     const originalContentDir = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
     expect(CONTENT_DIR).toBe(originalContentDir)
-    const defaultCitations = citedSuiteHashes()
-    expect(defaultCitations.size).toBeGreaterThan(0)
-    expect(defaultCitations).toEqual(citedSuiteHashes(dirname(originalContentDir)))
+    // The round itself now lives in test-fixtures (#30764 M4); the default still resolves to the real
+    // content root, and the checked-in round is genuinely non-empty.
+    expect(citedSuiteHashes(fixtureRepoRoot()).size).toBeGreaterThan(0)
+    expect(citedSuiteHashes()).toEqual(citedSuiteHashes(dirname(originalContentDir)))
   })
 
   it("loads the actual VitePress configuration through its production config bundler", async () => {

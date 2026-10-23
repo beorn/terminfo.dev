@@ -50,7 +50,7 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
   vi.spyOn(console, "error").mockImplementation(() => {})
   const historical = JSON.parse(
     readFileSync(
-      new URL("../../../content/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json", import.meta.url),
+      new URL("../../../test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json", import.meta.url),
       "utf8",
     ),
   ) as HistoricalProbeRun

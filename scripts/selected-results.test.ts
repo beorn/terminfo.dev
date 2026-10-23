@@ -978,7 +978,8 @@ describe("selected results", () => {
     )
     const projection = projectResults([legacy, timeout], [reviewFor(timeout)], catalog, { currentProbeHash: "current" })
     expect(projection.history["app:kitty"]?.find((r) => r.runId === legacy.runId)?.counts.conclusive).toBe(0)
-    const retainedPath = join(import.meta.dirname, "../content/probes-apps/kitty-0.46.2-macos.json")
+    // Verbatim copy of the retained legacy run (#30764 M4): content/ loses it on Friday.
+    const retainedPath = join(import.meta.dirname, "../test-fixtures/probes-apps/kitty-0.46.2-macos.json")
     const retainedCatalog = Object.keys(loadFeatures(join(import.meta.dirname, "../content")))
     const retained = parseRun(retainedPath, readFileSync(retainedPath, "utf8"), retainedCatalog)
     const historical = projectResults([retained], [], retainedCatalog, { currentProbeHash: "current" })

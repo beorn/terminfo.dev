@@ -25,6 +25,9 @@ import { parseSuiteManifest } from "@terminfo/run-parser"
 import { probeSuiteSnapshot, type ProbeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { parseDisposableReceipt, readDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { getTrustedSuiteReceipt } from "../packages/terminfo.dev/src/serve.ts"
+
+/** Verbatim copy of a linux-xvfb-container receipt the round carried (#30764 M4 P1b). */
+const LINUX_RECEIPT_FIXTURE = "070448f8377ad6e3dfae0579235fb402.json"
 import {
   assertDeclareIsAuthoring,
   checkCitedSuiteManifests,
@@ -814,23 +817,26 @@ test("the source-tree collector derives the same manifest that the admission wri
   }
 })
 
-test("committed disposable receipts verify unchanged and new receipts without manifestSha256 verify", () => {
+test("committed disposable receipts verify unchanged", () => {
   const receiptsDir = join(REPO_ROOT, "content", "receipts")
   const receiptFiles = readdirSync(receiptsDir)
     .filter((file) => file.endsWith(".json"))
     .sort()
-  expect(receiptFiles.length).toBeGreaterThan(0)
-  let linuxReceiptPath: string | undefined
+  // The round is empty between the Friday delete and Saturday's admission (#30764 M4 P1): the guard
+  // still proves every committed receipt parses, and keeps a non-.json placeholder in the folder.
   for (const file of receiptFiles) {
     const path = join(receiptsDir, file)
-    const parsed = readDisposableReceipt(path)
-    if (parsed.kind === "linux-xvfb-container" && !linuxReceiptPath) linuxReceiptPath = path
+    expect(readDisposableReceipt(path).kind).toMatch(/^[a-z]/)
   }
-  expect(linuxReceiptPath).toBeDefined()
-  const existing = readDisposableReceipt(linuxReceiptPath!)
+})
+
+test("a receipt without manifestSha256 verifies", () => {
+  // Verbatim copy of the round's receipt (#30764 M4 P1b): content/receipts leaves on Friday.
+  const linuxReceiptPath = join(REPO_ROOT, "test-fixtures", "receipts", LINUX_RECEIPT_FIXTURE)
+  const existing = readDisposableReceipt(linuxReceiptPath)
   expect(existing.kind).toBe("linux-xvfb-container")
 
-  const raw = JSON.parse(readFileSync(linuxReceiptPath!, "utf8")) as {
+  const raw = JSON.parse(readFileSync(linuxReceiptPath, "utf8")) as {
     runnerArtifact: { build: Record<string, unknown> }
   }
   expect(raw.runnerArtifact.build.manifestSha256).toMatch(/^[0-9a-f]{64}$/)
