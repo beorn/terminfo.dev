@@ -172,7 +172,7 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
     .filter((row) => row.checks.some((check) => check.id === "review" && check.status === "test-todo"))
     .map((row) => row.featureId)
     .sort()
-  // #30547: xterm.js answers none of the colour reset/stack readbacks, so those eight wait on review too.
+  // #30699: the proven reply path makes these silent colour queries measured negatives.
   const colourReadback = [
     "extensions.osc104-reset-palette",
     "extensions.osc110-reset-fg",
@@ -183,9 +183,18 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
     "extensions.osc30001-color-stack-push",
     "extensions.osc30101-color-stack-pop",
   ]
+  for (const featureId of colourReadback) {
+    expect(
+      draft.results.find((row) => row.featureId === featureId),
+      featureId,
+    ).toMatchObject({
+      status: "unsupported",
+      reason: "negative by sentinel",
+      checks: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
+    })
+  }
   expect(pending).toEqual([
     "extensions.clipboard-paste",
-    ...colourReadback,
     "input.button-event-mouse",
     "input.kitty-click-events",
     "input.modify-other-keys",
@@ -217,11 +226,8 @@ it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote throug
       sources: [`collector.capture.${featureId}`],
       supersedes: [],
     })
-  // A colour decision names xterm.js's own missing observable (#30547), never the OS-input reason.
   const reason = (featureId: string) =>
-    colourReadback.includes(featureId)
-      ? `@xterm/headless keeps no colour state a reader can observe for ${featureId}, and the Termless backend exposes no colour getter`
-      : `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+    `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
   const reviewed = pending.slice(0, -1)
   const sealing = pending[pending.length - 1]!
   const reviewPaths = reviewed.map((featureId, index) => {
