@@ -306,7 +306,9 @@ describe("TTY transaction replies", () => {
   it("ends a sentinel read at the absolute deadline however often the terminal keeps writing", async () => {
     const listenersBefore = process.stdin.listenerCount("data")
     const started = Date.now()
+    let lastReplyAt = 0
     const ticks = setInterval(() => {
+      lastReplyAt = Date.now() - started
       reply("\x1b[?1;2c")
       if (Date.now() - started >= 320) clearInterval(ticks)
     }, 50)
@@ -317,8 +319,13 @@ describe("TTY transaction replies", () => {
     const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 300, 100)
     const elapsed = Date.now() - started
     clearInterval(ticks)
-    expect(outcome).toMatchObject({ match: null, reason: "sentinel", sentinel: { graceMs: 100 } })
-    expect(outcome.sentinel?.atMs).toBeLessThanOrEqual(400)
+    // The deadline cuts the final grace window short, so the read is not silent for the configured
+    // 100 ms and must carry no silence certificate (@cto 30625 partial-grace ruling, including the
+    // deadline-clamped grace timer: same eligibility rule, decided by the observed interval, not by
+    // which timer fired). The deadline/cleanup proof below is retained unchanged.
+    expect(outcome).toMatchObject({ match: null, reason: "sentinel" })
+    expect(outcome.sentinel).toBeUndefined()
+    expect(lastReplyAt).toBeLessThanOrEqual(400)
     expect(elapsed).toBeLessThan(300 + 100)
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
@@ -342,6 +349,15 @@ describe("TTY transaction replies", () => {
     const observedAfterSentinel = Date.now() - started - sentinelAt
     expect(sentinelAt).toBeGreaterThanOrEqual(240)
     expect(observedAfterSentinel).toBeLessThan(250)
+    // The existing shape for an incomplete, unmatched read (@cto 30625 partial-grace ruling): the DA1
+    // answer is kept as the reason and its bytes are retained, and NO silence certificate is emitted.
+    // Without the facts, device.ts's existing grader records inconclusive/no-response, never a negative
+    // (device-observations.test.ts "without the measured ordering a frame after DA1 stays unreadable").
+    expect(outcome.match).toBe(null)
+    expect(outcome.reason).toBe("sentinel")
+    expect(outcome.sentinel).toBeUndefined()
+    expect(outcome.raw).toBe("\x1b[?1;2c")
+    expect(outcome.rawBase64).toBe(Buffer.from("\x1b[?1;2c").toString("base64"))
     expect(sentinelNegativeResult(outcome.raw, outcome.sentinel, "cursor position response")).toBe(null)
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
