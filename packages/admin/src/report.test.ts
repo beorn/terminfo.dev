@@ -232,9 +232,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(plain).toContain("1/5 Supported / all (20%)")
     expect(plain).toContain("0/5 Supported / all (0%)")
     expect(plain).not.toContain("NaN")
-    expect(plain).toContain("Ungraded history:")
     expect(plain).toContain("Excluded runs:")
-    expect(plain.split("Ungraded history:")[0]).not.toContain("9.9.9")
+    expect(plain).not.toContain("9.9.9")
 
     const corruptPath = join(root, "content", "probes-libs", "corrupt.json")
     writeFileSync(corruptPath, "{")

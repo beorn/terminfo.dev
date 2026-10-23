@@ -8,7 +8,6 @@ import {
   type SelectedProjection,
   type SelectedVersion,
   type CurrentSelectedVersion,
-  type HistoricalProjection,
 } from "./selected-results.ts"
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 import type { CellState } from "./release-scope.ts"
@@ -28,10 +27,6 @@ export interface CurrentResult {
   contextKey: string
   selected: CurrentSelectedVersion
   policy?: DefaultContextReview
-}
-
-export interface HistoricalCurrentResult extends Omit<CurrentResult, "selected"> {
-  selected: SelectedVersion
 }
 
 export interface CurrentResults {
@@ -229,14 +224,6 @@ export function reviewedContextFor<Row extends { contextKey: string }>(
 
 /** Compatibility consumers select one reviewed context per kind:id, then derive stable v1/site keys. */
 export function compatibilityTargets(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
-  return compatibilityTargetsFor(projection, contentDir)
-}
-
-/** Explicit historical defaults preserve released v1/v2 keys without supplying current v3 results. */
-export function historicalCompatibilityTargets(
-  projection: HistoricalProjection,
-  contentDir: string,
-): Map<string, HistoricalCurrentResult> {
   return compatibilityTargetsFor(projection, contentDir)
 }
 

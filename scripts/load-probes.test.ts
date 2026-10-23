@@ -52,7 +52,6 @@ vi.mock("../docs/data/current-results.ts", () => ({
     },
   }),
   compatibilityTargets: () => new Map(),
-  historicalCompatibilityTargets: () => new Map(),
 }))
 
 test.each(["missing", "malformed", "non-object"] as const)(

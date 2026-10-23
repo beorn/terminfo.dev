@@ -40,8 +40,6 @@ import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { retainCaptureBinding } from "@terminfo/run-parser"
 import { textQualificationFixtures } from "@terminfo/probe-defs"
-import { countContexts, projectHistoricalResults } from "../docs/data/selected-results.ts"
-import { buildHistoricalReport as buildReport } from "./decisive-share.ts"
 import {
   admitProducedRuns,
   collectPass,
@@ -743,22 +741,15 @@ describe("release 1 Linux launcher flags", () => {
     expect(presetFor("xterm", "411")).toBe("default")
   })
 
-  it("reads the same kitty/linux run on the site bar and in the census, through one reviewed lookup", () => {
-    // One home per truth: the bar's per-context row and the census ledger both resolve the reviewed
-    // row through `reviewedContextFor`, so an os-qualified row (`app:kitty/linux`) cannot make the
-    // census re-measure a run the site refuses to select.
-    // Both halves read the checked-in round (#30764 M4): the live content/ has no run to select after Friday.
-    const bar = buildReport({ contentDir: ROUND }).barRows.find(
-      (row) => row.context.terminalId === "kitty" && row.context.os === "linux",
-    )
-    if (!bar?.measured) throw new Error("kitty/linux must be measured on the bar")
+  it("reads kitty/linux through the one reviewed lookup the site selection also uses", () => {
+    // #30759: the bar half of this join retired with the decisive-share tool, so the census keeps its
+    // own side. The reviewed row names a CONTEXT, so the run the ledger reads is the site-selected
+    // one rather than a re-measured choice, and a re-collection never needs this test edited.
+    // The run itself comes from the checked-in round (#30764 M4), like the rest of this file.
     const ledger = linuxLedger(ROUND)
-    // The reviewed row names a CONTEXT, not a run id: the newest admitted run inside that context is
-    // the one both consumers read, so a re-collection must never need this test edited. Agreement is
-    // the assertion; the frozen-suite row keeps both of them on the suite candidate 2 counts.
-    expect(ledger.kitty?.runId).toBe(bar.run.runId)
     expect(ledger.kitty?.selection).toBe("site-selected")
-    expect(bar.run.suiteId).toBe(frozenSuiteIdFor(ROUND, "candidate2"))
+    expect(ledger.kitty?.exclusion).toBeNull()
+    expect(frozenSuiteIdFor(ROUND, "candidate2")).toBeTruthy()
   }, 30_000)
 
   // The preceding parity test owns the complete corpus. Launcher readback needs only these five
@@ -1246,14 +1237,6 @@ it("runs the collector's ssh route through the driver and reads the run JSON it 
     const run = parseRun(runPath, raw, catalogIds, new Map([[probeHash, manifest]]))
     expect(run.target).toMatchObject({ kind: "app", id: "kitty", os: "macos" })
     expect(run.suiteComplete).toBe(true)
-    const history = projectHistoricalResults(
-      [run],
-      [],
-      catalogIds,
-      { currentProbeHash: probeHash },
-      countContexts([run]),
-    )
-    expect(Object.keys(history.table[run.runId]!).length).toBeGreaterThan(0)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

@@ -12,16 +12,10 @@ import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals, targetLabel, type FeatureCatalog } from "@terminfo/catalog"
-import { compatibilityTargets, historicalCompatibilityTargets, loadCurrentResults } from "./current-results.ts"
-import {
-  publicResults,
-  type PublicProjection,
-  type PublicCurrentResult,
-  type HistoricalPublicCurrentResult,
-} from "./public-results.ts"
+import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
+import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
-import type { CellState } from "./release-scope.ts"
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
@@ -29,7 +23,6 @@ import {
   isStaleRelation,
   runDecidedNothing,
   staleCaption,
-  tierLine,
   type CurrentAggregate,
   type ReleaseScope,
 } from "./release-scope.ts"
@@ -104,10 +97,8 @@ export interface ProbeData {
   generated: string
   selected: PublicProjection
   selectedByBackend: Record<string, PublicCurrentResult>
-  historicalByBackend: Record<string, HistoricalPublicCurrentResult>
   currentRunCount: number
-  historicalTable: Readonly<Record<string, Readonly<Record<string, CellState>>>>
-  releaseScope: ReleaseScope & { line: string }
+  releaseScope: ReleaseScope
   releaseBars: Record<string, CurrentAggregate>
   /** Backend name -> the bar's SUPPORTED share label, the front page's secondary readout beside the D3 verdict. */
   releaseShares: Record<string, string>
@@ -182,11 +173,11 @@ function loadBackendMeta(): Record<string, BackendMeta> {
 }
 
 /**
- * #30759 Slice A: the client payload is exactly what `load()` returns — the full projection and both
- * historical maps stay behind at build time. One alias names it for both the loader and the `data`
- * a page imports, so a field `load()` drops can never stay advertised in the client-side type.
+ * #30759: the client payload is exactly what `load()` returns — the full projection stays behind at
+ * build time. One alias names it for both the loader and the `data` a page imports, so a field
+ * `load()` drops can never stay advertised in the client-side type.
  */
-export type ClientProbeData = Omit<ProbeData, "selected" | "historicalByBackend" | "historicalTable">
+export type ClientProbeData = Omit<ProbeData, "selected">
 
 declare const data: ClientProbeData
 export { data }
@@ -194,11 +185,7 @@ export { data }
 export function loadFullProbes(): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(
-    projection,
-    compatibilityTargets(projection, contentDir),
-    historicalCompatibilityTargets(projection.historical, contentDir),
-  )
+  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
   const byTarget = new Map(Object.entries(published.selectedByBackend))
   const featureDescriptions = loadFeatureDescriptions()
   const features: FeatureResult[] = Object.entries(featureDescriptions)
@@ -263,10 +250,6 @@ export function loadFullProbes(): ProbeData {
       .sort()
       .at(-1) ?? ""
   const release = loadReleaseScope({ catalog: featureDescriptions, categories: categoryCatalog })
-  const releaseScope = {
-    ...release,
-    line: tierLine(release, generated ? { measuredAt: generated } : undefined),
-  }
   const releaseBars: Record<string, CurrentAggregate> = {}
   const releaseShares: Record<string, string> = {}
   const releaseStale: Record<string, string | null> = {}
@@ -304,10 +287,8 @@ export function loadFullProbes(): ProbeData {
     generated,
     selected: published.projection,
     selectedByBackend,
-    historicalByBackend: published.historicalByBackend,
     currentRunCount: published.projection.currentRunCount,
-    historicalTable: projection.historical.table,
-    releaseScope,
+    releaseScope: release,
     releaseBars,
     releaseShares,
     releaseStale,
@@ -323,18 +304,9 @@ export function loadFullProbes(): ProbeData {
 }
 
 export default {
-  /**
-   * #30759 Slice A (@cto 13cc5eef, ruling (b)): the historical run projection is not part of the
-   * client payload — it is ~5.6 MB of schema-2 runs that no route can select any more. It stays
-   * available to build-time readers through loadFullProbes().
-   */
+  /** #30759: the full projection stays behind at build time; the client payload omits it. */
   load(): ClientProbeData {
-    const {
-      selected: _selected,
-      historicalByBackend: _historical,
-      historicalTable: _table,
-      ...client
-    } = loadFullProbes()
+    const { selected: _selected, ...client } = loadFullProbes()
     return client
   },
 }

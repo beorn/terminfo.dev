@@ -60,11 +60,11 @@ export interface NamedUnavailable {
 }
 
 /**
- * The re-grade command for a group: its NAMED focused tests, then the decisive-share read. terminfo.dev
- * runs Vitest, so the runner is `bunx --bun vitest run <paths>` - never Bun-native `bun test`.
+ * The re-grade command for a group: its NAMED focused tests. terminfo.dev runs Vitest, so the runner
+ * is `bunx --bun vitest run <paths>` - never Bun-native `bun test`.
  */
 export function regradeCommand(spec: GroupContractSpec): string {
-  return `cd vendor/terminfo.dev && bunx --bun vitest run ${spec.tests.join(" ")} && bun run decisive-share`
+  return `cd vendor/terminfo.dev && bunx --bun vitest run ${spec.tests.join(" ")}`
 }
 
 /**

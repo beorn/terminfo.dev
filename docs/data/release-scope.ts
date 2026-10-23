@@ -3,22 +3,15 @@ import {
   type CapabilityResult,
   type CapabilityStatus,
 } from "../../packages/probe-defs/src/types.ts"
-import type {
-  PublicVersion,
-  HistoricalPublicVersion,
-  PublicCapabilityResult,
-  HistoricalPublicCell,
-} from "./public-results.ts"
+import type { PublicVersion, PublicCapabilityResult } from "./public-results.ts"
 
-/** Read the existing versioned public result without manufacturing a legacy observation. */
+/** Read a current (schema-3) published result without manufacturing any legacy observation. */
 export function publicResultFor(
-  version: PublicVersion | HistoricalPublicVersion | undefined,
+  version: PublicVersion | undefined,
   featureId: string,
-): PublicCapabilityResult | HistoricalPublicCell | undefined {
+): PublicCapabilityResult | undefined {
   if (!version) return undefined
-  return version.schemaVersion === 3
-    ? version.results.find((result) => result.featureId === featureId)
-    : version.cells[featureId]
+  return version.results.find((result) => result.featureId === featureId)
 }
 
 /** Release 1 measurement claim: 62 query/reply features of the 270-feature catalog. */
@@ -93,11 +86,6 @@ function utcDate(measuredAt: string): string {
   const value = new Date(measuredAt)
   if (Number.isNaN(value.getTime())) throw new Error(`invalid measuredAt ${measuredAt}`)
   return value.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" })
-}
-
-export function tierLine(scope: ReleaseScope, options?: { measuredAt?: string }): string {
-  const base = `${scope.measuredCount} of ${scope.catalogCount} features (tier ${scope.tier}), measured per terminal; next tiers in progress`
-  return options?.measuredAt ? `${base} · measured ${utcDate(options.measuredAt)}` : base
 }
 
 export function staleCaption(measuredAt: string): string {

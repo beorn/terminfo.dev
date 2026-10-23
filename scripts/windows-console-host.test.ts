@@ -178,14 +178,4 @@ describe("Windows console-host rule", () => {
       "supported",
     ])
   })
-  it("makes the same historical cells inconclusive, with the hold reason as their published note", () => {
-    const run = historical()
-    const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash })
-    const version = projection.historical.history["app:windows-terminal"]![0]!
-    const cell = (index: number) => version.cells[ids[index]!]!
-    expect([0, 1, 2, 3, 4].map((index) => cell(index).conclusive)).toEqual([false, true, false, false, false])
-    expect(cell(0).note).toBe(HOST_ANSWERED)
-    expect(cell(2).note).toBe(NO_REPLY)
-    expect(cell(1).consoleHostHold).toBeUndefined()
-  })
 })

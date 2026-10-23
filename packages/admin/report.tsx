@@ -123,18 +123,13 @@ export function CensusReport({
   const columns = Object.entries(projection.current)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([contextKey, run], index) => ({ label: `C${index + 1}`, contextKey, run }))
-  const ungraded = Object.entries(projection.historical.history).flatMap(([contextKey, runs]) =>
-    runs.filter((run) => Object.keys(run.ungradedDiagnostics.results).length > 0).map((run) => ({ contextKey, run })),
-  )
   return (
     <Box flexDirection="column">
       <Text bold color="$primary">
         terminfo report — {featureIds.length} catalog features
       </Text>
       <Text bold>Current selected contexts: {columns.length}</Text>
-      {columns.length === 0 && (
-        <Text color="$muted">No current schema-3 runs; historical results remain available.</Text>
-      )}
+      {columns.length === 0 && <Text color="$muted">No current schema-3 runs.</Text>}
       {columns.map((column) => (
         <CurrentSummary key={column.contextKey} column={column} />
       ))}
@@ -151,13 +146,6 @@ export function CensusReport({
           ]
         }),
       )}
-      <Text bold>Ungraded history: {ungraded.length}</Text>
-      {ungraded.map(({ contextKey, run }) => (
-        <Text key={`${contextKey}:${run.runId}`}>
-          {run.target.kind}:{run.target.id} {run.target.version} — run {run.runId}: {run.ungradedDiagnostics.label} (
-          {Object.keys(run.ungradedDiagnostics.results).length} diagnostics)
-        </Text>
-      ))}
       <Text bold>Excluded runs: {projection.exclusions.length}</Text>
       {projection.exclusions.map((excluded) => (
         <Text key={`${excluded.path}:${excluded.runId}`}>

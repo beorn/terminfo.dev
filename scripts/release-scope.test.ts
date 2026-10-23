@@ -19,11 +19,11 @@ import { cohortIds, frozenSuiteIdFor, loadFeatureCohort, loadReleaseScope } from
 import {
   aggregateCells,
   classifyCells,
+  d3Verdict,
   isStaleRelation,
   treeMovedPastRelease,
   staleCaption,
   tier1Included,
-  tierLine,
 } from "../docs/data/release-scope.ts"
 
 /**
@@ -218,7 +218,6 @@ describe("release 1 measurement scope", () => {
     expect(scope.unmeasured).toHaveLength(211)
     expect(scope.tier).toBe(1)
     expect(scope.method).toBe("query/reply")
-    expect(tierLine(scope)).toBe("62 of 273 features (tier 1), measured per terminal; next tiers in progress")
   })
 
   it("names every unmeasured catalog feature as not measured in this release", () => {
@@ -229,10 +228,7 @@ describe("release 1 measurement scope", () => {
     expect(scope.unmeasured.every((row) => row.name.length > 0)).toBe(true)
   })
 
-  it("dates the tier line and records a stale measurement as not re-measured since that date", () => {
-    expect(tierLine(scope, { measuredAt: "2026-10-04T17:46:58Z" })).toBe(
-      "62 of 273 features (tier 1), measured per terminal; next tiers in progress · measured October 4, 2026",
-    )
+  it("records a stale measurement as not re-measured since that date", () => {
     expect(staleCaption("2026-10-04T17:46:58Z")).toBe("not re-measured since October 4, 2026")
     expect(isStaleRelation("release")).toBe(false)
     expect(isStaleRelation("tree")).toBe(false)
@@ -262,6 +258,20 @@ describe("release 1 measurement scope", () => {
     expect(bar.denominator).toBe(62)
     expect(bar.counts.supported + bar.counts.unsupported).toBe(0)
     expect(bar.counts.untested).toBe(62)
+  })
+
+  it("labels the D3 verdict: pass from 90% decisive of the included cohort, with gaps from 70%, fail below", () => {
+    // Kept when the decisive-share tool was retired (#30759): the rail itself is a surviving
+    // release-scope contract, so its boundaries stay pinned even though no page prints it.
+    expect(d3Verdict(52, 52)).toMatchObject({ label: "pass", pct: 100, text: "pass · 52/52" })
+    expect(d3Verdict(47, 52)).toMatchObject({ label: "pass", pct: 90, text: "pass · 47/52" })
+    expect(d3Verdict(46, 52)).toMatchObject({ label: "with gaps", pct: 88, text: "with gaps · 46/52" })
+    expect(d3Verdict(37, 52)).toMatchObject({ label: "with gaps", pct: 71 })
+    expect(d3Verdict(36, 52)).toMatchObject({ label: "fail", pct: 69, text: "fail · 36/52" })
+    expect(d3Verdict(0, 52).label).toBe("fail")
+    // A verdict over zero included capabilities is not "fail" — it is not measured, and it refuses.
+    expect(() => d3Verdict(0, 0)).toThrow(/positive denominator/)
+    expect(() => d3Verdict(3, 2)).toThrow(/0 <= decisive <= denominator/)
   })
 
   it("wires current pages to the frozen-catalog execution aggregate and Supported/all formatter", () => {

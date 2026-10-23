@@ -16,17 +16,15 @@ const categories = p.categories ? JSON.parse(p.categories) : []
 const versions = p.versions ? JSON.parse(p.versions) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
 const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
-// #30759 Slice A (@cto f1504b5c R2): the page renders current runs only, so a historical run can
-// be neither selected nor defaulted to. The historical mapping stays as dead code for Slice B.
+// #30759: the page renders current schema-3 runs only, so every recorded run here is current.
 const recordedRuns = runs
 const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => recordedRuns.find(run => run.sha256 === runSha.value))
-const historicalRun = computed(() => selectedRun.value && selectedRun.value.schemaVersion !== 3)
 const measuredBar = computed(() => selectedRun.value?.schemaVersion === 3 ? aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds) : undefined)
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
-  return result && ('note' in result ? result.note : result.reason) || ''
+  return result?.reason || ''
 }
 const stale = computed(() => selectedRun.value ? isStaleRelation(selectedRun.value.suiteRelation) : false)
 const staleText = computed(() => selectedRun.value ? staleCaption(selectedRun.value.measuredAt) : '')
@@ -153,7 +151,6 @@ const breadcrumbParent = (() => {
 </p>
 
 <p v-if="!defaultRun && !isHistorical">No current schema-3 run. Historical results remain available below.</p>
-<p v-if="historicalRun">Historical evidence uses the five display states; unresolved observations require a rerun. It is not a current schema-3 result.</p>
 
 <div v-if="measuredBar" class="score-card">
   <h2 class="results-heading">Feature support</h2>

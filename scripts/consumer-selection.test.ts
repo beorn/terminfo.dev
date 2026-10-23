@@ -155,7 +155,6 @@ describe("consumer selection", () => {
           "  currentFixtureRuns,",
           "  projectionCurrent: Object.keys(projection.current).length,",
           "  publishedCurrent: Object.keys(published.projection.current).length,",
-          "  publishedHistory: Object.values(published.projection.historical.history).flat().length,",
           "  currentRunCount: current.currentRunCount,",
           "  currentKeys: Object.keys(current.current).length,",
           "  message: current.message,",
@@ -177,7 +176,6 @@ describe("consumer selection", () => {
         currentFixtureRuns: number
         projectionCurrent: number
         publishedCurrent: number
-        publishedHistory: number
         currentRunCount: number
         currentKeys: number
         message: string
@@ -186,7 +184,6 @@ describe("consumer selection", () => {
       expect(receipt.currentFixtureRuns).toBe(0)
       expect(receipt.projectionCurrent).toBe(0)
       expect(receipt.publishedCurrent).toBe(0)
-      expect(receipt.publishedHistory).toBeGreaterThan(0)
       expect(receipt.currentRunCount).toBe(0)
       expect(receipt.currentKeys).toBe(0)
       expect(receipt.message).toContain("No current")

@@ -27,12 +27,13 @@ import type {
   CurrentSelectedVersion,
   HistoricalProjection,
   SelectedCell,
+  SelectedProjection,
   SelectedVersion,
 } from "../docs/data/selected-results.ts"
 import { aggregateCurrentResults, classifyCells, type CellState } from "../docs/data/release-scope.ts"
 import * as selectedResults from "../docs/data/selected-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
-import type { HistoricalPublicVersion as PublicVersion } from "../docs/data/public-results.ts"
+import type { PublicVersion } from "../docs/data/public-results.ts"
 
 const fixture = vi.hoisted(() => {
   const runSha256 = "a".repeat(64)
@@ -287,21 +288,15 @@ vi.mock("../docs/data/current-results.ts", async () => {
     loadDefaultContextPolicy,
     reviewedContextFor,
     loadCurrentResults: () => ({ projection: build() }),
-    compatibilityTargets: () => {
-      const projection = build()
-      return new Map(
+    // The projection under test, never a fresh fixture: a test that seeds a run must see the
+    // resolver read exactly that run (the retired promotion enumerated historical.current).
+    compatibilityTargets: (projection: SelectedProjection) =>
+      new Map(
         Object.entries(projection.current).map(([key, selected]) => [
           selected.target.id,
           { contextKey: key, selected },
         ]),
-      )
-    },
-    historicalCompatibilityTargets: () =>
-      new Map([
-        ["kitty", { contextKey: "app:kitty", selected: fixture.selected }],
-        ["tmux", { contextKey: "mux:tmux", selected: fixture.mux }],
-        ["screen", { contextKey: "mux:screen", selected: fixture.screen }],
-      ]),
+      ),
   }
 })
 
@@ -739,17 +734,15 @@ describe("selected-run consumer parity", () => {
     }
   })
 
-  it("ships current cells without global selection history while routes retain versions", () => {
+  it("ships current cells without the build-time selection payload", () => {
     const site = probesLoader.load()
     expect(Object.hasOwn(site, "selected")).toBe(false)
-    expect(loadFullProbes().historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
-
-    const server = loadProbes()
-    expect(server.selected.historical.versions["mux:screen"]?.map((version) => version.target.version)).toEqual([
-      "5.0",
-      "4.9",
-    ])
-    expect(server.selected.historical.history["mux:screen"]?.[0]?.runId).toBe(fixture.screen.runId)
+    // #30759 R2: the site payload drops the projection, but the retained historical reader still
+    // holds the displayed run and its version order.
+    const historical = currentResults.loadCurrentResults("").projection.historical
+    expect(historical.current["mux:screen"]?.cells["sgr.bold"]?.outcome).toBe("inconclusive")
+    expect(historical.versions["mux:screen"]?.map((version) => version.target.version)).toEqual(["5.0", "4.9"])
+    expect(historical.history["mux:screen"]?.[0]?.runId).toBe(fixture.screen.runId)
   })
 
   it("keeps raw evidence and unchecked collector notes out of generated site and API summaries", () => {
@@ -772,9 +765,9 @@ describe("selected-run consumer parity", () => {
         }
       }
       expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
-      expect(loadFullProbes().historicalByBackend.kitty?.selected.cells["sgr.bold"]?.chain.runSha256).toBe(
-        fixture.runSha256,
-      )
+      // #30759 R2: the reader, not the site payload, still carries the run chain each cell came from.
+      const historical = currentResults.loadCurrentResults("").projection.historical
+      expect(historical.current["app:kitty"]?.cells["sgr.bold"]?.chain.runSha256).toBe(fixture.runSha256)
       // Current v3 must preserve exact sealed status while publication independently controls bytes.
       const projection = currentResults.loadCurrentResults("").projection
       const current = projection.current["app:kitty"]
@@ -988,7 +981,6 @@ describe("selected-run consumer parity", () => {
       const v3 = JSON.parse(readFileSync(join(out, "api", "v3", "data.json"), "utf8")) as {
         current: Record<string, { sha256: string }>
       }
-      expect(loadFullProbes().historicalByBackend.kitty?.selected.sha256).toBe(fixture.runSha256)
       expect(site.stats.kitty).toMatchObject({
         score: { all: 273, supported: 1 },
         counts: { supported: 1, unsupported: 1, "test-todo": 271 },
@@ -1092,7 +1084,6 @@ describe("selected-run consumer parity", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
-    expect(loadFullProbes().historicalByBackend.screen?.selected.cells["sgr.bold"]?.outcome).toBe("inconclusive")
     expect(site.stats.screen).toMatchObject({
       score: { all: 273, supported: 0 },
       counts: { "test-todo": 273 },
@@ -1258,9 +1249,6 @@ describe("selected-run consumer parity", () => {
       expect(unreviewed).toContain("Not supported by:")
       cell.note = "Reviewed Kitty sixel observation note"
       cell.chain.correctionId = "reviewed-sixel"
-      expect(loadFullProbes().historicalByBackend.kitty?.selected.cells["extensions.sixel"]?.note).toBe(
-        "Reviewed Kitty sixel observation note",
-      )
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
@@ -1366,18 +1354,26 @@ describe("selected-run consumer parity", () => {
   })
 })
 
-it("keeps a historical native parser on its own route without promoting it to current", () => {
+it("keeps a native parser on its own route without promoting it to current", () => {
+  // #30759 R2 (@cto revises a97bb778): the native run is a named historical input, so this test
+  // proves the route refuses to promote a run that really exists rather than one never seeded.
+  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
   const native = structuredClone(fixture.selected) as unknown as SelectedVersion
   native.target = { ...native.target, kind: "headless", id: "ghostty-native" }
   native.runId = "native-historical"
-  const projection = currentResults.loadCurrentResults("").projection
-  projection.historical.table = { ...projection.historical.table, [native.runId]: classifyCells(native.cells) }
+  native.sha256 = createHash("sha256").update("native-historical").digest("hex")
+  native.cells = {
+    ...native.cells,
+    "sgr.bold": { ...native.cells["sgr.bold"], note: "HISTORICAL_ONLY_MARKER" },
+  }
   // A fresh map: the mocked projection shares the fixture's version groups, so writing into them leaks to later tests.
-  projection.historical.versions = { ...projection.historical.versions, "headless:ghostty-native": [native] }
+  projection.historical = {
+    ...projection.historical,
+    current: { ...projection.historical.current, "headless:ghostty-native": native },
+    versions: { ...projection.historical.versions, "headless:ghostty-native": [native] },
+    table: { ...projection.historical.table, [native.runId]: classifyCells(native.cells) },
+  }
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-  const targets = vi
-    .spyOn(currentResults, "historicalCompatibilityTargets")
-    .mockReturnValue(new Map([["ghostty-native", { contextKey: "headless:ghostty-native", selected: native }]]))
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
   let probes: ReturnType<typeof vi.spyOn> | undefined
   let analysis: ReturnType<typeof vi.spyOn> | undefined
@@ -1387,19 +1383,24 @@ it("keeps a historical native parser on its own route without promoting it to cu
     analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generateAnalysis())
     const pages = terminalPaths.paths()
     const page = pages.find((entry) => entry.params.backendId === "ghostty-native")
+    // The input the route refuses is readable in the retained historical reader.
+    const historical = currentResults.loadCurrentResults("").projection.historical
+    expect(historical.current["headless:ghostty-native"]?.runId).toBe("native-historical")
+    expect(historical.versions["headless:ghostty-native"]?.[0]?.runId).toBe("native-historical")
+    expect(historical.versions["headless:ghostty-native"]?.[0]?.cells["sgr.bold"]?.note).toBe("HISTORICAL_ONLY_MARKER")
     expect(warning).toHaveBeenCalledWith("Warning: Terminal 'ghostty-native' has no sealed current schema-3 runs")
     for (const [message] of warning.mock.calls) {
       expect(message).toMatch(/^Warning: Terminal '.+' has no sealed current schema-3 runs$/)
     }
     expect(page?.params.id).toBe("headless-ghostty-native")
     expect(page?.params.total).toBe("")
+    // No page carries the historical run's cells.
+    expect(JSON.stringify(page?.params)).not.toContain("HISTORICAL_ONLY_MARKER")
     expect(data.selectedByBackend["ghostty-native"]).toBeUndefined()
-    expect(loadFullProbes().historicalByBackend["ghostty-native"]?.selected.sha256).toBe(fixture.runSha256)
     expect(pages.find((entry) => entry.params.backendId === "ghostty")?.params.id).toBe("ghostty")
   } finally {
     probes?.mockRestore()
     analysis?.mockRestore()
-    targets.mockRestore()
     selection.mockRestore()
     warning.mockRestore()
   }
@@ -1441,39 +1442,93 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
   }
 })
 
-it("does not name a historical-only target on the site", () => {
+it("does not name a target with no current run on the site", () => {
   // #30759 Slice A (@cto f1504b5c): the site renders the frozen suite only, so a target with no
-  // current run gets no row and no metadata. This replaces the 30608 test that named the core row.
-  const projection = currentResults.loadCurrentResults("").projection
-  const as = (contextKey: string, kind: SelectedVersion["target"]["kind"], id: string) => {
+  // current run gets no row and no run data. #30759 R2 (@cto revises a97bb778): the exclusion is
+  // proved on a NAMED historical input — an empty target map proves only that empty yields empty.
+  const projection = structuredClone(currentResults.loadCurrentResults("").projection)
+  const current = { ...projection.historical.current }
+  const versions = { ...projection.historical.versions }
+  const table = { ...projection.historical.table }
+  const historical: Array<{ contextKey: string; kind: SelectedVersion["target"]["kind"]; id: string }> = [
+    { contextKey: "app:ghostty", kind: "app", id: "ghostty" },
+    { contextKey: "headless:ghostty", kind: "headless", id: "ghostty" },
+    { contextKey: "headless:ghostty-native", kind: "headless", id: "ghostty-native" },
+  ]
+  for (const { contextKey, kind, id } of historical) {
     const selected = structuredClone(fixture.selected) as unknown as SelectedVersion
     selected.target = { ...selected.target, kind, id }
-    // Run documents are keyed by run id and sha, so each target needs its own run, sha and status row.
-    selected.runId = `${selected.runId}-${contextKey}`
+    selected.runId = `historical-${contextKey}`
     selected.sha256 = createHash("sha256").update(contextKey).digest("hex")
-    projection.historical.table = { ...projection.historical.table, [selected.runId]: classifyCells(selected.cells) }
-    return { contextKey, selected }
+    selected.cells = {
+      ...selected.cells,
+      "sgr.bold": { ...selected.cells["sgr.bold"], note: "HISTORICAL_ONLY_MARKER" },
+    }
+    versions[contextKey] = [selected]
+    table[selected.runId] = classifyCells(selected.cells)
+    current[contextKey] = selected
   }
-  const historical = new Map([
-    ["ghostty", as("app:ghostty", "app", "ghostty")],
-    ["headless-ghostty", as("headless:ghostty", "headless", "ghostty")],
-    ["ghostty-native", as("headless:ghostty-native", "headless", "ghostty-native")],
-  ])
+  // `historical.current` is the field the retired promotion enumerated, so every named input is
+  // seeded there as well: the exclusion below is proved against a real selection input.
+  projection.historical = { ...projection.historical, current, versions, table }
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-  const targets = vi.spyOn(currentResults, "historicalCompatibilityTargets").mockReturnValue(historical)
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {})
+  let probes: ReturnType<typeof vi.spyOn> | undefined
+  let analysis: ReturnType<typeof vi.spyOn> | undefined
   try {
-    // Metadata is a catalog lookup and may still exist; what must not exist is a row or a page.
-    const { backends, selectedByBackend } = loadFullProbes()
-    expect(selectedByBackend["headless-ghostty"]).toBeUndefined()
+    const data = loadFullProbes()
+    const { backends, selectedByBackend } = data
+    probes = vi.spyOn(probeData, "loadProbes").mockReturnValue(data)
+    analysis = vi.spyOn(probeData, "loadAnalysis").mockReturnValue(generateAnalysis())
+    // Every named input is readable in the retained historical reader.
+    const reader = currentResults.loadCurrentResults("").projection.historical
+    for (const { contextKey } of historical) {
+      expect(reader.current[contextKey]?.cells["sgr.bold"]?.note).toBe("HISTORICAL_ONLY_MARKER")
+      expect(reader.versions[contextKey]?.[0]?.cells["sgr.bold"]?.note).toBe("HISTORICAL_ONLY_MARKER")
+    }
+    // No row and no target: the site's row set is resolved from current runs only.
+    for (const id of ["ghostty", "headless-ghostty", "ghostty-native"]) {
+      expect(selectedByBackend[id]).toBeUndefined()
+      expect(data.results[id]).toBeUndefined()
+      expect(data.stats[id]).toBeUndefined()
+    }
     const rows = backends.map((backend) => backend.name)
     expect(rows).not.toContain("ghostty")
     expect(rows).not.toContain("headless-ghostty")
     expect(rows).not.toContain("ghostty-native")
+    // No page is manufactured from the historical input: no page carries its cells, and the pages
+    // that do name these targets are the catalog's metadata-only pages.
+    const pages = terminalPaths.paths()
+    for (const page of pages) expect(JSON.stringify(page.params)).not.toContain("HISTORICAL_ONLY_MARKER")
+    for (const [backendId, slug] of [
+      ["ghostty", "ghostty"],
+      ["ghostty-native", "headless-ghostty-native"],
+    ]) {
+      const page = pages.find((entry) => entry.params.backendId === backendId)
+      expect(page?.params.id).toBe(slug)
+      expect(page?.params.total).toBe("")
+      expect(page?.params.runSha256).toBeUndefined()
+    }
+    // Non-vacuity control: when the same named target IS current, the site does name it. Without
+    // this, "absent" could mean the fixture never reaches the resolver at all.
+    const sealed = Object.values(projection.current)[0]
+    if (!sealed) throw new Error("the fixture projection has no sealed current run")
+    const promoted = structuredClone(projection)
+    const controlRun = structuredClone(sealed)
+    controlRun.target = { ...controlRun.target, kind: "headless", id: "ghostty-native" }
+    controlRun.runId = "control-ghostty-native"
+    controlRun.sha256 = createHash("sha256").update("control-ghostty-native").digest("hex")
+    promoted.current = { ...promoted.current, "headless:ghostty-native": controlRun }
+    promoted.table = { ...promoted.table, [controlRun.runId]: promoted.table[sealed.runId] ?? {} }
+    selection.mockReturnValue({ projection: promoted })
+    const controlData = loadFullProbes()
+    expect(controlData.selectedByBackend["ghostty-native"]).toBeDefined()
+    expect(controlData.backends.map((backend) => backend.name)).toContain("ghostty-native")
   } finally {
-    warning.mockRestore()
-    targets.mockRestore()
+    probes?.mockRestore()
+    analysis?.mockRestore()
     selection.mockRestore()
+    warning.mockRestore()
   }
 })
 

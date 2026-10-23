@@ -18,7 +18,7 @@ import {
   readVerifiedArtifact,
 } from "../docs/data/selected-results.ts"
 import { assessRunAdmission, planAdmission } from "./admit-run.ts"
-import { publicHistoricalResults as publicResults, readCellEvidence } from "../docs/data/public-results.ts"
+import { readCellEvidence } from "../docs/data/public-results.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import { aggregateCells, classifyCell, isStaleRelation } from "../docs/data/release-scope.ts"
 import {
@@ -994,14 +994,7 @@ describe("selected results", () => {
       record: { assertions: [] },
     })
     expect(historicalCell?.record.rawReply).toBeUndefined()
-    expect(publicResults(historical, new Map()).projection.history["app:kitty"]?.[0]?.cells["sgr.bold"]?.note).toBe(
-      "Historical result lacks retained attempt evidence; rerun required (TEST TODO).",
-    )
     if (!historicalCell) throw new Error("Missing retained legacy fixture")
-    historicalCell.note = "Private historical annotation"
-    expect(
-      publicResults(historical, new Map()).projection.history["app:kitty"]?.[0]?.cells["sgr.bold"]?.note,
-    ).toBeUndefined()
     expect(retained.observations.find((cell) => cell.featureId === "sgr.bold")?.note).toBeUndefined()
     expect(projection.table[timeout.runId]?.["extensions.query"]).toBe("error")
 
@@ -1118,22 +1111,6 @@ describe("selected results", () => {
       xtversion,
     })
     if (!selected) throw new Error("expected admitted kitty run")
-    const published = publicResults(
-      {
-        current: { "app:kitty": selected },
-        table: {
-          "app:kitty": Object.fromEntries(Object.entries(selected.cells).map(([id, cell]) => [id, classifyCell(cell)])),
-        },
-        versions: {},
-        history: {},
-        exclusions: [],
-        releaseSuiteId: null,
-        treeSuiteId: "current",
-        treeMovedPastRelease: false,
-      },
-      new Map(),
-    ).projection.current["app:kitty"]
-    expect(published?.identityAdmission).toEqual(selected.identityAdmission)
   })
 
   it("admits a schema-v2 wezterm run from its measured DA1 and XTVERSION, and refuses either half alone", () => {
@@ -1838,7 +1815,7 @@ describe("selected results", () => {
     ).toThrow(/target.*capturedAt/)
   })
 
-  it("presents a text-snapshot frame with its text kind and original TXT URL", () => {
+  it("keeps a text-snapshot frame's kind and digest without a synthetic image URL", () => {
     const content = temporaryContent()
     const snapshot = Buffer.from("ab \ncd \n", "utf8")
     const digest = createHash("sha256").update(snapshot).digest("hex")
@@ -1888,119 +1865,57 @@ describe("selected results", () => {
       { kind: "text-cells", url: undefined, sha256: digest },
     ])
     expect(cell?.conclusive).toBe(false)
-    // The presentation owner maps retained text to TXT while preserving its distinct kind.
-    const present = {
-      id: "present-text",
-      runId: measured.runId,
-      runSha256: measured.sha256,
-      reviewer: "reviewer",
-      reason: "show the reviewed text snapshot",
-      scope: reviewFor(measured).scope,
-      sources: ["capture://text-cells"],
-      supersedes: [] as string[],
-      featureId: "extensions.graphics",
-      presentsEvidence: true,
-    }
-    const presented = projectResults([measured], [present], catalog, { currentProbeHash: "current" })
-    const published = publicResults(presented, new Map())
-    const publicCell = published.projection.history["app:kitty"]?.[0]?.cells["extensions.graphics"]
-    const expectedFrames = frames.map((frame) => ({
-      role: frame.role,
-      label: frame.label,
-      capturedAt: frame.capturedAt,
-      kind: "text-cells",
-      url: `/artifacts/${digest}.txt`,
-      sha256: digest,
-    }))
-    expect(publicCell?.record?.frames).toEqual(expectedFrames)
-    expect(publicCell?.record).not.toHaveProperty("screenshot")
-    expect(publicCell?.presentation.state).toBe("presented")
-    if (publicCell?.presentation.state !== "presented") throw new Error("Missing presented text evidence")
-    const evidenceUrl = publicCell.presentation.url.split("#")[0]!
-    expect(evidenceUrl).toContain(measured.sha256)
-    expect(published.documents.get(evidenceUrl)?.document).toMatchObject({
-      cells: {
-        "extensions.graphics": {
-          record: { frames: expectedFrames },
-        },
+  })
+
+  // The historical evidence reader stays until AC3 removes it with its projection. Its document is a
+  // literal fixture here because the schema-2 producer left with the display projection.
+  it("refuses an evidence document that does not match the result it is read for", () => {
+    const runSha256 = "0f".repeat(32)
+    const cells: Record<string, Record<string, unknown>> = {
+      "extensions.graphics": {
+        featureId: "extensions.graphics",
+        observation: { featureId: "extensions.graphics", outcome: "unsupported", evidence: "behavior" },
+        record: { assertions: [] },
+        review: { id: "present-graphics-in-same-run" },
       },
-    })
-    const multiRun = parseRun("multi-cell.json", JSON.stringify(run("multi-cell")), catalog)
-    const presentGraphics = {
-      ...present,
-      id: "present-graphics-in-same-run",
-      runId: multiRun.runId,
-      runSha256: multiRun.sha256,
-      scope: reviewFor(multiRun).scope,
-      featureId: "extensions.graphics",
     }
-    const presentQuery = {
-      ...presentGraphics,
-      id: "present-query-in-same-run",
-      featureId: "extensions.query",
-    }
-    const multiPresented = projectResults([multiRun], [reviewFor(multiRun), presentGraphics, presentQuery], catalog, {
-      currentProbeHash: "current",
-    })
-    const multiPublished = publicResults(multiPresented, new Map())
-    expect(multiPublished.documents.size).toBe(1)
-    const multiDocUrl = [...multiPublished.documents.keys()][0]!
-    expect(multiDocUrl).toContain(multiRun.sha256)
-    const runDoc = multiPublished.documents.get(multiDocUrl)!
-    const expectedSha = createHash("sha256").update(runDoc.bytes).digest("hex")
-    const versionCells = multiPublished.projection.current["app:kitty"]?.cells
-    expect(versionCells?.["extensions.graphics"]?.presentation).toMatchObject({
-      state: "presented",
-      url: `${multiDocUrl}#extensions.graphics`,
-      sha256: expectedSha,
-    })
-    expect(versionCells?.["extensions.query"]?.presentation).toMatchObject({
-      state: "presented",
-      url: `${multiDocUrl}#extensions.query`,
-      sha256: expectedSha,
-    })
-    const parsedRunDoc = JSON.parse(runDoc.bytes) as {
-      version: number
-      runId: string
-      runSha256: string
-      cells: Record<string, Record<string, unknown>>
-    }
-    const baseExpectation = {
-      schemaVersion: multiRun.schemaVersion,
-      runId: multiRun.runId,
-      runSha256: multiRun.sha256,
+    const document = { version: 2, runId: "multi-cell", runSha256, cells }
+    const expectation = {
+      schemaVersion: 2 as const,
+      runId: "multi-cell",
+      runSha256,
       featureId: "extensions.graphics",
       reviewId: "present-graphics-in-same-run",
     }
-    expect(readCellEvidence(parsedRunDoc, baseExpectation)).toMatchObject({
+    expect(readCellEvidence(document, expectation)).toMatchObject({
       version: 2,
-      runId: multiRun.runId,
-      runSha256: multiRun.sha256,
+      runId: "multi-cell",
+      runSha256,
       featureId: "extensions.graphics",
       review: { id: "present-graphics-in-same-run" },
     })
-    expect(() => readCellEvidence(parsedRunDoc, { ...baseExpectation, featureId: "cursor.position" })).toThrow(
+    expect(() => readCellEvidence(document, { ...expectation, featureId: "cursor.position" })).toThrow(
       "no evidence stored for this cell",
     )
-    expect(() => readCellEvidence(parsedRunDoc, { ...baseExpectation, runSha256: "0".repeat(64) })).toThrow(
+    expect(() => readCellEvidence(document, { ...expectation, runSha256: "1".repeat(64) })).toThrow(
       "Evidence document identity or structure does not match this result",
     )
     expect(() =>
       readCellEvidence(
         {
-          ...parsedRunDoc,
+          ...document,
           cells: {
-            ...parsedRunDoc.cells,
-            "extensions.graphics": { ...parsedRunDoc.cells["extensions.graphics"], featureId: "extensions.query" },
+            ...cells,
+            "extensions.graphics": { ...cells["extensions.graphics"], featureId: "extensions.query" },
           },
         },
-        baseExpectation,
+        expectation,
       ),
     ).toThrow("Evidence document identity or structure does not match this result")
-    expect(() => readCellEvidence(parsedRunDoc, { ...baseExpectation, reviewId: "wrong-review" })).toThrow(
+    expect(() => readCellEvidence(document, { ...expectation, reviewId: "wrong-review" })).toThrow(
       "Evidence document identity or structure does not match this result",
     )
-    expect(() => readCellEvidence({ ...parsedRunDoc, version: 1 }, baseExpectation)).toThrow(
+    expect(() => readCellEvidence({ ...document, version: 1 }, expectation)).toThrow(
       "Evidence document identity or structure does not match this result",
     )
   })
@@ -2244,82 +2159,6 @@ describe("selected results", () => {
     expect(cell?.conclusive).toBe(false)
     expect(cell).not.toHaveProperty("textQualificationReason")
     expect(projection.history["app:kitty"]?.[0]).not.toHaveProperty("textQualification")
-  })
-
-  // 30055 AC4: the public cell carries the host the observation recorded, and a pixels row carries
-  // none — the site reads one structured field, never a caption parsed out of a raw reply.
-  it("carries the console host onto the public text cell, and a pixels cell has none", () => {
-    const content = temporaryContent()
-    const snapshot = Buffer.from("ab \ncd \n", "utf8")
-    const snapshotDigest = createHash("sha256").update(snapshot).digest("hex")
-    const snapshotRef = `sha256:${snapshotDigest}`
-    writeFileSync(join(content, "artifacts", `${snapshotDigest}.txt`), snapshot)
-    const textFrame = (role: "control" | "target", at: number) => ({
-      kind: "text-cells" as const,
-      role,
-      ref: snapshotRef,
-      capturedAt: at,
-      label: `${role} text`,
-      cellDigest: snapshotRef,
-      frameDigest: snapshotRef,
-      cellRectangle: { top: 1, left: 1, bottom: 2, right: 3 },
-    })
-    const frames: [ObservationFrame, ObservationFrame] = [textFrame("control", 1), textFrame("target", 2)]
-    const host = {
-      image: "OpenConsole.exe",
-      executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
-      executableSha256: `sha256:${"c".repeat(64)}`,
-    }
-    const textRun = run("windows-text-host", {
-      probeHash: "pixels",
-      assertions: [],
-      screenshotRefs: [],
-      textSnapshotRefs: [snapshotRef],
-      observations: [
-        {
-          featureId: "extensions.graphics",
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "text",
-          frames,
-          host,
-        },
-      ],
-    })
-    const measuredText = parseRun("windows-text-host.json", JSON.stringify(textRun), catalog)
-    const textProjection = projectResults([measuredText], [], catalog, { currentProbeHash: "current" })
-    const textCell = publicResults(textProjection, new Map()).projection.history["app:kitty"]?.[0]?.cells[
-      "extensions.graphics"
-    ]
-    expect(textCell?.host).toEqual(host)
-
-    const controlRef = `sha256:${createHash("sha256").update("control-png").digest("hex")}`
-    const targetRef = `sha256:${createHash("sha256").update("target-png").digest("hex")}`
-    const pixelsRun = run("windows-pixels", {
-      probeHash: "pixels",
-      assertions: [],
-      screenshotRefs: [controlRef, targetRef],
-      observations: [
-        {
-          featureId: "extensions.graphics",
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "pixels",
-          screenshotRef: targetRef,
-          frames: [
-            { role: "control", ref: controlRef, capturedAt: 1, label: "before" },
-            { role: "target", ref: targetRef, capturedAt: 2, label: "after" },
-          ],
-        },
-      ],
-    })
-    const measuredPixels = parseRun("windows-pixels.json", JSON.stringify(pixelsRun), catalog)
-    const pixelsProjection = projectResults([measuredPixels], [], catalog, { currentProbeHash: "current" })
-    const pixelsCell = publicResults(pixelsProjection, new Map()).projection.history["app:kitty"]?.[0]?.cells[
-      "extensions.graphics"
-    ]
-    expect(pixelsCell).toBeDefined()
-    expect(pixelsCell?.host).toBeUndefined()
   })
 
   it("binds a text interpretation to the run's own frames, and keeps it non-conclusive", () => {
@@ -3622,311 +3461,5 @@ describe("pre-seal capture decisions", () => {
     expect(() =>
       parseInterpretations("capture-review.json", JSON.stringify([{ ...decision, ...change }]), catalog),
     ).toThrow(/capture|pre-seal/)
-  })
-})
-
-// 30565: a displayed run publishes its unreviewed cells through one lazy trace document (rulings 3f4b1d98,
-// 2239262c). The document is public, so its exact shape is the privacy contract.
-describe("run traces", () => {
-  // A stored live exchange: the written bytes and one query, with the read window the trace must drop.
-  const exchange = (match: string[] | null, extra: Record<string, unknown> = {}) => {
-    const query = { sequence: "\u001b[c", match, reason: "reply", raw: "READ_WINDOW", rawBase64: "UkVBRF9XSU5ET1c=" }
-    return JSON.stringify({
-      writes: ["\u001b[0m"],
-      queries: [query],
-      events: [
-        { kind: "write", sequence: "\u001b[0m" },
-        { kind: "query", ...query, sentinel: { atMs: 1, graceMs: 250 } },
-      ],
-      ...extra,
-    })
-  }
-  const decision = (measured: ReturnType<typeof parseRun>, featureId: string, presentsEvidence: boolean) => ({
-    id: `${presentsEvidence ? "present" : "withdraw"}-${featureId}`,
-    runId: measured.runId,
-    runSha256: measured.sha256,
-    reviewer: "reviewer",
-    reason: "exact-run presentation decision",
-    scope: reviewFor(measured).scope,
-    sources: ["https://example.org/review"],
-    supersedes: [] as string[],
-    featureId,
-    presentsEvidence,
-  })
-  /** A selected kitty run whose stored records carry every field a trace must keep or drop. */
-  const traced = (decisions: (measured: ReturnType<typeof parseRun>) => unknown[] = () => []) => {
-    const measured = parseRun(
-      "trace.json",
-      JSON.stringify(
-        run("trace-run", {
-          rawReplies: {
-            ...identityReplies,
-            "extensions.query": exchange(["UNLISTED_MATCH"], { captures: [{ text: "SCREEN_CAPTURE" }] }),
-            "extensions.graphics": "UNLISTED_PLAIN_REPLY",
-            "cursor.position": "",
-          },
-          assertions: [
-            {
-              featureId: "extensions.query",
-              kind: "positive",
-              rawReplyRef: "extensions.query",
-              expected: "a DA1 reply",
-              observed: "UNLISTED_OBSERVED",
-              action: "ASSERTION_ACTION",
-              note: "ASSERTION_NOTE",
-            },
-            {
-              featureId: "extensions.graphics",
-              kind: "negative",
-              rawReplyRef: "extensions.graphics",
-              expected: "ACK",
-              observed: "NO",
-            },
-          ],
-          observations: [
-            { ...observation("extensions.query", "supported", "query"), note: "OBSERVATION_NOTE" },
-            observation("extensions.graphics", "unsupported", "behavior"),
-          ],
-        }),
-      ),
-      catalog,
-    )
-    const projection = projectResults([measured], decisions(measured) as never[], catalog, {
-      currentProbeHash: "current",
-    })
-    const version = projection.current["app:kitty"]
-    if (!version) throw new Error("expected the traced run to be selected")
-    version.ungradedDiagnostics.results["cursor.position"] = {
-      kind: "legacy-callback",
-      pass: false,
-      note: "DIAGNOSTIC_NOTE",
-    }
-    // A census-listed feature with the same stored shape: its reply is a closed-grammar DA1 report. It
-    // also carries the media and note a real cell can hold.
-    const digest = "3c".repeat(32)
-    const { presentation: _template, ...template } = version.cells["extensions.query"]!
-    version.cells["device.primary-da"] = {
-      ...template,
-      featureId: "device.primary-da",
-      note: "CELL_NOTE",
-      screenshotRef: `sha256:${digest}`,
-      record: {
-        rawReply: exchange(["\u001b[?62;52c", "62;52"]),
-        assertions: [
-          { featureId: "device.primary-da", kind: "positive", expected: "a DA1 reply", observed: "\u001b[?62;52c" },
-        ],
-        screenshot: { url: `/artifacts/${digest}.png`, sha256: digest },
-        frames: [
-          {
-            role: "target",
-            label: "FRAME_LABEL",
-            capturedAt: 2,
-            kind: "pixels",
-            url: `/artifacts/${digest}.png`,
-            sha256: digest,
-          },
-        ],
-      },
-    }
-    const targets = new Map([["kitty", { contextKey: "app:kitty", selected: version }]])
-    return { measured, projection, version, targets }
-  }
-  const traceOf = (published: ReturnType<typeof publicResults>) => {
-    const receipt = published.selectedByBackend.kitty?.selected.trace
-    if (!receipt) throw new Error("expected a trace receipt on the displayed run")
-    const stored = published.documents.get(receipt.url)
-    if (!stored) throw new Error(`expected the trace document ${receipt.url}`)
-    const { cells } = JSON.parse(stored.bytes) as { cells: Record<string, unknown> }
-    return { receipt, bytes: stored.bytes, cells }
-  }
-
-  it("gives a displayed run one receipt whose document holds exactly the allowlisted fields (AC1)", () => {
-    const { measured, projection, version, targets } = traced()
-    const published = publicResults(projection, targets)
-    const { receipt, bytes } = traceOf(published)
-    expect(receipt.url).toContain(measured.sha256)
-    expect(createHash("sha256").update(bytes).digest("hex")).toBe(receipt.sha256)
-    // The receipt lives once, on the run: every mapping of the run carries it, and no cell does.
-    expect(published.projection.current["app:kitty"]?.trace).toEqual(receipt)
-    for (const cell of Object.values(published.selectedByBackend.kitty?.selected.cells ?? {})) {
-      expect(cell).not.toHaveProperty("trace")
-    }
-    expect(version.identityAdmission).toBeDefined()
-    expect(JSON.parse(bytes)).toEqual({
-      version: 1,
-      runId: "trace-run",
-      runSha256: measured.sha256,
-      measuredAt: "2026-09-28T12:00:00.000Z",
-      sourceRevision: "2".repeat(40),
-      identity: { recorded: "verified", admission: version.identityAdmission },
-      cells: {
-        "device.primary-da": {
-          outcome: "supported",
-          evidence: "query",
-          events: [
-            { kind: "write", sequence: "\u001b[0m" },
-            { kind: "query", sequence: "\u001b[c", reason: "reply", match: ["\u001b[?62;52c", "62;52"] },
-          ],
-          assertions: [{ kind: "positive", expected: "a DA1 reply", observed: "\u001b[?62;52c" }],
-        },
-        "extensions.query": {
-          outcome: "supported",
-          evidence: "query",
-          replyWithheld: true,
-          events: [
-            { kind: "write", sequence: "\u001b[0m" },
-            { kind: "query", sequence: "\u001b[c", reason: "reply" },
-          ],
-          assertions: [{ kind: "positive", expected: "a DA1 reply" }],
-        },
-        "extensions.graphics": {
-          outcome: "unsupported",
-          evidence: "behavior",
-          replyWithheld: true,
-          assertions: [{ kind: "negative", expected: "ACK" }],
-        },
-      },
-    })
-  })
-
-  it("keeps notes, actions, diagnostics, media, read windows and unlisted replies out of every trace (AC2)", () => {
-    const { projection, version, targets } = traced()
-    const { presentation: _template, ...template } = version.cells["extensions.query"]!
-    version.cells["device.xtwinops-21"] = {
-      ...template,
-      featureId: "device.xtwinops-21",
-      outcome: "unsupported",
-      record: {
-        rawReply: exchange(["\u001b]luser@host: ~/x\u001b\\", "user@host: ~/x"]),
-        assertions: [
-          {
-            featureId: "device.xtwinops-21",
-            kind: "negative",
-            expected: "no window title report",
-            observed: "user@host: ~/x",
-          },
-        ],
-      },
-    }
-    const { bytes, cells } = traceOf(publicResults(projection, targets))
-    expect(cells["device.xtwinops-21"]).toEqual({
-      outcome: "unsupported",
-      evidence: "query",
-      replyWithheld: true,
-      events: [
-        { kind: "write", sequence: "\u001b[0m" },
-        { kind: "query", sequence: "\u001b[c", reason: "reply" },
-      ],
-      assertions: [{ kind: "negative", expected: "no window title report" }],
-    })
-    for (const marker of [
-      "OBSERVATION_NOTE",
-      "CELL_NOTE",
-      "ASSERTION_NOTE",
-      "ASSERTION_ACTION",
-      "DIAGNOSTIC_NOTE",
-      "legacy-callback",
-      "3c".repeat(32),
-      "FRAME_LABEL",
-      "SCREEN_CAPTURE",
-      "READ_WINDOW",
-      "UkVBRF9XSU5ET1c=",
-      "graceMs",
-      "UNLISTED_MATCH",
-      "UNLISTED_OBSERVED",
-      "UNLISTED_PLAIN_REPLY",
-      "user@host: ~/x",
-      "trace.json",
-    ]) {
-      expect(bytes).not.toContain(marker)
-    }
-  })
-
-  it("keeps events alone only when an exchange's events equals its writes plus queries in order", () => {
-    const { projection, version, targets } = traced()
-    version.cells["device.primary-da"]!.record.rawReply = JSON.stringify({
-      writes: ["\u001b[0m", "\u001b[?25h"],
-      queries: [{ sequence: "\u001b[c", match: ["\u001b[?62;52c", "62;52"], reason: "reply", raw: "READ_WINDOW" }],
-      events: [
-        { kind: "write", sequence: "\u001b[0m" },
-        { kind: "query", sequence: "\u001b[c", match: ["\u001b[?62;52c", "62;52"], reason: "reply" },
-      ],
-    })
-    const { cells } = traceOf(publicResults(projection, targets))
-    expect(cells["device.primary-da"]).toEqual({
-      outcome: "supported",
-      evidence: "query",
-      writes: ["\u001b[0m", "\u001b[?25h"],
-      queries: [{ sequence: "\u001b[c", reason: "reply", match: ["\u001b[?62;52c", "62;52"] }],
-      events: [
-        { kind: "write", sequence: "\u001b[0m" },
-        { kind: "query", sequence: "\u001b[c", reason: "reply", match: ["\u001b[?62;52c", "62;52"] },
-      ],
-      assertions: [{ kind: "positive", expected: "a DA1 reply", observed: "\u001b[?62;52c" }],
-    })
-  })
-
-  it("traces only displayed runs, and never a cell a presentation review decided", () => {
-    const untraced = traced()
-    const quiet = publicResults(untraced.projection, new Map())
-    expect([...quiet.documents.keys()].filter((url) => url.includes("/traces/"))).toEqual([])
-    expect(quiet.projection.current["app:kitty"]).not.toHaveProperty("trace")
-
-    const reviewed = traced((measured) => [
-      decision(measured, "extensions.query", false),
-      decision(measured, "extensions.graphics", true),
-    ])
-    const { cells } = traceOf(publicResults(reviewed.projection, reviewed.targets))
-    expect(Object.keys(cells)).toEqual(["device.primary-da"])
-  })
-
-  it("keeps a headless run's parser state and observed values without their read windows", () => {
-    const { projection, version } = traced()
-    const { presentation: _template, ...template } = version.cells["extensions.query"]!
-    // Its own digest: a trace is shared by sha256, so the app run's receipt would answer for this one.
-    const headless: typeof version = {
-      ...version,
-      sha256: "d4".repeat(32),
-      target: { ...version.target, kind: "headless" },
-      cells: {
-        "extensions.query": {
-          ...template,
-          evidence: "parser-state",
-          record: {
-            rawReply: JSON.stringify({
-              before: { fg: 7 },
-              after: { fg: 1 },
-              originalRaw: "ORIGINAL_WINDOW",
-              steps: [{ changedRawBase64: "Q0hBTkdFRA==", row: 0 }],
-            }),
-            assertions: [
-              {
-                featureId: "extensions.query",
-                kind: "positive",
-                expected: "the foreground changes",
-                observed: JSON.stringify({ fg: 1, restoredRaw: "RESTORED_WINDOW" }),
-              },
-            ],
-          },
-        },
-      },
-    }
-    const published = publicResults(projection, new Map([["kitty", { contextKey: "app:kitty", selected: headless }]]))
-    expect(traceOf(published).cells).toEqual({
-      "extensions.query": {
-        outcome: "supported",
-        evidence: "parser-state",
-        parserState: { before: { fg: 7 }, after: { fg: 1 }, steps: [{ row: 0 }] },
-        assertions: [{ kind: "positive", expected: "the foreground changes", observed: '{"fg":1}' }],
-      },
-    })
-  })
-
-  it("refuses stored text that starts like JSON but does not parse, naming the run and feature", () => {
-    const { projection, version, targets } = traced()
-    version.cells["extensions.graphics"]!.record.rawReply = '{"fg":1,"originalRaw":"ORIGINAL_WINDOW"'
-    expect(() => publicResults(projection, targets)).toThrow(
-      /run trace-run feature extensions.graphics\.rawReply: stored text starts like JSON but does not parse/,
-    )
   })
 })
