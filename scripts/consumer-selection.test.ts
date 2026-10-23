@@ -440,12 +440,10 @@ describe("consumer selection", () => {
       }
       // Share the site's analysis loader with terminal paths, as the real site does.
       const analysis = loadAnalysis()
-      // Legacy runs stay readable in the projection; none of them is scored as a current result.
-      const legacy = Object.values(loadCurrentResults(fixtureContentDir()).projection.historical.history)
-        .flat()
-        .filter((entry) => entry.suiteId === "legacy")
-      expect(legacy.length).toBeGreaterThan(0)
-      expect(legacy.every((entry) => entry.counts.conclusive === 0)).toBe(true)
+      // Legacy runs are not projected at all any more (#30759 AC3), so no v1/v2 boolean can be
+      // scored as a current result: every row the reading holds is a sealed schema-3 run.
+      const projected = Object.values(loadCurrentResults(fixtureContentDir()).projection.history).flat()
+      expect(projected.every((entry) => entry.schemaVersion === 3)).toBe(true)
       if (!site.selectedByBackend.kitty) {
         // No current kitty run: kitty is scored nowhere, whatever other targets the corpus holds as current.
         expect(site.results.kitty).toBeUndefined()

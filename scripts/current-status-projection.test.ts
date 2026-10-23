@@ -61,7 +61,13 @@ const todos = (): CapabilityResult[] =>
 describe("current execution projection", () => {
   it("keeps every TODO visible over all 273 and admits current identity using the existing measured rule", () => {
     const run = parse(raw(todos()))
-    const projection = projectResults([run], [], ["different-live-catalogue"], { currentProbeHash: suite.probeHash })
+    const projection = projectResults(
+      [run],
+      [],
+      ["different-live-catalogue"],
+      { currentProbeHash: suite.probeHash },
+      [],
+    )
     const selected = projection.current["app:kitty"]
     expect(selected?.results).toEqual(run.results)
     expect(selected?.score).toEqual({ supported: 0, all: 273 })
@@ -78,7 +84,7 @@ describe("current execution projection", () => {
       checks: [{ id: "collection", status: "test-failure", attempt, reason: "callback threw" }],
       reason: "callback threw",
     }
-    const projection = projectResults([parse(raw(results))], [], ids, { currentProbeHash: suite.probeHash })
+    const projection = projectResults([parse(raw(results))], [], ids, { currentProbeHash: suite.probeHash }, [])
     expect(projection.current["app:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
@@ -107,18 +113,25 @@ describe("current execution projection", () => {
       expected: "ACK",
       observed: "NO",
     }))
-    const projection = projectResults([parse({ ...value, assertions })], [], ids, { currentProbeHash: suite.probeHash })
+    const projection = projectResults(
+      [parse({ ...value, assertions })],
+      [],
+      ids,
+      { currentProbeHash: suite.probeHash },
+      [],
+    )
     expect(projection.current["app:kitty"]?.score).toEqual({ supported: 0, all: 273 })
     expect(projection.current["app:kitty"]?.counts.unsupported).toBe(273)
     expect(projection.current["app:kitty"]?.complete).toBe(true)
   })
-  it("keeps an all-history build usable with no current row or invented current score", () => {
+  it("leaves a corpus of only legacy runs with no current row and no invented current score", () => {
     const { results: _results, sealedAt: _sealedAt, ...metadata } = raw([])
     const legacy = parse({ ...metadata, schemaVersion: 2, observations: [], suiteComplete: true })
-    const projection = projectResults([legacy], [], ids, { currentProbeHash: suite.probeHash })
+    const projection = projectResults([legacy], [], ids, { currentProbeHash: suite.probeHash }, [])
     expect(projection.current).toEqual({})
     expect(projection.versions).toEqual({})
     expect(projection.history).toEqual({})
-    expect(projection.historical.history["app:kitty"]?.[0]?.runId).toBe(legacy.runId)
+    // The legacy run is read only for input identity, never projected into a row of its own.
+    expect(projection.table[legacy.runId]).toBeUndefined()
   })
 })

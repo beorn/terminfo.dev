@@ -8,8 +8,8 @@
  * @reach fs-walk vendor/terminfo.dev/docs/** vendor/terminfo.dev/scripts/**
  * @testonly none
  */
-import { readFileSync, readdirSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
-import { join, relative } from "node:path"
+import { readFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
+import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures } from "@terminfo/catalog"
@@ -18,45 +18,12 @@ import { loadCategories } from "../docs/data/categories.ts"
 import { cohortIds, frozenSuiteIdFor, loadFeatureCohort, loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
   aggregateCells,
-  classifyCells,
   d3Verdict,
   isStaleRelation,
   treeMovedPastRelease,
   staleCaption,
   tier1Included,
 } from "../docs/data/release-scope.ts"
-
-/**
- * Every non-test TypeScript or Markdown source under one directory, so a VitePress page's `<script
- * setup>` is read exactly like a module. Build caches and node_modules are skipped.
- */
-function readSourceFiles(dir: string): Array<{ path: string; text: string }> {
-  const out: Array<{ path: string; text: string }> = []
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "node_modules" || entry.name === "cache" || entry.name === "dist") continue
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) {
-      out.push(...readSourceFiles(path))
-      continue
-    }
-    if (!/\.(ts|tsx|md)$/.test(entry.name) || entry.name.includes(".test.")) continue
-    out.push({ path: relative(root, path), text: readFileSync(path, "utf8") })
-  }
-  return out
-}
-
-/** The one line a match sits on, for reading a function's own definition out of a call list. */
-function lineAt(text: string, index: number): string {
-  const end = text.indexOf("\n", index)
-  return text.slice(text.lastIndexOf("\n", index) + 1, end === -1 ? undefined : end)
-}
-
-/** The named function a match sits inside: the nearest preceding `function` declaration. */
-function enclosingFunction(text: string, index: number): string {
-  const declared = [...text.slice(0, index).matchAll(/^(?:export )?(?:async )?function (\w+)/gm)]
-  const last = declared.at(-1)
-  return last?.[1] ?? "(module scope)"
-}
 
 const root = join(import.meta.dirname, "..")
 
@@ -241,12 +208,12 @@ describe("release 1 measurement scope", () => {
   })
 
   it("does not let supported outcomes outside the 62 fill the bar", () => {
-    const cells: Record<string, { outcome: "supported" | "unsupported"; conclusive: boolean }> = {}
-    for (const row of scope.unmeasured) cells[row.id] = { outcome: "supported", conclusive: true }
+    const states: Record<string, "supported" | "unsupported"> = {}
+    for (const row of scope.unmeasured) states[row.id] = "supported"
     const firstMeasured = scope.measuredIds[0]
     if (!firstMeasured) throw new Error("release scope has no measured ids")
-    cells[firstMeasured] = { outcome: "unsupported", conclusive: true }
-    const bar = aggregateCells(classifyCells(cells), scope.measuredIds)
+    states[firstMeasured] = "unsupported"
+    const bar = aggregateCells(states, scope.measuredIds)
     expect(bar.denominator).toBe(62)
     expect(bar.counts.supported).toBe(0)
     expect(bar.counts.unsupported).toBe(1)
@@ -290,38 +257,5 @@ describe("release 1 measurement scope", () => {
     }
     const helper = readFileSync(join(root, "docs", "data", "release-scope.ts"), "utf8")
     expect(helper).not.toMatch(/from ["']node:fs["']/)
-  })
-
-  it("keeps the ONE classifier inside the projection and its development entry", () => {
-    // Every source the site builds or the CLI runs, tests excluded. A page or a script that classified
-    // raw cells itself would be a second copy of the five-way chain, which is what item 1 removes
-    // (28792 item 1, @cto 2026-10-12 must-fix).
-    const sources = [...readSourceFiles(join(root, "docs")), ...readSourceFiles(join(root, "scripts"))]
-    const callSites = (name: string) =>
-      sources.flatMap((file) =>
-        [...file.text.matchAll(new RegExp(`\\b${name}\\(`, "g"))].flatMap((match) =>
-          lineAt(file.text, match.index).includes(`function ${name}(`)
-            ? []
-            : [{ file: file.path, caller: enclosingFunction(file.text, match.index) }],
-        ),
-      )
-    expect(callSites("classifyCell")).toEqual([
-      { file: join("docs", "data", "release-scope.ts"), caller: "classifyCells" },
-    ])
-    expect(callSites("classifyCells")).toEqual([
-      { file: join("docs", "data", "selected-results.ts"), caller: "projectHistoricalResults" },
-    ])
-  })
-})
-
-describe("historical evidence-aware presentation states", () => {
-  it("keeps never-started collection separate from an undecided attempt", () => {
-    const states = classifyCells({
-      refused: { outcome: "inconclusive", evidence: "none", reason: "policy-refused" },
-      attempted: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
-      failed: { outcome: "error", evidence: "none", reason: "collector-error" },
-      legacy: { outcome: "supported", conclusive: false, evidence: "legacy" },
-    })
-    expect(states).toEqual({ refused: "untested", attempted: "error", failed: "error", legacy: "untested" })
   })
 })

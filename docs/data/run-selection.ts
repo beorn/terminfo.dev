@@ -43,8 +43,8 @@ export interface ContextCandidate {
   cells?: ShareCells
   results?: CapabilityResult[]
   /**
-   * The run's cells, classified once by the projection (28792 item 1). A reader cuts its bars over
-   * this, never over `cells`, so `classifyCell` never runs outside the projection.
+   * The run's states as the projection published them (28792 item 1). A reader cuts its bars over
+   * this, never over the raw `cells`.
    */
   states: Readonly<Record<string, CellState | CapabilityStatus>>
 }

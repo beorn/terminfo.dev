@@ -49,38 +49,14 @@ export interface ReleaseScope {
 }
 
 /**
- * The five states one measured cell can be in. This is the ONE classification: the bar, the
- * decisive-share CLI and the page templates all read it, so they cannot drift into five copies.
- */
-export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
-
-/**
+ * The five states one measured cell can be in. Current readings publish sealed `CapabilityStatus`
+ * values directly; these names survive for the archived legacy evidence the v1 API still renders.
+ *
  * Presentation states retain their existing keys: inconclusive is reserved for reviewed Untestable
  * claims, error is TEST FAILURE, and untested is TEST TODO. A missing cell or evidence "none" means
  * no feature measurement started; an undecided attempt is a failed test, not terminal non-support.
- * Historical booleans or records without an attempt method require a rerun, not a guessed failure.
- * Existing refusals never establish that a capability is impossible to test in its context.
  */
-export function classifyCell(
-  cell: { outcome: string; conclusive?: boolean; evidence?: string; reason?: string } | undefined,
-): CellState {
-  if (!cell) return "untested"
-  if (cell.outcome === "error") return "error"
-  if (cell.evidence === "none" || cell.evidence === "legacy") return "untested"
-  if (cell.conclusive && cell.outcome === "supported") return "supported"
-  if (cell.conclusive && cell.outcome === "unsupported") return "unsupported"
-  if (!cell.evidence) return "untested"
-  return "error"
-}
-
-/** Classify a whole prepared cell map with the ONE classifier. Its two callers live in
- * `selected-results.ts`: `projectResults` fills the product table, while `classifyDevelopmentRun`
- * returns private development states. Neither pages nor scripts classify raw cells (28792 item 1). */
-export function classifyCells(cells: Record<string, Parameters<typeof classifyCell>[0]>): Record<string, CellState> {
-  const states: Record<string, CellState> = {}
-  for (const [featureId, cell] of Object.entries(cells)) states[featureId] = classifyCell(cell)
-  return states
-}
+export type CellState = "supported" | "unsupported" | "inconclusive" | "error" | "untested"
 
 function utcDate(measuredAt: string): string {
   const value = new Date(measuredAt)

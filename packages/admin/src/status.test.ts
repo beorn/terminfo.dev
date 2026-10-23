@@ -23,6 +23,9 @@ test("status separates reviewed current runs from newer legacy files and refuses
     mkdirSync(join(root, "content", "probes-libs"))
     mkdirSync(join(root, "content", "probes-mux"))
     mkdirSync(join(root, "content", "suites"))
+    // The published exclusion list is archived data since #30759 AC3; these fixtures hold no
+    // legacy refusals, so the archive is present and empty rather than absent.
+    writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
     copyFileSync(join(source, "packages", "admin", "src", "status.ts"), join(admin, "src", "status.ts"))
     symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
     symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))

@@ -1,13 +1,7 @@
 /** Reviewed selection and projection for terminal observations. */
 import { existsSync, readFileSync, readdirSync } from "node:fs"
-import { join } from "node:path"
-import {
-  aggregateCurrentResults,
-  classifyCells,
-  treeMovedPastRelease,
-  type CellState,
-  type SuiteRelation,
-} from "./release-scope.ts"
+import { isAbsolute, join } from "node:path"
+import { aggregateCurrentResults, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
@@ -22,7 +16,6 @@ import {
   type ProbeSuiteManifest,
   type TextQualification,
   isNonMeasuringEvidence,
-  assessTextQualification,
   finalizeCapabilityResult,
   type TextQualificationAssessment,
 } from "@terminfo/probe-defs"
@@ -30,6 +23,7 @@ import {
   type LoadedRun,
   parseSuiteManifest,
   parseRun,
+  parseJsonStrict,
   parseObservationFrames,
   validateObservation,
   validateObservationOutcome,
@@ -138,33 +132,12 @@ export interface SelectedVersion {
   }
 }
 
-/**
- * The reader's one product: the classified state of every cell of every run the projection read, keyed
- * by run id. Every bar, page and CLI view folds THIS table (`aggregateCells` in `release-scope.ts`)
- * rather than walking raw cells, so `classifyCell` runs once per cell, here, and no consumer can drift
- * into a second copy of the classification (28792 item 1).
- *
- * The key is the run id, not the context key: a consumer of the SELECTED run reads
- * `table[current[context].runId]`, while `decisive-share` also cuts bars over the runs in `history`
- * (its ADMITTED RUNS section), and one run belongs to exactly one context, so this key covers both
- * without re-classifying anything.
- */
-export type CellTable = Readonly<Record<string, Readonly<Record<string, CellState>>>>
-
-export interface HistoricalProjection {
-  current: Record<string, SelectedVersion>
-  versions: Record<string, SelectedVersion[]>
-  /** The classified state of every run's cells, keyed by run id and then by feature id. */
-  table: CellTable
-  /** Includes every valid raw run, even ones excluded from selection. */
-  history: Record<string, SelectedVersion[]>
-  exclusions: Array<{ runId: string; path: string; reason: string }>
-  /** The release suite this projection was labelled against, or null when no release declaration pins one. */
-  releaseSuiteId: string | null
-  /** The live tree suite the site was built from. */
-  treeSuiteId: string
-  /** True when the tree has moved past the release suite; the site prints ONE banner when it is. */
-  treeMovedPastRelease: boolean
+/** One admission refusal the projection reports: a run it read but did not select, and why. */
+export interface SelectedExclusion {
+  readonly runId: string
+  /** The run document, as the content root names it (`probes-libs/...`), so the row stays portable. */
+  readonly path: string
+  readonly reason: string
 }
 
 /**
@@ -207,9 +180,8 @@ export interface SelectedProjection {
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
   table: Readonly<Record<string, Readonly<Record<string, CapabilityStatus>>>>
-  /** v1/v2 bytes are available only through their historical reader. */
-  historical: HistoricalProjection
-  exclusions: HistoricalProjection["exclusions"]
+  /** Archived assessment refusals followed by the schema-3 refusals this reading assessed. */
+  exclusions: SelectedExclusion[]
   releaseSuiteId: string | null
   treeSuiteId: string
   treeMovedPastRelease: boolean
@@ -510,131 +482,6 @@ export function classifyDevelopmentRun(run: LoadedRun): {
   }
 }
 
-function projectRun(
-  run: LoadedRun,
-  interpretations: readonly Interpretation[],
-  catalogIds: readonly string[],
-  currentProbeHash: string,
-  releaseSuiteId: string | null,
-  identityAdmission: IdentityAdmission | null,
-  text: TextQualificationAssessment,
-): SelectedVersion {
-  const { cells, correctedFeatures } = prepareRunCells(run, interpretations, text)
-  for (const entry of interpretations) {
-    if (!hasPresentationDecision(entry) || !applies(entry, run)) continue
-    const featureId = entry.featureId
-    if (!featureId) throw new Error(`presentation ${entry.id}: missing featureId`)
-    const recordedObservation = run.observations.find((observation) => observation.featureId === featureId)
-    const cell = cells[featureId]
-    if (!recordedObservation || !cell) throw new Error(`presentation ${entry.id}: missing original observation`)
-    cell.presentation = {
-      decision: {
-        id: entry.id,
-        reviewer: entry.reviewer,
-        reason: entry.reason,
-        sources: [...entry.sources],
-        presentsEvidence: entry.presentsEvidence as boolean,
-      },
-      original: globalThis.structuredClone({
-        observation: recordedObservation,
-        record: observationRecord(run, recordedObservation),
-      }),
-    }
-  }
-  const values = Object.values(cells)
-  const tested = values.length
-  const conclusive = values.filter((v) => v.conclusive).length
-  const supported = values.filter((v) => v.conclusive && v.outcome === "supported").length
-  const unsupported = values.filter((v) => v.conclusive && v.outcome === "unsupported").length
-  const v1: Record<string, boolean> = {}
-  for (const [id, cell] of Object.entries(cells)) {
-    if (cell.conclusive && cell.outcome === "supported") v1[id] = true
-    else if (cell.conclusive && cell.outcome === "unsupported") v1[id] = false
-  }
-  const named = (run.notTested ?? []).map((entry) => ({
-    featureId: entry.featureId,
-    reason: entry.reason,
-    noObservable: entry.noObservable,
-    rawReplyRef: entry.rawReplyRef,
-  }))
-  for (const entry of named) {
-    if (cells[entry.featureId]) {
-      throw new Error(`named not-tested ${entry.featureId} is also measured in ${run.runId}`)
-    }
-  }
-  const namedCount = named.length
-  const remainder = catalogIds.length - tested - namedCount
-  if (remainder < 0) throw new Error(`not-tested partition exceeds catalog for ${run.runId}`)
-  const suiteObserved = run.observations.length + namedCount
-  const suiteRelation: SuiteRelation =
-    !run.legacy && !run.suiteComplete
-      ? "partial"
-      : run.suiteComplete && run.probeHash !== null && releaseSuiteId !== null && run.probeHash === releaseSuiteId
-        ? "release"
-        : run.suiteComplete && run.probeHash !== null && run.probeHash === currentProbeHash
-          ? "tree"
-          : "older"
-  const suiteFreshness =
-    suiteRelation === "partial"
-      ? `partial (${suiteObserved} of ${run.suiteProbeCount} probes)`
-      : suiteRelation === "release"
-        ? `release suite ${releaseSuiteId}`
-        : suiteRelation === "tree"
-          ? `tree suite ${currentProbeHash}`
-          : `older suite (${suiteObserved} probes)${run.probeHash ? "" : "; missing probeHash"}`
-  if (run.schemaVersion === 3) throw new Error(`Current run ${run.runId} cannot use the historical observation reader`)
-  return {
-    schemaVersion: run.schemaVersion,
-    runId: run.runId,
-    target: run.target,
-    measuredAt: run.measuredAt,
-    suiteId: run.suiteId,
-    probeHash: run.probeHash,
-    suiteFreshness,
-    suiteRelation,
-    suite: {
-      observed: suiteObserved,
-      expected: run.suiteProbeCount,
-      complete: run.suiteComplete,
-      namedNotTested: namedCount,
-    },
-    sourceRevision: run.sourceRevision,
-    sha256: run.sha256,
-    identity: run.identity,
-    ...(identityAdmission && { identityAdmission }),
-    ...(run.textQualification === undefined ? {} : { textQualification: run.textQualification }),
-    cells,
-    v1,
-    ungradedDiagnostics: {
-      evidence: "legacy",
-      label: "old callback result, unverified",
-      results: run.ungradedDiagnostics,
-    },
-    reviews: interpretations
-      .filter(
-        (entry) =>
-          applies(entry, run) &&
-          ((entry.runId === run.runId &&
-            entry.runSha256 === run.sha256 &&
-            (entry.verifiesIdentity || entry.reviewed)) ||
-            (entry.observation &&
-              entry.featureId &&
-              correctedFeatures.has(entry.featureId) &&
-              entry.origin !== "documentation")),
-      )
-      .map(({ id, reviewer, reason, sources }) => ({ id, reviewer, reason, sources })),
-    counts: {
-      catalog: catalogIds.length,
-      tested,
-      notTested: catalogIds.length - tested,
-      conclusive,
-      supported,
-      unsupported,
-    },
-    notTestedCoverage: { named, measured: tested, namedCount, remainder },
-  }
-}
-
 /**
  * The frozen runner's own build hash changes with every suite (its bundle embeds the suite), so the
  * same row measured on a later suite would otherwise land in a NEW context and never supersede the run
@@ -738,162 +585,17 @@ export function recognizeProjectedContextKey(key: string): RecognizedProjectedCo
 }
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
-export function projectHistoricalResults(
-  runs: readonly LoadedRun[],
-  interpretations: readonly Interpretation[],
-  catalogIds: readonly string[],
-  policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
-  contextCounts: ReadonlyMap<string, ReadonlySet<string>>,
-): HistoricalProjection {
-  if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
-  const releaseSuiteId = policy.releaseSuiteId ?? null
-  // 29930: a release-bound reading selects within its declared freeze. While the tree has moved past
-  // the release suite, a version's runs are ranked release suite, then tree suite, then older, so a
-  // newer capture at the tree cannot displace the frozen reading; measuredAt still breaks ties inside
-  // a rank. With no move (no release suite, or it equals the tree suite) the ordering is unchanged.
-  const treeMoved = releaseSuiteId !== null && releaseSuiteId !== policy.currentProbeHash
-  const suiteRank = (run: LoadedRun): number => {
-    if (!run.suiteComplete) return 0
-    if (treeMoved && run.probeHash === releaseSuiteId) return 2
-    return run.probeHash === policy.currentProbeHash ? 1 : 0
-  }
-  const ids = new Set<string>()
-  const byRunId = new Map<string, LoadedRun>()
-  const textAssessments = new Map<string, TextQualificationAssessment>()
-  const textAssessmentFor = (run: LoadedRun): TextQualificationAssessment => {
-    const assessment = textAssessments.get(run.runId)
-    if (!assessment) throw new Error(`Missing text qualification assessment for run ${run.runId}`)
-    return assessment
-  }
-  for (const run of runs) {
-    if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
-    ids.add(run.runId)
-    byRunId.set(run.runId, run)
-    textAssessments.set(run.runId, assessTextQualification(run, policy.textSnapshots))
-  }
-  const catalog = new Set(catalogIds)
-  for (const entry of interpretations) {
-    if (!hasPresentationDecision(entry)) continue
-    validatePresentationShape(entry as unknown as Record<string, unknown>, `interpretation ${entry.id}`, catalog)
-    const run = byRunId.get(entry.runId as string)
-    if (!run) throw new Error(`presentation ${entry.id}: runId ${entry.runId} does not name a raw run`)
-    if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
-    if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
-    if (!run.observations.some((observation) => observation.featureId === entry.featureId)) {
-      throw new Error(`presentation ${entry.id}: missing original observation for ${entry.featureId}`)
-    }
-  }
-  validatePresentationSupersession(interpretations, "interpretations")
-  const active = activeInterpretations(interpretations)
-  const presented = new Map<string, string>()
-  for (const entry of active) {
-    if (!hasPresentationDecision(entry)) continue
-    const key = `${entry.runId}\0${entry.featureId}`
-    const prior = presented.get(key)
-    if (prior) {
-      throw new Error(`presentation ${entry.id} conflicts with active ${prior} for ${entry.runId}/${entry.featureId}`)
-    }
-    presented.set(key, entry.id)
-  }
-  const keyFor = (run: LoadedRun): string => {
-    const stem = `${run.target.kind}:${run.target.id}`
-    return projectedContextKey(run.target, contextCounts.get(stem)?.size ?? 0)
-  }
-  const current: HistoricalProjection["current"] = {}
-  const versions: HistoricalProjection["versions"] = {}
-  const history: HistoricalProjection["history"] = {}
-  const exclusions: HistoricalProjection["exclusions"] = []
-  const groups = new Map<string, LoadedRun[]>()
-  const assessments = new Map<string, ReturnType<typeof assessRunAdmission>>()
-  for (const run of runs) {
-    const key = keyFor(run)
-    history[key] ??= []
-    const assessment = assessRunAdmission(run, active, { mode: "historical" })
-    assessments.set(run.runId, assessment)
-    history[key].push(
-      projectRun(
-        run,
-        active,
-        catalogIds,
-        policy.currentProbeHash,
-        releaseSuiteId,
-        assessment.identityAdmission,
-        textAssessmentFor(run),
-      ),
-    )
-    if (!assessment.accepted) {
-      exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
-      continue
-    }
-    if (!groups.has(key)) groups.set(key, [])
-    const group = groups.get(key)
-    if (!group) fail(run.path, `missing run group for ${key}`)
-    group.push(run)
-  }
-  for (const [key, group] of groups) {
-    const byVersion = new Map<string, LoadedRun[]>()
-    for (const run of group) {
-      const version = run.target.version
-      if (!byVersion.has(version)) byVersion.set(version, [])
-      const versionGroup = byVersion.get(version)
-      if (!versionGroup) fail(run.path, `missing version group for ${version}`)
-      versionGroup.push(run)
-    }
-    versions[key] = []
-    for (const version of [...byVersion.keys()].sort((a, b) => versionCompare(b, a))) {
-      const choices = byVersion.get(version)
-      if (!choices?.length) throw new Error(`missing run choices for ${key} ${version}`)
-      choices.sort(
-        (a, b) =>
-          suiteRank(b) - suiteRank(a) ||
-          Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
-          b.runId.localeCompare(a.runId),
-      )
-      const chosen = choices[0]
-      if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
-      const assessment = assessments.get(chosen.runId)
-      if (!assessment) throw new Error(`Missing admission assessment for selected run ${chosen.runId}`)
-      versions[key].push(
-        projectRun(
-          chosen,
-          active,
-          catalogIds,
-          policy.currentProbeHash,
-          releaseSuiteId,
-          assessment.identityAdmission,
-          textAssessmentFor(chosen),
-        ),
-      )
-    }
-    const selected = versions[key][0]
-    if (!selected) throw new Error(`missing selected version for ${key}`)
-    current[key] = selected
-  }
-  // One classification per cell, for every run the projection read: `current` and `versions` are drawn
-  // from `history`, so classifying the history covers every consumer, and a run's cells are classified
-  // once rather than once per reader.
-  const table: Record<string, Record<string, CellState>> = {}
-  for (const list of Object.values(history)) {
-    for (const version of list) table[version.runId] = classifyCells(version.cells)
-  }
-  return {
-    current,
-    table,
-    versions,
-    history,
-    exclusions,
-    releaseSuiteId,
-    treeSuiteId: policy.currentProbeHash,
-    treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
-  }
-}
-
-/** Read current execution results without applying later feature interpretations or grading. */
+/**
+ * Read current execution results without applying later feature interpretations or grading.
+ * `archivedExclusions` are the frozen refusals of legacy runs (#30759 AC3); they lead the published
+ * list, and refusals this reading assesses for schema-3 runs are appended after them.
+ */
 export function projectResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
   policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
+  archivedExclusions: readonly SelectedExclusion[],
 ): SelectedProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
   for (const entry of interpretations) {
@@ -915,19 +617,9 @@ export function projectResults(
       throw new Error(`presentation ${entry.id}: missing original result for ${entry.featureId}`)
     }
   }
-  // 30661: one context count for both projections, every run of the target, legacy and schema 3. Counted per
-  // projection, alacritty's one schema-3 context was the bare stem while its three legacy contexts carried
-  // full keys, and no reviewed default-context row could name the Windows context for both readers.
+  // 30661: the context count is per target across every run the projection read, so a context key is
+  // qualified exactly as the runs measured it rather than as whichever runs are current today.
   const contexts = countContexts(runs)
-  const historical = projectHistoricalResults(
-    runs.filter((run) => run.schemaVersion !== 3),
-    interpretations.filter(
-      (entry) => !("captureSha256" in entry) && runs.some((run) => run.schemaVersion !== 3 && applies(entry, run)),
-    ),
-    catalogIds,
-    policy,
-    contexts,
-  )
   const currentRuns = runs.filter((run) => run.schemaVersion === 3)
   const releaseSuiteId = policy.releaseSuiteId ?? null
   const ids = new Set<string>()
@@ -940,8 +632,7 @@ export function projectResults(
     versions: {},
     history: {},
     table: {},
-    historical,
-    exclusions: [...historical.exclusions],
+    exclusions: archivedExclusions.map((row) => ({ ...row })),
     releaseSuiteId,
     treeSuiteId: policy.currentProbeHash,
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
@@ -1042,19 +733,6 @@ export function projectResults(
   return { ...projection, table }
 }
 
-/**
- * The classified states for one run, BY NAME: a run the projection never read is a loud error, never a
- * silent empty map that would read as a zero-row basis (28792 item 1).
- */
-export function historicalStatesFor(
-  projection: HistoricalProjection,
-  runId: string,
-): Readonly<Record<string, CellState>> {
-  const states = projection.table[runId]
-  if (!states) throw new Error(`The historical projection classified no row for run ${runId}`)
-  return states
-}
-
 export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, CapabilityStatus>> {
   const states = projection.table[runId]
   if (!states) throw new Error(`The projection classified no row for run ${runId}`)
@@ -1087,6 +765,42 @@ export function readVerifiedArtifact(
 }
 
 /** Validate all referenced screenshots; the accepted artifactDir option has no write side effect. */
+const ARCHIVED_EXCLUSIONS_FILE = "archived-exclusions.json"
+
+/**
+ * The archived admission refusals of legacy runs, carried as data (#30759 AC3, @cto 2026-10-23).
+ *
+ * The historical projection that assessed these runs is gone, so these rows are frozen facts, not a
+ * re-assessment: their order and duplicates are exactly what that reader emitted, and the published
+ * list is these rows followed by whatever the current reading refuses. Regenerating them would need
+ * the reader this migration removed. A missing row, a malformed row or a path escaping the content
+ * root is a loud failure: the list is published (api/v3 `exclusions`, the admin report), where an
+ * empty list would read as "nothing was excluded".
+ */
+export function loadArchivedExclusions(contentDir: string): SelectedExclusion[] {
+  const path = join(contentDir, ARCHIVED_EXCLUSIONS_FILE)
+  if (!existsSync(path)) fail(path, "missing archived exclusions")
+  const parsed = parseJsonStrict(path, readFileSync(path, "utf8"))
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    fail(path, "expected an object with archivedExclusions")
+  }
+  const rows = (parsed as Record<string, unknown>).archivedExclusions
+  // An empty list is a real state (a corpus with no archived refusals); a missing FILE is not, since
+  // that would silently publish "nothing was excluded" for a corpus that has them.
+  if (!Array.isArray(rows)) fail(path, "archivedExclusions must be an array")
+  return rows.map((value, index) => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      fail(path, `row ${index} is not an object`)
+    }
+    const { runId, path: runPath, reason } = value as Record<string, unknown>
+    if (!nonempty(runId) || !nonempty(reason)) fail(path, `row ${index} requires runId and reason`)
+    if (!nonempty(runPath) || isAbsolute(runPath) || runPath.split(/[\\/]/).includes("..")) {
+      fail(path, `row ${index} path must be relative to the content root`)
+    }
+    return { runId, path: join(contentDir, runPath), reason }
+  })
+}
+
 export function loadSelectedResults(
   contentDir: string,
   currentProbeHash: string,
@@ -1135,9 +849,15 @@ export function loadSelectedResults(
   const interpretations = existsSync(interpretationsPath)
     ? parseInterpretations(interpretationsPath, readFileSync(interpretationsPath, "utf8"), catalog)
     : []
-  return projectResults(runs, interpretations, catalog, {
-    currentProbeHash,
-    textSnapshots,
-    releaseSuiteId: options.releaseSuiteId ?? null,
-  })
+  return projectResults(
+    runs,
+    interpretations,
+    catalog,
+    {
+      currentProbeHash,
+      textSnapshots,
+      releaseSuiteId: options.releaseSuiteId ?? null,
+    },
+    loadArchivedExclusions(contentDir),
+  )
 }

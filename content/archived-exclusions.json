@@ -1,0 +1,405 @@
+{
+  "note": "Archived admission exclusions for legacy (schema 1 and 2) runs, carried as data because the historical projection that produced them was removed (#30759 AC3, @cto ruling 2026-10-23). These are frozen assessment results, not a re-assessment: do not regenerate them, and keep the order and duplicates. Current schema-3 exclusions are still produced by the projection and appended after these rows.",
+  "archivedExclusions": [
+    {
+      "runId": "d436c4ecd6e652a3427f245cda6b1204",
+      "path": "probes-apps/alacritty-0.17.0-macos-d436c4ecd6e652a3427f245cda6b1204.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "80708fb3fc86ad8f90ca2852ab719c75",
+      "path": "probes-apps/alacritty-unknown-linux-80708fb3fc86ad8f90ca2852ab719c75.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "legacy-b8f6692de18d1296",
+      "path": "probes-apps/com-microsoft-vscode-1.112.0-macos.json",
+      "reason": "identity-no-profile"
+    },
+    {
+      "runId": "legacy-64fdced9933ca091",
+      "path": "probes-apps/com-microsoft-vscode-1.113.0-macos.json",
+      "reason": "identity-no-profile"
+    },
+    {
+      "runId": "legacy-18a1a8fa6be8d91d",
+      "path": "probes-apps/com-microsoft-vscode-unknown-macos.json",
+      "reason": "identity-no-profile"
+    },
+    {
+      "runId": "legacy-68a3555a1c5b145e",
+      "path": "probes-apps/cursor-2.6.21-macos.json",
+      "reason": "identity-no-profile"
+    },
+    {
+      "runId": "legacy-d182ebb061f402cb",
+      "path": "probes-apps/cursor-unknown-macos.json",
+      "reason": "identity-no-profile"
+    },
+    {
+      "runId": "98a0b1dd7078f085114ba69c6ab4e532",
+      "path": "probes-apps/ghostty-1.3.1-linux-98a0b1dd7078f085114ba69c6ab4e532.json",
+      "reason": "native-provenance-missing"
+    },
+    {
+      "runId": "legacy-ca6497abb44bcb1f",
+      "path": "probes-apps/iterm2-3.6.9-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "a54c1cbae785e6a22c0047dce1c9e6f3",
+      "path": "probes-apps/iterm2-unknown-macos-a54c1cbae785e6a22c0047dce1c9e6f3.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "6993f2ac0b1831e525d12c95ab5e8bbe",
+      "path": "probes-apps/kitty-0.46.2-linux-6993f2ac0b1831e525d12c95ab5e8bbe.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-234114ee4edf7664",
+      "path": "probes-apps/kitty-0.46.2-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "247172981e995d802fc0142c587aa776",
+      "path": "probes-apps/kitty-0.49.1-linux-247172981e995d802fc0142c587aa776.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "36c28e4e153915facbc7705da285ec29",
+      "path": "probes-apps/kitty-0.49.1-linux-36c28e4e153915facbc7705da285ec29.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "7ffd7beada64481362045a12cf0c76be",
+      "path": "probes-apps/kitty-0.49.1-linux-7ffd7beada64481362045a12cf0c76be.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "8661d0e2a2abb040d9c36cd68e7ae661",
+      "path": "probes-apps/kitty-0.49.1-linux-8661d0e2a2abb040d9c36cd68e7ae661.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "a7cc4cf715fa444a72565b940d1b7bd6",
+      "path": "probes-apps/kitty-0.49.1-linux-a7cc4cf715fa444a72565b940d1b7bd6.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "e7ef27196c82b226ab1146801da30f9f",
+      "path": "probes-apps/kitty-0.49.1-linux-e7ef27196c82b226ab1146801da30f9f.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "2912118b74039bf72ac84070921836ce",
+      "path": "probes-apps/kitty-0.49.2-linux-2912118b74039bf72ac84070921836ce.json",
+      "reason": "native-provenance-dirty"
+    },
+    {
+      "runId": "8c50df5834ccb938c208aa91467e9a2b",
+      "path": "probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json",
+      "reason": "native-provenance-dirty"
+    },
+    {
+      "runId": "d3c5c6a0bd41012bcb54abe044d9c5c3",
+      "path": "probes-apps/kitty-0.49.2-linux-d3c5c6a0bd41012bcb54abe044d9c5c3.json",
+      "reason": "native-provenance-dirty"
+    },
+    {
+      "runId": "ec85fefcf5a4c998fbda61b72cb77c31",
+      "path": "probes-apps/terminal-app-2.15-macos-ec85fefcf5a4c998fbda61b72cb77c31.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "legacy-2a46749d04b877fb",
+      "path": "probes-apps/warp-0.2026.03.18.08.24.03-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-bdae4445985f48f4",
+      "path": "probes-apps/warp-unknown-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "a240ac80d66cf53d818ad3b9151f4791",
+      "path": "probes-apps/wezterm-0-unstable-2026-09-17-linux-a240ac80d66cf53d818ad3b9151f4791.json",
+      "reason": "native-provenance-dirty"
+    },
+    {
+      "runId": "a98b86e81a315d1b9eceecb746219dde",
+      "path": "probes-apps/wezterm-0-unstable-2026-09-17-linux-a98b86e81a315d1b9eceecb746219dde.json",
+      "reason": "native-provenance-dirty"
+    },
+    {
+      "runId": "e40dd22ab0d8144583d5cb9b02e4487c",
+      "path": "probes-apps/wezterm-0-unstable-2026-09-17-linux-e40dd22ab0d8144583d5cb9b02e4487c.json",
+      "reason": "native-provenance-missing"
+    },
+    {
+      "runId": "4c09c6de3c87144cc0ac9bd349b37248",
+      "path": "probes-apps/windows-terminal-1.23.20211.0-windows-4c09c6de3c87144cc0ac9bd349b37248.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "5ce6e5804f4f8eb592f0b83c1f68e166",
+      "path": "probes-apps/windows-terminal-1.23.20211.0-windows-5ce6e5804f4f8eb592f0b83c1f68e166.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "684b1ca4b56b26b10a448b5f21a9ada3",
+      "path": "probes-apps/windows-terminal-1.23.20211.0-windows-684b1ca4b56b26b10a448b5f21a9ada3.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "6bf7a7301f83a2224795b978f1e7784a",
+      "path": "probes-apps/windows-terminal-1.23.20211.0-windows-6bf7a7301f83a2224795b978f1e7784a.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "a0c19dfa12b02cf50fd25cd7da36ac0d",
+      "path": "probes-apps/windows-terminal-1.23.20211.0-windows-a0c19dfa12b02cf50fd25cd7da36ac0d.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "ba007d5e0c49bcffe89dfdbc47f65c35",
+      "path": "probes-apps/windows-terminal-1.23.20211.0-windows-ba007d5e0c49bcffe89dfdbc47f65c35.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "c6bb9b242b3b633172549e6ec9f8d10d",
+      "path": "probes-apps/xterm-unknown-linux-c6bb9b242b3b633172549e6ec9f8d10d.json",
+      "reason": "identity-replies-mismatch"
+    },
+    {
+      "runId": "legacy-2966704d7aca1076",
+      "path": "probes-mux/screen-4.00.03-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-2a224a81a9ada360",
+      "path": "probes-mux/screen-5.0.1-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-3fd6f80efba9b52e",
+      "path": "probes-mux/tmux-3.6a-macos.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "4aab714c-77d4-4f71-ba28-266d98c4fa25",
+      "path": "probes-libs/alacritty-0.26.0-linux-4aab714c-77d4-4f71-ba28-266d98c4fa25.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "92ae05ac-8a09-42e0-abc4-f3581d1a1198",
+      "path": "probes-libs/alacritty-0.26.0-linux-92ae05ac-8a09-42e0-abc4-f3581d1a1198.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "e3c04651-8227-40fe-9703-c73f1882e128",
+      "path": "probes-libs/alacritty-0.26.0-linux-e3c04651-8227-40fe-9703-c73f1882e128.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-52648acc184c5d4e",
+      "path": "probes-libs/alacritty-0.26.0.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "a39ed5f4-f8af-42a0-a9ef-adf32a130f1c",
+      "path": "probes-libs/ghostty-0.4.0-linux-a39ed5f4-f8af-42a0-a9ef-adf32a130f1c.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "b8793b85-409e-436d-a789-1f8907081299",
+      "path": "probes-libs/ghostty-0.4.0-linux-b8793b85-409e-436d-a789-1f8907081299.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "c1002b07-009e-4491-b94a-c12a3ceb916e",
+      "path": "probes-libs/ghostty-0.4.0-linux-c1002b07-009e-4491-b94a-c12a3ceb916e.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "7164fddf-f646-417e-bc00-1e3968e3fef4",
+      "path": "probes-libs/ghostty-native-1.3.1-linux-7164fddf-f646-417e-bc00-1e3968e3fef4.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "d0bb5c64-fcde-4ac4-83b5-ad7633a98bd7",
+      "path": "probes-libs/ghostty-native-1.3.1-linux-d0bb5c64-fcde-4ac4-83b5-ad7633a98bd7.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "ed93625b-c91f-4c04-8316-a5c32c2f91ad",
+      "path": "probes-libs/ghostty-native-1.3.1-linux-ed93625b-c91f-4c04-8316-a5c32c2f91ad.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-7b2fe43e0765db0a",
+      "path": "probes-libs/ghostty-native-1.3.1.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-c5588e9ea6f08670",
+      "path": "probes-libs/kitty-0.40.0.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "5d4518ed-59bc-4591-954e-01969d332034",
+      "path": "probes-libs/kitty-0.49.1-linux-5d4518ed-59bc-4591-954e-01969d332034.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "8cc230f5-fa8f-497c-9cbb-a3539c630dcc",
+      "path": "probes-libs/kitty-0.49.1-linux-8cc230f5-fa8f-497c-9cbb-a3539c630dcc.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "fa10ea60-5536-4878-93ef-c59445dd15d9",
+      "path": "probes-libs/kitty-0.49.1-linux-fa10ea60-5536-4878-93ef-c59445dd15d9.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "18bf83fc-6be3-47a0-8e7e-a6e3bbc33e2b",
+      "path": "probes-libs/libvterm-0.3.3-linux-18bf83fc-6be3-47a0-8e7e-a6e3bbc33e2b.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "76d28b90-84dc-4071-a200-e62d9fcae185",
+      "path": "probes-libs/libvterm-0.3.3-linux-76d28b90-84dc-4071-a200-e62d9fcae185.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "b3fa02e8-96aa-42b6-b395-9b4535360c4d",
+      "path": "probes-libs/libvterm-0.3.3-linux-b3fa02e8-96aa-42b6-b395-9b4535360c4d.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-b2da8c32e200b4f7",
+      "path": "probes-libs/vt100-0.2.1.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "1b51fe53-7021-4de6-8061-aafe66ba44b4",
+      "path": "probes-libs/vt100-0.7.0-linux-1b51fe53-7021-4de6-8061-aafe66ba44b4.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "84206252-11b1-4f5c-8b3f-69a4b167bf3f",
+      "path": "probes-libs/vt100-0.7.0-linux-84206252-11b1-4f5c-8b3f-69a4b167bf3f.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "848148dc-6734-4fa9-9b82-079a04dad5a0",
+      "path": "probes-libs/vt100-0.7.0-linux-848148dc-6734-4fa9-9b82-079a04dad5a0.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "73e2f016-a6d1-420e-9c96-487979f4d700",
+      "path": "probes-libs/vt100-rust-0.16.2-linux-73e2f016-a6d1-420e-9c96-487979f4d700.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "a5ce7daa-e0c6-4337-b994-e7651e6fcec9",
+      "path": "probes-libs/vt100-rust-0.16.2-linux-a5ce7daa-e0c6-4337-b994-e7651e6fcec9.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "bc665d51-b04f-457f-af6e-ea14cf6a0ec9",
+      "path": "probes-libs/vt100-rust-0.16.2-linux-bc665d51-b04f-457f-af6e-ea14cf6a0ec9.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "28029cf3-22a7-49ef-9f26-9ac93b45e5b2",
+      "path": "probes-libs/vt220-0.7.0-linux-28029cf3-22a7-49ef-9f26-9ac93b45e5b2.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "8d31b0c1-793e-4263-9356-7823d0074362",
+      "path": "probes-libs/vt220-0.7.0-linux-8d31b0c1-793e-4263-9356-7823d0074362.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "9011ea95-b7ae-41d5-9b08-841072463272",
+      "path": "probes-libs/vt220-0.7.0-linux-9011ea95-b7ae-41d5-9b08-841072463272.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-30c4d1ec6b643e46",
+      "path": "probes-libs/vterm-0.2.0.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "46bf5bb3-a043-4a16-b53c-0955c589bdb1",
+      "path": "probes-libs/vterm-0.7.0-linux-46bf5bb3-a043-4a16-b53c-0955c589bdb1.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "8d1aaa25-df17-419b-9a9a-337a3bafec76",
+      "path": "probes-libs/vterm-0.7.0-linux-8d1aaa25-df17-419b-9a9a-337a3bafec76.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "b95ee11e-2560-40d1-aa66-30f9bbd46c93",
+      "path": "probes-libs/vterm-0.7.0-linux-b95ee11e-2560-40d1-aa66-30f9bbd46c93.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "0fc55205-4159-4e9c-834d-3efbfd90f5a0",
+      "path": "probes-libs/wezterm-0.1.0-fork.5-linux-0fc55205-4159-4e9c-834d-3efbfd90f5a0.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "35046bf3-2b4a-403a-a60e-3ff910d1f2ef",
+      "path": "probes-libs/wezterm-0.1.0-fork.5-linux-35046bf3-2b4a-403a-a60e-3ff910d1f2ef.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "c5fb0aaa-f0be-4cab-a389-dddb0803a47c",
+      "path": "probes-libs/wezterm-0.1.0-fork.5-linux-c5fb0aaa-f0be-4cab-a389-dddb0803a47c.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-339d9d4314cbb472",
+      "path": "probes-libs/wezterm-0.1.0-fork.5.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-446040bce01e114f",
+      "path": "probes-libs/xtermjs-5.4.0.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-c85d3d13414ca698",
+      "path": "probes-libs/xtermjs-5.5.0.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "27147683-1651-4120-a26d-cf732ce99baf",
+      "path": "probes-libs/xtermjs-6.0.0-linux-27147683-1651-4120-a26d-cf732ce99baf.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "682bb41c-f855-4998-b66c-4185d90d9e78",
+      "path": "probes-libs/xtermjs-6.0.0-linux-682bb41c-f855-4998-b66c-4185d90d9e78.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "8de421ee-0e6b-41ba-9074-f184479aa9c4",
+      "path": "probes-libs/xtermjs-6.0.0-linux-8de421ee-0e6b-41ba-9074-f184479aa9c4.json",
+      "reason": "suite-incomplete"
+    },
+    {
+      "runId": "legacy-5ccfa4f7fd1f66ea",
+      "path": "probes-libs/xtermjs-6.0.0.json",
+      "reason": "identity-unverified"
+    },
+    {
+      "runId": "legacy-b745782a3f3552e4",
+      "path": "probes-libs/xtermjs-6.1.0-beta.195.json",
+      "reason": "identity-unverified"
+    }
+  ]
+}
