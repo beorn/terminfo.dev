@@ -30,7 +30,12 @@ const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<Capa
 const run = (entries: Partial<Record<CapabilityStatus, number>>) => {
   const table = counts(entries)
   const results = (Object.entries(table) as Array<[CapabilityStatus, number]>).flatMap(([status, n]) =>
-    Array.from({ length: n }, (_, index) => ({ featureId: `${status}.${index}`, status })),
+    Array.from({ length: n }, (_, index) => ({
+      featureId: `${status}.${index}`,
+      status,
+      attempt: { scope: "none" as const },
+      checks: [],
+    })),
   )
   return aggregateCurrentResults(
     results,
