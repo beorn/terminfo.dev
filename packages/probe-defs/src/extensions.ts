@@ -15,6 +15,7 @@ import {
   replyFrame,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
+  sentinelSilenceResult,
   sgrCaptureFrames,
   sgrCaptureTooSmall,
   unmeasuredCellResult,
@@ -401,6 +402,13 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
     "i",
   )
   return (ctx) => {
+    if (ctx.queryWithSentinelOutcome) {
+      const silence = sentinelSilenceResult(
+        ctx.queryWithSentinelOutcome(query, replyPattern),
+        `Complete OSC ${setCode} color reply`,
+      )
+      if (silence) return silence
+    }
     const originalRaw = ctx.feedCapture(query)
     const original = replyPattern.exec(originalRaw)?.[1]
     if (!original) {
@@ -687,6 +695,13 @@ function colorStackError(evidence: "query" | "behavior", action: string, error: 
 
 function colorStackProbe(): ProbeDefinition["termless"] {
   return (ctx) => {
+    if (ctx.queryWithSentinelOutcome) {
+      const silence = sentinelSilenceResult(
+        ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply),
+        "Complete OSC 10 foreground color reply",
+      )
+      if (silence) return silence
+    }
     let result: ProbeResult | undefined
     let primaryError: unknown
     let originalRaw: string | undefined

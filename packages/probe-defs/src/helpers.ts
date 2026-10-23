@@ -990,6 +990,18 @@ export function sentinelNegativeResult(
   }
 }
 
+/**
+ * F4 (#30699): a hand-written probe's headless arm reads a bare capture, so on a proven engine a query
+ * the terminal ignores looks the same as one the collector never delivered. Ask the sentinel member
+ * first: an answered DA1 with no matching frame is the measured negative the criterion names, graded
+ * exactly as live grades it. Every other outcome returns null and the probe keeps its own capture
+ * reading, so an engine off the proven list is unchanged.
+ */
+export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeResult | null {
+  if (outcome.reason !== "sentinel") return null
+  return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
+}
+
 /** The ordering note a reply carries when it arrived after the DA1 sentinel rather than before it. */
 export const REPLY_AFTER_SENTINEL_NOTE = "reply after sentinel"
 

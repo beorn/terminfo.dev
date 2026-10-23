@@ -6,6 +6,7 @@ import {
   replyFrame,
   sentinelAnswer,
   sentinelNegativeResult,
+  sentinelSilenceResult,
 } from "./helpers.ts"
 
 /** These patterns match complete answers to the specific query, not arbitrary consumed output. */
@@ -338,6 +339,13 @@ export const deviceProbes: ProbeDefinition[] = [
     ...probe(
       "device.dsr-996-color-scheme",
       (ctx) => {
+        if (ctx.queryWithSentinelOutcome) {
+          const silence = sentinelSilenceResult(
+            ctx.queryWithSentinelOutcome("\x1b[?996n", /\x1b\[\?997;([12])n/),
+            "DSR ?996 yields complete DSR ?997;1n or ?997;2n",
+          )
+          if (silence) return silence
+        }
         const response = ctx.feedCapture("\x1b[?996n")
         const match = /\x1b\[\?997;([12])n/.exec(response)
         if (!match?.[0]) {

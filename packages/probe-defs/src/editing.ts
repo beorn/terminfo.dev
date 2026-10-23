@@ -15,6 +15,7 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   sentinelAnswer,
   sentinelNegativeResult,
+  sentinelSilenceResult,
   unmeasuredCellResult,
 } from "./helpers.ts"
 
@@ -879,6 +880,13 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     ...probe(
       "editing.decrqcra",
       (ctx) => {
+        if (ctx.queryWithSentinelOutcome) {
+          const silence = sentinelSilenceResult(
+            ctx.queryWithSentinelOutcome(DECRQCRA_REQUEST, /\x1bP1!~[0-9A-Fa-f]{4}\x1b\\/),
+            "Complete four-digit checksum reply for request 1",
+          )
+          if (silence) return silence
+        }
         // DECRQCRA sends a checksum request; the terminal should respond with
         // DCS Pid ! ~ D...D ST where D...D is the hex checksum.
         ctx.feed(`${DECRQCRA_SEED}\x1b[1;1H`)
