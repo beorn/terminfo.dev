@@ -68,9 +68,8 @@ test.each(F4)("%s: an unanswered DA1 keeps the capture reading, never a negative
 test.each(F4)("%s: an engine with no proven reply path keeps its pre-existing reading", (id) => {
   const withMember = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel() })
   const withoutMember = run(id, { ...base })
+  const memberWithoutSentinel = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel("timeout") })
   expect(withoutMember.observation?.outcome).not.toBe("unsupported")
-  expect(withoutMember.observation?.outcome).toBe(
-    run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel("no-response") }).observation?.outcome,
-  )
+  expect(withoutMember.observation?.outcome).toBe(memberWithoutSentinel.observation?.outcome)
   expect(withMember.observation?.outcome).toBe("unsupported")
 })
