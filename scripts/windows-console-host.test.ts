@@ -136,12 +136,12 @@ const historical = () => {
   return parseRun("fixture.json", JSON.stringify(value), ids, new Map([[suite.probeHash, suite]]))
 }
 const statusOf = (run: ReturnType<typeof current>) =>
-  projectResults([run], [], ids, { currentProbeHash: suite.probeHash }).table[run.runId]!
+  projectResults([run], [], ids, { currentProbeHash: suite.probeHash }, []).table[run.runId]!
 
 describe("Windows console-host rule", () => {
   it("holds host-answered and host-silenced current verdicts and counts only passed-through replies", () => {
     const run = current("windows")
-    const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash })
+    const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash }, [])
     // History holds every valid run before admission, which needs a Windows ownership receipt this rule ignores.
     const selected = projection.history["app:windows-terminal"]![0]!
     const byId = new Map(selected.results.map((result) => [result.featureId, result]))
