@@ -63,20 +63,6 @@ export function frozenSuiteIdFor(contentDir: string, release: string): string {
   return suiteId
 }
 
-/**
- * The release's lineage: the suite it is frozen at, then each suite it published on before, newest
- * first. The whole list is carried on the current freeze record, so it survives every later move;
- * nothing here walks another manifest, which would lose history the moment a move clears the old
- * record, and nothing infers it from the current pointer.
- */
-export function frozenSuiteLineage(contentDir: string, release: string): string[] {
-  const suiteId = frozenSuiteIdFor(contentDir, release)
-  const path = join(contentDir, "suites", `${suiteId}.json`)
-  const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-  // The record stores the list oldest first; the reader's lineage names the newest step first.
-  return [suiteId, ...(manifest.freeze?.previous ?? []).map((entry) => entry.suite).reverse()]
-}
-
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const RUN_DIRS = ["probes-apps", "probes-libs", "probes-mux"] as const
 const KINDS = ["app", "headless", "mux"] as const

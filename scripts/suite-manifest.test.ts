@@ -36,7 +36,6 @@ import {
   derivedSuiteManifest,
   freezeCurrentSuiteManifest,
   frozenSuiteIdFor,
-  frozenSuiteLineage,
   moveReleasePointer,
   moveSummary,
   persistSuiteManifest,
@@ -472,7 +471,6 @@ test("a pointer move records the suite it left, and each later move carries the 
     expect(parseSuiteManifest(path, readFileSync(path, "utf8")).freeze).toBeUndefined()
   }
   expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(third.probeHash)
-  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([third.probeHash, second.probeHash, first.probeHash])
 })
 
 test("a same-release freeze after a move is a no-op and keeps the move-written lineage", () => {
@@ -494,7 +492,6 @@ test("a same-release freeze after a move is a no-op and keeps the move-written l
   })
   expect(again.status).toBe("existing")
   expect(readFileSync(path, "utf8")).toBe(movedBytes)
-  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([second.probeHash, first.probeHash])
 })
 
 test("a move onto a suite another release claims is refused before either claim changes", () => {
@@ -529,7 +526,6 @@ test("a move back onto a suite already in the lineage is refused before the writ
   ).toThrow(/would repeat suite/)
   expect(readFileSync(thirdPath, "utf8")).toBe(before)
   expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe(third.probeHash)
-  expect(frozenSuiteLineage(contentDir, "candidate2")).toEqual([third.probeHash, second.probeHash, first.probeHash])
 })
 
 test("a move writes the new claim before it clears the old one, so a failed write strands no release", () => {
@@ -733,14 +729,13 @@ test("the live registry records the candidate2 pointer move it already made", ()
   // contexts were admitted (28023), and the --move onto 448ce7769d2c when the all-platform
   // collection landed (30286). The current record names every suite it left and the window each held
   // the pointer, so the lineage is recoverable from content alone rather than only from Git history.
-  expect(frozenSuiteLineage(join(REPO_ROOT, "content"), "candidate2")).toEqual([
-    "448ce7769d2c",
-    "f9450b3bc56a",
-    "c24025ea22fc",
-    "67ad1f1d1580",
-    "68847e4d5355",
-    "5753741410a9",
-  ])
+  const contentDir = join(REPO_ROOT, "content")
+  const suiteId = frozenSuiteIdFor(contentDir, "candidate2")
+  expect(suiteId).toBe("448ce7769d2c")
+  const suitePath = join(contentDir, "suites", `${suiteId}.json`)
+  expect(
+    parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8")).freeze?.previous?.map((entry) => entry.suite),
+  ).toEqual(["5753741410a9", "68847e4d5355", "67ad1f1d1580", "c24025ea22fc", "f9450b3bc56a"])
 })
 
 test("the declaration API cannot write a release claim, so no writer bypasses the checked act", () => {

@@ -10,7 +10,7 @@ import { splitAppObservable } from "@terminfo/probe-defs"
 import { slice, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
 import { orderedCategoryIds } from "./categories.ts"
-export { frozenSuiteIdFor, frozenSuiteLineage } from "../../packages/admin/suite-manifest.ts"
+export { frozenSuiteIdFor } from "../../packages/admin/suite-manifest.ts"
 
 /** Release 1's own two constants, the ones its tier line prints. */
 const RELEASE_1_TIER = 1

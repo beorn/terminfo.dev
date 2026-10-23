@@ -13,14 +13,9 @@ import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
 import { loadFeatures } from "@terminfo/catalog"
+import { parseSuiteManifest } from "@terminfo/run-parser"
 import { loadCategories } from "../docs/data/categories.ts"
-import {
-  cohortIds,
-  frozenSuiteIdFor,
-  frozenSuiteLineage,
-  loadFeatureCohort,
-  loadReleaseScope,
-} from "../docs/data/load-release-scope.ts"
+import { cohortIds, frozenSuiteIdFor, loadFeatureCohort, loadReleaseScope } from "../docs/data/load-release-scope.ts"
 import {
   aggregateCells,
   classifyCells,
@@ -186,8 +181,12 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // collection landed (30286), so every ruled context including both Windows rows is measured on the
     // live suite. The suite a move leaves keeps no claim of its own, so the lineage carried on the new
     // record is the only place the older suites are still named.
-    expect(frozenSuiteIdFor(contentDir, "candidate2")).toBe("448ce7769d2c")
-    expect(frozenSuiteLineage(contentDir, "candidate2")).toContain("c24025ea22fc")
+    const suiteId = frozenSuiteIdFor(contentDir, "candidate2")
+    expect(suiteId).toBe("448ce7769d2c")
+    const suitePath = join(contentDir, "suites", `${suiteId}.json`)
+    expect(
+      parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8")).freeze?.previous?.map((entry) => entry.suite),
+    ).toContain("c24025ea22fc")
     // Candidate 4 keeps its own freeze, a different declaration from candidate 2's, while its COHORT
     // reads candidate 2's suite (@chief convergence ruling, 2026-10-18). The registry lookup and the
     // cohort spec answer two separate questions and must not be conflated.
