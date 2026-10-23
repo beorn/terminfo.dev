@@ -20,6 +20,7 @@ import {
   withTTYOperation,
 } from "./tty.ts"
 import { sentinelGraceMs } from "@terminfo/probe-defs"
+import { sentinelNegativeResult } from "../../probe-defs/src/helpers.ts"
 
 const originalWrite = process.stdout.write
 
@@ -319,6 +320,29 @@ describe("TTY transaction replies", () => {
     expect(outcome).toMatchObject({ match: null, reason: "sentinel", sentinel: { graceMs: 100 } })
     expect(outcome.sentinel?.atMs).toBeLessThanOrEqual(400)
     expect(elapsed).toBeLessThan(300 + 100)
+    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
+  })
+
+  // #30625 @dev/12 review (2026-10-23): a deadline that cuts the grace window short must not grade
+  // a negative. One DA1 near the deadline, then silence, is a partial window: inconclusive, not
+  // "silent for the whole grace window". The repeated-DA1 regression above misses this because its
+  // earlier DA1 bytes already suppress negative grading.
+  it("never grades a sentinel negative when the deadline cuts the grace window short", async () => {
+    const listenersBefore = process.stdin.listenerCount("data")
+    const started = Date.now()
+    let sentinelAt = 0
+    process.stdout.write = (() => {
+      setTimeout(() => {
+        sentinelAt = Date.now() - started
+        reply("\x1b[?1;2c")
+      }, 250)
+      return true
+    }) as typeof process.stdout.write
+    const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 300, 250)
+    const observedAfterSentinel = Date.now() - started - sentinelAt
+    expect(sentinelAt).toBeGreaterThanOrEqual(240)
+    expect(observedAfterSentinel).toBeLessThan(250)
+    expect(sentinelNegativeResult(outcome.raw, outcome.sentinel, "cursor position response")).toBe(null)
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
 
