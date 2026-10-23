@@ -24,7 +24,8 @@ import { describe, expect, test } from "vitest"
 import { parseInterpretations } from "../docs/data/selected-results.ts"
 
 const CONTENT = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
-const INTERPRETATIONS = join(CONTENT, "interpretations.json")
+// Checked-in copy of the reviewed packet rows (#30764 M4): the round's interpretations leave with it.
+const INTERPRETATIONS = join(dirname(fileURLToPath(import.meta.url)), "..", "test-fixtures", "interpretations.json")
 
 /** The 29 `interpretation-ready` members of turn362-kitty-work-kinds.json. */
 const FEATURES = [

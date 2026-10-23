@@ -135,6 +135,7 @@ function writeEvidence(
   out: string,
   documents: ReturnType<typeof publicResults>["documents"],
   runDocuments: ReadonlyMap<string, Buffer>,
+  contentDir: string,
 ): void {
   const expected = new Map<string, Buffer>()
   for (const [url, { bytes, document }] of documents) {
@@ -260,15 +261,20 @@ function writeEvidence(
   )
 }
 
-export function generateApi(outDir?: string): {
+export function generateApi(
+  outDir?: string,
+  options: { contentDir?: string } = {},
+): {
   dataPath: string
   fileCount: number
   fileLimit: number
   fileHeadroom: number
 } {
+  // Tests pass a checked-in content root (#30764); the site always uses the repository's own content/.
+  const resultsDir = options.contentDir ?? contentDir
   const featuresJson = loadFeaturesJson()
-  const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
+  const { projection } = loadCurrentResults(resultsDir)
+  const published = publicResults(projection, compatibilityTargets(projection, resultsDir))
   const runDocuments = new Map<string, Buffer>()
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
@@ -333,7 +339,7 @@ export function generateApi(outDir?: string): {
   const v3Dir = outDir ? join(outDir, "api", "v3") : join(publicDir, "api", "v3")
   mkdirSync(v3Dir, { recursive: true })
   const dataPath = join(v3Dir, "data.json")
-  writeEvidence(outDir ?? publicDir, published.documents, runDocuments)
+  writeEvidence(outDir ?? publicDir, published.documents, runDocuments, resultsDir)
   writeAsset(dataPath, JSON.stringify(currentData) + "\n")
 
   return { dataPath, ...assertDeploymentLimits(outDir ?? publicDir) }

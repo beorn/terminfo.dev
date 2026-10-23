@@ -32,6 +32,7 @@ import type { PublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
 import type { CellState } from "../docs/data/release-scope.ts"
 import { probeHash } from "../packages/admin/versions.ts"
+import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */
 type StubRun = { target: { kind: string; id: string; os?: string; permissions?: string | null } }
@@ -353,8 +354,9 @@ describe("consumer selection", () => {
   it("resolves every v3 run reference to a digest-verified run document", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-api-run-parity-"))
     try {
-      const { dataPath } = generateApi(out)
-      const contentDir = join(import.meta.dirname, "..", "content")
+      // The checked-in round (#30764 M4): the live content/ loses these runs on Friday.
+      const contentDir = fixtureContentDir()
+      const { dataPath } = generateApi(out, { contentDir })
       const projection = loadCurrentResults(contentDir).projection
       const expected = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
       const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
@@ -442,7 +444,7 @@ describe("consumer selection", () => {
       const analysis = loadAnalysis()
       // Legacy runs stay readable in the projection; none of them is scored as a current result.
       const legacy = Object.values(
-        loadCurrentResults(join(import.meta.dirname, "..", "content")).projection.historical.history,
+        loadCurrentResults(fixtureContentDir()).projection.historical.history,
       )
         .flat()
         .filter((entry) => entry.suiteId === "legacy")
