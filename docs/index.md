@@ -3,17 +3,17 @@ layout: home
 hero:
   name: "Terminfo.dev"
   text: "Can your terminal do that?"
-  tagline: "Feature support tables for terminal emulators"
+  tagline: "Look up 270+ features (colors, links, images, mouse, keys) and see which terminals support each, tested in the terminal itself."
   actions:
     - theme: brand
-      text: Terminal Applications
+      text: Look up a feature
+      link: "/features"
+    - theme: alt
+      text: Compare terminals
       link: "#terminal-applications"
     - theme: alt
-      text: Headless Backends
-      link: "#headless-backends"
-    - theme: alt
-      text: Multiplexers
-      link: "#multiplexers"
+      text: Test your terminal
+      link: "/contribute"
 ---
 
 <script setup>

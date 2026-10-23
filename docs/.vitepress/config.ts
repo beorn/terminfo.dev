@@ -293,7 +293,8 @@ const {
 
 export default defineConfig({
   title: "Terminfo.dev",
-  description: "Can your terminal do that? Feature support tables for terminal emulators.",
+  description:
+    "Can your terminal do that? Look up 270+ features (colors, links, images, mouse, keys) and see which terminals support each, tested in the terminal itself.",
   cleanUrls: true,
   // 28268 AC4: `TERMINFO_SITE_OUT_DIR` moves the build output and the incremental cache out of the source tree so a
   // build can run from a read-only hab landing; unset, VitePress's own defaults are used unchanged.
@@ -332,7 +333,8 @@ export default defineConfig({
         "@type": "WebSite",
         name: "Terminfo.dev",
         url: "https://terminfo.dev",
-        description: "Can your terminal do that? Feature support tables for terminal emulators.",
+        description:
+          "Can your terminal do that? Look up 270+ features (colors, links, images, mouse, keys) and see which terminals support each, tested in the terminal itself.",
       }),
     ],
     [
