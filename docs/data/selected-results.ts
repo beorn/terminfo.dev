@@ -207,7 +207,9 @@ export interface SelectedProjection {
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
   table: Readonly<Record<string, Readonly<Record<string, CapabilityStatus>>>>
-  exclusions: Array<{ runId: string; path: string; reason: string }>
+  /** v1/v2 bytes are available only through their historical reader. */
+  historical: HistoricalProjection
+  exclusions: HistoricalProjection["exclusions"]
   releaseSuiteId: string | null
   treeSuiteId: string
   treeMovedPastRelease: boolean
@@ -736,21 +738,33 @@ export function recognizeProjectedContextKey(key: string): RecognizedProjectedCo
 }
 const versionCompare = (a: string, b: string): number => a.localeCompare(b, undefined, { numeric: true })
 
-/**
- * The runs admission refuses, with the reason each was refused: the one part of the historical read that
- * production still consumes (public results, the API generator and the collector all read `exclusions`).
- * The display projection this function used to build had no reader outside tests (#30759 AC3).
- */
-export function historicalExclusions(
+export function projectHistoricalResults(
   runs: readonly LoadedRun[],
   interpretations: readonly Interpretation[],
   catalogIds: readonly string[],
-  policy: { currentProbeHash: string; textSnapshots?: ReadonlyMap<string, Uint8Array> },
-): Array<{ runId: string; path: string; reason: string }> {
+  policy: { currentProbeHash: string; releaseSuiteId?: string | null; textSnapshots?: ReadonlyMap<string, Uint8Array> },
+  contextCounts: ReadonlyMap<string, ReadonlySet<string>>,
+): HistoricalProjection {
   if (!nonempty(policy.currentProbeHash)) throw new Error("currentProbeHash is required")
+  const releaseSuiteId = policy.releaseSuiteId ?? null
+  // 29930: a release-bound reading selects within its declared freeze. While the tree has moved past
+  // the release suite, a version's runs are ranked release suite, then tree suite, then older, so a
+  // newer capture at the tree cannot displace the frozen reading; measuredAt still breaks ties inside
+  // a rank. With no move (no release suite, or it equals the tree suite) the ordering is unchanged.
+  const treeMoved = releaseSuiteId !== null && releaseSuiteId !== policy.currentProbeHash
+  const suiteRank = (run: LoadedRun): number => {
+    if (!run.suiteComplete) return 0
+    if (treeMoved && run.probeHash === releaseSuiteId) return 2
+    return run.probeHash === policy.currentProbeHash ? 1 : 0
+  }
   const ids = new Set<string>()
   const byRunId = new Map<string, LoadedRun>()
   const textAssessments = new Map<string, TextQualificationAssessment>()
+  const textAssessmentFor = (run: LoadedRun): TextQualificationAssessment => {
+    const assessment = textAssessments.get(run.runId)
+    if (!assessment) throw new Error(`Missing text qualification assessment for run ${run.runId}`)
+    return assessment
+  }
   for (const run of runs) {
     if (ids.has(run.runId)) throw new Error(`duplicate runId ${run.runId}`)
     ids.add(run.runId)
@@ -781,12 +795,97 @@ export function historicalExclusions(
     }
     presented.set(key, entry.id)
   }
-  const exclusions: Array<{ runId: string; path: string; reason: string }> = []
-  for (const run of runs) {
-    const assessment = assessRunAdmission(run, active, { mode: "historical" })
-    if (!assessment.accepted) exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
+  const keyFor = (run: LoadedRun): string => {
+    const stem = `${run.target.kind}:${run.target.id}`
+    return projectedContextKey(run.target, contextCounts.get(stem)?.size ?? 0)
   }
-  return exclusions
+  const current: HistoricalProjection["current"] = {}
+  const versions: HistoricalProjection["versions"] = {}
+  const history: HistoricalProjection["history"] = {}
+  const exclusions: HistoricalProjection["exclusions"] = []
+  const groups = new Map<string, LoadedRun[]>()
+  const assessments = new Map<string, ReturnType<typeof assessRunAdmission>>()
+  for (const run of runs) {
+    const key = keyFor(run)
+    history[key] ??= []
+    const assessment = assessRunAdmission(run, active, { mode: "historical" })
+    assessments.set(run.runId, assessment)
+    history[key].push(
+      projectRun(
+        run,
+        active,
+        catalogIds,
+        policy.currentProbeHash,
+        releaseSuiteId,
+        assessment.identityAdmission,
+        textAssessmentFor(run),
+      ),
+    )
+    if (!assessment.accepted) {
+      exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
+      continue
+    }
+    if (!groups.has(key)) groups.set(key, [])
+    const group = groups.get(key)
+    if (!group) fail(run.path, `missing run group for ${key}`)
+    group.push(run)
+  }
+  for (const [key, group] of groups) {
+    const byVersion = new Map<string, LoadedRun[]>()
+    for (const run of group) {
+      const version = run.target.version
+      if (!byVersion.has(version)) byVersion.set(version, [])
+      const versionGroup = byVersion.get(version)
+      if (!versionGroup) fail(run.path, `missing version group for ${version}`)
+      versionGroup.push(run)
+    }
+    versions[key] = []
+    for (const version of [...byVersion.keys()].sort((a, b) => versionCompare(b, a))) {
+      const choices = byVersion.get(version)
+      if (!choices?.length) throw new Error(`missing run choices for ${key} ${version}`)
+      choices.sort(
+        (a, b) =>
+          suiteRank(b) - suiteRank(a) ||
+          Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
+          b.runId.localeCompare(a.runId),
+      )
+      const chosen = choices[0]
+      if (!chosen) throw new Error(`missing chosen run for ${key} ${version}`)
+      const assessment = assessments.get(chosen.runId)
+      if (!assessment) throw new Error(`Missing admission assessment for selected run ${chosen.runId}`)
+      versions[key].push(
+        projectRun(
+          chosen,
+          active,
+          catalogIds,
+          policy.currentProbeHash,
+          releaseSuiteId,
+          assessment.identityAdmission,
+          textAssessmentFor(chosen),
+        ),
+      )
+    }
+    const selected = versions[key][0]
+    if (!selected) throw new Error(`missing selected version for ${key}`)
+    current[key] = selected
+  }
+  // One classification per cell, for every run the projection read: `current` and `versions` are drawn
+  // from `history`, so classifying the history covers every consumer, and a run's cells are classified
+  // once rather than once per reader.
+  const table: Record<string, Record<string, CellState>> = {}
+  for (const list of Object.values(history)) {
+    for (const version of list) table[version.runId] = classifyCells(version.cells)
+  }
+  return {
+    current,
+    table,
+    versions,
+    history,
+    exclusions,
+    releaseSuiteId,
+    treeSuiteId: policy.currentProbeHash,
+    treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
+  }
 }
 
 /** Read current execution results without applying later feature interpretations or grading. */
@@ -820,13 +919,14 @@ export function projectResults(
   // projection, alacritty's one schema-3 context was the bare stem while its three legacy contexts carried
   // full keys, and no reviewed default-context row could name the Windows context for both readers.
   const contexts = countContexts(runs)
-  const exclusions = historicalExclusions(
+  const historical = projectHistoricalResults(
     runs.filter((run) => run.schemaVersion !== 3),
     interpretations.filter(
       (entry) => !("captureSha256" in entry) && runs.some((run) => run.schemaVersion !== 3 && applies(entry, run)),
     ),
     catalogIds,
     policy,
+    contexts,
   )
   const currentRuns = runs.filter((run) => run.schemaVersion === 3)
   const releaseSuiteId = policy.releaseSuiteId ?? null
@@ -841,7 +941,8 @@ export function projectResults(
     history: {},
     table: {},
     historical,
-    exclusions,
+    exclusions: [...historical.exclusions],
+    releaseSuiteId,
     treeSuiteId: policy.currentProbeHash,
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
