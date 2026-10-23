@@ -731,11 +731,11 @@ test("the live registry records the candidate2 pointer move it already made", ()
   // the pointer, so the lineage is recoverable from content alone rather than only from Git history.
   const contentDir = join(REPO_ROOT, "content")
   const suiteId = frozenSuiteIdFor(contentDir, "candidate2")
-  expect(suiteId).toBe("448ce7769d2c")
+  expect(suiteId).toBe("00da53623456")
   const suitePath = join(contentDir, "suites", `${suiteId}.json`)
   expect(
     parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8")).freeze?.previous?.map((entry) => entry.suite),
-  ).toEqual(["5753741410a9", "68847e4d5355", "67ad1f1d1580", "c24025ea22fc", "f9450b3bc56a"])
+  ).toEqual(["5753741410a9", "68847e4d5355", "67ad1f1d1580", "c24025ea22fc", "f9450b3bc56a", "448ce7769d2c"])
 })
 
 test("the declaration API cannot write a release claim, so no writer bypasses the checked act", () => {

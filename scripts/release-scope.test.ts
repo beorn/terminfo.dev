@@ -182,7 +182,7 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // live suite. The suite a move leaves keeps no claim of its own, so the lineage carried on the new
     // record is the only place the older suites are still named.
     const suiteId = frozenSuiteIdFor(contentDir, "candidate2")
-    expect(suiteId).toBe("448ce7769d2c")
+  expect(suiteId).toBe("00da53623456")
     const suitePath = join(contentDir, "suites", `${suiteId}.json`)
     expect(
       parseSuiteManifest(suitePath, readFileSync(suitePath, "utf8")).freeze?.previous?.map((entry) => entry.suite),
