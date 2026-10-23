@@ -184,7 +184,7 @@ describe("release 1 decisive-count reader", () => {
   }, 15_000)
 
   it("maps every accepted cohort value to a factory, candidate 1 to none", () => {
-    const contentDir = join(import.meta.dirname, "..", "content")
+    const contentDir = fixtureContentDir()
     // The mapper is the only place a cohort value becomes a spec. A value accepted by the CLI but
     // missing here would silently measure nothing, so each one is checked against the map.
     expect(Object.keys(COHORT_FACTORIES).sort()).toEqual(["candidate1", "candidate2", "candidate3", "candidate4"])
@@ -200,7 +200,8 @@ describe("release 1 decisive-count reader", () => {
   it("reports candidate 3's exact modes/device delta on the declared candidate-4 freeze", () => {
     // The generic reader already covers suite selection and grading; this checks the new CLI value's
     // actual data path, including all unavailable rows, rather than constructing its spec in the test.
-    const contentDir = join(import.meta.dirname, "..", "content")
+    // The round now lives in test-fixtures (#30764 M4): the cohort census is the same round's runs.
+    const contentDir = fixtureContentDir()
     const selected = parseReaderArgs(["--cohort", "candidate3"])
     const factory = COHORT_FACTORIES[selected.cohort]
     if (!factory) throw new Error("named cohort has no factory")
@@ -357,7 +358,7 @@ describe("release 1 decisive-count reader", () => {
   it("reports the ratified Candidate 2 cohort without dropping overlaps or its unavailable scrollback ID", () => {
     // The existing 52-ID reader cases cannot catch a named cohort being ignored or intersected
     // with the frozen schedule, which would silently shrink the approved 125-ID denominator.
-    const contentDir = join(import.meta.dirname, "..", "content")
+    const contentDir = fixtureContentDir()
     // The suite is read from the registry rather than retyped: a freeze is a data addition, and an
     // expectation that spells the hash by hand has to be edited every time one lands.
     // The classics reading now moves to the suite candidate 4's freeze declares (the c240 cut), and
@@ -455,7 +456,7 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("takes the ten excluded tier-1 rows out of the declared 62 by their catalog label, never a list", () => {
-    const contentDir = join(import.meta.dirname, "..", "content")
+    const contentDir = fixtureContentDir()
     const catalog = loadFeatures(contentDir)
     const declared = tierOneIds(contentDir)
     expect(declared).toHaveLength(62)
@@ -916,7 +917,7 @@ describe("release 1 decisive-count reader", () => {
 })
 
 describe("per-category decisive share (28018 AC2)", () => {
-  const contentDir = join(import.meta.dirname, "..", "content")
+  const contentDir = fixtureContentDir()
   const catalog = loadCategories(contentDir)
 
   it("partitions the real decidable cohort into the nine categories.json categories, in catalog order", () => {
@@ -1196,7 +1197,7 @@ describe("per-category decisive share (28018 AC2)", () => {
 })
 
 describe("the candidate-4 cohort reads the frozen suite its caller names", () => {
-  const contentDir = join(import.meta.dirname, "..", "content")
+  const contentDir = fixtureContentDir()
 
   it("names candidate 4's slices, its suite and whose freeze declared that suite", () => {
     const spec = candidate4Cohort(contentDir)
@@ -1269,7 +1270,7 @@ describe("the candidate-4 cohort reads the frozen suite its caller names", () =>
 })
 
 describe("the reader separates admitted runs from the site's refusals (28018)", () => {
-  const contentDir = join(import.meta.dirname, "..", "content")
+  const contentDir = fixtureContentDir()
 
   it("lists only runs the site admits, and names a refused run with the gate's own reason", () => {
     // d3c5c6a0 carries provenance.runtime.cleanTree=false and 6993f2ac is suite-incomplete, so the ONE
@@ -1367,7 +1368,7 @@ describe("the reader separates admitted runs from the site's refusals (28018)", 
   }, 20_000)
 
   it("prints a declared blocker where the suite refusal would be, and never rewords a measured row", () => {
-    const contentDir = join(import.meta.dirname, "..", "content")
+    const contentDir = fixtureContentDir()
     const report = buildHistoricalReport({ contentDir, cohort: candidate2Cohort(contentDir) })
     const cohort = report.cohort
     if (!cohort) throw new Error("cohort report absent")
