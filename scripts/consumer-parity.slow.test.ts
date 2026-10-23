@@ -1098,11 +1098,11 @@ describe("selected-run consumer parity", () => {
       counts: { "test-todo": 273 },
       complete: false,
     })
-    expect(site.stats.screen?.pct).toBe(0)
+    expect(site.stats.screen?.pct).toBeNull()
     expect(terminal?.params).toMatchObject({
       generated: fixture.screen.measuredAt,
       runSha256: fixture.screen.sha256,
-      pct: "0",
+      pct: "",
     })
     expect(JSON.parse(terminal?.params.versions ?? "[]")).toEqual([
       expect.objectContaining({ version: fixture.screen.target.version, pct: 0, suiteFreshness: "current" }),

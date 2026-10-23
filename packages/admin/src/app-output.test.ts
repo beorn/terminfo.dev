@@ -161,7 +161,7 @@ describe("probe app --output", () => {
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
     expect(lines).toContain(
-      "  0/1 supported (0%) · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (retained)",
+      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (retained)",
     )
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
   })
@@ -174,7 +174,7 @@ describe("probe app --output", () => {
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
     expect(lines).toContain(
-      "  0/1 supported (0%) · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (admitted)",
+      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (admitted)",
     )
   })
 })
