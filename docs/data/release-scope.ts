@@ -294,32 +294,6 @@ export function runDecidedNothing(counts: Readonly<Record<CapabilityStatus, numb
 }
 
 /**
- * The percentage token a run-level line prints, from a share whose numbers may be absent (#30784).
- * Module-private: the description below is the one reader.
- */
-function supportedShareText(pct: string): string {
-  return pct === "" ? NOT_MEASURED_TEXT.toLowerCase() : `${pct}%`
-}
-
-/**
- * The terminal page's SEO description (#30784, @cto S1): one owner for the share wording AND its
- * fraction, so the undecided branch cannot publish either a percentage or an unexplained
- * "0/273 features" that repeats the measured-looking zero. A decided run keeps the description it
- * published before, a genuine 0% included.
- */
-export function terminalSupportDescription(params: {
-  readonly backendName: string
-  readonly pct: string
-  readonly yes: string
-  readonly total: string
-  readonly backendDescription: string
-}): string {
-  const share = supportedShareText(params.pct)
-  const fraction = params.pct === "" ? "" : ` (${params.yes}/${params.total} features)`
-  return `${params.backendName} terminal emulator feature support: ${share}${fraction}. ${params.backendDescription}`
-}
-
-/**
  * The words a baseline row prints in place of a percentage when its run judged nothing (#30763):
  * "0%" there reads as a measured fail for a terminal no run ever decided. The counts stay in the
  * row's tooltip.

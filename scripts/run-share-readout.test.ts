@@ -7,14 +7,15 @@
  * @testonly none
  */
 import type { CapabilityStatus } from "@terminfo/probe-defs"
-import { readFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
   NOT_MEASURED_TEXT,
   runDecidedNothing,
-  terminalSupportDescription,
 } from "../docs/data/release-scope.ts"
 
 const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
@@ -61,40 +62,46 @@ describe("#30784 whole-run readout", () => {
     expect(currentSupportedShare(mixed)).toBe("36/273 supported (13%)")
   })
 
-  it("keeps the undecided terminal description honest and pins the wiring that publishes it", () => {
-    // @cto S2: drive the transform the page build calls, then pin that the config calls it. The
-    // config cannot be imported here — it is outside the typecheck program, and importing it would
-    // drag eleven latent type errors plus a missing markdown-it types into the check.
-    const describeTerminal = (pct: string, yes: string, total: string) =>
-      terminalSupportDescription({
-        backendName: "Windows Terminal",
-        pct,
-        yes,
-        total,
-        backendDescription: "Microsoft's terminal.",
-      })
+  it("publishes honest terminal descriptions through the real page transform", () => {
+    // @cto S2, peer-corrected (#dev/7 30784-7999d765-review): run the actual transformPageData the
+    // site build calls, through the child-process config loader scripts/build-metadata.test.ts uses,
+    // so this fails if config.ts ever publishes a measured-looking zero for an undecided run. A
+    // static import would pull config.ts into the TypeScript program, which it is not part of today.
+    const siteRoot = join(dirname(fileURLToPath(import.meta.url)), "..")
+    const script = `
+      const { default: config } = await import("./docs/.vitepress/config.ts")
+      const describe = (pct, yes, total) => {
+        const pageData = {
+          relativePath: "terminals/windows-terminal.md",
+          frontmatter: {},
+          params: { backendName: "Windows Terminal", pct, yes, total, backendDescription: "Microsoft's terminal." },
+        }
+        config.transformPageData(pageData, {})
+        return pageData.description
+      }
+      console.log(JSON.stringify({
+        undecided: describe("", "0", "273"),
+        zero: describe("0", "0", "273"),
+        mixed: describe("13", "36", "273"),
+      }))
+    `
+    const observed = JSON.parse(
+      execFileSync("bun", ["-e", script], { cwd: siteRoot, encoding: "utf8", timeout: 30_000 }),
+    ) as { undecided: string; zero: string; mixed: string }
 
-    // The terminal path passes pct: "" when the run has no percentage (docs/terminals/[id].paths.ts:148).
-    const undecided = describeTerminal("", "0", "273")
-    expect(undecided).toBe(
+    expect(observed.undecided).toBe(
       "Windows Terminal terminal emulator feature support: not measured yet. Microsoft's terminal.",
     )
     // Neither a percentage nor the unexplained 0/273 fraction may survive on the undecided branch.
-    expect(undecided).not.toContain("%")
-    expect(undecided).not.toContain("0/273")
+    expect(observed.undecided).not.toContain("%")
+    expect(observed.undecided).not.toContain("0/273")
 
     // A decided run keeps exactly the description it published before, a genuine zero included.
-    expect(describeTerminal("0", "0", "273")).toBe(
+    expect(observed.zero).toBe(
       "Windows Terminal terminal emulator feature support: 0% (0/273 features). Microsoft's terminal.",
     )
-    expect(describeTerminal("13", "36", "273")).toBe(
+    expect(observed.mixed).toBe(
       "Windows Terminal terminal emulator feature support: 13% (36/273 features). Microsoft's terminal.",
     )
-
-    // The revert this pins: config.ts assembling the description itself, which is what published
-    // "0% (0/273 features)" for an undecided run before #30784.
-    const siteConfig = readFileSync(new URL("../docs/.vitepress/config.ts", import.meta.url), "utf8")
-    expect(siteConfig).toContain("terminalSupportDescription({")
-    expect(siteConfig).not.toContain("params.pct}%")
-  })
+  }, 40_000)
 })
