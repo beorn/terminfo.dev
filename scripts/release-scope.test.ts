@@ -9,6 +9,7 @@
  * @testonly none
  */
 import { readFileSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
@@ -112,13 +113,21 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
   it("derives the 125 classic cohort in the category catalog's order and refuses an empty classics slice", () => {
     const ids = cohortIds(catalog, categories, ["classics"], { excludingTier1: false })
     expect(ids).toHaveLength(125)
+    // Independent ratification snapshot, moved here when the decisive-share tool retired (#30759):
+    // SHA256 over the sorted 125 IDs, not a prefix census. A swap of one member for another keeps the
+    // length and both sample memberships below, so only this pin catches it.
+    expect(
+      createHash("sha256")
+        .update(JSON.stringify([...ids].sort()))
+        .digest("hex"),
+    ).toBe("1a2012751b148b0230b97e27c74c11868ec36f1b3dd202fb798d42ec8abda17a")
     // The two classic rows that also carry a tier1 field stay in the cohort: the filter is the
     // CATEGORY slice, matching the accepted 125.
     expect(ids).toContain("cursor.position-report")
     expect(ids).toContain("editing.decrqcra")
     // ONE category order: the cohort follows each category's own `order`, the same field the site's
     // category blocks print in, so Erase (order 4) precedes Editing (order 5) and Scrollback (7)
-    // precedes Reset (8). The 125-member SET is pinned by SHA in decisive-share.test.ts.
+    // precedes Reset (8). The 125-member SET is pinned by SHA above.
     expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
     expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
     const cohort = loadFeatureCohort({
