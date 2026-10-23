@@ -386,7 +386,10 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
         assert.deepEqual(site.stats,{});
         assert.deepEqual(v3.current,{});
         assert.match(v3.message,/No current/);
-        assert.ok(pages.some(page=>JSON.parse(page.params.historicalRuns||"[]").length));
+        // #30764 deleted every old run and #30759 AC3 ships an empty archive, so a corpus with no
+        // current run has nothing historical to show: no page may claim a historical run, and
+        // inventing one here is the failure this row exists to catch.
+        assert.ok(pages.every(page=>JSON.parse(page.params.historicalRuns||"[]").length===0));
       }
       for (const entry of Object.values(analyses))
         if(entry.runSha256) assert.ok(Object.values(projection.current).some(run=>run.sha256===entry.runSha256));
@@ -451,7 +454,10 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
     expect(receipt.exactContexts > 0).toBe(receipt.schema3Files > 0)
     expect(receipt.exactContexts).toBeLessThanOrEqual(receipt.schema3Files)
     expect(receipt.compatibilityTargets).toBeUndefined()
-    expect(receipt.referencedRuns).toBeGreaterThan(0)
+    // A corpus with current contexts must reference at least one run; the post-#30764 corpus has none
+    // to reference, and referencing nothing is correct. Symmetric on purpose: the collector refills
+    // this corpus, so this is not a permanent zero-total rule.
+    expect(receipt.referencedRuns > 0).toBe(receipt.exactContexts > 0)
   } finally {
     rmSync(out, { recursive: true, force: true })
   }
