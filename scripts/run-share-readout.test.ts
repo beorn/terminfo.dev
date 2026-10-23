@@ -7,13 +7,14 @@
  * @testonly none
  */
 import type { CapabilityStatus } from "@terminfo/probe-defs"
-import config from "../docs/.vitepress/config.ts"
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
   NOT_MEASURED_TEXT,
   runDecidedNothing,
+  terminalSupportDescription,
 } from "../docs/data/release-scope.ts"
 
 const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
@@ -55,20 +56,20 @@ describe("#30784 whole-run readout", () => {
     expect(currentSupportedShare(mixed)).toBe("36/273 supported (13%)")
   })
 
-  it("keeps the undecided terminal description honest through the real page transform", () => {
-    // @cto S2: this drives the actual transformPageData the site build uses, so it fails if
-    // config.ts ever goes back to interpolating params.pct itself. The terminal path passes pct: ""
-    // when the run has no percentage (docs/terminals/[id].paths.ts:148).
-    const describeTerminal = (pct: string, yes: string, total: string) => {
-      const pageData = {
-        relativePath: "terminals/windows-terminal.md",
-        frontmatter: {} as Record<string, unknown>,
-        params: { backendName: "Windows Terminal", pct, yes, total, backendDescription: "Microsoft's terminal." },
-      }
-      config.transformPageData(pageData as never)
-      return (pageData as { description?: string }).description ?? ""
-    }
+  it("keeps the undecided terminal description honest and pins the wiring that publishes it", () => {
+    // @cto S2: drive the transform the page build calls, then pin that the config calls it. The
+    // config cannot be imported here — it is outside the typecheck program, and importing it would
+    // drag eleven latent type errors plus a missing markdown-it types into the check.
+    const describeTerminal = (pct: string, yes: string, total: string) =>
+      terminalSupportDescription({
+        backendName: "Windows Terminal",
+        pct,
+        yes,
+        total,
+        backendDescription: "Microsoft's terminal.",
+      })
 
+    // The terminal path passes pct: "" when the run has no percentage (docs/terminals/[id].paths.ts:148).
     const undecided = describeTerminal("", "0", "273")
     expect(undecided).toBe(
       "Windows Terminal terminal emulator feature support: not measured yet. Microsoft's terminal.",
@@ -84,5 +85,11 @@ describe("#30784 whole-run readout", () => {
     expect(describeTerminal("13", "36", "273")).toBe(
       "Windows Terminal terminal emulator feature support: 13% (36/273 features). Microsoft's terminal.",
     )
+
+    // The revert this pins: config.ts assembling the description itself, which is what published
+    // "0% (0/273 features)" for an undecided run before #30784.
+    const siteConfig = readFileSync(new URL("../docs/.vitepress/config.ts", import.meta.url), "utf8")
+    expect(siteConfig).toContain("terminalSupportDescription({")
+    expect(siteConfig).not.toContain("params.pct}%")
   })
 })

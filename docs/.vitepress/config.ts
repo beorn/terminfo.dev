@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
-import { supportedShareText } from "../data/release-scope"
+import { terminalSupportDescription } from "../data/release-scope"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 import { loadCategories, orderedCategoryIds } from "../data/categories.ts"
@@ -494,12 +494,15 @@ export default defineConfig({
           pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
         } else {
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
-          // #30784: a run that decided nothing has no percentage and no answerable fraction, so the
-          // description omits both rather than repeat a measured-looking zero (@cto S1 on a41752fe).
-          // A decided run keeps its exact text, a genuine 0% included.
-          const share = supportedShareText(params.pct)
-          const fraction = params.pct === "" ? "" : ` (${params.yes}/${params.total} features)`
-          pageData.description = `${params.backendName} terminal emulator feature support: ${share}${fraction}. ${params.backendDescription}`
+          // #30784: the wording AND its fraction live in one owner, so a run that decided nothing
+          // cannot publish a measured-looking zero (@cto S1 on a41752fe).
+          pageData.description = terminalSupportDescription({
+            backendName: params.backendName,
+            pct: params.pct ?? "",
+            yes: params.yes,
+            total: params.total,
+            backendDescription: params.backendDescription,
+          })
         }
       } else if (rel.startsWith("os/")) {
         pageData.title = `${params.label} Terminal Support \u2014 OS Compatibility Matrix`
