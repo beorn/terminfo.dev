@@ -305,11 +305,6 @@ interface TraceRecord {
   assertions: TraceAssertion[]
 }
 
-interface HistoricalTraceCell extends TraceRecord {
-  outcome: Observation["outcome"]
-  evidence: Observation["evidence"]
-}
-
 interface CurrentTraceCell extends TraceRecord {
   status: CapabilityResult["status"]
   evidence?: CapabilityResult["evidence"]
@@ -325,7 +320,6 @@ export interface TraceDocument<Cell> {
   identity: { recorded: string; admission?: SelectedVersion["identityAdmission"] }
   cells: Record<string, Cell>
 }
-export type HistoricalTraceDocument = TraceDocument<HistoricalTraceCell>
 export type CurrentTraceDocument = TraceDocument<CurrentTraceCell>
 
 function withoutReadWindows(value: unknown): unknown {
@@ -515,28 +509,6 @@ function traceDocument<Cell>(
     bytes,
     document,
   }
-}
-
-/** The trace of a historical run's cells that carry no presentation decision; none when every cell has one. */
-export function historicalTrace(version: SelectedVersion) {
-  const headless = version.target.kind === "headless"
-  const cells: Record<string, HistoricalTraceCell> = {}
-  for (const [featureId, cell] of Object.entries(version.cells)) {
-    if (cell.presentation) continue
-    cells[featureId] = {
-      outcome: cell.outcome,
-      evidence: cell.evidence,
-      ...traceRecord(
-        featureId,
-        headless,
-        cell.reason,
-        cell.record.rawReply,
-        cell.record.assertions,
-        `run ${version.runId} feature ${featureId}`,
-      ),
-    }
-  }
-  return traceDocument(2, version, cells)
 }
 
 /** The trace of a current run's results that carry no presentation decision; none when every result has one. */

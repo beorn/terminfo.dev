@@ -21,7 +21,7 @@ import {
   type SelectedVersion,
 } from "./selected-results.ts"
 import type { CellState } from "./release-scope.ts"
-import { currentTrace, historicalTrace, type CurrentTraceDocument, type HistoricalTraceDocument } from "./run-trace.ts"
+import { currentTrace, type CurrentTraceDocument } from "./run-trace.ts"
 
 type PublicReview = SelectedVersion["reviews"][number]
 /** Missing kind retains the historical PNG shape byte for byte. */
@@ -183,15 +183,12 @@ function qualificationFor(
 }
 
 /** Keeps a run's trace document for generate-api and returns the receipt its run version carries. */
-function traceReceipt(
-  documents: PublicDocuments,
-  trace: ReturnType<typeof historicalTrace> | ReturnType<typeof currentTrace>,
-): { trace?: TraceReceipt } {
+function traceReceipt(documents: PublicDocuments, trace: ReturnType<typeof currentTrace>): { trace?: TraceReceipt } {
   if (!trace) return {}
   const prior = documents.get(trace.url)
   if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
   const actualSha256 = createHash("sha256").update(trace.bytes).digest("hex")
-  const schemaVersion = trace.url.startsWith("/api/v3/") ? 3 : 2
+  const schemaVersion = 3
   for (const featureId of Object.keys(trace.document.cells)) {
     const loaded = readCellTrace(trace.document, {
       schemaVersion,
@@ -290,12 +287,7 @@ type PublicDocuments = Map<
   string,
   {
     bytes: string
-    document:
-      | EvidenceDocument
-      | HistoricalEvidenceDocument
-      | TextQualificationDocument
-      | HistoricalTraceDocument
-      | CurrentTraceDocument
+    document: EvidenceDocument | HistoricalEvidenceDocument | TextQualificationDocument | CurrentTraceDocument
   }
 >
 

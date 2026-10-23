@@ -40,15 +40,13 @@ import {
   classifyDevelopmentRun,
   consoleHostHeldResults,
   readVerifiedArtifact,
-  historicalStatesFor as statesFor,
   statesFor as currentStatesFor,
-  type SelectedVersion,
 } from "../docs/data/selected-results.ts"
 import { parseInterpretations } from "./interpretations.ts"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { collectHeadlessRuns } from "../packages/probes/collect-headless.ts"
 import { admitRun, planAdmission, type AdmissionPlan } from "./admit-run.ts"
-import { candidateFromSelected, pickContextRun } from "../docs/data/run-selection.ts"
+import { candidateFromSelected } from "../docs/data/run-selection.ts"
 import { TRANSPORT_RECEIPT_KIND } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -72,62 +70,10 @@ export interface CollectionContext {
   readonly command: string | null
   /** What must land before the row can produce an admissible run; null when nothing is pending. */
   readonly requires: string | null
-  /** The committed run this row's entry point was read back from, with how it was resolved. */
+  /** The committed run that shows why this row exists here, when one does; null otherwise. */
   readonly sourceRun: string | null
   /** Why the row has no route at all, named so it is reported and never dropped. */
   readonly uncollectable: string | null
-}
-
-/** The five Linux app rows the launcher serves, in the bar's order. */
-const LINUX_TARGET_IDS = ["kitty", "ghostty", "wezterm", "alacritty", "xterm"] as const
-
-/** The clipboard profiles `scripts/linux-container-run.sh` declares, and the permissions each writes. */
-export type ClipboardProfile = "default" | "allow" | "deny-read"
-
-/**
- * flake.nix's `kitty-visual-baseline-image` is the 0.46.2 archive and `kitty-visual-current-image` the
- * official build; kitty is the only target with a preset (`--preset` for every other target must be
- * `default`), so the committed run's version is the one thing that tells the two apart.
- */
-export const KITTY_BASELINE_VERSION = "0.46.2"
-
-/** The launcher flags for one Linux row, read back from the committed run that row re-measures. */
-export interface LinuxLedgerEntry {
-  /** The committed run's id. */
-  readonly runId: string
-  /** Where in the content dir the run document was read from. */
-  readonly file: string
-  readonly version: string
-  readonly preset: "default" | "baseline" | "current"
-  readonly clipboardProfile: ClipboardProfile
-  /** The probe ids the committed run measured; null when it ran the whole suite (no `--ids` flag). */
-  readonly ids: readonly string[] | null
-  /** Whether the site selects this run for the context, or it is the newest run the site excludes. */
-  readonly selection: "site-selected" | "newest-admitted"
-  /** The site's exclusion reason when it does not select the run; null when it does. */
-  readonly exclusion: string | null
-}
-
-export type LinuxLedger = Readonly<Record<string, LinuxLedgerEntry>>
-
-/** A permissions string, as the launcher writes it, mapped to the profile flag that produced it. */
-export function clipboardProfileFor(permissions: string | null | undefined, where: string): ClipboardProfile {
-  if (permissions === null || permissions === undefined) return "default"
-  if (permissions === "clipboard: read=allow,write=allow") return "allow"
-  if (permissions === "clipboard: read=deny,write=allow") return "deny-read"
-  throw new Error(
-    `${where}: recorded permissions ${permissions} are not one the launcher declares ` +
-      `(a permissions-free run is --clipboard-profile default)`,
-  )
-}
-
-/** The preset the committed run was measured with; only kitty has one, and it is never `default`. */
-export function presetFor(id: string, version: string): "default" | "baseline" | "current" {
-  if (id !== "kitty") return "default"
-  if (version.length === 0) {
-    throw new Error(`kitty: the committed run records no version, so its baseline/current preset cannot be read`)
-  }
-  return version === KITTY_BASELINE_VERSION ? "baseline" : "current"
 }
 
 /**
@@ -148,36 +94,17 @@ function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
   ]
 }
 
-const linuxRow = (id: string, entry: LinuxLedgerEntry | undefined): CollectionContext => {
-  if (entry === undefined) {
-    return {
-      id,
-      os: "linux",
-      kind: "app",
-      route: "linux-container",
-      command: null,
-      requires: null,
-      sourceRun: null,
-      uncollectable:
-        `no committed run to read the launcher flags from — neither the site's selection nor ` +
-        `content/probes-apps holds a ${id}/linux run, and the preset/profile/ids are never guessed`,
-    }
-  }
-  const ids = entry.ids === null ? "" : ` --ids ${entry.ids.join(",")}`
-  const exclusion = entry.exclusion === null ? "" : ` — the site excludes it: ${entry.exclusion}`
-  return {
-    id,
-    os: "linux",
-    kind: "app",
-    route: "linux-container",
-    command:
-      `bash scripts/linux-container-run.sh --target ${id} --preset ${entry.preset} ` +
-      `--clipboard-profile ${entry.clipboardProfile}${ids} <outdir>`,
-    requires: null,
-    sourceRun: `${entry.runId} (${entry.selection}${exclusion})`,
-    uncollectable: null,
-  }
-}
+/** A Linux app row runs the invocation the live pass declares; nothing is read back from a run. */
+const linuxAppRow = (id: string): CollectionContext => ({
+  id,
+  os: "linux",
+  kind: "app",
+  route: "linux-container",
+  command: `bash scripts/linux-container-run.sh ${linuxLiveArgs("app", id).join(" ")} <outdir>`,
+  requires: null,
+  sourceRun: null,
+  uncollectable: null,
+})
 
 const macRow = (id: string): CollectionContext => ({
   id,
@@ -260,7 +187,7 @@ function hostedAppIds(os: "macos" | "windows"): ReadonlySet<string> {
   return ids
 }
 
-function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[]): CollectionContext[] {
+function collectionRoutes(expected: readonly CensusContext[]): CollectionContext[] {
   const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
   const contexts: CollectionContext[] = []
   for (const { terminalId: id, os, kind } of expected) {
@@ -287,7 +214,7 @@ function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[
         sourceRun: null,
         uncollectable: null,
       })
-    } else if (os === "linux") contexts.push(linuxRow(id, ledger[id]))
+    } else if (os === "linux") contexts.push(linuxAppRow(id))
     else if (os === "macos" && UNMEASURABLE_MAC_APPS.has(id)) {
       const fact = UNMEASURABLE_MAC_APPS.get(id)!
       contexts.push({
@@ -332,7 +259,7 @@ function collectionRoutes(ledger: LinuxLedger, expected: readonly CensusContext[
 }
 
 /** Route the shared register after matching the collector's runtime engines to the catalog's own set. */
-export function release1Census(engineBackends: readonly string[], ledger: LinuxLedger): readonly CollectionContext[] {
+export function release1Census(engineBackends: readonly string[]): readonly CollectionContext[] {
   const census = fullContextCensus(CONTENT)
   const runtime = [...engineBackends].sort()
   // The committed catalog is the authority on which engines exist; a literal count here refused a
@@ -343,7 +270,7 @@ export function release1Census(engineBackends: readonly string[], ledger: LinuxL
       `Catalog/Termless engine membership differs: catalog [${census.engines.join(", ")}], runtime [${runtime.join(", ")}]`,
     )
   }
-  return [...collectionRoutes(ledger, census.contexts), ...census.engines.map(engineRow)]
+  return [...collectionRoutes(census.contexts), ...census.engines.map(engineRow)]
 }
 
 /** The engine backend names the collector would run, from the Termless manifest. */
@@ -538,13 +465,10 @@ export async function collectPass(
   ])) {
     inputSha256[path] = createHash("sha256").update(readFileSync(path)).digest("hex")
   }
-  // The live pass must not obtain its target configuration from product-selected historical runs.
-  const census = release1Census(await engineBackendsFromManifest(), {}).map((context) =>
+  const census = release1Census(await engineBackendsFromManifest()).map((context) =>
     context.route === "linux-container"
       ? {
           ...context,
-          uncollectable: null,
-          requires: null,
           command: `bash scripts/linux-container-run.sh ${linuxLiveArgs(context.kind, context.id).join(" ")} <private-output>`,
         }
       : context,
@@ -1058,131 +982,6 @@ function collectHostedArtifacts(
   return results
 }
 
-/** The newest admitted Linux app run for a context the site does not currently select. */
-function newestAdmittedLinuxRun(
-  history: Readonly<Record<string, readonly SelectedVersion[]>>,
-  id: string,
-): SelectedVersion | undefined {
-  let newest: SelectedVersion | undefined
-  for (const list of Object.values(history)) {
-    for (const selected of list) {
-      if (selected.target.kind !== "app" || selected.target.os !== "linux" || selected.target.id !== id) continue
-      if (selected.suiteId === "legacy") continue
-      if (
-        newest === undefined ||
-        selected.measuredAt > newest.measuredAt ||
-        (selected.measuredAt === newest.measuredAt && selected.runId > newest.runId)
-      ) {
-        newest = selected
-      }
-    }
-  }
-  return newest
-}
-
-/**
- * Read one row's launcher flags back from the committed run document itself — `target.version`,
- * `target.config` and `target.permissions` — never from a value typed into this file. Every field
- * that is unexpected throws and names the file: a run the reader cannot read is never "default".
- */
-function linuxLedgerEntry(
-  contentDir: string,
-  id: string,
-  runId: string,
-  selection: "site-selected" | "newest-admitted",
-  exclusion: string | null,
-): LinuxLedgerEntry {
-  const dir = join(contentDir, "probes-apps")
-  const files = readdirSync(dir).filter((name) => name.endsWith(`-${runId}.json`))
-  if (files.length !== 1) {
-    throw new Error(
-      `${id}/linux: expected exactly one committed run ending -${runId}.json in ${dir}; found ${files.length}`,
-    )
-  }
-  const file = `probes-apps/${files[0]}`
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(readFileSync(join(contentDir, file), "utf8"))
-  } catch (cause) {
-    throw new Error(`${id}/linux: cannot read the committed run ${file}`, { cause })
-  }
-  const document = (parsed ?? {}) as Record<string, unknown>
-  const target = document.target
-  if (target === null || typeof target !== "object" || Array.isArray(target)) {
-    throw new Error(`${id}/linux ${file}: no target object; the launcher flags cannot be read`)
-  }
-  const fields = target as Record<string, unknown>
-  if (fields.id !== id || fields.os !== "linux" || fields.kind !== "app") {
-    throw new Error(
-      `${id}/linux ${file}: target is ${String(fields.kind)} ${String(fields.id)}/${String(fields.os)}, ` +
-        `not the app row this census is reading`,
-    )
-  }
-  const version = typeof fields.version === "string" ? fields.version : ""
-  const permissions = fields.permissions
-  if (permissions !== null && permissions !== undefined && typeof permissions !== "string") {
-    throw new Error(`${id}/linux ${file}: target.permissions is not a string or null`)
-  }
-  const config = typeof fields.config === "string" ? fields.config : ""
-  const preset = presetFor(id, version)
-  const clipboardProfile = clipboardProfileFor(permissions, `${id}/linux ${file}`)
-  if (id === "kitty" && config.includes("clipboard_control=") !== (clipboardProfile !== "default")) {
-    throw new Error(`${id}/linux ${file}: target.config and target.permissions disagree about the clipboard profile`)
-  }
-  const ids = Array.isArray(document.selectedIDs) ? document.selectedIDs.map((value) => String(value)) : null
-  return { runId, file, version, preset, clipboardProfile, ids, selection, exclusion }
-}
-
-/**
- * The lines the census prints for a Linux row, read from the committed run that row re-measures. The
- * run is the one the SITE selects for the (terminal id, os) context, by `decisive-share.ts`'s own
- * `pickContextRun` — the selection is not re-implemented here — including the reviewed
- * `default-contexts.json` row that breaks a multi-current tie (xterm/linux carries one entry per
- * frozen-runner store path). When the site selects none (alacritty and wezterm linux are excluded on
- * identity/provenance today), the row falls back to the newest admitted run for that context and
- * NAMES the exclusion, because those are exactly the rows this re-collection exists to bring back; a
- * context with no committed run at all is left for the census to report as uncollectable, named.
- */
-export function linuxLedger(contentDir: string): LinuxLedger {
-  const projection = loadCurrentResults(contentDir).projection.historical
-  const reviewed = loadDefaultContextPolicy(contentDir)
-  const exclusions = new Map(projection.exclusions.map((entry) => [entry.runId, entry.reason]))
-  const current = new Map<string, Array<{ key: string; selected: SelectedVersion }>>()
-  for (const [key, selected] of Object.entries(projection.current)) {
-    if (selected.target.kind !== "app" || selected.target.os !== "linux") continue
-    const list = current.get(selected.target.id) ?? []
-    list.push({ key, selected })
-    current.set(selected.target.id, list)
-  }
-  const ledger: Record<string, LinuxLedgerEntry> = {}
-  for (const id of LINUX_TARGET_IDS) {
-    const picked = pickContextRun(
-      (current.get(id) ?? []).map(({ key, selected }) =>
-        candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
-      ),
-      reviewedContextFor(reviewed, "app", id, "linux"),
-    )
-    if (picked !== undefined && "ambiguous" in picked) {
-      throw new Error(
-        `${id}/linux: the site selects more than one run for the context (${picked.ambiguous.join(", ")}); ` +
-          `refusing to guess which run this row re-measures`,
-      )
-    }
-    if (picked !== undefined && "stale" in picked) throw new Error(picked.stale)
-    const fallback = picked === undefined ? newestAdmittedLinuxRun(projection.history, id) : undefined
-    if (picked === undefined && fallback === undefined) continue
-    const runId = picked === undefined ? (fallback as SelectedVersion).runId : picked.run.runId
-    ledger[id] = linuxLedgerEntry(
-      contentDir,
-      id,
-      runId,
-      picked === undefined ? "newest-admitted" : "site-selected",
-      exclusions.get(runId) ?? null,
-    )
-  }
-  return ledger
-}
-
 /** Admission supplies the validated target; coverage needs no second raw-run parser. */
 export interface ProducedRun {
   readonly runId?: string
@@ -1250,7 +1049,7 @@ function planLines(census: readonly CollectionContext[]): string[] {
       ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "mux").length} mux, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
     `Scope: catalog app/mux platforms plus the Termless engine manifest; historical app/mux rows are excluded, and unsupported catalog kinds fail by name.`,
     `Routes are source recipes, not runtime qualification: ${uncollectable} have no qualified automatic route, ${pending} require a prerequisite.`,
-    `Linux rows: preset, clipboard profile and ids are read back from the committed run named under each row.`,
+    `Linux rows: the launcher flags are the live pass's own declared invocation, not a read-back from a committed run.`,
     ...lines,
   ]
 }
@@ -1293,8 +1092,8 @@ function usage(): never {
       "       [--owned-app-transport ssh:<user>@<host> [--owned-app-stage <remote-dir>]\n" +
       "        --owned-app-known-hosts <path> [--owned-app-remove-stage]]\n" +
       "       bun run release1-collection --admit [--frozen-suite <id>] <run.json>...\n" +
-      "  (bare)   print the census — the default: every Release 1 context, the entry point that\n" +
-      "           measures it, and the committed run each Linux row's flags were read from. Read-only.\n" +
+      "  (bare)   print the census — the default: every Release 1 context and the entry point that\n" +
+      "           measures it. Read-only.\n" +
       "  --plan   the same census, named explicitly.\n" +
       "  --collect --development  collect private headless/Linux/hosted runs against the live suite.\n" +
       "           WIP: other routes remain named failures; this is not the completed full pass.\n" +
@@ -1395,7 +1194,7 @@ if (import.meta.main) {
     }
 
     try {
-      const census = release1Census(await engineBackendsFromManifest(), linuxLedger(CONTENT))
+      const census = release1Census(await engineBackendsFromManifest())
       if (plan) {
         for (const line of planLines(census)) console.log(line)
         if (!admit) process.exit(0)

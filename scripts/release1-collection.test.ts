@@ -1,8 +1,8 @@
 /**
  * @failure The Release 1 re-collection would silently drop a context that has no route (Windows, or
- *   an engine the Termless manifest stops exporting), hand a row a launcher flag no committed run
- *   carries (kitty takes `--preset baseline|current`, never the launcher's default, and a clipboard
- *   override is not `default`), or admit a run collected from a dirty tree, on a suite that is not
+ *   an engine the Termless manifest stops exporting), hand a row a launcher flag the launcher does
+ *   not accept (kitty takes `--preset baseline|current`, never the launcher's default, and a
+ *   clipboard override names a profile the launcher declares), or admit a run collected from a dirty tree, on a suite that is not
  *   the frozen one, or never admitted at all — so a row would land on the bar from a collection that
  *   does not count, and the census would read complete while it is not. Admission rejection must
  *   propagate from the single owner before the caller credits coverage.
@@ -43,16 +43,12 @@ import { textQualificationFixtures } from "@terminfo/probe-defs"
 import {
   admitProducedRuns,
   collectPass,
-  clipboardProfileFor,
-  linuxLedger,
   ownedAppCommand,
   ownedAppRunsDirectory,
-  presetFor,
   readOwnedAppTransportProof,
   release1Census,
   uncoveredContexts,
   type CollectionContext,
-  type LinuxLedger,
   type ProducedRun,
 } from "./release1-collection.ts"
 
@@ -95,43 +91,10 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, spawnSync: vi.fn(actual.spawnSync) }
 })
 
-/** One fixture Linux row: a committed run the census reads the launcher flags back from. */
-const ledgerRow = (id: string, overrides: Partial<LinuxLedger[string]> = {}): LinuxLedger[string] => ({
-  runId: `${id}-fixture`
-    .replace(/[^a-z0-9]/g, "")
-    .padEnd(32, "0")
-    .slice(0, 32),
-  file: `probes-apps/${id}-0.0.0-linux-fixture.json`,
-  version: "0.0.0",
-  preset: "default",
-  clipboardProfile: "default",
-  ids: null,
-  selection: "site-selected",
-  exclusion: null,
-  ...overrides,
-})
+/** The five Linux app rows the launcher serves, in the bar's order. */
+const LINUX_APP_IDS = ["kitty", "ghostty", "wezterm", "alacritty", "xterm"] as const
 
-/**
- * A fixture ledger: the five Linux rows with the flags a committed run yields. The census takes the
- * ledger in rather than reading content, so the pure tests never touch the corpus.
- */
-const LEDGER: LinuxLedger = {
-  kitty: ledgerRow("kitty", { version: "0.49.2", preset: "current" }),
-  ghostty: ledgerRow("ghostty", { version: "1.3.1" }),
-  xterm: ledgerRow("xterm", { version: "411" }),
-  alacritty: ledgerRow("alacritty", {
-    version: "0.17.0",
-    selection: "newest-admitted",
-    exclusion: "identity-replies-mismatch",
-  }),
-  wezterm: ledgerRow("wezterm", {
-    version: "0-unstable-2026-09-17",
-    selection: "newest-admitted",
-    exclusion: "identity-no-profile",
-  }),
-}
-
-const census = (engineBackends: readonly string[] = ENGINE_BACKENDS) => release1Census(engineBackends, LEDGER)
+const census = (engineBackends: readonly string[] = ENGINE_BACKENDS) => release1Census(engineBackends)
 
 /** The committed corpus this repository ships, as the CLI reads it. */
 const CONTENT = join(dirname(fileURLToPath(import.meta.url)), "..", "content")
@@ -464,7 +427,7 @@ it.each([
         // The fixture suite has no mux probes, so the launcher failure is the row error, not a test-failure.
         expect(row?.error).toMatch(new RegExp(`${id}/linux.*exited 17`))
       }
-      for (const id of Object.keys(LEDGER)) {
+      for (const id of LINUX_APP_IDS) {
         const row = pass.contexts.find(
           (entry) => entry.context.kind === "app" && entry.context.id === id && entry.context.os === "linux",
         )
@@ -712,118 +675,22 @@ describe("release 1 collection census", () => {
     expect(uncovered).toContain("app:xterm")
     expect(uncovered).toHaveLength(32)
   })
-
-  it("leaves a Linux row uncollectable, named, when no committed run can be read", () => {
-    const all = release1Census(ENGINE_BACKENDS, { ...LEDGER, kitty: undefined as never })
-    const kitty = all.find((entry) => entry.id === "kitty" && entry.os === "linux")
-    expect(kitty?.route).toBe("linux-container")
-    expect(kitty?.command).toBeNull()
-    expect(kitty?.uncollectable).toMatch(/no committed run to read the launcher flags from/)
-  })
 })
 
 describe("release 1 Linux launcher flags", () => {
-  it("reads the clipboard profile back from the permissions the launcher wrote", () => {
-    expect(clipboardProfileFor(null, "kitty/linux")).toBe("default")
-    expect(clipboardProfileFor(undefined, "kitty/linux")).toBe("default")
-    expect(clipboardProfileFor("clipboard: read=allow,write=allow", "kitty/linux")).toBe("allow")
-    expect(clipboardProfileFor("clipboard: read=deny,write=allow", "kitty/linux")).toBe("deny-read")
-    expect(() => clipboardProfileFor("clipboard: read=ask,write=allow; OSC52=not-run", "kitty/linux")).toThrow(
-      /not one the launcher declares/,
-    )
-  })
-
-  it("gives kitty a preset and every other target the only one the launcher accepts", () => {
-    expect(presetFor("kitty", "0.49.2")).toBe("current")
-    expect(presetFor("kitty", "0.46.2")).toBe("baseline")
-    expect(() => presetFor("kitty", "")).toThrow(/records no version/)
-    expect(presetFor("alacritty", "0.17.0")).toBe("default")
-    expect(presetFor("xterm", "411")).toBe("default")
-  })
-
-  it("reads kitty/linux through the one reviewed lookup the site selection also uses", () => {
-    // #30759: the bar half of this join retired with the decisive-share tool, so the census keeps its
-    // own side. The reviewed row names a CONTEXT, so the run the ledger reads is the site-selected
-    // one rather than a re-measured choice, and a re-collection never needs this test edited.
-    // The run itself comes from the checked-in round (#30764 M4), like the rest of this file.
-    const ledger = linuxLedger(ROUND)
-    expect(ledger.kitty?.selection).toBe("site-selected")
-    expect(ledger.kitty?.exclusion).toBeNull()
-    expect(frozenSuiteIdFor(ROUND, "candidate2")).toBeTruthy()
-  }, 30_000)
-
-  // The preceding parity test owns the complete corpus. Launcher readback needs only these five
-  // committed historical witnesses; projecting the corpus twice can exceed the 3 GiB worker cap.
-  it("reads the five Linux invocations back from the committed runs in the corpus", () => {
-    const fixture = mkdtempSync(join(tmpdir(), "release1-historical-launchers-"))
-    const historicalSuite = vi.spyOn(versions, "probeHash").mockReturnValue("c3d1fbb77561")
-    try {
-      for (const dir of ["suites", "probes-apps", "probes-libs", "probes-mux", "receipts"]) {
-        mkdirSync(join(fixture, dir))
-      }
-      // Artifact verification reads only digests cited by these runs, never enumerates this store.
-      symlinkSync(join(CONTENT, "features.json"), join(fixture, "features.json"))
-      // Artifacts now live with the checked-in round (#30764 M4).
-      symlinkSync(join(ROUND, "artifacts"), join(fixture, "artifacts"))
-      const path = join(CONTENT, "suites", "c3d1fbb77561.json")
-      const manifest = parseSuiteManifest(path, readFileSync(path, "utf8"))
-      writeFileSync(
-        join(fixture, "suites", "c3d1fbb77561.json"),
-        JSON.stringify({ ...manifest, freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" } }),
-      )
-      const featureIds = Object.keys(catalog.loadFeatures(CONTENT))
-      for (const file of [
-        "kitty-0.49.2-linux-dfd4cd08416fb5f3be3eaeed5acce782.json",
-        "ghostty-1.3.1-linux-41614cad72c1968c6805dc8e6308f650.json",
-        "wezterm-0-unstable-2026-09-17-linux-0a1528649d6b1009e785138128d3c606.json",
-        "alacritty-0.17.0-linux-1040d1b4714d3d8edd5ec7ef7fbdcf70.json",
-        "xterm-411-linux-72e684384d32131d0569dd81722a6eae.json",
-      ]) {
-        const source = join(ROUND, "probes-apps", file)
-        const run = parseRun(
-          source,
-          readFileSync(source, "utf8"),
-          featureIds,
-          new Map([[manifest.probeHash, manifest]]),
-        )
-        symlinkSync(source, join(fixture, "probes-apps", file))
-        const receipt = `${run.runId}.json`
-        symlinkSync(join(ROUND, "receipts", receipt), join(fixture, "receipts", receipt))
-      }
-      // Raw runs, receipts and artifact bytes stay committed. Current optional policy refers to
-      // newer contexts, so it belongs only to the real-corpus parity test, not these witnesses.
-      const ledger = linuxLedger(fixture)
-      expect(ledger.kitty?.runId).toBe("dfd4cd08416fb5f3be3eaeed5acce782")
-      expect(Object.keys(ledger).sort()).toEqual(["alacritty", "ghostty", "kitty", "wezterm", "xterm"])
-      // Every assertion here is a property of the READ-BACK, not of today's corpus: which run the site
-      // selects changes as clean runs land (alacritty and wezterm linux moved from excluded to selected
-      // while this change was in flight), so a test that pinned that would fail for a non-regression.
-      for (const [id, row] of Object.entries(ledger)) {
-        expect(row.version).not.toBe("")
-        expect(row.file).toMatch(/^probes-apps\/.+-linux-.+\.json$/)
-        expect(existsSync(join(ROUND, row.file))).toBe(true)
-        expect(["default", "allow", "deny-read"]).toContain(row.clipboardProfile)
-        expect(["default", "baseline", "current"]).toContain(row.preset)
-        // A row outside the site's selection must name why it is; a selected row carries no exclusion.
-        if (row.selection === "newest-admitted") expect(row.exclusion).toBeTruthy()
-        else expect(row.exclusion).toBeNull()
-        if (id === "kitty") expect(row.preset).not.toBe("default")
-      }
-    } finally {
-      historicalSuite.mockRestore()
-      rmSync(fixture, { recursive: true, force: true })
-    }
-  }, 30_000)
-
-  it("puts the read flags into the row's command", () => {
+  it("puts the declared launcher flags into every Linux row's command", () => {
     const all = census()
-    const kitty = all.find((entry) => entry.id === "kitty" && entry.os === "linux")
-    expect(kitty?.command).toBe(
-      "bash scripts/linux-container-run.sh --target kitty --preset current --clipboard-profile default <outdir>",
-    )
-    expect(kitty?.sourceRun).toMatch(/\(site-selected\)$/)
-    const alacritty = all.find((entry) => entry.id === "alacritty" && entry.os === "linux")
-    expect(alacritty?.sourceRun).toMatch(/\((?:site-selected|newest-admitted — the site excludes it: .+)\)$/)
+    for (const id of LINUX_APP_IDS) {
+      const row = all.find((entry) => entry.id === id && entry.os === "linux")
+      expect(row?.route).toBe("linux-container")
+      expect(row?.uncollectable).toBeNull()
+      expect(row?.command).toBe(
+        `bash scripts/linux-container-run.sh --target ${id} --preset ${id === "kitty" ? "current" : "default"} ` +
+          `--clipboard-profile default <outdir>`,
+      )
+      // The live pass declares the invocation, so no committed run is named as this row's source.
+      expect(row?.sourceRun).toBeNull()
+    }
   })
 })
 
