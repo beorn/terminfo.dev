@@ -130,7 +130,7 @@ test("current suite verification and persistence reject altered text declaration
     probes: { app: ["character", "attributes"], headless: [], mux: ["character", "attributes"] },
     sourcePaths: [],
     textClaims: ["character"],
-    textQualification: { version: 1, recipe: "macos-text-cells-v1" },
+    textQualification: { version: 2, recipes: ["macos-text-cells-v1", "windows-terminal-text-cells-v1"] },
   }
   const valid = derivedSuiteManifest(snapshot)
   const path = join(temp("terminfo-suite-text-declarations-"), `${snapshot.probeHash}.json`)
@@ -141,8 +141,9 @@ test("current suite verification and persistence reject altered text declaration
     { textClaims: [] },
     { textClaims: ["attributes", "character"] },
     { textQualification: undefined },
-    { textQualification: { version: 2, recipe: "macos-text-cells-v1" } },
-    { textQualification: { version: 1, recipe: "another-recipe" } },
+    { textQualification: { version: 2 as const, recipes: ["macos-text-cells-v1"] } },
+    { textQualification: { version: 2 as const, recipes: ["windows-terminal-text-cells-v1", "macos-text-cells-v1"] } },
+    { textQualification: { version: 2 as const, recipes: ["macos-text-cells-v1", "another-recipe"] } },
   ]
   for (const change of changes) {
     const altered = { ...valid, ...change }

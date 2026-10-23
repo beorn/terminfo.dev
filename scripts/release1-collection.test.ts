@@ -237,7 +237,7 @@ it.each([
                 mux: [],
               },
               textClaims: ["text.overwrite"],
-              textQualification: { version: 1, recipe: "macos-text-cells-v1" },
+              textQualification: { version: 2, recipes: ["macos-text-cells-v1"] },
             }),
             sourcePaths: [relative(dirname(CONTENT), input)],
           })
@@ -367,7 +367,7 @@ it.each([
                 observations: [{ featureId, outcome: "supported", evidence: "text", rawReplyRef: featureId, frames }],
                 screenshotRefs: [],
                 textSnapshotRefs: [...refs],
-                textQualification: { version: 1, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
+                textQualification: { version: 2, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
               }
               writeFileSync(join(folder, "run.json"), JSON.stringify(appRun))
               const artifact = join(artifactsDirectory, `${[...refs][0]!.slice(7)}.txt`)

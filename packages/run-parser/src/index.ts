@@ -31,6 +31,7 @@ import {
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
   type TextQualification,
+  type TextQualificationOwnership,
   type TextQualificationSpec,
   type TextQualificationShape,
   type TextCellsObservationFrame,
@@ -441,13 +442,16 @@ export function parseObservationFrames(
   return frames
 }
 
-/** Structural ingestion only: completeness and recipe agreement belong to the selector. */
-function parseTextQualificationSpec(
-  value: unknown,
+/** The three committed suites that declared one recipe (version 1), the last of them the 2026-10-21 common cut's
+ * (30661). Every later suite writes version 2. */
+const VERSION_1_TEXT_QUALIFICATION_SUITES = ["448ce7769d2c", "f9450b3bc56a", "8165331b5bee"]
+
+/** A run's version and recipe: the header both its witnesses and its suite's declaration name. */
+function parseTextQualificationHeader(
+  value: Record<string, unknown>,
   path: string,
-  fields: readonly string[] = ["version", "recipe"],
-): TextQualificationSpec {
-  if (!object(value)) fail(path, "invalid textQualification object")
+  fields: readonly string[],
+): { version: number; recipe: string } {
   const unknown = Object.keys(value).find((key) => !fields.includes(key))
   if (unknown !== undefined) fail(path, `unknown textQualification field ${unknown}`)
   if (typeof value.version !== "number" || !Number.isSafeInteger(value.version) || value.version <= 0) {
@@ -457,14 +461,61 @@ function parseTextQualificationSpec(
   return { version: value.version, recipe: value.recipe }
 }
 
+/** Structural ingestion only: completeness and recipe agreement belong to the selector. */
+function parseTextQualificationSpec(value: unknown, path: string, probeHash: string): TextQualificationSpec {
+  if (!object(value)) fail(path, "invalid textQualification object")
+  if (value.version === 1) {
+    if (!VERSION_1_TEXT_QUALIFICATION_SUITES.includes(probeHash)) {
+      fail(
+        path,
+        `textQualification version 1 is read only for suites ${VERSION_1_TEXT_QUALIFICATION_SUITES.join(", ")}`,
+      )
+    }
+    const { recipe } = parseTextQualificationHeader(value, path, ["version", "recipe"])
+    return { version: 1, recipe }
+  }
+  if (value.version !== 2) fail(path, "invalid textQualification version")
+  const unknown = Object.keys(value).find((key) => !["version", "recipes"].includes(key))
+  if (unknown !== undefined) fail(path, `unknown textQualification field ${unknown}`)
+  if (
+    !Array.isArray(value.recipes) ||
+    value.recipes.length === 0 ||
+    !value.recipes.every((recipe) => nonempty(recipe) && recipe.trim() !== "") ||
+    new Set(value.recipes).size !== value.recipes.length
+  ) {
+    fail(path, "invalid textQualification recipes")
+  }
+  return { version: 2, recipes: value.recipes as string[] }
+}
+
+function parseTextQualificationOwnership(value: unknown, path: string): TextQualificationOwnership {
+  const cell = object(value) ? value.cell : undefined
+  if (
+    !object(value) ||
+    Object.keys(value).sort().join(",") !== "cell,host,observerRow" ||
+    !object(cell) ||
+    Object.keys(cell).sort().join(",") !== "col,row" ||
+    ![cell.row, cell.col].every((edge) => typeof edge === "number" && Number.isSafeInteger(edge) && edge > 0) ||
+    typeof value.host !== "string" ||
+    typeof value.observerRow !== "string"
+  ) {
+    fail(path, "invalid textQualification console-host-ownership witness")
+  }
+  return {
+    cell: { row: cell.row as number, col: cell.col as number },
+    host: value.host,
+    observerRow: value.observerRow,
+  }
+}
+
 function parseTextQualification(
   value: unknown,
   path: string,
   textSnapshotRefs: readonly string[],
 ): TextQualification | undefined {
   if (value === undefined) return undefined
-  const spec = parseTextQualificationSpec(value, path, ["version", "recipe", "grid", "shapes"])
   if (!object(value)) fail(path, "invalid textQualification object")
+  const spec = parseTextQualificationHeader(value, path, ["version", "recipe", "grid", "shapes"])
   const grid = value.grid
   if (
     !object(grid) ||
@@ -483,15 +534,20 @@ function parseTextQualification(
     if (seen.has(shape)) fail(path, `duplicate textQualification shape ${shape}`)
     seen.add(shape)
     const context = `textQualification ${shape}`
-    const unknown = Object.keys(entry).find((key) => !["shape", "frames", "reason"].includes(key))
+    const unknown = Object.keys(entry).find((key) => !["shape", "frames", "reason", "ownership"].includes(key))
     if (unknown !== undefined) fail(path, `unknown ${context} field ${unknown}`)
-    if (Object.hasOwn(entry, "frames") && Object.hasOwn(entry, "reason")) {
-      fail(path, `${context} cannot carry both frames and reason`)
+    if (["frames", "reason", "ownership"].filter((key) => Object.hasOwn(entry, key)).length > 1) {
+      fail(path, `${context} carries more than one of frames, reason and ownership`)
     }
     if (Object.hasOwn(entry, "reason")) {
       if (!nonempty(entry.reason) || !entry.reason.trim()) fail(path, `invalid ${context} reason`)
       return { shape, reason: entry.reason }
     }
+    // The ownership witness is two raw reads of one cell, never a frame; every other shape is frames.
+    if (shape === "console-host-ownership") {
+      return { shape, ownership: parseTextQualificationOwnership(entry.ownership, path) }
+    }
+    if (Object.hasOwn(entry, "ownership")) fail(path, `${context} cannot carry an ownership witness`)
     const frames = parseObservationFrames(entry.frames, path, context, [], textSnapshotRefs, undefined, "text")
     if (frames === undefined) fail(path, `${context} requires frames or reason`)
     // The existing parser enforces text kind, roles and retained-reference membership.
@@ -870,7 +926,7 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     }
   }
   const textQualification =
-    "textQualification" in value ? parseTextQualificationSpec(value.textQualification, path) : undefined
+    "textQualification" in value ? parseTextQualificationSpec(value.textQualification, path, probeHash) : undefined
   let freeze: ParsedSuiteManifest["freeze"]
   if ("freeze" in value) {
     const raw = value.freeze

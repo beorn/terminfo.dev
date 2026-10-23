@@ -183,6 +183,60 @@ export async function withConsoleOutputHandle<T>(
   }
 }
 
+/** ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING: with both clear, the host stores
+ * each UTF-16 unit as a cell instead of executing it. */
+const RAW_OUTPUT_CLEARED = 0x0001 | 0x0004
+
+/**
+ * Write `text` into the console host's buffer at its cursor as raw cells: processed output and VT
+ * processing are cleared for this one write, then the measured mode is restored. A control character
+ * is stored, not executed, which is what the console-host-ownership witness needs (#30720).
+ */
+export async function writeConsoleCellsRaw(text: string, kernel?: Kernel32): Promise<void> {
+  return withConsoleOutputHandle((handle, { symbols, ptr }) => {
+    const mode = Buffer.alloc(4)
+    if (symbols.GetConsoleMode(handle as never, ptr(mode) as never) === 0) {
+      throw new Error(`GetConsoleMode failed with error ${String(symbols.GetLastError())}`)
+    }
+    const prior = mode.readUInt32LE(0)
+    if (symbols.SetConsoleMode(handle as never, ((prior & ~RAW_OUTPUT_CLEARED) >>> 0) as never) === 0) {
+      throw new Error(`SetConsoleMode could not clear output processing: error ${String(symbols.GetLastError())}`)
+    }
+    const failures: unknown[] = []
+    try {
+      const written = Buffer.alloc(4)
+      const units = Buffer.from(text, "utf16le")
+      if (
+        symbols.WriteConsoleW(
+          handle as never,
+          ptr(units) as never,
+          text.length as never,
+          ptr(written) as never,
+          null as never,
+        ) === 0
+      ) {
+        throw new Error(`WriteConsoleW failed with error ${String(symbols.GetLastError())}`)
+      }
+      if (written.readUInt32LE(0) !== text.length) {
+        throw new Error(`WriteConsoleW wrote ${String(written.readUInt32LE(0))} of ${String(text.length)} units`)
+      }
+    } catch (cause) {
+      failures.push(cause)
+    }
+    if (symbols.SetConsoleMode(handle as never, prior as never) === 0) {
+      failures.push(
+        new Error(
+          `SetConsoleMode could not restore mode 0x${prior.toString(16)}: error ${String(symbols.GetLastError())}`,
+        ),
+      )
+    }
+    if (failures.length === 1) throw failures[0]
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Raw console write failed and its mode was not restored")
+    }
+  }, kernel)
+}
+
 /** Open this process's CONOUT$ and read the visible window off it. */
 export async function readWindowsConsoleGeometry(kernel?: Kernel32): Promise<ConsoleGeometry> {
   return withConsoleOutputHandle((handle, { symbols, ptr }) => {

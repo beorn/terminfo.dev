@@ -274,10 +274,10 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
  * Absence is a fact about the run, and a probe that needs a frame must be able to say so: the
  * named error lands as an `ungradedDiagnostic` keyed by that probe's own id. */
 export function frameUnavailableCapture(): ProbeCapture {
-  return async () => {
+  return () => {
     const error = new Error("This run has no capture directory, so no frame is available for a probe that needs one")
     error.name = "FrameUnavailable"
-    throw error
+    return Promise.reject(error)
   }
 }
 
@@ -489,16 +489,19 @@ export async function collectProbeRun(
       // `<out>/artifacts`, and admission reads the bytes from there.
       const artifactDirectory = captureDirectory
       mkdirSync(artifactDirectory, { recursive: true, mode: 0o700 })
+      // The selected stream's completion can be synchronous while console cells remain stale.
+      // The existing operation lease puts this query after earlier writes on that same stream.
+      const consoleBarrier = async (label: string): Promise<void> => {
+        const outcome = await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 700)
+        if (!outcome.match) {
+          throw new Error(
+            `${label}: console read refused: cursor query ${outcome.reason}, ${Buffer.from(outcome.rawBase64, "base64").length} bytes`,
+          )
+        }
+      }
       capture = async (checkpoint) => {
         if (process.platform === "win32") {
-          // The selected stream's completion can be synchronous while console cells remain stale.
-          // The existing operation lease puts this query after earlier writes on that same stream.
-          const outcome = await queryOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 700)
-          if (!outcome.match) {
-            throw new Error(
-              `${checkpoint.label}: console read refused: cursor query ${outcome.reason}, ${Buffer.from(outcome.rawBase64, "base64").length} bytes`,
-            )
-          }
+          await consoleBarrier(checkpoint.label)
         } else {
           await new Promise<void>((resolve, reject) => {
             out.write("", (error) => {
@@ -517,11 +520,22 @@ export async function collectProbeRun(
         return { frame: result.frame, trace: result.trace }
       }
       textCapture = true
-      if (process.platform === "darwin") {
+      // Qualification belongs to a terminal-owned observer, named by its recipe; a console-host read
+      // has none, and its text rows stay test-todo.
+      const recipe = terminal.textRecipe
+      if (recipe !== undefined) {
         const textAdapter = capture
+        const consoleHostOwnership = terminal.consoleHostOwnership?.bind(terminal)
         prepareCapture = async ({ context, featureId, recordCapture }) => {
           textQualification = await collectTextQualification({
             ctx: context,
+            recipe,
+            ...(consoleHostOwnership && {
+              ownership: async () => {
+                await consoleBarrier("text qualification console-host-ownership")
+                return consoleHostOwnership()
+              },
+            }),
             onAttempt: () => {
               textQualificationStartedAt = new Date().toISOString()
             },
@@ -856,6 +870,7 @@ export async function collectProbeRun(
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
                 ...(ownedTerminal && { ownedTerminal }),
+                ...(ownedTerminal?.observeWrite && { onWrite: ownedTerminal.observeWrite.bind(ownedTerminal) }),
                 ...(geometryCorroboration && { geometryCorroboration }),
                 ...(prepareCapture && { prepareCapture }),
               })

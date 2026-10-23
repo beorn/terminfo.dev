@@ -5,7 +5,12 @@ import { readDisposableReceipt } from "./disposable-receipt.ts"
 import type { LiveExecutable } from "./linux-capture.ts"
 import { createLinuxClipboardAdapter, type LinuxClipboardAdapter } from "./linux-clipboard.ts"
 import { wasCollectorOpenedControllingTTY } from "./tty.ts"
-import { readWindowsConsoleGeometry, readWindowsConsoleIdentity } from "./windows-console-ffi.ts"
+import {
+  TEXT_QUALIFICATION_OWNERSHIP_CELL,
+  type TextQualificationOwnership,
+  type TextQualificationRecipe,
+} from "@terminfo/probe-defs"
+import { readWindowsConsoleGeometry, readWindowsConsoleIdentity, writeConsoleCellsRaw } from "./windows-console-ffi.ts"
 import {
   consoleBufferOwner,
   consoleHostFromTable,
@@ -28,6 +33,11 @@ import {
   type HostedWindowsAppId,
 } from "./windows-process-ancestry.ts"
 import { loadKernel32 } from "./windows-kernel32.ts"
+import {
+  createLineRenditionTracker,
+  readWindowsTerminalRows,
+  readWindowsTerminalText,
+} from "./windows-terminal-text.ts"
 import { assertOwnedProcess, runScopedMarker, type ProcessMarker } from "./owned-process.ts"
 
 export { HOSTED_WINDOWS_EXECUTABLE, hostedWindowsAppFromExecutablePath, type HostedWindowsApp, type HostedWindowsAppId }
@@ -36,13 +46,10 @@ export type GeometrySource =
   | "stty size on a /proc/self/fd reopen of the verified output device"
   | "stty size on a /dev/fd reopen of the verified output device"
   | "GetConsoleScreenBufferInfo on the collector's own CONOUT$"
-  | "`mode con` on the collector's own console"
   | "unavailable: no verified output device"
 
-/** The two named Windows reads, in the design's order. Recorded per measurement, so a run says
- * WHICH read answered instead of naming the primary when the fallback did. */
+/** The one Windows read (#30731). */
 const WINDOWS_FFI_SOURCE = "GetConsoleScreenBufferInfo on the collector's own CONOUT$" as const
-const WINDOWS_MODE_CON_SOURCE = "`mode con` on the collector's own console" as const
 
 export type GeometryMeasurement =
   | {
@@ -221,6 +228,16 @@ export interface OwnedTerminal {
    * scrollback onto the screen without refusing, which no separate shape can show. Until then the
    * text snapshot is admitted as non-measuring evidence. */
   readCells?(): Promise<ConsoleCellRead | TerminalTextRead>
+  /** The qualification recipe of a terminal-owned `readCells`: the macOS text snapshot, or Windows
+   * Terminal through UI Automation. Absent where the read is the console host's buffer. */
+  readonly textRecipe?: TextQualificationRecipe
+  /** Windows Terminal only: write U+0001 into the console host's buffer at the ownership cell, then
+   * read that cell from the host and the row from the terminal, raw. The caller clears the screen
+   * and orders this after its writes. */
+  consoleHostOwnership?(): Promise<TextQualificationOwnership>
+  /** Windows Terminal only: every probe write, so the read can refuse a screen that may hold a
+   * double-width or double-height line, which UI Automation returns unmarked. */
+  observeWrite?(text: string): void
   dispose(): Promise<void>
 }
 
@@ -646,10 +663,8 @@ async function readBoundGeometry(
 }
 
 /**
- * The Windows geometry read. The source names WHICH read answered (the ffi console read, or the
- * `mode con` fallback) rather than claiming the primary; with neither answering, the result is
- * `unavailable` carrying both attempts' diagnostics, so the caller keeps today's loud note instead
- * of grading on a guessed size.
+ * The Windows geometry read: the ffi console read alone. When it fails, the result is `unavailable`
+ * carrying its diagnostic, so the caller keeps today's loud note instead of grading on a guessed size.
  */
 async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>): Promise<GeometryMeasurement> {
   const at = new Date().toISOString()
@@ -659,7 +674,7 @@ async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>
     return {
       status: "measured",
       at,
-      source: read.via === "ffi" ? WINDOWS_FFI_SOURCE : WINDOWS_MODE_CON_SOURCE,
+      source: WINDOWS_FFI_SOURCE,
       rows: read.rows,
       cols: read.cols,
       stdout: "",
@@ -890,6 +905,26 @@ export async function createOwnedTerminal(options: {
     })
     const hostedAppId = hostedApp?.id ?? hostedWindowsApp?.id
     const appPid = hostedAncestor?.pid ?? processOwnerPid
+    // Windows Terminal answers for its own buffer through UI Automation. Alacritty and WezTerm have no
+    // such observer here, so their reads stay the console host's buffer (#30720).
+    const windowsTerminalPid = hostedWindowsApp?.id === "windows-terminal" ? hostedAncestor?.pid : undefined
+    const renditions = windowsTerminalPid === undefined ? undefined : createLineRenditionTracker()
+    const readConsoleHostCells = async (): Promise<ConsoleCellRead> => {
+      if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
+      // The console is re-checked as the geometry read re-checks its device: a cell read on a
+      // different console than this run bound to is not this run's frame.
+      const identity = readWindowsConsoleIdentity(windowsKernel)
+      const mismatch = consoleIdentityMismatch(identity, windowsConsoleIdentity)
+      if (mismatch !== undefined) throw new Error(mismatch)
+      const bufferOwner = consoleBufferOwner(windowsConsoleHost)
+      if (bufferOwner.status === "refused") return { status: "refused", reason: bufferOwner.reason }
+      const hostIdentity = resolveConsoleHostIdentity(bufferOwner.host, {
+        kernel: windowsKernel,
+        cache: windowsExecutableDigests,
+      })
+      if (hostIdentity.status === "refused") return { status: "refused", reason: hostIdentity.reason }
+      return readWindowsConsoleCells({ bufferOwner: hostIdentity.host, kernel: windowsKernel })
+    }
     const owner: OwnedTerminal = {
       geometryAtGrant,
       geometrySource: source,
@@ -929,26 +964,43 @@ export async function createOwnedTerminal(options: {
         }
         return readBoundGeometry(current, windowsKernel)
       },
-      ...(hostedWindowsApp && {
-        async readCells() {
-          if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
-          // The console is re-checked as the geometry read re-checks its device: a cell read on a
-          // different console than this run bound to is not this run's frame.
-          const identity = readWindowsConsoleIdentity(windowsKernel)
-          const mismatch = consoleIdentityMismatch(identity, windowsConsoleIdentity)
-          if (mismatch !== undefined) throw new Error(mismatch)
-          const bufferOwner = consoleBufferOwner(windowsConsoleHost)
-          if (bufferOwner.status === "refused") return { status: "refused", reason: bufferOwner.reason }
-          const hostIdentity = resolveConsoleHostIdentity(bufferOwner.host, {
-            kernel: windowsKernel,
-            cache: windowsExecutableDigests,
-          })
-          if (hostIdentity.status === "refused") return { status: "refused", reason: hostIdentity.reason }
-          return readWindowsConsoleCells({ bufferOwner: hostIdentity.host, kernel: windowsKernel })
+      ...(hostedWindowsApp && windowsTerminalPid === undefined && { readCells: readConsoleHostCells }),
+      ...(windowsTerminalPid !== undefined && {
+        textRecipe: "windows-terminal-text-cells-v1" as const,
+        observeWrite: (written: string) => renditions?.observe(written),
+        async readCells(): Promise<TerminalTextRead> {
+          // The geometry read re-checks the live owner and the bound console before every frame.
+          const geometry = await owner.readGeometry()
+          if (geometry.status !== "measured") {
+            return {
+              status: "refused",
+              reason: `the Windows Terminal text read needs a measured grid: ${geometry.diagnostic}`,
+            }
+          }
+          const doubled = renditions?.refusal()
+          if (doubled !== undefined) return { status: "refused", reason: doubled }
+          return readWindowsTerminalText({ pid: windowsTerminalPid, cols: geometry.cols, rows: geometry.rows })
+        },
+        async consoleHostOwnership(): Promise<TextQualificationOwnership> {
+          const geometry = await owner.readGeometry()
+          if (geometry.status !== "measured") {
+            throw new Error(`The ownership witness needs a measured grid: ${geometry.diagnostic}`)
+          }
+          const { row, col } = TEXT_QUALIFICATION_OWNERSHIP_CELL
+          // The caller cleared the screen and homed the cursor, so the raw write lands on this cell.
+          await writeConsoleCellsRaw("\u0001", windowsKernel)
+          const host = await readConsoleHostCells()
+          if (host.status === "refused") throw new Error(`The console host's read refused: ${host.reason}`)
+          const observer = readWindowsTerminalRows({ pid: windowsTerminalPid, rows: geometry.rows })
+          if (observer.status === "refused") throw new Error(`Windows Terminal's read refused: ${observer.reason}`)
+          const observerRow = observer.rows[row - 1]
+          if (observerRow === undefined) throw new Error(`Windows Terminal returned no row ${String(row)}`)
+          return { cell: { row, col }, host: host.grid.text[row - 1]?.charAt(col - 1) ?? "", observerRow }
         },
       }),
       ...(darwinTextApp !== undefined &&
         darwinTextTty !== undefined && {
+          textRecipe: "macos-text-cells-v1" as const,
           async readCells() {
             if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
             const geometry = await owner.readGeometry()
