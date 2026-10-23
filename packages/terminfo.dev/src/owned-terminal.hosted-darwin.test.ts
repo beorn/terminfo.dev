@@ -31,12 +31,18 @@ const ids = {
 
 // The app mapping/ancestry tests cannot see which read the real owner selects for a hosted app.
 // Exercise the real owner; only OS reads are fixtures, not its adapter-selection decision.
-test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (app) => {
+// Terminal.app keeps the text read; hosted iTerm2 leaves it for the raster adapter (@cto
+// 2026-10-20 23:02), so its owner exposes no readCells and serve.ts falls through to capture.
+test.each([
+  ["terminal-app", true],
+  ["iterm2", false],
+] as const)("hosted %s %s a text-reader owner", (app, textRead) => {
   const script = `
     import { mock } from "bun:test"
     import assert from "node:assert/strict"
     const fs = await import("node:fs"), cp = await import("node:child_process"), tty = await import("node:tty")
     const app = ${JSON.stringify(app)}
+    const textRead = ${String(textRead)}
     const executable = app === "iterm2" ? "/Applications/iTerm.app/Contents/MacOS/iTerm2"
       : "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"
     Object.defineProperty(process, "platform", { value: "darwin" })
@@ -62,7 +68,7 @@ test.each(["iterm2", "terminal-app"])("hosted %s selects its own text read", (ap
       out: process.stdout, darwinHosted: { receiptPath: "fixture" } })
     assert.equal(owner.hostedAppId, app)
     assert.equal(owner.appPid, 4242)
-    assert.equal(typeof owner.readCells, "function")
+    assert.equal(typeof owner.readCells === "function", textRead)
     await owner.dispose()
   `
   const result = spawnSync(process.execPath, ["-e", script], {

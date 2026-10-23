@@ -131,7 +131,8 @@ ${geometry}
     if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop()
     var dropped = lines.length - ${String(rows)}
     if (dropped < 0) {
-      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}")
+      return refused("returned " + lines.length + " rows where the measured screen has ${String(rows)}" +
+        " (the app reports " + appRows + " rows x " + appCols + " columns)")
     }
     return JSON.stringify({
       status: "read",

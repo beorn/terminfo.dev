@@ -829,14 +829,16 @@ export async function createOwnedTerminal(options: {
     hostedReceiptSha256 = receipt.sha256
   }
   let clipboard: LinuxClipboardAdapter | undefined
-  // The two macOS terminals that answer no cell geometry: their read is the app's own text
-  // snapshot, selected by the owned tab's TTY. Every other Darwin app keeps the capture path.
+  // Terminal.app answers no cell geometry, so its read is the app's own text snapshot, selected by
+  // the owned tab's TTY. Every other Darwin app keeps the capture path; hosted iTerm2 was removed
+  // from this selection on @cto's 2026-10-20 23:02 ruling, because its contents() exports logical
+  // lines and cannot prove an exact cell frame.
   const darwinTextApp: TerminalTextApp | undefined =
     binding.platform === "darwin"
       ? terminalApp
         ? "terminal-app"
-        : hostedApp?.id === "terminal-app" || hostedApp?.id === "iterm2"
-          ? hostedApp.id
+        : hostedApp?.id === "terminal-app"
+          ? "terminal-app"
           : undefined
       : undefined
   const darwinTextTty = binding.platform === "darwin" ? binding.tabTty : undefined

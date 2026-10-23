@@ -229,7 +229,11 @@ describe("terminalTextScript — the walk each app's object model actually expos
       fakeApplication({ windows: [{ tabs: [{ sessions: [session] }] }] }),
     )
     expect(result.status).toBe("refused")
-    expect(result.reason).toMatch(/returned 1 rows where the measured screen has 2/u)
+    // The refusal names the app's own geometry: without it the shortfall cannot be attributed to
+    // the app (logical-line export) or to the measurement, and the next reader guesses.
+    expect(result.reason).toMatch(
+      /returned 1 rows where the measured screen has 2 \(the app reports 2 rows x 4 columns\)$/u,
+    )
   })
 
   it("names an error the app raised instead of reporting it as a refusal of the read", () => {
