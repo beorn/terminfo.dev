@@ -3,6 +3,7 @@
  * @level l1
  * @consumer handleMux private-output lifecycle and the shared immutable raw writer.
  * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json
+ * @reach fs-walk <fixture-only: mkdtempSync capture output directory; readdirSync picks the tmux raw file written beside the HTTP response>
  * @testonly none
  */
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
