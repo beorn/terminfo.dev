@@ -296,18 +296,20 @@ describe("Kitty protocol detection", () => {
         }),
       )
       expect(writes).toEqual([])
-      for (const [result, evidence] of [
-        [headless, "legacy"],
-        [terminal, "none"],
-      ] as const) {
-        expect(result.pass).toBe(false)
-        expect(result.observation).toMatchObject({
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence,
-        })
-        expect(result.note).toMatch(/controlled resize|readback/i)
-      }
+      // A declaration is not a measurement: the headless arm records coverage with the named
+      // observable (@cto 2026-10-22, 30695-inconclusive-mapping-ruling), while the application arm
+      // keeps an inconclusive observation because it did attempt a controlled resize.
+      expect(headless.pass).toBe(false)
+      expect(headless.observation).toBeUndefined()
+      expect(headless.notTested).toMatchObject({ reason: "no-semantic-observable" })
+      expect(headless.note).toMatch(/controlled resize|readback/i)
+      expect(terminal.pass).toBe(false)
+      expect(terminal.observation).toMatchObject({
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        evidence: "none",
+      })
+      expect(terminal.note).toMatch(/controlled resize|readback/i)
       expect(headless.response).toContain(String(declared))
     }
   })
@@ -1042,6 +1044,7 @@ describe("extensions without a complete behavior oracle", () => {
     "extensions.kitty-graphics.animation",
     "extensions.kitty-graphics.unicode-placeholders",
     "extensions.sixel",
+    "extensions.reflow",
     "extensions.semantic-prompts",
     "extensions.osc7-cwd",
     "extensions.osc-633-vscode",
@@ -1067,6 +1070,7 @@ describe("extensions without a complete behavior oracle", () => {
         ...base.capabilities,
         kittyGraphics: declared,
         sixel: declared,
+        reflow: declared,
         semanticPrompts: declared,
         extensions: new Set(declared ? ["osc7", "osc9", "iterm2Images"] : []),
       }
@@ -1075,12 +1079,13 @@ describe("extensions without a complete behavior oracle", () => {
         if (!callback) throw new Error(`${id} needs a headless callback`)
         const result = callback(context({ capabilities }))
         expect(result.pass, id).toBe(false)
-        expect(result.observation, id).toMatchObject({
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "legacy",
-        })
-        expect(JSON.parse(result.response ?? "null"), id).toMatchObject({ declared })
+        // An engine declaration is coverage, not an attempted measurement: the arm names the
+        // missing observable so the recorder grades TEST TODO instead of a failed test
+        // (@cto 2026-10-22, 30695-inconclusive-mapping-ruling).
+        expect(result.observation, id).toBeUndefined()
+        expect(result.notTested, id).toMatchObject({ reason: "no-semantic-observable" })
+        expect(result.notTested?.noObservable, id).toBe(result.note)
+        expect(Object.values(JSON.parse(result.response ?? "null")), id).toContain(declared)
         expect(result.assertions ?? [], id).toEqual([])
       }
     }
