@@ -1,24 +1,27 @@
 /**
- * @failure The hosted Windows arm reports a window size it never read, substitutes a default when
- *   the console read fails, or reads a child's own console instead of the owned one, so the
- *   candidate-2 classics grade on a fabricated geometry (#29558, 138 inconclusive observations
- *   carrying "No verified owned terminal for geometry read"; #30731, `mode con` read 120×9001 while
- *   the owned window was 110×30).
+ * @failure The hosted Windows arm reports a window size it never read, or substitutes a default
+ *   when both console reads fail, so the candidate-2 classics grade on a fabricated geometry
+ *   (#29558, 138 inconclusive observations carrying "No verified owned terminal for geometry read").
  * @level l1
  * @consumer createOwnedTerminal's windows arm in the terminfo collector
  * @testonly none
  */
-import { spawn, spawnSync } from "node:child_process"
 import { describe, expect, it, vi } from "vitest"
 import { decodeConsoleScreenBufferInfo } from "./windows-console-ffi.ts"
-import { readConsoleGeometry } from "./windows-console-geometry.ts"
+import { parseModeConGeometry, readConsoleGeometry } from "./windows-console-geometry.ts"
 
-// A child process has its own console, so no read through one is a read of the owned window (#30731).
-vi.mock("node:child_process", async (original) => ({
-  ...(await original<typeof import("node:child_process")>()),
-  spawn: vi.fn(),
-  spawnSync: vi.fn(),
-}))
+/** A real `cmd /c mode con` body, byte shape as measured on the hosted runner 2026-10-15. */
+const MODE_CON_40x100 = `
+Status for device CON:
+----------------------
+
+    Lines:          40
+    Columns:        100
+
+    Keyboard rate:  31
+    Keyboard delay: 1
+    Code page:      65001
+`
 
 /** A CONSOLE_SCREEN_BUFFER_INFO as the two measured reads on the hosted runner laid it out. */
 const csbi = (
@@ -56,26 +59,84 @@ describe("decodeConsoleScreenBufferInfo — the mapping measured on the runner (
   })
 })
 
-describe("readConsoleGeometry — the console the probes write to (#29558, #30731)", () => {
-  it("measures the owned console through the ffi read", async () => {
-    const read = await readConsoleGeometry({ ffi: vi.fn(async () => ({ cols: 110, rows: 30 })) })
-
-    expect(read).toEqual({ status: "measured", cols: 110, rows: 30 })
+describe("parseModeConGeometry — the node-compatible fallback read (#29558)", () => {
+  it("reads rows then columns from the device status block", () => {
+    expect(parseModeConGeometry(MODE_CON_40x100)).toEqual({ cols: 100, rows: 40 })
   })
 
-  it("is unavailable, naming the ffi failure, when the ffi read fails — no second read, never a default size", async () => {
+  it("refuses a body that carries no geometry instead of guessing one", () => {
+    expect(() => parseModeConGeometry("Status for device CON:\n----------------------\n")).toThrow(/geometry/)
+  })
+
+  it("refuses a body with only one of the two numbers", () => {
+    expect(() => parseModeConGeometry("    Lines:          40\n")).toThrow(/geometry/)
+  })
+})
+
+describe("readConsoleGeometry — the console the probes write to (#29558)", () => {
+  it("uses the ffi read and does not spawn a child when it answers", async () => {
+    const modeCon = vi.fn(() => ({ stdout: MODE_CON_40x100, stderr: "", status: 0 }))
+    const read = await readConsoleGeometry({
+      ffi: vi.fn(async () => ({ cols: 110, rows: 30 })),
+      modeCon,
+    })
+
+    expect(read).toEqual({ status: "measured", via: "ffi", cols: 110, rows: 30 })
+    expect(modeCon).not.toHaveBeenCalled()
+  })
+
+  it("falls back to `mode con` when the ffi binding is not available, and says which read answered", async () => {
+    const read = await readConsoleGeometry({
+      ffi: vi.fn(async () => {
+        throw new Error("no bun:ffi on this runtime")
+      }),
+      modeCon: vi.fn(() => ({ stdout: MODE_CON_40x100, stderr: "", status: 0 })),
+    })
+
+    expect(read).toEqual({ status: "measured", via: "mode-con", cols: 100, rows: 40 })
+  })
+
+  it("is unavailable, with both attempts named, when neither read answers — never a default size", async () => {
     const read = await readConsoleGeometry({
       ffi: vi.fn(async () => {
         throw new Error("CreateFileW CONOUT$ failed")
       }),
+      modeCon: vi.fn(() => ({ stdout: "not a console", stderr: "redirected", status: 1 })),
     })
 
     expect(read.status).toBe("unavailable")
     if (read.status !== "unavailable") throw new Error("unreachable")
-    expect(read.diagnostic).toMatch(/GetConsoleScreenBufferInfo on CONOUT\$ failed \(CreateFileW CONOUT\$ failed\)/)
+    expect(read.diagnostic).toMatch(/CreateFileW CONOUT\$ failed/)
+    expect(read.diagnostic).toMatch(/mode con/)
     expect(read).not.toHaveProperty("cols")
     expect(read).not.toHaveProperty("rows")
-    expect(spawn).not.toHaveBeenCalled()
-    expect(spawnSync).not.toHaveBeenCalled()
+  })
+
+  it("refuses `mode con` output that parses but came from a failed command — never a default size", async () => {
+    // @dev/7 r1 finding 3: the existing failure case used UNPARSEABLE stdout, so a nonzero exit with
+    // two plausible numbers was still accepted as measured geometry.
+    for (const status of [1, null] as const) {
+      const read = await readConsoleGeometry({
+        ffi: vi.fn(async () => {
+          throw new Error("CreateFileW CONOUT$ failed")
+        }),
+        modeCon: vi.fn(() => ({ stdout: MODE_CON_40x100, stderr: "the handle is invalid", status })),
+      })
+
+      expect(read.status).toBe("unavailable")
+      if (read.status !== "unavailable") throw new Error("unreachable")
+      expect(read).not.toHaveProperty("cols")
+      expect(read).not.toHaveProperty("rows")
+      expect(read.diagnostic).toMatch(/`mode con` (exited nonzero|returned no exit status)/)
+      expect(read.diagnostic).toMatch(/the handle is invalid/)
+    }
+  })
+
+  it("refuses to reach for either default read off Windows", async () => {
+    const read = await readConsoleGeometry({ platform: "linux" })
+
+    expect(read.status).toBe("unavailable")
+    if (read.status !== "unavailable") throw new Error("unreachable")
+    expect(read.diagnostic).toMatch(/win32/)
   })
 })
