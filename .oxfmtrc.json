@@ -16,6 +16,7 @@
     "content/probes-libs/",
     "content/probes-apps/",
     "content/probes-mux/",
+    "test-fixtures/",
     "docs/public/api/"
   ]
 }

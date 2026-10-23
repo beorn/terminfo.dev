@@ -5,6 +5,7 @@
  * @reach fs-walk <fixture-only: walks temporary scratch fixtures for run selection>
  * @testonly none
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/** vendor/terminfo.dev/content/probes-mux/** vendor/terminfo.dev/content/probes-libs/**
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/** (the checked-in round the v3 run-reference parity case reads)
  */
 import { describe, expect, it, vi } from "vitest"
 import { createHash } from "node:crypto"
@@ -443,9 +444,7 @@ describe("consumer selection", () => {
       // Share the site's analysis loader with terminal paths, as the real site does.
       const analysis = loadAnalysis()
       // Legacy runs stay readable in the projection; none of them is scored as a current result.
-      const legacy = Object.values(
-        loadCurrentResults(fixtureContentDir()).projection.historical.history,
-      )
+      const legacy = Object.values(loadCurrentResults(fixtureContentDir()).projection.historical.history)
         .flat()
         .filter((entry) => entry.suiteId === "legacy")
       expect(legacy.length).toBeGreaterThan(0)

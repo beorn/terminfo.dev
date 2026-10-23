@@ -4,6 +4,7 @@
  * @consumer The one declare-and-admit entry point (27859)
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/**
  * @reach fs-walk <fixture-only: mkdtempSync run, destination, and Git authoring directories>
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/** (the checked-in specimen run, receipt and captures)
  * @testonly none
  */
 import { execFileSync, spawnSync } from "node:child_process"

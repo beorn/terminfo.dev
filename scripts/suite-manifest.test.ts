@@ -4,6 +4,7 @@
  * @consumer Current probe suite manifest producer, admission, and deploy validation
  * @reach fs-walk vendor/terminfo.dev/packages/probe-defs/src/** vendor/terminfo.dev/packages/probes/** vendor/terminfo.dev/packages/terminfo.dev/src/**
  * @reach fs-walk <fixture-only: mkdtempSync Git repos prove the declare guard and the cited-manifest gate>
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/** (the checked-in receipt and round the behavior case reads)
  * @testonly none
  */
 import { execFileSync } from "node:child_process"

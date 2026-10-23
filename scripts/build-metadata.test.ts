@@ -2,6 +2,7 @@
  * @failure A website config cannot load, labels the wrong source, drops sidebar metadata, or deployment accepts stale live identity.
  * @level l1 — real Git producer and actual deployment shell against isolated HTTP responses.
  * @consumer docs/.vitepress/config.ts metadata and .github/workflows/deploy.yml live readback.
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/** (only for the produced-file census; identity stays live)
  * @testonly none
  */
 

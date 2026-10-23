@@ -2,7 +2,7 @@
  * @failure Mux raw-output collection admits development data or loses its original HTTP response.
  * @level l1
  * @consumer handleMux private-output lifecycle and the shared immutable raw writer.
- * @reach fs-walk vendor/terminfo.dev/content/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json
  * @testonly none
  */
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
@@ -50,7 +50,10 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
   vi.spyOn(console, "error").mockImplementation(() => {})
   const historical = JSON.parse(
     readFileSync(
-      new URL("../../../test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json", import.meta.url),
+      new URL(
+        "../../../test-fixtures/probes-apps/kitty-0.49.2-linux-8c50df5834ccb938c208aa91467e9a2b.json",
+        import.meta.url,
+      ),
       "utf8",
     ),
   ) as HistoricalProbeRun

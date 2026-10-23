@@ -2,6 +2,7 @@
  * @failure A missing, malformed, stale, or disputed run silently becomes a positive/negative terminal claim.
  * @level l2
  * @consumer Site, API, analysis, and reviewed census import.
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/kitty-0.46.2-macos.json
  * @testonly none
  */
 import { afterEach, describe, expect, it, vi } from "vitest"

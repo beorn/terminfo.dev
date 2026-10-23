@@ -4,8 +4,10 @@
  *   whose measured steps it cannot name — each of which turns recorded evidence into a claim the run never made.
  * @level l1
  * @consumer terminfo.dev result popover (#30756)
- * @source-grep the step names and setup positions live in packages/probe-defs/src/cursor.ts, so only real run
- *   files prove the expectations are the probe's own; the helper is display-only and never re-grades a cell.
+ * @source-grep the step names and setup positions live in packages/probe-defs/src/cursor.ts, so only a measured
+ *   run proves the expectations are the probe's own. The run is a checked-in verbatim copy (#30764): the live
+ *   round leaves content/ on Friday. The helper is display-only and never re-grades a cell.
+ * @reach fs-read vendor/terminfo.dev/test-fixtures/probes-apps/** vendor/terminfo.dev/test-fixtures/probes-libs/** vendor/terminfo.dev/test-fixtures/probes-mux/** vendor/terminfo.dev/test-fixtures/artifacts/**
  * @testonly none
  */
 import { readFileSync } from "node:fs"
