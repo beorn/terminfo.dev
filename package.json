@@ -34,6 +34,7 @@
     "candidates": "bun scripts/candidates.ts",
     "update": "bun scripts/update.ts",
     "watch-releases": "bun scripts/watch-releases.ts",
+    "typecheck": "bun check -p tsconfig.json --no-pretty --all --threads=8 --noEmit",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
     "fix": "oxfmt --write ."
@@ -52,6 +53,8 @@
     "@terminfo/probe-defs": "workspace:*",
     "@terminfo/probes": "workspace:*",
     "@terminfo/run-parser": "workspace:*",
+    "@total-typescript/ts-reset": "^0.6.1",
+    "@types/bun": "1.4.3",
     "@vue/server-renderer": "3.5.43",
     "oxfmt": "0.71.0",
     "terminfo.dev": "workspace:*",
