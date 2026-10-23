@@ -164,7 +164,9 @@ describe("release 1 decisive-count reader", () => {
   })
 
   it("preserves the default report and accepts only the named CLI selectors and positionals", () => {
-    const contentDir = join(import.meta.dirname, "..", "content")
+    // The round now lives in test-fixtures (#30764 M4): the default run still measures no cohort,
+    // and it still reads real bar rows.
+    const contentDir = fixtureContentDir()
     // The default run measures no cohort at all: not an empty one, and not a fallback to a named one.
     const baseline = buildHistoricalReport({ contentDir })
     expect(baseline.cohort).toBeUndefined()
