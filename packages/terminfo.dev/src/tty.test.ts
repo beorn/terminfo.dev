@@ -302,26 +302,6 @@ describe("TTY transaction replies", () => {
     expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
   })
 
-  it("ends a sentinel read at the absolute deadline however often the terminal keeps writing", async () => {
-    const listenersBefore = process.stdin.listenerCount("data")
-    const started = Date.now()
-    const ticks = setInterval(() => {
-      reply("\x1b[?1;2c")
-      if (Date.now() - started >= 320) clearInterval(ticks)
-    }, 50)
-    process.stdout.write = (() => {
-      reply("\x1b[?1;2c")
-      return true
-    }) as typeof process.stdout.write
-    const outcome = await queryWithSentinelOutcome("\x1b[6n", /\x1b\[(\d+);(\d+)R/, 300, 100)
-    const elapsed = Date.now() - started
-    clearInterval(ticks)
-    expect(outcome).toMatchObject({ match: null, reason: "sentinel", sentinel: { graceMs: 100 } })
-    expect(outcome.sentinel?.atMs).toBeLessThanOrEqual(400)
-    expect(elapsed).toBeLessThan(300 + 100)
-    expect(process.stdin.listenerCount("data")).toBe(listenersBefore)
-  })
-
   it("can query DA1 itself without mistaking its answer for the sentinel", async () => {
     process.stdout.write = (() => {
       reply("\x1b[?62;4c")

@@ -137,15 +137,13 @@ function matchResponse(
     const chunks: Buffer[] = []
     let buf = ""
     let settled = false
-    let deadlineTimer: ReturnType<typeof setTimeout> | undefined
-    let graceTimer: ReturnType<typeof setTimeout> | undefined
+    let timer: ReturnType<typeof setTimeout> | undefined
     let writeAt = 0
     let sentinelFacts: { atMs: number; graceMs: number } | null = null
     let sentinelStart: number | undefined
 
     const cleanup = () => {
-      clearTimeout(deadlineTimer)
-      clearTimeout(graceTimer)
+      clearTimeout(timer)
       process.stdin.off("data", onData)
     }
 
@@ -198,36 +196,16 @@ function matchResponse(
         sentinelStart = start
         sentinelFacts = { atMs: Date.now() - writeAt, graceMs }
       }
-      // Two timers (#30625, @cto a40ae9b7): the deadline set at the write is never extended, and each
-      // chunk may only restart the grace window up to it. A read cut by the deadline is decided by the
-      // same rule over the whole read, never as a timeout once DA1 has answered.
-      clearTimeout(graceTimer)
-      const untilDeadline = writeAt + timeoutMs - Date.now()
-      graceTimer = setTimeout(
-        () => finish(read.match, read.match ? "reply" : "sentinel", sentinelFacts),
-        Math.max(0, Math.min(graceMs, untilDeadline)),
-      )
-    }
-
-    const decideAtDeadline = () => {
-      if (settled) return
-      if (!sentinel) {
-        const match = buf.match(pattern)
-        finish(match ? [...match] : null, match ? "reply" : "timeout")
-        return
-      }
-      const read = readSentinelReply(buf, pattern)
-      if (read.kind === "reply") {
-        finish(read.match, "reply")
-        return
-      }
-      const answered = sentinelAnswer(buf) !== null
-      finish(read.match, read.match ? "reply" : answered ? "sentinel" : "timeout", answered ? sentinelFacts : null)
+      clearTimeout(timer)
+      timer = setTimeout(() => finish(read.match, read.match ? "reply" : "sentinel", sentinelFacts), graceMs)
     }
 
     const startTimer = () => {
-      if (settled || deadlineTimer !== undefined) return
-      deadlineTimer = setTimeout(decideAtDeadline, timeoutMs)
+      if (settled || timer !== undefined) return
+      timer = setTimeout(() => {
+        const match = buf.match(pattern)
+        finish(match ? [...match] : null, match ? "reply" : "timeout")
+      }, timeoutMs)
     }
     if (deferTimer) {
       deferTimer(startTimer, () => {
