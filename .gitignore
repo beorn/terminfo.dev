@@ -8,5 +8,6 @@ packages/*/dist/
 .playwright-cli/
 *.png
 !content/artifacts/*.png
+!test-fixtures/artifacts/*.png
 !docs/public/og-image.png
 .gstack/
