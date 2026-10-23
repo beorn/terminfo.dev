@@ -494,8 +494,12 @@ export default defineConfig({
           pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
         } else {
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
-          // #30784: a run that decided nothing has no percentage; never publish a measured-looking 0%.
-          pageData.description = `${params.backendName} terminal emulator feature support: ${supportedShareText(params.pct)} (${params.yes}/${params.total} features). ${params.backendDescription}`
+          // #30784: a run that decided nothing has no percentage and no answerable fraction, so the
+          // description omits both rather than repeat a measured-looking zero (@cto S1 on a41752fe).
+          // A decided run keeps its exact text, a genuine 0% included.
+          const share = supportedShareText(params.pct)
+          const fraction = params.pct === "" ? "" : ` (${params.yes}/${params.total} features)`
+          pageData.description = `${params.backendName} terminal emulator feature support: ${share}${fraction}. ${params.backendDescription}`
         }
       } else if (rel.startsWith("os/")) {
         pageData.title = `${params.label} Terminal Support \u2014 OS Compatibility Matrix`

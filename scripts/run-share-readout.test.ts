@@ -7,13 +7,13 @@
  * @testonly none
  */
 import type { CapabilityStatus } from "@terminfo/probe-defs"
+import config from "../docs/.vitepress/config.ts"
 import { describe, expect, it } from "vitest"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
   NOT_MEASURED_TEXT,
   runDecidedNothing,
-  supportedShareText,
 } from "../docs/data/release-scope.ts"
 
 const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
@@ -55,13 +55,34 @@ describe("#30784 whole-run readout", () => {
     expect(currentSupportedShare(mixed)).toBe("36/273 supported (13%)")
   })
 
-  it("keeps the SEO share token on the same rule, so a description cannot publish 0% for an undecided run", () => {
-    // `docs/terminals/[id].paths.ts` passes "" when the run has no percentage; config.ts asks this
-    // function rather than assembling `pct%` itself.
-    expect(supportedShareText("")).toBe(NOT_MEASURED_TEXT.toLowerCase())
-    expect(supportedShareText("13")).toBe("13%")
-    expect(supportedShareText("0")).toBe("0%")
-    expect(`Terminal feature support: ${supportedShareText("")} (0/273 features)`).not.toContain("0%")
-    expect(`Terminal feature support: ${supportedShareText("0")} (0/273 features)`).toContain("0% (0/273 features)")
+  it("keeps the undecided terminal description honest through the real page transform", () => {
+    // @cto S2: this drives the actual transformPageData the site build uses, so it fails if
+    // config.ts ever goes back to interpolating params.pct itself. The terminal path passes pct: ""
+    // when the run has no percentage (docs/terminals/[id].paths.ts:148).
+    const describeTerminal = (pct: string, yes: string, total: string) => {
+      const pageData = {
+        relativePath: "terminals/windows-terminal.md",
+        frontmatter: {} as Record<string, unknown>,
+        params: { backendName: "Windows Terminal", pct, yes, total, backendDescription: "Microsoft's terminal." },
+      }
+      config.transformPageData(pageData as never)
+      return (pageData as { description?: string }).description ?? ""
+    }
+
+    const undecided = describeTerminal("", "0", "273")
+    expect(undecided).toBe(
+      "Windows Terminal terminal emulator feature support: not measured yet. Microsoft's terminal.",
+    )
+    // Neither a percentage nor the unexplained 0/273 fraction may survive on the undecided branch.
+    expect(undecided).not.toContain("%")
+    expect(undecided).not.toContain("0/273")
+
+    // A decided run keeps exactly the description it published before, a genuine zero included.
+    expect(describeTerminal("0", "0", "273")).toBe(
+      "Windows Terminal terminal emulator feature support: 0% (0/273 features). Microsoft's terminal.",
+    )
+    expect(describeTerminal("13", "36", "273")).toBe(
+      "Windows Terminal terminal emulator feature support: 13% (36/273 features). Microsoft's terminal.",
+    )
   })
 })
