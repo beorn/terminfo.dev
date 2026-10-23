@@ -368,7 +368,13 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
           }
         }
       }
-      assert.ok(referenced.size>0,"history remains readable");
+      // #30764 deleted every old run and #30759 AC3 removed the historical reader, so a corpus can
+      // legitimately reference nothing. Every consumer must then publish nothing rather than invent.
+      if (referenced.size===0) {
+        assert.deepEqual(Object.keys(site.selected.current),[]);
+        assert.deepEqual(Object.keys(site.selected.versions),[]);
+        assert.deepEqual(Object.keys(site.selected.history),[]);
+      }
       for (const [key,{selected}] of compatibility) {
         assert.deepEqual(matrix.stats[key].score,selected.score);
         assert.equal(selected.score.all,selected.catalogIds.length);
@@ -475,6 +481,7 @@ it("analysis rejects malformed required catalogs before replacing its output", (
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
     cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
+    cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
     const control = spawnSync(process.execPath, [script, "--dry-run"], { cwd: out, encoding: "utf8", timeout: 10_000 })
     expect(control.error).toBeUndefined()
     expect(control.status, control.stderr).toBe(0)
@@ -530,6 +537,7 @@ it("analysis validation refuses stale live values and key drift but labels histo
       cpSync(join(sourceRoot, "content", `${name}.json`), join(out, "content", `${name}.json`))
     }
     cpSync(join(sourceRoot, "content", "suites"), join(out, "content", "suites"), { recursive: true })
+    cpSync(join(sourceRoot, "content", "archived-exclusions.json"), join(out, "content", "archived-exclusions.json"))
     const run = (args: string[]) =>
       spawnSync(process.execPath, [script, ...args], { cwd: out, encoding: "utf8", timeout: 10_000 })
     const generated = run([])

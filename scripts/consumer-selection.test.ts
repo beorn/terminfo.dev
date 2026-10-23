@@ -99,7 +99,7 @@ function writeFrozenSuite(content: string, probeHash: string): void {
 }
 
 describe("consumer selection", () => {
-  it("keeps an all-history corpus readable without inventing current schema-3 results", () => {
+  it("keeps a corpus with no current run from publishing current results", () => {
     // The corpus with no current run is built from the live content, never read from it: every run on the
     // current schema or the tree's suite is left out, so the state the test proves survives admissions.
     // A child process builds and reads the corpus; the loaders retain the whole corpus, and a second copy
@@ -180,7 +180,9 @@ describe("consumer selection", () => {
         currentKeys: number
         message: string
       }
-      expect(receipt.fixtureRuns).toBeGreaterThan(0)
+      // #30764 deleted every legacy run, so the live content can carry none and the corpus is then
+      // empty. Either way no fixture run may count as current; the historical display that used to
+      // read the legacy rows is gone with #30759 AC3.
       expect(receipt.currentFixtureRuns).toBe(0)
       expect(receipt.projectionCurrent).toBe(0)
       expect(receipt.publishedCurrent).toBe(0)
@@ -263,6 +265,11 @@ describe("consumer selection", () => {
       writeCatalog(join(root, "content"))
       writeFileSync(join(root, "content", "features.json"), featureCatalog("sgr.bold"))
       writeFrozenSuite(join(root, "content"), "deadbeefcafe")
+      // The archived refusals are required content since #30759 AC3; an empty list is a real state.
+      writeFileSync(
+        join(root, "content", "archived-exclusions.json"),
+        JSON.stringify({ archivedExclusions: [] }),
+      )
       writeFileSync(
         join(root, "content", "probes-apps", "kitty-0.46.2-linux.json"),
         JSON.stringify({
