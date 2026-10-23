@@ -6,6 +6,7 @@ next: false
 
 <script setup>
 import { useData } from 'vitepress'
+import { NOT_MEASURED_TEXT } from '../data/release-scope.ts'
 const { params } = useData()
 const p = params.value
 
@@ -75,7 +76,7 @@ function evidenceClass(row) {
         <a :href="'/terminals/' + row.slug">{{ row.label }}</a>
         <span v-if="row.url" class="external-link"> · <a :href="row.url" target="_blank" rel="noopener">site</a></span>
       </td>
-      <td class="score-cell"><span v-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
+      <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
       <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.evidence }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
@@ -98,7 +99,7 @@ function evidenceClass(row) {
   <tbody>
     <tr v-for="row in parserRows" :key="row.id">
       <td><a :href="'/terminals/' + row.slug">{{ row.label }}</a></td>
-      <td class="score-cell"><span v-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
+      <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
       <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.evidence }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
@@ -123,7 +124,7 @@ function evidenceClass(row) {
   <tbody>
     <tr v-for="row in muxRows" :key="row.id">
       <td><a :href="'/terminals/' + row.slug">{{ row.label }}</a></td>
-      <td class="score-cell"><span v-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
+      <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
       <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.evidence }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>

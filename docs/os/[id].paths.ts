@@ -2,6 +2,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadTerminals as loadTerminalCatalog } from "@terminfo/catalog"
 import { loadProbes, terminalSlug, loadPlatformsMeta } from "../data/load-probes"
+import { currentCoverageSentence, runDecidedNothing } from "../data/release-scope"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -25,6 +26,8 @@ interface TerminalRow {
   description: string
   kind: "app" | "parser" | "mux"
   score: string
+  notMeasured: boolean
+  scoreTitle: string
   yes: string
   total: string
   evidence: string
@@ -113,7 +116,10 @@ export default {
         url: term.url ?? "",
         description: term.description ?? "",
         kind,
-        score: stats?.score.all ? String(stats.pct) : "",
+        // #30784: an undecided run keeps an empty score and carries the flag its cell renders.
+        score: stats?.pct == null ? "" : String(stats.pct),
+        notMeasured: stats ? runDecidedNothing(stats.counts) : false,
+        scoreTitle: stats ? currentCoverageSentence(stats) : "",
         yes: stats?.score.all ? String(stats.score.supported) : "",
         total: stats?.score.all ? String(stats.score.all) : "",
         evidence,

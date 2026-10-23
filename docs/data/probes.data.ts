@@ -27,6 +27,7 @@ import {
   aggregateCurrentResults,
   currentSupportedShare,
   isStaleRelation,
+  runDecidedNothing,
   staleCaption,
   tierLine,
   type CurrentAggregate,
@@ -245,7 +246,11 @@ export function loadFullProbes(): ProbeData {
       score: { ...selected.score },
       counts: { ...selected.counts },
       complete: selected.complete,
-      pct: Math.round((100 * selected.score.supported) / selected.score.all),
+      // #30784: a run that decided nothing has no percentage to print; every reader shows the
+      // not-measured words instead of a measured-looking 0%.
+      pct: runDecidedNothing(selected.counts)
+        ? null
+        : Math.round((100 * selected.score.supported) / selected.score.all),
     }
   }
   backends.sort(

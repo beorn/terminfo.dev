@@ -268,6 +268,9 @@ export function currentCoverageSentence(aggregate: Pick<CurrentAggregate, "count
 }
 
 export function currentSupportedShare(aggregate: CurrentAggregate): string {
+  // #30784: the same rule as a baseline row, one level up. A run whose every cell is TEST TODO or
+  // TEST FAILURE decided nothing, so "0/273 supported (0%)" would read as a measured fail.
+  if (runDecidedNothing(aggregate.counts)) return NOT_MEASURED_TEXT
   return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
 }
 
@@ -279,6 +282,24 @@ export function currentSupportedShare(aggregate: CurrentAggregate): string {
  */
 export function decisiveCells(counts: { readonly supported: number; readonly unsupported: number }): number {
   return counts.supported + counts.unsupported
+}
+
+/**
+ * Whether a run judged nothing at all (#30784): every cell is TEST TODO, TEST FAILURE or a reviewed
+ * Untestable claim. This is the run-level twin of `notMeasuredReadout`, and the ONE predicate every
+ * whole-run readout asks, so a page cannot print a measured-looking zero for it.
+ */
+export function runDecidedNothing(counts: Readonly<Record<CapabilityStatus, number>>): boolean {
+  return decisiveCells(counts) === 0
+}
+
+/**
+ * The percentage token a run-level line prints, from a share whose numbers may be absent (#30784):
+ * the SEO description carries only the token, so it asks this rather than assembling `pct%` itself
+ * and publishing "0%" for a run that decided nothing.
+ */
+export function supportedShareText(pct: string): string {
+  return pct === "" ? NOT_MEASURED_TEXT.toLowerCase() : `${pct}%`
 }
 
 /**

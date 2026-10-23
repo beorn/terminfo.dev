@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url"
 import { generateApi } from "../../scripts/generate-api"
 import { buildStamp, createBuildMetadata } from "../../scripts/build-metadata"
 import { siteCacheDir, siteDistDir } from "../../scripts/site-out"
+import { supportedShareText } from "../data/release-scope"
 import { glossaryLinksPlugin } from "./plugins/glossary-links"
 import { loadFeatures, loadTerminals, type FeatureRecord, type TerminalRecord } from "@terminfo/catalog"
 import { loadCategories, orderedCategoryIds } from "../data/categories.ts"
@@ -493,7 +494,8 @@ export default defineConfig({
           pageData.description = `${params.backendName}: ${params.significance ?? params.backendDescription ?? "Historical terminal"}`
         } else {
           pageData.title = `${params.backendName} \u2014 Terminal Feature Support`
-          pageData.description = `${params.backendName} terminal emulator feature support: ${params.pct}% (${params.yes}/${params.total} features). ${params.backendDescription}`
+          // #30784: a run that decided nothing has no percentage; never publish a measured-looking 0%.
+          pageData.description = `${params.backendName} terminal emulator feature support: ${supportedShareText(params.pct)} (${params.yes}/${params.total} features). ${params.backendDescription}`
         }
       } else if (rel.startsWith("os/")) {
         pageData.title = `${params.label} Terminal Support \u2014 OS Compatibility Matrix`

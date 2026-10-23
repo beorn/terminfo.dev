@@ -34,7 +34,14 @@ function featureTooltip(f) {
 }
 
 function termTooltip(b) {
-  const parts = [b.label, coverageLabel(b)]
+  // The matrix is per baseline: a column header has the backend row, while its coverage for THIS
+  // baseline lives in the matching score row. Calling coverageLabel on the backend row threw
+  // "undefined is not an object (evaluating 'counts.supported')" on every baseline page (found while
+  // verifying #30784 on main, where the build exits 0 and only the SSR log shows it). A backend with
+  // no row in this baseline's scores prints no coverage line rather than a fabricated one.
+  const parts = [b.label]
+  const score = scores.find((row) => row.name === b.name)
+  if (score) parts.push(coverageLabel(score))
   if (b.description) parts.push(b.description)
   if (b.type) parts.push('Type: ' + b.type)
   if (b.version) parts.push('Version: ' + b.version)
