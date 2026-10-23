@@ -298,7 +298,7 @@ describe("Kitty protocol detection", () => {
       expect(writes).toEqual([])
       // A declaration is not a measurement: the headless arm records coverage with the named
       // observable (@cto 2026-10-22, 30695-inconclusive-mapping-ruling), while the application arm
-      // keeps an inconclusive observation because it did attempt a controlled resize.
+      // keeps its inconclusive observation. Neither callback performs a controlled resize.
       expect(headless.pass).toBe(false)
       expect(headless.observation).toBeUndefined()
       expect(headless.notTested).toMatchObject({ reason: "no-semantic-observable" })
