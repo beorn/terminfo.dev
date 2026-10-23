@@ -420,6 +420,16 @@ it("records Windows and console-host text as TEST TODO through the execution wri
           executableSha256: `sha256:${"a".repeat(64)}`,
         },
       }),
+      // AC4's real target: a Windows run whose text came back through the console host.
+      executionRun({
+        base,
+        os: "windows",
+        host: {
+          image: "OpenConsole.exe",
+          executablePath: "C:\\Windows\\System32\\OpenConsole.exe",
+          executableSha256: `sha256:${"a".repeat(64)}`,
+        },
+      }),
     ]
     for (const { run, manifest, snapshots, attempt } of cases) {
       recordTextQualificationChecks(run, manifest, snapshots, attempt)
