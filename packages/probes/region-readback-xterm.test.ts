@@ -43,7 +43,6 @@ test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const
     } as unknown as probeDefs.TermContext
     const measured = collectTextQualification({
       ctx,
-      recipe: "macos-text-cells-v1",
       capture: async (checkpoint) => {
         if (fault === "shape-refused" && checkpoint.label === "text qualification mid-line-gap target") {
           throw new Error("terminal refused this shape")

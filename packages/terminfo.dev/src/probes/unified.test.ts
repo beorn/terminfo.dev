@@ -2448,7 +2448,7 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
         ids: ["device.primary-da"],
         ownedTerminal: geometryOwner(measured(24, 80)),
         prepareCapture: async ({ context }) => {
-          qualification = await collectTextQualification({ ctx: context, recipe: "macos-text-cells-v1", capture })
+          qualification = await collectTextQualification({ ctx: context, capture })
           preparedAt = Date.now()
         },
       })

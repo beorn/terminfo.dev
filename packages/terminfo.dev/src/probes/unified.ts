@@ -73,11 +73,9 @@ function createTermContext({
   geometry,
   utf8Decoding,
   captureGeometryRefusal,
-  onWrite,
 }: {
   out: NodeJS.WriteStream
   events?: TTYTraceEvent[]
-  onWrite?: (text: string) => void
   probe: ProbeDefinition
   geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
   utf8Decoding: () => Promise<Utf8DecodingReading>
@@ -94,7 +92,6 @@ function createTermContext({
   return {
     write(text: string) {
       events?.push({ kind: "write", sequence: text })
-      onWrite?.(text)
       out.write(text)
     },
     async queryCursorPosition() {
@@ -285,8 +282,6 @@ export async function runProbeBatch(
     captureGeometryRefusal?: string
     input?: InputFixture
     ownedTerminal?: OwnedTerminal
-    /** Sees every probe write before it is sent: an owned reader that must know what was drawn. */
-    onWrite?: (text: string) => void
     captureRunId?: string
     out?: NodeJS.WriteStream
     geometryCorroboration?: GeometryCorroboration
@@ -524,7 +519,6 @@ export async function runProbeBatch(
     const context = createTermContext({
       out,
       events,
-      ...(options.onWrite && { onWrite: options.onWrite }),
       probe,
       geometry: preGeometry?.status === "measured" ? preGeometry : undefined,
       utf8Decoding: readUtf8Decoding,
@@ -635,7 +629,6 @@ export async function runProbeBatch(
         const preparationContext = createTermContext({
           out,
           events: calibrationEvents,
-          ...(options.onWrite && { onWrite: options.onWrite }),
           probe: { ...probe, termNeedsGeometry: true },
           geometry: preparationGrid,
           utf8Decoding: readUtf8Decoding,

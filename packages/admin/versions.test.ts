@@ -194,7 +194,7 @@ test("text claims derive only from explicitly eligible app definitions and survi
     expect(snapshot.textClaims).not.toContain(headless.id)
     expect(derivedSuiteManifest(snapshot)).toMatchObject({
       textClaims: expected,
-      textQualification: { version: 2, recipes: ["macos-text-cells-v1", "windows-terminal-text-cells-v1"] },
+      textQualification: { version: 1, recipe: "macos-text-cells-v1" },
     })
     const { textClaims: _claims, textQualification: _spec, ...old } = snapshot
     expect(derivedSuiteManifest(old)).not.toHaveProperty("textClaims")

@@ -2018,9 +2018,7 @@ describe("selected results", () => {
         declared: true,
         expected: false,
       })),
-      // A run outside the recipe's context is neither admitted nor qualified by the macOS recipe it recorded.
       { name: "Windows", missing: undefined, os: "windows", declared: true, fault: undefined, expected: false },
-      { name: "Linux", missing: undefined, os: "linux", declared: true, fault: undefined, expected: false },
       { name: "undeclared claim", missing: undefined, os: "macos", declared: false, fault: undefined, expected: false },
       ...[
         "changed-bytes",
@@ -2106,8 +2104,8 @@ describe("selected results", () => {
       const suite = Object.assign(manifest(suiteId, [featureId]), {
         textClaims: declared ? [featureId] : [],
         textQualification: {
-          version: 2,
-          recipes: [fault === "suite-recipe-mismatch" ? "other-suite-recipe" : "macos-text-cells-v1"],
+          version: 1,
+          recipe: fault === "suite-recipe-mismatch" ? "other-suite-recipe" : "macos-text-cells-v1",
         },
       })
       const raw = run("qualified-text", {
@@ -2115,7 +2113,7 @@ describe("selected results", () => {
         probeHash: suiteId,
         textSnapshotRefs: [...refs],
         textQualification: {
-          version: fault === "wrong-version" ? 1 : 2,
+          version: fault === "wrong-version" ? 2 : 1,
           recipe: "macos-text-cells-v1",
           grid: { rows: 4, cols: 12 },
           shapes,
@@ -2171,7 +2169,6 @@ describe("selected results", () => {
       expect(version?.textQualification).toEqual(measured.textQualification)
       const failedAssessment =
         missing !== undefined ||
-        os !== "macos" ||
         [
           "changed-bytes",
           "failed-shape",
@@ -2184,9 +2181,6 @@ describe("selected results", () => {
       if (failedAssessment) {
         expect(cell?.textQualificationReason).toMatch(/Run qualified-text: /u)
         if (missing) expect(cell?.textQualificationReason).toContain(missing)
-        if (os !== "macos") {
-          expect(cell?.textQualificationReason).toContain("is not the recipe for this run's observer context (none)")
-        }
         if (fault === "suite-recipe-mismatch") {
           expect(cell?.textQualificationReason).toContain("cited suite declaration")
         }

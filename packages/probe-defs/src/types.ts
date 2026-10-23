@@ -242,30 +242,17 @@ export type TextQualificationShape =
   | "soft-wrap"
   | "prior-scrollback"
   | "empty-last-row"
-  | "console-host-ownership"
 
-/** A suite's declared recipes. New suites write version 2; version 1 names one recipe and is read
- * only for the two committed suites that wrote it. */
-export type TextQualificationSpec = { version: 1; recipe: string } | { version: 2; recipes: readonly string[] }
-
-/** One cell written as U+0001 straight into the console host's buffer, then read from both
- * buffers. The host keeps the control character; a terminal-owned observer never shows it. */
-export interface TextQualificationOwnership {
-  cell: { row: number; col: number }
-  /** The console host buffer's character at `cell`. */
-  host: string
-  /** The observer's whole row as it read it, before any cell mapping refuses the control character. */
-  observerRow: string
-}
-
-export interface TextQualification {
+export interface TextQualificationSpec {
   version: number
   recipe: string
+}
+
+export interface TextQualification extends TextQualificationSpec {
   grid: { rows: number; cols: number }
   shapes: Array<
-    | { shape: TextQualificationShape; frames: TextCellsObservationFrame[]; reason?: never; ownership?: never }
-    | { shape: TextQualificationShape; reason: string; frames?: never; ownership?: never }
-    | { shape: "console-host-ownership"; ownership: TextQualificationOwnership; frames?: never; reason?: never }
+    | { shape: TextQualificationShape; frames: TextCellsObservationFrame[]; reason?: never }
+    | { shape: TextQualificationShape; reason: string; frames?: never }
   >
 }
 

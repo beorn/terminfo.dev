@@ -10,7 +10,6 @@ import type {
   ProbeTarget,
   RunOrigin,
   TextQualification,
-  TextQualificationOwnership,
   TextCellsObservationFrame,
 } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentResult, HistoricalCurrentResult } from "./current-results.ts"
@@ -85,7 +84,6 @@ export interface TextQualificationDocument {
       shape: TextQualification["shapes"][number]["shape"]
       frames?: Array<PublicFrame & Pick<TextCellsObservationFrame, "cellDigest" | "frameDigest" | "cellRectangle">>
       reason?: string
-      ownership?: TextQualificationOwnership
     }>
   }
 }
@@ -389,9 +387,6 @@ function qualificationFor(
       ...qualification,
       shapes: qualification.shapes.map((shape) => {
         if (shape.reason !== undefined) return { shape: shape.shape, reason: shape.reason }
-        if (shape.ownership !== undefined) {
-          return { shape: shape.shape, ownership: { ...shape.ownership, cell: { ...shape.ownership.cell } } }
-        }
         const frames = images(
           {
             assertions: [],

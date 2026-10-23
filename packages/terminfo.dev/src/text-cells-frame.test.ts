@@ -316,8 +316,7 @@ it("records text qualification attempts before seal, distinguishing absent and b
     return captured.frame as TextCellsObservationFrame
   }
   run.textQualification = {
-    version: TEXT_QUALIFICATION_SPEC.version,
-    recipe: "macos-text-cells-v1",
+    ...TEXT_QUALIFICATION_SPEC,
     grid: { rows: 4, cols: 12 },
     shapes: fixtures.map((fixture) => ({
       shape: fixture.shape,

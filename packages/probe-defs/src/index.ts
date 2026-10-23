@@ -31,7 +31,6 @@ export type {
   ObservationFrame,
   TextCellsObservationFrame,
   TextQualification,
-  TextQualificationOwnership,
   TextQualificationShape,
   TextQualificationSpec,
   ProbeTarget,
@@ -163,16 +162,7 @@ export type { DecidableBasis } from "./decidable-basis.ts"
 export { APP_UNOBSERVABLE_ROWS, appUnobservableIds, splitAppObservable } from "./app-unobservable.ts"
 export type { AppObservableSplit, AppUnobservableRow } from "./app-unobservable.ts"
 
-export {
-  TEXT_QUALIFICATION_OWNERSHIP_CELL,
-  TEXT_QUALIFICATION_RECIPES,
-  TEXT_QUALIFICATION_SPEC,
-  TEXT_QUALIFICATION_SHAPES,
-  admitsTextObservation,
-  textQualificationFixtures,
-  textQualificationRecipeFor,
-  type TextQualificationRecipe,
-} from "./text-qualification.ts"
+export { TEXT_QUALIFICATION_SPEC, TEXT_QUALIFICATION_SHAPES, textQualificationFixtures } from "./text-qualification.ts"
 
 export { CAPABILITY_STATUSES } from "./types.ts"
 export type {

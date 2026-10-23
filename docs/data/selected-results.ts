@@ -22,7 +22,6 @@ import {
   type ProbeSuiteManifest,
   type TextQualification,
   isNonMeasuringEvidence,
-  admitsTextObservation,
   assessTextQualification,
   finalizeCapabilityResult,
   type TextQualificationAssessment,
@@ -349,11 +348,14 @@ function isConclusiveObservation(run: LoadedRun, observation: Observation, text:
   return (
     !run.legacy &&
     (observation.evidence !== "text" ||
-      (admitsTextObservation(run, observation) &&
+      (run.target.kind === "app" &&
+        run.target.os?.toLowerCase() === "macos" &&
+        observation.host === undefined &&
         !run.observations.some(
           (recorded) => recorded.featureId === observation.featureId && recorded.host !== undefined,
         ) &&
-        text.qualified)) &&
+        text.qualified &&
+        run.textClaims?.includes(observation.featureId) === true)) &&
     !isNonMeasuringEvidence(observation.evidence) &&
     (observation.outcome === "supported" || observation.outcome === "unsupported")
   )
