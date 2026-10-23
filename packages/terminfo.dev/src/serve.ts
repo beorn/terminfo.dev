@@ -274,10 +274,10 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
  * Absence is a fact about the run, and a probe that needs a frame must be able to say so: the
  * named error lands as an `ungradedDiagnostic` keyed by that probe's own id. */
 export function frameUnavailableCapture(): ProbeCapture {
-  return async () => {
+  return () => {
     const error = new Error("This run has no capture directory, so no frame is available for a probe that needs one")
     error.name = "FrameUnavailable"
-    throw error
+    return Promise.reject(error)
   }
 }
 
