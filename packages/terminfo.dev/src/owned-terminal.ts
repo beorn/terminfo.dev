@@ -676,7 +676,10 @@ async function readWindowsBoundGeometry(kernel?: ReturnType<typeof loadKernel32>
   }
 }
 
-const verifiedTerminalOwners = new WeakMap<OwnedTerminal, { captureRunId: string; out: NodeJS.WriteStream }>()
+const verifiedTerminalOwners = new WeakMap<
+  OwnedTerminal,
+  { captureRunId: string; out: NodeJS.WriteStream; processOwnerBasis?: string }
+>()
 
 export function ownedTerminalVerifiedFor(
   owner: OwnedTerminal | undefined,
@@ -685,6 +688,17 @@ export function ownedTerminalVerifiedFor(
 ): boolean {
   const grant = owner && verifiedTerminalOwners.get(owner)
   return grant !== undefined && grant.captureRunId === captureRunId && grant.out === out
+}
+
+/** The verified process arm's lifetime basis, bound to the same live capture grant. */
+export function ownedTerminalProcessBasisFor(
+  owner: OwnedTerminal | undefined,
+  captureRunId: string,
+  out: NodeJS.WriteStream,
+): string | undefined {
+  return owner && ownedTerminalVerifiedFor(owner, captureRunId, out)
+    ? verifiedTerminalOwners.get(owner)?.processOwnerBasis
+    : undefined
 }
 
 /** The only path that registers a grant: platform validation, optional Linux fixture, then geometry. */
@@ -717,6 +731,7 @@ export async function createOwnedTerminal(options: {
   let hostedWindowsApp: HostedWindowsApp | undefined
   let hostedAncestor: AncestryRow | undefined
   let processOwnerPid: number | undefined
+  let processOwnerBasis: string | undefined
   let hostedReceiptSha256: string | undefined
   let hostedPid1Comm: string | undefined
   /** The console host whose buffer the Windows cell read sees, or the reason none could be
@@ -754,6 +769,7 @@ export async function createOwnedTerminal(options: {
       process.pid,
       assertion.provider,
     )
+    processOwnerBasis = `Disposable prerequisite satisfied by run-scoped process owner pid ${assertion.ownerPid}, marker ${marker.flag} ${marker.value}`
     processOwnerPid = assertion.ownerPid
     binding = darwinOutput(out, assertion.tty)
   } else if (darwinHosted) {
@@ -971,7 +987,7 @@ export async function createOwnedTerminal(options: {
         await clipboard?.dispose()
       },
     }
-    verifiedTerminalOwners.set(owner, { captureRunId, out })
+    verifiedTerminalOwners.set(owner, { captureRunId, out, ...(processOwnerBasis && { processOwnerBasis }) })
     return owner
   } catch (error) {
     await clipboard?.dispose()

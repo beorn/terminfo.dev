@@ -512,8 +512,8 @@ function probeForeground(before: string): string {
 /**
  * App-side reset exchange (27832): read the colour, set it, read the change back, reset it, read
  * the restoration back — the termless restore discipline against a real terminal. The collector
- * runs this only with a verified disposable-ownership receipt, so the mutation is confined to a
- * machine nobody uses; a failed restore is graded, never retried into a pass.
+ * runs this only with a verified disposable receipt or a verified run-scoped process owner, so
+ * mutation is confined to that disposable machine or process; a failed restore is graded, never retried into a pass.
  */
 async function colorResetAppProbe(
   ctx: TermContext,
@@ -581,7 +581,7 @@ async function colorResetAppProbe(
   }
 }
 
-/** The reset features mutate and read back, so they are the probes a disposable receipt gates. */
+/** The reset features mutate and read back, so they require verified disposable authority. */
 function resetProbe(id: string, setCode: number, resetCode: number, index?: number): ProbeDefinition {
   return {
     ...probe(

@@ -41,7 +41,12 @@ import {
   type TTYTraceEvent,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
-import { ownedTerminalVerifiedFor, type GeometryMeasurement, type OwnedTerminal } from "../owned-terminal.ts"
+import {
+  ownedTerminalVerifiedFor,
+  ownedTerminalProcessBasisFor,
+  type GeometryMeasurement,
+  type OwnedTerminal,
+} from "../owned-terminal.ts"
 import {
   bindReceiptToRun,
   readDisposableReceipt,
@@ -336,9 +341,10 @@ export async function runProbeBatch(
     }
   }
   // Ownership is checked ONCE, before the first write, never per probe (27832 amendment 1). A
-  // mutation-and-readback probe additionally needs a verified disposable-ownership receipt; an
-  // absent or unparsable receipt is loud, and no env flag or caller option stands in for it.
+  // mutation-and-readback probe additionally needs a verified disposable receipt or the verified
+  // run-scoped process arm. An env flag, caller option or shared application owner grants neither.
   const ownsTerminal = ownedTerminalVerifiedFor(options.ownedTerminal, options.captureRunId ?? "", out)
+  const processOwnerBasis = ownedTerminalProcessBasisFor(options.ownedTerminal, options.captureRunId ?? "", out)
   const clipboard = ownsTerminal ? options.ownedTerminal?.clipboard : undefined
   const assertOwned = clipboard?.assertOwned.bind(clipboard)
   const custody: { failure?: { error: unknown } } = {}
@@ -435,7 +441,7 @@ export async function runProbeBatch(
       ? undefined
       : !authorizedToWrite
         ? "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
-        : probe.termNeedsDisposable === true && !disposable
+        : probe.termNeedsDisposable === true && !disposable && !processOwnerBasis
           ? "no verified disposable-ownership receipt was presented"
           : undefined
     if (refusedBecause) {
@@ -813,6 +819,10 @@ export async function runProbeBatch(
         batch.ungradedDiagnostics[probe.id] = { kind: "collector-error", name, message }
       }
     } finally {
+      const observation = batch.observations.find((entry) => entry.featureId === probe.id)
+      if (probe.termNeedsDisposable && !disposable && processOwnerBasis && observation) {
+        observation.note = `${observation.note ? `${observation.note}; ` : ""}${processOwnerBasis}`
+      }
       const trace = JSON.stringify({
         writes: events.filter((event) => event.kind === "write").map((event) => event.sequence),
         queries,
@@ -833,7 +843,7 @@ export async function runProbeBatch(
       batch.results[index] = recordExecutedCapability({
         featureId: probe.id,
         attempt,
-        observation: batch.observations.find((entry) => entry.featureId === probe.id),
+        observation,
         diagnostic: batch.ungradedDiagnostics[probe.id],
         coverage: batch.notTested.find((entry) => entry.featureId === probe.id),
         assertions: batch.assertions,
