@@ -88,44 +88,6 @@ export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId:
   return Boolean(treeSuiteId) && Boolean(releaseSuiteId) && treeSuiteId !== releaseSuiteId
 }
 
-/**
- * The D3 verdict ladder (@chief 2026-10-07, from the operator's 20:04Z "let's make pass mean a %"):
- * a terminal PASSES when at least 90% of the INCLUDED capabilities read decisive (47 of 52),
- * "with gaps" from 70%, "fail" below — the fraction is always printed beside the label
- * (pass · 47/52). @chief's cited prior art is Lighthouse's 0-100 with 90+ green: a per-product
- * score, unlike caniuse's per-feature yes/partial/no.
- */
-export const D3_VERDICT_BAR = { passPct: 90, gapsPct: 70 } as const
-
-export type D3Label = "pass" | "with gaps" | "fail"
-
-export interface D3Verdict {
-  label: D3Label
-  decisive: number
-  denominator: number
-  pct: number
-  fraction: string
-  text: string
-}
-
-/**
- * The one owner of the D3 rule. The label reads the same rounded percentage the fraction prints,
- * so a printed number can never disagree with the label beside it. A verdict over zero included
- * capabilities is refused loudly: it is not "fail", it is not measured.
- */
-export function d3Verdict(decisive: number, denominator: number): D3Verdict {
-  if (denominator <= 0) {
-    throw new Error(`D3 verdict needs a positive denominator of included capabilities, got ${denominator}`)
-  }
-  if (decisive < 0 || decisive > denominator) {
-    throw new Error(`D3 verdict needs 0 <= decisive <= denominator, got ${decisive}/${denominator}`)
-  }
-  const pct = Math.round((decisive / denominator) * 100)
-  const label: D3Label = pct >= D3_VERDICT_BAR.passPct ? "pass" : pct >= D3_VERDICT_BAR.gapsPct ? "with gaps" : "fail"
-  const fraction = `${decisive}/${denominator}`
-  return { label, decisive, denominator, pct, fraction, text: `${label} · ${fraction}` }
-}
-
 /** Current score and completion fold recorded statuses over exactly the frozen catalogue. */
 export interface CurrentAggregate {
   denominator: number

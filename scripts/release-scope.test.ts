@@ -13,17 +13,116 @@ import { createHash } from "node:crypto"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { describe, expect, it } from "vitest"
-import { loadFeatures } from "@terminfo/catalog"
+import { loadFeatures, slice, type FeatureCatalog, type Slice } from "@terminfo/catalog"
 import { parseSuiteManifest } from "@terminfo/run-parser"
-import { loadCategories } from "../docs/data/categories.ts"
-import { cohortIds, frozenSuiteIdFor, loadReleaseScope } from "../docs/data/load-release-scope.ts"
-import { d3Verdict, isStaleRelation, treeMovedPastRelease, staleCaption } from "../docs/data/release-scope.ts"
+import { loadCategories, orderedCategoryIds } from "../docs/data/categories.ts"
+import { frozenSuiteIdFor, loadReleaseScope } from "../docs/data/load-release-scope.ts"
+import { isStaleRelation, treeMovedPastRelease, staleCaption } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
 const contentDir = join(root, "content")
 const catalog = loadFeatures(contentDir)
 const categories = loadCategories(contentDir)
+
+// CTO ruling 2026-10-23: retain these accepted contracts at their only caller, this test boundary.
+/** The category facts a cohort's order needs: its slice label and its site order. */
+export interface CohortCategoryMeta {
+  slice: Slice
+  order: number
+}
+
+/**
+ * A cohort in its published order: every catalog row whose CATEGORY slice is one of `slices`, category
+ * by category in the category catalog's own `order`, each category's ids ascending. That is the ONE
+ * category order the site prints, so the cohort cannot disagree with the category blocks beside it.
+ * A cohort that keeps every row of its slices leaves `excludingTier1` off; a cohort that is the tier
+ * it ADDS asks for the exclusion and drops exactly the rows the catalog labels tier 1.
+ */
+export function cohortIds(
+  catalog: FeatureCatalog,
+  categories: Readonly<Record<string, CohortCategoryMeta>>,
+  slices: readonly Slice[],
+  options: { readonly excludingTier1: boolean },
+): string[] {
+  const wanted = new Set<string>(slices)
+  // Refuse a slice no category carries BEFORE walking ids: a set of slices is a request, and a
+  // mistyped or retired one must be named rather than dropped while the rest quietly answers.
+  const carried = new Set(Object.values(categories).map((category) => category.slice))
+  const unknown = [...wanted].filter((name) => !carried.has(name))
+  if (unknown.length > 0) {
+    throw new Error(
+      `cohort asks for slice ${unknown.join(", ")}, which no category carries; carried slices: ${[...carried].sort().join(", ")}`,
+    )
+  }
+  if (wanted.size === 0) throw new Error("cohort asks for no slices; name at least one")
+  const selected = orderedCategoryIds(categories).filter((id) => {
+    const sliceName = categories[id]?.slice
+    return sliceName !== undefined && wanted.has(sliceName)
+  })
+  const ids: string[] = []
+  let droppedTier1 = 0
+  for (const key of selected) {
+    const prefix = `${key}.`
+    for (const id of Object.keys(catalog)
+      .filter((id) => id.startsWith(prefix))
+      .sort()) {
+      // A cohort that measures a release's additions drops the rows already measured by tier 1.
+      // The exclusion is data, never a per-cohort branch in a reader.
+      if (options.excludingTier1 && slice(catalog, categories, id) === "tier1") {
+        droppedTier1 += 1
+        continue
+      }
+      ids.push(id)
+    }
+  }
+  if (ids.length === 0) {
+    throw new Error(
+      droppedTier1 > 0
+        ? `cohort is empty: every row of slices ${slices.join(", ")} is already tier 1, so the exclusion leaves nothing`
+        : `cohort is empty: the categories for slices ${slices.join(", ")} carry no rows`,
+    )
+  }
+  return ids
+}
+
+/**
+ * The D3 verdict ladder (@chief 2026-10-07, from the operator's 20:04Z "let's make pass mean a %"):
+ * a terminal PASSES when at least 90% of the INCLUDED capabilities read decisive (47 of 52),
+ * "with gaps" from 70%, "fail" below — the fraction is always printed beside the label
+ * (pass · 47/52). @chief's cited prior art is Lighthouse's 0-100 with 90+ green: a per-product
+ * score, unlike caniuse's per-feature yes/partial/no.
+ */
+export const D3_VERDICT_BAR = { passPct: 90, gapsPct: 70 } as const
+
+export type D3Label = "pass" | "with gaps" | "fail"
+
+export interface D3Verdict {
+  label: D3Label
+  decisive: number
+  denominator: number
+  pct: number
+  fraction: string
+  text: string
+}
+
+/**
+ * The one owner of the D3 rule. The label reads the same rounded percentage the fraction prints,
+ * so a printed number can never disagree with the label beside it. A verdict over zero included
+ * capabilities is refused loudly: it is not "fail", it is not measured.
+ */
+export function d3Verdict(decisive: number, denominator: number): D3Verdict {
+  if (denominator <= 0) {
+    throw new Error(`D3 verdict needs a positive denominator of included capabilities, got ${denominator}`)
+  }
+  if (decisive < 0 || decisive > denominator) {
+    throw new Error(`D3 verdict needs 0 <= decisive <= denominator, got ${decisive}/${denominator}`)
+  }
+  const pct = Math.round((decisive / denominator) * 100)
+  const label: D3Label = pct >= D3_VERDICT_BAR.passPct ? "pass" : pct >= D3_VERDICT_BAR.gapsPct ? "with gaps" : "fail"
+  const fraction = `${decisive}/${denominator}`
+  return { label, decisive, denominator, pct, fraction, text: `${label} · ${fraction}` }
+}
 
 /** Write one suite manifest from a freeze pointer, for the registry tests below. */
 function writeSuite(dir: string, probeHash: string, freeze?: { release: string; at: string }): void {

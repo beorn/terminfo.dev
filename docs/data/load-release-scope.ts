@@ -1,80 +1,15 @@
 /**
- * Node-only loader for the Release 1 measurement scope and the feature cohorts.
- *
- * Everything here is DERIVED from the catalogs, never from a declaration file: the declared tier-1
- * rows are the catalog rows `slice()` labels `tier1`, and a cohort is the catalog rows whose CATEGORY
- * slice is one of the cohort's slices, in the category catalog's own order. A release's frozen suite
- * is the one suite manifest whose `freeze.release` names it.
+ * Node-only loader for the Release 1 measurement scope, derived from catalog tier labels.
+ * A release's frozen suite is the one suite manifest whose `freeze.release` names it.
  */
 import { splitAppObservable } from "@terminfo/probe-defs"
-import { slice, type FeatureCatalog, type Slice, type SliceCatalog } from "@terminfo/catalog"
+import { slice, type FeatureCatalog, type SliceCatalog } from "@terminfo/catalog"
 import type { ReleaseFeature, ReleaseScope } from "./release-scope.ts"
-import { orderedCategoryIds } from "./categories.ts"
 export { frozenSuiteIdFor } from "../../packages/admin/suite-manifest.ts"
 
 /** Release 1's own two constants, the ones its tier line prints. */
 const RELEASE_1_TIER = 1
 const RELEASE_1_METHOD = "query/reply"
-
-/** The category facts a cohort's order needs: its slice label and its site order. */
-export interface CohortCategoryMeta {
-  slice: Slice
-  order: number
-}
-
-/**
- * A cohort in its published order: every catalog row whose CATEGORY slice is one of `slices`, category
- * by category in the category catalog's own `order`, each category's ids ascending. That is the ONE
- * category order the site prints, so the cohort cannot disagree with the category blocks beside it.
- * A cohort that keeps every row of its slices leaves `excludingTier1` off; a cohort that is the tier
- * it ADDS asks for the exclusion and drops exactly the rows the catalog labels tier 1.
- */
-export function cohortIds(
-  catalog: FeatureCatalog,
-  categories: Readonly<Record<string, CohortCategoryMeta>>,
-  slices: readonly Slice[],
-  options: { readonly excludingTier1: boolean },
-): string[] {
-  const wanted = new Set<string>(slices)
-  // Refuse a slice no category carries BEFORE walking ids: a set of slices is a request, and a
-  // mistyped or retired one must be named rather than dropped while the rest quietly answers.
-  const carried = new Set(Object.values(categories).map((category) => category.slice))
-  const unknown = [...wanted].filter((name) => !carried.has(name))
-  if (unknown.length > 0) {
-    throw new Error(
-      `cohort asks for slice ${unknown.join(", ")}, which no category carries; carried slices: ${[...carried].sort().join(", ")}`,
-    )
-  }
-  if (wanted.size === 0) throw new Error("cohort asks for no slices; name at least one")
-  const selected = orderedCategoryIds(categories).filter((id) => {
-    const sliceName = categories[id]?.slice
-    return sliceName !== undefined && wanted.has(sliceName)
-  })
-  const ids: string[] = []
-  let droppedTier1 = 0
-  for (const key of selected) {
-    const prefix = `${key}.`
-    for (const id of Object.keys(catalog)
-      .filter((id) => id.startsWith(prefix))
-      .sort()) {
-      // A cohort that measures a release's additions drops the rows already measured by tier 1.
-      // The exclusion is data, never a per-cohort branch in a reader.
-      if (options.excludingTier1 && slice(catalog, categories, id) === "tier1") {
-        droppedTier1 += 1
-        continue
-      }
-      ids.push(id)
-    }
-  }
-  if (ids.length === 0) {
-    throw new Error(
-      droppedTier1 > 0
-        ? `cohort is empty: every row of slices ${slices.join(", ")} is already tier 1, so the exclusion leaves nothing`
-        : `cohort is empty: the categories for slices ${slices.join(", ")} carry no rows`,
-    )
-  }
-  return ids
-}
 
 /**
  * The Release 1 tier-1 scope, derived from the catalog: every row `slice()` labels `tier1`. The
