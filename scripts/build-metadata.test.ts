@@ -214,6 +214,7 @@ describe("website sidebar metadata", () => {
       import * as fs from "node:fs";
       import { mock } from "bun:test";
       import { ref, computed } from "vue";
+      import { isEnvironmentGroup } from "./packages/probe-defs/src/environment-groups.ts";
       const read = fs.readFileSync;
       const catalog = JSON.parse(read("./content/categories.json", "utf8"));
       const expected = Object.keys(catalog).filter(id => !id.startsWith("$")).reverse();
@@ -235,10 +236,10 @@ describe("website sidebar metadata", () => {
         const source = read(path, "utf8");
         const setup = source.slice(source.indexOf("<script setup>") + 14, source.indexOf("</script>"))
           .replace(/^import[^\\n]*\\n/gm, "");
-        // Execute the complete page computation with its real Vue primitives, data and presentation imports.
-        return new Function("ref", "computed", "data", ...Object.keys(presentation),
+        // Execute the complete page computation with its real Vue primitives, data and page imports.
+        return new Function("ref", "computed", "data", "isEnvironmentGroup", ...Object.keys(presentation),
           setup + "\\nreturn " + binding + ".value;")
-          (ref, computed, data, ...Object.values(presentation));
+          (ref, computed, data, isEnvironmentGroup, ...Object.values(presentation));
       }
       console.log(JSON.stringify({ expected, nav, sidebar,
         home: pageCategories("./docs/index.md", "sortedCategories"),
