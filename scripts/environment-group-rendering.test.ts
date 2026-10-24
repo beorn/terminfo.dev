@@ -15,6 +15,7 @@ import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import type { CapabilityResult } from "@terminfo/probe-defs"
 import { currentCoverageSentence, aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
+import { evidenceStatus, MANUAL_BY_DESIGN_STATUS } from "../docs/.vitepress/theme/evidence-status.ts"
 
 const root = join(import.meta.dirname, "..")
 const source = (path: string) => readFileSync(join(root, path), "utf8")
@@ -72,10 +73,24 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
   })
 
-  it("gives the evidence cell the manual-by-design words instead of the stored TEST TODO", () => {
+  it("gives the evidence cell the manual-by-design words only for a stored TEST TODO", () => {
     const cell = source("docs/.vitepress/theme/ResultEvidenceCell.vue")
-    expect(cell).toContain("isEnvironmentGroup(props.featureId)")
-    expect(cell).toContain("Manual by design (catalogue), NOT MEASURED")
+    expect(cell).toContain("evidenceStatus(props.featureId, currentResult.value?.status)")
+  })
+
+  it("renders a stored supported environment row as Supported, never NOT MEASURED (D1)", () => {
+    // @cto 98cd142b D1: the projection keeps a stored status on an environment row, so a blanket
+    // environment override would publish "NOT MEASURED" over a real measurement.
+    expect(evidenceStatus("device.env-term", "supported")).toEqual({ text: "Supported", icon: "✓", tone: "yes" })
+    expect(evidenceStatus("device.env-term", "unsupported").text).toBe("Unsupported")
+    expect(evidenceStatus("device.env-term", "test-failure").text).toBe("TEST FAILURE")
+    // Only the catalogue's own TEST TODO wears the manual-by-design words, and never the TODO label.
+    expect(evidenceStatus("device.env-term", "test-todo")).toEqual(MANUAL_BY_DESIGN_STATUS)
+    expect(evidenceStatus("device.env-term", "test-todo").text).not.toBe("TEST TODO")
+    expect(MANUAL_BY_DESIGN_STATUS.text).toBe("Manual by design (catalogue), NOT MEASURED")
+    // A graded row keeps its stored status untouched.
+    expect(evidenceStatus("sgr.bold", "test-todo").text).toBe("TEST TODO")
+    expect(evidenceStatus("sgr.bold", undefined)).toEqual({ text: "", icon: "–", tone: "unknown" })
   })
 
   it("publishes the graded denominator and the ungraded nine as contract text", () => {
@@ -86,5 +101,10 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")
     expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded capabilities")
+  })
+
+  it("names the nine on the OS page tooltip too (D2)", () => {
+    const os = source("docs/os/[id].paths.ts")
+    expect(os).toContain("currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)")
   })
 })

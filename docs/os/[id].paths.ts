@@ -119,7 +119,10 @@ export default {
         // #30784: an undecided run keeps an empty score and carries the flag its cell renders.
         score: stats?.pct == null ? "" : String(stats.pct),
         notMeasured: stats ? runDecidedNothing(stats.counts) : false,
-        scoreTitle: stats ? currentCoverageSentence(stats) : "",
+        scoreTitle:
+          stats && source
+            ? currentCoverageSentence(stats, data.selectedByBackend[source.name]?.selected.catalogIds)
+            : "",
         yes: stats?.score.all ? String(stats.score.supported) : "",
         total: stats?.score.all ? String(stats.score.all) : "",
         evidence,

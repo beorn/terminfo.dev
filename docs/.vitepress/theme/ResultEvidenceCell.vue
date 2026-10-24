@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import { isEnvironmentGroup } from "../../../packages/probe-defs/src/environment-groups.ts"
 import type { ObservationReason } from "@terminfo/probe-defs"
 import type { PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import {
@@ -21,6 +20,7 @@ import {
   type StepSource,
 } from "../../data/step-table"
 import { textEvidenceExplanation } from "./ungraded-explanation"
+import { evidenceStatus } from "./evidence-status"
 import ResultSteps from "./ResultSteps.vue"
 
 const verifiedTraceDocuments = new Map<string, { parsed: unknown; actualSha256: string }>()
@@ -64,29 +64,11 @@ const dialogTitleId = `${id}-title`
 
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
-/** D132 B (#30917): the one words an ungraded environment position may wear. Never "TEST TODO". */
-const MANUAL_BY_DESIGN_STATUS = {
-  text: "Manual by design (catalogue), NOT MEASURED",
-  icon: "–",
-  tone: "ungraded",
-} as const
-
-const status = computed(() => {
-  // Pages select current runs only ([id].paths.ts), so a row's status is always the sealed v3 status.
-  // The historical table is not in the client payload; it had no reachable reader and is gone with it.
-  // D132 B (#30917): an environment group is recorded TEST TODO by the catalogue but is manual by
-  // design and was never measured, so it must never read as TODO on any page that renders its row.
-  if (isEnvironmentGroup(props.featureId)) return MANUAL_BY_DESIGN_STATUS
-  const state = currentResult.value?.status
-  if (!state) return { text: "", icon: "–", tone: "unknown" }
-  return {
-    supported: { text: "Supported", icon: "✓", tone: "yes" },
-    unsupported: { text: "Unsupported", icon: "✗", tone: "no" },
-    untestable: { text: "Untestable", icon: "–", tone: "ungraded" },
-    "test-todo": { text: "TEST TODO", icon: "–", tone: "unknown" },
-    "test-failure": { text: "TEST FAILURE", icon: "!", tone: "error" },
-  }[state]
-})
+// Pages select current runs only ([id].paths.ts), so a row's status is always the sealed v3 status.
+// The historical table is not in the client payload; it had no reachable reader and is gone with it.
+// The rule itself is evidence-status.ts, where it is testable; only a stored TEST TODO on an
+// environment position becomes the manual-by-design words (@cto 98cd142b D1).
+const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status))
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
   props.cell?.evidence === "query"
