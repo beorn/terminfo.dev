@@ -3,6 +3,7 @@ import {
   type CapabilityResult,
   type CapabilityStatus,
 } from "../../packages/probe-defs/src/types.ts"
+import { gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicCapabilityResult } from "./public-results.ts"
 
 /** Read a current (schema-3) published result without manufacturing any legacy observation. */
@@ -209,7 +210,11 @@ export function aggregateCurrentResults(
   if (byId.size !== results.length || results.length !== catalogIds.length || catalogIds.some((id) => !byId.has(id))) {
     throw new Error("Current results differ from frozen catalogue membership")
   }
-  for (const id of catalogIds) {
+  // D132 B (#30917): grading covers the graded ids only. The nine environment groups stay in the
+  // catalogue — the membership check above still requires all 273 — but they are not capabilities and
+  // a run cannot grade them, so they are counted below as visible ungraded, never as TEST TODO.
+  const gradedIds = gradedFeatureIds(catalogIds)
+  for (const id of gradedIds) {
     const result = byId.get(id)
     if (!result || !CAPABILITY_STATUSES.includes(result.status)) {
       throw new Error(`Invalid stored current status for ${id}`)
@@ -218,7 +223,7 @@ export function aggregateCurrentResults(
     idsByState[result.status].push(id)
   }
   return {
-    denominator: catalogIds.length,
+    denominator: gradedIds.length,
     counts,
     idsByState,
     supported: counts.supported,

@@ -5,10 +5,11 @@ import { Box, Text, renderString } from "silvery"
 import type { SelectedProjection, CurrentSelectedVersion } from "../../docs/data/selected-results.ts"
 
 import type { CapabilityResult } from "@terminfo/probe-defs"
+import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import { currentCoverageSentence } from "../../docs/data/release-scope.ts"
 
 type CurrentColumn = { label: string; contextKey: string; run: CurrentSelectedVersion }
-type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "—"
+type StateToken = "YES" | "NO" | "UNTEST" | "FAIL" | "TODO" | "N/M" | "—"
 
 function score(run: CurrentSelectedVersion): string {
   return `${run.score.supported}/${run.score.all} Supported / all (${Math.round((100 * run.score.supported) / run.score.all)}%)`
@@ -16,6 +17,9 @@ function score(run: CurrentSelectedVersion): string {
 
 function stateToken(cell: CapabilityResult | undefined): StateToken {
   if (!cell) return "—"
+  // D132 B (#30917): the nine environment positions are recorded TEST TODO by the catalogue but are
+  // manual by design, not graded, and were never measured. They must never read as TODO.
+  if (cell.status === "test-todo" && isEnvironmentGroup(cell.featureId)) return "N/M"
   switch (cell.status) {
     case "supported":
       return "YES"
@@ -35,7 +39,9 @@ function StateCell({ cell, width }: { cell: CapabilityResult | undefined; width:
   const color = token === "YES" ? "$success" : token === "NO" ? "$error" : "$muted"
   return (
     <Box width={width} justifyContent="center">
-      <Text color={color}>{token}</Text>
+      <Text color={color} title={token === "N/M" ? "manual by design (catalogue), NOT MEASURED" : undefined}>
+        {token}
+      </Text>
     </Box>
   )
 }
@@ -77,7 +83,8 @@ function FeatureMatrix({
         Feature comparison
       </Text>
       <Text color="$muted">
-        YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE
+        YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE · N/M
+        manual by design (catalogue), NOT MEASURED
       </Text>
       {groups.map((group) => (
         <Box key={group[0]?.label} flexDirection="column" marginBottom={1}>
