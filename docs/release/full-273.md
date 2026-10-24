@@ -20,11 +20,11 @@ This page reads sealed schema-3 execution results on the required suite. A conte
 
 ## Scope
 
-- **{{ data.catalogRows }} capabilities** across {{ data.contexts.length }} required contexts.
+- **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} graded capabilities** plus **{{ data.environmentGroups }} environment groups** (manual by design, NOT MEASURED).
 - Required suite: <code>{{ data.suiteId }}</code>.
 - **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit capability positions.
-- Score is **Supported / all {{ data.catalogRows }} capabilities**. Unsupported and Untestable remain in the denominator.
-- Completion requires **zero TEST TODO and zero TEST FAILURE in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
+- Score is **Supported / all {{ data.gradedRows }} graded capabilities**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.
+- Completion requires **zero TEST TODO and zero TEST FAILURE among the graded capabilities in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
 - No current schema-3 runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
 
 ## The contexts

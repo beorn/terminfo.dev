@@ -20,6 +20,7 @@ hero:
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, NOT_MEASURED_TEXT, notMeasuredReadout, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
+import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')
@@ -28,6 +29,10 @@ const platformFilter = ref('all')
 
 // Only a current run is displayed; a historical-only target has no row.
 const displayedSelections = { ...data.selectedByBackend }
+
+// D132 B (#30917): the environment groups a run records are ungraded, so no bar, tooltip or order
+// counts them; the legend below names them instead of leaving the smaller denominator unexplained.
+const environmentGroupCount = data.features.filter((feature) => isEnvironmentGroup(feature.id)).length
 
 // Baseline metadata for filter dropdown
 const baselineOptions = [
@@ -139,7 +144,7 @@ function catLabel(cat) {
 function barSegmentItems(backendName, segment) {
   const selected = data.selectedByBackend[backendName]?.selected
   if (!selected) return []
-  return selected.results.filter(result => result.status === segment).map(result => {
+  return selected.results.filter(result => result.status === segment && !isEnvironmentGroup(result.featureId)).map(result => {
     const feature = data.features.find(feature => feature.id === result.featureId)
     return { id: result.featureId, name: data.featureDescriptions[result.featureId]?.name ?? result.featureId,
       href: feature ? '/' + feature.category + '/' + featureSlug(result.featureId) : undefined,
@@ -168,7 +173,7 @@ function scoreLabel(backendName) {
 function coverageLabel(backendName) {
   const bar = data.releaseBars[backendName]
   if (!bar) return 'No selected run'
-  return currentCoverageSentence(bar)
+  return currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)
 }
 
 // #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
@@ -238,7 +243,7 @@ function backendTooltip(name, version) {
 
 <p class="section-subtitle">Real terminal measurements. Select a terminal for results and recorded evidence.</p>
 
-<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">TEST TODO / TEST FAILURE</span></div>
+<div class="support-legend" aria-label="Bar colors"><span class="legend-supported">Supported</span><span class="legend-inconclusive">Untestable</span><span class="legend-unsupported">Unsupported</span><span class="legend-unmeasured">TEST TODO / TEST FAILURE</span><span class="legend-manual">{{ environmentGroupCount }} environment groups: manual by design (catalogue), NOT MEASURED</span></div>
 
 <div class="platform-filter">
   <label for="app-platform-filter">Platform:</label>
@@ -1142,6 +1147,7 @@ strips, or mishandles.
 .support-legend .legend-supported::before { background:#10b981; }
 .support-legend .legend-inconclusive::before { background:#f59e0b; }
 .support-legend .legend-unmeasured::before { background:#7c3aed; }
+.support-legend .legend-manual::before { background:transparent; border:1px dashed var(--vp-c-text-3); }
 .historical-label { display:block; color:var(--vp-c-text-2); font-size:10px; font-weight:400; }
 .release-details { margin:0 0 32px; color:var(--vp-c-text-3); font-size:13px; }
 .summary-history,.baseline-history { display:none; }

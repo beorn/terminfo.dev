@@ -696,7 +696,9 @@ export function projectResults(
       suiteFreshness: `${suiteRelation} suite ${run.probeHash}`,
       ...(assessment.identityAdmission && { identityAdmission: assessment.identityAdmission }),
       counts,
-      score: { supported: counts.supported, all: run.catalogIds.length },
+      // D132 B (#30917): numerator and denominator come from the ONE fold, so both cover the same
+      // graded ids (264 for a current 273-row run). Never recompute either from the raw catalogue.
+      score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }
     const stem = `${run.target.kind}:${run.target.id}`

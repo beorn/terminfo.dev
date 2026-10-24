@@ -13,6 +13,7 @@ import { pickContextRun } from "./run-selection.ts"
 import type { CapabilityStatus } from "@terminfo/probe-defs"
 import { reviewedContextFor } from "./current-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
+import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { CensusContext, ContextKind } from "./full-census.ts"
 
 /** One catalog row of a collected context, with its state and the run's own method and words. */
@@ -59,7 +60,12 @@ export type FullContextRow = CollectedRow | UncollectedRow
 export interface FullProjectRows {
   /** The suite every collected row was measured on; a run on another suite is not collected. */
   requiredSuiteId: string
+  /** Every recorded catalogue position, environment groups included. */
   catalogRows: number
+  /** The graded capabilities: `catalogRows` minus the environment groups (D132 B). */
+  gradedRows: number
+  /** The environment groups the catalogue records: manual by design, NOT MEASURED, never graded. */
+  environmentGroups: number
   contexts: readonly FullContextRow[]
   collected: number
   notCollected: number
@@ -85,6 +91,8 @@ export function buildFullProjectRows(args: {
   return {
     requiredSuiteId: args.requiredSuiteId,
     catalogRows: args.catalogIds.length,
+    gradedRows: gradedFeatureIds(args.catalogIds).length,
+    environmentGroups: environmentGroupIds(args.catalogIds).length,
     contexts: rows,
     collected: rows.filter((row) => row.collected).length,
     notCollected: rows.filter((row) => !row.collected).length,

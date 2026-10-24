@@ -35,9 +35,13 @@ A run reference includes its target/context, source revision, suite, run ID/hash
 
 Each sealed run has exactly one result per frozen catalog ID. Its `results` array retains the recorded status and attempts/checks; readers never turn old observations into new current statuses.
 
-`score.supported / score.all` is Supported divided by every frozen catalog position. Untestable, TEST TODO and TEST FAILURE remain in that denominator.
+`score.supported / score.all` is Supported divided by the **graded** catalog positions (264 for a current
+273-row run). Untestable, TEST TODO and TEST FAILURE remain in that denominator. The nine environment
+groups (`device.env-*`) are recorded in `results` and in the catalogue membership check, but are
+ungraded: **manual by design (catalogue), NOT MEASURED** — never TEST TODO, and never counted.
 
-A context's `complete` is true only when its TEST TODO and TEST FAILURE counts are both zero. Completion does not imply full support.
+A context's `complete` is true only when its TEST TODO and TEST FAILURE counts among the graded
+capabilities are both zero. Completion does not imply full support.
 
 Publication still requires every required context on the approved source/suite. An absent current context cannot count as complete.
 

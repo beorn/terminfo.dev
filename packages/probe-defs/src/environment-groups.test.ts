@@ -1,3 +1,10 @@
+/**
+ * @failure A catalogue edit adds, renames or re-grades an environment position while the declared
+ *   nine drift, so a run's graded denominator silently covers the wrong ids.
+ * @level l2
+ * @consumer every graded score: aggregateCurrentResults, the published score.all and the site bars
+ * @testonly none
+ */
 import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 import { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./environment-groups.ts"
@@ -12,9 +19,10 @@ import { ENVIRONMENT_GROUP_IDS, gradedFeatureIds, isEnvironmentGroup } from "./e
  */
 const MANUAL_REASON = "manual by design: no automatable probe exists for this feature"
 
-const features = JSON.parse(
-  readFileSync(new URL("../../../content/features.json", import.meta.url), "utf8"),
-) as Record<string, { probeStatus?: string; probeStatusReason?: string }>
+const features = JSON.parse(readFileSync(new URL("../../../content/features.json", import.meta.url), "utf8")) as Record<
+  string,
+  { probeStatus?: string; probeStatusReason?: string }
+>
 
 const recordedIds = Object.keys(features).filter((id) => !id.startsWith("$"))
 

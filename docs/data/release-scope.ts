@@ -3,7 +3,7 @@ import {
   type CapabilityResult,
   type CapabilityStatus,
 } from "../../packages/probe-defs/src/types.ts"
-import { gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
+import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicCapabilityResult } from "./public-results.ts"
 
 /** Read a current (schema-3) published result without manufacturing any legacy observation. */
@@ -231,14 +231,23 @@ export function aggregateCurrentResults(
   }
 }
 
-export function currentCoverageSentence(aggregate: Pick<CurrentAggregate, "counts">): string {
+export function currentCoverageSentence(
+  aggregate: Pick<CurrentAggregate, "counts">,
+  catalogIds?: readonly string[],
+): string {
   const counts = aggregate.counts
-  return `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["test-todo"]} TEST TODO · ${counts["test-failure"]} TEST FAILURE`
+  const graded = `${counts.supported} Supported · ${counts.unsupported} Unsupported · ${counts.untestable} Untestable · ${counts["test-todo"]} TEST TODO · ${counts["test-failure"]} TEST FAILURE`
+  // D132 B (#30917): an exclusion the site cannot explain reads as a terminal verdict, so a caller
+  // that knows the run's catalogue names the environment groups it recorded as ungraded.
+  const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0
+  return environmentGroups === 0
+    ? graded
+    : `${graded} · ${environmentGroups} environment groups manual by design (catalogue), NOT MEASURED`
 }
 
 export function currentSupportedShare(aggregate: CurrentAggregate): string {
   // #30784: the same rule as a baseline row, one level up. A run whose every cell is TEST TODO or
-  // TEST FAILURE decided nothing, so "0/273 supported (0%)" would read as a measured fail.
+  // TEST FAILURE decided nothing, so "0/264 supported (0%)" would read as a measured fail.
   if (runDecidedNothing(aggregate.counts)) return NOT_MEASURED_TEXT
   return `${aggregate.supported}/${aggregate.denominator} supported (${Math.round((100 * aggregate.supported) / aggregate.denominator)}%)`
 }

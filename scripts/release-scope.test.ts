@@ -254,7 +254,7 @@ describe("release 1 measurement scope", () => {
     const home = readFileSync(join(root, "docs", "index.md"), "utf8")
     const terminal = readFileSync(join(root, "docs", "terminals", "[id].md"), "utf8")
     const loader = readFileSync(join(root, "docs", "data", "probes.data.ts"), "utf8")
-    expect(home).toContain("currentCoverageSentence(bar)")
+    expect(home).toContain("currentCoverageSentence(bar, displayedSelections[backendName]?.selected.catalogIds)")
     expect(home).toContain("data.releaseShares[backendName]")
     expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
     expect(terminal).toContain("currentSupportedShare(measuredBar.value)")

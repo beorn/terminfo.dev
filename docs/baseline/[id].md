@@ -8,10 +8,13 @@ next: false
 import { useData } from 'vitepress'
 import { data } from '../data/probes.data'
 import { currentCoverageSentence, notMeasuredReadout, publicResultFor } from '../data/release-scope'
+import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
 const { params } = useData()
 const p = params.value
 
 const features = JSON.parse(p.features)
+// D132 B (#30917): the environment groups in this baseline are ungraded, never TEST TODO.
+const environmentGroupCount = features.filter((feature) => isEnvironmentGroup(feature.id)).length
 const backends = JSON.parse(p.backends)
 const scores = JSON.parse(p.scores)
 const appBackends = backends.filter(b => b.type === 'app')
@@ -52,6 +55,7 @@ function termTooltip(b) {
 function barSegmentItems(s, segment) {
   const items = []
   for (const f of features) {
+    if (isEnvironmentGroup(f.id)) continue
     // The reader classified every cell once; this reads that state. The raw cell is read for its NOTE
     // only (a raw field, not a classification), exactly as the compare page reads its evidence method.
     const entry = data.selectedByBackend[s.name]
@@ -68,7 +72,7 @@ function barWidth(s, segment) {
 }
 
 function coverageLabel(s) {
-  return `${currentCoverageSentence(s)} / ${s.score.all} capabilities`
+  return `${currentCoverageSentence(s, data.selectedByBackend[s.name]?.selected.catalogIds)} / ${s.score.all} capabilities`
 }
 
 // #30763: only a row that decided nothing changes; a decided row keeps this page's own text, which
@@ -112,7 +116,7 @@ function platformIcons(b) {
 
 <p class="baseline-description" v-html="p.description"></p>
 
-<p class="baseline-meta">{{ p.featureCount }} features in this baseline</p>
+<p class="baseline-meta">{{ p.featureCount }} features in this baseline<template v-if="environmentGroupCount">, including {{ environmentGroupCount }} environment groups: manual by design (catalogue), NOT MEASURED</template></p>
 
 <div v-if="p.analysis" class="analysis">
   <div class="analysis-header">

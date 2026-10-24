@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
 import type { CapabilityResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults } from "../docs/data/selected-results.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
@@ -133,5 +134,46 @@ describe("current execution projection", () => {
     expect(projection.history).toEqual({})
     // The legacy run is read only for input identity, never projected into a row of its own.
     expect(projection.table[legacy.runId]).toBeUndefined()
+  })
+
+  it("grades a 273-row run over its 264 graded ids and never counts an environment group", () => {
+    const supportedGroup = ENVIRONMENT_GROUP_IDS[0]
+    const splitIds = [...ENVIRONMENT_GROUP_IDS, ...Array.from({ length: 264 }, (_, index) => `capability.${index}`)]
+    const results: CapabilityResult[] = splitIds.map((featureId) =>
+      featureId === supportedGroup
+        ? {
+            featureId,
+            status: "supported",
+            evidence: "query",
+            rawReplyRef: featureId,
+            attempt,
+            checks: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0], rawReplyRef: featureId }],
+          }
+        : { featureId, status: "test-todo", attempt: { scope: "none" }, checks: [], reason: "No implementation" },
+    )
+    const splitSuite: ProbeSuiteManifest = { ...suite, catalogIds: splitIds }
+    const base = raw(results)
+    const value = {
+      ...base,
+      rawReplies: { ...base.rawReplies, [supportedGroup]: "OK" },
+      assertions: [
+        { featureId: supportedGroup, kind: "positive", rawReplyRef: supportedGroup, expected: "OK", observed: "OK" },
+      ],
+    }
+    const run = parseRun("fixture.json", JSON.stringify(value), splitIds, new Map([[splitSuite.probeHash, splitSuite]]))
+    const projection = projectResults([run], [], splitIds, { currentProbeHash: suite.probeHash }, [])
+    const selected = projection.current["app:kitty"]
+    // The supported-looking environment row stays recorded, and never graded: numerator and
+    // denominator both cover the same 264 ids (CTO condition, verdict 427f2da3).
+    expect(selected?.results.find((result) => result.featureId === supportedGroup)?.status).toBe("supported")
+    expect(selected?.score).toEqual({ supported: 0, all: 264 })
+    expect(selected?.counts).toEqual({
+      supported: 0,
+      unsupported: 0,
+      untestable: 0,
+      "test-todo": 264,
+      "test-failure": 0,
+    })
+    expect(selected?.complete).toBe(false)
   })
 })
