@@ -20,7 +20,9 @@ hero:
 import { ref, computed } from 'vue'
 import { data } from './data/probes.data'
 import { currentCoverageSentence, NOT_MEASURED_TEXT, notMeasuredReadout, visibleCategoryIds, publicResultFor } from './data/release-scope.ts'
-import { isEnvironmentGroup } from '../../packages/probe-defs/src/environment-groups.ts'
+// The deep source path, not the package root: the root re-exports probe extensions that import
+// node:crypto, which Vite's browser build cannot resolve (measured 2026-10-23 on this branch).
+import { isEnvironmentGroup } from '../packages/probe-defs/src/environment-groups.ts'
 
 const filter = ref('')
 const categoryFilter = ref('all')

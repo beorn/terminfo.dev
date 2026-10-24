@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
-import { isEnvironmentGroup } from "@terminfo/probe-defs"
+import { isEnvironmentGroup } from "../../../packages/probe-defs/src/environment-groups.ts"
 import type { ObservationReason } from "@terminfo/probe-defs"
 import type { PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import {
