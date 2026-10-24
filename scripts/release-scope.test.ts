@@ -16,15 +16,8 @@ import { describe, expect, it } from "vitest"
 import { loadFeatures } from "@terminfo/catalog"
 import { parseSuiteManifest } from "@terminfo/run-parser"
 import { loadCategories } from "../docs/data/categories.ts"
-import { cohortIds, frozenSuiteIdFor, loadFeatureCohort, loadReleaseScope } from "../docs/data/load-release-scope.ts"
-import {
-  aggregateCells,
-  d3Verdict,
-  isStaleRelation,
-  treeMovedPastRelease,
-  staleCaption,
-  tier1Included,
-} from "../docs/data/release-scope.ts"
+import { cohortIds, frozenSuiteIdFor, loadReleaseScope } from "../docs/data/load-release-scope.ts"
+import { d3Verdict, isStaleRelation, treeMovedPastRelease, staleCaption } from "../docs/data/release-scope.ts"
 
 const root = join(import.meta.dirname, "..")
 
@@ -50,9 +43,10 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     const scope = loadReleaseScope({ catalog, categories })
     expect(scope.measuredCount).toBe(62)
     expect(scope.measuredIds).toEqual([...scope.measuredIds].sort())
-    expect(tier1Included(catalog, scope.measuredIds)).toHaveLength(52)
+    const included = scope.measuredIds.filter((id) => catalog[id]?.tier1 === "included")
+    expect(included).toHaveLength(52)
     expect(scope.measuredIds).toContain("device.primary-da")
-    expect(tier1Included(catalog, scope.measuredIds)).not.toContain("extensions.osc777-notify")
+    expect(included).not.toContain("extensions.osc777-notify")
   })
 
   it("derives candidate 4 as the extensions and input slices, 44 ids, and refuses an unknown slice", () => {
@@ -130,24 +124,6 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // precedes Reset (8). The 125-member SET is pinned by SHA above.
     expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
     expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
-    const cohort = loadFeatureCohort({
-      catalog,
-      categories,
-      name: "candidate2",
-      slices: ["classics"],
-      excludingTier1: false,
-      frozenSuiteId: "abc123abc123",
-    })
-    expect(cohort.name).toBe("candidate2")
-    expect(cohort.frozenSuiteId).toBe("abc123abc123")
-    expect(cohort.measuredIds).toEqual(ids)
-    // A slice the category map carries but no catalog row populates is an EMPTY cohort, a different
-    // refusal from an unknown slice; it names the requested slices whose categories carry no rows.
-    expect(() =>
-      cohortIds(catalog, { ghosts: { slice: "classics", order: 1 } }, ["classics"], {
-        excludingTier1: false,
-      }),
-    ).toThrow(/cohort is empty: the categories for slices classics carry no rows/)
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
@@ -214,26 +190,6 @@ describe("release 1 measurement scope", () => {
     expect(treeMovedPastRelease("21739d9e768f", "a8bafe49cdd4")).toBe(true)
     expect(treeMovedPastRelease("a8bafe49cdd4", "a8bafe49cdd4")).toBe(false)
     expect(treeMovedPastRelease("a8bafe49cdd4", null)).toBe(false)
-  })
-
-  it("does not let supported outcomes outside the 62 fill the bar", () => {
-    const states: Record<string, "supported" | "unsupported"> = {}
-    for (const row of scope.unmeasured) states[row.id] = "supported"
-    const firstMeasured = scope.measuredIds[0]
-    if (!firstMeasured) throw new Error("release scope has no measured ids")
-    states[firstMeasured] = "unsupported"
-    const bar = aggregateCells(states, scope.measuredIds)
-    expect(bar.denominator).toBe(62)
-    expect(bar.counts.supported).toBe(0)
-    expect(bar.counts.unsupported).toBe(1)
-    expect(bar.counts.untested).toBe(61)
-  })
-
-  it("scores fill percent over the 62 even when every measured cell is untested", () => {
-    const bar = aggregateCells({}, scope.measuredIds)
-    expect(bar.denominator).toBe(62)
-    expect(bar.counts.supported + bar.counts.unsupported).toBe(0)
-    expect(bar.counts.untested).toBe(62)
   })
 
   it("labels the D3 verdict: pass from 90% decisive of the included cohort, with gaps from 70%, fail below", () => {

@@ -22,18 +22,6 @@ export interface CohortCategoryMeta {
   order: number
 }
 
-export type FeatureCohortName = "candidate2" | "candidate3" | "candidate4"
-
-export interface FeatureCohort {
-  name: FeatureCohortName
-  frozenSuiteId: string
-  measuredIds: string[]
-  /** The cohort ids an APP run can decide, in cohort order — the scored denominator. */
-  scoredIds: string[]
-  /** The cohort rows an app run cannot decide, in cohort order, named and never scored. */
-  libraryOnlyIds: string[]
-}
-
 /**
  * A cohort in its published order: every catalog row whose CATEGORY slice is one of `slices`, category
  * by category in the category catalog's own `order`, each category's ids ascending. That is the ONE
@@ -86,28 +74,6 @@ export function cohortIds(
     )
   }
   return ids
-}
-
-/** One cohort derived from the catalog, with the suite its reading is taken on named. */
-export function loadFeatureCohort(args: {
-  catalog: FeatureCatalog
-  categories: Readonly<Record<string, CohortCategoryMeta>>
-  name: FeatureCohortName
-  slices: readonly Slice[]
-  excludingTier1: boolean
-  frozenSuiteId: string
-}): FeatureCohort {
-  const measuredIds = cohortIds(args.catalog, args.categories, args.slices, {
-    excludingTier1: args.excludingTier1,
-  })
-  const { scoredIds, libraryOnlyIds } = splitAppObservable(measuredIds)
-  return {
-    name: args.name,
-    frozenSuiteId: args.frozenSuiteId,
-    measuredIds,
-    scoredIds: [...scoredIds],
-    libraryOnlyIds: [...libraryOnlyIds],
-  }
 }
 
 /**

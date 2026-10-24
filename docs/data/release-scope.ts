@@ -89,40 +89,6 @@ export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId:
 }
 
 /**
- * One basis counted over a CLASSIFIED cell map (28792 item 1). This is the ONE aggregation: the
- * projection classifies every cell once, and every bar, page and CLI view folds that table here
- * instead of walking raw cells itself. `MeasuredBar` and `barOverMeasured` — the raw-cell fold — are
- * retired with it, so no second copy can survive behind a parity test.
- */
-export interface CellAggregate {
-  denominator: number
-  counts: Readonly<Record<CellState, number>>
-  /**
-   * The named ids in each state, in basis order: the row names behind each count, so a view that names
-   * a bucket (the inconclusive rows today) reads them here rather than re-walking the basis.
-   */
-  idsByState: Readonly<Record<CellState, readonly string[]>>
-}
-
-/** Fold one basis over a classified cell map. A cell the map does not name is untested, as in the table. */
-export function aggregateCells(cells: Readonly<Record<string, CellState>>, ids: readonly string[]): CellAggregate {
-  const counts: Record<CellState, number> = { supported: 0, unsupported: 0, inconclusive: 0, error: 0, untested: 0 }
-  const idsByState: Record<CellState, string[]> = {
-    supported: [],
-    unsupported: [],
-    inconclusive: [],
-    error: [],
-    untested: [],
-  }
-  for (const id of ids) {
-    const state = cells[id] ?? "untested"
-    counts[state]++
-    idsByState[state].push(id)
-  }
-  return { denominator: ids.length, counts, idsByState }
-}
-
-/**
  * The D3 verdict ladder (@chief 2026-10-07, from the operator's 20:04Z "let's make pass mean a %"):
  * a terminal PASSES when at least 90% of the INCLUDED capabilities read decisive (47 of 52),
  * "with gaps" from 70%, "fail" below — the fraction is always printed beside the label
@@ -158,22 +124,6 @@ export function d3Verdict(decisive: number, denominator: number): D3Verdict {
   const label: D3Label = pct >= D3_VERDICT_BAR.passPct ? "pass" : pct >= D3_VERDICT_BAR.gapsPct ? "with gaps" : "fail"
   const fraction = `${decisive}/${denominator}`
   return { label, decisive, denominator, pct, fraction, text: `${label} · ${fraction}` }
-}
-
-/** The verdict of a measured bar, or undefined when nothing was measured. */
-export function barVerdict(aggregate: CellAggregate): D3Verdict | undefined {
-  if (aggregate.denominator <= 0) return undefined
-  return d3Verdict(decisiveCells(aggregate.counts), aggregate.denominator)
-}
-
-/**
- * The included tier-1 rows of a declared set: those whose `tier1` label is `included`. The ten rows
- * excluded by contract (the silent-consumed or fixture-gated osc rows the 27832 audit names) carry
- * `tier1: "excluded"` in the catalog, so the included set is a filter of a stored label, never a
- * second hard-coded mover list that can drift from it.
- */
-export function tier1Included(catalog: Readonly<Record<string, { tier1?: string }>>, ids: readonly string[]): string[] {
-  return ids.filter((id) => catalog[id]?.tier1 === "included")
 }
 
 /** Current score and completion fold recorded statuses over exactly the frozen catalogue. */
@@ -255,8 +205,7 @@ export function currentSupportedShare(aggregate: CurrentAggregate): string {
 /**
  * The cells of a bar that carry a verdict about the terminal: Supported and Unsupported. A reviewed
  * Untestable claim says the row cannot be probed, not that the terminal was judged, and TEST TODO /
- * TEST FAILURE decide nothing. This is the ONE owner of that sum: `barVerdict`, the decisive-share
- * reader and the baseline row readout all call it, so no caller can drift into a second definition.
+ * TEST FAILURE decide nothing. This is the ONE owner of that sum for the baseline row readout.
  */
 export function decisiveCells(counts: { readonly supported: number; readonly unsupported: number }): number {
   return counts.supported + counts.unsupported
