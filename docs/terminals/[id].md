@@ -156,8 +156,8 @@ const breadcrumbParent = (() => {
   <h2 class="results-heading">Feature support</h2>
   <p v-if="stale" class="stale-line">{{ staleText }}</p>
   <p class="selected-run">{{ p.terminalName }} {{ selectedRun.target.version }} · {{ selectedRun.target.os || 'OS not recorded' }} · Measured {{ testDate }} (UTC)</p>
-  <p class="result-share-label" :title="currentCoverageSentence(measuredBar)">{{ measuredShare }}</p>
-  <p>{{ currentCoverageSentence(measuredBar) }}</p>
+  <p class="result-share-label" :title="currentCoverageSentence(measuredBar, selectedRun.catalogIds)">{{ measuredShare }}</p>
+  <p>{{ currentCoverageSentence(measuredBar, selectedRun.catalogIds) }}</p>
   <div v-if="measuredBar.denominator > 0" class="result-share" aria-hidden="true">
     <span v-if="measuredBar.counts.supported" class="result-share-supported" :style="{ width: `${measuredBar.counts.supported / measuredBar.denominator * 100}%` }"></span>
     <span v-if="measuredBar.counts.unsupported" class="result-share-unsupported" :style="{ width: `${measuredBar.counts.unsupported / measuredBar.denominator * 100}%` }"></span>

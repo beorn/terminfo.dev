@@ -39,9 +39,7 @@ function StateCell({ cell, width }: { cell: CapabilityResult | undefined; width:
   const color = token === "YES" ? "$success" : token === "NO" ? "$error" : "$muted"
   return (
     <Box width={width} justifyContent="center">
-      <Text color={color} title={token === "N/M" ? "manual by design (catalogue), NOT MEASURED" : undefined}>
-        {token}
-      </Text>
+      <Text color={color}>{token}</Text>
     </Box>
   )
 }
@@ -55,7 +53,8 @@ function CurrentSummary({ column }: { column: CurrentColumn }): React.ReactEleme
       </Text>
       <Text color="$muted">context {column.contextKey}</Text>
       <Text>
-        {score(column.run)} · {currentCoverageSentence(column.run)} · {column.run.complete ? "complete" : "incomplete"}
+        {score(column.run)} · {currentCoverageSentence(column.run, column.run.catalogIds)} ·{" "}
+        {column.run.complete ? "complete" : "incomplete"}
       </Text>
     </Box>
   )
@@ -83,8 +82,8 @@ function FeatureMatrix({
         Feature comparison
       </Text>
       <Text color="$muted">
-        YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE · N/M
-        manual by design (catalogue), NOT MEASURED
+        YES Supported · NO Unsupported · UNTEST Untestable · TODO TEST TODO · FAIL TEST FAILURE · N/M manual by design
+        (catalogue), NOT MEASURED
       </Text>
       {groups.map((group) => (
         <Box key={group[0]?.label} flexDirection="column" marginBottom={1}>

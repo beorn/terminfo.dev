@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
+import { isEnvironmentGroup } from "../../../packages/probe-defs/src/environment-groups.ts"
 import type { ObservationReason } from "@terminfo/probe-defs"
 import type { PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import {
@@ -63,9 +64,19 @@ const dialogTitleId = `${id}-title`
 
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
+/** D132 B (#30917): the one words an ungraded environment position may wear. Never "TEST TODO". */
+const MANUAL_BY_DESIGN_STATUS = {
+  text: "Manual by design (catalogue), NOT MEASURED",
+  icon: "–",
+  tone: "ungraded",
+} as const
+
 const status = computed(() => {
   // Pages select current runs only ([id].paths.ts), so a row's status is always the sealed v3 status.
   // The historical table is not in the client payload; it had no reachable reader and is gone with it.
+  // D132 B (#30917): an environment group is recorded TEST TODO by the catalogue but is manual by
+  // design and was never measured, so it must never read as TODO on any page that renders its row.
+  if (isEnvironmentGroup(props.featureId)) return MANUAL_BY_DESIGN_STATUS
   const state = currentResult.value?.status
   if (!state) return { text: "", icon: "–", tone: "unknown" }
   return {

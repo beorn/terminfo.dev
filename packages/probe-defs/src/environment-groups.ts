@@ -43,3 +43,8 @@ export function isEnvironmentGroup(id: string): boolean {
 export function gradedFeatureIds(cohortIds: readonly string[]): string[] {
   return cohortIds.filter((id) => !isEnvironmentGroup(id))
 }
+
+/** The environment positions `cohortIds` actually carries, in the order given — never a made-up nine. */
+export function environmentGroupIds(cohortIds: readonly string[]): string[] {
+  return cohortIds.filter(isEnvironmentGroup)
+}

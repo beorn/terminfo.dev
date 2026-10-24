@@ -26,6 +26,8 @@ export interface FullProjectData {
   /** The live tree suite every collected row was measured on. */
   suiteId: string
   catalogRows: number
+  gradedRows: number
+  environmentGroups: number
   /**
    * The collected context -> its selected run as the site publishes it, so every row can render the
    * established evidence cell and open the run's own evidence document. Nothing is re-derived here.
@@ -92,6 +94,8 @@ export function loadFullProjectData(): FullProjectData {
     mode: "development",
     suiteId: requiredSuiteId,
     catalogRows: rows.catalogRows,
+    gradedRows: rows.gradedRows,
+    environmentGroups: rows.environmentGroups,
     evidenceVersions,
     contexts: rows.contexts,
     collected: rows.collected,

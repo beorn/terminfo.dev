@@ -61,7 +61,7 @@ describe("current full-catalogue scope arithmetic", () => {
       expect(value.complete).toBe(false)
     },
   )
-  it("keeps all273 catalogue rows including old design/instrument limits and missing implementations", () => {
+  it("keeps all 273 catalogue rows while the graded denominator is the 264 capabilities (D132 B)", () => {
     const ids = Object.keys(loadFeatures(join(import.meta.dirname, "..", "content")))
     expect(ids).toHaveLength(273)
     expect(ids).toContain("device.env-term")
@@ -71,8 +71,9 @@ describe("current full-catalogue scope arithmetic", () => {
       catalogIds: ids,
       results: results(Object.fromEntries(ids.map((id) => [id, "test-todo"]))),
     })
-    expect(value).toMatchObject({ catalogRows: 273, denominator: 273, fraction: "0/273", complete: false })
-    expect(value.counts["test-todo"]).toBe(273)
+    // Every recorded position stays a catalogue row; the nine environment positions are ungraded.
+    expect(value).toMatchObject({ catalogRows: 273, denominator: 264, fraction: "0/264", complete: false })
+    expect(value.counts["test-todo"]).toBe(264)
     expect(value.groups.reduce((sum, group) => sum + group.catalogRows, 0)).toBe(273)
   })
   it("refuses absent, duplicate or foreign result membership instead of synthesizing a status", () => {

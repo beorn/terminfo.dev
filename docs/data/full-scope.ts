@@ -1,8 +1,12 @@
-/** Current full-catalogue arithmetic: Supported/all, with no excluded capabilities. */
+/**
+ * Current full-catalogue arithmetic: Supported/all over the GRADED capabilities. The nine environment
+ * positions stay in `catalogRows` (a run records them) but are ungraded, so they are never in
+ * `denominator` — D132 B (#30917).
+ */
 import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults } from "./release-scope.ts"
 
-/** Current execution score: every frozen capability stays in the denominator. */
+/** Current execution score: every frozen graded capability stays in the denominator. */
 export interface ScopeResult {
   scope: string
   catalogRows: number
@@ -36,7 +40,7 @@ export function scopeAggregate(input: {
   }
   return {
     scope: input.scope,
-    catalogRows: aggregate.denominator,
+    catalogRows: input.catalogIds.length,
     denominator: aggregate.denominator,
     supported: aggregate.supported,
     counts: aggregate.counts,
@@ -51,7 +55,7 @@ export function scopeAggregate(input: {
       )
       return {
         key,
-        catalogRows: group.denominator,
+        catalogRows: ids.length,
         supported: group.supported,
         counts: group.counts,
         fraction: `${group.supported}/${group.denominator}`,

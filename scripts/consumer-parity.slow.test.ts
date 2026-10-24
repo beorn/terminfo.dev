@@ -5,6 +5,7 @@
  * @reach fs-walk vendor/terminfo.dev/content/probes-apps/*.json vendor/terminfo.dev/content/probes-libs/*.json vendor/terminfo.dev/content/probes-mux/*.json
  * @testonly none
  */
+import { gradedFeatureIds } from "@terminfo/probe-defs"
 import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
 import { describe, expect, it, vi } from "vitest"
 import {
@@ -196,6 +197,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
   // The legacy fixtures below are sealed into schema-3 runs here, so every reader sees the same
   // current-only shape production publishes.
   const { loadFeatures } = await import("@terminfo/catalog")
+  const { aggregateCurrentResults: aggregateFixture } = await import("../docs/data/release-scope.ts")
   const { loadDefaultContextPolicy, reviewedContextFor } = await vi.importActual<
     typeof import("../docs/data/current-results.ts")
   >("../docs/data/current-results.ts")
@@ -222,8 +224,9 @@ vi.mock("../docs/data/current-results.ts", async () => {
         reason: cell?.note,
       }
     })
-    const counts = { supported: 0, unsupported: 0, untestable: 0, "test-todo": 0, "test-failure": 0 }
-    for (const result of results) counts[result.status]++
+    // One fold, exactly as production grades: a fixture that recomputes a score is the second
+    // arithmetic this parity test exists to catch (D132 B, #30917).
+    const aggregate = aggregateFixture(results, ids)
     return {
       schemaVersion: 3,
       runId: run.runId + "-sealed-" + run.sha256.slice(0, 8),
@@ -237,9 +240,9 @@ vi.mock("../docs/data/current-results.ts", async () => {
       identity: run.identity,
       catalogIds: ids,
       results,
-      counts,
-      score: { supported: counts.supported, all: ids.length },
-      complete: counts["test-todo"] === 0,
+      counts: aggregate.counts,
+      score: { supported: aggregate.supported, all: aggregate.denominator },
+      complete: aggregate.complete,
       suiteRelation: "release",
       suiteFreshness: run.suiteFreshness,
       rawReplies: {},
@@ -384,7 +387,9 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       }
       for (const [key,{selected}] of compatibility) {
         assert.deepEqual(matrix.stats[key].score,selected.score);
-        assert.equal(selected.score.all,selected.catalogIds.length);
+        // D132 B (#30917): the published denominator is the GRADED catalogue, so a site, API and
+        // analysis row agree on 264 while the run still records all 273 positions.
+        assert.equal(selected.score.all,gradedFeatureIds(selected.catalogIds).length);
         const page=pages.find(page=>page.params.backendId===key);
         assert.equal(page.params.total,String(selected.score.all));
         assert.equal(page.params.yes,String(selected.score.supported));
@@ -986,11 +991,12 @@ describe("selected-run consumer parity", () => {
         current: Record<string, { sha256: string }>
       }
       expect(site.stats.kitty).toMatchObject({
-        score: { all: 273, supported: 1 },
-        counts: { supported: 1, unsupported: 1, "test-todo": 271 },
+        // D132 B (#30917): the nine environment positions are recorded but never graded.
+        score: { all: 264, supported: 1 },
+        counts: { supported: 1, unsupported: 1, "test-todo": 262 },
         complete: false,
       })
-      expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "273", yes: "1", no: "1" })
+      expect(terminal?.params).toMatchObject({ generated: fixture.measuredAt, total: "264", yes: "1", no: "1" })
       expect(terminal?.params.runSha256).toBe(fixture.runSha256)
       const alternatives = JSON.parse(terminal!.params.otherRuns!) as PublicVersion[]
       expect(alternatives.map((run: { runId: string }) => run.runId)).toEqual([
@@ -1006,7 +1012,7 @@ describe("selected-run consumer parity", () => {
       expect(analysis).toMatchObject({
         runSha256: fixture.runSha256,
         measuredAt: fixture.measuredAt,
-        score: { supported: 1, all: 273 },
+        score: { supported: 1, all: 264 },
       })
       expect(analyses["features-index"]?.analysis).toContain("recorded support")
       expect(analyses["baseline/core"]?.analysis).toContain("<strong>0</strong> of 3")
@@ -1084,13 +1090,13 @@ describe("selected-run consumer parity", () => {
     }
   })
 
-  it("keeps a sealed all-TODO target visible with its full catalog denominator", () => {
+  it("keeps a sealed all-TODO target visible with its graded denominator", () => {
     const site = probesLoader.load()
     const terminal = terminalPaths.paths().find((page) => page.params.id === "gnu-screen")
     expect(site.backends.map((backend) => backend.name)).toContain("screen")
     expect(site.stats.screen).toMatchObject({
-      score: { all: 273, supported: 0 },
-      counts: { "test-todo": 273 },
+      score: { all: 264, supported: 0 },
+      counts: { "test-todo": 264 },
       complete: false,
     })
     expect(site.stats.screen?.pct).toBeNull()
@@ -1110,11 +1116,11 @@ describe("selected-run consumer parity", () => {
           [page.params.termAId, page.params.termBId].includes("screen") &&
           [page.params.termAId, page.params.termBId].includes("kitty"),
       )
-    expect(comparison?.params[comparison.params.termAId === "screen" ? "termATotal" : "termBTotal"]).toBe("273")
+    expect(comparison?.params[comparison.params.termAId === "screen" ? "termATotal" : "termBTotal"]).toBe("264")
     expect(comparison?.params.comparableScope).toBe("false")
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     expect(JSON.parse(core?.params.scores ?? "[]")).toContainEqual(
-      expect.objectContaining({ name: "screen", score: { all: 80, supported: 0 }, pct: 0 }),
+      expect.objectContaining({ name: "screen", score: { all: 79, supported: 0 }, pct: 0 }),
     )
     const bold = featurePaths.paths().find((page) => page.params.featureId === "sgr.bold")
     expect(bold?.params).toMatchObject({ yesCount: "1", totalCount: "3" })
@@ -1203,22 +1209,25 @@ describe("selected-run consumer parity", () => {
     const site = probesLoader.load()
     const catalog = site.baselines.core?.length ?? 0
     expect(catalog).toBeGreaterThan(1)
+    // The core baseline holds 80 catalogue positions, one of them an ungraded environment group.
+    const graded = gradedFeatureIds(site.baselines.core ?? []).length
+    expect(graded).toBe(catalog - 1)
     expect(site.baselineStats.kitty?.core).toMatchObject({
-      score: { all: catalog, supported: 1 },
-      pct: Math.round(100 / catalog),
-      counts: { supported: 1, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": catalog - 1 },
+      score: { all: graded, supported: 1 },
+      pct: Math.round(100 / graded),
+      counts: { supported: 1, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": graded - 1 },
     })
     expect(site.baselineStats.screen?.core).toMatchObject({
-      score: { all: catalog, supported: 0 },
+      score: { all: graded, supported: 0 },
       pct: 0,
-      counts: { supported: 0, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": catalog },
+      counts: { supported: 0, unsupported: 0, untestable: 0, "test-failure": 0, "test-todo": graded },
     })
     const core = baselinePaths.paths().find((page) => page.params.id === "core")
     const scores = JSON.parse(core?.params.scores || "[]") as Array<Record<string, unknown>>
     expect(scores.find((score) => score.name === "kitty")).toMatchObject({
       version: fixture.selected.target.version,
-      score: { all: catalog, supported: 1 },
-      pct: Math.round(100 / catalog),
+      score: { all: graded, supported: 1 },
+      pct: Math.round(100 / graded),
     })
     const screenBold = fixture.screen.cells["sgr.bold"] as SelectedCell
     if (!screenBold) throw new Error("Missing screen error-count fixture cell")
@@ -1227,8 +1236,8 @@ describe("selected-run consumer parity", () => {
       screenBold.outcome = "error"
       screenBold.reason = "collector-error"
       expect(probesLoader.load().baselineStats.screen?.core).toMatchObject({
-        counts: { "test-failure": 1, "test-todo": catalog - 1 },
-        score: { all: catalog, supported: 0 },
+        counts: { "test-failure": 1, "test-todo": graded - 1 },
+        score: { all: graded, supported: 0 },
       })
     } finally {
       Object.assign(screenBold, originalScreenBold)
