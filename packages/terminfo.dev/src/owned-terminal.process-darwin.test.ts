@@ -9,6 +9,7 @@ import { spawnSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, test } from "vitest"
+import type { CapabilityResult, Observation, ProbeAssertion } from "@terminfo/probe-defs"
 import { createOwnedTerminal, parseProcessOwnerAssertion } from "./owned-terminal.ts"
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
@@ -221,7 +222,13 @@ test.each([
   expect(result.status).toBe(0)
   expect(result.stderr).toBe("")
   expect(result.stdout).toMatch(/^BATCH /)
-  const recorded = JSON.parse(result.stdout.slice("BATCH ".length))
+  const recorded = JSON.parse(result.stdout.slice("BATCH ".length)) as {
+    writes: string[]
+    observation: Observation
+    result: CapabilityResult
+    assertions: ProbeAssertion[]
+    ownership: { kind: string }
+  }
   expect(recorded.ownership).toEqual({ kind: "shared" })
   if (allowed) {
     expect(recorded.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
