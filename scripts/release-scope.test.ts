@@ -223,6 +223,13 @@ describe("the derived scope, the classic cohort and the suite pointer", () => {
     // precedes Reset (8). The 125-member SET is pinned by SHA above.
     expect(ids.indexOf("erase.character")).toBeLessThan(ids.indexOf("editing.decrqcra"))
     expect(ids.indexOf("scrollback.accumulate")).toBeLessThan(ids.indexOf("reset.method"))
+    // A slice the category map carries but no catalog row populates is an EMPTY cohort, a different
+    // refusal from an unknown slice; it names the requested slices whose categories carry no rows.
+    expect(() =>
+      cohortIds(catalog, { ghosts: { slice: "classics", order: 1 } }, ["classics"], {
+        excludingTier1: false,
+      }),
+    ).toThrow(/cohort is empty: the categories for slices classics carry no rows/)
   })
 
   it("reads a release's suite from the one manifest that freezes it, refusing none and refusing two", () => {
