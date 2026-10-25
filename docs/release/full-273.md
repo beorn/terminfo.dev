@@ -20,7 +20,7 @@ This page reads sealed schema-3 execution results on the required suite. A conte
 
 ## Scope
 
-- **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} graded capabilities** plus **{{ data.environmentGroups }} environment groups** (manual by design, NOT MEASURED).
+- **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} graded capabilities** plus **{{ data.environmentGroups }} environment groups** (manual by design, ungraded).
 - Required suite: <code>{{ data.suiteId }}</code>.
 - **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit capability positions.
 - Score is **Supported / all {{ data.gradedRows }} graded capabilities**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.

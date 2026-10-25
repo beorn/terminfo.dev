@@ -38,7 +38,8 @@ Each sealed run has exactly one result per frozen catalog ID. Its `results` arra
 `score.supported / score.all` is Supported divided by the **graded** catalog positions (264 for a current
 273-row run). Untestable, TEST TODO and TEST FAILURE remain in that denominator. The nine environment
 groups (`device.env-*`) are recorded in `results` and in the catalogue membership check, but are
-ungraded: **manual by design (catalogue), NOT MEASURED** — never TEST TODO, and never counted.
+ungraded: **manual by design (catalogue)** and excluded from the score. Stored results remain visible;
+only a stored TEST TODO is displayed as **NOT MEASURED**.
 
 A context's `complete` is true only when its TEST TODO and TEST FAILURE counts among the graded
 capabilities are both zero. Completion does not imply full support.

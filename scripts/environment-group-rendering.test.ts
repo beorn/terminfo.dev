@@ -19,7 +19,7 @@ import { evidenceStatus, MANUAL_BY_DESIGN_STATUS } from "../docs/.vitepress/them
 
 const root = join(import.meta.dirname, "..")
 const source = (path: string) => readFileSync(join(root, path), "utf8")
-const PHRASE = "manual by design (catalogue), NOT MEASURED"
+const PHRASE = "manual by design (catalogue), ungraded"
 const gradedIds = Array.from({ length: 264 }, (_, index) => `capability.${index}`)
 const catalogIds = [...ENVIRONMENT_GROUP_IDS, ...gradedIds]
 const todos = (): CapabilityResult[] =>
@@ -96,10 +96,12 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
   it("publishes the graded denominator and the ungraded nine as contract text", () => {
     const api = source("docs/api.md")
     expect(api).toContain("graded** catalog positions")
-    expect(api).toContain("manual by design (catalogue), NOT MEASURED")
+    expect(api).toContain("ungraded: **manual by design (catalogue)**")
+    expect(api).toContain("only a stored TEST TODO")
     const full = source("docs/release/full-273.md")
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")
+    expect(full).toContain("(manual by design, ungraded)")
     expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded capabilities")
   })
 

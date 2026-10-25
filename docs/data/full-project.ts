@@ -64,7 +64,7 @@ export interface FullProjectRows {
   catalogRows: number
   /** The graded capabilities: `catalogRows` minus the environment groups (D132 B). */
   gradedRows: number
-  /** The environment groups the catalogue records: manual by design, NOT MEASURED, never graded. */
+  /** The environment groups the catalogue records: manual by design, never graded. */
   environmentGroups: number
   contexts: readonly FullContextRow[]
   collected: number
