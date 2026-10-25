@@ -2,7 +2,12 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
-import type { CellEvidence, PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import type {
+  CellEvidence,
+  PublicCapabilityResult,
+  PublicVersion,
+  TextQualificationDocument,
+} from "../../data/public-results"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
