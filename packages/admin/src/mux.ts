@@ -165,11 +165,9 @@ async function probeDaemon(
       : outputDirectory === undefined
         ? "admitted"
         : "private, unadmitted"
-    const aggregate = aggregateCurrentResults(
-      data.results,
-      data.results.map((result) => result.featureId),
-    )
-    return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)}`, mode }
+    const catalogIds = data.results.map((result) => result.featureId)
+    const aggregate = aggregateCurrentResults(data.results, catalogIds)
+    return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate, catalogIds)}`, mode }
   } catch (err) {
     console.log(`  Probe failed: ${err instanceof Error ? err.message : String(err)}`)
     throw err

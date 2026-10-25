@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import type { AppLaunchReceipt } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, type AppLaunchReceipt, type CapabilityResult } from "@terminfo/probe-defs"
 import { handleApp } from "./app.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
@@ -94,8 +94,19 @@ const receipt: AppLaunchReceipt = {
   },
 }
 
+let results: CapabilityResult[]
+
 beforeEach(() => {
   vi.resetAllMocks()
+  results = [
+    {
+      featureId: "sgr.bold",
+      status: "test-todo",
+      attempt: { scope: "none" },
+      checks: [],
+      reason: "Required test missing",
+    },
+  ]
   vi.mocked(createProbeRun).mockReturnValue({
     id: "private-run",
     directory: "/private/run",
@@ -131,15 +142,7 @@ beforeEach(() => {
       rawReplies: { "collector.httpResponseSha256": "d".repeat(64) },
       assertions: [],
       screenshotRefs: [],
-      results: [
-        {
-          featureId: "sgr.bold",
-          status: "test-todo",
-          attempt: { scope: "none" },
-          checks: [],
-          reason: "Required test missing",
-        },
-      ],
+      results,
     },
   })
   vi.mocked(captureTerminalAppReceipt).mockReturnValue({ receipt, trace: { daemonTty: "/dev/ttys003" } })
@@ -147,7 +150,15 @@ beforeEach(() => {
 })
 
 describe("probe app --output", () => {
-  test("retains the run and says so, without admitting it", async () => {
+  test.each([false, true])("retains the run without admitting it, environment catalogue: %s", async (environment) => {
+    if (environment) {
+      results.push(
+        ...ENVIRONMENT_GROUP_IDS.map((featureId) => ({
+          ...results[0]!,
+          featureId,
+        })),
+      )
+    }
     const log = vi.spyOn(console, "log").mockImplementation(() => {})
     await handleApp("terminal-app", { output: "/private/out" })
     expect(retainCollectedRun).toHaveBeenCalledOnce()
@@ -160,8 +171,9 @@ describe("probe app --output", () => {
     expect(admitCollectedRun).not.toHaveBeenCalled()
     const lines = log.mock.calls.map((call) => String(call[0]))
     log.mockRestore()
+    const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
     expect(lines).toContain(
-      "  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE (retained)",
+      `  Not measured yet · 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause} (retained)`,
     )
     expect(assertOwnedTerminalWindow).toHaveBeenCalledWith(window, 555)
   })

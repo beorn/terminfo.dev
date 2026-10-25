@@ -11,9 +11,18 @@ import { once } from "node:events"
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import {
+  ENVIRONMENT_GROUP_IDS,
+  initializeRunDraft,
+  type CapturedRunDraft,
+  type ProbeSuiteManifest,
+} from "@terminfo/probe-defs"
 import { saveDaemonProbeRun } from "../../terminfo.dev/src/daemon-client.ts"
+import * as collector from "../../terminfo.dev/src/serve.ts"
+import * as admission from "./admit-collected-run.ts"
+import * as sourceEnvironment from "../versions.ts"
 import { handleServer } from "./server.ts"
+import { handleHere } from "./here.ts"
 
 const fixtures = vi.hoisted(() => ({
   home: undefined as string | undefined,
@@ -31,6 +40,7 @@ const fixtures = vi.hoisted(() => ({
 vi.mock("../../terminfo.dev/src/serve.ts", () => ({
   listDaemons: () => fixtures.daemons,
   getTrustedSuiteReceipt: () => fixtures.receipt,
+  collectProbeRun: vi.fn(),
   startDaemon: vi.fn(),
 }))
 vi.mock("node:os", async (importOriginal) => {
@@ -131,4 +141,65 @@ it("preserves server --start without running admission", async () => {
   expect(startDaemon).toHaveBeenCalledWith(4567)
   expect(saveDaemonProbeRun).not.toHaveBeenCalled()
   expect(requests).toEqual([])
+})
+
+it.each([
+  ["server", false],
+  ["server", true],
+  ["here", false],
+  ["here", true],
+] as const)("prints %s coverage from its own environment catalogue: %s", async (command, environment) => {
+  const manifest = {
+    probeHash: "abcdef123456",
+    sourceRevision: "a".repeat(40),
+    generatedAt: "2026-10-25T00:00:00.000Z",
+    adapterVersion: "test",
+    catalogIds: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])],
+    probes: { app: [], headless: [], mux: [] },
+  } satisfies ProbeSuiteManifest
+  const run: CapturedRunDraft = {
+    ...initializeRunDraft({
+      runId: "1234567890abcdef1234567890abcdef",
+      sourceRevision: manifest.sourceRevision,
+      manifest,
+      intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
+    }),
+    target: {
+      kind: "app",
+      id: "kitty",
+      version: "0.49.1",
+      os: "linux",
+      osVersion: null,
+      outerTerminal: null,
+      mux: null,
+      config: null,
+      permissions: null,
+    },
+    identity: "unverified",
+    measuredAt: "2026-10-25T00:00:00.000Z",
+    origin: { kind: "collector" },
+  }
+  fixtures.receipt = { manifest, collectorRevision: manifest.sourceRevision }
+  fixtures.raw = JSON.stringify(run)
+  vi.spyOn(admission, "admitCollectedRun").mockReturnValue(join(fixtures.home!, "private.draft.json"))
+  vi.spyOn(sourceEnvironment, "ensureSourceSuiteEnvironment").mockReturnValue({
+    TERMINFO_PROBE_HASH: manifest.probeHash,
+    TERMINFO_SOURCE_REVISION: manifest.sourceRevision,
+  })
+  vi.mocked(collector.collectProbeRun).mockResolvedValue(run)
+
+  if (command === "server") await handleServer("kitty", {})
+  else await handleHere({})
+
+  const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
+  const summary = vi
+    .mocked(console.log)
+    .mock.calls.map(([line]) => line)
+    .find((line) => line.includes("TEST FAILURE"))
+  const coverage = `0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause}`
+  expect(summary).toBe(
+    command === "server"
+      ? `  ${"kitty 0.49.1".padEnd(25)} Not measured yet · ${coverage} (identity unverified)`
+      : coverage,
+  )
 })

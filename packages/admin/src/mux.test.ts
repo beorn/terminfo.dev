@@ -12,7 +12,7 @@ import { tmpdir } from "node:os"
 import { createHash } from "node:crypto"
 import { execSync, spawnSync } from "node:child_process"
 import { expect, it, vi } from "vitest"
-import type { CapturedRunDraft, HistoricalProbeRun } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, type CapturedRunDraft, type HistoricalProbeRun } from "@terminfo/probe-defs"
 import { handleMux } from "./mux.ts"
 import {
   createProbeRun,
@@ -41,7 +41,12 @@ vi.mock("../../terminfo.dev/src/daemon-client.ts", async (importOriginal) => ({
 
 // App/server suites cover admission. This mux boundary must independently prove that an output
 // directory chooses raw retention and still cleans up its own daemon/session, without grading it.
-it.each(["private", "empty", "symlink"])("handles %s raw output without entering admission", async (mode) => {
+it.each([
+  ["private", false],
+  ["private", true],
+  ["empty", false],
+  ["symlink", false],
+] as const)("handles %s raw output without admission, environment catalogue: %s", async (mode, environment) => {
   const directory = mkdtempSync(join(tmpdir(), "terminfo-mux-output-"))
   const output = mode === "empty" ? "" : join(directory, "output")
   if (mode === "symlink") symlinkSync(new URL("../../../", import.meta.url), output)
@@ -69,15 +74,13 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
     ...metadata,
     schemaVersion: 3,
     intendedContext: { kind: "mux", id: "tmux", version: "3.6a" },
-    results: [
-      {
-        featureId: "sgr.bold",
-        status: "test-todo",
-        attempt: { scope: "none" },
-        checks: [],
-        reason: "Synthetic route fixture; not measured",
-      },
-    ],
+    results: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])].map((featureId) => ({
+      featureId,
+      status: "test-todo",
+      attempt: { scope: "none" },
+      checks: [],
+      reason: "Synthetic route fixture; not measured",
+    })),
   }
   // Only transport/persistence is exercised: this synthetic identity is not native mux evidence.
   run.target = { ...run.target, kind: "mux", id: "tmux", version: "3.6a" }
@@ -135,6 +138,10 @@ it.each(["private", "empty", "symlink"])("handles %s raw output without entering
     expect(planAdmission).not.toHaveBeenCalled()
     expect(admitRun).not.toHaveBeenCalled()
     if (mode === "private") {
+      const clause = environment ? " · 9 environment groups manual by design (catalogue), ungraded" : ""
+      expect(log).toHaveBeenCalledWith(
+        expect.stringContaining(`1 TEST TODO · 0 TEST FAILURE${clause} (private, unadmitted)`),
+      )
       expect(readFileSync(join(output, "http-response.json"), "utf8")).toBe(bytes)
       const raw = readdirSync(output).find((name) => name.startsWith("tmux-3.6a-"))
       expect(raw).toBeTruthy()

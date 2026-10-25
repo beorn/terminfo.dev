@@ -81,12 +81,10 @@ export async function handleServer(
       const retained = await readRetainedDaemonProbeResponse(res)
       console.log(`  Retained private HTTP response ${retained.path}; SHA256 ${retained.sha256}`)
       const data = retained.run
-      const aggregate = aggregateCurrentResults(
-        data.results,
-        data.results.map((result) => result.featureId),
-      )
+      const catalogIds = data.results.map((result) => result.featureId)
+      const aggregate = aggregateCurrentResults(data.results, catalogIds)
       console.log(
-        `  ${label.padEnd(25)} ${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)} (identity unverified)`,
+        `  ${label.padEnd(25)} ${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate, catalogIds)} (identity unverified)`,
       )
 
       const { verifyTerminalIdentity } = await import("../../terminfo.dev/src/identity-guard.ts")

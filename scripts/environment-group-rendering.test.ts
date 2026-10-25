@@ -10,9 +10,11 @@
  */
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { describe, expect, it } from "vitest"
-import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
-import type { CapabilityResult } from "@terminfo/probe-defs"
+import { beforeAll, describe, expect, it, vi } from "vitest"
+import { Command } from "@silvery/commander"
+import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
+import type { CapabilityResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
 import { currentCoverageSentence, aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
 import { evidenceStatus, MANUAL_BY_DESIGN_STATUS } from "../docs/.vitepress/theme/evidence-status.ts"
@@ -20,6 +22,11 @@ import { evidenceStatus, MANUAL_BY_DESIGN_STATUS } from "../docs/.vitepress/them
 const root = join(import.meta.dirname, "..")
 const source = (path: string) => readFileSync(join(root, path), "utf8")
 const PHRASE = "manual by design (catalogue), ungraded"
+vi.mock("../packages/terminfo.dev/src/serve.ts", () => ({
+  collectProbeRun: vi.fn(),
+  getTrustedSuiteReceipt: vi.fn(),
+  getCliSuiteProbeHash: () => "abcdef123456",
+}))
 const gradedIds = Array.from({ length: 264 }, (_, index) => `capability.${index}`)
 const catalogIds = [...ENVIRONMENT_GROUP_IDS, ...gradedIds]
 const todos = (): CapabilityResult[] =>
@@ -30,6 +37,71 @@ const todos = (): CapabilityResult[] =>
     checks: [],
     reason: "No implementation",
   }))
+
+describe("public test CLI coverage uses the collected manifest", () => {
+  let program: Command
+
+  beforeAll(async () => {
+    const parse = vi.spyOn(Command.prototype, "parse").mockReturnThis()
+    try {
+      await import("../packages/terminfo.dev/src/index.tsx")
+      const parsed = parse.mock.contexts[0]
+      if (!parsed) throw new Error("CLI entry point did not parse its command")
+      program = parsed
+    } finally {
+      parse.mockRestore()
+    }
+  })
+
+  it.each([
+    ["current", catalogIds, ` · 9 environment groups ${PHRASE}`],
+    ["historical", gradedIds, ""],
+  ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause) => {
+    const manifest = {
+      probeHash: "abcdef123456",
+      sourceRevision: "a".repeat(40),
+      generatedAt: "2026-10-25T00:00:00.000Z",
+      adapterVersion: "test",
+      catalogIds: [...ids],
+      probes: { app: [], headless: [], mux: [] },
+    } satisfies ProbeSuiteManifest
+    const run: CapturedRunDraft = {
+      ...initializeRunDraft({
+        runId: "1234567890abcdef1234567890abcdef",
+        sourceRevision: manifest.sourceRevision,
+        manifest,
+        intendedContext: { kind: "app", id: "kitty", version: "1" },
+      }),
+      target: {
+        kind: "app",
+        id: "kitty",
+        version: "1",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "unverified",
+      measuredAt: "2026-10-25T00:00:00.000Z",
+      origin: { kind: "collector" },
+    }
+    vi.mocked(publicCollector.collectProbeRun).mockResolvedValue(run)
+    vi.mocked(publicCollector.getTrustedSuiteReceipt).mockReturnValue({
+      manifest,
+      collectorRevision: manifest.sourceRevision,
+    })
+    const output = vi.spyOn(console, "log").mockImplementation(() => {})
+    try {
+      await program.parseAsync(["test"], { from: "user" })
+      const summary = output.mock.calls.map(([line]) => line).find((line) => line.includes("TEST FAILURE"))
+      expect(summary).toBe(`0 Supported · 0 Unsupported · 0 Untestable · 264 TEST TODO · 0 TEST FAILURE${clause}`)
+    } finally {
+      output.mockRestore()
+    }
+  })
+})
 
 describe("#30917 environment groups are named, never TEST TODO", () => {
   it("names the groups the run recorded and leaves the graded counts alone", () => {

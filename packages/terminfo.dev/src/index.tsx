@@ -183,7 +183,7 @@ program
       const data = decoded.run
       const aggregate = aggregateCurrentResults(data.results, collected.receipt.manifest.catalogIds ?? [])
       console.log(`${data.target.id} ${data.target.version}: ${currentSupportedShare(aggregate)}`)
-      console.log(currentCoverageSentence(aggregate))
+      console.log(currentCoverageSentence(aggregate, collected.receipt.manifest.catalogIds))
       console.log(
         `Run ${data.runId}: ${"sealedAt" in data ? "sealed" : "required review pending; unsealed draft"}; ${aggregate.complete ? "complete" : "incomplete"}; identity unverified.`,
       )

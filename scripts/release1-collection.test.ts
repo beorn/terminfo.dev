@@ -39,7 +39,8 @@ import * as versions from "../packages/admin/versions.ts"
 import { frozenSuiteIdFor } from "../packages/admin/suite-manifest.ts"
 import * as headless from "../packages/probes/collect-headless.ts"
 import { retainCaptureBinding } from "@terminfo/run-parser"
-import { textQualificationFixtures } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, textQualificationFixtures } from "@terminfo/probe-defs"
+import { aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import {
   admitProducedRuns,
   collectPass,
@@ -120,6 +121,77 @@ const cleanRun = (overrides: Partial<ProducedRun> = {}): ProducedRun => ({
   target: { kind: "app", id: "xterm", os: "linux" },
   ...overrides,
 })
+
+it.each([
+  ["current", ["sgr.bold", ...ENVIRONMENT_GROUP_IDS], " · 9 environment groups manual by design (catalogue), ungraded"],
+  ["historical", ["sgr.bold"], ""],
+] as const)(
+  "admitted CLI summary preserves the %s run's catalogue",
+  (label, catalogIds, clause) => {
+    const directory = mkdtempSync(join(tmpdir(), "collection-summary-"))
+    const preload = join(directory, "summary-owners.ts")
+    const results = catalogIds.map((featureId) => ({
+      featureId,
+      status: "test-todo" as const,
+      attempt: { scope: "none" as const },
+      checks: [],
+      reason: "Required capability test has not started",
+    }))
+    const run = {
+      runId: `summary-${label}`,
+      target: { kind: "app", id: "xterm", version: "411", os: "linux" },
+      catalogIds,
+      results,
+      suiteId: "abcdef123456",
+      sourceRevision: "a".repeat(40),
+      measuredAt: "2026-10-25T00:00:00.000Z",
+      suiteFreshness: "current",
+      suiteRelation: "same",
+      ...aggregateCurrentResults(results, catalogIds),
+      score: { supported: 0, all: 1 },
+    }
+    writeFileSync(
+      preload,
+      `
+import { mock } from "bun:test";
+const fs = await import("node:fs");
+const readFingerprintFile = fs.readFileSync;
+const fingerprintFiles = ${JSON.stringify(fingerprintFixture.files)};
+mock.module("node:fs", () => ({...fs, readFileSync: (path, ...args) => readFingerprintFile(typeof path === "string" ? fingerprintFiles[path] ?? path : path, ...args)}));
+const run = ${JSON.stringify(run)};
+mock.module(${JSON.stringify(join(dirname(CONTENT), "scripts/admit-run.ts"))}, () => ({
+  planAdmission: () => ({target: run.target, runId: run.runId}),
+  admitRun: () => ({})
+}));
+mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/current-results.ts"))}, () => ({
+  loadCurrentResults: () => ({projection: {versions: {"app:xterm:linux": [run]}, table: {[run.runId]: Object.fromEntries(run.results.map(result => [result.featureId, result.status]))}}}),
+  loadDefaultContextPolicy: () => ({}),
+  reviewedContextFor: () => undefined
+}));
+mock.module(${JSON.stringify(join(dirname(CONTENT), "docs/data/full-project.ts"))}, () => ({
+  buildFullProjectRows: () => ({contexts: [], catalogRows: 273, recordedPositions: 0, collected: 0, complete: false})
+}));
+`,
+    )
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ["--preload", preload, "scripts/release1-collection.ts", "--admit", join(directory, "fixture-run.json")],
+        { cwd: dirname(CONTENT), encoding: "utf8", timeout: 20_000 },
+      )
+      expect(result.error).toBeUndefined()
+      expect(result.stderr).toBe("")
+      expect(result.status).toBe(1)
+      const summary = result.stdout.split("\n").find((line) => line.startsWith("  app:xterm:linux "))
+      expect(summary).toBe(
+        `  app:xterm:linux ${run.runId}: 0 Supported · 0 Unsupported · 0 Untestable · 1 TEST TODO · 0 TEST FAILURE${clause}; 0/1 Supported / all`,
+      )
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+  30_000,
+)
 
 // Refusal must precede filesystem effects; census and private-success cases never used repository output.
 it("refuses repository output before creating any directory", async () => {

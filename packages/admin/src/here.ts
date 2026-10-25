@@ -16,12 +16,10 @@ export async function handleHere(opts: { json?: boolean }): Promise<void> {
     console.log(JSON.stringify(run, null, 2))
     return
   }
-  const aggregate = aggregateCurrentResults(
-    run.results,
-    run.results.map((result) => result.featureId),
-  )
+  const catalogIds = run.results.map((result) => result.featureId)
+  const aggregate = aggregateCurrentResults(run.results, catalogIds)
   console.log(`${run.target.id} ${run.target.version}: ${currentSupportedShare(aggregate)}`)
-  console.log(currentCoverageSentence(aggregate))
+  console.log(currentCoverageSentence(aggregate, catalogIds))
   console.log(
     `Run ${run.runId}: ${run.sealedAt === undefined ? "required review pending; unsealed draft" : "sealed"}; identity unverified.`,
   )

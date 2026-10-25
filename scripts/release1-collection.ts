@@ -1233,7 +1233,7 @@ if (import.meta.main) {
       })
       for (const { key, run } of admitted) {
         console.log(
-          `  ${key} ${run.runId}: ${currentCoverageSentence(run)}; ${run.score.supported}/${run.score.all} Supported / all`,
+          `  ${key} ${run.runId}: ${currentCoverageSentence(run, run.catalogIds)}; ${run.score.supported}/${run.score.all} Supported / all`,
         )
       }
       const sources = new Set(admitted.map(({ run }) => run.sourceRevision))

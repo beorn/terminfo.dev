@@ -651,11 +651,9 @@ async function probeDaemon(
     const source = admitCollectedRun(run, retained.path, { kind: "app", id: appId, version })
     if (source.endsWith(".draft.json")) mode = "pending-review"
   }
-  const aggregate = aggregateCurrentResults(
-    run.results,
-    run.results.map((result) => result.featureId),
-  )
-  return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate)}`, mode }
+  const catalogIds = run.results.map((result) => result.featureId)
+  const aggregate = aggregateCurrentResults(run.results, catalogIds)
+  return { summary: `${currentSupportedShare(aggregate)} · ${currentCoverageSentence(aggregate, catalogIds)}`, mode }
 }
 
 // ── Run one app ──
