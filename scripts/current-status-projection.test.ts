@@ -9,6 +9,7 @@ import { parseRun } from "@terminfo/run-parser"
 import type { CapabilityResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults } from "../docs/data/selected-results.ts"
+import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest = {
@@ -166,6 +167,7 @@ describe("current execution projection", () => {
     // The supported-looking environment row stays recorded, and never graded: numerator and
     // denominator both cover the same 264 ids (CTO condition, verdict 427f2da3).
     expect(selected?.results.find((result) => result.featureId === supportedGroup)?.status).toBe("supported")
+    expect(currentCoverageSentence(selected!, selected!.catalogIds)).not.toContain("NOT MEASURED")
     expect(selected?.score).toEqual({ supported: 0, all: 264 })
     expect(selected?.counts).toEqual({
       supported: 0,

@@ -36,7 +36,7 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     const bar = aggregateCurrentResults(todos(), catalogIds)
     expect(bar.denominator).toBe(264)
     expect(currentCoverageSentence(bar, catalogIds)).toBe(
-      `0 Supported · 0 Unsupported · 0 Untestable · 264 TEST TODO · 0 TEST FAILURE · ${ENVIRONMENT_GROUP_IDS.length} environment groups ${PHRASE}`,
+      `0 Supported · 0 Unsupported · 0 Untestable · 264 TEST TODO · 0 TEST FAILURE · ${ENVIRONMENT_GROUP_IDS.length} environment groups manual by design (catalogue), ungraded`,
     )
     // A caller that does not know the catalogue never invents a count for it.
     expect(currentCoverageSentence(bar)).not.toContain("environment groups")

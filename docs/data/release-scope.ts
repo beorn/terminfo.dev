@@ -154,7 +154,7 @@ export function currentCoverageSentence(
   const environmentGroups = catalogIds ? environmentGroupIds(catalogIds).length : 0
   return environmentGroups === 0
     ? graded
-    : `${graded} · ${environmentGroups} environment groups manual by design (catalogue), NOT MEASURED`
+    : `${graded} · ${environmentGroups} environment groups manual by design (catalogue), ungraded`
 }
 
 export function currentSupportedShare(aggregate: CurrentAggregate): string {
