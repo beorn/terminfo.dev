@@ -4,8 +4,10 @@
  * @level l1
  * @consumer the rendered page templates under docs/.
  * @testonly none
+ * @reach fs-walk docs/**
  */
 
+import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -33,5 +35,24 @@ describe("preview copy (30753)", () => {
       return /'No score'|>No score</.test(text) || text.includes("No current schema-3 runs")
     })
     expect(offenders).toEqual([])
+  })
+
+  it("keeps private evidence fixtures out of tracked production pages", () => {
+    const result = spawnSync(
+      "git",
+      [
+        "grep",
+        "-n",
+        "-E",
+        "fixtureEvidence|fixture-evidence",
+        "--",
+        "docs",
+        ":(exclude)docs/.vitepress/theme/ResultEvidenceCell.vue",
+      ],
+      { cwd: repoRoot, encoding: "utf8" },
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.status, result.stderr || result.stdout).toBe(1)
+    expect(result.stdout).toBe("")
   })
 })

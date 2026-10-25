@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
-import type { PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import type { CellEvidence, PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
@@ -34,11 +34,13 @@ const props = withDefaults(
     version?: PublicVersion
     cell?: PublicCapabilityResult
     display?: "compact" | "text"
+    fixtureEvidence?: { trace?: LoadedCellTrace; record?: CellEvidence["record"]; error?: string }
   }>(),
   { display: "compact" },
 )
 
 const currentResult = computed(() => (props.cell && "status" in props.cell ? props.cell : undefined))
+const notReviewedEvidence = "Original evidence has not been reviewed for presentation."
 
 const trigger = ref<HTMLButtonElement | null>(null)
 const dialog = ref<HTMLDialogElement | null>(null)
@@ -48,12 +50,12 @@ const previewVisible = ref(false)
 const dialogVisible = ref(false)
 const previewPosition = ref<Record<string, string>>({})
 const evidenceDocument = ref<LoadedCellEvidence | null>(null)
-const cellTrace = ref<LoadedCellTrace | null>(null)
+const cellTrace = ref<LoadedCellTrace | null>(props.fixtureEvidence?.trace ?? null)
 const qualificationDocument = ref<TextQualificationDocument | null>(null)
 const textSnapshots = ref<Record<string, string>>({})
 const recordedQueries = ref<Array<{ sequence: string; raw?: string }>>([])
 const evidenceLoading = ref(false)
-const evidenceError = ref<string | null>(null)
+const evidenceError = ref<string | null>(props.fixtureEvidence?.error ?? null)
 let evidenceRequest = 0
 let evidenceController: AbortController | null = null
 // #30756 AC8: only one popover is open at a time. Module scope, because every cell is its own instance.
@@ -160,7 +162,7 @@ const stepSource = computed<StepSource | undefined>(() => {
       ...(screen && { screen }),
     }
   }
-  const record = evidenceDocument.value?.record
+  const record = evidenceRecord.value
   if (record) {
     return {
       status: statusKeyword,
@@ -186,7 +188,7 @@ const plainResult = computed(() => {
   return table?.summary ?? reason
 })
 
-const evidenceRecord = computed(() => evidenceDocument.value?.record)
+const evidenceRecord = computed(() => evidenceDocument.value?.record ?? props.fixtureEvidence?.record)
 const evidenceFrames = computed(() => evidenceRecord.value?.frames ?? [])
 const evidenceScreenshot = computed(() => evidenceRecord.value?.screenshot)
 const evidenceScreenshotUrl = computed(() =>
@@ -704,7 +706,7 @@ onBeforeUnmount(() => {
               <summary>Catalog test description</summary>
               {{ probeGuidanceText }}
             </details>
-            <button v-if="presentation?.state === 'presented'" type="button" @click="openDialog">
+            <button v-if="presentation?.state === 'presented' || fixtureEvidence" type="button" @click="openDialog">
               Open recorded evidence
             </button>
           </div>
@@ -753,21 +755,22 @@ onBeforeUnmount(() => {
         <p v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</p>
 
         <h3>Evidence</h3>
-        <p v-if="!version">No reviewed current run is selected for this terminal context.</p>
-        <p v-else-if="!cell">TEST TODO: no reviewed current result covers this feature.</p>
-        <template v-else-if="presentation?.state === 'not-reviewed'">
-          <p>Original evidence has not been reviewed for presentation.</p>
+        <p v-if="fixtureEvidence">{{ notReviewedEvidence }}</p>
+        <p v-if="!version && !fixtureEvidence">No reviewed current run is selected for this terminal context.</p>
+        <p v-else-if="!cell && !fixtureEvidence">TEST TODO: no reviewed current result covers this feature.</p>
+        <template v-else-if="presentation?.state === 'not-reviewed' && !fixtureEvidence">
+          <p>{{ notReviewedEvidence }}</p>
         </template>
         <template v-else-if="presentation?.state === 'withdrawn'">
           <p>Evidence presentation was withdrawn: {{ readerSafeExplanation(presentation.review.reason) }}</p>
           <p>Reviewed by {{ presentation.review.reviewer }}.</p>
         </template>
-        <template v-else-if="presentation?.state === 'presented'">
+        <template v-else-if="presentation?.state === 'presented' || fixtureEvidence">
           <p v-if="evidenceLoading" role="status">Loading and verifying the original evidence…</p>
           <p v-else-if="evidenceError" role="alert" class="result-evidence__outcome result-evidence__outcome--error">
             Evidence could not be verified: {{ evidenceError }}
           </p>
-          <template v-else-if="evidenceDocument">
+          <template v-else-if="evidenceRecord">
             <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
             <template v-else-if="assertions.length">
               <h4>Expected and observed</h4>
@@ -807,7 +810,7 @@ onBeforeUnmount(() => {
             </template>
 
             <details
-              v-if="qualificationDocument && evidenceDocument.textQualification"
+              v-if="qualificationDocument && evidenceDocument?.textQualification"
               class="result-evidence__details"
             >
               <summary>Run’s five-shape text qualification</summary>
@@ -848,7 +851,7 @@ onBeforeUnmount(() => {
               </template>
             </details>
 
-            <details v-if="cell.evidence === 'pixels' && probeGuidanceText">
+            <details v-if="cell?.evidence === 'pixels' && probeGuidanceText">
               <summary>Current probe guidance</summary>
               <p>{{ probeGuidanceText }}</p>
               <p>
