@@ -8,6 +8,10 @@ Live at [terminfo.dev](https://terminfo.dev). Deployed to Cloudflare Pages.
 
 TypeScript, Bun, VitePress, Termless (headless terminal testing), Vitest.
 
+## Before working on probes
+
+Read the [current probe-system model](packages/probe-defs/README.md) before changing definitions, collectors, evidence or status mapping. Update it in the same change when those contracts change.
+
 ## Directory Structure
 
 ```
@@ -23,11 +27,11 @@ content/                        ← ALL input data
 
 packages/                       ← source code (internal tools)
   probe-defs/                      @terminfo/probe-defs: pure probe definitions + shared types
-  probes/                         @terminfo/probes: Vitest runner over Termless backends
+  probes/                         @terminfo/probes: private headless collector + diagnostic Vitest runner
   admin/                          @terminfo/admin: dev/orchestration CLI (bun terminfo)
     src/                          unified CLI (bun terminfo) — all 4 probe mechanisms
       index.ts                    entry point: probe {termless,server,app,here}, report, status, submit, detect
-      termless.ts                 headless library probes (Vitest + Termless)
+      termless.ts                 headless collection via packages/probes/collect-headless.ts
       server.ts                   daemon probe mechanism (start/list/probe daemons)
       app.ts                      macOS app probes (AppleScript)
       mux.ts                      multiplexer pass-through probes (tmux, screen)
@@ -37,7 +41,6 @@ packages/                       ← source code (internal tools)
       report.ts                   report rendering
       status.ts                   config/cache status
     app-harness.ts                runs INSIDE launched terminals (not from CLI)
-    app-runner.ts                 legacy app runner (superceded by src/app.ts)
     index.ts                      legacy probes CLI (superceded by src/index.ts)
     parse.ts                      Vitest JSON result parsing
     versions.ts                   versioned backend probing
@@ -209,7 +212,7 @@ bun terminfo probe                        # List 4 probe mechanisms
 #### Probe Methods (5 mechanisms)
 
 ```bash
-# 1. Headless library probes (Vitest + Termless backends, in-process)
+# 1. Headless library collection (Termless backends, isolated workers)
 bun terminfo probe termless               # List available backends
 bun terminfo probe termless --all         # Probe all backends
 bun terminfo probe termless --force       # Re-run cached
@@ -311,17 +314,19 @@ will exit with an error listing unannotated failures. Add explanations to
 
 ## Data Flow
 
+Collectors retain private evidence first; admission is separate. See [collector routes and persistence](packages/probe-defs/README.md#collector-routes-and-persistence) for each route's behavior.
+
 ```
 5 probe methods:
-  packages/probes/*.probe.ts       ← termless: bun terminfo probe termless (Vitest + Termless)
-  packages/admin/app-runner.ts       ← app:      bun terminfo probe app (AppleScript)
+  packages/probes/collect-headless.ts ← termless: bun terminfo probe termless (Termless workers)
+  packages/admin/src/app.ts          ← app:      bun terminfo probe app (owned terminal launch)
   packages/terminfo.dev/src/serve.ts                 ← server:   bun terminfo probe server (HTTP daemon)
   packages/admin/src/mux.ts          ← mux:      bun terminfo probe mux (multiplexer pass-through)
-  packages/terminfo.dev/src/probes/                  ← here:     bun terminfo probe here (inline TTY)
+  packages/terminfo.dev/src/serve.ts                 ← here:     bun terminfo probe here (shared native collector)
 
-  ↓ results saved to
+  ↓ private collection, then separate admission where requested
 
-content/probes-apps/*.json         ← real terminal results (app + server + here)
+content/probes-apps/*.json         ← admitted real terminal results
 content/probes-mux/*.json          ← multiplexer pass-through results (mux)
 content/probes-libs/*.json         ← headless backend results (termless)
   +
