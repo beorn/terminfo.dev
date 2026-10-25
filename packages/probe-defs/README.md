@@ -2,7 +2,7 @@
 
 `@terminfo/probe-defs` defines terminal feature probes, their evidence and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the shapes.
 
-This describes the implemented system, not the proposed [capture/assert redesign (internal work item #30919)](/hh/pm/@si/terminfo/30919-probe-capture-assert-shapes.md). Update it when that system changes.
+This describes the implemented system. A proposed redesign would separate live capture from offline assertions; that separation is not implemented here. Update this document as the system changes.
 
 ## From definition to recorded result
 
@@ -74,7 +74,9 @@ The five admin routes share definitions, but do not all execute or persist throu
 
 The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses. The [capture writer](../terminfo.dev/src/capture-writer.ts) finalizes enriched runs and writes immutable result snapshots.
 
-Intended context never substitutes for measured identity. `sealRunDraft` requires complete measured identity and no pending required review; other `test-todo` results can remain in a sealed run.
+The writer checks intended id/version against known measured values without replacing them, but sets `target.kind` from the intended app/mux context and retains that intent separately.
+
+`sealRunDraft` requires complete measured identity and no pending required review; other `test-todo` results can remain in a sealed run.
 
 Required reviews are applied before sealing. While a review remains pending, the writer keeps an unsealed `.draft.json`; once sealed, enrichment cannot change those result bytes.
 
@@ -84,8 +86,4 @@ Admission is a separate operation owned by [run-admission.ts](../admin/run-admis
 
 That owner checks the run, suite and cited artifacts before placing admitted content. A private collection, successful test or sealed result alone does not mean site data has been published.
 
-**Focused check.** From the Hallohuman dev worktree root, exercise the existing execution and seal-boundary tests without collecting new terminal data:
-
-```console
-$ @in -- bun vitest run --root vendor/terminfo.dev --config vitest.config.ts packages/probe-defs/src/execution-checks.test.ts
-```
+The [execution and seal-boundary tests](src/execution-checks.test.ts) exercise these distinctions without collecting new terminal data.
