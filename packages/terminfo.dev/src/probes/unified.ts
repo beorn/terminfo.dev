@@ -41,6 +41,7 @@ import {
   type TTYTraceEvent,
 } from "../tty.ts"
 import type { ClipboardTraceEvent } from "../linux-clipboard.ts"
+import { observeSpikeB } from "../../../../scripts/spike-b/observe.ts"
 import {
   ownedTerminalVerifiedFor,
   ownedTerminalProcessBasisFor,
@@ -696,7 +697,7 @@ export async function runProbeBatch(
         result = await withTTYOperation(
           () =>
             withTTYQueryTrace(queries, events, async () => {
-              return callback(context)
+              return observeSpikeB(probe.id, callback, context, events)
             }),
           out,
           verify,
