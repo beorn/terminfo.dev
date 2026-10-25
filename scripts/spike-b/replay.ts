@@ -231,15 +231,17 @@ for (const featureId of ids) {
 }
 
 const artifacts = []
-for (const [mode, directory] of [
-  ["selection", selectionDirectory],
-  ["baseline", baselineDirectory],
-  ["decorated", decoratedDirectory],
+for (const [mode, directory, run] of [
+  ["selection", selectionDirectory, selection],
+  ["baseline", baselineDirectory, baseline],
+  ["decorated", decoratedDirectory, decorated],
 ] as const) {
   for (const filename of readdirSync(join(directory, "artifacts")).sort()) {
     const bytes = readFileSync(join(directory, "artifacts", filename))
     const hash = sha256(bytes)
-    if (!filename.startsWith(hash + ".")) throw new Error(`Retained capture digest differs: ${mode}/${filename}`)
+    if (filename !== `${run.runId}.draft.json` && !filename.startsWith(hash + ".")) {
+      throw new Error(`Retained capture digest differs: ${mode}/${filename}`)
+    }
     artifacts.push({ mode, filename, sha256: hash, bytes: bytes.length, dataBase64: bytes.toString("base64") })
   }
 }

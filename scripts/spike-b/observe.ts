@@ -13,7 +13,9 @@ export async function observeSpikeB(
   events: TTYTraceEvent[],
 ): Promise<ProbeResult> {
   const runId = process.env.TERMINFO_CAPTURE_RUN_ID
-  const mode = runId?.match(/^spike-b-30923-(selection|baseline|decorated)-[a-zA-Z0-9._-]+$/)?.[1]
+  const modeCode = runId?.match(/^30923([abc])[0-9a-f]{26}$/)?.[1]
+  const mode =
+    modeCode === "a" ? "selection" : modeCode === "b" ? "baseline" : modeCode === "c" ? "decorated" : undefined
   if (!mode || !specimens.has(featureId)) return callback(context)
   const captureDirectory = process.env.TERMINFO_CAPTURE_DIRECTORY
   if (!captureDirectory) throw new Error("Spike B needs the existing Linux launcher's TERMINFO_CAPTURE_DIRECTORY")
