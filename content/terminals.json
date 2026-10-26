@@ -18,7 +18,7 @@
     "url": "https://ghostty.org",
     "repo": "https://github.com/ghostty-org/ghostty",
     "description": "libghostty-vt, Ghostty's terminal emulation core, built natively and measured headlessly by Termless. Not the app renderer.",
-    "body": "<p><strong>libghostty-vt (native)</strong> is libghostty's terminal emulation core, exposed to Termless through Zig N-API bindings (<code>@termless/ghostty-native</code>). It is the engine the <a href=\"/terminals/ghostty\" class=\"hover-link\">Ghostty application</a> embeds, measured without a renderer: escape sequences are fed to the parser and its replies and programmatic state are checked. It is not an app-rendering test.</p>\n<p>Ghostty also ships a WebAssembly build of the same core, measured separately as <a href=\"/terminals/headless-ghostty\" class=\"hover-link\">libghostty-vt (WASM)</a>.</p>",
+    "body": "<p><strong>libghostty-vt (native)</strong> is libghostty's terminal emulation core, exposed to Termless through Zig N-API bindings (<code>@termless/ghostty-native</code>). It is the engine the <a href=\"/terminals/ghostty\" class=\"hover-link\">Ghostty application</a> embeds, measured without a renderer: escape sequences are fed to the parser and its replies and programmatic state are checked. It is not an app-rendering test.</p>\n<p>Ghostty also ships a WebAssembly build of the same core, measured separately as libghostty-vt (WASM).</p>",
     "headlessBackends": ["ghostty-native"],
     "platforms": ["linux"]
   },

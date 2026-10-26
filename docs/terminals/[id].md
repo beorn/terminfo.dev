@@ -74,7 +74,6 @@ const crossLinks = {
   ],
   'kitty': [
     { text: 'Kitty Extensions standard', link: '/kitty-extensions' },
-    { text: 'Kitty headless parser results', link: '/terminals/headless-kitty' },
   ],
   'headless-kitty': [
     { text: 'Kitty application results', link: '/terminals/kitty' },

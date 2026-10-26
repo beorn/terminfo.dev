@@ -140,15 +140,6 @@ function buildSidebar() {
   // Flat list for convenience (used in nav dropdown)
   const allTerminals = [...termAppTerminals, ...termLibraries, ...termMultiplexers]
 
-  // These comparisons have reviewed headless runs on both sides.
-  const compareItems: Array<{ text: string; link: string }> = [
-    { text: "Headless: libghostty-vt (WASM) vs Kitty", link: "/compare/headless-ghostty-vs-headless-kitty" },
-    { text: "Headless: libvterm vs vt100 (Rust)", link: "/compare/libvterm-vs-vt100-rust" },
-    { text: "Headless: vt100.js vs vt100 (Rust)", link: "/compare/vt100-js-vs-vt100-rust" },
-    { text: "Headless: vt220.js vs vterm.js", link: "/compare/vt220-js-vs-vterm-js" },
-    { text: "Headless: vt100.js vs vterm.js", link: "/compare/vt100-js-vs-vterm-js" },
-  ]
-
   // Load baselines for sidebar
   const baselinesData = JSON.parse(readFileSync(join(docsDir, "..", "content", "baselines.json"), "utf-8")) as Record<
     string,
@@ -224,10 +215,6 @@ function buildSidebar() {
       text: "Operating Systems",
       link: "/os",
       items: platformItems,
-    },
-    {
-      text: "Compare",
-      items: compareItems,
     },
     {
       text: "Frameworks",
