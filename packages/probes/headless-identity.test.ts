@@ -217,10 +217,13 @@ for (const [name, pkg] of [
     if (protocol === "workspace:*") {
       // Real workspace lock shape from 30871; the installed copy still has independent bytes.
       const lockPath = join(fixture.root, "bun.lock")
-      const lock = JSON.parse(readFileSync(lockPath, "utf8"))
-      lock.overrides[`${name}.js`] = protocol
-      lock.packages[`${name}.js`] = [`${name}.js@workspace:vendor/vterm/packages/${name}`]
-      writeFileSync(lockPath, JSON.stringify(lock))
+      writeFileSync(
+        lockPath,
+        JSON.stringify({
+          overrides: { [`${name}.js`]: protocol },
+          packages: { [`${name}.js`]: [`${name}.js@workspace:vendor/vterm/packages/${name}`] },
+        }),
+      )
     }
     const result = runIdentity(name, pkg)
     expect(result.stderr, result.stderr).not.toMatch(/no matching registry integrity/)
