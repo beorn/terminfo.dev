@@ -105,12 +105,20 @@ export function registryIntegrity(name: string, version: string): { kind: "regis
   return { kind: "registry", lockIntegrity: entry[3] }
 }
 
-/** bun's file: install materializes the package under node_modules/.bun; map that back via overrides. */
+/** Map copied local installs back to their owned file: override or workspace: lock entry. */
 function fileLinkWorkspace(name: string, termlessRoot: string): string | undefined {
-  const override = readLock().overrides
-  const entry = record(override) ? override[name] : undefined
-  if (typeof entry !== "string" || !entry.startsWith("file:")) return undefined
-  const workspace = realpathSync(resolve(CODE_ROOT, entry.slice("file:".length)))
+  const lock = readLock()
+  const override = record(lock.overrides) ? lock.overrides[name] : undefined
+  const entry = record(lock.packages) ? lock.packages[name] : undefined
+  const prefix = `${name}@workspace:`
+  const sourcePath =
+    typeof override === "string" && override.startsWith("file:")
+      ? override.slice("file:".length)
+      : Array.isArray(entry) && typeof entry[0] === "string" && entry[0].startsWith(prefix)
+        ? entry[0].slice(prefix.length)
+        : undefined
+  if (sourcePath === undefined) return undefined
+  const workspace = realpathSync(resolve(CODE_ROOT, sourcePath))
   if (!inside(workspace, VTERM_ROOT) && !inside(workspace, termlessRoot)) {
     throw new Error(`file: ${name} at ${workspace} is outside owned Termless/vterm checkouts`)
   }

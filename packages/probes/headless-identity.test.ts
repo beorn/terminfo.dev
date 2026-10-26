@@ -1,5 +1,5 @@
 /**
- * @failure Locally linked vt100.js/vt220.js/vterm.js resolve into bun's .bun store, so identity
+ * @failure Local file:/workspace: vt100.js/vt220.js/vterm.js resolve into bun's .bun store, so identity
  *   falls through to registryIntegrity and every vterm-family collect dies before a run exists.
  * @level l2
  * @consumer packages/probes/headless-identity.ts (28548)
@@ -213,13 +213,29 @@ for (const [name, pkg] of [
   ["vt220", "@termless/vt220"],
   ["vterm", "@termless/vterm"],
 ] as const) {
-  test(`a locally linked ${name}.js engine is source provenance, not a registry tuple`, () => {
+  test.each(["file:", "workspace:*"])(`a locally linked ${name}.js engine via %s binds source bytes`, (protocol) => {
+    if (protocol === "workspace:*") {
+      // Real workspace lock shape from 30871; the installed copy still has independent bytes.
+      const lockPath = join(fixture.root, "bun.lock")
+      const lock = JSON.parse(readFileSync(lockPath, "utf8"))
+      lock.overrides[`${name}.js`] = protocol
+      lock.packages[`${name}.js`] = [`${name}.js@workspace:vendor/vterm/packages/${name}`]
+      writeFileSync(lockPath, JSON.stringify(lock))
+    }
     const result = runIdentity(name, pkg)
     expect(result.stderr, result.stderr).not.toMatch(/no matching registry integrity/)
     expect(result.status, result.stderr).toBe(0)
-    const body = JSON.parse(result.stdout) as { ok: boolean; integrityKind: string }
+    const body = JSON.parse(result.stdout) as { ok: boolean; integrityKind: string; resolvedPath: string }
     expect(body.ok).toBe(true)
     expect(body.integrityKind).toBe("source")
+    if (protocol === "workspace:*") {
+      // Recognizing workspace provenance must not certify the stale install that exposed this bug.
+      const installed = join(fixture.root, body.resolvedPath)
+      writeFileSync(installed, `${readFileSync(installed, "utf8")}\n// stale workspace copy\n`)
+      const stale = runIdentity(name, pkg)
+      expect(stale.status, stale.stderr).not.toBe(0)
+      expect(stale.stderr).toMatch(/disagrees with file: workspace source/)
+    }
   })
 }
 
