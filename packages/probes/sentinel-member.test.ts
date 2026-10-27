@@ -1,7 +1,7 @@
 /**
- * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a drifted version, bytes ahead of the DA1 answer or a late reply becomes a measured negative, or a read where DA1 answered is labelled a timeout, or a refused late reply loses what was read.
+ * @failure A headless engine that is alive but silent on a query stays inconclusive forever, or an unproven engine, a changed executing declaration, bytes ahead of the DA1 answer or a late reply becomes a measured negative, or a read where DA1 answered is labelled a timeout, or a refused late reply loses what was read.
  * @level l1
- * @consumer The headless collector's sentinel member, its G1 listener and the proven reply-path table (#30554, @cto verdicts 452bc032 and 67840412).
+ * @consumer The headless collector's sentinel member, its G1 listener and executing adapter reply-delivery declarations (#30554, @cto verdicts 452bc032 and 67840412).
  * @reach Builds the production context and batch from headless-batch.ts over real Termless backends and runs real probe arms from @terminfo/probe-defs through it, beside each arm's live twin fed the same outcomes; where a case needs a reply no engine gives on demand, the engine's replies are scripted behind the real backend.
  * @testonly none
  */
@@ -12,10 +12,16 @@ import { createVt100Backend } from "@termless/vt100"
 import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createXtermBackend } from "@termless/xtermjs"
+import { fakeProbeResult } from "@terminfo/probe-defs/testing/fake-probe-result"
 import { ALL_PROBES, type ProbeDefinition, type TermProbeSource, type TerminalQueryOutcome } from "@terminfo/probe-defs"
-import { afterEach, expect, test, vi } from "vitest"
+import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest"
 import { collectBatch, createLibProbeSource, feedCapture, type ProvenReplyPath } from "./headless-batch.ts"
-import { PROVEN_REPLY_PATHS, replyPathDecision, type ReplyPathProof } from "./proven-reply-paths.ts"
+import type { HeadlessProbeRuntime } from "./headless-identity.ts"
+import { spawnSync } from "node:child_process"
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { fileURLToPath, pathToFileURL } from "node:url"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -29,14 +35,82 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function proofOf(name: string): ReplyPathProof {
-  const proof = PROVEN_REPLY_PATHS[name]
-  if (!proof) throw new Error(`no proof row for ${name}`)
-  return proof
+// A source-backed SCRIPTED unit adapter, not a proof of Termless delivery. The real comparer
+// binds its imported entry bytes and independently reads the engine binding from the owning lock.
+async function scriptedRuntimeFixture() {
+  const root = mkdtempSync(join(tmpdir(), "terminfo-scripted-replies-"))
+  const entry = join(root, "index.mjs")
+  const source = `
+    import { createXtermBackend } from ${JSON.stringify(import.meta.resolve("@termless/xtermjs"))};
+    export function create(script, declaration) {
+      const backend = createXtermBackend();
+      backend.capabilities.extensions.add("reply-delivery");
+      Object.defineProperty(backend, "replyDelivery", { configurable: true, value: declaration });
+      if (script) backend.feed = bytes => {
+        const reply = script(new TextDecoder().decode(bytes));
+        if (reply) backend.onResponse?.(new TextEncoder().encode(reply));
+      };
+      return backend;
+    }
+  `
+  writeFileSync(entry, source)
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "@terminfo/scripted-reply-fixture" }))
+  const git = (...args: string[]) => {
+    const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" })
+    if (result.status !== 0) throw new Error(`Scripted fixture Git failed: ${result.stderr}`)
+    return result.stdout.trim()
+  }
+  git("init", "-q")
+  git("add", "package.json", "index.mjs")
+  git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "scripted reply fixture")
+  const lock = spawnSync(
+    "bun",
+    [
+      "-e",
+      `process.stdout.write(JSON.stringify(Bun.JSONC.parse(await Bun.file(${JSON.stringify(fileURLToPath(new URL("../../bun.lock", import.meta.url)))}).text()).packages["@xterm/headless"]))`,
+    ],
+    { encoding: "utf8" },
+  )
+  if (lock.status !== 0) throw new Error(`Engine lock fixture failed: ${lock.stderr}`)
+  const [engine, , , lockIntegrity] = JSON.parse(lock.stdout) as [string, unknown, unknown, string]
+  if (!lockIntegrity.startsWith("sha512-")) throw new Error("Owning lock has no xterm registry integrity")
+  const declaration = {
+    boundary: "feed-and-getCursor" as const,
+    adapterSources: [{ path: "index.mjs", blobOid: git("hash-object", entry) }],
+    engine: { kind: "registry" as const, lockIntegrity },
+  }
+  const runtime: HeadlessProbeRuntime = {
+    adapterPath: entry,
+    adapterPackage: "@terminfo/scripted-reply-fixture",
+    identity: {
+      kind: "js",
+      runtimeFormat: "js",
+      adapterVersion: "unit-fixture",
+      engineVersion: engine.slice(engine.lastIndexOf("@") + 1),
+      termlessRevision: git("rev-parse", "HEAD"),
+      resolvedPath: "node_modules/@xterm/headless",
+      integrity: { kind: "registry", lockIntegrity },
+    },
+  }
+  const loaded = (await import(/* @vite-ignore */ pathToFileURL(entry).href)) as {
+    create: (script: ((text: string) => string) | undefined, declaration: unknown) => TerminalBackend
+  }
+  return {
+    runtime,
+    create: (script?: (text: string) => string) => loaded.create(script, declaration),
+    destroy: () => rmSync(root, { recursive: true, force: true }),
+  }
 }
 
+let fixture: Awaited<ReturnType<typeof scriptedRuntimeFixture>>
+beforeAll(async () => {
+  fixture = await scriptedRuntimeFixture()
+})
+afterAll(() => fixture?.destroy())
+
+// Unit setup for capture/classifier cases; actual engine delivery is checked separately below.
 function proven(onSentinel: () => void = () => {}): ProvenReplyPath {
-  return { proof: proofOf("xtermjs"), graceMs: 250, onSentinel }
+  return { graceMs: 250, onSentinel }
 }
 
 /**
@@ -199,58 +273,25 @@ const engines: Record<string, () => Promise<TerminalBackend>> = {
   libvterm: resolveLibvterm,
 }
 
-test("the proof table names exactly the engines this test can run", () => {
-  expect(Object.keys(PROVEN_REPLY_PATHS).sort()).toEqual(Object.keys(engines).sort())
-})
-
-test.each(Object.keys(engines))("%s answers DA1 through feedCapture as its proof row records", async (name) => {
+// Independent positive controls: these are real engine replies, including libvterm, whose
+// single DA1 answer does not establish complete delivery for arbitrary output.
+test.each([
+  ["xtermjs", "\x1b[?1;2c"],
+  ["vt100", "\x1b[?1;2c"],
+  ["vt220", "\x1b[?62;1;2;6;7;8;9c"],
+  ["vterm", "\x1b[?62;4c"],
+  ["libvterm", "\x1b[?1;2c"],
+])("%s answers DA1 through feedCapture", async (name, answer) => {
   const create = engines[name]
   if (!create) throw new Error(`no engine factory for ${name}`)
   const backend = await create()
   backend.init({ cols: 80, rows: 24 })
   try {
-    expect(feedCapture(backend, DA1_QUERY)).toBe(proofOf(name).da1Answer)
+    expect(feedCapture(backend, DA1_QUERY)).toBe(answer)
   } finally {
     backend.destroy()
   }
 })
-
-test("the three backends re-audited at engine 0.8.0 get the member, silently", () => {
-  const warn = vi.fn()
-  for (const name of ["vt100", "vt220", "vterm"]) {
-    expect(replyPathDecision(name, { adapterVersion: "0.10.2", engineVersion: "0.8.0" }, warn)).toStrictEqual({
-      member: true,
-      backend: name,
-      proof: proofOf(name),
-    })
-  }
-  expect(warn).not.toHaveBeenCalled()
-})
-
-test("a proven backend at a version its row does not name gets no member and says so", () => {
-  const warn = vi.fn()
-  const decision = replyPathDecision("vt100", { adapterVersion: "0.10.2", engineVersion: "0.7.1" }, warn)
-  expect(decision).toMatchObject({ member: false, backend: "vt100", adapterVersion: "0.10.2", engineVersion: "0.7.1" })
-  expect(warn).toHaveBeenCalledOnce()
-  expect(warn.mock.calls[0]?.[0]).toMatch(
-    /^headless version drift: vt100 runs adapter 0\.10\.2 with engine 0\.7\.1, but its reply-path proof names adapter 0\.10\.2 with engine 0\.8\.0/,
-  )
-})
-
-test.each(["ghostty", "alacritty", "wezterm", "vt100-rust", "ghostty-native", "kitty"])(
-  "%s has no proven reply path and no member",
-  (name) => {
-    const warn = vi.fn()
-    expect(replyPathDecision(name, { adapterVersion: "0.10.2", engineVersion: "1.0.0" }, warn)).toStrictEqual({
-      member: false,
-      backend: name,
-      adapterVersion: "0.10.2",
-      engineVersion: "1.0.0",
-      reason: `${name} has no proven reply path`,
-    })
-    expect(warn).not.toHaveBeenCalled()
-  },
-)
 
 function definitionOf(id: string): ProbeDefinition {
   const definition = ALL_PROBES.find((candidate) => candidate.id === id)
@@ -457,12 +498,12 @@ test("G1: a silent proven engine publishes the sentinel negative once the grace 
   // collectBatch names each probe on stderr, and the root test setup refuses a test's output.
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const batch = await collectBatch(
-    async () => scripted((text) => (text === DA1_QUERY ? DA1 : "")),
+    async () => fixture.create((text) => (text === DA1_QUERY ? DA1 : "")),
     "xtermjs",
     [definitionOf("device.xtversion")],
     undefined,
     undefined,
-    proofOf("xtermjs"),
+    fixture.runtime,
   )
   expect(batch.observations).toStrictEqual([
     {
@@ -488,7 +529,7 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
   vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const batch = await collectBatch(
     async () => {
-      const backend = scripted((text) => {
+      const backend = fixture.create((text) => {
         if (text !== DA1_QUERY) return ""
         setTimeout(() => backend.onResponse?.(encoder.encode("\x1bP>|late\x1b\\")), 5)
         return DA1
@@ -499,7 +540,7 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
     [definitionOf("device.xtversion")],
     undefined,
     undefined,
-    proofOf("xtermjs"),
+    fixture.runtime,
   )
   expect(batch.observations).toEqual([])
   expect(batch.ungradedDiagnostics["device.xtversion"]).toMatchObject({
@@ -516,7 +557,72 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
   expect(batch.assertions).toStrictEqual([])
   // The refusal keeps what was observed: the on-time read window, and the late bytes beside it.
   expect(batch.rawReplies).toStrictEqual({
+    "collector.replyPath": expect.any(String),
     "device.xtversion": DA1,
     "device.xtversion.late": "\x1bP>|late\x1b\\",
+  })
+})
+
+// #30576: comparer tests cannot catch a collector that reuses preflight qualification for a
+// different initialized callback instance, or forwards capabilities.version as measured identity.
+test("qualifies each initialized callback instance and forwards the measured runtime identity", async () => {
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  const runtime = fixture.runtime
+  const members: boolean[] = []
+  const identities: unknown[] = []
+  let instance = 0
+  const batch = await collectBatch(
+    async () => {
+      const value = fixture.create()
+      const index = instance++
+      const init = value.init.bind(value)
+      vi.spyOn(value, "init").mockImplementation((options) => {
+        init(options)
+        if (index === 1) value.capabilities.extensions.delete("reply-delivery")
+        if (index === 2) Object.assign(value, { replyDelivery: undefined })
+      })
+      return value
+    },
+    "xtermjs",
+    ["declared", "absent", "changed"].map<ProbeDefinition>((id) => ({
+      id,
+      term: null,
+      lib: (ctx) => {
+        members.push(typeof ctx.queryWithSentinelOutcome === "function")
+        identities.push(ctx.runtimeIdentity)
+        return fakeProbeResult()
+      },
+    })),
+    undefined,
+    undefined,
+    runtime,
+  )
+  expect(instance).toBe(3)
+  expect(members).toEqual([true, false, false])
+  expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity])
+  expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+    declared: { member: true, runtimeIdentity: runtime.identity },
+    absent: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
+    changed: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
+  })
+})
+
+// Same adapter/version/capabilities without the independent measurement cannot qualify.
+test("a declaration without measured runtime identity withholds the member and names lost coverage", async () => {
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  const seen: unknown[] = []
+  const batch = await collectBatch(async () => fixture.create(), "xtermjs", [
+    {
+      id: "unmeasured",
+      term: null,
+      lib: (ctx) => {
+        seen.push(ctx.queryWithSentinelOutcome, ctx.runtimeIdentity)
+        return fakeProbeResult()
+      },
+    },
+  ])
+  expect(seen).toEqual([undefined, undefined])
+  expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
+    unmeasured: { member: false, reason: "xtermjs has no measured runtime identity for reply delivery" },
   })
 })

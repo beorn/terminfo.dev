@@ -72,7 +72,7 @@ function identityFixture({ termlessSubdir = join("vendor", "termless") }: { term
     git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "identity source")
     git("remote", "add", "origin", `https://example.invalid/${repository === termless ? "termless" : "vterm"}.git`)
   }
-  return { root, vterm, identityHref: pathToFileURL(source).href }
+  return { root, vterm, termless, identityHref: pathToFileURL(source).href }
 }
 
 beforeEach(() => {
@@ -428,4 +428,95 @@ test("a Termless checkout outside the sibling path is used, and its own revision
   }).stdout.trim()
   expect(body.ok).toBe(true)
   expect(body.revision).toBe(revision)
+})
+
+// #30576 source binding: the old sentinel suite changed versions only. This uses its
+// existing owned Git/package fixture and the production identity producer/comparer.
+function runReplyDecision(mode: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `
+      import { execFileSync } from "node:child_process";
+      import { createHash } from "node:crypto";
+      import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+      import { join, relative } from "node:path";
+      const { headlessRuntimeIdentity, replyDeliveryDecision } = await import(${JSON.stringify(fixture.identityHref)});
+      const root = ${JSON.stringify(fixture.root)}, adapterRoot = ${JSON.stringify(fixture.termless)};
+      const engineRoot = ${JSON.stringify(fixture.vterm)}, mode = ${JSON.stringify(mode)};
+      const git = (root, ...args) => execFileSync("git", ["-C", root, ...args], {encoding:"utf8"}).trim();
+      const entry = join(adapterRoot, "packages/vt100/src/index.ts");
+      const declaration = {
+        boundary: "feed-and-getCursor",
+        adapterSources: [{path:relative(adapterRoot, entry), blobOid:git(adapterRoot, "hash-object", entry)}],
+        engine: {kind:"source",repository:git(engineRoot,"remote","get-url","origin"),treeOid:git(engineRoot,"rev-parse","HEAD:packages/vt100")}
+      };
+      if (mode === "engine" || mode === "dirty") {
+        const text = 'export const engine = "changed source, same version";\\n';
+        writeFileSync(join(engineRoot,"packages/vt100/src/index.ts"),text);
+        writeFileSync(join(root,"node_modules/.bun/vt100.js@file/node_modules/vt100.js/src/index.ts"),text);
+        if (mode === "engine") {
+          git(engineRoot,"add","packages/vt100/src/index.ts");
+          git(engineRoot,"-c","user.name=Fixture","-c","user.email=fixture@example.invalid","commit","-qm","engine source change without version bump");
+        }
+      }
+      const identity = await headlessRuntimeIdentity("vt100","@termless/vt100","js");
+      const runtime = {identity,adapterPath:entry,adapterPackage:"@termless/vt100"};
+      if (mode === "adapter") writeFileSync(entry,readFileSync(entry,"utf8")+"\\n// changed imported adapter, same versions\\n");
+      if (mode === "registry-match" || mode === "registry-drift") {
+        const expected = "sha512-"+Buffer.alloc(64,1).toString("base64");
+        declaration.engine = {kind:"registry",lockIntegrity:expected};
+        identity.integrity = {kind:"registry",lockIntegrity:mode === "registry-match" ? expected : "sha512-"+Buffer.alloc(64,2).toString("base64")};
+      }
+      if (mode === "wasm-match" || mode === "wasm-drift") {
+        const path = join(root,"engine.wasm");
+        writeFileSync(path,"fixture engine bytes");
+        const digest = () => createHash("sha256").update(readFileSync(path)).digest("hex");
+        declaration.engine = {kind:"wasm",sha256:digest()};
+        if (mode === "wasm-drift") writeFileSync(path,"different engine bytes, same version");
+        identity.runtimeFormat = "wasm";
+        identity.loadedBinary = {path:"vendor/termless/engine.wasm",sha256:digest()};
+      }
+      if (mode === "entry") declaration.adapterSources = [];
+      if (mode === "outside") declaration.adapterSources.push({path:"../vterm/packages/vt100/src/index.ts",blobOid:git(engineRoot,"hash-object","packages/vt100/src/index.ts")});
+      if (mode === "dist") {
+        const pkg = join(root,"dist-only");
+        mkdirSync(pkg);
+        writeFileSync(join(pkg,"package.json"),JSON.stringify({name:"@termless/vt100"}));
+        writeFileSync(join(pkg,"index.js"),"export {}\\n");
+        runtime.adapterPath = join(pkg,"index.js");
+      }
+      const warnings = [];
+      const result = replyDeliveryDecision("unit-adapter",mode === "absent" ? undefined : declaration,mode === "identity" ? undefined : runtime,line => warnings.push(line));
+      process.stdout.write(JSON.stringify({result,warnings,engineVersion:identity.engineVersion}));
+      `,
+    ],
+    { encoding: "utf8" },
+  )
+}
+
+test.each([
+  ["match", true, "bound to its loaded source"],
+  ["adapter", false, "adapterSources"],
+  ["engine", false, "treeOid"],
+  ["dirty", false, "cleanTree"],
+  ["registry-match", true, "bound to its loaded source"],
+  ["registry-drift", false, "lockIntegrity"],
+  ["wasm-match", true, "bound to its loaded source"],
+  ["wasm-drift", false, "sha256"],
+  ["entry", false, "source binding"],
+  ["outside", false, "outside its imported checkout"],
+  ["dist", false, "dist-only loses coverage"],
+  ["absent", false, "declares no reply delivery"],
+  ["identity", false, "no measured runtime identity"],
+] as const)("reply eligibility %s uses source/engine facts, not unchanged versions", (mode, member, reason) => {
+  const run = runReplyDecision(mode)
+  expect(run.status, run.stderr).toBe(0)
+  const body = JSON.parse(run.stdout)
+  expect(body.engineVersion).toBe("0.7.1")
+  expect(body.result.member).toBe(member)
+  expect(body.result.reason).toContain(reason)
+  expect(body.warnings).toHaveLength(member ? 0 : 1)
+  if (!member) expect(body.warnings[0]).toContain(body.result.reason)
 })
