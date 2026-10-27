@@ -88,9 +88,11 @@ test.each([false, true])("title push restores its checkpoint when CPR rejects=%s
 
 const DECRQSS_SGR_QUERY = "\x1bP$qm\x1b\\"
 const DECRQSS_DECSTBM_QUERY = "\x1bP$qr\x1b\\"
+const DECRQSS_DECSCL_QUERY = '\x1bP$q"p\x1b\\'
 const DECRQSS_SGR_VALID = "\x1bP1$r0m\x1b\\"
 const DECRQSS_REFUSAL = "\x1bP0$r\x1b\\"
 const DECRQSS_DECSTBM_VALID = "\x1bP1$r1;24r\x1b\\"
+const DECRQSS_DECSCL_VALID = '\x1bP1$r62;1"p\x1b\\'
 const DA1 = "\x1b[?62;52;c"
 
 function terminalScript(
@@ -98,24 +100,26 @@ function terminalScript(
     string,
     { raw: string; reason: TerminalQueryOutcome["reason"]; sentinel?: { atMs: number; graceMs: number } }
   >,
-): { ctx: TermProbeSource; queries: string[] } {
+): { ctx: TermProbeSource; lib: LibProbeSource; queries: string[] } {
   const queries: string[] = []
+  const read = (sequence: string, pattern: RegExp): TerminalQueryOutcome => {
+    queries.push(sequence)
+    const item = replies[sequence]
+    if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
+    const match = item.reason === "reply" ? pattern.exec(item.raw) : null
+    return {
+      match,
+      reason: item.reason,
+      raw: item.raw,
+      rawBase64: Buffer.from(item.raw).toString("base64"),
+      ...(item.sentinel && { sentinel: item.sentinel }),
+    }
+  }
   const ctx = {
-    queryWithSentinelOutcome: (sequence: string, pattern: RegExp) => {
-      queries.push(sequence)
-      const item = replies[sequence]
-      if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
-      const match = item.reason === "reply" ? pattern.exec(item.raw) : null
-      return Promise.resolve({
-        match,
-        reason: item.reason,
-        raw: item.raw,
-        rawBase64: Buffer.from(item.raw).toString("base64"),
-        ...(item.sentinel && { sentinel: item.sentinel }),
-      })
-    },
+    queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => read(sequence, pattern),
   } as unknown as TermProbeSource
-  return { ctx, queries }
+  const lib = { queryWithSentinelOutcome: read } as unknown as LibProbeSource
+  return { ctx, lib, queries }
 }
 
 /**
@@ -363,21 +367,42 @@ describe("device query observations", () => {
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: DECRQSS_DECSTBM_VALID }])
   })
 
-  test("SGR status-0 then DECSTBM status-0 is inconclusive and names both refusals", async () => {
+  // Two selector refusals establish a speaking facility, not a facility-wide negative. The old
+  // two-selector case never exercised Vterm's real DECSCL reply or silence after both refusals.
+  test.each(
+    [
+      { name: "valid DECSCL", raw: DECRQSS_DECSCL_VALID, reason: "reply" as const, supported: true },
+      { name: "DECSCL refusal", raw: DECRQSS_REFUSAL, reason: "reply" as const, supported: false },
+      { name: "DECSCL silence", raw: DA1, reason: "sentinel" as const, supported: false },
+    ].flatMap((third) => (["headless", "terminal"] as const).map((route) => ({ ...third, route }))),
+  )("$route: SGR and DECSTBM refusals then $name retains facility evidence", async (third) => {
+    const route = third.route
     const script = terminalScript({
       [DECRQSS_SGR_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
       [DECRQSS_DECSTBM_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSCL_QUERY]: {
+        raw: third.raw,
+        reason: third.reason,
+        ...(third.reason === "sentinel" && { sentinel: { atMs: 9, graceMs: 250 } }),
+      },
     })
-    const result = await callback("device.decrqss").terminal(script.ctx)
-    expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
+    const probe = callback("device.decrqss")
+    const result = route === "headless" ? probe.headless(script.lib) : await probe.terminal(script.ctx)
     expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
+      outcome: third.supported ? "supported" : "inconclusive",
       assertionType: "query_reply",
     })
-    expect(result.observation?.note).toMatch(/SGR/)
-    expect(result.observation?.note).toMatch(/DECSTBM/)
-    expect(result.assertions).toBeUndefined()
+    expect(result.observation?.note).toMatch(/SGR refused/)
+    expect(result.observation?.note).toMatch(/DECSTBM refused/)
+    if (third.supported) {
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: DECRQSS_DECSCL_VALID }])
+      expect(result.response?.split(DECRQSS_REFUSAL).length).toBe(3)
+      expect(result.response).toContain(DECRQSS_DECSCL_VALID)
+    } else {
+      expect(result.observation?.note).toMatch(/DECSCL/)
+      expect(result.assertions).toBeUndefined()
+    }
+    expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY, DECRQSS_DECSCL_QUERY])
   })
 
   test("SGR status-0 then DECSTBM unanswered (DA1 only) stays inconclusive, not F1 negative", async () => {
