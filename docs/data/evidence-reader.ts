@@ -1,6 +1,6 @@
 import type {
-  CapabilityResult,
-  CapabilityStatus,
+  ProbeResult,
+  ProbeStatus,
   Observation,
   ObservationReason,
   ProbeAssertion,
@@ -18,7 +18,7 @@ export interface CellEvidenceExpectation {
   runSha256: string
   featureId: string
   reviewId: string
-  status?: CapabilityStatus
+  status?: ProbeStatus
 }
 
 export interface TraceQuery {
@@ -42,8 +42,8 @@ export interface TraceAssertion {
 
 export interface TraceCellRecord {
   outcome?: Observation["outcome"]
-  status?: CapabilityStatus
-  evidence?: Observation["evidence"] | CapabilityResult["evidence"]
+  status?: ProbeStatus
+  evidence?: Observation["evidence"] | ProbeResult["evidence"]
   reason?: ObservationReason
   replyWithheld?: true
   writes?: string[]

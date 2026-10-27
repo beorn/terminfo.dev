@@ -6,9 +6,9 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
-function app(rows: number, cols: number, events: string[]): TermContext {
+function app(rows: number, cols: number, events: string[]): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in editing geometry fixture`)
   }
@@ -83,7 +83,7 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
       [24, Number.POSITIVE_INFINITY],
     ] as const) {
       const events: string[] = []
-      const context: TermContext = {
+      const context: TermProbeSource = {
         ...app(rows, cols, events),
         capture: async () => {
           throw new Error(`${id} reached capture on an undersized grid`)
@@ -99,7 +99,7 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
     }
     // The other side of the boundary: 5x8 is the floor, so the arm must reach its own work instead
     // of refusing. A capture that throws is the cheapest proof it got past the geometry gate.
-    const floor: TermContext = {
+    const floor: TermProbeSource = {
       ...app(row.sentinel.row, 8, []),
       // A calibrated geometry keeps the arm from needing an unanswerable pixel query, so the only
       // thing that can stop it before the capture is the geometry gate this test measures.

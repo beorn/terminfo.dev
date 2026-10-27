@@ -1,13 +1,13 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
 import type {
-  CapabilityResult,
-  CapabilityStatus,
+  ProbeResult,
+  ProbeStatus,
   ConsoleBufferOwner,
   Observation,
   ObservationFrame,
   ProbeAssertion,
-  ProbeTarget,
+  ProbeSubject,
   RunOrigin,
   TextQualification,
   TextCellsObservationFrame,
@@ -229,8 +229,8 @@ function screenGeometry(receipt: string | undefined): { rows: number; cols: numb
 }
 
 /** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
-export interface PublicCapabilityResult extends Pick<
-  CapabilityResult,
+export interface PublicProbeResult extends Pick<
+  ProbeResult,
   "featureId" | "status" | "attempt" | "checks" | "evidence"
 > {
   reason?: string
@@ -248,7 +248,7 @@ export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
   "results" | "rawReplies" | "assertions" | "origin" | "presentations" | "textQualification" | "identity"
 > {
-  results: PublicCapabilityResult[]
+  results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
   trace?: TraceReceipt
   /** The screen size this run measured for its own terminal; absent when its receipt recorded none. */
@@ -265,12 +265,12 @@ export interface PublicProjection {
 
 export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
   selected: PublicVersion
-  states: Readonly<Record<string, CapabilityStatus>>
+  states: Readonly<Record<string, ProbeStatus>>
 }
 
 export interface CellEvidence {
   featureId: string
-  result: CapabilityResult
+  result: ProbeResult
   record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
   review: PublicReview
   textQualification?: { url: string; sha256: string }
@@ -291,7 +291,7 @@ type PublicDocuments = Map<
   }
 >
 
-function publicAttempt(attempt: CapabilityResult["attempt"]): CapabilityResult["attempt"] {
+function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] {
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
@@ -300,14 +300,14 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
   const traced = new Set([...targets.values()].map((value) => value.selected.runId))
   const documents: PublicDocuments = new Map()
   const mapResult = (
-    result: CapabilityResult,
+    result: ProbeResult,
     version: CurrentSelectedVersion,
     evidenceCells: Record<string, CellEvidence>,
-  ): PublicCapabilityResult => {
+  ): PublicProbeResult => {
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
     const hold = result.checks.find((check) => check.id === "console-host")?.reason
-    const mapped: PublicCapabilityResult = {
+    const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,
       attempt: publicAttempt(result.attempt),

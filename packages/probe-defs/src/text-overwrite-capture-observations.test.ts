@@ -6,12 +6,12 @@
  */
 import { expect, test } from "vitest"
 import { textProbes } from "./text.ts"
-import type { ObservationFrame, TermContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 function captureApp(rows = 24, cols = 80) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (bytes) => writes.push(bytes),

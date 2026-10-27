@@ -11,7 +11,7 @@ import { expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
 import { editingProbes } from "./editing.ts"
 import { extensionsProbes } from "./extensions.ts"
-import type { ProbeDefinition, ProbeCallbackResult, TermlessContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const da1 = "\x1b[?1;2c"
 const sentinelAt = { atMs: 1, graceMs: 250 }
@@ -37,10 +37,10 @@ function definition(id: string): ProbeDefinition {
   return found
 }
 
-function run(id: string, ctx: Partial<TermlessContext>): ProbeCallbackResult {
+function run(id: string, ctx: Partial<LibProbeSource>): ProbeCallbackResult {
   const callback = definition(id).termless
   if (!callback) throw new Error(`${id} lost its headless callback`)
-  return callback(ctx as TermlessContext)
+  return callback(ctx as LibProbeSource)
 }
 
 function silentSentinel(reason: TerminalQueryOutcome["reason"] = "sentinel"): TerminalQueryOutcome {

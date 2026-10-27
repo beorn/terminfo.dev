@@ -10,7 +10,7 @@
 import { expect, test } from "vitest"
 import { SIXEL_CURSOR_ROW, SIXEL_REGION, sixelPayload, sixelReadback, sixelTileSize } from "./sixel-capture.ts"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
 const GEOMETRY = { cellWidth: 8, cellHeight: 17, textWidth: 8 * 80, textHeight: 17 * 24 }
 
@@ -83,7 +83,7 @@ test("a pixel arm that reports no geometry refuses by name before painting anyth
     queryCursorPosition: async () => null,
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
   const result = await definition.term(context)
@@ -125,7 +125,7 @@ function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-c
     queryCursorPosition: async () => null,
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { context, writes }
 }
 

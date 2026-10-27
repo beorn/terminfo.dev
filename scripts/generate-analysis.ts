@@ -16,7 +16,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
@@ -87,7 +87,7 @@ interface TerminalStats {
   yes: number
   no: number
   pct: number
-  results: Record<string, CapabilityStatus>
+  results: Record<string, ProbeStatus>
   baselineCompliance: Record<string, { total: number; yes: number; pct: number; complete: boolean }>
   uniquelySupported: string[]
   uniquelyMissing: string[]
@@ -106,7 +106,7 @@ interface AnalysisEntry {
   runSha256?: string
   measuredAt?: string
   score?: { supported: number; all: number }
-  counts?: Record<CapabilityStatus, number>
+  counts?: Record<ProbeStatus, number>
   complete?: boolean
 }
 
@@ -181,11 +181,11 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
 }
 
 interface SelectedAnalysisInput {
-  capabilities: CapabilityResult[]
+  capabilities: ProbeResult[]
   catalogIds: string[]
   aggregate: CurrentAggregate
   sourceId: string
-  results: Record<string, CapabilityStatus>
+  results: Record<string, ProbeStatus>
   version: string
   type: "app" | "headless" | "mux"
   runSha256: string
@@ -273,7 +273,7 @@ function computeTerminalStats(
   data: SelectedAnalysisInput,
   features: Record<string, FeatureMeta>,
   baselineFeatures: Record<string, string[]>,
-  allTerminalResults: Map<string, { results: Record<string, CapabilityStatus> }>,
+  allTerminalResults: Map<string, { results: Record<string, ProbeStatus> }>,
 ): TerminalStats {
   const results = data.results
   const total = data.aggregate.denominator

@@ -14,8 +14,8 @@ import {
   type ObservationOutcome,
   type ProbeDefinition,
   type ProbeCallbackResult,
-  type TermContext,
-  type TermlessContext,
+  type TermProbeSource,
+  type LibProbeSource,
   type TerminalQueryOutcome,
 } from "../types.ts"
 import { splitDecidableBasis } from "../decidable-basis.ts"
@@ -242,17 +242,17 @@ export function satisfiesContract(row: ContractRow, observation: ObservationOutc
 }
 
 /**
- * Part 3 - the re-grade invocation. A group supplies only the TermlessContext fields its headless
+ * Part 3 - the re-grade invocation. A group supplies only the LibProbeSource fields its headless
  * semantics need; the harness fills the inert remainder, so no group reinvents the whole fake.
  */
-export interface HeadlessModel extends Partial<TermlessContext> {
+export interface HeadlessModel extends Partial<LibProbeSource> {
   readonly cols: number
   feed(text: string): void
-  getCell(row: number, col: number): ReturnType<TermlessContext["getCell"]>
-  getCursor(): ReturnType<TermlessContext["getCursor"]>
+  getCell(row: number, col: number): ReturnType<LibProbeSource["getCell"]>
+  getCursor(): ReturnType<LibProbeSource["getCursor"]>
 }
 
-export function headlessContext(model: HeadlessModel): TermlessContext {
+export function headlessContext(model: HeadlessModel): LibProbeSource {
   const getText = (): string => {
     const lines: string[] = []
     for (let row = 0; row < 24; row++) {
@@ -301,11 +301,11 @@ export interface StoredQuery {
   readonly sentinel?: { readonly atMs: number; readonly graceMs: number }
 }
 
-/** Part 3 (query rows) - a TermContext whose queries replay stored raw, not a terminal. */
+/** Part 3 (query rows) - a TermProbeSource whose queries replay stored raw, not a terminal. */
 export function replayContext(
   bySequence: ReadonlyMap<string, StoredQuery>,
-  defaults: Partial<TermContext> = {},
-): TermContext {
+  defaults: Partial<TermProbeSource> = {},
+): TermProbeSource {
   const outcome = (sequence: string, pattern: RegExp): TerminalQueryOutcome => {
     const stored = bySequence.get(sequence)
     if (stored === undefined) return { match: null, reason: "timeout", raw: "", rawBase64: "" }
@@ -344,7 +344,7 @@ export interface RegradeResult {
 export async function regradeRow(
   probe: ProbeDefinition,
   row: ContractRow,
-  contexts: { readonly headless?: TermlessContext; readonly term?: TermContext },
+  contexts: { readonly headless?: LibProbeSource; readonly term?: TermProbeSource },
 ): Promise<RegradeResult> {
   let result: ProbeCallbackResult | undefined
   if (probe.termless && contexts.headless !== undefined) result = probe.termless(contexts.headless)

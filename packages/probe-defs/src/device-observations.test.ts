@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
-import type { TermContext, TermlessContext, TerminalQueryOutcome } from "./types.ts"
+import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const replies = [
   { id: "device.primary-da", query: "\x1b[c", valid: "\x1b[?62;52;c", partial: "\x1b[?62;52;" },
@@ -18,16 +18,16 @@ const replies = [
   { id: "device.xtversion", query: "\x1b[>0q", valid: "\x1bP>|kitty(0.49.1)\x1b\\", partial: "\x1bP>|kitty(0.49.1)" },
 ] as const
 
-function headless(raw: string): TermlessContext {
+function headless(raw: string): LibProbeSource {
   // Device query callbacks use only feedCapture; missing operations fail loudly if newly used.
-  return { feedCapture: () => raw } as unknown as TermlessContext
+  return { feedCapture: () => raw } as unknown as LibProbeSource
 }
 
 function terminal(
   raw: string,
   reason: TerminalQueryOutcome["reason"] = "reply",
   sentinel?: { atMs: number; graceMs: number },
-): TermContext {
+): TermProbeSource {
   const reply = (sequence: string, pattern: RegExp): Promise<TerminalQueryOutcome> => {
     const item = replies.find((candidate) => candidate.query === sequence)
     if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
@@ -45,7 +45,7 @@ function terminal(
   return {
     queryOutcome: reply,
     queryWithSentinelOutcome: reply,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
 }
 
 function callback(id: string) {
@@ -68,7 +68,7 @@ test.each([false, true])("title push restores its checkpoint when CPR rejects=%s
       if (rejectQuery) throw new Error("injected title CPR failure")
       return { row: 1, col: 1 }
     },
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
 
   const result = callback("device.xtwinops-22").terminal(context)
   if (rejectQuery) {
@@ -97,7 +97,7 @@ function terminalScript(
     string,
     { raw: string; reason: TerminalQueryOutcome["reason"]; sentinel?: { atMs: number; graceMs: number } }
   >,
-): { ctx: TermContext; queries: string[] } {
+): { ctx: TermProbeSource; queries: string[] } {
   const queries: string[] = []
   const ctx = {
     queryWithSentinelOutcome: (sequence: string, pattern: RegExp) => {
@@ -113,7 +113,7 @@ function terminalScript(
         ...(item.sentinel && { sentinel: item.sentinel }),
       })
     },
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { ctx, queries }
 }
 
@@ -310,7 +310,7 @@ describe("device query observations", () => {
       queryWithSentinelOutcome: () => {
         throw new Error("DA1 must not use a DA1 sentinel")
       },
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
     expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
     expect(result.response).toBe(raw)
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: "\x1b[?1;2c" }])
@@ -478,7 +478,7 @@ describe("window-operation qualification", () => {
         raw: frame,
         rawBase64: Buffer.from(frame).toString("base64"),
       }),
-    } as unknown as TermContext
+    } as unknown as TermProbeSource
     for (const result of [probe.headless(headless(frame)), await probe.terminal(app)]) {
       expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
@@ -492,9 +492,9 @@ describe("window-operation qualification", () => {
 
   test("device.xtwinops-20: a complete OSC L answer with the wrong payload is a measured negative", async () => {
     const icon = callback("device.xtwinops-20")
-    const headlessIcon = (frame: string): TermlessContext =>
-      ({ feed: () => undefined, feedCapture: () => frame }) as unknown as TermlessContext
-    const app = (frame: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermContext =>
+    const headlessIcon = (frame: string): LibProbeSource =>
+      ({ feed: () => undefined, feedCapture: () => frame }) as unknown as LibProbeSource
+    const app = (frame: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermProbeSource =>
       ({
         write: () => undefined,
         queryWithSentinelOutcome: (sequence: string, pattern: RegExp) =>
@@ -504,7 +504,7 @@ describe("window-operation qualification", () => {
             raw: frame,
             rawBase64: Buffer.from(frame).toString("base64"),
           }),
-      }) as unknown as TermContext
+      }) as unknown as TermProbeSource
     for (const frame of ["\x1b]L\x1b\\", "\x1b]Lother-icon\x07", "\x1b]Ltest-icon-plus\x1b\\"]) {
       const head = icon.headless(headlessIcon(frame))
       expect(head.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
@@ -551,7 +551,7 @@ describe("window-operation qualification", () => {
     const headlessIcon = {
       feed: () => undefined,
       feedCapture: () => "\x1b]Lother-icon\x07",
-    } as unknown as TermlessContext
+    } as unknown as LibProbeSource
     expect(icon.headless(headlessIcon).observation?.outcome).not.toBe("supported")
   })
 
@@ -571,7 +571,7 @@ describe("window-operation qualification", () => {
           if (title === undefined) throw new Error("Unexpected title read")
           return title
         },
-      } as unknown as TermlessContext
+      } as unknown as LibProbeSource
       const result = callback(id).headless(context)
       expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
       expect(result.response).toBe(JSON.stringify({ original: titles[0], changed: titles[1], restored: titles[2] }))
@@ -592,7 +592,7 @@ describe("window-operation qualification", () => {
  * @testonly none
  */
 describe("device contracts without prior coverage", () => {
-  const app = (raw: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermContext =>
+  const app = (raw: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermProbeSource =>
     ({
       write: () => undefined,
       queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) =>
@@ -602,7 +602,7 @@ describe("device contracts without prior coverage", () => {
           raw,
           rawBase64: Buffer.from(raw).toString("base64"),
         }),
-    }) as unknown as TermContext
+    }) as unknown as TermProbeSource
 
   test("XTWINOPS 16 binds a complete cell-pixel frame in both collectors", async () => {
     const probe = callback("device.xtwinops-16")
@@ -685,7 +685,7 @@ describe("device contracts without prior coverage", () => {
           rawBase64: Buffer.from(frame).toString("base64"),
         }
       },
-    } as unknown as TermContext
+    } as unknown as TermProbeSource
     const result = await probe.terminal(context)
     // The probe owns its setup: it sets the title it then requires.
     expect(writes).toEqual(["\x1b]2;test-title\x07", "\x1b[21t"])
@@ -697,7 +697,7 @@ describe("device contracts without prior coverage", () => {
         feeds.push(sequence)
       },
       feedCapture: () => frame,
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
     expect(feeds).toEqual(["\x1b]2;test-title\x07"])
     expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "query" })
     // A different title is malformed for this query rather than a measured negative:
@@ -705,7 +705,7 @@ describe("device contracts without prior coverage", () => {
     const other = probe.headless({
       feed: () => undefined,
       feedCapture: () => "\x1b]lother-title\x07",
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
     expect(other.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
   })
 
@@ -730,7 +730,7 @@ describe("device contracts without prior coverage", () => {
             raw: frame,
             rawBase64: Buffer.from(frame).toString("base64"),
           }),
-      } as unknown as TermContext)
+      } as unknown as TermProbeSource)
     for (const frame of ["\x1b[?0;1#Q", "\x1b[0;0#Q"]) {
       for (const result of [probe.headless(headless(frame)), await app(frame)]) {
         expect(result.response, frame).toBe(frame)

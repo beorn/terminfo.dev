@@ -7,7 +7,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 const PAYLOAD = "osc0-icon-title"
 const ICON_QUERY = "\x1b[20t"
@@ -31,7 +31,7 @@ function termlessCallback() {
   return callback
 }
 
-function termless(replies: Record<string, string>): TermlessContext {
+function termless(replies: Record<string, string>): LibProbeSource {
   return {
     cols: 80,
     rows: 24,
@@ -44,10 +44,10 @@ function termless(replies: Record<string, string>): TermlessContext {
     getCell: () => ({ char: " " }),
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
 }
 
-function terminal(replies: Record<string, string>): TermContext {
+function terminal(replies: Record<string, string>): TermProbeSource {
   const outcome = (sequence: string, pattern: RegExp) => {
     const raw = replies[sequence] ?? ""
     if (raw === "") return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
@@ -64,7 +64,7 @@ function terminal(replies: Record<string, string>): TermContext {
     queryOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
     queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
     queryMode: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
 }
 
 const exactReplies = {

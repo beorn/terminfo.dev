@@ -1,16 +1,16 @@
 import {
-  CAPABILITY_STATUSES,
-  type CapabilityResult,
-  type CapabilityStatus,
+  PROBE_STATUSES,
+  type ProbeResult,
+  type ProbeStatus,
 } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
-import type { PublicVersion, PublicCapabilityResult } from "./public-results.ts"
+import type { PublicVersion, PublicProbeResult } from "./public-results.ts"
 
 /** Read a current (schema-3) published result without manufacturing any legacy observation. */
 export function publicResultFor(
   version: PublicVersion | undefined,
   featureId: string,
-): PublicCapabilityResult | undefined {
+): PublicProbeResult | undefined {
   if (!version) return undefined
   return version.results.find((result) => result.featureId === featureId)
 }
@@ -50,7 +50,7 @@ export interface ReleaseScope {
 }
 
 /**
- * The five states one measured cell can be in. Current readings publish sealed `CapabilityStatus`
+ * The five states one measured cell can be in. Current readings publish sealed `ProbeStatus`
  * values directly; these names survive for the archived legacy evidence the v1 API still renders.
  *
  * Presentation states retain their existing keys: inconclusive is reserved for reviewed Untestable
@@ -91,27 +91,27 @@ export function treeMovedPastRelease(treeSuiteId: string | null, releaseSuiteId:
 /** Current score and completion fold recorded statuses over exactly the frozen catalogue. */
 export interface CurrentAggregate {
   denominator: number
-  counts: Record<CapabilityStatus, number>
-  idsByState: Record<CapabilityStatus, string[]>
+  counts: Record<ProbeStatus, number>
+  idsByState: Record<ProbeStatus, string[]>
   supported: number
   complete: boolean
 }
 
 export function aggregateCurrentResults(
-  results: readonly CapabilityResult[],
+  results: readonly ProbeResult[],
   catalogIds: readonly string[],
 ): CurrentAggregate {
   if (!catalogIds.length || new Set(catalogIds).size !== catalogIds.length) {
     throw new Error("Current aggregate requires a nonempty unique frozen catalogue")
   }
-  const counts: Record<CapabilityStatus, number> = {
+  const counts: Record<ProbeStatus, number> = {
     supported: 0,
     unsupported: 0,
     untestable: 0,
     "test-todo": 0,
     "test-failure": 0,
   }
-  const idsByState: Record<CapabilityStatus, string[]> = {
+  const idsByState: Record<ProbeStatus, string[]> = {
     supported: [],
     unsupported: [],
     untestable: [],
@@ -128,7 +128,7 @@ export function aggregateCurrentResults(
   const gradedIds = gradedFeatureIds(catalogIds)
   for (const id of gradedIds) {
     const result = byId.get(id)
-    if (!result || !CAPABILITY_STATUSES.includes(result.status)) {
+    if (!result || !PROBE_STATUSES.includes(result.status)) {
       throw new Error(`Invalid stored current status for ${id}`)
     }
     counts[result.status]++
@@ -178,7 +178,7 @@ export function decisiveCells(counts: { readonly supported: number; readonly uns
  * Untestable claim. This is the run-level twin of `notMeasuredReadout`, and the ONE predicate every
  * whole-run readout asks, so a page cannot print a measured-looking zero for it.
  */
-export function runDecidedNothing(counts: Readonly<Record<CapabilityStatus, number>>): boolean {
+export function runDecidedNothing(counts: Readonly<Record<ProbeStatus, number>>): boolean {
   return decisiveCells(counts) === 0
 }
 
@@ -199,7 +199,7 @@ export const NOT_MEASURED_TEXT = "Not measured yet"
  * defect is the false "0%", and nothing beside it may move.
  */
 export function notMeasuredReadout(
-  counts: Readonly<Record<CapabilityStatus, number>>,
+  counts: Readonly<Record<ProbeStatus, number>>,
 ): { text: string; title: string } | undefined {
   if (decisiveCells(counts) > 0) return undefined
   return { text: NOT_MEASURED_TEXT, title: currentCoverageSentence({ counts }) }

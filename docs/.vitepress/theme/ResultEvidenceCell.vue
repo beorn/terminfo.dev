@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
-import type { PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import type { PublicProbeResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
@@ -32,7 +32,7 @@ const props = withDefaults(
     probeGuidance?: string
     targetName: string
     version?: PublicVersion
-    cell?: PublicCapabilityResult
+    cell?: PublicProbeResult
     display?: "compact" | "text"
   }>(),
   { display: "compact" },

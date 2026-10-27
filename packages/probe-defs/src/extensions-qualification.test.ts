@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
 import { replayContext } from "./testing/group-harness.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 function callback(id: string) {
   const definition = extensionsProbes.find((item) => item.id === id)
@@ -18,7 +18,7 @@ function callback(id: string) {
 test("OSC 10 needs a complete matching foreground-color reply in both collectors", async () => {
   const definition = callback("extensions.osc10-fg-color")
   const frame = "\x1b]10;rgb:ffff/0000/0000\x07"
-  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as LibProbeSource)
   const app = (raw: string) =>
     definition.term!({
       queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
@@ -27,7 +27,7 @@ test("OSC 10 needs a complete matching foreground-color reply in both collectors
         raw,
         rawBase64: Buffer.from(raw).toString("base64"),
       }),
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
   for (const result of [headless(frame), await app(frame)]) {
     expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
     expect(result.response).toBe(frame)
@@ -45,7 +45,7 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
     capabilities: { truecolor: true },
     feed: () => undefined,
     getCell: () => ({ char: "X", fg: null, bg: null }),
-  } as unknown as TermlessContext)
+  } as unknown as LibProbeSource)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
   expect(result.assertions).toBeUndefined()
 })
@@ -62,7 +62,7 @@ test("extensions.truecolor grades unexposed RGB targets against the independent 
         fg: [null, ...controls, null, null][col] ?? null,
         bg: null,
       }),
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
   const ignored = run([
     { r: 128, g: 0, b: 0 },
     { r: 0, g: 0, b: 128 },
@@ -94,7 +94,7 @@ test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
   const result = definition.termless!({
     feed: () => undefined,
     feedCapture: () => "\x1b[?1;2c",
-  } as unknown as TermlessContext)
+  } as unknown as LibProbeSource)
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.assertions).toBeUndefined()
 })
@@ -122,7 +122,7 @@ const directReplies = [
 test.each(directReplies)("%s only qualifies its complete, bound query frame", async (id, frame) => {
   const definition = callback(id)
   const run = async (raw: string) => {
-    const headless = definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+    const headless = definition.termless!({ feedCapture: () => raw } as unknown as LibProbeSource)
     const query = async (_sequence: string, pattern: RegExp) => ({
       match: pattern.exec(raw),
       reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
@@ -132,7 +132,7 @@ test.each(directReplies)("%s only qualifies its complete, bound query frame", as
     const app = await definition.term!({
       queryWithSentinelOutcome: query,
       queryOutcome: query,
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
     return [headless, app]
   }
   for (const result of await run(frame)) {
@@ -208,7 +208,7 @@ test.each([
         feed.push(sequence)
       },
       feedCapture: () => replies.shift() ?? "",
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
     return { result, feed }
   }
   const original = color("00/00/00")
@@ -246,7 +246,7 @@ test.each(["extensions.osc710-font-normal", "extensions.osc2-title", "extensions
       queryCursorPosition: async () => {
         throw new Error("unmeasured CPR must not run")
       },
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
     expect(writes, id).toEqual([])
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
@@ -293,7 +293,7 @@ test.each(appResetProbes)(
           writes.push(bytes)
         },
         queryWithSentinelOutcome: exchange,
-      } as unknown as TermContext)
+      } as unknown as TermProbeSource)
       return { result, writes }
     }
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
@@ -341,7 +341,7 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
     definition.term!({
       write: () => undefined,
       queryCursorPosition: async () => cursor,
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
 
   const answered = await run(position)
   expect(answered.pass, id).toBe(false)
@@ -377,7 +377,7 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
         rawBase64: Buffer.from(raw).toString("base64"),
         ...(sentinel && { sentinel }),
       }),
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
 
   const silent = await app(da1, { atMs: 7, graceMs: 250 })
   expect(silent.observation).toMatchObject({
@@ -415,7 +415,7 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
 test("the unanswered-query choke point grades a measured sentinel and never a timeout", async () => {
   const definition = callback("extensions.osc21-kitty-color")
   const context = (reply: Record<string, unknown>) =>
-    definition.term!({ queryWithSentinelOutcome: async () => reply } as unknown as TermContext)
+    definition.term!({ queryWithSentinelOutcome: async () => reply } as unknown as TermProbeSource)
 
   const silent = await context({
     match: null,
@@ -445,7 +445,7 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 // Demanding a third parameter graded that failure as a malformed geometry.
 test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
   const definition = callback("extensions.sixel-geometry-report")
-  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as LibProbeSource)
   const app = (raw: string) =>
     definition.term!({
       queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
@@ -454,7 +454,7 @@ test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", as
         raw,
         rawBase64: Buffer.from(raw).toString("base64"),
       }),
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
   const failure = "\x1b[?2;3S"
   for (const result of [headless(failure), await app(failure)]) {
     expect(result.response).toBe(failure)
@@ -488,7 +488,7 @@ function kittyTransfer(id: string, allocation: (imageNumber: number) => string) 
     return /a=p,i=2,/.test(sequence) ? "\x1b_Gi=2;OK\x1b\\" : ""
   }
   const headless = () =>
-    definition.termless!({ feed: () => undefined, feedCapture: answer } as unknown as TermlessContext)
+    definition.termless!({ feed: () => undefined, feedCapture: answer } as unknown as LibProbeSource)
   const app = () =>
     definition.term!({
       queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
@@ -501,7 +501,7 @@ function kittyTransfer(id: string, allocation: (imageNumber: number) => string) 
         }
       },
       write: () => undefined,
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
   return { app, headless }
 }
 
@@ -538,7 +538,7 @@ test("a placement that is never acknowledged is a decisive negative about the ac
       }
     },
     write: () => undefined,
-  } as unknown as TermContext)
+  } as unknown as TermProbeSource)
   expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
   expect(result.assertions).toMatchObject([{ kind: "negative", expected: expect.stringContaining("acknowledgement") }])
   expect(JSON.stringify(result)).not.toMatch(/does not display/u)
@@ -556,7 +556,7 @@ test("a kitty allocation reply that echoes another image number does not qualify
 
 test("the kitty graphics query still qualifies its i=31;OK reply (27915 kept the single-key frame)", () => {
   const definition = callback("extensions.kitty-graphics")
-  const result = definition.termless!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as TermlessContext)
+  const result = definition.termless!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as LibProbeSource)
   expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
 })
 
@@ -594,7 +594,7 @@ function highlightTerminal(setCode: number, resetCode: number, initial: string, 
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { ctx, writes, queries, colour: () => colour }
 }
 

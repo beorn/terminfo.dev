@@ -24,7 +24,7 @@
  *
  * @fakes @terminfo/probe-defs
  */
-import type { TermlessContext } from "../types.ts"
+import type { LibProbeSource } from "../types.ts"
 import type { HeadlessModel } from "./group-harness.ts"
 
 type Rgb = { readonly r: number; readonly g: number; readonly b: number }
@@ -277,8 +277,8 @@ function reverseCodes(attributes: Attributes, codes: readonly number[]): Attribu
   return next
 }
 
-/** The cell shape `TermlessContext.getCell` returns. */
-export type SurfaceCellState = ReturnType<TermlessContext["getCell"]>
+/** The cell shape `LibProbeSource.getCell` returns. */
+export type SurfaceCellState = ReturnType<LibProbeSource["getCell"]>
 
 export interface SemanticSurfaceOptions {
   readonly cols?: number

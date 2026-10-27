@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { beforeEach, describe, expect, test, vi } from "vitest"
-import { ENVIRONMENT_GROUP_IDS, type AppLaunchReceipt, type CapabilityResult } from "@terminfo/probe-defs"
+import { ENVIRONMENT_GROUP_IDS, type AppLaunchReceipt, type ProbeResult } from "@terminfo/probe-defs"
 import { handleApp } from "./app.ts"
 import { admitCollectedRun, retainCollectedRun } from "./admit-collected-run.ts"
 import { captureTerminalAppReceipt, launchTerminalWindow } from "./terminal-app-receipt.ts"
@@ -94,7 +94,7 @@ const receipt: AppLaunchReceipt = {
   },
 }
 
-let results: CapabilityResult[]
+let results: ProbeResult[]
 
 beforeEach(() => {
   vi.resetAllMocks()

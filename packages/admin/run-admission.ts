@@ -12,7 +12,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, 
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
-import type { Interpretation, ProbeSuiteManifest, ProbeTarget } from "@terminfo/probe-defs"
+import type { Interpretation, ProbeSuiteManifest, ProbeSubject } from "@terminfo/probe-defs"
 import {
   decodeExactUtf8,
   measuredVersionTokens,
@@ -53,7 +53,7 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 export const CONTENT_DIR = join(ROOT, "content")
-const RUN_DIRS: Record<ProbeTarget["kind"], string> = {
+const RUN_DIRS: Record<ProbeSubject["kind"], string> = {
   app: "probes-apps",
   headless: "probes-libs",
   mux: "probes-mux",
@@ -480,7 +480,7 @@ export interface AdmissionPlan {
   source: string
   destination: string
   probeHash: string
-  target: { kind: ProbeTarget["kind"]; id: string; version: string; os: string }
+  target: { kind: ProbeSubject["kind"]; id: string; version: string; os: string }
   runId: string
   frozenSuiteId?: string
   release?: string
@@ -510,7 +510,7 @@ export function planAdmission(
   if (!isRecord(target) || !["app", "headless", "mux"].includes(String(target.kind))) {
     throw new Error(`Run to admit has no app|headless|mux target kind: ${source}`)
   }
-  const kind = target.kind as ProbeTarget["kind"]
+  const kind = target.kind as ProbeSubject["kind"]
   const id = String(target.id)
   const version = String(target.version)
   const os = typeof target.os === "string" && target.os.length > 0 ? target.os : "unknown"

@@ -2,7 +2,7 @@
  * The ONE declaration of rows that are DECIDABLE but not app-observable (#28018, @chief option B,
  * 2026-10-11 15:51 PDT). A row belongs here when the suite HAS a probe for it and the probe DOES
  * decide — but only on the parser surface, never in an app run. `reset.method` needs
- * `TermlessContext.reset()`, which `TermContext` has not got at all, and `scrollback.accumulate` /
+ * `LibProbeSource.reset()`, which `TermProbeSource` has not got at all, and `scrollback.accumulate` /
  * `scrollback.total-lines` read the retained-history count, a buffer fact that is never a screen
  * cell. Such a row is not `no-semantic-observable` (which means the suite has no probe), so it needs
  * its own reason and its own list. Every reader that scores app runs takes its denominator from

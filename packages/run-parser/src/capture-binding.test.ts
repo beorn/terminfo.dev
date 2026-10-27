@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { initializeRunDraft, sealRunDraft, recordExecutedCapability } from "@terminfo/probe-defs"
+import { initializeRunDraft, sealRunDraft, recordExecutedProbe } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
 const setup = (observed?: string) => {
   const draft = initializeRunDraft({
@@ -183,7 +183,7 @@ it("preserves the pixel screenshot reference through recorder, seal and canonica
     { featureId: "sgr.bold", kind: "positive", expected: "bold glyph", observed: ref, rawReplyRef: "sgr.bold" },
   ]
   draft.results = [
-    recordExecutedCapability({
+    recordExecutedProbe({
       featureId: "sgr.bold",
       attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
       observation: {

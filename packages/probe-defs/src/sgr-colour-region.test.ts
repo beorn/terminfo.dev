@@ -26,7 +26,7 @@ import type {
   CaptureRequest,
   CaptureRectangle,
   ObservationFrame,
-  TermContext,
+  TermProbeSource,
 } from "./types.ts"
 
 const ROWS = 24
@@ -466,7 +466,7 @@ function wholeDigest(grid: Cell[][]): string {
 }
 
 interface ColourTerminal {
-  ctx: TermContext
+  ctx: TermProbeSource
   writes: string[]
 }
 
@@ -496,7 +496,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
       ...(digests.region === undefined ? {} : { regionDigest: digests.region, regionRectangle: RECTANGLE }),
     }
   }
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     rows: geometry.rows,
     cols: geometry.cols,
     captureKind: "pixels",
@@ -526,7 +526,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
   return { ctx, writes }
 }
 
-async function run(id: string, ctx: TermContext) {
+async function run(id: string, ctx: TermProbeSource) {
   const definition = sgrProbes.find((candidate) => candidate.id === id)
   if (!definition?.term) throw new Error(`${id}: no term arm in sgrProbes`)
   return definition.term(ctx)

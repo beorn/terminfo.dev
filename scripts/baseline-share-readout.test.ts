@@ -5,11 +5,11 @@
  * @consumer Home baseline cards and /baseline/:id coverage rows through docs/data/release-scope.ts
  * @testonly none
  */
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import { describe, expect, it } from "vitest"
 import { decisiveCells, NOT_MEASURED_TEXT, notMeasuredReadout } from "../docs/data/release-scope.ts"
 
-const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
+const counts = (entries: Partial<Record<ProbeStatus, number>>): Record<ProbeStatus, number> => ({
   supported: 0,
   unsupported: 0,
   untestable: 0,

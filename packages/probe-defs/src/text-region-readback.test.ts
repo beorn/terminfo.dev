@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import type { ObservationFrame, TermContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 
@@ -57,7 +57,7 @@ function textFrame(
   }
 }
 
-const textContext = (): TermContext => ({
+const textContext = (): TermProbeSource => ({
   rows: 24,
   cols: 80,
   captureKind: "text-cells",
@@ -105,7 +105,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   })
 
   it("keeps the pixel path untouched when the run's adapter reads pixels", async () => {
-    const ctx: TermContext = { ...textContext(), captureKind: "pixels", captureGeometry: undefined }
+    const ctx: TermProbeSource = { ...textContext(), captureKind: "pixels", captureGeometry: undefined }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
     expect(result?.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
@@ -116,7 +116,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   // would claim evidence the arm never read; and naming the axes is not naming a cause, so the
   // verdict and its reason stay exactly as they were.
   it("names the cell axis space on a third distinct frame and keeps the verdict inconclusive", async () => {
-    const ctx: TermContext = {
+    const ctx: TermProbeSource = {
       ...textContext(),
       capture: async (request) => textFrame(request.label, request.role, "other"),
     }

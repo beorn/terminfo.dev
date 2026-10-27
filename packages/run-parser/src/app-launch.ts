@@ -17,7 +17,7 @@ import type {
   AppLaunchReceipt,
   AppSourceArtifact,
   DerivedSourceTreeArtifact,
-  ProbeTarget,
+  ProbeSubject,
   RunOrigin,
   WindowsMesaRendererReceipt,
 } from "@terminfo/probe-defs"
@@ -85,7 +85,7 @@ export function parseDerivedSourceTree(
 export function parseAppLaunchReceipt(
   value: unknown,
   originKind: RunOrigin["kind"],
-  targetKind: ProbeTarget["kind"],
+  targetKind: ProbeSubject["kind"],
   path: string,
 ): AppLaunchReceipt | undefined {
   if (value === undefined) return undefined

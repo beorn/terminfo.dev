@@ -29,7 +29,7 @@ import type {
   CaptureRectangle,
   ObservationFrame,
   ProbeCallbackResult,
-  TermContext,
+  TermProbeSource,
   TerminalQueryOutcome,
 } from "./types.ts"
 import { frameDigests } from "./types.ts"
@@ -66,7 +66,7 @@ export type RegionRead = (request: {
  * has no owned capture at all. A frame that came back without a digest is a collector bug, not a
  * measurement, so it raises instead of quietly degrading the verdict.
  */
-export function collectorRegionRead(ctx: TermContext): RegionRead | null {
+export function collectorRegionRead(ctx: TermProbeSource): RegionRead | null {
   // A text arm hands the region readback its own cells adapter; every other arm reads pixels.
   const capture = ctx.cells ?? ctx.capture
   if (!capture) return null
@@ -482,11 +482,11 @@ export interface PixelGeometryRefusal {
  * Everything the pixel-geometry queries below touch of a terminal context: ONE method, and nothing
  * else. Naming it lets a collector that owns the terminal ask the SAME implementation before it
  * starts a batch (there is no second geometry implementation to drift from), without inventing a
- * whole fake TermContext for a question that sends at most three QUERIES — CSI 16 t, then CSI 14 t
+ * whole fake TermProbeSource for a question that sends at most three QUERIES — CSI 16 t, then CSI 14 t
  * always, then CSI 18 t only when 16 t went unanswered — and reads at most TWO replies (a terminal
  * that answers 16 t is still asked 14 t for the text area).
  */
-export type PixelGeometryContext = Pick<TermContext, "queryWithSentinelOutcome">
+export type PixelGeometryContext = Pick<TermProbeSource, "queryWithSentinelOutcome">
 
 export async function queryPixelGeometry(
   ctx: PixelGeometryContext,
@@ -571,7 +571,7 @@ async function deriveCellSizeFromTextArea(
 
 /** Shared grid, calibrated-footprint and terminal-report eligibility, in that order. */
 export async function captureRegionGeometry(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   spec: RegionGeometrySpec,
   refusalEvidence: "none" | "query" = "none",
@@ -625,7 +625,7 @@ export async function captureRegionGeometry(
  * applied to whichever refusal this oracle takes.
  */
 export async function captureRegionVerdict(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   spec: Omit<RegionReadback, "pixelGeometry">,
   refusalEvidence: "none" | "query" = "none",
@@ -661,13 +661,13 @@ export async function captureRegionVerdict(
  * then DECTCEM restored and the screen reset, so a run never leaves a hidden cursor or an inherited
  * mode behind for the next probe.
  */
-export function beginCaptureLifecycle(ctx: TermContext): void {
+export function beginCaptureLifecycle(ctx: TermProbeSource): void {
   ctx.write("\x1b[0m")
   ctx.write("\x1b[?25l")
 }
 
 /** Close the shared capture lifecycle, running the arm's mode cleanup before DECTCEM is restored. */
-export function endCaptureLifecycle(ctx: TermContext, cleanup?: string): void {
+export function endCaptureLifecycle(ctx: TermProbeSource, cleanup?: string): void {
   if (cleanup !== undefined) ctx.write(cleanup)
   ctx.write("\x1b[?25h")
   ctx.write("\x1b[0m\x1b[2J\x1b[H")
@@ -772,7 +772,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
  * capture-inconclusive path stays in force — a missing readback is never a negative.
  */
 export async function captureRegionReadbackDecision(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   spec: RegionReadback,
   read: RegionRead | null,

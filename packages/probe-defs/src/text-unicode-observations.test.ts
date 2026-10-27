@@ -10,9 +10,9 @@ import { unicodeProbes } from "./unicode.ts"
 import { regionReadbackProbe } from "./region-readback-kind.ts"
 import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
-function app(overrides: Partial<TermContext> = {}): TermContext {
+function app(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => null,
@@ -28,7 +28,7 @@ function app(overrides: Partial<TermContext> = {}): TermContext {
   }
 }
 
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     cols: 80,
     feed() {},
@@ -960,13 +960,13 @@ function emojiTerminal(
     cursorSkew?: number
     feeds?: string[]
   } = {},
-): TermlessContext {
+): LibProbeSource {
   const cols = opts.cols ?? 80
   const sample: string = EMOJI_WIDTH_SAMPLES[id]
   const blank = { ...headless().getCell(0, 0), char: "", wide: false }
-  const cells = new Map<string, ReturnType<TermlessContext["getCell"]>>()
+  const cells = new Map<string, ReturnType<LibProbeSource["getCell"]>>()
   let cursor = { x: 0, y: 0 }
-  const put = (row: number, col: number, over: Partial<ReturnType<TermlessContext["getCell"]>>) =>
+  const put = (row: number, col: number, over: Partial<ReturnType<LibProbeSource["getCell"]>>) =>
     cells.set(`${row},${col}`, { ...blank, ...over })
   const glyph = (cluster: string, width: number) => {
     put(cursor.y, cursor.x, { char: cluster, wide: width === 2 })
@@ -1054,7 +1054,7 @@ test("headless emoji width concludes unsupported for a genuinely different measu
 
 test("headless emoji width keeps unqualified or ambiguous readbacks inconclusive", () => {
   const id: EmojiWidthId = "text.wide.emoji-flags"
-  const inconclusive = (ctx: TermlessContext, why: string) => {
+  const inconclusive = (ctx: LibProbeSource, why: string) => {
     const result = byId(id).termless(ctx)
     expect(result.observation, why).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(result.assertions, why).toBeUndefined()

@@ -9,7 +9,7 @@ import {
   type SelectedVersion,
   type CurrentSelectedVersion,
 } from "./selected-results.ts"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import type { CellState } from "./release-scope.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
@@ -230,7 +230,7 @@ export function compatibilityTargets(projection: SelectedProjection, contentDir:
 function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelectedVersion>(
   projection: {
     current: Record<string, Version>
-    table: Readonly<Record<string, Readonly<Record<string, CellState | CapabilityStatus>>>>
+    table: Readonly<Record<string, Readonly<Record<string, CellState | ProbeStatus>>>>
   },
   contentDir: string,
 ): Map<string, { contextKey: string; selected: Version; policy?: DefaultContextReview }> {
@@ -278,9 +278,9 @@ function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelect
 }
 
 function selectedStates(
-  table: Readonly<Record<string, Readonly<Record<string, CellState | CapabilityStatus>>>>,
+  table: Readonly<Record<string, Readonly<Record<string, CellState | ProbeStatus>>>>,
   runId: string,
-): Readonly<Record<string, CellState | CapabilityStatus>> {
+): Readonly<Record<string, CellState | ProbeStatus>> {
   const states = table[runId]
   if (!states) throw new Error(`Selected run ${runId} has no projected result table`)
   return states

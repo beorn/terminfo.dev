@@ -12,9 +12,9 @@ import { createVt100Backend } from "@termless/vt100"
 import { createVt220Backend } from "@termless/vt220"
 import { createVtermBackend } from "@termless/vterm"
 import { createXtermBackend } from "@termless/xtermjs"
-import { ALL_PROBES, type ProbeDefinition, type TermContext, type TerminalQueryOutcome } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeDefinition, type TermProbeSource, type TerminalQueryOutcome } from "@terminfo/probe-defs"
 import { afterEach, expect, test, vi } from "vitest"
-import { collectBatch, createTermlessContext, feedCapture, type ProvenReplyPath } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource, feedCapture, type ProvenReplyPath } from "./headless-batch.ts"
 import { PROVEN_REPLY_PATHS, replyPathDecision, type ReplyPathProof } from "./proven-reply-paths.ts"
 
 const encoder = new TextEncoder()
@@ -54,7 +54,7 @@ function scripted(script: (text: string) => string): TerminalBackend {
 
 function contextOf(backend: TerminalBackend, path?: ProvenReplyPath) {
   backend.init({ cols: 80, rows: 24 })
-  return createTermlessContext(backend, path)
+  return createLibProbeSource(backend, path)
 }
 
 const base64 = (raw: string) => Buffer.from(raw).toString("base64")
@@ -277,7 +277,7 @@ function recordingContext(script: (text: string) => string) {
 }
 
 /** A live context whose sentinel queries answer, in order, with the outcomes a headless arm was given. */
-function replayingLive(outcomes: readonly TerminalQueryOutcome[]): TermContext {
+function replayingLive(outcomes: readonly TerminalQueryOutcome[]): TermProbeSource {
   const queue = [...outcomes]
   const refused = (what: string) => async (): Promise<never> => {
     throw new Error(`the live arm asked for ${what}`)

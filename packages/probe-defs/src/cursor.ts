@@ -2,8 +2,8 @@ import {
   frameDigests,
   type ProbeDefinition,
   type ProbeCallbackResult,
-  type TermContext,
-  type TermlessContext,
+  type TermProbeSource,
+  type LibProbeSource,
 } from "./types.ts"
 import {
   cursorProbe,
@@ -34,13 +34,13 @@ const CURSOR_CUP_SCROLL_REGION_READBACK: Omit<RegionReadback, "pixelGeometry"> =
   minCols: 3,
 }
 
-function headlessPosition(ctx: TermlessContext, row: number, col: number): ProbeCallbackResult {
+function headlessPosition(ctx: LibProbeSource, row: number, col: number): ProbeCallbackResult {
   const cursor = ctx.getCursor()
   return parserStateResult(cursor.y === row && cursor.x === col, `cursor row=${row}, col=${col} (0-based)`, cursor)
 }
 
 function headlessSavedCursor(
-  ctx: TermlessContext,
+  ctx: LibProbeSource,
   initial: { row: number; col: number },
   displaced: { row: number; col: number },
   save: string,
@@ -86,7 +86,7 @@ function headlessSavedCursor(
 }
 
 async function appSavedCursor(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   initial: { row: number; col: number },
   displaced: { row: number; col: number },
   save: string,

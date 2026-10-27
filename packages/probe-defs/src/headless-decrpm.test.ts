@@ -8,7 +8,7 @@
 import { expect, test } from "vitest"
 import { decrpmPs, decrpmReplyPattern, decrpmStatus } from "./helpers.ts"
 import { modesProbes } from "./modes.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 const features = [
   { id: "modes.bracketed-paste", number: 2004, mode: "bracketedPaste" },
@@ -22,13 +22,13 @@ const features = [
 
 function headless(
   id: string,
-): NonNullable<TermlessContext extends infer _ ? (ctx: TermlessContext) => unknown : never> {
+): NonNullable<LibProbeSource extends infer _ ? (ctx: LibProbeSource) => unknown : never> {
   const definition = modesProbes.find((probe) => probe.id === id)
   if (!definition?.termless) throw new Error(`Missing headless callback for ${id}`)
   return definition.termless
 }
 
-function context(reply: string, mode: boolean, fed: string[], captured: string[]): TermlessContext {
+function context(reply: string, mode: boolean, fed: string[], captured: string[]): LibProbeSource {
   return {
     cols: 80,
     rows: 24,
@@ -47,7 +47,7 @@ function context(reply: string, mode: boolean, fed: string[], captured: string[]
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     getScrollback: () => ({ viewportOffset: 0, totalLines: 24, screenLines: 24 }),
     reset: () => {},
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
 }
 
 const expectedState = (reply: string, mode: string | null) => (mode === null ? { reply } : { reply, mode: true })
@@ -140,7 +140,7 @@ test.each(features.filter((feature) => feature.mode !== null))(
         order.push("getMode")
         return true
       },
-    } as unknown as TermlessContext
+    } as unknown as LibProbeSource
     headless(id)(probe)
     expect(order, id).toEqual(["getMode", "query"])
   },

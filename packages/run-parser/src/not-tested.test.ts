@@ -144,7 +144,7 @@ describe("execution-owned five statuses", () => {
     ["supported", "unsupported", "unsupported"],
     ["supported", "supported", "supported"],
   ] as const)("retains required-check precedence for %s plus %s", async (first, second, expected) => {
-    const { finalizeCapabilityResult } = await import("@terminfo/probe-defs")
+    const { finalizeProbeResult } = await import("@terminfo/probe-defs")
     const checks = [first, second].map((status, index) => ({
       id: `check-${index}`,
       status,
@@ -154,7 +154,7 @@ describe("execution-owned five statuses", () => {
           : { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" },
       ...(status === "test-todo" || status === "test-failure" ? { reason: "required check incomplete" } : {}),
     }))
-    const result = finalizeCapabilityResult({
+    const result = finalizeProbeResult({
       featureId: "sgr.bold",
       attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
       checks,

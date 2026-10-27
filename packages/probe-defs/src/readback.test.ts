@@ -9,9 +9,9 @@ import { cursorProbes } from "./cursor.ts"
 import { modesProbes } from "./modes.ts"
 import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
-import type { TermContext, TerminalQueryOutcome } from "./types.ts"
+import type { TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
-function termProbe(id: string): (ctx: TermContext) => Promise<import("./types.ts").ProbeCallbackResult> {
+function termProbe(id: string): (ctx: TermProbeSource) => Promise<import("./types.ts").ProbeCallbackResult> {
   const probe = [...sgrProbes, ...cursorProbes, ...modesProbes, ...resetProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term
@@ -25,7 +25,7 @@ function timeout(): TerminalQueryOutcome {
  * A Kitty-shaped terminal: it maintains real SGR, DECTCEM and IRM state and answers DECRQSS
  * and DECRQM from that state. `answer: false` models a terminal that never replies.
  */
-function kittyContext(answer: boolean, resets = true, permanent = false): TermContext {
+function kittyContext(answer: boolean, resets = true, permanent = false): TermProbeSource {
   let sgr: number[] = []
   let visible = true
   let irm = false

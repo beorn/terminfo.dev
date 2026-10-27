@@ -1,4 +1,4 @@
-import type { ObservationEvidence, ProbeDefinition, ProbeCallbackResult, TermContext, TermlessContext } from "./types.ts"
+import type { ObservationEvidence, ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 import { isBlank, parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -89,7 +89,7 @@ function restoreDefaultTabs(write: (sequence: string) => void, cols: number): vo
   write(sequence + "\x1b[1;1H")
 }
 
-function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeCallbackResult | undefined {
+function tooSmall(ctx: TermProbeSource, rows: number, cols: number): ProbeCallbackResult | undefined {
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
   return {
     pass: false,
@@ -294,7 +294,7 @@ function isLoneSurrogate(value: string): boolean {
  * being discarded as insufficient evidence, while constant/stale/wrapped/ambiguous readbacks stay
  * inconclusive. Width two is claimed only for the declared sample, never for a rendered glyph.
  */
-function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: DeclaredWidthSample): ProbeCallbackResult {
+function emojiWidthResult(ctx: LibProbeSource, { sample, maxColumns }: DeclaredWidthSample): ProbeCallbackResult {
   const expected = "Declared-width sample occupies two parser columns after qualified setup"
   const home = "\x1b[1;1H\x1b[2K"
   const marker = "X"

@@ -5,18 +5,18 @@ import { aggregateCurrentResults, treeMovedPastRelease, type CellState, type Sui
 import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
-  type CapabilityResult,
-  type CapabilityStatus,
+  type ProbeResult,
+  type ProbeStatus,
   type Observation,
   type ObservationFrame,
   type ProbeAssertion,
-  type ProbeTarget,
+  type ProbeSubject,
   type RunOrigin,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
   type TextQualification,
   isNonMeasuringEvidence,
-  finalizeCapabilityResult,
+  finalizeProbeResult,
   type TextQualificationAssessment,
 } from "@terminfo/probe-defs"
 import {
@@ -92,7 +92,7 @@ export type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
 export interface SelectedVersion {
   schemaVersion: 1 | 2
   runId: string
-  target: ProbeTarget
+  target: ProbeSubject
   measuredAt: string
   suiteId: string
   probeHash: string | null
@@ -148,7 +148,7 @@ export interface SelectedExclusion {
 export interface CurrentSelectedVersion {
   schemaVersion: 3
   runId: string
-  target: ProbeTarget
+  target: ProbeSubject
   measuredAt: string
   suiteId: string
   probeHash: string
@@ -158,7 +158,7 @@ export interface CurrentSelectedVersion {
   /** The identity the run recorded for itself. Only its trace document publishes it. */
   identity: LoadedRun["identity"]
   catalogIds: string[]
-  results: CapabilityResult[]
+  results: ProbeResult[]
   rawReplies: Record<string, string>
   assertions: ProbeAssertion[]
   origin: RunOrigin
@@ -170,7 +170,7 @@ export interface CurrentSelectedVersion {
   identityAdmission?: IdentityAdmission
   suiteRelation: SuiteRelation
   suiteFreshness: string
-  counts: Record<CapabilityStatus, number>
+  counts: Record<ProbeStatus, number>
   score: { supported: number; all: number }
   complete: boolean
 }
@@ -179,7 +179,7 @@ export interface SelectedProjection {
   current: Record<string, CurrentSelectedVersion>
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
-  table: Readonly<Record<string, Readonly<Record<string, CapabilityStatus>>>>
+  table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
   /** Archived assessment refusals followed by the schema-3 refusals this reading assessed. */
   exclusions: SelectedExclusion[]
   releaseSuiteId: string | null
@@ -302,13 +302,13 @@ function consoleHostHold(
 }
 
 /** A current run's sealed results as this reader counts them: unchanged but for the console-host rule. */
-export function consoleHostHeldResults(run: LoadedRun): CapabilityResult[] {
+export function consoleHostHeldResults(run: LoadedRun): ProbeResult[] {
   if (!run.results) throw new Error(`Run ${run.runId} has no current schema-3 results`)
   return run.results.map((result) => {
     const hold = consoleHostHold(run, result, result.status)
     if (hold === undefined) return result
     const { status: _sealed, ...unsealed } = result
-    return finalizeCapabilityResult({
+    return finalizeProbeResult({
       ...unsealed,
       checks: [...result.checks, { id: "console-host", status: "test-todo", attempt: { scope: "none" }, reason: hold }],
       reason: hold,
@@ -468,7 +468,7 @@ function prepareRunCells(
 export function classifyDevelopmentRun(run: LoadedRun): {
   mode: "development"
   runId: string
-  states: Record<string, CapabilityStatus>
+  states: Record<string, ProbeStatus>
 } {
   if (run.schemaVersion !== 3 || !run.results) {
     throw new Error(
@@ -496,7 +496,7 @@ export function maskRunnerStorePath(config: unknown): unknown {
     : config
 }
 
-const contextKey = (t: ProbeTarget): string =>
+const contextKey = (t: ProbeSubject): string =>
   JSON.stringify([
     t.kind,
     t.id,
@@ -531,7 +531,7 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
  * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
-export function projectedContextKey(target: ProbeTarget, contextCount: number): string {
+export function projectedContextKey(target: ProbeSubject, contextCount: number): string {
   const stem = `${target.kind}:${target.id}`
   return contextCount === 1 ? stem : `${stem}@${contextKey(target)}`
 }
@@ -574,7 +574,7 @@ export type RecognizedProjectedContextKey =
   | { shape: "bare-stem" }
   | { shape: "unreadable" }
 
-/** The stems a bare key can name: exactly `ProbeTarget.kind` (`packages/probe-defs/src/types.ts`). */
+/** The stems a bare key can name: exactly `ProbeSubject.kind` (`packages/probe-defs/src/types.ts`). */
 const BARE_STEM = /^(?:app|headless|mux):[^@/]+$/
 
 /** Read a context key as one of the shapes the builder writes; a bare stem is legitimate, not a defect. */
@@ -637,7 +637,7 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
-  const table: Record<string, Record<string, CapabilityStatus>> = {}
+  const table: Record<string, Record<string, ProbeStatus>> = {}
   validatePresentationSupersession(interpretations, "interpretations")
   const active = activeInterpretations(interpretations)
   for (const run of currentRuns) {
@@ -735,7 +735,7 @@ export function projectResults(
   return { ...projection, table }
 }
 
-export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, CapabilityStatus>> {
+export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, ProbeStatus>> {
   const states = projection.table[runId]
   if (!states) throw new Error(`The projection classified no row for run ${runId}`)
   return states

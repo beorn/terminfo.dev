@@ -8,9 +8,9 @@
 import { describe, expect, it } from "vitest"
 import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
-import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
-const results = (entries: Record<string, CapabilityStatus>): CapabilityResult[] =>
+const results = (entries: Record<string, ProbeStatus>): ProbeResult[] =>
   Object.entries(entries).map(([featureId, status]) => ({
     featureId,
     status,

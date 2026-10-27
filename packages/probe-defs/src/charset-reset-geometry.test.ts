@@ -7,7 +7,7 @@
 import { afterEach, expect, test, vi } from "vitest"
 import { charsetsProbes } from "./charsets.ts"
 import { resetProbes } from "./reset.ts"
-import type { ObservationFrame, TermContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 afterEach(() => vi.useRealTimers())
 
@@ -23,7 +23,7 @@ function app(
   events: string[],
   cursorResponses: ReadonlyArray<{ row: number; col: number } | null> = [{ row: 1, col: 2 }],
   decrqss: "unexpected" | "silent" = "unexpected",
-): TermContext {
+): TermProbeSource {
   let cursorIndex = 0
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in charset/reset geometry fixture`)

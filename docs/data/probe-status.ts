@@ -29,7 +29,7 @@ export const REVIEWED_PROBE_STATUSES = ["manual", "partial"] as const
 export type ReviewedProbeStatus = (typeof REVIEWED_PROBE_STATUSES)[number]
 
 /** The five states a feature page can show. `undeclared` is temporary (28801 deletes it). */
-export type ProbeStatus = "automated" | ReviewedProbeStatus | "unprobed" | "undeclared"
+export type ProbeCoverageStatus = "automated" | ReviewedProbeStatus | "unprobed" | "undeclared"
 
 /** What the definitions alone settle; `null` leaves the row to its reviewed value, or to undeclared. */
 export type DerivedProbeStatus = "automated" | "partial" | null
@@ -56,7 +56,7 @@ export function derivedProbeStatus(definition: ProbeDefinition): DerivedProbeSta
  * carries its reason; otherwise the definitions decide; a row with no definition at all reads
  * unprobed; a row the definitions cannot settle and no one reviewed reads undeclared.
  */
-export function probeStatusOf(id: string, catalog: FeatureCatalog): ProbeStatus {
+export function probeStatusOf(id: string, catalog: FeatureCatalog): ProbeCoverageStatus {
   const reviewed = catalog[id]?.probeStatus
   if (isReviewed(reviewed)) return reviewed
   const definition = BY_ID.get(id)
@@ -65,7 +65,7 @@ export function probeStatusOf(id: string, catalog: FeatureCatalog): ProbeStatus 
 }
 
 export interface ProbeStatusSummary {
-  counts: Record<ProbeStatus, number>
+  counts: Record<ProbeCoverageStatus, number>
   /** Rows the definitions cannot settle and no one reviewed: the temporary `undeclared` value. */
   undeclared: string[]
   /** Rows with a definition whose reviewed value stands over a derivation the definitions DO settle. */
@@ -76,7 +76,7 @@ export interface ProbeStatusSummary {
 
 /** One summary for every printer and for validate: the distribution, and the undeclared gap. */
 export function probeStatusSummary(catalog: FeatureCatalog): ProbeStatusSummary {
-  const counts: Record<ProbeStatus, number> = {
+  const counts: Record<ProbeCoverageStatus, number> = {
     automated: 0,
     partial: 0,
     manual: 0,

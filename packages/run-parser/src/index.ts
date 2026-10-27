@@ -2,15 +2,15 @@
 import { createHash } from "node:crypto"
 import { isAbsolute, win32 } from "node:path"
 import {
-  CAPABILITY_STATUSES,
-  finalizeCapabilityResult,
+  PROBE_STATUSES,
+  finalizeProbeResult,
   type CaptureDecision,
   type RunDraft,
   type CapturedRunDraft,
   type HistoricalProbeRun,
-  type CapabilityResult,
-  type CapabilityAttempt,
-  type CheckResult,
+  type ProbeResult,
+  type ProbeAttempt,
+  type ProbeTestResult,
   OBSERVATION_EVIDENCE,
   OBSERVATION_OUTCOMES,
   OBSERVATION_REASONS,
@@ -23,7 +23,7 @@ import {
   type ObservationFrame,
   type ProbeAssertion,
   type ProbeRun,
-  type ProbeTarget,
+  type ProbeSubject,
   type RunOrigin,
   type HeadlessRuntimeIdentity,
   type RunProvenance,
@@ -44,7 +44,7 @@ export interface LoadedRun {
   sha256: string
   schemaVersion: 1 | 2 | 3
   runId: string
-  target: ProbeTarget
+  target: ProbeSubject
   identity: ProbeRun["identity"]
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
@@ -69,10 +69,10 @@ export interface LoadedRun {
   notTested: NotTestedCoverage[]
   ungradedDiagnostics: Record<string, UngradedDiagnostic>
   legacy: boolean
-  results?: CapabilityResult[]
+  results?: ProbeResult[]
   catalogIds?: string[]
   sealedAt?: string
-  intendedContext?: Partial<ProbeTarget>
+  intendedContext?: Partial<ProbeSubject>
 }
 
 const object = (value: unknown): value is Record<string, unknown> =>
@@ -220,11 +220,11 @@ export function parseJsonStrict(path: string, source: string): unknown {
   return parsed
 }
 
-export function parseTarget(value: unknown, path: string): ProbeTarget {
+export function parseSubject(value: unknown, path: string): ProbeSubject {
   if (!object(value)) fail(path, "missing target")
   if (!["app", "headless", "mux"].includes(String(value.kind))) fail(path, "invalid target.kind")
   return {
-    kind: value.kind as ProbeTarget["kind"],
+    kind: value.kind as ProbeSubject["kind"],
     id: asString(value.id, path, "target.id"),
     version: asString(value.version, path, "target.version"),
     os: nullableString(value.os, path, "target.os"),
@@ -236,7 +236,7 @@ export function parseTarget(value: unknown, path: string): ProbeTarget {
   }
 }
 
-function parseRuntimeIdentity(value: unknown, target: ProbeTarget, path: string): HeadlessRuntimeIdentity | undefined {
+function parseRuntimeIdentity(value: unknown, target: ProbeSubject, path: string): HeadlessRuntimeIdentity | undefined {
   if (target.kind !== "headless") {
     if (value !== undefined) fail(path, "runtimeIdentity is only valid for headless targets")
     return undefined
@@ -945,7 +945,7 @@ export function measuredVersionTokens(version: string): string[] {
 /** The collector and loader share this validation before a native run is sealed or selected. */
 export function parseRunProvenance(
   value: unknown,
-  target: ProbeTarget,
+  target: ProbeSubject,
   expected: { probeHash: string; sourceRevision: string },
   path: string,
 ): RunProvenance | undefined {
@@ -1084,7 +1084,7 @@ function parseNotTested(
 
 export function parseOuterApp(
   value: unknown,
-  target: ProbeTarget,
+  target: ProbeSubject,
   originKind: RunOrigin["kind"],
   expected: { probeHash: string; sourceRevision: string },
   path: string,
@@ -1097,7 +1097,7 @@ export function parseOuterApp(
   ) {
     fail(path, "invalid outerApp fields")
   }
-  const outerTarget = parseTarget(value.target, `${path}.outerApp`)
+  const outerTarget = parseSubject(value.target, `${path}.outerApp`)
   if (outerTarget.kind !== "app" || outerTarget.outerTerminal !== null || outerTarget.mux !== null) {
     fail(path, "outerApp requires one app target without another outer terminal or mux")
   }
@@ -1306,7 +1306,7 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       return index
     })
   }
-  const checks = result.checks.map((check): CheckResult =>
+  const checks = result.checks.map((check): ProbeTestResult =>
     check.id === "review"
       ? {
           ...check,
@@ -1319,7 +1319,7 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       : check,
   )
   draft.rawReplies[reviewRef] = source
-  draft.results[index] = finalizeCapabilityResult({
+  draft.results[index] = finalizeProbeResult({
     ...result,
     checks,
     reviewRef,
@@ -1329,7 +1329,7 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
 }
 
 /** Validate recorded execution facts; this never infers a current result from a missing row. */
-function capabilityAttempt(value: unknown, path: string, rawReplies: Record<string, string>): CapabilityAttempt {
+function probeAttempt(value: unknown, path: string, rawReplies: Record<string, string>): ProbeAttempt {
   if (!object(value) || !["none", "collection", "probe"].includes(String(value.scope))) {
     fail(path, "invalid capability attempt scope")
   }
@@ -1353,7 +1353,7 @@ function capabilityAttempt(value: unknown, path: string, rawReplies: Record<stri
   }
 }
 
-export function parseCapabilityResults(
+export function parseProbeResults(
   value: unknown,
   path: string,
   expected: ReadonlySet<string>,
@@ -1361,20 +1361,20 @@ export function parseCapabilityResults(
   assertions: readonly ProbeAssertion[],
   screenshotRefs: readonly string[] = [],
   textSnapshotRefs: readonly string[] = [],
-): CapabilityResult[] {
+): ProbeResult[] {
   if (!Array.isArray(value)) fail(path, "missing explicit capability results")
   const seen = new Set<string>()
-  const results = value.map((item): CapabilityResult => {
+  const results = value.map((item): ProbeResult => {
     if (!object(item) || !nonempty(item.featureId)) fail(path, "invalid capability result")
     const featureId = item.featureId
     if (seen.has(featureId)) fail(path, `duplicate capability ${featureId}`)
     seen.add(featureId)
     if (!expected.has(featureId)) fail(path, `${featureId} is outside frozen catalogue membership`)
-    if (!CAPABILITY_STATUSES.includes(item.status as CapabilityResult["status"])) {
+    if (!PROBE_STATUSES.includes(item.status as ProbeResult["status"])) {
       fail(path, `invalid capability status for ${featureId}`)
     }
-    const status = item.status as CapabilityResult["status"]
-    const attempt = capabilityAttempt(item.attempt, `${path}: ${featureId}`, rawReplies)
+    const status = item.status as ProbeResult["status"]
+    const attempt = probeAttempt(item.attempt, `${path}: ${featureId}`, rawReplies)
     if (["test-todo", "test-failure", "untestable"].includes(status) && !nonempty(item.reason)) {
       fail(path, `${featureId} ${status} requires reason`)
     }
@@ -1383,15 +1383,15 @@ export function parseCapabilityResults(
     }
     if (!Array.isArray(item.checks)) fail(path, `${featureId} requires its explicit check set`)
     const checkIds = new Set<string>()
-    const checks = item.checks.map((entry): CheckResult => {
+    const checks = item.checks.map((entry): ProbeTestResult => {
       if (!object(entry) || !nonempty(entry.id) || checkIds.has(entry.id)) {
         fail(path, `${featureId} requires unique check ids`)
       }
       checkIds.add(entry.id)
-      if (!CAPABILITY_STATUSES.includes(entry.status as CheckResult["status"])) {
+      if (!PROBE_STATUSES.includes(entry.status as ProbeTestResult["status"])) {
         fail(path, `invalid check status for ${featureId}/${entry.id}`)
       }
-      const checkAttempt = capabilityAttempt(entry.attempt, `${path}: ${featureId}/${entry.id}`, rawReplies)
+      const checkAttempt = probeAttempt(entry.attempt, `${path}: ${featureId}/${entry.id}`, rawReplies)
       if (entry.status !== "test-todo" && checkAttempt.scope === "none") {
         fail(path, `decided check ${featureId}/${entry.id} has no attempt`)
       }
@@ -1411,10 +1411,10 @@ export function parseCapabilityResults(
       ) {
         fail(path, `missing raw check evidence for ${featureId}`)
       }
-      return { ...entry, attempt: checkAttempt } as unknown as CheckResult
+      return { ...entry, attempt: checkAttempt } as unknown as ProbeTestResult
     })
-    const result = { ...item, featureId, status, attempt, checks } as unknown as CapabilityResult
-    if (finalizeCapabilityResult(result).status !== status) {
+    const result = { ...item, featureId, status, attempt, checks } as unknown as ProbeResult
+    if (finalizeProbeResult(result).status !== status) {
       fail(path, `${featureId} recorded status hides required check work`)
     }
     if (status === "supported" || status === "unsupported") {
@@ -1496,7 +1496,7 @@ export function parseRun(
   if (raw.schemaVersion === 2 || raw.schemaVersion === 3) {
     const current = raw.schemaVersion === 3
     if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
-    const target = parseTarget(raw.target, path)
+    const target = parseSubject(raw.target, path)
     const runtimeIdentity = parseRuntimeIdentity(raw.runtimeIdentity, target, path)
     const runId = asString(raw.runId, path, "runId")
     if (!["verified", "unverified", "disputed"].includes(String(raw.identity))) fail(path, "invalid identity")
@@ -1621,7 +1621,7 @@ export function parseRun(
     }
     if (!date(raw.measuredAt)) fail(path, "invalid measuredAt")
     const results = current
-      ? parseCapabilityResults(
+      ? parseProbeResults(
           raw.results,
           path,
           expected,
@@ -1644,7 +1644,7 @@ export function parseRun(
         suiteId: asString(raw.suiteId, path, "suiteId"),
         probeHash,
         sourceRevision,
-        intendedContext: raw.intendedContext as Partial<ProbeTarget>,
+        intendedContext: raw.intendedContext as Partial<ProbeSubject>,
         target,
         results,
         rawReplies: raw.rawReplies as Record<string, string>,
@@ -1677,7 +1677,7 @@ export function parseRun(
             results,
             catalogIds: [...expected],
             sealedAt: raw.sealedAt as string,
-            intendedContext: raw.intendedContext as Partial<ProbeTarget>,
+            intendedContext: raw.intendedContext as Partial<ProbeSubject>,
           }
         : {}),
       runId,
@@ -1712,7 +1712,7 @@ export function parseRun(
   }
 
   // Existing boolean captures are preserved byte-for-byte and never graded.
-  const kind: ProbeTarget["kind"] = path.includes("probes-mux/") ? "mux" : raw.backend ? "headless" : "app"
+  const kind: ProbeSubject["kind"] = path.includes("probes-mux/") ? "mux" : raw.backend ? "headless" : "app"
   const id = asString(raw.backend ?? raw.terminal, path, "backend/terminal")
   const version = asString(raw.version ?? raw.terminalVersion, path, "version")
   if (!date(raw.generated)) fail(path, "invalid generated timestamp")
@@ -1723,7 +1723,7 @@ export function parseRun(
     if (typeof value !== "boolean") fail(path, `invalid legacy result for ${featureId}`)
     observations.push({ featureId, outcome: value ? "supported" : "unsupported", evidence: "legacy" })
   }
-  const target: ProbeTarget = {
+  const target: ProbeSubject = {
     kind,
     id,
     version,

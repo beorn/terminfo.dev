@@ -7,7 +7,7 @@
  */
 import { expect, test } from "vitest"
 import { ALL_PROBES } from "./index.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 // The 7 scheduled headless features whose raw state is measurable but whose claim is not. The seven DECRQM
 // mode features left this list with #30543: their headless arm grades the engine's own DECRPM reply.
@@ -21,7 +21,7 @@ const notTestedFeatures = [
   "sgr.overline",
 ]
 
-const context = (): TermlessContext =>
+const context = (): LibProbeSource =>
   ({
     cols: 80,
     rows: 24,
@@ -34,7 +34,7 @@ const context = (): TermlessContext =>
     getCell: () => ({ char: "X" }),
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
-  }) as unknown as TermlessContext
+  }) as unknown as LibProbeSource
 
 test("the 7 headless not-tested features emit named coverage from measured state", () => {
   expect(notTestedFeatures).toHaveLength(7)

@@ -30,11 +30,11 @@ import {
   type PixelGeometrySource,
   type PixelGeometry,
   type CapturedRunDraft,
-  type ProbeTarget,
+  type ProbeSubject,
   initializeRunDraft,
   recordCollectionFailure,
   type ProbeSuiteManifest,
-  type TermContext,
+  type TermProbeSource,
   type TerminalQueryOutcome,
   type TextQualification,
 } from "@terminfo/probe-defs"
@@ -58,7 +58,7 @@ import {
 } from "./owned-terminal.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
-import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseTarget } from "@terminfo/run-parser"
+import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
 /**
@@ -368,7 +368,7 @@ export async function collectProbeRun(
     processOwner?: ProcessOwnerAssertion
     expectedLaunchRunId?: string
     captureRunId?: string
-    intendedContext?: Partial<ProbeTarget>
+    intendedContext?: Partial<ProbeSubject>
   } = {},
 ): Promise<CapturedRunDraft> {
   const out = options.out ?? process.stdout
@@ -433,7 +433,7 @@ export async function collectProbeRun(
     if (envelope && Object.keys(envelope).some((key) => key !== "target" && key !== "outerApp")) {
       throw new Error("Mux runtime provenance envelope has unexpected fields")
     }
-    const muxTarget = envelope ? parseTarget(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
+    const muxTarget = envelope ? parseSubject(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
     delegatedIds = manifest.probes[muxTarget ? "mux" : "app"].filter((id) => !options.ids || options.ids.includes(id))
     if (
       muxTarget &&
@@ -537,7 +537,7 @@ export async function collectProbeRun(
     }
     let prepareCapture:
       | ((input: {
-          context: TermContext
+          context: TermProbeSource
           featureId: string
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
         }) => Promise<void>)
@@ -891,7 +891,7 @@ export async function collectProbeRun(
         ? batch.appLaunch.productVersion
         : resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, batch.rawReplies)
     const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
-    const target: ProbeTarget = muxTarget
+    const target: ProbeSubject = muxTarget
       ? { ...muxTarget, version: measuredVersion }
       : {
           kind: "app",

@@ -5,10 +5,10 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { recordExecutedCapability } from "./helpers.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
-import type { ProbeCallbackResult, TermContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeCallbackResult, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 function timeout(): TerminalQueryOutcome {
   return { match: null, reason: "timeout", raw: "", rawBase64: "" }
@@ -49,7 +49,7 @@ function sgrReadbackContext(reply: string | null | readonly (string | null)[]) {
       return { match: [raw, payload], reason: "reply", raw, rawBase64: Buffer.from(raw).toString("base64") }
     },
     queryMode: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { ctx, queries, writes, writesAtQuery }
 }
 
@@ -71,7 +71,7 @@ function qualifiedSgrReadbackContext(id: string, reply: string | null) {
   return sgrReadbackContext(setup !== undefined && reply !== null ? ["0", setup, reply] : reply)
 }
 
-function sgrTerm(id: string): (ctx: TermContext) => Promise<ProbeCallbackResult> {
+function sgrTerm(id: string): (ctx: TermProbeSource) => Promise<ProbeCallbackResult> {
   const probe = [...sgrProbes, ...resetProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term
@@ -145,7 +145,7 @@ test.each([
   expect(result.pass).toBe(false)
   expect(result.assertions ?? []).toHaveLength(0)
   expect(result.response).toContain(reply)
-  const recorded = recordExecutedCapability({
+  const recorded = recordExecutedProbe({
     featureId: id,
     attempt: { scope: "probe", startedAt: "2026-10-21T11:15:00.000Z" },
     observation: { ...result.observation!, featureId: id, rawReplyRef: id },
@@ -250,7 +250,7 @@ test.each([
     expect(result.observation?.note).toBeTruthy()
     expect(result.assertions ?? []).toHaveLength(0)
     // An attempted malformed reply must remain unsuccessful at the stored-result boundary too.
-    const recorded = recordExecutedCapability({
+    const recorded = recordExecutedProbe({
       featureId: id,
       attempt: { scope: "probe", startedAt: "2026-10-21T10:50:00.000Z" },
       observation: { ...result.observation!, featureId: id, rawReplyRef: id },

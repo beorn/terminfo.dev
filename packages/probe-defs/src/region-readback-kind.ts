@@ -18,7 +18,7 @@
  * ruling): the third attribute-rectangle probe converted the kind once, so DECCARA, DECRARA and the
  * EL background row grade attribute changes on both arms instead of being hand-written beside it.
  */
-import type { ProbeDefinition, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, LibProbeSource } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { isBlank, notTestedResult, parserStateResult } from "./helpers.ts"
 
@@ -211,7 +211,7 @@ interface RegionReadbackGeometry {
  * either side, is the same blank (the shared `isBlank` helper) — a terminal that implements a
  * sequence must never grade unsupported for choosing the other spelling (28450 must-fix 1).
  */
-type MeasuredCell = ReturnType<TermlessContext["getCell"]>
+type MeasuredCell = ReturnType<LibProbeSource["getCell"]>
 
 /**
  * One cell compared against its declared expectation. The character keeps the blank rule; an
@@ -381,7 +381,7 @@ function gridMatch(
 }
 
 /** The compared region's cells, read from the parser at their own screen positions. */
-function readGrid(ctx: TermlessContext, geometry: RegionReadbackGeometry): MeasuredCell[][] {
+function readGrid(ctx: LibProbeSource, geometry: RegionReadbackGeometry): MeasuredCell[][] {
   return Array.from({ length: geometry.rows }, (_, row) =>
     Array.from({ length: geometry.columns }, (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col)),
   )

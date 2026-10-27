@@ -27,7 +27,7 @@ import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
-import { CAPABILITY_STATUSES } from "@terminfo/probe-defs"
+import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { readVerifiedArtifact } from "../docs/data/selected-results.ts"
@@ -316,7 +316,7 @@ export function generateApi(
         .at(-1) ?? "",
     methodology: {
       revision: "2026-10-20-sealed-five-statuses",
-      statuses: CAPABILITY_STATUSES,
+      statuses: PROBE_STATUSES,
       score: "Supported / all frozen catalog positions; no exclusions.",
       completion:
         "A context is complete only with zero TEST TODO and TEST FAILURE. Absent required contexts remain incomplete.",

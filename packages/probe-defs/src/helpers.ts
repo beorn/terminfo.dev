@@ -1,12 +1,12 @@
-import { CAPABILITY_STATUSES } from "./types.ts"
-import type { ProbeCheckResult } from "./types.ts"
+import { PROBE_STATUSES } from "./types.ts"
+import type { ProbeTestInput } from "./types.ts"
 import type {
-  CapabilityAttempt,
+  ProbeAttempt,
   Observation,
   NotTestedCoverage,
   ProbeAssertion,
   UngradedDiagnostic,
-  CapabilityResult,
+  ProbeResult,
   CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
@@ -16,8 +16,8 @@ import type {
   ProbeDefinition,
   ProbeCallbackResult,
   TerminalQueryOutcome,
-  TermlessContext,
-  TermContext,
+  LibProbeSource,
+  TermProbeSource,
 } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
@@ -109,7 +109,7 @@ export function colorReadbackReviewResult(noObservable: string, state: object): 
  * to its own oracle: a context that cannot answer this round trip already fails its geometry and
  * width reads by name (@dev/review2).
  */
-export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise<ProbeCallbackResult | null> {
+export async function utf8DecodingRefusal(ctx: TermProbeSource, id: string): Promise<ProbeCallbackResult | null> {
   if (!ctx.utf8Decoding) return null
   if ((await ctx.utf8Decoding()) !== "8-bit") return null
   return {
@@ -132,7 +132,7 @@ export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise
 }
 
 /** Selective erase must remove unprotected cells and retain a protected control. */
-export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rectangular: boolean): ProbeCallbackResult {
+export function selectiveEraseResult(ctx: LibProbeSource, sequence: string, rectangular: boolean): ProbeCallbackResult {
   const expected = "DECSCA-protected P survives while selective erase clears ABCD"
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Need six measured columns")
@@ -200,7 +200,7 @@ export interface SgrReadback {
  * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
  * never a negative.
  */
-export async function querySgrState(ctx: TermContext): Promise<string[] | null> {
+export async function querySgrState(ctx: TermProbeSource): Promise<string[] | null> {
   const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
@@ -247,7 +247,7 @@ export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown
  * (the same bytes queryMode folds), `CSI Ps $ p` for an ANSI mode such as IRM.
  */
 export async function queryDecrpm(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   modeNum: number,
   kind: "private" | "ansi" = "private",
 ): Promise<DecrpmPs | null> {
@@ -261,7 +261,7 @@ export async function queryDecrpm(
  * `DCS 1 $ r <Ps> SP q ST` reply yields `<Ps>`; a timeout, a DA1 sentinel, or a `DCS 0 $ r ST`
  * "request not recognized" reply all return null. A missing readback is never a negative.
  */
-export async function queryCursorStyle(ctx: TermContext): Promise<number | null> {
+export async function queryCursorStyle(ctx: TermProbeSource): Promise<number | null> {
   const outcome = await ctx.queryWithSentinelOutcome("\x1bP$q q\x1b\\", /\x1bP1\$r([0-9]+) q\x1b\\/)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
@@ -276,7 +276,7 @@ export async function queryCursorStyle(ctx: TermContext): Promise<number | null>
  * readback is never a negative.
  */
 export async function cursorStyleReadbackDecision(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   sequence: string,
   expected: number,
 ): Promise<ProbeCallbackResult | null> {
@@ -408,7 +408,7 @@ export function sgrReadbackResult(
  * readback is never a negative.
  */
 export async function sgrReadbackDecision(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   sequence: string,
   readback: SgrReadback,
@@ -471,7 +471,7 @@ export const SGR_CAPTURE_MIN_COLS = 34
  * whose arm writes before falling back (the DECRQSS readback) still calls this first, so the refusal
  * is never preceded by bytes of its own.
  */
-export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeCallbackResult | undefined {
+export function sgrPlainFixtureTooSmall(ctx: TermProbeSource): ProbeCallbackResult | undefined {
   const { rows, cols } = ctx
   if (Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 1 && cols >= 2) return undefined
   return {
@@ -486,7 +486,7 @@ export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeCallbackResult |
 }
 
 /** Refuse an SGR capture fixture before any bytes when the measured geometry is too small. */
-export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): ProbeCallbackResult | undefined {
+export function sgrCaptureTooSmall(ctx: TermProbeSource, feature = "SGR capture"): ProbeCallbackResult | undefined {
   if (!ctx.capture) return undefined
   const { rows, cols } = ctx
   if (
@@ -510,7 +510,7 @@ export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): P
 
 /** Render a control screen and a target screen and return both frames as inconclusive pixel evidence. */
 export async function sgrCaptureFrames(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   control: string,
   target: string,
   targetLabel: string,
@@ -552,8 +552,8 @@ export async function sgrCaptureFrames(
 export function sgrProbe(
   id: string,
   sequence: string,
-  check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean | null,
-  noObservableWhen?: (cell: ReturnType<TermlessContext["getCell"]>) => string | null,
+  check: (cell: ReturnType<LibProbeSource["getCell"]>) => boolean | null,
+  noObservableWhen?: (cell: ReturnType<LibProbeSource["getCell"]>) => string | null,
   readback?: SgrReadback,
 ): ProbeDefinition {
   return {
@@ -793,7 +793,7 @@ export function cursorProbe(
 export function decrpmModeProbe(
   id: string,
   modeNum: number,
-  termlessFn: ((ctx: TermlessContext) => ProbeCallbackResult) | null,
+  termlessFn: ((ctx: LibProbeSource) => ProbeCallbackResult) | null,
 ): ProbeDefinition {
   return {
     id,
@@ -812,7 +812,7 @@ export function decrpmModeProbe(
  * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
  * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
  */
-export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeCallbackResult {
+export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult {
   return (ctx) => {
     ctx.feed(`\x1b[?${modeNum}h`)
     // Read the adapter's mode view before the query. vt100 and vt220 used to run `CSI ? 1 $ p` as a DECCKM
@@ -921,8 +921,8 @@ export function isBlank(char: string): boolean {
  */
 export function probe(
   id: string,
-  termless: ((ctx: TermlessContext) => ProbeCallbackResult) | null,
-  term: ((ctx: TermContext) => Promise<ProbeCallbackResult>) | null,
+  termless: ((ctx: LibProbeSource) => ProbeCallbackResult) | null,
+  term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null,
   termObservationEvidence?: ObservationEvidence,
 ): ProbeDefinition {
   return { id, termless, term, ...(termObservationEvidence && { termObservationEvidence }) }
@@ -931,7 +931,7 @@ export function probe(
 /** Feature support is independent of whether an observer can inspect link metadata. */
 export function readHyperlinkMetadata(
   available: boolean,
-  readLink: TermlessContext["getHyperlinkAt"],
+  readLink: LibProbeSource["getHyperlinkAt"],
   row: number,
   col: number,
   backendName: string,
@@ -1101,12 +1101,12 @@ export function initializeRunDraft(input: {
 }
 
 /** Fold only the checks still required by the frozen probe's explicitly selected criterion branch. */
-export function finalizeCapabilityResult(input: Omit<CapabilityResult, "status">): CapabilityResult {
+export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeResult {
   const checks = input.checks
   const failed = checks.find((check) => check.status === "test-failure")
   const pending = checks.find((check) => check.status === "test-todo")
   const impossible = checks.find((check) => check.status === "untestable")
-  let status: CapabilityResult["status"]
+  let status: ProbeResult["status"]
   let reason = input.reason
   if (failed) {
     status = "test-failure"
@@ -1144,16 +1144,16 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
 }
 
 /** Execute the declared callback's proposition once; readers consume this recorded result. */
-export function recordExecutedCapability(input: {
+export function recordExecutedProbe(input: {
   featureId: string
-  attempt: Exclude<CapabilityAttempt, { scope: "none" }>
+  attempt: Exclude<ProbeAttempt, { scope: "none" }>
   observation?: Observation
   diagnostic?: UngradedDiagnostic
   coverage?: NotTestedCoverage
   assertions: readonly ProbeAssertion[]
-  checks?: ProbeCheckResult[]
+  checks?: ProbeTestInput[]
   criterionBranch?: string
-}): CapabilityResult {
+}): ProbeResult {
   const { featureId, attempt, observation, diagnostic, coverage } = input
   const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
   const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
@@ -1169,13 +1169,13 @@ export function recordExecutedCapability(input: {
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
   const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
   const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef
-  return finalizeCapabilityResult({
+  return finalizeProbeResult({
     featureId,
     attempt,
     checks:
       input.checks && !diagnostic && observation?.outcome !== "error"
         ? input.checks.map((check) => {
-            if (!check.id || !CAPABILITY_STATUSES.includes(check.status)) {
+            if (!check.id || !PROBE_STATUSES.includes(check.status)) {
               throw new Error(`Invalid callback check for ${featureId}`)
             }
             const refs =
@@ -1232,7 +1232,7 @@ export function recordCollectionFailure(
   const attempt = { scope: "collection" as const, startedAt, diagnosticRef }
   draft.results = draft.results.map((result) =>
     result.status === "test-todo" && delegated.has(result.featureId)
-      ? finalizeCapabilityResult({
+      ? finalizeProbeResult({
           ...result,
           attempt,
           reason: diagnostic,

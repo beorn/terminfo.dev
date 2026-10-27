@@ -6,7 +6,7 @@ import {
   sealRunDraft,
   type CapturedRunDraft as CollectedProbeRun,
   type CurrentProbeRun,
-  type ProbeTarget,
+  type ProbeSubject,
 } from "@terminfo/probe-defs"
 import { retainCaptureBinding, applyCaptureDecision } from "@terminfo/run-parser"
 
@@ -18,7 +18,7 @@ export interface CaptureReviewInput {
 /** Enrich the same capture before seal; pending review is a valid private draft. */
 export function finalizeCollectedDraft(
   run: CollectedProbeRun,
-  intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
+  intended?: { kind: ProbeSubject["kind"]; id: string; version: string },
   reviews: readonly CaptureReviewInput[] = [],
 ): CollectedProbeRun | CurrentProbeRun {
   if (run.schemaVersion !== 3 || !Array.isArray(run.results)) {
@@ -63,7 +63,7 @@ export function finalizeCollectedDraft(
 export function saveDaemonProbeRun(
   run: CollectedProbeRun,
   directory: string,
-  intended?: { kind: ProbeTarget["kind"]; id: string; version: string },
+  intended?: { kind: ProbeSubject["kind"]; id: string; version: string },
   reviews: readonly CaptureReviewInput[] = [],
 ): string {
   const captured = finalizeCollectedDraft(run, intended, reviews)

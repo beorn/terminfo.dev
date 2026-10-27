@@ -5,11 +5,11 @@ import { hasExtension, type HyperlinkExtension, type TerminalBackend } from "@te
 import {
   readHyperlinkMetadata,
   readSentinelReply,
-  recordExecutedCapability,
+  recordExecutedProbe,
   sentinelGraceMs,
 } from "@terminfo/probe-defs"
 import type {
-  CapabilityResult,
+  ProbeResult,
   RunDraft,
   NotTestedCoverage,
   Observation,
@@ -18,7 +18,7 @@ import type {
   ProbeDefinition,
   ProbeCallbackResult,
   TerminalQueryOutcome,
-  TermlessContext,
+  LibProbeSource,
   UngradedDiagnostic,
 } from "@terminfo/probe-defs"
 import type { ReplyPathProof } from "./proven-reply-paths.ts"
@@ -127,7 +127,7 @@ async function listenForLateReply(
   return late?.bytes ? late : undefined
 }
 
-export function createTermlessContext(backend: TerminalBackend, proven?: ProvenReplyPath): TermlessContext {
+export function createLibProbeSource(backend: TerminalBackend, proven?: ProvenReplyPath): LibProbeSource {
   let cols: number
   try {
     cols = backend.getRow(0).length
@@ -166,7 +166,7 @@ export function createTermlessContext(backend: TerminalBackend, proven?: ProvenR
         backend.name,
       )
       const { hyperlink: _unreported, ...withoutLink } = cell
-      return { ...withoutLink, ...(hyperlink !== undefined && { hyperlink }) } as ReturnType<TermlessContext["getCell"]>
+      return { ...withoutLink, ...(hyperlink !== undefined && { hyperlink }) } as ReturnType<LibProbeSource["getCell"]>
     },
     getCursor() {
       return backend.getCursor()
@@ -187,13 +187,13 @@ export function createTermlessContext(backend: TerminalBackend, proven?: ProvenR
       backend.reset()
     },
     get capabilities() {
-      return backend.capabilities as TermlessContext["capabilities"]
+      return backend.capabilities as LibProbeSource["capabilities"]
     },
   }
 }
 
 interface Batch {
-  results: CapabilityResult[]
+  results: ProbeResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
@@ -440,7 +440,7 @@ export async function collectBatch(
           sentinel.fired = true
         },
       }
-      const ctx = createTermlessContext(backend, proven)
+      const ctx = createLibProbeSource(backend, proven)
       const callback = probe.termless(ctx)
       // G1 runs before the callback's grade is kept: a late byte refuses that grade as a collector error,
       // while the run file keeps what was observed, the on-time capture and the late bytes beside it.
@@ -480,7 +480,7 @@ export async function collectBatch(
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]
       const coverage = batch.notTested.find((entry) => entry.featureId === probe.id)
-      const result = recordExecutedCapability({
+      const result = recordExecutedProbe({
         featureId: probe.id,
         attempt,
         observation,

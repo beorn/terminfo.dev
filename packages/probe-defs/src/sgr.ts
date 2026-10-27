@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 import {
   notTestedResult,
   parserStateResult,
@@ -33,9 +33,9 @@ export function sgrTermReadback(
   id: string,
   sequence: string,
   readback: SgrReadback,
-  fallback: (ctx: TermContext) => ProbeCallbackResult | Promise<ProbeCallbackResult>,
+  fallback: (ctx: TermProbeSource) => ProbeCallbackResult | Promise<ProbeCallbackResult>,
   setup?: Parameters<typeof sgrReadbackDecision>[4],
-): (ctx: TermContext) => Promise<ProbeCallbackResult> {
+): (ctx: TermProbeSource) => Promise<ProbeCallbackResult> {
   return async (ctx) => {
     // The capture fixture guard refuses before any bytes on a measured small terminal, so the
     // readback must not emit its own sequences ahead of it.
@@ -64,7 +64,7 @@ export function sgrTermReadback(
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
 async function consumedSgr(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   sequence: string,
   controlLabel = `${id} control`,
@@ -121,7 +121,7 @@ async function consumedSgr(
  * identical to a supported one. Consumption alone never proves the visual reset.
  */
 async function consumedSgrReset(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   setup: string,
   reset: string,
@@ -235,7 +235,7 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
 }
 
 type ResetAttribute = "bold" | "dim" | "italic" | "underline" | "inverse"
-type ResetCell = ReturnType<TermlessContext["getCell"]>
+type ResetCell = ReturnType<LibProbeSource["getCell"]>
 
 /** DECRQSS parameter code reported while each resettable attribute is active. */
 const RESET_ATTRIBUTE_CODE: Record<ResetAttribute, number> = { bold: 1, dim: 2, italic: 3, underline: 4, inverse: 7 }
@@ -248,7 +248,7 @@ function measuredAttribute(cell: ResetCell, attribute: ResetAttribute): boolean 
 }
 
 function measuredReset(
-  ctx: TermlessContext,
+  ctx: LibProbeSource,
   id: string,
   setup: string,
   reset: string,
@@ -293,7 +293,7 @@ function measuredReset(
   )
 }
 
-async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeCallbackResult> {
+async function consumedResetSgr(ctx: TermProbeSource, id: string, setup: string, reset: string): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal

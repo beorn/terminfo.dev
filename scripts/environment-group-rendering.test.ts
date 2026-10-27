@@ -13,7 +13,7 @@ import { join } from "node:path"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import { Command } from "@silvery/commander"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
-import type { CapabilityResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
 import { currentCoverageSentence, aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
@@ -29,7 +29,7 @@ vi.mock("../packages/terminfo.dev/src/serve.ts", () => ({
 }))
 const gradedIds = Array.from({ length: 264 }, (_, index) => `capability.${index}`)
 const catalogIds = [...ENVIRONMENT_GROUP_IDS, ...gradedIds]
-const todos = (): CapabilityResult[] =>
+const todos = (): ProbeResult[] =>
   catalogIds.map((featureId) => ({
     featureId,
     status: "test-todo",

@@ -4,7 +4,7 @@ import React from "react"
 import { Box, Text, renderString } from "silvery"
 import type { SelectedProjection, CurrentSelectedVersion } from "../../docs/data/selected-results.ts"
 
-import type { CapabilityResult } from "@terminfo/probe-defs"
+import type { ProbeResult } from "@terminfo/probe-defs"
 import { isEnvironmentGroup } from "@terminfo/probe-defs"
 import { currentCoverageSentence } from "../../docs/data/release-scope.ts"
 
@@ -15,7 +15,7 @@ function score(run: CurrentSelectedVersion): string {
   return `${run.score.supported}/${run.score.all} Supported / all (${Math.round((100 * run.score.supported) / run.score.all)}%)`
 }
 
-function stateToken(cell: CapabilityResult | undefined): StateToken {
+function stateToken(cell: ProbeResult | undefined): StateToken {
   if (!cell) return "—"
   // D132 B (#30917): the nine environment positions are recorded TEST TODO by the catalogue but are
   // manual by design, not graded, and were never measured. They must never read as TODO.
@@ -34,7 +34,7 @@ function stateToken(cell: CapabilityResult | undefined): StateToken {
   }
 }
 
-function StateCell({ cell, width }: { cell: CapabilityResult | undefined; width: number }): React.ReactElement {
+function StateCell({ cell, width }: { cell: ProbeResult | undefined; width: number }): React.ReactElement {
   const token = stateToken(cell)
   const color = token === "YES" ? "$success" : token === "NO" ? "$error" : "$muted"
   return (

@@ -2562,7 +2562,7 @@ it("forwards explicit callback checks through the actual native batch attempt wi
     let next = 0
     definition.term = async () =>
       sgrCaptureFrames(
-        { write() {}, capture: async () => frames[next++]! } as unknown as import("@terminfo/probe-defs").TermContext,
+        { write() {}, capture: async () => frames[next++]! } as unknown as import("@terminfo/probe-defs").TermProbeSource,
         "control",
         "target",
         "visual target",

@@ -7,9 +7,9 @@ export interface NoSemanticObservable {
 }
 
 /** A probe result is exactly one of two things: a measured observation, or a coverage record. */
-export type ProbeCallbackResult = MeasuredProbeResult | NotTestedCoverageResult
+export type ProbeCallbackResult = MeasuredProbeCallbackResult | NotTestedCoverageResult
 
-export interface MeasuredProbeResult extends ProbeExecutionChecks {
+export interface MeasuredProbeCallbackResult extends ProbeExecutionChecks {
   /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
   note?: string
@@ -31,34 +31,34 @@ export interface NotTestedCoverageResult extends ProbeExecutionChecks {
 }
 
 /** Execution-owned disposition; historical ObservationOutcome is never a current result. */
-export const CAPABILITY_STATUSES = ["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const
-export type CapabilityStatus = (typeof CAPABILITY_STATUSES)[number]
-export type CapabilityAttempt =
+export const PROBE_STATUSES = ["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const
+export type ProbeStatus = (typeof PROBE_STATUSES)[number]
+export type ProbeAttempt =
   | { scope: "none" }
   | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }
 
 /** The still-required checks for the frozen criterion branch, retained at execution. */
-export interface CheckResult {
+export interface ProbeTestResult {
   id: string
-  status: CapabilityStatus
-  attempt: CapabilityAttempt
+  status: ProbeStatus
+  attempt: ProbeAttempt
   assertionRefs?: number[]
   rawReplyRef?: string
   reviewRef?: string
   reason?: string
 }
 /** Callback criterion facts; the producer supplies actual attempt timestamps and global evidence refs. */
-export type ProbeCheckResult = Pick<CheckResult, "id" | "status" | "reason" | "assertionRefs">
+export type ProbeTestInput = Pick<ProbeTestResult, "id" | "status" | "reason" | "assertionRefs">
 interface ProbeExecutionChecks {
-  checks?: ProbeCheckResult[]
+  checks?: ProbeTestInput[]
   criterionBranch?: string
 }
 
-export interface CapabilityResult {
+export interface ProbeResult {
   featureId: string
-  status: CapabilityStatus
-  attempt: CapabilityAttempt
-  checks: CheckResult[]
+  status: ProbeStatus
+  attempt: ProbeAttempt
+  checks: ProbeTestResult[]
   criterionBranch?: string
   rawReplyRef?: string
   reviewRef?: string
@@ -76,8 +76,8 @@ export interface RunDraft {
   suiteId: string
   probeHash: string
   sourceRevision: string
-  intendedContext: Partial<ProbeTarget>
-  target?: ProbeTarget
+  intendedContext: Partial<ProbeSubject>
+  target?: ProbeSubject
   identity?: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
@@ -89,7 +89,7 @@ export interface RunDraft {
   screenshotRefs: string[]
   textSnapshotRefs?: string[]
   textQualification?: TextQualification
-  results: CapabilityResult[]
+  results: ProbeResult[]
   sealedAt?: never
 }
 
@@ -98,7 +98,7 @@ export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "target" | "id
 
 /** Final status bytes are immutable after all legitimate enrichment and required review. */
 export interface CurrentProbeRun extends Omit<RunDraft, "target" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
-  target: ProbeTarget
+  target: ProbeSubject
   identity: "verified" | "unverified" | "disputed"
   measuredAt: string
   origin: RunOrigin
@@ -314,7 +314,7 @@ export interface CaptureRequest {
   pixelGeometry?: CapturePixelGeometry
 }
 
-export interface ProbeTarget {
+export interface ProbeSubject {
   kind: "app" | "headless" | "mux"
   id: string
   version: string
@@ -412,7 +412,7 @@ export interface ProbeSuiteManifest {
   adapterVersion: string
   /** Complete frozen membership, distinct from callback schedules. Absent only in historical suites. */
   catalogIds?: string[]
-  probes: Record<ProbeTarget["kind"], string[]>
+  probes: Record<ProbeSubject["kind"], string[]>
   textClaims?: string[]
   textQualification?: TextQualificationSpec
   /**
@@ -503,7 +503,7 @@ export type HeadlessRuntimeIdentity =
 
 /** One app preflight measured before attaching a mux. */
 export interface OuterAppProof {
-  target: ProbeTarget & { kind: "app" }
+  target: ProbeSubject & { kind: "app" }
   rawReplies: Record<string, string>
   provenance?: RunProvenance
   appLaunch?: AppLaunchReceipt
@@ -566,7 +566,7 @@ export type MuxAttachmentProof = LinuxMuxAttachmentProof | DarwinMuxAttachmentPr
 export interface HistoricalProbeRun {
   schemaVersion: 2
   runId: string
-  target: ProbeTarget
+  target: ProbeSubject
   identity: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
   /** Measured in the running native-app environment before the run is sealed. */
@@ -622,7 +622,7 @@ export interface HistoricalInterpretation {
   reviewer: string
   reason: string
   scope: {
-    target: Pick<ProbeTarget, "kind" | "id">
+    target: Pick<ProbeSubject, "kind" | "id">
     versions: [string, string]
     suites: [string, string]
   }
@@ -659,7 +659,7 @@ export interface CaptureDecision {
 export type Interpretation = HistoricalInterpretation | CaptureDecision
 
 /** Context for headless backends (synchronous cell-state access) */
-export interface TermlessContext {
+export interface LibProbeSource {
   /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
   getHyperlinkAt?(row: number, col: number): string | null
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
@@ -764,7 +764,7 @@ export interface InputFixture {
   injectDrag?(button: 1): Promise<void>
 }
 
-export interface TermContext {
+export interface TermProbeSource {
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
   captureGeometry?: {
     geometry: CapturePixelGeometry
@@ -820,8 +820,8 @@ export interface TermContext {
 
 export interface ProbeDefinition {
   id: string
-  termless: ((ctx: TermlessContext) => ProbeCallbackResult) | null
-  term: ((ctx: TermContext) => Promise<ProbeCallbackResult>) | null
+  termless: ((ctx: LibProbeSource) => ProbeCallbackResult) | null
+  term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
   /**

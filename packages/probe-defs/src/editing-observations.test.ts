@@ -10,7 +10,7 @@ import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 /**
  * The kind table's own rows, one per CONVERTED Editing probe, listed BY NAME so a row that loses its
@@ -46,8 +46,8 @@ const KIND_TABLE_ROWS = editingReadbackRows.map((row) => ({
  *    the nine columns it compares, so a wider screen can no longer move what the row reads.
  */
 
-/** A minimal TermlessContext the declared screens below override. */
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+/** A minimal LibProbeSource the declared screens below override. */
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     cols: 24,
     feed() {},
@@ -93,12 +93,12 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<LibProbeSource["getCell"]> {
   if (cell === undefined || typeof cell === "string") {
     // A plain cell is a cell the row claims NO attributes for, not one whose backend reports no
     // field: a real `getCell` always says what the background is (null = none).
     return { char: cell ?? " ", bold: false, inverse: false, fg: null, bg: null } as ReturnType<
-      TermlessContext["getCell"]
+      LibProbeSource["getCell"]
     >
   }
   const attributes = cell.attributes
@@ -108,13 +108,13 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
     inverse: attributes.inverse === true,
     fg: null,
     bg: attributes.bg ?? null,
-  } as ReturnType<TermlessContext["getCell"]>
+  } as ReturnType<LibProbeSource["getCell"]>
 }
 
 function declaredScreen(
   screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
   cols: number,
-): TermlessContext {
+): LibProbeSource {
   let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
@@ -306,7 +306,7 @@ for (const id of ["editing.deccara", "editing.decrara"]) {
     const termless = probe.termless
     const step = firstStep(id)
 
-    const watch = (ctx: TermlessContext) => {
+    const watch = (ctx: LibProbeSource) => {
       const fed: string[] = []
       const watched = {
         ...ctx,

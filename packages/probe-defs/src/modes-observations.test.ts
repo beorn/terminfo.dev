@@ -6,9 +6,9 @@
  */
 import { expect, test, vi } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { CaptureRectangle, CaptureRequest, ObservationFrame, TermContext, TermlessContext } from "./types.ts"
+import type { CaptureRectangle, CaptureRequest, ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 
-function captureContext(rows: number, cols: number, writes: string[], frames: ObservationFrame[]): TermContext {
+function captureContext(rows: number, cols: number, writes: string[], frames: ObservationFrame[]): TermProbeSource {
   return {
     rows,
     cols,
@@ -56,7 +56,7 @@ test.each(["bad-start", "ignored-move", "ignored-restore", "restored"] as const)
         if (sequence === "\x1b[?1048l" && scenario === "restored") cursor = { x: 9, y: 4 }
       },
       getCursor: () => ({ ...cursor, visible: true, style: null }),
-    } as unknown as TermlessContext
+    } as unknown as LibProbeSource
     const result = definition.termless(context)
     const outcome =
       scenario === "restored" ? "supported" : scenario === "ignored-restore" ? "unsupported" : "inconclusive"
@@ -87,7 +87,7 @@ test("1048 refuses undersized geometry and restores after failed displacement re
       if (writes.includes("\x1b[15;20H")) throw new Error("readback failed")
       return { x: 9, y: 4, visible: true, style: null }
     },
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
   expect(definition.termless(context).observation).toMatchObject({ outcome: "inconclusive" })
   expect(writes).toEqual([])
   rows = 15
@@ -117,7 +117,7 @@ test("IRM grades measured insertion despite false mode metadata and distinguishe
         else if (sequence === "X") phase = "target"
       },
       getCell: (_row: number, col: number) => ({ char: (phase === "target" ? target : "ABC ")[col] ?? "" }),
-    } as unknown as TermlessContext
+    } as unknown as LibProbeSource
     const result = definition.termless(context)
     expect(result.observation, target).toMatchObject({ outcome, evidence: "parser-state" })
     expect(feeds.at(-1), target).toBe("\x1b[4l")
@@ -136,7 +136,7 @@ test("IRM does not grade output when the seed was not measured", () => {
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     feed: (sequence: string) => feeds.push(sequence),
     getCell: () => ({ char: " " }),
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
   const result = definition.termless(context)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions).toBeUndefined()
@@ -162,7 +162,7 @@ test("unmeasured app modes leave prior state untouched instead of toggling it fo
           queried.push(sequence)
           return ps === null ? null : pattern.exec(`\x1b[?1047;${ps}$y`)
         },
-      } as unknown as TermContext
+      } as unknown as TermProbeSource
       const result = await definition.term(context)
       // #30557 r2: the 1047 DECRPM fallback grades a permanently reset mode unsupported; every other Ps stays inconclusive.
       const permanent = id === "modes.altscreen-1047" && ps === 4
@@ -185,7 +185,7 @@ test("app cursor replies and mode recognition do not prove alternate-buffer beha
   for (const id of ["modes.alt-screen.exit", "modes.insert-replace", "modes.altscreen-1047"]) {
     const definition = modesProbes.find((entry) => entry.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
-    const context: TermContext = {
+    const context: TermProbeSource = {
       cols: 80,
       rows: 24,
       write() {},
@@ -222,7 +222,7 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
     const unexpected = (operation: string): never => {
       throw new Error(`${id}: unexpected ${operation} for Ps ${ps}`)
     }
-    const context: TermContext = {
+    const context: TermProbeSource = {
       cols: 80,
       rows: 24,
       write: () => unexpected("write"),
@@ -285,7 +285,7 @@ test("DECAWM with null metadata rejects an ignored wrap", () => {
     feed: (sequence: string) => writes.push(sequence),
     getMode: () => null,
     getCell: (row: number, col: number) => ({ char: row === 1 && col === 0 ? " " : "X" }),
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
   const result = probe.termless(context)
   expect(result.observation).toMatchObject({
     outcome: "unsupported",
@@ -313,14 +313,14 @@ test("DECAWM refuses one-row geometry before a second-row read and enables its o
     getCell: (row: number) => {
       throw new Error(`out-of-grid read ${row}`)
     },
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
   const small = probe.termless(context)
   expect(small.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
   expect(writes).toEqual([])
 
   rows = 2
   context.getCell = (row: number, col: number) =>
-    ({ char: row === 1 && col === 0 ? "Y" : "X" }) as ReturnType<TermlessContext["getCell"]>
+    ({ char: row === 1 && col === 0 ? "Y" : "X" }) as ReturnType<LibProbeSource["getCell"]>
   const measured = probe.termless(context)
   expect(measured.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
   expect(writes).toContain("\x1b[?7h")
@@ -407,14 +407,14 @@ function alt1049Context(scenario: Alt1049Scenario, cols = 20, rows = 5, mode: 47
     getCell(row: number, col: number) {
       if (scenario === "readback-failure" && writes.length > 3) throw new Error("readback failed")
       const text = line(row)
-      return { char: col < text.length ? text[col] : " " } as ReturnType<TermlessContext["getCell"]>
+      return { char: col < text.length ? text[col] : " " } as ReturnType<LibProbeSource["getCell"]>
     },
     getCursor: () =>
       scenario === "constant-cursor"
         ? { x: 0, y: 0, visible: true, style: null }
         : { ...cursor, visible: true, style: null },
   }
-  return { context: context as unknown as TermlessContext, writes }
+  return { context: context as unknown as LibProbeSource, writes }
 }
 
 function alt1049Probe(id: "enter" | "exit") {
@@ -812,7 +812,7 @@ function decssclsContext(
   frames: ObservationFrame[],
   rows = 24,
   fixture: DecssclsFixture = {},
-): TermContext {
+): TermProbeSource {
   const context = captureContext(rows, 80, writes, frames)
   context.captureGeometry = {
     geometry: { ...DECSSCLS_GEOMETRY },

@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto"
 import {
   assessTextQualification,
-  finalizeCapabilityResult,
+  finalizeProbeResult,
   type CapturedRunDraft,
   type ProbeSuiteManifest,
-  type CapabilityAttempt,
+  type ProbeAttempt,
   beginCaptureLifecycle,
   endCaptureLifecycle,
   TEXT_QUALIFICATION_SPEC,
   TEXT_QUALIFICATION_SHAPES,
   textQualificationFixtures,
   type ObservationFrame,
-  type TermContext,
+  type TermProbeSource,
   type TextCellsObservationFrame,
   type TextQualification,
 } from "@terminfo/probe-defs"
@@ -23,7 +23,7 @@ export async function collectTextQualification({
   capture,
   onAttempt,
 }: {
-  ctx: TermContext
+  ctx: TermProbeSource
   capture: (checkpoint: TextFrameCheckpoint) => Promise<ObservationFrame>
   onAttempt?: () => void
 }): Promise<TextQualification> {
@@ -115,10 +115,10 @@ export function recordTextQualificationChecks(
   run: CapturedRunDraft,
   manifest: ProbeSuiteManifest,
   snapshots: ReadonlyMap<string, Uint8Array>,
-  attempt?: Exclude<CapabilityAttempt, { scope: "none" }>,
+  attempt?: Exclude<ProbeAttempt, { scope: "none" }>,
 ): void {
   const assessment = assessTextQualification({ ...run, textQualificationSpec: manifest.textQualification }, snapshots)
-  const qualificationAttempt: CapabilityAttempt = attempt ?? { scope: "none" }
+  const qualificationAttempt: ProbeAttempt = attempt ?? { scope: "none" }
   run.results = run.results.map((result) => {
     if (result.evidence !== "text") return result
     const admittedContext =
@@ -132,7 +132,7 @@ export function recordTextQualificationChecks(
       : !attempt
         ? "Text qualification has not been attempted"
         : assessment.reason
-    return finalizeCapabilityResult({
+    return finalizeProbeResult({
       ...result,
       checks: [
         ...result.checks.filter((check) => check.id !== "text-qualification"),

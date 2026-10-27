@@ -12,7 +12,7 @@
  * no path, so no path reaches a trace.
  */
 import { createHash } from "node:crypto"
-import type { CapabilityResult, Observation, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
+import type { ProbeResult, Observation, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentSelectedVersion, SelectedVersion } from "./selected-results.ts"
 
 /**
@@ -306,8 +306,8 @@ interface TraceRecord {
 }
 
 interface CurrentTraceCell extends TraceRecord {
-  status: CapabilityResult["status"]
-  evidence?: CapabilityResult["evidence"]
+  status: ProbeResult["status"]
+  evidence?: ProbeResult["evidence"]
 }
 
 export interface TraceDocument<Cell> {

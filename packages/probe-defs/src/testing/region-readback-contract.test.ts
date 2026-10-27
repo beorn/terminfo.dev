@@ -8,7 +8,7 @@ import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
-import { ALL_PROBES, type CaptureRequest, type ObservationFrame, type ProbeCallbackResult, type TermContext } from "../index.ts"
+import { ALL_PROBES, type CaptureRequest, type ObservationFrame, type ProbeCallbackResult, type TermProbeSource } from "../index.ts"
 
 const FEATURE = "editing.delete-chars"
 const SUITE = "452ac343b55d"
@@ -24,7 +24,7 @@ const manifest: ProbeSuiteManifest = {
 type Mode = "deciding" | "stable" | "unstable" | "sentinel" | "ignored-attribute"
 
 interface Harness {
-  ctx: TermContext
+  ctx: TermProbeSource
   /** Exactly the adapter's trace shape: the bytes this run wrote, asked and saw. */
   trace: { writes: string[]; queries: unknown[]; events: unknown[] }
   /**
@@ -122,7 +122,7 @@ function harness(mode: Mode): Harness {
     return outcome
   }
 
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     cols: 80,
     rows: 24,
     write(text) {
@@ -136,7 +136,7 @@ function harness(mode: Mode): Harness {
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async (sequence) =>
-      (await timed(sequence)) as unknown as Awaited<ReturnType<TermContext["queryWithSentinelOutcome"]>>,
+      (await timed(sequence)) as unknown as Awaited<ReturnType<TermProbeSource["queryWithSentinelOutcome"]>>,
     queryMode: async () => null,
     capture,
   }

@@ -10,11 +10,11 @@
  */
 import { describe, expect, it } from "vitest"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
-import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import type { ContextCandidate } from "../docs/data/run-selection.ts"
 import type { CensusContext } from "../docs/data/full-census.ts"
 
-const recorded = (ids: readonly string[], status: CapabilityStatus = "test-todo"): CapabilityResult[] =>
+const recorded = (ids: readonly string[], status: ProbeStatus = "test-todo"): ProbeResult[] =>
   ids.map((featureId) => ({
     featureId,
     status,

@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
 const fixtures = [
   { id: "modes.alt-screen.exit", rows: 3, cols: 3, failedWrite: 2, restore: "\x1b[?1049l" },
@@ -27,7 +27,7 @@ function app(
   failWrite?: number,
   failQuery = false,
   cursorReplies: Array<{ row: number; col: number }> = [{ row: 5, col: 10 }],
-): TermContext {
+): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in mode fixture`)
   }

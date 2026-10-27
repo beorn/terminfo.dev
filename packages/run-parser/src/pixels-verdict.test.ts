@@ -19,7 +19,7 @@ import {
   type ObservationFrame,
   type ProbeSuiteManifest,
   type ProbeCallbackResult,
-  type TermContext,
+  type TermProbeSource,
 } from "@terminfo/probe-defs"
 import { parseRun } from "./index.ts"
 
@@ -180,9 +180,9 @@ const parse = (run: Record<string, unknown>) => parseRun("pixels-verdict.json", 
 function callbackFixture(id: string) {
   const writes: string[] = []
   const queries: string[] = []
-  const requests: Array<Parameters<NonNullable<TermContext["capture"]>>[0]> = []
+  const requests: Array<Parameters<NonNullable<TermProbeSource["capture"]>>[0]> = []
   let captureIndex = 0
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows: 24,
     cols: 80,
     write(sequence) {

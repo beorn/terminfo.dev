@@ -10,7 +10,7 @@
  * Extracted from ResultEvidenceCell.vue so the rule has a reader a test can call; the SFC is outside
  * the TS-only unit population (same arrangement as `ungraded-explanation.ts`).
  */
-import type { CapabilityStatus } from "../../../packages/probe-defs/src/types.ts"
+import type { ProbeStatus } from "../../../packages/probe-defs/src/types.ts"
 import { isEnvironmentGroup } from "../../../packages/probe-defs/src/environment-groups.ts"
 
 export type EvidenceTone = "yes" | "no" | "ungraded" | "unknown" | "error"
@@ -31,7 +31,7 @@ export const MANUAL_BY_DESIGN_STATUS: EvidenceStatus = {
 /** What a row with no stored result wears: a blank cell, never an invented verdict. */
 export const MISSING_STATUS: EvidenceStatus = { text: "", icon: "–", tone: "unknown" }
 
-const STORED_STATUS: Readonly<Record<CapabilityStatus, EvidenceStatus>> = {
+const STORED_STATUS: Readonly<Record<ProbeStatus, EvidenceStatus>> = {
   supported: { text: "Supported", icon: "✓", tone: "yes" },
   unsupported: { text: "Unsupported", icon: "✗", tone: "no" },
   untestable: { text: "Untestable", icon: "–", tone: "ungraded" },
@@ -39,7 +39,7 @@ const STORED_STATUS: Readonly<Record<CapabilityStatus, EvidenceStatus>> = {
   "test-failure": { text: "TEST FAILURE", icon: "!", tone: "error" },
 }
 
-export function evidenceStatus(featureId: string, status: CapabilityStatus | undefined): EvidenceStatus {
+export function evidenceStatus(featureId: string, status: ProbeStatus | undefined): EvidenceStatus {
   if (status === undefined) return MISSING_STATUS
   if (status === "test-todo" && isEnvironmentGroup(featureId)) return MANUAL_BY_DESIGN_STATUS
   return STORED_STATUS[status]

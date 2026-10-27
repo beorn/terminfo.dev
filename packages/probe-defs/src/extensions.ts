@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import type { ProbeDefinition, ProbeCallbackResult, TermlessContext, TermContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   decrpmPs,
@@ -291,7 +291,7 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
     `\\x1b\\]${setCode};rgb:([0-9a-f]{1,4})/([0-9a-f]{1,4})/([0-9a-f]{1,4})(?:\\x07|\\x1b\\\\)`,
     "i",
   )
-  const read = async (ctx: TermContext) => {
+  const read = async (ctx: TermProbeSource) => {
     const reply = await ctx.queryWithSentinelOutcome(querySeq, pattern)
     const match = reply.match
     if (reply.reason !== "reply" || !match) return null
@@ -516,7 +516,7 @@ function probeForeground(before: string): string {
  * mutation is confined to that disposable machine or process; a failed restore is graded, never retried into a pass.
  */
 async function colorResetAppProbe(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   spec: { setCode: number; resetCode: number; index?: number },
 ): Promise<ProbeCallbackResult> {
   const indexPart = spec.index === undefined ? "" : `${spec.index};`
@@ -643,7 +643,7 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
  * qualified sequence records the named no-semantic-observable coverage. A consumed-but-unqualified
  * read, and a missing cell, stay a real consumption observation — never not-tested.
  */
-function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: string): ProbeCallbackResult {
+function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: string): ProbeCallbackResult {
   ctx.feed("\x1b[1;1H")
   const home = ctx.getCursor()
   ctx.feed(sequence + "X")
@@ -666,7 +666,7 @@ function promptMarkResult(ctx: TermlessContext, sequence: string, noObservable: 
  * `rawReplyRef` to — no not-tested coverage is claimed from CPR alone. A null read, or a mark that never
  * advanced, stays a real consumption observation, never not-tested.
  */
-async function promptMarkAppResult(ctx: TermContext, sequence: string, noObservable: string): Promise<ProbeCallbackResult> {
+async function promptMarkAppResult(ctx: TermProbeSource, sequence: string, noObservable: string): Promise<ProbeCallbackResult> {
   ctx.write("\x1b[1;1H\x1b[2K")
   const home = await ctx.queryCursorPosition()
   ctx.write(sequence + "X")
@@ -1340,7 +1340,7 @@ function textSizingResult(
 }
 
 /** Only an isolated headless backend may receive this disposable OSC 52 nonce. */
-function headlessClipboardRoundtrip(ctx: TermlessContext): ProbeCallbackResult {
+function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
@@ -1437,7 +1437,7 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
   }
 }
 
-async function liveClipboardProbe(ctx: TermContext, kind: "write" | "read" | "roundtrip"): Promise<ProbeCallbackResult> {
+async function liveClipboardProbe(ctx: TermProbeSource, kind: "write" | "read" | "roundtrip"): Promise<ProbeCallbackResult> {
   if (!ctx.withClipboardFixture) return liveClipboardNotTested()
   return ctx.withClipboardFixture(async (fixture) => {
     if (kind !== "read") {
@@ -1503,7 +1503,7 @@ function escapeRegex(value: string): string {
 }
 
 /** OS clipboard → app via ctrl+shift+v. Distinct from OSC 52 (app → clipboard) and DECRPM 2004. */
-async function clipboardPaste(ctx: TermContext): Promise<ProbeCallbackResult> {
+async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return notTestedResult("OS-level XTEST paste injection", { input: false })

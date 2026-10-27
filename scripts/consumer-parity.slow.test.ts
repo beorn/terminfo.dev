@@ -6,7 +6,7 @@
  * @testonly none
  */
 import { gradedFeatureIds } from "@terminfo/probe-defs"
-import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { describe, expect, it, vi } from "vitest"
 import {
   mkdtempSync,
@@ -205,9 +205,9 @@ vi.mock("../docs/data/current-results.ts", async () => {
   // These are synthetic v3 fixtures, not a compatibility reader: production never promotes history.
   const sealedFixture = (run: SelectedVersion): CurrentSelectedVersion => {
     const ids = [...new Set([...catalogIds, ...Object.keys(run.cells)])]
-    const results = ids.map((featureId): CapabilityResult => {
+    const results = ids.map((featureId): ProbeResult => {
       const cell = run.cells[featureId as keyof typeof run.cells]
-      const status: CapabilityStatus =
+      const status: ProbeStatus =
         cell?.outcome === "supported"
           ? "supported"
           : cell?.outcome === "unsupported"

@@ -6,17 +6,17 @@
  */
 import { expect, test } from "vitest"
 import { validateObservation } from "@terminfo/run-parser"
-import { ALL_PROBES, type Observation, type ProbeAssertion, type ProbeCallbackResult, type TermContext } from "../index.ts"
+import { ALL_PROBES, type Observation, type ProbeAssertion, type ProbeCallbackResult, type TermProbeSource } from "../index.ts"
 
 const GEOMETRIES = [
   { rows: 1, cols: 1 },
   { rows: 24, cols: 80 },
 ] as const
 
-function silentTerm(rows: number, cols: number): { ctx: TermContext; writes: string[] } {
+function silentTerm(rows: number, cols: number): { ctx: TermProbeSource; writes: string[] } {
   const writes: string[] = []
   const timeout = async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" })
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     write(text) {
       writes.push(text)
     },

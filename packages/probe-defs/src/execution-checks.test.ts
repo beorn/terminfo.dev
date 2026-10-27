@@ -7,7 +7,7 @@
 import { expect, it } from "vitest"
 import {
   sgrCaptureFrames,
-  recordExecutedCapability,
+  recordExecutedProbe,
   recordCollectionFailure,
   initializeRunDraft,
   sealRunDraft,
@@ -15,7 +15,7 @@ import {
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
 import { cropPositionRefusal } from "./region-readback.ts"
-import type { ObservationFrame, ProbeCallbackResult, TermContext } from "./types.ts"
+import type { ObservationFrame, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
 // Full-catalog drafts previously let a failed subset dispatch mark unscheduled capabilities failed.
 it("records collection failure only for delegated unfinished IDs", () => {
@@ -65,7 +65,7 @@ const frames: ObservationFrame[] = [
   },
 ]
 const record = (callback: ProbeCallbackResult) =>
-  recordExecutedCapability({
+  recordExecutedProbe({
     featureId: "sgr.bold",
     attempt,
     ...(callback.observation && {
@@ -98,7 +98,7 @@ it("records the actual unequal-crop comparison as TEST FAILURE despite two retai
 it("keeps an explicit unattempted visual review TODO and the capture unsealed", async () => {
   let next = 0
   const callback = await sgrCaptureFrames(
-    { write() {}, capture: async () => frames[next++]! } as unknown as TermContext,
+    { write() {}, capture: async () => frames[next++]! } as unknown as TermProbeSource,
     "control",
     "target",
     "bold target",
@@ -144,7 +144,7 @@ it("keeps an explicit unattempted visual review TODO and the capture unsealed", 
 // The existing visual-review fixture does not exercise the measured, repairable locale prerequisite.
 it("keeps measured 8-bit decoding as unmet UTF-8 prerequisite TODO without inventing a review", async () => {
   const callback = await utf8DecodingRefusal(
-    { utf8Decoding: async () => "8-bit" } as unknown as TermContext,
+    { utf8Decoding: async () => "8-bit" } as unknown as TermProbeSource,
     "sgr.bold",
   )
   if (!callback) throw new Error("Expected measured 8-bit prerequisite")
@@ -161,7 +161,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   const osc133a = extensionsProbes.find((entry) => entry.id === "extensions.osc133-a")
   if (!osc133a?.term) throw new Error("Expected extensions.osc133-a app callback")
   const recordC154 = (callback: ProbeCallbackResult) =>
-    recordExecutedCapability({
+    recordExecutedProbe({
       featureId: osc133a.id,
       attempt,
       ...(callback.observation && {
@@ -185,7 +185,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   const unqualifiedCallback = await osc133a.term({
     write() {},
     queryCursorPosition: async () => unqualifiedReads[unqualifiedIndex++] ?? null,
-  } as unknown as TermContext)
+  } as unknown as TermProbeSource)
   const unqualifiedRecorded = recordC154(unqualifiedCallback)
   expect(unqualifiedRecorded.status).toBe("test-todo")
   expect(unqualifiedRecorded.evidence).toBe("consumed")
@@ -203,7 +203,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   const nullCallback = await osc133a.term({
     write() {},
     queryCursorPosition: async () => null,
-  } as unknown as TermContext)
+  } as unknown as TermProbeSource)
   const nullRecorded = recordC154(nullCallback)
   expect(nullRecorded.status).toBe("test-failure")
   expect(nullRecorded.evidence).toBe("query")
@@ -230,7 +230,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   const qualifiedCallback = await osc133a.term({
     write() {},
     queryCursorPosition: async () => qualifiedReads[qualifiedIndex++] ?? null,
-  } as unknown as TermContext)
+  } as unknown as TermProbeSource)
   expect(qualifiedCallback.notTested).toEqual({
     reason: "no-semantic-observable",
     noObservable: "OSC 133;A prompt-start mark registration",

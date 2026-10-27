@@ -9,7 +9,7 @@
 import { expect, test } from "vitest"
 import { join } from "node:path"
 import { inputProbes } from "./input.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 import {
   contractGaps,
   headlessContext,
@@ -133,7 +133,7 @@ function inputModel(csiUAnswered = false): HeadlessModel {
   }
 }
 
-function inputSatisfactionContext(id: string): { readonly headless?: TermlessContext; readonly term?: TermContext } {
+function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSource; readonly term?: TermProbeSource } {
   if (id === "input.modify-other-keys") {
     return {
       term: replayContext(new Map(), {

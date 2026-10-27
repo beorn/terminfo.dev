@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
-import type { CapabilityResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
@@ -21,7 +21,7 @@ const suite: ProbeSuiteManifest = {
   probes: { app: [], headless: [], mux: [] },
 }
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
-const raw = (results: CapabilityResult[]) => ({
+const raw = (results: ProbeResult[]) => ({
   schemaVersion: 3,
   runId: "current-run",
   target: {
@@ -50,7 +50,7 @@ const raw = (results: CapabilityResult[]) => ({
 })
 const parse = (value: object) =>
   parseRun("fixture.json", JSON.stringify(value), ids, new Map([[suite.probeHash, suite]]))
-const todos = (): CapabilityResult[] =>
+const todos = (): ProbeResult[] =>
   ids.map((featureId) => ({
     featureId,
     status: "test-todo",
@@ -140,7 +140,7 @@ describe("current execution projection", () => {
   it("grades a 273-row run over its 264 graded ids and never counts an environment group", () => {
     const supportedGroup = ENVIRONMENT_GROUP_IDS[0]
     const splitIds = [...ENVIRONMENT_GROUP_IDS, ...Array.from({ length: 264 }, (_, index) => `capability.${index}`)]
-    const results: CapabilityResult[] = splitIds.map((featureId) =>
+    const results: ProbeResult[] = splitIds.map((featureId) =>
       featureId === supportedGroup
         ? {
             featureId,

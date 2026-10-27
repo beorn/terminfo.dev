@@ -10,7 +10,7 @@
  */
 import { expect, test } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 type Rgb = { r: number; g: number; b: number }
 
@@ -210,7 +210,7 @@ function fakeScreen(options: ScreenOptions = {}) {
     },
     getMode: (mode: string) => (mode === "autoWrap" ? autoWrap : null),
     getScrollback: () => ({ viewportOffset: 0, totalLines: rows, screenLines: rows }),
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
   return {
     context,
     feeds,

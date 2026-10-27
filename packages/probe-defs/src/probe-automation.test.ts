@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type TermlessContext, type TermContext } from "./index.ts"
+import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -22,7 +22,7 @@ function probe(id: string) {
   return found
 }
 
-function context(overrides: Partial<TermlessContext>): TermlessContext {
+function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   return {
     cols: 80,
     feed() {},
@@ -77,7 +77,7 @@ function context(overrides: Partial<TermlessContext>): TermlessContext {
   }
 }
 
-function terminalContext(overrides: Partial<TermContext>): TermContext {
+function terminalContext(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
@@ -186,7 +186,7 @@ describe("OSC 8 link metadata observation", () => {
   const uri = "https://example.com/osc8-proof"
   const positions = [null, uri, uri, uri, uri, null] as const
 
-  function linkedContext(links: readonly (string | null | undefined)[], declared = true): TermlessContext {
+  function linkedContext(links: readonly (string | null | undefined)[], declared = true): LibProbeSource {
     const base = context({})
     return Object.assign(
       context({
@@ -546,7 +546,7 @@ describe("Kitty protocol detection", () => {
         clipboard = text
       },
     }
-    const withClipboardFixture: NonNullable<TermContext["withClipboardFixture"]> = async (work) => work(fixture)
+    const withClipboardFixture: NonNullable<TermProbeSource["withClipboardFixture"]> = async (work) => work(fixture)
     const queryOutcome = async (sequence: string) => {
       expect(sequence).toBe("\x1b]52;c;?\x07")
       const frame = `\x1b]52;c;${btoa(clipboard)}\x1b\\`

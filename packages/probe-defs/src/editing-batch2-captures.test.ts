@@ -16,7 +16,7 @@ import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { captureStabilityPair } from "./region-readback.ts"
 import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ObservationFrame, ProbeDefinition, TermContext, TermlessContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, TermProbeSource, LibProbeSource } from "./types.ts"
 
 const CAPTURE_IDS = [
   "editing.insert-chars",
@@ -39,7 +39,7 @@ const CAPTURE_IDS = [
 function captureContext(rows: number, cols: number, withCapture = true) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -107,7 +107,7 @@ function readbackCaptureContext(rows: number, cols: number, witness = { row: 3, 
   const sentinel = `${witness.row},${witness.col},${witness.row},${witness.col}`
   const key = (region: { top: number; left: number; bottom: number; right: number }) =>
     `${region.top},${region.left},${region.bottom},${region.right}`
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -304,7 +304,7 @@ function decsaceCaptureContext() {
     return `sha256:${createHash("sha256").update(painted).digest("hex")}`
   }
 
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows: 24,
     cols: 80,
     captureGeometry: DECSACE_GEOMETRY,
@@ -424,7 +424,7 @@ const DECSACE_STREAM = ".#######|###....."
  * A 2x8 headless model whose cells after each DECSACE extent's DECCARA carry exactly the declared
  * inverse pattern, so a test states the frame pair a terminal recorded and reads the arm's class.
  */
-function decsacePairContext(rect: string, stream: string): TermlessContext {
+function decsacePairContext(rect: string, stream: string): LibProbeSource {
   const chars = ["abcdefgh", "ijklmnop"]
   let pattern = ""
   return headlessContext({
@@ -435,7 +435,7 @@ function decsacePairContext(rect: string, stream: string): TermlessContext {
     },
     getCell: (row, col) =>
       ({ char: chars[row]?.[col] ?? " ", inverse: pattern.split("|")[row]?.[col] === "#" }) as ReturnType<
-        TermlessContext["getCell"]
+        LibProbeSource["getCell"]
       >,
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
   })
@@ -524,7 +524,7 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
     }
     return context
   }
-  const returns: Array<{ name: string; build: () => TermContext; outcome: string; note: string }> = [
+  const returns: Array<{ name: string; build: () => TermProbeSource; outcome: string; note: string }> = [
     {
       name: "supported",
       build: () => decsaceCaptureContext().context,

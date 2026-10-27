@@ -6,7 +6,7 @@
  * multi-context tie with the reviewed `default-contexts.json` row, and `decisive-share` printed the
  * choice of a private fallback chain beside it. One rule, two callers.
  */
-import type { CapabilityStatus, CapabilityResult } from "@terminfo/probe-defs"
+import type { ProbeStatus, ProbeResult } from "@terminfo/probe-defs"
 import { isStaleRelation, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
   parseProjectedContextKey,
@@ -41,12 +41,12 @@ export interface ContextCandidate {
   suiteFreshness: string
   suiteRelation: SuiteRelation
   cells?: ShareCells
-  results?: CapabilityResult[]
+  results?: ProbeResult[]
   /**
    * The run's states as the projection published them (28792 item 1). A reader cuts its bars over
    * this, never over the raw `cells`.
    */
-  states: Readonly<Record<string, CellState | CapabilityStatus>>
+  states: Readonly<Record<string, CellState | ProbeStatus>>
 }
 
 export interface HistoricalContextCandidate extends ContextCandidate {
@@ -56,9 +56,9 @@ export interface HistoricalContextCandidate extends ContextCandidate {
 }
 
 export interface CurrentContextCandidate extends ContextCandidate {
-  results: CapabilityResult[]
+  results: ProbeResult[]
   cells?: never
-  states: Readonly<Record<string, CapabilityStatus>>
+  states: Readonly<Record<string, ProbeStatus>>
 }
 
 /** The candidate for one context key, from the projection's own selected version. */
@@ -70,17 +70,17 @@ export function candidateFromSelected(
 export function candidateFromSelected(
   key: string,
   selected: CurrentSelectedVersion,
-  states: Readonly<Record<string, CapabilityStatus>>,
+  states: Readonly<Record<string, ProbeStatus>>,
 ): CurrentContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
-  states: Readonly<Record<string, CellState | CapabilityStatus>>,
+  states: Readonly<Record<string, CellState | ProbeStatus>>,
 ): ContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
-  states: Readonly<Record<string, CellState | CapabilityStatus>>,
+  states: Readonly<Record<string, CellState | ProbeStatus>>,
 ): ContextCandidate {
   return {
     key,

@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { inputProbes } from "./input.ts"
 import { modesProbes } from "./modes.ts"
-import type { ProbeCallbackResult, TermContext } from "./types.ts"
+import type { ProbeCallbackResult, TermProbeSource } from "./types.ts"
 
 const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] as const
 
@@ -23,7 +23,7 @@ function modeProbe(id: string) {
   return definition
 }
 
-function term(overrides: Partial<TermContext> = {}): TermContext {
+function term(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => {
@@ -61,7 +61,7 @@ function inputAndRead(
     dragReports?: string[]
   },
   writes: string[] = [],
-): { ctx: TermContext; keys: string[]; clicks: number[]; drags: number[] } {
+): { ctx: TermProbeSource; keys: string[]; clicks: number[]; drags: number[] } {
   const keys: string[] = []
   const clicks: number[] = []
   const drags: number[] = []

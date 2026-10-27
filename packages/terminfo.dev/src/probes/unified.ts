@@ -1,15 +1,15 @@
 /**
- * CLI probe adapter — wraps unified probe-defs with TermContext from tty.ts.
+ * CLI probe adapter — wraps unified probe-defs with TermProbeSource from tty.ts.
  *
- * Imports ALL_PROBES from @terminfo/probe-defs, creates a TermContext using
+ * Imports ALL_PROBES from @terminfo/probe-defs, creates a TermProbeSource using
  * the tty.ts helpers (query, queryCursorPosition, measureRenderedWidth, queryMode),
  * and exports the same `Probe[]` interface the CLI expects.
  */
 
 import {
   ALL_PROBES as PROBE_DEFS,
-  recordExecutedCapability,
-  type CapabilityResult,
+  recordExecutedProbe,
+  type ProbeResult,
   type RunDraft,
   type CaptureCells,
   type CapturePixelGeometry,
@@ -21,7 +21,7 @@ import {
   type ProbeAssertion,
   type ProbeDefinition,
   type ProbeCallbackResult,
-  type TermContext,
+  type TermProbeSource,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
 } from "@terminfo/probe-defs"
@@ -70,8 +70,8 @@ export interface Probe {
   name: string
 }
 
-/** Build a TermContext from the tty.ts helpers */
-function createTermContext({
+/** Build a TermProbeSource from the tty.ts helpers */
+function createTermProbeSource({
   out,
   events,
   probe,
@@ -85,7 +85,7 @@ function createTermContext({
   geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
   utf8Decoding: () => Promise<Utf8DecodingReading>
   captureGeometryRefusal?: string
-}): TermContext {
+}): TermProbeSource {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
       const error = new Error(`App callback ${probe.id} accessed undeclared or unavailable terminal geometry`)
@@ -129,7 +129,7 @@ export const ALL_PROBES: Probe[] = PROBE_DEFS.filter((p) => p.term !== null).map
 }))
 
 export interface ProbeBatch {
-  results: CapabilityResult[]
+  results: ProbeResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
@@ -272,7 +272,7 @@ export async function runProbeBatch(
     captureKind?: "pixels" | "text-cells"
     /** Prepare owned capture calibration and verify restoration before the first callback. */
     prepareCapture?: (input: {
-      context: TermContext
+      context: TermProbeSource
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
@@ -410,7 +410,7 @@ export async function runProbeBatch(
   // Calibrate and prove restoration once before the first callback. The same measured geometry
   // reaches every later context; a query callback is not permission to paint an unowned terminal.
   let capturePrepared = false
-  let captureGeometry: TermContext["captureGeometry"]
+  let captureGeometry: TermProbeSource["captureGeometry"]
   let captureGeometryRefusal = options.captureGeometryRefusal
   const recordCapture = (
     featureId: string,
@@ -522,7 +522,7 @@ export async function runProbeBatch(
         continue
       }
     }
-    const context = createTermContext({
+    const context = createTermProbeSource({
       out,
       events,
       probe,
@@ -632,7 +632,7 @@ export async function runProbeBatch(
           }
           preparationGrid = { rows: current.rows, cols: current.cols }
         }
-        const preparationContext = createTermContext({
+        const preparationContext = createTermProbeSource({
           out,
           events: calibrationEvents,
           probe: { ...probe, termNeedsGeometry: true },
@@ -840,7 +840,7 @@ export async function runProbeBatch(
       }
       const index = batch.results.findIndex((result) => result.featureId === probe.id)
       if (index < 0) throw new Error(`Native callback ${probe.id} is outside the initialized catalogue`)
-      batch.results[index] = recordExecutedCapability({
+      batch.results[index] = recordExecutedProbe({
         featureId: probe.id,
         attempt,
         observation,

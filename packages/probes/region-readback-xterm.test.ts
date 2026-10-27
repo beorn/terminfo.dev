@@ -40,7 +40,7 @@ test.each(["complete", "shape-refused", "restore-mode", "restore-grid"] as const
         modeQueries += 1
         return fault === "restore-mode" && modeQueries > 2 ? "set" : "reset"
       },
-    } as unknown as probeDefs.TermContext
+    } as unknown as probeDefs.TermProbeSource
     const measured = collectTextQualification({
       ctx,
       capture: async (checkpoint) => {
@@ -106,7 +106,7 @@ test("an ASCII region fixture prepares its screen before reading a preceding Uni
   backend.feed(encode("\x1b[H👨‍👩‍👧"))
   const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === "erase.character")
   if (!probe?.term) throw new Error("Missing erase.character app callback")
-  const context: probeDefs.TermContext = {
+  const context: probeDefs.TermProbeSource = {
     rows: 24,
     cols: 80,
     captureKind: "text-cells",

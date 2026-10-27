@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
 const fixtures = [
   { id: "extensions.osc8", rows: 1, cols: 7, columns: [7], outcome: "inconclusive", evidence: "consumed" },
@@ -20,7 +20,7 @@ const fixtures = [
   },
 ] as const
 
-function app(rows: number, cols: number, events: string[], columns: readonly number[]): TermContext {
+function app(rows: number, cols: number, events: string[], columns: readonly number[]): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in extension geometry fixture`)
   }

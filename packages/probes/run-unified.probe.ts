@@ -1,14 +1,14 @@
 /**
  * Unified probe runner — imports probe definitions from @terminfo/probe-defs,
- * creates TermlessContext from each backend, runs probes as Vitest tests.
+ * creates LibProbeSource from each backend, runs probes as Vitest tests.
  *
  * Replaces all individual *.probe.ts files with a single runner.
  */
 /* oxlint-disable typescript/no-deprecated -- Existing resolve() adapters implement TerminalBackend until the Emulator migration. */
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "vitest"
 import type { TerminalBackend } from "@termless/core"
-import { ALL_PROBES, type TermlessContext } from "@terminfo/probe-defs"
-import { createTermlessContext } from "./headless-batch.ts"
+import { ALL_PROBES, type LibProbeSource } from "@terminfo/probe-defs"
+import { createLibProbeSource } from "./headless-batch.ts"
 
 import { manifest } from "@termless/core"
 import { createLogger } from "loggily"
@@ -72,12 +72,12 @@ for (const p of ALL_PROBES) {
 for (const [backendName, factory] of backends) {
   describe(backendName, () => {
     let _b: TerminalBackend
-    let ctx: TermlessContext
+    let ctx: LibProbeSource
 
     beforeAll(async () => {
       _b = await factory()
       _b.init({ cols: 80, rows: 24 })
-      ctx = createTermlessContext(_b)
+      ctx = createLibProbeSource(_b)
     })
 
     afterAll(() => {

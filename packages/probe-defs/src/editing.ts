@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeCallbackResult, TermlessContext, ObservationFrame } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
@@ -598,7 +598,7 @@ const DECSACE_EXPECTED =
   "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span"
 const DECSACE_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
 const DECSACE_DEC_CARA = "\x1b[1;2;2;3;7$r" // top 1, left 2, bottom 2, right 3; reverse video
-const decsaceFrame = (ctx: TermlessContext) =>
+const decsaceFrame = (ctx: LibProbeSource) =>
   Array.from({ length: 2 }, (_, row) => Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col)))
 const DECSACE_RECTANGLE_PATTERN = ".##.....|.##....."
 const DECSACE_STREAM_PATTERN = ".#######|###....."

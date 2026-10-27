@@ -16,7 +16,7 @@ import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
@@ -73,7 +73,7 @@ export interface ProbeData {
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
   /** Current terminal id -> feature id -> exact sealed five-status value. */
-  results: Record<string, Record<string, CapabilityStatus>>
+  results: Record<string, Record<string, ProbeStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
   /** Current scores use Supported/all positions, independently of completion. */
@@ -109,14 +109,14 @@ export interface ProbeData {
    * classification per cell, made once in the projection, so pages read the classified table rather
    * than walking the run's raw cells or holding a second classifier.
    */
-  releaseTable: Record<string, Readonly<Record<string, CapabilityStatus>>>
+  releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>>
   /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
   suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
 interface CurrentStats {
   score: { supported: number; all: number }
-  counts: Record<CapabilityStatus, number>
+  counts: Record<ProbeStatus, number>
   complete: boolean
   pct: number | null
 }
@@ -263,7 +263,7 @@ export function loadFullProbes(): ProbeData {
     releaseShares[key] = currentSupportedShare(bar)
     releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
   }
-  const releaseTable: Record<string, Readonly<Record<string, CapabilityStatus>>> = {}
+  const releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>> = {}
   for (const run of Object.values(published.projection.versions).flat()) {
     const rows = projection.table[run.runId]
     if (!rows) throw new Error(`The projection has no sealed status row for run ${run.runId}`)

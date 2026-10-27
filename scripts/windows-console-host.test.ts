@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
-import type { CapabilityResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { classifyDevelopmentRun, projectResults } from "../docs/data/selected-results.ts"
 
 // #30720 (@cto rulings fc63f412, 1ee8cf0b, f126327b): no other test reads a Windows run, so none sees the
@@ -80,7 +80,7 @@ const common = (os: string) => ({
   screenshotRefs: [],
 })
 const current = (os: string) => {
-  const results: CapabilityResult[] = ids.map((featureId) => ({
+  const results: ProbeResult[] = ids.map((featureId) => ({
     featureId,
     status: "test-todo",
     attempt: { scope: "none" },

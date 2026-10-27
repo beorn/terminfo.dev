@@ -12,7 +12,7 @@ import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { headlessContext, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ProbeCallbackResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 
 /**
  * The kind table's own rows, one per CONVERTED Erase probe, listed BY NAME so a row that loses its
@@ -48,8 +48,8 @@ const KIND_TABLE_ROWS = eraseReadbackRows.map((row) => ({
  *  - "region erase requires changed cells and a preserved preceding row" -> the row's own `controls`.
  */
 
-/** A minimal TermlessContext the declared screens below override. */
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+/** A minimal LibProbeSource the declared screens below override. */
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     cols: 24,
     feed() {},
@@ -90,10 +90,10 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
 }
 
 /**
- * The same TermContext shape the kept hand-written rows use, plus an event log and measured geometry,
+ * The same TermProbeSource shape the kept hand-written rows use, plus an event log and measured geometry,
  * so a converted row is driven at the exact size on which it must refuse.
  */
-function appWithEvents(rows: number, cols: number, events: string[]): TermContext {
+function appWithEvents(rows: number, cols: number, events: string[]): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in erase geometry fixture`)
   }
@@ -122,7 +122,7 @@ function appWithEvents(rows: number, cols: number, events: string[]): TermContex
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<LibProbeSource["getCell"]> {
   if (cell === undefined || typeof cell === "string") {
     // A plain cell is a cell the row claims NO attributes for, not a cell whose backend reports no
     // field: a real `getCell` always says what the background is (null = none). Leaving `bg`
@@ -133,7 +133,7 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
       inverse: false,
       fg: null,
       bg: null,
-    } as ReturnType<TermlessContext["getCell"]>
+    } as ReturnType<LibProbeSource["getCell"]>
   }
   const attributes = cell.attributes
   return {
@@ -142,7 +142,7 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
     inverse: attributes.inverse === true,
     fg: null,
     bg: attributes.bg ?? null,
-  } as ReturnType<TermlessContext["getCell"]>
+  } as ReturnType<LibProbeSource["getCell"]>
 }
 
 function declaredScreen(
@@ -150,7 +150,7 @@ function declaredScreen(
   cols: number,
   cursor: { x: number; y: number } = { x: 0, y: 0 },
   baseline?: { seed: string; cells: readonly (readonly RegionReadbackCell[])[] },
-): TermlessContext {
+): LibProbeSource {
   let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
@@ -459,7 +459,7 @@ function eraseCellsHeadless(
   adjacentAfter = "KEEP!",
   missingCell?: number,
   ignoreCursorSetup = false,
-): TermlessContext {
+): LibProbeSource {
   let erased = false
   let cursorX = 5
   const before = ["ABCDE", "KEEP!"]
@@ -514,7 +514,7 @@ function eraseCellsHeadless(
   }
 }
 
-function app(position: { row: number; col: number } | null): TermContext {
+function app(position: { row: number; col: number } | null): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => position,
@@ -574,7 +574,7 @@ function scrollbackApp(script: {
   encodingOnly?: boolean
   divergentPixels?: boolean
 }): {
-  ctx: TermContext
+  ctx: TermProbeSource
   keys: string[]
   clicks: number[]
   writes: string[]
@@ -592,7 +592,7 @@ function scrollbackApp(script: {
   let ed3 = false
   let captureCount = 0
   let sawHistory = false
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     ...app({ row: 5, col: 5 }),
     write(text) {
       writes.push(text)
@@ -902,7 +902,7 @@ test("an unread default-background colour cannot qualify the painted seed", () =
           // The default-background seed never reports its colour; the painted seed does.
           bg: phase === "default" ? undefined : { r: 130, g: 20, b: 70 },
           wide: false,
-        }) as ReturnType<TermlessContext["getCell"]>,
+        }) as ReturnType<LibProbeSource["getCell"]>,
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -946,7 +946,7 @@ test("a step that throws still feeds the row's reset", () => {
             fg: null,
             bg: phase === "seed" ? { r: 130, g: 20, b: 70 } : null,
             wide: false,
-          }) as ReturnType<TermlessContext["getCell"]>,
+          }) as ReturnType<LibProbeSource["getCell"]>,
       }),
     ),
   ).toThrow(/step write failed/)
@@ -1025,7 +1025,7 @@ test("an unread background on the erased cells is named inconclusive", () => {
           fg: null,
           bg: phase === "after" ? undefined : phase === "seed" ? { r: 1, g: 2, b: 3 } : null,
           wide: false,
-        }) as ReturnType<TermlessContext["getCell"]>,
+        }) as ReturnType<LibProbeSource["getCell"]>,
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -1054,7 +1054,7 @@ function regionReadbackApp(rows: number, cols: number, mutations: readonly strin
     }
     return text
   }
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (bytes) => {

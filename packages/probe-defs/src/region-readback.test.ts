@@ -24,10 +24,10 @@ import type {
   CaptureCells,
   CapturePixelGeometry,
   CaptureRectangle,
-  MeasuredProbeResult,
+  MeasuredProbeCallbackResult,
   ObservationFrame,
   PixelObservationFrame,
-  TermContext,
+  TermProbeSource,
   TerminalQueryOutcome,
 } from "./types.ts"
 import { RESET_FAMILY_CAPTURE } from "./reset-family-capture.ts"
@@ -77,7 +77,7 @@ function painter(options: { applied: string }): Painter {
 }
 
 interface Fake {
-  ctx: TermContext
+  ctx: TermProbeSource
   read: RegionRead
   writes: string[]
   timeline: string[]
@@ -112,7 +112,7 @@ function ownedWindow(options: {
   const writes: string[] = []
   const timeline: string[] = []
   const requests: Fake["requests"] = []
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     rows: options.rows ?? 24,
     cols: options.cols ?? 80,
     write(sequence) {
@@ -166,10 +166,10 @@ function ownedWindow(options: {
   return { ctx, read, writes, timeline, requests }
 }
 
-async function decide(fake: Fake, overrides: Partial<RegionReadback> = {}): Promise<MeasuredProbeResult> {
+async function decide(fake: Fake, overrides: Partial<RegionReadback> = {}): Promise<MeasuredProbeCallbackResult> {
   const result = await captureRegionReadbackDecision(fake.ctx, "editing.delete-chars", spec(overrides), fake.read)
   if (!result?.observation) throw new Error("expected a decided result carrying an observation")
-  return result as MeasuredProbeResult
+  return result as MeasuredProbeCallbackResult
 }
 
 /** The reads that compared the region; every other read is a witness or a baseline on one cell. */
@@ -525,7 +525,7 @@ test("every capture carries the terminal's own pixel report, and witness reads u
 
 test("a pixel query answered with a sentinel reports query evidence, not a zero-byte refusal", async () => {
   const fake = ownedWindow({ repaintAfterPolls: 1, regionDigest: () => "seed" })
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     ...fake.ctx,
     queryWithSentinelOutcome: async () => ({ match: null, reason: "sentinel", raw: "\x1b[c", rawBase64: "" }),
     capture: async (request) => ({
@@ -883,10 +883,10 @@ function familyRow(id: (typeof RESET_FAMILY_ROWS)[number]): Omit<RegionReadback,
   return row
 }
 
-async function familyDecide(id: (typeof RESET_FAMILY_ROWS)[number], applied: string): Promise<MeasuredProbeResult> {
+async function familyDecide(id: (typeof RESET_FAMILY_ROWS)[number], applied: string): Promise<MeasuredProbeCallbackResult> {
   const result = await captureRegionVerdict(familyTerminal(applied), id, familyRow(id))
   if (!result?.observation) throw new Error(`${id}: the fixture run produced no observation`)
-  return result as MeasuredProbeResult
+  return result as MeasuredProbeCallbackResult
 }
 
 function familyDigest(label: string, applied: string): string {
@@ -900,7 +900,7 @@ function familyDigest(label: string, applied: string): string {
 }
 
 /** A terminal that shows the witness glyph the oracle just wrote and the named plane per frame. */
-function familyTerminal(applied: string): TermContext {
+function familyTerminal(applied: string): TermProbeSource {
   let glyph = ""
   let reads = 0
   const frameFor = (role: ObservationFrame["role"], label: string): PixelObservationFrame => {
@@ -1073,7 +1073,7 @@ type SgrColor = "fg" | "bg" | "uc"
 const SGR_ATTRS: readonly SgrAttr[] = ["bold", "italic", "inverse", "underline", "faint"]
 
 interface StatefulTerminal {
-  ctx: TermContext
+  ctx: TermProbeSource
   cells: Map<string, string>
   /** The attributes and colours currently set, read straight from the model. */
   snapshot: () => Set<string>
@@ -1228,7 +1228,7 @@ function statefulTerminal(sgr0: readonly SgrAttr[], options: StatefulOptions = {
       return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
     },
     queryMode: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { ctx, cells, snapshot, writes, queries }
 }
 

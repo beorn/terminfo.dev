@@ -7,7 +7,7 @@
 import { expect, test } from "vitest"
 import { cursorProbes } from "./cursor.ts"
 import { cursorProbe } from "./helpers.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 function byId(id: string) {
   const probe = cursorProbes.find((value) => value.id === id)
@@ -15,7 +15,7 @@ function byId(id: string) {
   return probe
 }
 
-function app(position: { row: number; col: number } | null): TermContext {
+function app(position: { row: number; col: number } | null): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => position,
@@ -30,7 +30,7 @@ function app(position: { row: number; col: number } | null): TermContext {
   }
 }
 
-function appReporter(): TermContext {
+function appReporter(): TermProbeSource {
   const base = app({ row: 1, col: 1 })
   let row = 1
   let col = 1
@@ -57,7 +57,7 @@ function appReporter(): TermContext {
   }
 }
 
-function appWrapper(cols: number): TermContext {
+function appWrapper(cols: number): TermProbeSource {
   const base = app({ row: 1, col: 1 })
   let row = 1
   let col = 1
@@ -117,7 +117,7 @@ function appWrapper(cols: number): TermContext {
   }
 }
 
-function appGoto(rows: number, cols: number, opts: { noClamp?: boolean; ignoreCud?: boolean } = {}): TermContext {
+function appGoto(rows: number, cols: number, opts: { noClamp?: boolean; ignoreCud?: boolean } = {}): TermProbeSource {
   const base = app({ row: 1, col: 1 })
   let row = 1
   let col = 1
@@ -149,7 +149,7 @@ function appGoto(rows: number, cols: number, opts: { noClamp?: boolean; ignoreCu
   }
 }
 
-function headless(x: number, y: number, rows = 24, reply = ""): TermlessContext {
+function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
   return {
     cols: 80,
     feed() {},
@@ -220,7 +220,7 @@ test("cursor.shape capture names measured geometry and roles without inventing a
       capturedAt: 1,
       ref: `sha256:${"d".repeat(64)}`,
     }),
-  } as TermContext
+  } as TermProbeSource
   const result = await byId("cursor.shape").term!(context)
   expect(JSON.parse(result.response ?? "")).toMatchObject({
     rows: 24,
@@ -1105,7 +1105,7 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
       capturedAt: 1,
       ref: "never",
     }),
-  } as TermContext
+  } as TermProbeSource
   expect((await probe.term!(tiny)).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
@@ -1126,7 +1126,7 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
       capturedAt: 1,
       ref: "never",
     }),
-  } as TermContext
+  } as TermProbeSource
   const result = await probe.term!(noReport)
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
@@ -1151,7 +1151,7 @@ test("cup-scroll-region capture refuses a narrow terminal before any bytes", asy
       capturedAt: 1,
       ref: "never",
     }),
-  } as TermContext
+  } as TermProbeSource
   expect((await probe.term!(context)).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",

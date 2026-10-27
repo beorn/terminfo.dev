@@ -10,7 +10,7 @@
  */
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import { reviewedContextFor } from "./current-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
@@ -19,7 +19,7 @@ import type { CensusContext, ContextKind } from "./full-census.ts"
 /** One catalog row of a collected context, with its state and the run's own method and words. */
 export interface ObservationRow {
   id: string
-  state: CapabilityStatus
+  state: ProbeStatus
   /** The observation method the run recorded (pixel, text cell, query/reply), when it names one. */
   method: string | null
   note: string | null

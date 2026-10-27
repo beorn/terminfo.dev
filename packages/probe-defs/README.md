@@ -8,8 +8,8 @@ This describes the implemented system. A proposed redesign would separate live c
 
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
-- `termless(ctx)` is synchronous and reads a `TermlessContext` backed by a headless engine.
-- `term(ctx)` is asynchronous and uses a `TermContext` for real-terminal I/O and any available owned capture, clipboard or input facilities.
+- `termless(ctx)` is synchronous and reads a `LibProbeSource` backed by a headless engine.
+- `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
 - A null arm has no implementation for that route. Ownership, geometry, text-readback and evidence declarations constrain the arms that do exist.
 
 `ALL_PROBES` collects the category definitions. A `ProbeSuiteManifest` separates complete `catalogIds` membership from the callback schedules in `probes.app`, `probes.headless` and `probes.mux`.
@@ -20,11 +20,11 @@ The [shared execution helpers](src/helpers.ts) initialize every catalog member a
 
 - `ProbeCallbackResult` is either a measured result with an `observation`, or `notTested` coverage naming a missing semantic observable. It can carry callback checks and a criterion branch.
 - `Observation` records an outcome, evidence method and any reason or frame references. `ProbeAssertion` records a positive/negative predicate, expected state and observed evidence.
-- `CapabilityResult` stores the feature's execution status, attempt, required checks, selected criterion branch and evidence references. It is not the callback's `pass` boolean.
+- `ProbeResult` stores the feature's execution status, attempt, required checks, selected criterion branch and evidence references. It is not the callback's `pass` boolean.
 - `RunDraft` is a private schema-3 envelope: run/suite/source identity, intended context, measured identity when available, raw replies, assertions, artifact references and capability results.
 - `CapturedRunDraft` requires measured target, identity, time and origin. `CurrentProbeRun` additionally has `sealedAt`; `ProbeRun` aliases this current shape. Older runs have separate historical types.
 
-The legacy callback `pass` still exists. The [diagnostic Vitest runner](../probes/run-unified.probe.ts) checks it; current collectors record observations/checks through `recordExecutedCapability` instead.
+The legacy callback `pass` still exists. The [diagnostic Vitest runner](../probes/run-unified.probe.ts) checks it; current collectors record observations/checks through `recordExecutedProbe` instead.
 
 ## Evidence, capture and assertion
 
@@ -42,7 +42,7 @@ Native execution can also change the recorded result: for example, a measured re
 
 **Frames are evidence, not verdicts.** `ObservationFrame` distinguishes pixel frames from `text-cells` frames; pixel and cell rectangles/digests are not interchangeable.
 
-`TermContext.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+`TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
 The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
 
@@ -50,13 +50,13 @@ The run retains screenshot/text references and assertion references. A captured 
 
 Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded capability statuses are `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`.
 
-[recordExecutedCapability](src/helpers.ts) uses explicit callback checks when valid. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
+[recordExecutedProbe](src/helpers.ts) uses explicit callback checks when valid. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
 
 - Missing capture reported as `FrameUnavailable` becomes `test-todo`.
 - Diagnostics and error observations become `test-failure`.
 - Coverage or inconclusive `none`/`consumed` evidence becomes `test-todo`; remaining undecided cases become `test-failure`.
 
-`finalizeCapabilityResult` folds the required checks in order: failure, pending or empty checks, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference.
+`finalizeProbeResult` folds the required checks in order: failure, pending or empty checks, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference.
 
 That order matters: a failed check wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that.
 

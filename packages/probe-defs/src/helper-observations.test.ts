@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { decrpmModeProbe, cursorProbe, sgrProbe, type DecrpmPs } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 const baseCell = {
   char: "X",
@@ -26,7 +26,7 @@ const baseCell = {
   wide: false,
 }
 
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     cols: 80,
     feed() {},
@@ -67,7 +67,7 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
   }
 }
 
-function terminal(overrides: Partial<TermContext> = {}): TermContext {
+function terminal(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => null,
@@ -526,7 +526,7 @@ test("underline color reset needs both an observed colored before cell and defau
   if (!probe?.termless) throw new Error("missing underline color reset callback")
   const color = { r: 255, g: 0, b: 128 }
   const baseline = { ...baseCell, char: "C", underline: true }
-  const withCells = (before: ReturnType<TermlessContext["getCell"]>, after: ReturnType<TermlessContext["getCell"]>) =>
+  const withCells = (before: ReturnType<LibProbeSource["getCell"]>, after: ReturnType<LibProbeSource["getCell"]>) =>
     headless({ getCell: (_row, col) => [baseline, before, after][col] ?? baseCell })
 
   const missingBefore = probe.termless(

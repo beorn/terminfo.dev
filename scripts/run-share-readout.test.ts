@@ -6,7 +6,7 @@
  * @consumer Terminal page run summary, home backend score, OS page score column, terminal SEO description
  * @testonly none
  */
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import { execFileSync } from "node:child_process"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -18,7 +18,7 @@ import {
   runDecidedNothing,
 } from "../docs/data/release-scope.ts"
 
-const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<CapabilityStatus, number> => ({
+const counts = (entries: Partial<Record<ProbeStatus, number>>): Record<ProbeStatus, number> => ({
   supported: 0,
   unsupported: 0,
   untestable: 0,
@@ -28,9 +28,9 @@ const counts = (entries: Partial<Record<CapabilityStatus, number>>): Record<Capa
 })
 
 /** The aggregate a page builds from one sealed run: results + its frozen catalog. */
-const run = (entries: Partial<Record<CapabilityStatus, number>>) => {
+const run = (entries: Partial<Record<ProbeStatus, number>>) => {
   const table = counts(entries)
-  const results = (Object.entries(table) as Array<[CapabilityStatus, number]>).flatMap(([status, n]) =>
+  const results = (Object.entries(table) as Array<[ProbeStatus, number]>).flatMap(([status, n]) =>
     Array.from({ length: n }, (_, index) => ({
       featureId: `${status}.${index}`,
       status,

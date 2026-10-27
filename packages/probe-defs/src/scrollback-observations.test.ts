@@ -7,11 +7,11 @@
 import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
-import type { ObservationFrame, TermContext, TermlessContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
 import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
     cols: 61,
     feed() {},
@@ -63,7 +63,7 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
  * terminal ignored that operation". The declared grid is the terminal's own behaviour, so a row reads
  * supported only when its frame agrees with a terminal the test drove independently.
  */
-function declaredScreen(screens: Record<string, readonly (readonly string[])[]>, cols = 61): TermlessContext {
+function declaredScreen(screens: Record<string, readonly (readonly string[])[]>, cols = 61): LibProbeSource {
   let cells: readonly (readonly string[])[] = []
   return headless({
     cols,
@@ -71,7 +71,7 @@ function declaredScreen(screens: Record<string, readonly (readonly string[])[]>,
       const next = screens[sequence]
       if (next !== undefined) cells = next
     },
-    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<TermlessContext["getCell"]>,
+    getCell: (row, col) => ({ char: cells[row]?.[col] ?? " " }) as ReturnType<LibProbeSource["getCell"]>,
   })
 }
 
@@ -128,7 +128,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   expect(probe.termNeedsGeometry).toBe(true)
   const writes: string[] = []
   const queries: string[] = []
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows: 37,
     cols: 61,
     write: (s) => writes.push(s),
@@ -148,9 +148,9 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   expect(writes.filter((s) => s.startsWith("line-"))).toHaveLength(47)
 })
 
-function silentAppContext(rows: number, cols: number): { context: TermContext; writes: string[] } {
+function silentAppContext(rows: number, cols: number): { context: TermProbeSource; writes: string[] } {
   const writes: string[] = []
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -259,7 +259,7 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
     const probe = scrollbackProbes.find((item) => item.id === id)
     if (!probe?.term) throw new Error(`Missing ${id} app callback`)
     const writes: string[] = []
-    const context: TermContext = {
+    const context: TermProbeSource = {
       rows: 1,
       cols: 1,
       write: (sequence) => writes.push(sequence),
@@ -465,7 +465,7 @@ test("DECSTBM needs an inner-row movement control, not just a surviving top row"
   if (!probe?.termless) throw new Error("missing decstbm callback")
   const result = probe.termless(
     headless({
-      getCell: (row) => ({ char: row === 0 ? "F" : "I" }) as ReturnType<TermlessContext["getCell"]>,
+      getCell: (row) => ({ char: row === 0 ? "F" : "I" }) as ReturnType<LibProbeSource["getCell"]>,
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
@@ -507,7 +507,7 @@ test("DECSTBM reset is graded from the region readback, never from scrollback gr
 function captureApp(rows: number, cols: number) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -648,7 +648,7 @@ test.each([
 const digest = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`
 
 /**
- * A `TermContext` over this repository's own semantic terminal. The app callbacks run for real, and
+ * A `TermProbeSource` over this repository's own semantic terminal. The app callbacks run for real, and
  * every capture is a cell-aligned crop of the grid the run actually painted, so a region digest follows
  * the terminal's behaviour instead of a boolean the fixture predicts — the mock that made an ignored
  * operation look honoured is what let the false "supported" through (#28018).
@@ -673,7 +673,7 @@ function regionReadbackApp(
     }
     return JSON.stringify(lines)
   }
-  const context: TermContext = {
+  const context: TermProbeSource = {
     rows,
     cols,
     write: (bytes) => {

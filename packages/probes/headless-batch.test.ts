@@ -20,7 +20,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { collectBatch, createTermlessContext } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
 
 async function backend() {
   return createXtermBackend()
@@ -1036,7 +1036,7 @@ test("OSC 8 feature without metadata extension omits the cell field", () => {
     value.capabilities.extensions.delete("hyperlinks")
     value.feed(new TextEncoder().encode("\x1b]8;;https://example.com/observed\x07L"))
     expect(value.capabilities.osc8Hyperlinks).toBe(true)
-    expect(createTermlessContext(value).getCell(0, 0)).not.toHaveProperty("hyperlink")
+    expect(createLibProbeSource(value).getCell(0, 0)).not.toHaveProperty("hyperlink")
   } finally {
     value.destroy()
   }
@@ -1049,7 +1049,7 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
   try {
     value.capabilities.extensions.add("hyperlinks")
     Object.assign(value, { getHyperlinkAt: readLink })
-    expect(() => createTermlessContext(value).getCell(0, 0)).toThrow(`${value.name} declares OSC 8 metadata`)
+    expect(() => createLibProbeSource(value).getCell(0, 0)).toThrow(`${value.name} declares OSC 8 metadata`)
   } finally {
     value.destroy()
   }

@@ -44,7 +44,7 @@ type StubRun = { target: { kind: string; id: string; os?: string; permissions?: 
  * no cells, and `compatibilityTargets` only needs a row to exist for every current run.
  */
 function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
-  const table: Record<string, Record<string, import("@terminfo/probe-defs").CapabilityStatus>> = {}
+  const table: Record<string, Record<string, import("@terminfo/probe-defs").ProbeStatus>> = {}
   for (const [key, run] of Object.entries(current)) {
     const runId = `run:${key}`
     ;(run as StubRun & { runId?: string }).runId = runId

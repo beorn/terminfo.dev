@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type ClipboardFixture, type ProbeCallbackResult, type TermContext } from "./index.ts"
+import { ALL_PROBES, type ClipboardFixture, type ProbeCallbackResult, type TermProbeSource } from "./index.ts"
 
 function writeProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.osc52-write")
@@ -15,7 +15,7 @@ function writeProbe() {
   return probe.term
 }
 
-function termContext(overrides: Partial<TermContext>): TermContext {
+function termContext(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     write() {},
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
@@ -149,7 +149,7 @@ function pasteProbe() {
   return probe
 }
 
-function pasteTerm(overrides: Partial<TermContext> = {}): TermContext {
+function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return termContext({
     queryCursorPosition: async () => {
       throw new Error("Unexpected queryCursorPosition in paste observation")
@@ -176,7 +176,7 @@ function pasteTerm(overrides: Partial<TermContext> = {}): TermContext {
 function pasteAndRead(
   script: { control?: string | null; paste?: "bracketed" | "raw" | "silent" },
   writes: string[] = [],
-): { ctx: TermContext; keys: string[]; clipboardWrites: string[] } {
+): { ctx: TermProbeSource; keys: string[]; clipboardWrites: string[] } {
   const keys: string[] = []
   const clipboardWrites: string[] = []
   let clipboard = ""

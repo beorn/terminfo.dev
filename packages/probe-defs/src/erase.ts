@@ -1,4 +1,4 @@
-import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 
@@ -339,7 +339,7 @@ function frameDivergence(settled: ObservationFrame, bottom: ObservationFrame): s
  * prove history is observable, then grade whether ED3 removes it.
  * Never enable mouse tracking — that would steal the wheel into stdin.
  */
-async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeCallbackResult> {
+async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
     return {
       pass: false,
