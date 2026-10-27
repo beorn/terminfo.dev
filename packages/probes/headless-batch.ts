@@ -211,7 +211,7 @@ function refusedClaimEvidence(result: ProbeCallbackResult): string {
       `observation(${[
         `outcome=${observation.outcome}`,
         ...(observation.reason ? [`reason=${observation.reason}`] : []),
-        `evidence=${observation.assertionType}`,
+        `assertionType=${observation.assertionType}`,
         ...(observation.note ? [`note=${JSON.stringify(observation.note)}`] : []),
       ].join(", ")})`,
     )

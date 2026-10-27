@@ -479,7 +479,7 @@ describe("consumer selection", () => {
         // No current kitty run: kitty is scored nowhere, whatever other targets the corpus holds as current.
         expect(site.results.kitty).toBeUndefined()
         expect(site.stats.kitty).toBeUndefined()
-        expect(Object.keys(api.current).filter((key) => key.startsWith("app:kitty"))).toEqual([])
+        expect(Object.keys(api.current).filter((key) => key.startsWith("term:kitty"))).toEqual([])
         expect(analysis["terminals/kitty"]?.analysis).toContain("No current schema-3")
       }
       if (api.currentRunCount === 0) {
@@ -557,12 +557,12 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
-      expect(() => compatibilityTargets(projection, content)).toThrow(/Ambiguous current app:kitty/)
+      expect(() => compatibilityTargets(projection, content)).toThrow(/Ambiguous current term:kitty/)
       writeFileSync(
         join(content, "default-contexts.json"),
         JSON.stringify({
           defaultContext: {
-            "app:kitty": {
+            "term:kitty": {
               contextKey: linuxKey,
               reviewer: "reviewer",
               reason: "controlled Linux context selected for default view",
@@ -582,18 +582,18 @@ describe("consumer selection", () => {
     const headless = { subject: { kind: "lib", id: "kitty" } }
     const library = { subject: { kind: "lib", id: "xtermjs" } }
     const projection = stubProjection(
-      { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
-      { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
+      { "term:kitty": app, "lib:kitty": headless, "lib:xtermjs": library },
+      { "term:kitty": [app], "lib:kitty": [headless], "lib:xtermjs": [library] },
     )
     const content = mkdtempSync(join(tmpdir(), "terminfo-kind-selection-"))
     try {
       writeCatalog(content)
       const rows = compatibilityTargets(projection, content)
-      expect(rows.get("kitty")?.selected.subject.kind).toBe("app")
-      expect(rows.get("headless-kitty")?.selected.subject.kind).toBe("headless")
-      expect(rows.get("xtermjs")?.selected.subject.kind).toBe("headless")
-      delete projection.current["app:kitty"]
-      expect(compatibilityTargets(projection, content).get("headless-kitty")?.contextKey).toBe("headless:kitty")
+      expect(rows.get("kitty")?.selected.subject.kind).toBe("term")
+      expect(rows.get("headless-kitty")?.selected.subject.kind).toBe("lib")
+      expect(rows.get("xtermjs")?.selected.subject.kind).toBe("lib")
+      delete projection.current["term:kitty"]
+      expect(compatibilityTargets(projection, content).get("headless-kitty")?.contextKey).toBe("lib:kitty")
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -614,10 +614,10 @@ describe("consumer selection", () => {
     try {
       writeCatalog(content)
       const rows = compatibilityTargets(projection, content)
-      expect(rows.get("wezterm")?.selected.subject.kind).toBe("headless")
-      expect(rows.get("app-wezterm")?.selected.subject.kind).toBe("app")
-      expect(rows.get("alacritty")?.selected.subject.kind).toBe("headless")
-      expect(rows.get("app-alacritty")?.selected.subject.kind).toBe("app")
+      expect(rows.get("wezterm")?.selected.subject.kind).toBe("lib")
+      expect(rows.get("app-wezterm")?.selected.subject.kind).toBe("term")
+      expect(rows.get("alacritty")?.selected.subject.kind).toBe("lib")
+      expect(rows.get("app-alacritty")?.selected.subject.kind).toBe("term")
       delete projection.current["headless:wezterm"]
       expect(compatibilityTargets(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
     } finally {
@@ -639,7 +639,7 @@ describe("consumer selection", () => {
       writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
       const projection = stubProjection({})
       expect(() => compatibilityTargets(projection, content)).toThrow(
-        /released key wezterm changed meaning from headless/,
+        /released key wezterm changed meaning from lib/,
       )
     } finally {
       rmSync(content, { recursive: true, force: true })
@@ -648,13 +648,13 @@ describe("consumer selection", () => {
 
   it("names the declared xterm app run as a compatibility target", () => {
     const appXterm = { subject: { kind: "term", id: "xterm" } }
-    const projection = stubProjection({ "app:xterm": appXterm })
+    const projection = stubProjection({ "term:xterm": appXterm })
     const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
     try {
       writeCatalog(content)
       const rows = compatibilityTargets(projection, content)
-      expect(rows.get("xterm")?.contextKey).toBe("app:xterm")
-      expect(rows.get("xterm")?.selected.subject.kind).toBe("app")
+      expect(rows.get("xterm")?.contextKey).toBe("term:xterm")
+      expect(rows.get("xterm")?.selected.subject.kind).toBe("term")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; content is this test's own mkdtemp scratch root
       rmSync(content, { recursive: true, force: true })

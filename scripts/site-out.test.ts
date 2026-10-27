@@ -104,7 +104,7 @@ it("the rebuild marker names the target revision and clears only via the returne
     expect(existsSync(path)).toBe(true)
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
       schema: "terminfo-site-rebuild/1",
-      subject: "a".repeat(40),
+      target: "a".repeat(40),
     })
     clear?.()
     expect(existsSync(path)).toBe(false)
@@ -130,7 +130,7 @@ it("writes the marker into a state root that does not exist yet (first start, 28
     expect(existsSync(path)).toBe(true)
     expect(JSON.parse(readFileSync(path, "utf8"))).toMatchObject({
       schema: "terminfo-site-rebuild/1",
-      subject: "b".repeat(40),
+      target: "b".repeat(40),
     })
     clear?.()
     expect(existsSync(path)).toBe(false)

@@ -604,7 +604,7 @@ test("rejects a returned method that disagrees with the marker and preserves mat
         outcome: "error",
         reason: "collector-error",
         assertionType: "query_reply",
-        note: "Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=inconclusive, reason=no-response, evidence=query_reply)",
+        note: "Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=inconclusive, reason=no-response, assertionType=query_reply)",
       },
       { featureId: "matching", outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
     ],
@@ -688,7 +688,7 @@ test("an evidence kind that disagrees with the marker keeps the response and the
       outcome: "error",
       reason: "collector-error",
       assertionType: "query_reply",
-      note: `Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=unsupported, evidence=query_reply) and assertion(kind=negative, expected="no DA1 answer", observed=${JSON.stringify(response)})`,
+      note: `Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=unsupported, assertionType=query_reply) and assertion(kind=negative, expected="no DA1 answer", observed=${JSON.stringify(response)})`,
       rawReplyRef: "wrong",
     },
   ])
@@ -704,14 +704,14 @@ test.each([
     observation: { outcome: "supported", assertionType: "buffer_state" },
     assertions: [{ kind: "negative", expected: "X", observed: "X" }],
     refused:
-      'observation(outcome=supported, evidence=buffer_state) and assertion(kind=negative, expected="X", observed="X")',
+      'observation(outcome=supported, assertionType=buffer_state) and assertion(kind=negative, expected="X", observed="X")',
   },
   {
     name: "no assertion",
     response: "X",
     observation: { outcome: "supported", assertionType: "buffer_state" },
     assertions: [],
-    refused: "observation(outcome=supported, evidence=buffer_state)",
+    refused: "observation(outcome=supported, assertionType=buffer_state)",
   },
   {
     name: "a parser-state assertion that observed other bytes",
@@ -719,7 +719,7 @@ test.each([
     observation: { outcome: "unsupported", assertionType: "buffer_state" },
     assertions: [{ kind: "negative", expected: "Y", observed: "Z" }],
     refused:
-      'observation(outcome=unsupported, evidence=buffer_state) and assertion(kind=negative, expected="Y", observed="Z")',
+      'observation(outcome=unsupported, assertionType=buffer_state) and assertion(kind=negative, expected="Y", observed="Z")',
   },
   {
     name: "no response",
@@ -727,7 +727,7 @@ test.each([
     observation: { outcome: "supported", assertionType: "buffer_state" },
     assertions: [{ kind: "positive", expected: "X", observed: "X" }],
     refused:
-      'observation(outcome=supported, evidence=buffer_state) and assertion(kind=positive, expected="X", observed="X")',
+      'observation(outcome=supported, assertionType=buffer_state) and assertion(kind=positive, expected="X", observed="X")',
   },
 ] as const)("a conclusive result with $name keeps its response and refused claim", async (row) => {
   const batch = await collectBatch(backend, "xtermjs", [
@@ -775,7 +775,7 @@ test("an inconclusive result without a reason keeps its response and refused cla
       outcome: "error",
       reason: "collector-error",
       assertionType: "buffer_state",
-      note: "Callback result lacks an inconclusive/error reason; refused observation(outcome=inconclusive, evidence=buffer_state)",
+      note: "Callback result lacks an inconclusive/error reason; refused observation(outcome=inconclusive, assertionType=buffer_state)",
       rawReplyRef: "unreasoned",
     },
   ])
@@ -946,7 +946,7 @@ test("refuses named coverage that arrives beside its returned error observation"
     },
   ])
   expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([{ featureId: "modes.bracketed-paste", status: "test-failure" }])
-  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining("beside observation(outcome=error, reason=collector-error, evidence=buffer_state") })
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining("beside observation(outcome=error, reason=collector-error, assertionType=buffer_state") })
   expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: false }))
   expect(batch.results.find((result) => result.featureId === "modes.bracketed-paste")?.rawReplyRef).toBe("modes.bracketed-paste")
   expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining('note="backend read failed"') })

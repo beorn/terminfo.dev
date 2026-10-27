@@ -168,11 +168,11 @@ const fixture = vi.hoisted(() => {
     mux: mux as unknown as SelectedVersion,
     screen: screen as unknown as SelectedVersion,
     projection: {
-      current: { "app:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
+      current: { "term:kitty": selected, "mux:tmux": mux, "mux:screen": screen },
       versions: {
-        "app:kitty": [selected],
-        "app:kitty:clipboard": [alternateKitty],
-        "headless:kitty": [
+        "term:kitty": [selected],
+        "term:kitty:clipboard": [alternateKitty],
+        "lib:kitty": [
           {
             ...alternateKitty,
             sha256: "f".repeat(64),
@@ -182,7 +182,7 @@ const fixture = vi.hoisted(() => {
         "mux:tmux": [mux],
         "mux:screen": [screen, olderScreen],
       },
-      history: { "app:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen] },
+      history: { "term:kitty": [selected], "mux:tmux": [mux], "mux:screen": [screen] },
       exclusions: [],
     } as unknown as {
       current: Record<string, SelectedVersion>
@@ -779,7 +779,7 @@ describe("selected-run consumer parity", () => {
       expect(site.results.kitty?.["sgr.bold"]).toBe("supported")
       // Current v3 must preserve exact sealed status while publication independently controls bytes.
       const projection = currentResults.loadCurrentResults("").projection
-      const current = projection.current["app:kitty"]
+      const current = projection.current["term:kitty"]
       if (!current) throw new Error("Missing sealed privacy fixture")
       const result = current.results.find((result) => result.featureId === "sgr.bold")
       if (!result) throw new Error("Missing sealed privacy result")
@@ -798,7 +798,7 @@ describe("selected-run consumer parity", () => {
       current.assertions = [
         { featureId: "sgr.bold", kind: "positive", expected: "expected criterion", observed: "actual response" },
       ]
-      const targets = new Map([["kitty", { contextKey: "app:kitty", selected: current }]])
+      const targets = new Map([["kitty", { contextKey: "term:kitty", selected: current }]])
       const unpublished = publicResults(projection, targets)
       expect(JSON.stringify(unpublished.projection.current)).not.toContain("RETAINED_CURRENT_REPLY")
       // 30565: the displayed run's trace publishes the unreviewed result's allowlisted record only.
@@ -811,7 +811,7 @@ describe("selected-run consumer parity", () => {
       const { cells } = JSON.parse(trace.bytes) as { cells: Record<string, unknown> }
       expect(cells["sgr.bold"]).toEqual({
         status: "supported",
-        ...(result.assertionType && { evidence: result.assertionType }),
+        ...(result.assertionType && { assertionType: result.assertionType }),
         replyWithheld: true,
         assertions: [{ kind: "positive", expected: "expected criterion", observed: "actual response" }],
       })
@@ -903,21 +903,21 @@ describe("selected-run consumer parity", () => {
     const out = mkdtempSync(join(tmpdir(), "terminfo-stale-run-"))
     // #30759 Slice A: v2 is gone, so the withdrawal rule is exercised on the v3 run documents.
     const runPath = join(out, "api", "v3", "runs", `${fixture.runSha256}.json`)
-    const current = fixture.projection.current["app:kitty"]
-    const versions = fixture.projection.versions["app:kitty"]
-    const history = fixture.projection.history["app:kitty"]
+    const current = fixture.projection.current["term:kitty"]
+    const versions = fixture.projection.versions["term:kitty"]
+    const history = fixture.projection.history["term:kitty"]
     try {
       generateApi(out)
       expect(existsSync(runPath)).toBe(true)
-      Reflect.deleteProperty(fixture.projection.current, "app:kitty")
-      fixture.projection.versions["app:kitty"] = []
-      fixture.projection.history["app:kitty"] = []
+      Reflect.deleteProperty(fixture.projection.current, "term:kitty")
+      fixture.projection.versions["term:kitty"] = []
+      fixture.projection.history["term:kitty"] = []
       generateApi(out)
       expect(existsSync(runPath)).toBe(false)
     } finally {
-      if (current) fixture.projection.current["app:kitty"] = current
-      fixture.projection.versions["app:kitty"] = versions ?? []
-      fixture.projection.history["app:kitty"] = history ?? []
+      if (current) fixture.projection.current["term:kitty"] = current
+      fixture.projection.versions["term:kitty"] = versions ?? []
+      fixture.projection.history["term:kitty"] = history ?? []
       rmSync(out, { recursive: true, force: true })
     }
   })
@@ -1006,8 +1006,8 @@ describe("selected-run consumer parity", () => {
       const screenPage = terminalPaths.paths().find((page) => page.params.backendId === "screen")!
       const olderRuns = JSON.parse(screenPage.params.otherRuns!) as PublicVersion[]
       expect(olderRuns.map((run) => run.subject.version)).toEqual(["4.9"])
-      expect(terminal?.params.terminalType).toBe("app")
-      expect(v3.current["app:kitty"]?.sha256).toBe(fixture.runSha256)
+      expect(terminal?.params.terminalType).toBe("term")
+      expect(v3.current["term:kitty"]?.sha256).toBe(fixture.runSha256)
       expect(v3.current["mux:tmux"]?.sha256).toBe(fixture.mux.sha256)
       expect(analysis).toMatchObject({
         runSha256: fixture.runSha256,

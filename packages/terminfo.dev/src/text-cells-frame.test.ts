@@ -329,6 +329,7 @@ const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?
       frames: [frame(fixture.controlRows, "control"), frame(fixture.targetRows, "target")],
     })),
   }
+  run.results[0]!.frames = run.textQualification.shapes[0]!.frames
   return { run, manifest, snapshots, attempt }
 }
 

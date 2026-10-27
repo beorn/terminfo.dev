@@ -156,12 +156,12 @@ describe("release watch consumer", () => {
       writeFileSync(
         join(root, "docs", "data", "current-results.ts"),
         `
-        const app = { target: { kind: "app", id: "kitty", version: process.env.TEST_REVIEWED_APP_VERSION }, runId: "reviewed-kitty", sha256: "${"a".repeat(64)}" }
-        const headless = { target: { kind: "headless", id: "kitty", version: "0.99" }, runId: "reviewed-parser", sha256: "${"b".repeat(64)}" }
-        export function loadCurrentResults() { return { projection: { current: { "app:kitty": app, "headless:kitty": headless } } } }
+        const app = { subject: { kind: "term", id: "kitty", version: process.env.TEST_REVIEWED_APP_VERSION }, runId: "reviewed-kitty", sha256: "${"a".repeat(64)}" }
+        const headless = { subject: { kind: "lib", id: "kitty", version: "0.99" }, runId: "reviewed-parser", sha256: "${"b".repeat(64)}" }
+        export function loadCurrentResults() { return { projection: { current: { "term:kitty": app, "lib:kitty": headless } } } }
         export function compatibilityTargets() { return new Map([
-          ["kitty", { contextKey: "headless:kitty", selected: headless }],
-          ...(!process.env.NO_REVIEWED_APP ? [["app-kitty", { contextKey: "app:kitty", selected: app }]] : []),
+          ["kitty", { contextKey: "lib:kitty", selected: headless }],
+          ...(!process.env.NO_REVIEWED_APP ? [["app-kitty", { contextKey: "term:kitty", selected: app }]] : []),
         ]) }
       `,
       )
@@ -201,7 +201,7 @@ describe("release watch consumer", () => {
         currentVersion: "0.46.2",
         latestVersion: "0.49.1",
         disposition: "new-release",
-        currentEvidence: { contextKey: "app:kitty", runId: "reviewed-kitty", sha256: "a".repeat(64) },
+        currentEvidence: { contextKey: "term:kitty", runId: "reviewed-kitty", sha256: "a".repeat(64) },
         selectedCandidate: { tag: "v0.49.1" },
       })
       expect(watch(null)).toMatchObject({

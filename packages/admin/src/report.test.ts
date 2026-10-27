@@ -100,6 +100,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
       assertions: [
         {
           featureId: "cursor.position",
+          assertionType: "buffer_state",
           kind: "positive",
           rawReplyRef: "cursor.position",
           expected: "x=2",
@@ -107,6 +108,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         },
         {
           featureId: "sgr.bold",
+          assertionType: "buffer_state",
           kind: "negative",
           rawReplyRef: "sgr.bold",
           expected: "bold=true",
@@ -206,7 +208,7 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(selected.error).toBeUndefined()
     expect(selected.status, selected.stdout + selected.stderr).toBe(0)
     const plain = selected.stdout.replace(/\x1b\[[0-9;]*m/g, "")
-    const contexts = [...plain.matchAll(/(C\d+): app:kitty 0\.46\.2 — run (reviewed-kitty(?:-inconclusive)?)/g)]
+    const contexts = [...plain.matchAll(/(C\d+): term:kitty 0\.46\.2 — run (reviewed-kitty(?:-inconclusive)?)/g)]
     expect(contexts).toHaveLength(2)
     const labelFor = (runId: string) => contexts.find((match) => match[2] === runId)?.[1]
     const normal = labelFor("reviewed-kitty")

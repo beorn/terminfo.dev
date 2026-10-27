@@ -160,7 +160,7 @@ describe("full-scope rows", () => {
     expect(row.observations[0]).toEqual({
       id: "a.one",
       state: "test-failure",
-      method: "text",
+      method: "buffer_state",
       note: null,
       reason: "terminal never answered; timeout",
     })

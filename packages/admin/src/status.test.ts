@@ -149,8 +149,8 @@ test("status separates reviewed current runs from newer legacy files and refuses
     )
 
     const projection = loadCurrentResults(join(root, "content")).projection
-    expect(projection.current["app:kitty"], JSON.stringify(projection.exclusions)).toBeDefined()
-    expect(projection.current["app:kitty"]?.counts).toEqual({
+    expect(projection.current["term:kitty"], JSON.stringify(projection.exclusions)).toBeDefined()
+    expect(projection.current["term:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
       untestable: 0,

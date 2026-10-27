@@ -371,8 +371,8 @@ it.each([
               const appRun = {
                 ...raw,
                 runId: "qualified-development-text",
-                subject: {
-                  kind: "term",
+                target: {
+                  kind: "app",
                   id,
                   version: "1.0.0",
                   os: "macos",
@@ -397,7 +397,7 @@ it.each([
                     observed: frames[1]!.ref,
                   },
                 ],
-                observations: [{ featureId, outcome: "supported", assertionType: "buffer_state", rawReplyRef: featureId, frames }],
+                observations: [{ featureId, outcome: "supported", evidence: "text", rawReplyRef: featureId, frames }],
                 screenshotRefs: [],
                 textSnapshotRefs: [...refs],
                 textQualification: { version: 1, recipe: "macos-text-cells-v1", grid: { rows: 4, cols: 12 }, shapes },
@@ -446,7 +446,7 @@ it.each([
           (row) => row.context.kind === "term" && row.context.id === "terminal-app" && row.context.os === "macos",
         )
         expect(terminal?.status).toBe("not-started")
-        expect(terminal?.error).toMatch(/expected current schema-3/)
+        expect(terminal?.error).toMatch(/expected current schema-4/)
       }
       const engine = pass.contexts.find((row) => row.context.kind === "lib" && row.context.id === "xtermjs")
       expect(engine?.status).toBe("not-started")
@@ -454,7 +454,7 @@ it.each([
       expect(engine?.error).toMatch(
         suite === "different" || suite === "frozen"
           ? /unknown suite.*missing trusted manifest/
-          : /expected current schema-3/,
+          : /expected current schema-4/,
       )
 
       expect(engine?.rawRun && readFileSync(engine.rawRun, "utf8")).toBe(bytes)
@@ -743,8 +743,8 @@ describe("release 1 collection census", () => {
     const all = census()
     const headless = cleanRun({ subject: { kind: "lib", id: "xtermjs", os: "linux" } })
     const uncovered = uncoveredContexts(all, [headless]).map((entry) => `${entry.context.kind}:${entry.context.id}`)
-    expect(uncovered).not.toContain("headless:xtermjs")
-    expect(uncovered).toContain("app:xterm")
+    expect(uncovered).not.toContain("lib:xtermjs")
+    expect(uncovered).toContain("term:xterm")
     expect(uncovered).toHaveLength(32)
   })
 })
@@ -1280,7 +1280,7 @@ it.each(["matching", "foreign-run", "foreign-context"] as const)(
       else {
         expect(row.status).toBe("not-started")
         expect(row.error).toMatch(
-          fault === "foreign-run" ? /changed logical runId/ : /expected current schema-3 headless:xtermjs context/,
+          fault === "foreign-run" ? /changed logical runId/ : /expected current schema-4 lib:xtermjs context/,
         )
       }
       expect(pass.complete).toBe(false)

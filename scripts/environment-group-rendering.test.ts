@@ -174,7 +174,7 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")
     expect(full).toContain("(manual by design, ungraded)")
-    expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded capabilities")
+    expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded features")
   })
 
   it("names the nine on the OS page tooltip too (D2)", () => {

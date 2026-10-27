@@ -250,11 +250,8 @@ test.each([
         ? "no verified disposable-ownership receipt was presented"
         : "neither a verified owned terminal nor a verified disposable-ownership receipt was presented"
     expect(recorded.writes).toEqual([])
-    expect(recorded.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "policy-refused",
-      note: `Collector refused before sending bytes because ${refusal}`,
-    })
+    expect(recorded.observation).toBeUndefined()
+    expect(recorded.result.reason).toBe(`Required grant missing: ${refusal}`)
     expect(recorded.result).toMatchObject({ status: "test-todo", tests: [{ id: "prerequisite" }] })
     expect(recorded.assertions).toEqual([])
   }

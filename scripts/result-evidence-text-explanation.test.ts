@@ -139,7 +139,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     expect(panes.tested.text).toContain('before: "X" bg rgb(0,128,0)')
     expect(panes.tested.text).toContain('after: "R" bg null (default)')
     expect(panes.tested.sourceLine).toBe(
-      "Historical run 29e1f818 · 2026-10-16 · parser-state · presentation not reviewed",
+      "Historical run 29e1f818 · 2026-10-16 · buffer_state · presentation not reviewed",
     )
     expect(panes.tested.identityLine).toBe(
       "Identity verified in run file; admitted by runtime-identity rule (XTVERSION kitty(0.49.2)).",
@@ -202,7 +202,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     const panes = describeTracePanes(loaded, {
       sequence: "ESC [ 49 m",
       probeGuidance: "Headless: measure neutral C, SGR 42 colored X, then SGR 49 reset R.",
-      subjectKind: "app",
+      subjectKind: "term",
     })
 
     expect(panes.tested.items).toEqual([
@@ -210,7 +210,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Query · reply", code: "ESC P $ q m ESC \\ ESC [ c" },
       { label: "Reply", code: "ESC P 1 $ r 0 m ESC \\", text: "Observed: 0" },
     ])
-    expect(panes.tested.sourceLine).toBe("Historical run c70e8c3c · 2026-10-19 · query · presentation not reviewed")
+    expect(panes.tested.sourceLine).toBe("Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed")
     expect(panes.tested.identityLine).toBe(
       "Identity unverified in run file; admitted by ghostty rule (DA1 ESC [ ?62;22;52 c, XTVERSION ghostty 1.3.1).",
     )
@@ -257,7 +257,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
     })
     const panes = describeTracePanes(loaded, {
       sequence: "ESC [ 21 t",
-      subjectKind: "app",
+      subjectKind: "term",
     })
 
     expect(panes.tested.text.toLowerCase()).toContain("reply not reviewed for publication")
@@ -313,7 +313,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       runSha256: document.runSha256,
       featureId: "device.xtwinops-21",
     })
-    const queryPanes = describeTracePanes(withQuery, { sequence: "ESC [ 21 t", subjectKind: "app" })
+    const queryPanes = describeTracePanes(withQuery, { sequence: "ESC [ 21 t", subjectKind: "term" })
     expect(queryPanes.tested.items).toEqual([
       { label: "Sent", code: "ESC [ 0 m" },
       { label: "Query · reply", code: "ESC [ 21 t ESC [ c" },
@@ -327,7 +327,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       runSha256: document.runSha256,
       featureId: "extensions.osc52-read",
     })
-    const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", subjectKind: "app" })
+    const noQueryPanes = describeTracePanes(withoutQuery, { sequence: "ESC ] 52 ; c ; ? BEL", subjectKind: "term" })
     expect(noQueryPanes.tested.items).toEqual([
       { label: "Sent", text: "Input bytes were not stored by this run." },
       { label: "Reply", text: "Reply not reviewed for publication." },
@@ -353,7 +353,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       cells: {
         "sgr.bg.256": {
           outcome: "inconclusive",
-          evidence: "none",
+
           reason: "policy-refused",
           events: [],
           assertions: [],
@@ -370,7 +370,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       sequence: "ESC [ 48;5;N m",
       probeGuidance:
         "Headless: compare background SGR 48;5;67 and 48;5;173 cells with two independently exact direct-RGB cube reference cells.",
-      subjectKind: "app",
+      subjectKind: "term",
     })
 
     expect(panes.tested.reasonLine).toBe("policy-refused: The configured policy declined to run or allow this probe.")
@@ -378,7 +378,7 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Sent", text: "Nothing" },
       { label: "Observed", text: "Nothing" },
     ])
-    expect(panes.tested.sourceLine).toBe("Historical run 3105bbe9 · 2026-10-18 · none · presentation not reviewed")
+    expect(panes.tested.sourceLine).toBe("Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed")
     expect(panes.tested.identityLine).toBe(
       "Identity unverified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.48.2)).",
     )

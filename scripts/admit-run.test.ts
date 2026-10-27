@@ -662,13 +662,13 @@ test("a run is named from its own target and run id", () => {
 })
 
 test("a run with an unsafe filename component refuses", () => {
-  expect(() => planAdmission(runFixture({ subject: { kind: "term", id: "kit/ty", version: "1", os: "linux" } }))).toThrow(
+  expect(() => planAdmission(runFixture({ target: { kind: "app", id: "kit/ty", version: "1", os: "linux" } }))).toThrow(
     /unsafe target.id/,
   )
 })
 
 test("an unsupported run schema refuses", () => {
-  expect(() => planAdmission(runFixture({ schemaVersion: 1 }))).toThrow(/current schema 3 or historical schema 2/)
+  expect(() => planAdmission(runFixture({ schemaVersion: 1 }))).toThrow(/current schema 4 or historical schema 2\/3/)
 })
 
 /**
@@ -766,7 +766,7 @@ test("admission carries a run's text snapshots as text, and refuses a missing or
 // What these tests prove is CONSISTENCY, not ORIGIN; origin is the apparatus handoff.
 // ---------------------------------------------------------------------------------------------
 
-const KITTY_TARGET = { kind: "term", id: "kitty", os: "linux" }
+const KITTY_TARGET = { kind: "app", id: "kitty", os: "linux" }
 const RECEIPT_RUN_ID = "9".repeat(32)
 
 /** A container receipt shaped as the launcher writes it: docker-inspected identity, no placeholders. */

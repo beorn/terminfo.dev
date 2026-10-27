@@ -340,7 +340,10 @@ test.each(ARM_CASES)(
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
     // Without the member the arm keeps today's capture-only reading, where silence never grades.
     const plain = lib(contextOf(scripted((text) => replies[text] ?? "")))
-    expect(plain.observation?.outcome, id).toBe("inconclusive")
+    if (Object.keys(replies).length === 0) {
+      expect(plain.observation, id).toBeUndefined()
+      expect(plain.tests, id).toContainEqual(expect.objectContaining({ status: "test-failure", reason: expect.any(String) }))
+    } else expect(plain.observation?.outcome, id).toBe("inconclusive")
   },
 )
 
@@ -490,18 +493,16 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
     undefined,
     proofOf("xtermjs"),
   )
-  expect(batch.observations).toMatchObject([
-    {
-      featureId: "device.xtversion",
-      outcome: "error",
-      reason: "collector-error",
-      assertionType: "query_reply",
-      note: expect.stringMatching(
-        /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms; refused observation\(outcome=unsupported, evidence=query, .*\) and assertion\(kind=negative, .*\)$/,
-      ),
-      rawReplyRef: "device.xtversion",
-    },
-  ])
+  expect(batch.observations).toEqual([])
+  expect(batch.ungradedDiagnostics["device.xtversion"]).toMatchObject({
+    kind: "collector-error",
+    message: expect.stringMatching(
+      /^headless xtermjs probe device\.xtversion: late reply after sentinel: 10 bytes "\\u001bP>\|late\\u001b\\\\" at \+\d+ms; refused observation\(outcome=unsupported, assertionType=query_reply, .*\) and assertion\(kind=negative, .*\)$/,
+    ),
+  })
+  expect(batch.results.find((result) => result.featureId === "device.xtversion")).toMatchObject({
+    status: "test-failure", rawReplyRef: "device.xtversion", reason: expect.stringContaining("late reply after sentinel"),
+  })
   expect(batch.assertions).toStrictEqual([])
   // The refusal keeps what was observed: the on-time read window, and the late bytes beside it.
   expect(batch.rawReplies).toStrictEqual({

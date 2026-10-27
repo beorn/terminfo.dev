@@ -127,7 +127,7 @@ it("retains historical HTTP bytes privately and refuses to treat them as the cur
     ) as ProbeSuiteManifest,
     collectorRevision: run.sourceRevision,
   }
-  await expect(handleServer("kitty", {})).rejects.toThrow(/schemaVersion 3 collector draft/)
+  await expect(handleServer("kitty", {})).rejects.toThrow(/schemaVersion 4 collector draft/)
   expect(saveDaemonProbeRun).not.toHaveBeenCalled()
   const digest = createHash("sha256").update(fixtures.raw).digest("hex")
   expect(readFileSync(join(fixtures.home!, ".terminfo-dev", "http-responses", digest), "utf8")).toBe(fixtures.raw)

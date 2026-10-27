@@ -489,7 +489,7 @@ try {
             if (!temporary) throw error
             assert.equal(error, refusal)
           }
-          return {observation:{outcome:"supported",evidence:"query"}}
+          return {observation:{outcome:"supported",assertionType:"query_reply"}}
         }
         try {
           await assert.rejects(withRawMode(() => runProbeBatch({ids:["reset.ris"], captureRunId:capture,
@@ -514,17 +514,21 @@ try {
     assert.equal(owned.ungradedDiagnostics["reset.ris"], undefined)
     const reset = owned.observations.find((item) => item.featureId === "reset.ris")
     assert.equal(reset.outcome, "supported")
-    assert.equal(reset.evidence, "query")
+    assert.equal(reset.assertionType, "query_reply")
     assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris.callbackResponse"]), {
       before: { row: 5, col: 5 }, after: { row: 1, col: 1 }
     })
     assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris"]).queries.map(query => query.raw),
       ["\x1b[5;5R", "\x1b[1;1R"])
-    assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write").reason, "policy-refused")
+    assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "test-todo")
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })
-      assert.equal(refused.observations[0].reason, "policy-refused")
+      assert.deepEqual(refused.observations, [])
+      assert.equal(refused.results.find(item => item.featureId === "reset.ris").status, "test-todo")
+      assert.match(refused.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
       assert.deepEqual(JSON.parse(refused.rawReplies["reset.ris"]).writes, [])
     }
     const alias = openControllingTTY()
@@ -548,7 +552,9 @@ try {
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
       ownedTerminal: adapter, out: process.stdout })
-    assert.equal(disposed.observations[0].reason, "policy-refused")
+    assert.deepEqual(disposed.observations, [])
+    assert.equal(disposed.results.find(item => item.featureId === "reset.ris").status, "test-todo")
+    assert.match(disposed.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
     assert.deepEqual(JSON.parse(disposed.rawReplies["reset.ris"]).writes, [])
     await new Promise((resolve) => foreign.end(resolve))
   }

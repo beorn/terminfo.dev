@@ -420,7 +420,7 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
     !Array.isArray(cellEntry.assertions) ||
     ((expectation.schemaVersion === 3 || expectation.schemaVersion === 4)
       ? typeof cellEntry.status !== "string"
-      : typeof cellEntry.outcome !== "string" || typeof cellEntry.assertionType !== "string")
+      : typeof cellEntry.outcome !== "string" || (cellEntry.assertionType !== undefined && typeof cellEntry.assertionType !== "string"))
   ) {
     throw new Error("Trace document identity or structure does not match this result")
   }

@@ -401,8 +401,9 @@ bun run build
 
 ### Probe Status
 
-`probeStatus` is DERIVED at build time (`docs/data/probe-status.ts`), never hand-kept per row:
-a feature with a probe definition reads `"automated"`, one with no definition reads `"unprobed"`.
+Coverage is derived by [derivedProbeStatus](docs/data/probe-status.ts), with reviewed catalog overrides.
+See the [canonical declaration contract](packages/probe-defs/README.md#from-definition-to-recorded-result)
+and [nullable declaration comments](packages/probe-defs/src/types.ts) for the distinction between measured, partial and undeclared coverage.
 
 The catalog may declare a reviewed override for exactly two statuses, each with a
 `probeStatusReason`:
@@ -445,7 +446,8 @@ include the `"osc"` tag in addition to any vendor tag.
 
 ### Probe Quality Rules
 
-**Every lib callback MUST verify actual terminal state.** Never `return { pass: true }` without checking something. Use one of these verification strategies:
+[The canonical callback contract](packages/probe-defs/README.md#from-definition-to-recorded-result) permits measured, coverage and execution-only results.
+Support claims require retained observations and deciding assertions; legacy `pass` is diagnostic only. Useful lib observation strategies:
 
 | Strategy             | When to use                 | Example                                       |
 | -------------------- | --------------------------- | --------------------------------------------- |
@@ -455,9 +457,8 @@ include the `"osc"` tag in addition to any vendor tag.
 | `ctx.feedCapture()`  | Query-response protocols    | Check response matches expected pattern       |
 | `ctx.capabilities.*` | Declared capabilities       | Check `capabilities.kittyKeyboard`            |
 | `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
-| `null`               | Last resort only            | When NO verification is possible (rare)       |
 
-If a lib callback returns `{ pass: true }` unconditionally, it's a false positive — every backend will pass regardless of whether it implements the feature.
+Execution-only refusals retain TODO or FAILURE tests with reasons, without inventing a measured observation.
 
 ## Content Enrichment
 
