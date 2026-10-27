@@ -224,10 +224,11 @@ function decrqssAfterRefusal(
   if (graded.observation?.outcome === "supported") {
     const note = [refused, graded.observation.note].filter(Boolean).join("; ")
     return {
-      ...graded,
+      pass: true,
       response: retainedRefusals + second.raw,
       note,
       observation: { ...graded.observation, note },
+      assertions: graded.assertions,
     }
   }
   if (refusedFrame(spec, secondFrame)) {
