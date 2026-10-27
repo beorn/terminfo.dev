@@ -60,8 +60,9 @@ The optional sentinel member requires the executing adapter's `reply-delivery` e
 comparer in [headless-identity.ts](../probes/headless-identity.ts) checks its audited source blobs and
 registry integrity, clean source tree or loaded WASM digest against that measured runtime. Versions are
 diagnostic facts. Each initialized callback instance supplies its own declaration; the destroyed
-preflight instance cannot authorize another instance. `collector.replyPath` retains each feature's
-declaration, measured identity and eligibility result, including a named withholding reason.
+preflight instance cannot authorize another instance. `collector.replyPath` retains the shared
+declaration and measured identity once, alongside each feature's eligibility result and named
+withholding reason. Each distinct withholding reason is reported once per batch.
 
 Source-backed collection runs from the hh root with vendored Termless source. A dist-only install
 without the imported source binding loses sentinel eligibility loudly; silence stays inconclusive.

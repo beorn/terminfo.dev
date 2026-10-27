@@ -252,9 +252,9 @@ test("every region-readback kind row grades its real xterm.js outcome", async ()
       probeDefs.regionReadbackProbes(KIND_ROWS),
     )
     expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(
-      KIND_ROWS.flatMap((row) => [
+      KIND_ROWS.flatMap((row, index) => [
         `headless xtermjs probe ${row.id}\n`,
-        "headless xtermjs has no measured runtime identity for reply delivery\n",
+        ...(index === 0 ? ["headless xtermjs has no measured runtime identity for reply delivery\n"] : []),
       ]),
     )
     const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`

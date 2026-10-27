@@ -393,7 +393,18 @@ export async function collectBatch(
 ): Promise<Batch> {
   // One read of the grace window per pass: every sentinel outcome records it and G1 waits it out.
   let graceMs: number | undefined
-  const replyPaths: Record<string, ReplyPathDecision> = {}
+  const replyPath: {
+    backend: string
+    declaration?: ReplyDeliveryExtension["replyDelivery"]
+    runtimeIdentity?: HeadlessRuntimeIdentity
+    decisions: Record<string, Pick<ReplyPathDecision, "member" | "reason">>
+  } = { backend: backendName, ...(runtime && { runtimeIdentity: runtime.identity }), decisions: {} }
+  const warned = new Set<string>()
+  const warn = (line: string) => {
+    if (warned.has(line)) return
+    warned.add(line)
+    process.stderr.write(`${line}\n`)
+  }
   const batch: Batch = {
     results:
       draft?.results ??
@@ -432,9 +443,10 @@ export async function collectBatch(
       const declaration = hasExtension<ReplyDeliveryExtension>(backend, "reply-delivery")
         ? backend.replyDelivery
         : undefined
-      const decision = replyDeliveryDecision(backendName, declaration, runtime)
-      replyPaths[probe.id] = decision
-      batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPaths)
+      const decision = replyDeliveryDecision(backendName, declaration, runtime, warn)
+      if (declaration) replyPath.declaration ??= declaration
+      replyPath.decisions[probe.id] = { member: decision.member, reason: decision.reason }
+      batch.rawReplies["collector.replyPath"] = JSON.stringify(replyPath)
       const sentinel = { fired: false }
       const proven = decision.member
         ? {

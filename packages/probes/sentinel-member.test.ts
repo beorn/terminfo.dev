@@ -97,6 +97,7 @@ async function scriptedRuntimeFixture() {
   }
   return {
     runtime,
+    declaration,
     create: (script?: (text: string) => string) => loaded.create(script, declaration),
     destroy: () => rmSync(root, { recursive: true, force: true }),
   }
@@ -565,8 +566,9 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
 
 // #30576: comparer tests cannot catch a collector that reuses preflight qualification for a
 // different initialized callback instance, or forwards capabilities.version as measured identity.
+// CTO a73afe52: retain shared declaration/identity once and emit each withholding reason once per batch.
 test("qualifies each initialized callback instance and forwards the measured runtime identity", async () => {
-  vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+  const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   const runtime = fixture.runtime
   const members: boolean[] = []
   const identities: unknown[] = []
@@ -578,13 +580,13 @@ test("qualifies each initialized callback instance and forwards the measured run
       const init = value.init.bind(value)
       vi.spyOn(value, "init").mockImplementation((options) => {
         init(options)
-        if (index === 1) value.capabilities.extensions.delete("reply-delivery")
-        if (index === 2) Object.assign(value, { replyDelivery: undefined })
+        if (index === 2) value.capabilities.extensions.delete("reply-delivery")
+        if (index === 3) Object.assign(value, { replyDelivery: undefined })
       })
       return value
     },
     "xtermjs",
-    ["declared", "absent", "changed"].map<ProbeDefinition>((id) => ({
+    ["declared", "declared-again", "absent", "changed"].map<ProbeDefinition>((id) => ({
       id,
       term: null,
       lib: (ctx) => {
@@ -597,14 +599,27 @@ test("qualifies each initialized callback instance and forwards the measured run
     undefined,
     runtime,
   )
-  expect(instance).toBe(3)
-  expect(members).toEqual([true, false, false])
-  expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity])
-  expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
-    declared: { member: true, runtimeIdentity: runtime.identity },
-    absent: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
-    changed: { member: false, reason: "xtermjs declares no reply delivery", runtimeIdentity: runtime.identity },
+  expect(instance).toBe(4)
+  expect(members).toEqual([true, true, false, false])
+  expect(identities).toEqual([runtime.identity, runtime.identity, runtime.identity, runtime.identity])
+  expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toStrictEqual({
+    backend: "xtermjs",
+    declaration: fixture.declaration,
+    runtimeIdentity: runtime.identity,
+    decisions: {
+      declared: { member: true, reason: expect.any(String) },
+      "declared-again": { member: true, reason: expect.any(String) },
+      absent: { member: false, reason: "xtermjs declares no reply delivery" },
+      changed: { member: false, reason: "xtermjs declares no reply delivery" },
+    },
   })
+  expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual([
+    "headless xtermjs probe declared\n",
+    "headless xtermjs probe declared-again\n",
+    "headless xtermjs probe absent\n",
+    "headless xtermjs declares no reply delivery\n",
+    "headless xtermjs probe changed\n",
+  ])
 })
 
 // Same adapter/version/capabilities without the independent measurement cannot qualify.
@@ -623,6 +638,10 @@ test("a declaration without measured runtime identity withholds the member and n
   ])
   expect(seen).toEqual([undefined, undefined])
   expect(JSON.parse(batch.rawReplies["collector.replyPath"]!)).toMatchObject({
-    unmeasured: { member: false, reason: "xtermjs has no measured runtime identity for reply delivery" },
+    backend: "xtermjs",
+    declaration: fixture.declaration,
+    decisions: {
+      unmeasured: { member: false, reason: "xtermjs has no measured runtime identity for reply delivery" },
+    },
   })
 })
