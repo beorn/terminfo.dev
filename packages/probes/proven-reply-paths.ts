@@ -14,9 +14,10 @@
  *
  * Re-audited 2026-10-27 at engine 0.8.0 for vt100, vt220 and vterm (vendor/vterm d7f69fe9, Termless
  * 01f98b4, Terminfo 4ec774dd): DA1 still answers through feedCapture in each engine, and the onResponse
- * call sites are unchanged from the ea1439b audit (vt100 3, vt220 4, vterm 42 -> 43 where the one
- * addition is the truthful Kitty ENOTSUP refusal, #31020). Evidence:
- * /hh/var/@dev8/30695-sentinel-reaudit-20261027.md and /hh/var/@dev8/31059-s1-onResponse-sites-20261027.md.
+ * call sites are unchanged from the ea1439b audit except one addition (vt100 3, vt220 4, vterm 42 -> 43,
+ * the truthful Kitty ENOTSUP refusal, #31020). Evidence, /hh/var/@dev8/:
+ * 30695-sentinel-reaudit-20261027.md sha256 0404f81327709e20f80805d0f5b7842a9f58486ca6510a0831583514d6a3f520 and
+ * 31059-s1-onResponse-sites-20261027.md sha256 367d1900530006372d031d6864439f8c46432e6d2f13827ee59a7d327234edc3.
  */
 export interface ReplyPathProof {
   readonly adapterVersion: string
