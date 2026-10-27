@@ -11,6 +11,8 @@ import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
 import { projectResults, maskRunnerStorePath } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 
+// Explicit schema-3 wire fixture; current public results use tests and assertionType.
+type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest = {
   probeHash: "current-five-status",
@@ -21,7 +23,7 @@ const suite: ProbeSuiteManifest = {
   probes: { term: [], lib: [], mux: [] },
 }
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
-const raw = (results: ProbeResult[]) => ({
+const raw = (results: Schema3Result[]) => ({
   schemaVersion: 3,
   runId: "current-run",
   target: {
@@ -50,7 +52,7 @@ const raw = (results: ProbeResult[]) => ({
 })
 const parse = (value: object) =>
   parseRun("fixture.json", JSON.stringify(value), ids, new Map([[suite.probeHash, suite]]))
-const todos = (): ProbeResult[] =>
+const todos = (): Schema3Result[] =>
   ids.map((featureId) => ({
     featureId,
     status: "test-todo",
@@ -140,7 +142,7 @@ describe("current execution projection", () => {
   it("grades a 273-row run over its 264 graded ids and never counts an environment group", () => {
     const supportedGroup = ENVIRONMENT_GROUP_IDS[0]
     const splitIds = [...ENVIRONMENT_GROUP_IDS, ...Array.from({ length: 264 }, (_, index) => `capability.${index}`)]
-    const results: ProbeResult[] = splitIds.map((featureId) =>
+    const results: Schema3Result[] = splitIds.map((featureId) =>
       featureId === supportedGroup
         ? {
             featureId,
@@ -182,7 +184,38 @@ describe("current execution projection", () => {
 
 // An unchanged reviewed default key must still identify its canonical subject after the rename.
 it("normalizes historical reviewed context keys without rewriting arbitrary configuration text", () => {
-  expect(maskRunnerStorePath('app:kitty@["app","kitty","macos",null,null,null,null,null]')).toBe('term:kitty@["term","kitty","macos",null,null,null,null,null]')
-  expect(maskRunnerStorePath('headless:xtermjs@["headless","xtermjs","linux",null,null,null,null,null]')).toBe('lib:xtermjs@["lib","xtermjs","linux",null,null,null,null,null]')
-  expect(maskRunnerStorePath('app:keep-this-config')).toBe('app:keep-this-config')
+  expect(maskRunnerStorePath('app:kitty@["app","kitty","macos",null,null,null,null,null]')).toBe(
+    'term:kitty@["term","kitty","macos",null,null,null,null,null]',
+  )
+  expect(maskRunnerStorePath('headless:xtermjs@["headless","xtermjs","linux",null,null,null,null,null]')).toBe(
+    'lib:xtermjs@["lib","xtermjs","linux",null,null,null,null,null]',
+  )
+  expect(maskRunnerStorePath("app:keep-this-config")).toBe("app:keep-this-config")
+})
+
+it("retains the recorded live source only on selected schema-4 metadata", () => {
+  const historical = raw(todos())
+  const { target, intendedContext, results, ...metadata } = historical
+  const current = {
+    ...metadata,
+    schemaVersion: 4,
+    source: { kind: "live" },
+    subject: { ...target, kind: "term" },
+    intendedSubject: { ...intendedContext, kind: "term" },
+    results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
+  }
+  const loaded = parseRun(
+    "live.json",
+    JSON.stringify(current),
+    ids,
+    new Map([[suite.probeHash, { ...suite, schemaVersion: 4 }]]),
+  )
+  const selected = projectResults([loaded], [], ids, { currentProbeHash: suite.probeHash }, []).current["term:kitty"]
+  expect(selected?.schemaVersion).toBe(4)
+  expect(selected?.source).toEqual({ kind: "live" })
+  const oldSelected = projectResults([parse(historical)], [], ids, { currentProbeHash: suite.probeHash }, []).current[
+    "term:kitty"
+  ]
+  expect(oldSelected?.schemaVersion).toBe(3)
+  expect(oldSelected).not.toHaveProperty("source")
 })

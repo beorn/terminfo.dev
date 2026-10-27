@@ -217,28 +217,80 @@ describe("sealed current runs", () => {
   // The old reader accepted arbitrary extra keys; the new wire must have one spelling per fact.
   it("requires a live source and refuses displaced or unknown schema-4 keys by name", () => {
     const { target, intendedContext, results, ...metadata } = current()
-    const raw = { ...metadata, schemaVersion: 4, source: { kind: "live" }, subject: { ...target, kind: "term" }, intendedSubject: { ...intendedContext, kind: "term" }, results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })) }
-    const parseV4 = (value: unknown) => parseRun("v4.json", JSON.stringify(value), catalog, new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]))
+    const raw = {
+      ...metadata,
+      schemaVersion: 4,
+      source: { kind: "live" },
+      subject: { ...target, kind: "term" },
+      intendedSubject: { ...intendedContext, kind: "term" },
+      results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })),
+    }
+    const parseV4 = (value: unknown) =>
+      parseRun(
+        "v4.json",
+        JSON.stringify(value),
+        catalog,
+        new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]),
+      )
     expect(() => parseV4({ ...raw, source: undefined })).toThrow(/source/)
     expect(() => parseV4({ ...raw, source: { kind: "trace" } })).toThrow(/trace probe source has no implementation/)
     expect(() => parseV4({ ...raw, target })).toThrow(/target/)
     expect(() => parseV4({ ...raw, mystery: true })).toThrow(/mystery/)
-    expect(() => parseV4({ ...raw, results: raw.results.map(result => ({ ...result, checks: [] })) })).toThrow(/checks/)
-    expect(() => parseV4({ ...raw, results: raw.results.map(result => ({ ...result, mystery: true })) })).toThrow(/mystery/)
+    expect(() => parseV4({ ...raw, results: raw.results.map((result) => ({ ...result, checks: [] })) })).toThrow(
+      /checks/,
+    )
+    expect(() => parseV4({ ...raw, results: raw.results.map((result) => ({ ...result, mystery: true })) })).toThrow(
+      /mystery/,
+    )
   })
 
   it("validates each current assertion's retained payload independently of the primary result type", () => {
     const { target, intendedContext, results, ...metadata } = current()
     const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
-    const raw = { ...metadata, schemaVersion: 4, source: { kind: "live" }, subject: { ...target, kind: "term" }, intendedSubject: { ...intendedContext, kind: "term" }, rawReplies: { alpha: "ACK" },
-      assertions: [{ featureId: "alpha", kind: "positive", assertionType: "input_bytes", rawReplyRef: "alpha", expected: "ACK", observed: JSON.stringify({ control: "before", report: "ACK" }) }],
-      results: results.map(({ checks, ...result }, index) => index === 0 ? { ...result, status: "supported", reason: undefined, assertionType: "query_reply", rawReplyRef: "alpha", attempt, tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0] }] } : { ...result, tests: checks }),
+    const raw = {
+      ...metadata,
+      schemaVersion: 4,
+      source: { kind: "live" },
+      subject: { ...target, kind: "term" },
+      intendedSubject: { ...intendedContext, kind: "term" },
+      rawReplies: { alpha: "ACK" },
+      assertions: [
+        {
+          featureId: "alpha",
+          kind: "positive",
+          assertionType: "input_bytes",
+          rawReplyRef: "alpha",
+          expected: "ACK",
+          observed: JSON.stringify({ control: "before", report: "ACK" }),
+        },
+      ],
+      results: results.map(({ checks, ...result }, index) =>
+        index === 0
+          ? {
+              ...result,
+              status: "supported",
+              reason: undefined,
+              assertionType: "query_reply",
+              rawReplyRef: "alpha",
+              attempt,
+              tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0] }],
+            }
+          : { ...result, tests: checks },
+      ),
     }
-    const parseV4 = (value: unknown) => parseRun("assertions-v4.json", JSON.stringify(value), catalog, new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]))
+    const parseV4 = (value: unknown) =>
+      parseRun(
+        "assertions-v4.json",
+        JSON.stringify(value),
+        catalog,
+        new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]),
+      )
     expect(() => parseV4(raw)).toThrow(/performed action/)
     const query = { ...raw, assertions: [{ ...raw.assertions[0], assertionType: "query_reply", observed: "ACK" }] }
     expect(parseV4(query).results?.[0]?.status).toBe("supported")
-    expect(() => parseV4({ ...query, rawReplies: { alpha: JSON.stringify({ events: [], queries: [], writes: ["query"] }) } })).toThrow(/returned query bytes/)
+    expect(() =>
+      parseV4({ ...query, rawReplies: { alpha: JSON.stringify({ events: [], queries: [], writes: ["query"] }) } }),
+    ).toThrow(/returned query bytes/)
   })
 
   it("decodes suite wire versions without rewriting historical marker absence", () => {
@@ -247,9 +299,15 @@ describe("sealed current runs", () => {
     const normalized = parseSuiteManifest("old-suite.json", JSON.stringify(oldWire))
     expect(normalized.probes).toEqual({ term: catalog, lib: catalog, mux: catalog })
     expect(normalized).not.toHaveProperty("schemaVersion")
-    expect(parseSuiteManifest("new-suite.json", JSON.stringify({ ...normalized, schemaVersion: 4 })).schemaVersion).toBe(4)
-    expect(() => parseSuiteManifest("mixed-suite.json", JSON.stringify({ ...oldWire, schemaVersion: 4 }))).toThrow(/probe kinds/)
-    expect(() => parseSuiteManifest("unknown-suite.json", JSON.stringify({ ...oldWire, schemaVersion: 5 }))).toThrow(/schemaVersion 5/)
+    expect(
+      parseSuiteManifest("new-suite.json", JSON.stringify({ ...normalized, schemaVersion: 4 })).schemaVersion,
+    ).toBe(4)
+    expect(() => parseSuiteManifest("mixed-suite.json", JSON.stringify({ ...oldWire, schemaVersion: 4 }))).toThrow(
+      /probe kinds/,
+    )
+    expect(() => parseSuiteManifest("unknown-suite.json", JSON.stringify({ ...oldWire, schemaVersion: 5 }))).toThrow(
+      /schemaVersion 5/,
+    )
   })
 
   it("reads recorded TODO without deriving status from today's catalogue or callback schedule", () => {

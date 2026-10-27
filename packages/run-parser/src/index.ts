@@ -1,6 +1,5 @@
 /** Canonical parser and decoder for immutable terminal runs. */
 import { createHash } from "node:crypto"
-import { isAbsolute, win32 } from "node:path"
 import {
   PROBE_STATUSES,
   finalizeProbeResult,
@@ -13,13 +12,9 @@ import {
   type ProbeTestResult,
   ASSERTION_TYPES,
   type AssertionType,
-  OBSERVATION_OUTCOMES,
-  OBSERVATION_REASONS,
   TEXT_QUALIFICATION_SHAPES,
-  type ConsoleBufferOwner,
   type NotTestedCoverage,
   type Observation,
-  type ObservationFrame,
   type ProbeAssertion,
   type ProbeRun,
   type ProbeSubject,
@@ -35,8 +30,12 @@ import {
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
 import {
-  parseObservation, parseObservationFrames, validateObservation, validateObservationOutcome,
-  decodeLegacyBooleanObservation, projectHistoricalResult, projectHistoricalAssertions, validateCurrentAssertions,
+  parseObservation,
+  parseObservationFrames,
+  decodeLegacyBooleanObservation,
+  projectHistoricalResult,
+  projectHistoricalAssertions,
+  validateCurrentAssertions,
 } from "./observations.ts"
 export { parseObservationFrames, validateObservation, validateObservationOutcome } from "./observations.ts"
 import { parseJsonStrict } from "./json.ts"
@@ -80,10 +79,11 @@ interface LoadedRunFields {
 
 type ReadObservation = HistoricalProbeRun["observations"][number]
 type ReadAssertion = HistoricalProbeRun["assertions"][number]
-export type LoadedRun = LoadedRunFields & (
-  | { schemaVersion: 4; source: { kind: "live" }; assertions: ProbeAssertion[]; observations: Observation[] }
-  | { schemaVersion: 1 | 2 | 3; source?: never; assertions: ReadAssertion[]; observations: ReadObservation[] }
-)
+export type LoadedRun = LoadedRunFields &
+  (
+    | { schemaVersion: 4; source: { kind: "live" }; assertions: ProbeAssertion[]; observations: Observation[] }
+    | { schemaVersion: 1 | 2 | 3; source?: never; assertions: ReadAssertion[]; observations: ReadObservation[] }
+  )
 
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -95,25 +95,30 @@ function fail(path: string, message: string): never {
   throw new Error(`${path}: ${message}`)
 }
 
-/**
- * The screen rectangle a frame's `regionDigest` was taken over. It travels with the digest for the
- * same reason the digest survives the parse: a verdict recomputed from the parsed frame must still
- * be able to tell whether two frames were cropped from the same cells (29580). A rectangle that is
- * not four non-negative integers with positive sizes fails the parse; it is never dropped.
- */
 const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
 const nullableString = (value: unknown, path: string, name: string): string | null =>
   value === null ? null : asString(value, path, name)
 
-function rejectUnknownFields(value: Record<string, unknown>, allowed: readonly string[], path: string, shape: string): void {
-  const unknown = Object.keys(value).find(key => !allowed.includes(key))
+function rejectUnknownFields(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+  shape: string,
+): void {
+  const unknown = Object.keys(value).find((key) => !allowed.includes(key))
   if (unknown !== undefined) fail(path, `unknown ${shape} field ${unknown}`)
 }
 
 export function parseSubject(value: unknown, path: string, schemaVersion: 2 | 3 | 4 = 4): ProbeSubject {
   if (!object(value)) fail(path, "missing subject")
-  if (schemaVersion === 4) rejectUnknownFields(value, ["kind", "id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"], path, "subject")
+  if (schemaVersion === 4)
+    rejectUnknownFields(
+      value,
+      ["kind", "id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"],
+      path,
+      "subject",
+    )
   const kinds = schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]
   if (!kinds.includes(String(value.kind))) fail(path, `invalid ${schemaVersion === 4 ? "subject" : "target"}.kind`)
   const kind = value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind
@@ -135,7 +140,12 @@ function normalizeIntendedSubject(value: unknown, schemaVersion: 2 | 3 | 4, path
   if (!object(value)) fail(path, `schema ${schemaVersion} requires intended subject`)
   const kinds = schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]
   if (value.kind !== undefined && !kinds.includes(String(value.kind))) fail(path, "invalid intended subject kind")
-  return { ...value, ...(value.kind === undefined ? {} : { kind: value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind }) } as Partial<ProbeSubject>
+  return {
+    ...value,
+    ...(value.kind === undefined
+      ? {}
+      : { kind: value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind }),
+  } as Partial<ProbeSubject>
 }
 
 function parseRuntimeIdentity(value: unknown, target: ProbeSubject, path: string): HeadlessRuntimeIdentity | undefined {
@@ -388,15 +398,18 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     sourceRevision = value.sourceRevision
     generatedAt = value.generatedAt
   }
-  if (value.schemaVersion !== undefined && value.schemaVersion !== 4) fail(path, `unsupported suite schemaVersion ${String(value.schemaVersion)}`)
-  const suiteKinds = value.schemaVersion === 4 ? ["term", "lib", "mux"] as const : ["app", "headless", "mux"] as const
+  if (value.schemaVersion !== undefined && value.schemaVersion !== 4)
+    fail(path, `unsupported suite schemaVersion ${String(value.schemaVersion)}`)
+  const suiteKinds =
+    value.schemaVersion === 4 ? (["term", "lib", "mux"] as const) : (["app", "headless", "mux"] as const)
   if (!object(value.probes) || Object.keys(value.probes).sort().join(",") !== [...suiteKinds].sort().join(",")) {
     fail(path, `invalid suite probe kinds for ${value.schemaVersion === 4 ? "schema 4" : "historical manifest"}`)
   }
   const probes: ProbeSuiteManifest["probes"] = { term: [], lib: [], mux: [] }
   for (const kind of suiteKinds) {
     const ids = value.probes[kind]
-    if (!Array.isArray(ids) || !ids.every(nonempty) || new Set(ids).size !== ids.length) fail(path, `invalid ${kind} suite membership`)
+    if (!Array.isArray(ids) || !ids.every(nonempty) || new Set(ids).size !== ids.length)
+      fail(path, `invalid ${kind} suite membership`)
     probes[kind === "app" ? "term" : kind === "headless" ? "lib" : kind] = ids
   }
   let catalogIds: string[] | undefined
@@ -687,7 +700,12 @@ export function parseOuterApp(
 }
 
 /** Typed capability review of immutable capture bytes, separate from final-run admission review. */
-export function parseCaptureDecision(value: unknown, path: string, catalog: ReadonlySet<string>, schemaVersion: 2 | 3 | 4 = 4): CaptureDecision {
+export function parseCaptureDecision(
+  value: unknown,
+  path: string,
+  catalog: ReadonlySet<string>,
+  schemaVersion: 2 | 3 | 4 = 4,
+): CaptureDecision {
   if (!object(value)) fail(path, "invalid pre-seal capture decision")
   for (const key of ["runSha256", "observation", "verifiesIdentity", "presentsEvidence", "origin"]) {
     if (Object.hasOwn(value, key)) fail(path, `pre-seal capture decision cannot set ${key}`)
@@ -736,18 +754,21 @@ export function parseCaptureDecision(value: unknown, path: string, catalog: Read
 
 /** The existing raw-reply custody retains only binding metadata, never duplicate frame/trace blobs. */
 function captureBindingSource(
-  draft: Omit<Pick<
-    RunDraft,
-    | "runId"
-    | "suiteId"
-    | "probeHash"
-    | "sourceRevision"
-    | "intendedSubject"
-    | "subject"
-    | "results"
-    | "rawReplies"
-    | "assertions"
-  >, "assertions"> & { assertions: readonly ReadAssertion[] },
+  draft: Omit<
+    Pick<
+      RunDraft,
+      | "runId"
+      | "suiteId"
+      | "probeHash"
+      | "sourceRevision"
+      | "intendedSubject"
+      | "subject"
+      | "results"
+      | "rawReplies"
+      | "assertions"
+    >,
+    "assertions"
+  > & { assertions: readonly ReadAssertion[] },
   featureId: string,
   historicalSource?: Record<string, unknown>,
 ): string {
@@ -780,14 +801,20 @@ function captureBindingSource(
       ? [{ index, sha256: hash(JSON.stringify(assertion)) }]
       : [],
   )
-  const historicalResult = historicalSource === undefined ? undefined : (historicalSource.results as Array<Record<string, unknown>>).find(entry => entry.featureId === featureId)
+  const historicalResult =
+    historicalSource === undefined
+      ? undefined
+      : (historicalSource.results as Array<Record<string, unknown>>).find((entry) => entry.featureId === featureId)
   return JSON.stringify({
     runId: draft.runId,
     probeHash: draft.probeHash,
     sourceRevision: draft.sourceRevision,
     ...(historicalSource === undefined
       ? { intendedSubject: draft.intendedSubject, ...(draft.subject && { subject: draft.subject }) }
-      : { intendedContext: historicalSource.intendedContext, ...(historicalSource.target !== undefined ? { target: historicalSource.target } : {}) }),
+      : {
+          intendedContext: historicalSource.intendedContext,
+          ...(historicalSource.target !== undefined ? { target: historicalSource.target } : {}),
+        }),
     featureId,
     rawReplyRefs,
     assertionRefs,
@@ -795,8 +822,10 @@ function captureBindingSource(
     ...(result.screenshotRef && { screenshotRef: result.screenshotRef }),
     ...(result.host && { host: result.host }),
     ...(historicalSource === undefined
-      ? (result.assertionType && { assertionType: result.assertionType })
-      : (historicalResult?.evidence !== undefined ? { evidence: historicalResult.evidence } : {})),
+      ? result.assertionType && { assertionType: result.assertionType }
+      : historicalResult?.evidence !== undefined
+        ? { evidence: historicalResult.evidence }
+        : {}),
     ...(result.criterionBranch && { criterionBranch: result.criterionBranch }),
   })
 }
@@ -879,17 +908,18 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       return index
     })
   }
-  const checks = result.tests.map((check): ProbeTestResult =>
-    check.id === "review"
-      ? {
-          ...check,
-          status: decision.decision,
-          attempt: { scope: "probe", startedAt },
-          reviewRef,
-          reason: decision.reason,
-          ...(assertionRefs && { assertionRefs }),
-        }
-      : check,
+  const checks = result.tests.map(
+    (check): ProbeTestResult =>
+      check.id === "review"
+        ? {
+            ...check,
+            status: decision.decision,
+            attempt: { scope: "probe", startedAt },
+            reviewRef,
+            reason: decision.reason,
+            ...(assertionRefs && { assertionRefs }),
+          }
+        : check,
   )
   draft.rawReplies[reviewRef] = source
   draft.results[index] = finalizeProbeResult({
@@ -957,10 +987,30 @@ export function parseProbeResults(
     }
     const testKey = schemaVersion === 4 ? "tests" : "checks"
     const displaced = schemaVersion === 4 ? ["checks", "evidence"] : ["tests", "assertionType"]
-    for (const key of displaced) if (Object.hasOwn(item, key)) fail(path, `${featureId} schema ${schemaVersion} cannot carry ${key}`)
+    for (const key of displaced)
+      if (Object.hasOwn(item, key)) fail(path, `${featureId} schema ${schemaVersion} cannot carry ${key}`)
     if (schemaVersion === 4) {
-      rejectUnknownFields(item, ["featureId", "status", "attempt", "tests", "criterionBranch", "rawReplyRef", "reviewRef", "reason", "frames", "screenshotRef", "host", "assertionType"], path, `${featureId} result`)
-      if (item.assertionType !== undefined && !ASSERTION_TYPES.includes(item.assertionType as AssertionType)) fail(path, `invalid assertionType for ${featureId}`)
+      rejectUnknownFields(
+        item,
+        [
+          "featureId",
+          "status",
+          "attempt",
+          "tests",
+          "criterionBranch",
+          "rawReplyRef",
+          "reviewRef",
+          "reason",
+          "frames",
+          "screenshotRef",
+          "host",
+          "assertionType",
+        ],
+        path,
+        `${featureId} result`,
+      )
+      if (item.assertionType !== undefined && !ASSERTION_TYPES.includes(item.assertionType as AssertionType))
+        fail(path, `invalid assertionType for ${featureId}`)
     }
     if (!Array.isArray(item[testKey])) fail(path, `${featureId} requires its explicit check set`)
     const checkIds = new Set<string>()
@@ -968,7 +1018,13 @@ export function parseProbeResults(
       if (!object(entry) || !nonempty(entry.id) || checkIds.has(entry.id)) {
         fail(path, `${featureId} requires unique check ids`)
       }
-      if (schemaVersion === 4) rejectUnknownFields(entry, ["id", "status", "attempt", "assertionRefs", "rawReplyRef", "reviewRef", "reason"], path, `${featureId}/${entry.id} test`)
+      if (schemaVersion === 4)
+        rejectUnknownFields(
+          entry,
+          ["id", "status", "attempt", "assertionRefs", "rawReplyRef", "reviewRef", "reason"],
+          path,
+          `${featureId}/${entry.id} test`,
+        )
       checkIds.add(entry.id)
       if (!PROBE_STATUSES.includes(entry.status as ProbeTestResult["status"])) {
         fail(path, `invalid check status for ${featureId}/${entry.id}`)
@@ -1000,10 +1056,7 @@ export function parseProbeResults(
       fail(path, `${featureId} recorded status hides required check work`)
     }
     if (status === "supported" || status === "unsupported") {
-      if (
-        attempt.scope === "none" ||
-        !(schemaVersion === 4 ? item.assertionType : item.evidence)
-      ) {
+      if (attempt.scope === "none" || !(schemaVersion === 4 ? item.assertionType : item.evidence)) {
         fail(path, `${featureId} support result requires measured evidence`)
       }
       // Reuse the existing raw/assertion/frame validator without persisting or deriving
@@ -1019,7 +1072,11 @@ export function parseProbeResults(
         schemaVersion,
       )
       if (
-        (schemaVersion === 3 ? item.evidence === "text" : item.assertionType === "buffer_state" && Array.isArray(item.frames) && item.frames.some(frame => object(frame) && frame.kind === "text-cells")) &&
+        (schemaVersion === 3
+          ? item.evidence === "text"
+          : item.assertionType === "buffer_state" &&
+            Array.isArray(item.frames) &&
+            item.frames.some((frame) => object(frame) && frame.kind === "text-cells")) &&
         !checks.some((check) => check.id === "text-qualification" && check.status === "supported")
       ) {
         fail(path, `${featureId} text support requires its recorded qualification check`)
@@ -1043,12 +1100,19 @@ export function parseProbeResults(
     if (status === "untestable") {
       const key = result.reviewRef ?? checks.find((check) => check.status === "untestable")?.reviewRef
       if (!key || !rawReplies[key]) fail(path, `${featureId} requires its immutable reviewed impossibility reason`)
-      const review = parseCaptureDecision(parseJsonStrict(`${path}: ${key}`, rawReplies[key]), path, expected, schemaVersion)
+      const review = parseCaptureDecision(
+        parseJsonStrict(`${path}: ${key}`, rawReplies[key]),
+        path,
+        expected,
+        schemaVersion,
+      )
       if (review.decision !== "untestable" || review.featureId !== featureId || review.reason !== result.reason) {
         fail(path, `${featureId} invalid context-impossibility review`)
       }
     }
-    return schemaVersion === 3 ? projectHistoricalResult({ ...item, featureId, status, attempt }, checks, rawReplies) : result
+    return schemaVersion === 3
+      ? projectHistoricalResult({ ...item, featureId, status, attempt }, checks, rawReplies)
+      : result
   })
   if (results.length !== expected.size || [...expected].some((id) => !seen.has(id))) {
     fail(path, "results differ from frozen catalogue membership")
@@ -1069,7 +1133,12 @@ export function parseRun(
   if (raw.outerApp !== undefined && raw.schemaVersion !== 2 && raw.schemaVersion !== 3 && raw.schemaVersion !== 4) {
     fail(path, "outerApp requires a schema-v2 mux run")
   }
-  if (raw.schemaVersion !== undefined && raw.schemaVersion !== 2 && raw.schemaVersion !== 3 && raw.schemaVersion !== 4) {
+  if (
+    raw.schemaVersion !== undefined &&
+    raw.schemaVersion !== 2 &&
+    raw.schemaVersion !== 3 &&
+    raw.schemaVersion !== 4
+  ) {
     fail(path, `unsupported schemaVersion ${String(raw.schemaVersion)}`)
   }
   const execution = raw.schemaVersion === 3 || raw.schemaVersion === 4
@@ -1082,12 +1151,41 @@ export function parseRun(
     const subjectKey = schemaVersion === 4 ? "subject" : "target"
     const intendedKey = schemaVersion === 4 ? "intendedSubject" : "intendedContext"
     const displaced = schemaVersion === 4 ? ["target", "intendedContext"] : ["subject", "intendedSubject", "source"]
-    for (const key of displaced) if (Object.hasOwn(raw, key)) fail(path, `schema ${schemaVersion} run cannot carry ${key}`)
+    for (const key of displaced)
+      if (Object.hasOwn(raw, key)) fail(path, `schema ${schemaVersion} run cannot carry ${key}`)
     if (schemaVersion === 4) {
-      rejectUnknownFields(raw, ["schemaVersion", "source", "runId", "suiteId", "probeHash", "sourceRevision", "intendedSubject", "subject", "identity", "runtimeIdentity", "provenance", "outerApp", "measuredAt", "origin", "rawReplies", "assertions", "screenshotRefs", "textSnapshotRefs", "textQualification", "results", "sealedAt"], path, "schema 4 run")
+      rejectUnknownFields(
+        raw,
+        [
+          "schemaVersion",
+          "source",
+          "runId",
+          "suiteId",
+          "probeHash",
+          "sourceRevision",
+          "intendedSubject",
+          "subject",
+          "identity",
+          "runtimeIdentity",
+          "provenance",
+          "outerApp",
+          "measuredAt",
+          "origin",
+          "rawReplies",
+          "assertions",
+          "screenshotRefs",
+          "textSnapshotRefs",
+          "textQualification",
+          "results",
+          "sealedAt",
+        ],
+        path,
+        "schema 4 run",
+      )
       if (!object(raw.source)) fail(path, "schema 4 requires source")
       if (raw.source.kind === "trace") fail(path, "trace probe source has no implementation at this source")
-      if (Object.keys(raw.source).join(",") !== "kind" || raw.source.kind !== "live") fail(path, "invalid source; schema 4 requires { kind: live }")
+      if (Object.keys(raw.source).join(",") !== "kind" || raw.source.kind !== "live")
+        fail(path, "invalid source; schema 4 requires { kind: live }")
     }
     if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
     const target = parseSubject(raw[subjectKey], path, schemaVersion)
@@ -1135,10 +1233,23 @@ export function parseRun(
       ) {
         fail(path, "invalid assertion")
       }
-      if (schemaVersion === 4 ? !ASSERTION_TYPES.includes(assertion.assertionType as AssertionType) : Object.hasOwn(assertion, "assertionType")) {
-        fail(path, schemaVersion === 4 ? "invalid assertion assertionType" : "historical assertion cannot carry assertionType")
+      if (
+        schemaVersion === 4
+          ? !ASSERTION_TYPES.includes(assertion.assertionType as AssertionType)
+          : Object.hasOwn(assertion, "assertionType")
+      ) {
+        fail(
+          path,
+          schemaVersion === 4 ? "invalid assertion assertionType" : "historical assertion cannot carry assertionType",
+        )
       }
-      if (schemaVersion === 4) rejectUnknownFields(assertion, ["featureId", "kind", "assertionType", "rawReplyRef", "expected", "observed", "action", "note"], path, "assertion")
+      if (schemaVersion === 4)
+        rejectUnknownFields(
+          assertion,
+          ["featureId", "kind", "assertionType", "rawReplyRef", "expected", "observed", "action", "note"],
+          path,
+          "assertion",
+        )
       if (Object.hasOwn(assertion, "evidence")) fail(path, "assertion cannot carry evidence")
       if (assertion.rawReplyRef && !Object.hasOwn(raw.rawReplies, assertion.rawReplyRef)) {
         fail(path, `missing assertion raw reply ${assertion.rawReplyRef}`)
@@ -1233,7 +1344,14 @@ export function parseRun(
           schemaVersion as 3 | 4,
         )
       : undefined
-    if (schemaVersion === 4) validateCurrentAssertions(assertions as ProbeAssertion[], raw.rawReplies as Record<string, string>, results ?? [], target.kind, path)
+    if (schemaVersion === 4)
+      validateCurrentAssertions(
+        assertions as ProbeAssertion[],
+        raw.rawReplies as Record<string, string>,
+        results ?? [],
+        target.kind,
+        path,
+      )
     if (current && results) {
       if (
         raw.sealedAt !== undefined &&
@@ -1302,7 +1420,14 @@ export function parseRun(
         ...(appLaunch && { appLaunch }),
       },
       rawReplies: raw.rawReplies as Record<string, string>,
-      assertions: schemaVersion === 4 ? assertions : projectHistoricalAssertions(assertions, [...observations, ...(results ?? [])], raw.rawReplies as Record<string,string>),
+      assertions:
+        schemaVersion === 4
+          ? assertions
+          : projectHistoricalAssertions(
+              assertions,
+              [...observations, ...(results ?? [])],
+              raw.rawReplies as Record<string, string>,
+            ),
       screenshotRefs: raw.screenshotRefs as string[],
       textSnapshotRefs,
       ...(textQualification === undefined ? {} : { textQualification }),

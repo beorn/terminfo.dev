@@ -48,7 +48,16 @@ const setup = (observed?: string) => {
   if (observed !== undefined) {
     draft.rawReplies["sgr.bold"] = observed
     draft.results[0]!.assertionType = "query_reply"
-    draft.assertions = [{ featureId: "sgr.bold", kind: "positive", assertionType: "query_reply", expected: "ACK", observed, rawReplyRef: "sgr.bold" }]
+    draft.assertions = [
+      {
+        featureId: "sgr.bold",
+        kind: "positive",
+        assertionType: "query_reply",
+        expected: "ACK",
+        observed,
+        rawReplyRef: "sgr.bold",
+      },
+    ]
     draft.results[0]!.tests.unshift({
       id: "capture",
       status: "supported",
@@ -182,7 +191,14 @@ it("preserves the pixel screenshot reference through recorder, seal and canonica
   draft.rawReplies["sgr.bold"] = JSON.stringify({ writes: ["x"], queries: [], events: [] })
   draft.screenshotRefs = [ref]
   draft.assertions = [
-    { featureId: "sgr.bold", kind: "positive", assertionType: "screenshot", expected: "bold glyph", observed: ref, rawReplyRef: "sgr.bold" },
+    {
+      featureId: "sgr.bold",
+      kind: "positive",
+      assertionType: "screenshot",
+      expected: "bold glyph",
+      observed: ref,
+      rawReplyRef: "sgr.bold",
+    },
   ]
   draft.results = [
     recordExecutedProbe({
@@ -230,27 +246,98 @@ it("validates historical review bindings against original keys and assertion byt
   const { createHash } = await import("node:crypto")
   const hash = (value: string) => createHash("sha256").update(value).digest("hex")
   const featureId = "sgr.bold"
-  const target = { kind: "app", id: "kitty", version: "0.46.2", os: "macos", osVersion: null, outerTerminal: null, mux: null, config: null, permissions: null }
+  const target = {
+    kind: "app",
+    id: "kitty",
+    version: "0.46.2",
+    os: "macos",
+    osVersion: null,
+    outerTerminal: null,
+    mux: null,
+    config: null,
+    permissions: null,
+  }
   const intendedContext = { kind: "app", id: "kitty", version: "0.46.2" }
   const assertion = { featureId, kind: "positive", rawReplyRef: featureId, expected: "ACK", observed: "ACK" }
   const binding = JSON.stringify({
-    runId: "historical-reviewed", probeHash: "old-capture-suite", sourceRevision: "1".repeat(40),
-    intendedContext, target, featureId,
-    rawReplyRefs: [{ key: featureId, sha256: hash("ACK") }], assertionRefs: [{ index: 0, sha256: hash(JSON.stringify(assertion)) }],
-    frames: [], evidence: "query",
+    runId: "historical-reviewed",
+    probeHash: "old-capture-suite",
+    sourceRevision: "1".repeat(40),
+    intendedContext,
+    target,
+    featureId,
+    rawReplyRefs: [{ key: featureId, sha256: hash("ACK") }],
+    assertionRefs: [{ index: 0, sha256: hash(JSON.stringify(assertion)) }],
+    frames: [],
+    evidence: "query",
   })
-  const review = { id: "old-review", runId: "historical-reviewed", featureId, captureSha256: hash(binding), decision: "supported", reviewed: true, reviewer: "reviewer", reason: "Retained ACK establishes the criterion", scope: { target: { kind: "app", id: "kitty" }, versions: [target.version, target.version], suites: ["old-capture-suite", "old-capture-suite"] }, sources: ["collector.capture.sgr.bold"], supersedes: [] }
+  const review = {
+    id: "old-review",
+    runId: "historical-reviewed",
+    featureId,
+    captureSha256: hash(binding),
+    decision: "supported",
+    reviewed: true,
+    reviewer: "reviewer",
+    reason: "Retained ACK establishes the criterion",
+    scope: {
+      target: { kind: "app", id: "kitty" },
+      versions: [target.version, target.version],
+      suites: ["old-capture-suite", "old-capture-suite"],
+    },
+    sources: ["collector.capture.sgr.bold"],
+    supersedes: [],
+  }
   const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
-  const raw = { schemaVersion: 3, runId: review.runId, target, intendedContext, identity: "verified", suiteId: "old-capture-suite", probeHash: "old-capture-suite", sourceRevision: "1".repeat(40), measuredAt: attempt.startedAt, sealedAt: "2026-10-21T05:01:00.000Z", origin: { kind: "collector" },
-    rawReplies: { [featureId]: "ACK", "collector.capture.sgr.bold": binding, "collector.review.old-review": JSON.stringify(review) },
-    assertions: [assertion, { ...assertion, note: "Reviewed" }], screenshotRefs: [],
-    results: [{ featureId, status: "supported", attempt, rawReplyRef: featureId, evidence: "query", reviewRef: "collector.review.old-review", reason: review.reason, checks: [
-      { id: "capture", status: "supported", attempt, assertionRefs: [0] },
-      { id: "review", status: "supported", attempt, assertionRefs: [1], reviewRef: "collector.review.old-review", reason: review.reason },
-    ] }],
+  const raw = {
+    schemaVersion: 3,
+    runId: review.runId,
+    target,
+    intendedContext,
+    identity: "verified",
+    suiteId: "old-capture-suite",
+    probeHash: "old-capture-suite",
+    sourceRevision: "1".repeat(40),
+    measuredAt: attempt.startedAt,
+    sealedAt: "2026-10-21T05:01:00.000Z",
+    origin: { kind: "collector" },
+    rawReplies: {
+      [featureId]: "ACK",
+      "collector.capture.sgr.bold": binding,
+      "collector.review.old-review": JSON.stringify(review),
+    },
+    assertions: [assertion, { ...assertion, note: "Reviewed" }],
+    screenshotRefs: [],
+    results: [
+      {
+        featureId,
+        status: "supported",
+        attempt,
+        rawReplyRef: featureId,
+        evidence: "query",
+        reviewRef: "collector.review.old-review",
+        reason: review.reason,
+        checks: [
+          { id: "capture", status: "supported", attempt, assertionRefs: [0] },
+          {
+            id: "review",
+            status: "supported",
+            attempt,
+            assertionRefs: [1],
+            reviewRef: "collector.review.old-review",
+            reason: review.reason,
+          },
+        ],
+      },
+    ],
   }
   const source = JSON.stringify(raw, null, 2)
-  const manifest = { probeHash: "old-capture-suite", adapterVersion: "3", catalogIds: [featureId], probes: { term: [featureId], lib: [], mux: [] } }
+  const manifest = {
+    probeHash: "old-capture-suite",
+    adapterVersion: "3",
+    catalogIds: [featureId],
+    probes: { term: [featureId], lib: [], mux: [] },
+  }
   const parsed = parseRun("old-reviewed.json", source, [featureId], new Map([[manifest.probeHash, manifest]]))
   expect(parsed.schemaVersion).toBe(3)
   expect(parsed.sha256).toBe(hash(source))
@@ -260,5 +347,7 @@ it("validates historical review bindings against original keys and assertion byt
   expect(parsed.results?.[0]).not.toHaveProperty("checks")
   expect(parsed.assertions[0]?.assertionType).toBe("query_reply")
   const changed = { ...raw, rawReplies: { ...raw.rawReplies, [featureId]: "NO" } }
-  expect(() => parseRun("changed.json", JSON.stringify(changed), [featureId], new Map([[manifest.probeHash, manifest]]))).toThrow(/binding changed/)
+  expect(() =>
+    parseRun("changed.json", JSON.stringify(changed), [featureId], new Map([[manifest.probeHash, manifest]])),
+  ).toThrow(/binding changed/)
 })

@@ -360,7 +360,10 @@ describe("run-owned text qualification ingestion", () => {
     ).toEqual(qualification)
     expect(parse(textRun())).not.toHaveProperty("textQualification")
     expect(parse(textRun())).not.toHaveProperty("textClaims")
-    expect(parseSuiteManifest("old.json", JSON.stringify(manifest))).toEqual({ ...manifest, probes: { term: [FEATURE], lib: [], mux: [] } })
+    expect(parseSuiteManifest("old.json", JSON.stringify(manifest))).toEqual({
+      ...manifest,
+      probes: { term: [FEATURE], lib: [], mux: [] },
+    })
   })
 
   it("retains a future version and recipe so the selector can name their mismatch", () => {
@@ -423,16 +426,39 @@ it("qualifies retained historical text and recomputes eligibility for its review
   expect(canConcludeObservation(run, observation, { qualified: true })).toBe(true)
   expect(canConcludeObservation(run, observation, { qualified: false, reason: "mapping failed" })).toBe(false)
   expect(canConcludeObservation({ ...run, textClaims: [] }, observation, { qualified: true })).toBe(false)
-  expect(canConcludeObservation({ ...run, subject: { ...run.subject, os: "windows" } }, observation, { qualified: true })).toBe(false)
+  expect(
+    canConcludeObservation({ ...run, subject: { ...run.subject, os: "windows" } }, observation, { qualified: true }),
+  ).toBe(false)
   const host = { image: "conhost.exe", executablePath: "C:\\Windows\\conhost.exe", executableSha256: digest("host") }
-  const hosted = parseRun("hosted-text.json", JSON.stringify({ ...raw, observations: [{ ...raw.observations[0], host }] }), [FEATURE], new Map([[SUITE, manifest]]))
+  const hosted = parseRun(
+    "hosted-text.json",
+    JSON.stringify({ ...raw, observations: [{ ...raw.observations[0], host }] }),
+    [FEATURE],
+    new Map([[SUITE, manifest]]),
+  )
   expect(canConcludeObservation(hosted, hosted.observations[0]!, { qualified: true })).toBe(false)
-  const [entry] = parseInterpretations("corrections.json", JSON.stringify([{
-    id: "reviewed-query-criterion", reviewer: "reviewer", reason: "The retained criterion describes a historical behavior observation", sources: ["review"], supersedes: [],
-    runId: run.runId, runSha256: run.sha256, featureId: FEATURE,
-    scope: { target: { kind: "app", id: TARGET.id }, versions: [TARGET.version, TARGET.version], suites: [SUITE, SUITE] },
-    observation: { featureId: FEATURE, outcome: "supported", evidence: "behavior", rawReplyRef: FEATURE },
-  }]), [FEATURE])
+  const [entry] = parseInterpretations(
+    "corrections.json",
+    JSON.stringify([
+      {
+        id: "reviewed-query-criterion",
+        reviewer: "reviewer",
+        reason: "The retained criterion describes a historical behavior observation",
+        sources: ["review"],
+        supersedes: [],
+        runId: run.runId,
+        runSha256: run.sha256,
+        featureId: FEATURE,
+        scope: {
+          target: { kind: "app", id: TARGET.id },
+          versions: [TARGET.version, TARGET.version],
+          suites: [SUITE, SUITE],
+        },
+        observation: { featureId: FEATURE, outcome: "supported", evidence: "behavior", rawReplyRef: FEATURE },
+      },
+    ]),
+    [FEATURE],
+  )
   const corrected = validateCorrectedObservation(run, entry!)
   expect(corrected.assertionType).toBeUndefined()
   expect(canConcludeObservation(run, corrected, { qualified: false, reason: "mapping failed" })).toBe(true)

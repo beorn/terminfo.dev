@@ -11,6 +11,8 @@ import { classifyDevelopmentRun, projectResults } from "../docs/data/selected-re
 
 // #30720 (@cto rulings fc63f412, 1ee8cf0b, f126327b): no other test reads a Windows run, so none sees the
 // reader count conhost's DA1-ordered answers as the terminal's.
+// Explicit schema-3 wire fixture; current public results use tests and assertionType.
+type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest = {
   probeHash: "windows-console-host",
@@ -80,7 +82,7 @@ const common = (os: string) => ({
   screenshotRefs: [],
 })
 const current = (os: string) => {
-  const results: ProbeResult[] = ids.map((featureId) => ({
+  const results: Schema3Result[] = ids.map((featureId) => ({
     featureId,
     status: "test-todo",
     attempt: { scope: "none" },

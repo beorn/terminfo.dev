@@ -1,16 +1,14 @@
 /** Reviewed selection and projection for terminal observations. */
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
-import { aggregateCurrentResults, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
+import { aggregateCurrentResults, treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
   type ProbeResult,
   type ProbeStatus,
-  type Observation,
   type HistoricalProbeRun,
   type ObservationFrame,
-  type ProbeAssertion,
   type ProbeSubject,
   type RunOrigin,
   type UngradedDiagnostic,
@@ -19,13 +17,13 @@ import {
   finalizeProbeResult,
   type TextQualificationAssessment,
 } from "@terminfo/probe-defs"
+import { type LoadedRun, parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import {
-  type LoadedRun,
-  parseSuiteManifest,
-  parseRun,
-  parseJsonStrict,
-} from "@terminfo/run-parser"
-import { canConcludeObservation, textQualificationFailure, consoleHostHold, validateCorrectedObservation } from "../../packages/run-parser/src/observations.ts"
+  canConcludeObservation,
+  textQualificationFailure,
+  consoleHostHold,
+  validateCorrectedObservation,
+} from "../../packages/run-parser/src/observations.ts"
 import {
   assessRunAdmission,
   RETAINED_ARTIFACT_KINDS,
@@ -110,7 +108,6 @@ export interface SelectedVersion {
   cells: Record<string, SelectedCell>
   v1: Record<string, boolean>
   ungradedDiagnostics: {
-    evidence: "legacy"
     label: "old callback result, unverified"
     results: Record<string, UngradedDiagnostic>
   }
@@ -147,6 +144,8 @@ export interface SelectedExclusion {
  */
 export interface CurrentSelectedVersion {
   schemaVersion: 3 | 4
+  /** Recorded by schema 4; historical source absence remains absence. */
+  source?: { kind: "live" }
   runId: string
   subject: ProbeSubject
   measuredAt: string
@@ -266,7 +265,9 @@ function prepareRunCells(
       ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
       record: observationRecord(run, observation),
       conclusive: hold === undefined && canConcludeObservation(run, observation, text),
-      ...(textQualificationFailure(run, observation, text) === undefined ? {} : { textQualificationReason: textQualificationFailure(run, observation, text) }),
+      ...(textQualificationFailure(run, observation, text) === undefined
+        ? {}
+        : { textQualificationReason: textQualificationFailure(run, observation, text) }),
       chain: {
         origin: run.origin,
         method: observation.assertionType,
@@ -296,7 +297,9 @@ function prepareRunCells(
       ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
       record: observationRecord(run, observation),
       conclusive: hold === undefined && canConcludeObservation(run, observation, text),
-      ...(textQualificationFailure(run, observation, text) === undefined ? {} : { textQualificationReason: textQualificationFailure(run, observation, text) }),
+      ...(textQualificationFailure(run, observation, text) === undefined
+        ? {}
+        : { textQualificationReason: textQualificationFailure(run, observation, text) }),
       chain: {
         origin: run.origin,
         method: observation.assertionType,
@@ -340,12 +343,13 @@ export function classifyDevelopmentRun(run: LoadedRun): {
  */
 export function maskRunnerStorePath(config: unknown): unknown {
   return typeof config === "string"
-    ? config.replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
-      // Only the kind positions of an actual reviewed context key are historical vocabulary.
-      .replace(/^(app|headless):([^@]+)@\["\1",/, (_prefix, kind: string, id: string) => {
-        const canonical = kind === "app" ? "term" : "lib"
-        return `${canonical}:${id}@["${canonical}",`
-      })
+    ? config
+        .replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+        // Only the kind positions of an actual reviewed context key are historical vocabulary.
+        .replace(/^(app|headless):([^@]+)@\["\1",/, (_prefix, kind: string, id: string) => {
+          const canonical = kind === "app" ? "term" : "lib"
+          return `${canonical}:${id}@["${canonical}",`
+        })
     : config
 }
 
@@ -463,7 +467,7 @@ export function projectResults(
     if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
     if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
     if (
-      !((run.schemaVersion === 3 || run.schemaVersion === 4) ? run.results : run.observations)?.some(
+      !(run.schemaVersion === 3 || run.schemaVersion === 4 ? run.results : run.observations)?.some(
         (result) => result.featureId === entry.featureId,
       )
     ) {
@@ -529,6 +533,7 @@ export function projectResults(
     }
     const version: CurrentSelectedVersion = {
       schemaVersion: run.schemaVersion as 3 | 4,
+      ...(run.schemaVersion === 4 ? { source: { ...run.source } } : {}),
       runId: run.runId,
       subject: run.subject,
       measuredAt: run.measuredAt,

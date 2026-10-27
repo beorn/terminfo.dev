@@ -50,7 +50,7 @@ function appLaunchOf(name: string): Record<string, unknown> {
 }
 
 function parse(receipt: Record<string, unknown>): unknown {
-  return parseAppLaunchReceipt(receipt, "collector", "app", "origin.appLaunch")
+  return parseAppLaunchReceipt(receipt, "collector", "term", "origin.appLaunch")
 }
 
 function withDigest(receipt: Record<string, unknown>, field: string, value: string): Record<string, unknown> {

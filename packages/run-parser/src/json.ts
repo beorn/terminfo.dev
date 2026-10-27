@@ -1,5 +1,7 @@
 /** Strict JSON syntax shared by the versioned run and interpretation readers. */
-function fail(path: string, message: string): never { throw new Error(`${path}: ${message}`) }
+function fail(path: string, message: string): never {
+  throw new Error(`${path}: ${message}`)
+}
 
 /** JSON.parse drops duplicate keys. Reject them before any evidence is selected. */
 function rejectDuplicateKeys(source: string, path: string): void {
@@ -75,4 +77,3 @@ export function parseJsonStrict(path: string, source: string): unknown {
   rejectDuplicateKeys(source, path)
   return parsed
 }
-

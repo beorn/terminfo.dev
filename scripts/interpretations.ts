@@ -14,14 +14,24 @@ export const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
 
 /** The scope's wire key discriminates historical corrections from current corrections. */
-function interpretationSubject(scope: unknown, path: string): { historical: boolean; subject: Pick<ProbeSubject, "kind" | "id"> } {
+function interpretationSubject(
+  scope: unknown,
+  path: string,
+): { historical: boolean; subject: Pick<ProbeSubject, "kind" | "id"> } {
   if (!object(scope)) fail(path, "invalid interpretation scope")
   const historical = Object.hasOwn(scope, "target")
   if (historical && Object.hasOwn(scope, "subject")) fail(path, "mixed interpretation scope target and subject")
   const value = scope[historical ? "target" : "subject"]
   const kinds = historical ? ["app", "headless", "mux"] : ["term", "lib", "mux"]
-  if (!object(value) || !kinds.includes(String(value.kind)) || !nonempty(value.id)) fail(path, "invalid interpretation scope subject")
-  return { historical, subject: { kind: (value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind) as ProbeSubject["kind"], id: value.id } }
+  if (!object(value) || !kinds.includes(String(value.kind)) || !nonempty(value.id))
+    fail(path, "invalid interpretation scope subject")
+  return {
+    historical,
+    subject: {
+      kind: (value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind) as ProbeSubject["kind"],
+      id: value.id,
+    },
+  }
 }
 
 export const hasPresentationDecision = (entry: object): boolean => Object.hasOwn(entry, "presentsEvidence")
@@ -153,10 +163,20 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
         fail(path, `observation feature mismatch in ${id}`)
       }
       validateObservationOutcome(entry.observation, path, entry.featureId, decodedScope.historical ? 2 : 4)
-      if ((decodedScope.historical ? entry.observation.evidence === "pixels" : entry.observation.assertionType === "screenshot") && !nonempty(entry.observation.screenshotRef)) {
+      if (
+        (decodedScope.historical
+          ? entry.observation.evidence === "pixels"
+          : entry.observation.assertionType === "screenshot") &&
+        !nonempty(entry.observation.screenshotRef)
+      ) {
         fail(path, `pixels correction ${id} requires screenshotRef`)
       }
-      if ((decodedScope.historical ? entry.observation.evidence === "query" : entry.observation.assertionType === "query_reply") && !nonempty(entry.observation.rawReplyRef)) {
+      if (
+        (decodedScope.historical
+          ? entry.observation.evidence === "query"
+          : entry.observation.assertionType === "query_reply") &&
+        !nonempty(entry.observation.rawReplyRef)
+      ) {
         fail(path, `query correction ${id} requires rawReplyRef`)
       }
     }
@@ -164,9 +184,11 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     normalized.push({
       ...entry,
       scope: { ...ranges, subject: decodedScope.subject },
-      ...(entry.observation !== undefined && { observation: decodedScope.historical
-        ? decodeHistoricalCorrection(entry.observation, path, entry.featureId as string)
-        : entry.observation }),
+      ...(entry.observation !== undefined && {
+        observation: decodedScope.historical
+          ? decodeHistoricalCorrection(entry.observation, path, entry.featureId as string)
+          : entry.observation,
+      }),
     } as unknown as Interpretation)
   }
   validatePresentationSupersession(normalized, path)

@@ -13,6 +13,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
+  recordExecutedProbe,
   cursorProbes,
   editingProbes,
   modesProbes,
@@ -21,7 +22,7 @@ import {
   type ProbeCallbackResult,
   type TermProbeSource,
 } from "@terminfo/probe-defs"
-import { parseRun } from "./index.ts"
+import { parseRun, parseSuiteManifest } from "./index.ts"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
@@ -183,6 +184,7 @@ function callbackFixture(id: string) {
   const requests: Array<Parameters<NonNullable<TermProbeSource["capture"]>>[0]> = []
   let captureIndex = 0
   const context: TermProbeSource = {
+    kind: "live",
     rows: 24,
     cols: 80,
     write(sequence) {
@@ -259,17 +261,39 @@ function callbackFixture(id: string) {
 
 function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnType<typeof callbackFixture>) {
   const frames = result.observation?.frames ?? []
-  const run = kittyRun({
+  const assertions = (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id }))
+  const { target, observations: _old, suiteComplete: _oldComplete, ...metadata } = kittyRun()
+  const recorded = recordExecutedProbe({
+    featureId: id,
+    attempt: { scope: "probe", startedAt: "2026-10-10T22:10:00.000Z" },
+    rawReplyRef: id,
+    ...(result.observation && { observation: { ...result.observation, featureId: id, rawReplyRef: id } }),
+    assertions,
+    tests: result.tests,
+    criterionBranch: result.criterionBranch,
+  })
+  const run = {
+    ...metadata,
+    schemaVersion: 4,
+    source: { kind: "live" },
+    subject: { ...target, kind: "term" },
+    intendedSubject: { kind: "term", id: target.id },
+    sealedAt: "2026-10-10T22:11:00.000Z",
     rawReplies: { [id]: JSON.stringify({ writes: fixture.writes, queries: fixture.queries, events: [] }) },
-    assertions: (result.assertions ?? []).map((entry) => ({ ...entry, featureId: id, rawReplyRef: id })),
-    observations: [{ ...result.observation, featureId: id, rawReplyRef: id }],
+    assertions,
+    results: [recorded],
     screenshotRefs: [
       ...frames.filter((frame) => frame.kind !== "text-cells").map((frame) => frame.ref),
       ...(result.observation?.screenshotRef ? [result.observation.screenshotRef] : []),
     ],
     textSnapshotRefs: frames.filter((frame) => frame.kind === "text-cells").map((frame) => frame.ref),
-  })
-  const callbackManifest: ProbeSuiteManifest = { ...manifest, probes: { term: [id], lib: [], mux: [] } }
+  }
+  const callbackManifest: ProbeSuiteManifest = {
+    ...manifest,
+    schemaVersion: 4,
+    catalogIds: [id],
+    probes: { term: [id], lib: [], mux: [] },
+  }
   return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]))
 }
 
@@ -283,7 +307,7 @@ describe("in-run pixels verdicts", () => {
     expect(result.observation?.outcome).toBe("supported")
     // Every digest the assertion cites must be a frame's ref or its cell-aligned region digest.
     const loaded = parseCallback(id, result, fixture)
-    expect(loaded.observations[0]?.outcome).toBe("supported")
+    expect(loaded.results?.[0]?.status).toBe("supported")
     expect(loaded.assertions[0]?.kind).toBe("positive")
   })
 
@@ -312,8 +336,8 @@ describe("in-run pixels verdicts", () => {
       expect(result.observation?.outcome).toBe("supported")
       const frames = result.observation?.frames ?? []
       const loaded = parseCallback(id, result, fixture)
-      expect(loaded.observations[0]?.outcome).toBe("supported")
-      expect(loaded.observations[0]?.frames).toHaveLength(3)
+      expect(loaded.results?.[0]?.status).toBe("supported")
+      expect(loaded.results?.[0]?.frames).toHaveLength(3)
       if (id === "editing.decsace") {
         expect(fixture.requests).toHaveLength(4)
         for (const request of fixture.requests) {
@@ -332,15 +356,15 @@ describe("in-run pixels verdicts", () => {
   )
 
   it.each([
-    ["missing report", "query", "CSI 16 t"],
-    ["short grid", "none", "at least 2x8"],
-    ["narrow grid", "none", "at least 2x8"],
-    ["text adapter", "none", "text-cells captures"],
-    ["text frame", "text", "text-cells"],
-    ["missing cells digest", "pixels", "required pixel cells digest"],
-    ["missing first digest", "pixels", "required pixel cells digest"],
-    ...[1, 2, 3, 4].map((capture) => [`crop ${capture}`, "pixels", "different screen positions"]),
-  ])("keeps DECSACE %s inconclusive and parser-valid", async (scenario, evidence, note) => {
+    ["missing report", "test-failure", "CSI 16 t"],
+    ["short grid", "test-todo", "at least 2x8"],
+    ["narrow grid", "test-todo", "at least 2x8"],
+    ["text adapter", "test-todo", "text-cells captures"],
+    ["text frame", "test-failure", "text-cells"],
+    ["missing cells digest", "test-failure", "required pixel cells digest"],
+    ["missing first digest", "test-failure", "required pixel cells digest"],
+    ...[1, 2, 3, 4].map((capture) => [`crop ${capture}`, "test-failure", "different screen positions"]),
+  ])("keeps DECSACE %s inconclusive and parser-valid", async (scenario, status, note) => {
     const id = "editing.decsace"
     const probe = editingProbes.find((entry) => entry.id === id)
     if (!probe?.term) throw new Error("Missing DECSACE callback")
@@ -380,15 +404,14 @@ describe("in-run pixels verdicts", () => {
       return frame
     }
     const result = await probe.term(context)
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence })
-    expect(result.observation?.note).toContain(note)
+    expect(result.observation?.note ?? result.tests?.[0]?.reason ?? result.note).toContain(note)
     expect(result.assertions).toBeUndefined()
     if (scenario === "short grid" || scenario === "narrow grid" || scenario === "text adapter") {
       expect(fixture.writes).toEqual([])
       expect(fixture.queries).toEqual([])
       expect(fixture.requests).toEqual([])
     }
-    expect(parseCallback(id, result, fixture).observations[0]?.outcome).toBe("inconclusive")
+    expect(parseCallback(id, result, fixture).results?.[0]?.status).toBe(status)
   })
 
   it("admits a digest-equality verdict whose assertion cites a frame's regionDigest", () => {
@@ -465,7 +488,7 @@ describe("in-run pixels verdicts", () => {
   it("still parses every committed run", () => {
     const manifests = readdirSync(join(ROOT, "content", "suites"))
       .filter((f) => f.endsWith(".json"))
-      .map((f) => JSON.parse(readFileSync(join(ROOT, "content", "suites", f), "utf8")) as ProbeSuiteManifest)
+      .map((f) => parseSuiteManifest(f, readFileSync(join(ROOT, "content", "suites", f), "utf8")))
     const trusted = new Map<string, ProbeSuiteManifest>(manifests.map((m) => [m.probeHash, m]))
     const ids = [...new Set(manifests.flatMap((m) => Object.values(m.probes).flat()))]
     let parsed = 0

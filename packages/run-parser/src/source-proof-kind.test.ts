@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest"
 import { parseRunProvenance } from "./index.ts"
 
 const target = {
-  kind: "app" as const,
+  kind: "term" as const,
   id: "ghostty",
   version: "1.3.1",
   os: "linux",
