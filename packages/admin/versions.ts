@@ -16,7 +16,6 @@ const ADAPTER_SOURCE_PATHS = [
   "packages/probes/collect-headless.ts",
   "packages/probes/headless-batch.ts",
   "packages/probes/headless-identity.ts",
-  "packages/probes/proven-reply-paths.ts",
   "packages/probes/termless-root.ts",
   "packages/admin/versions.ts",
   "packages/admin/app-harness.ts",

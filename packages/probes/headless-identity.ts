@@ -4,11 +4,141 @@ import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import type { HeadlessRuntimeIdentity } from "@terminfo/probe-defs"
+import type { ReplyDeliveryExtension } from "@termless/core"
 import { owningCheckout } from "./termless-root.ts"
 
-const TERMINFO_ROOT = realpathSync(resolve(import.meta.dir, "../.."))
+/** The already measured module/engine used by this worker's backend factory. */
+export interface HeadlessProbeRuntime {
+  readonly identity: HeadlessRuntimeIdentity
+  readonly adapterPath: string
+  readonly adapterPackage: string
+}
+
+type ReplyDelivery = ReplyDeliveryExtension["replyDelivery"]
+
+export interface ReplyPathDecision {
+  readonly member: boolean
+  readonly backend: string
+  readonly reason: string
+  readonly declaration?: ReplyDelivery
+  readonly runtimeIdentity?: HeadlessRuntimeIdentity
+}
+
+/** One eligibility comparison; neither an adapter declaration nor versions authenticate source. */
+export function replyDeliveryDecision(
+  backend: string,
+  declaration: ReplyDelivery | undefined,
+  runtime: HeadlessProbeRuntime | undefined,
+  warn: (line: string) => void = (line) => process.stderr.write(`${line}\n`),
+): ReplyPathDecision {
+  const decide = (member: boolean, reason: string): ReplyPathDecision => {
+    if (!member) warn(`headless ${reason}`)
+    return {
+      member,
+      backend,
+      reason,
+      ...(declaration && { declaration }),
+      ...(runtime && { runtimeIdentity: runtime.identity }),
+    }
+  }
+  if (!declaration) {
+    return decide(
+      false,
+      backend === "libvterm"
+        ? "libvterm declares no complete reply delivery: engine output truncates before the adapter drains"
+        : `${backend} declares no reply delivery`,
+    )
+  }
+  if (!runtime) return decide(false, `${backend} has no measured runtime identity for reply delivery`)
+  if (
+    declaration.boundary !== "feed-and-getCursor" ||
+    !Array.isArray(declaration.adapterSources) ||
+    !declaration.adapterSources.length
+  ) {
+    return decide(false, `${backend} reply delivery has no audited feed-and-getCursor source binding`)
+  }
+
+  const identity = runtime.identity
+  const expected = declaration.engine
+  if (!record(expected)) return decide(false, `${backend} reply delivery has no audited engine binding`)
+  if (expected.kind === "registry") {
+    if (
+      identity.kind !== "js" ||
+      identity.runtimeFormat !== "js" ||
+      identity.integrity.kind !== "registry" ||
+      identity.integrity.lockIntegrity !== expected.lockIntegrity
+    ) {
+      return decide(false, `${backend} reply delivery engine.lockIntegrity differs from the audited registry integrity`)
+    }
+  } else if (expected.kind === "source") {
+    if (
+      identity.kind !== "js" ||
+      identity.runtimeFormat !== "js" ||
+      identity.integrity.kind !== "source" ||
+      identity.integrity.repository !== expected.repository ||
+      identity.integrity.treeOid !== expected.treeOid ||
+      identity.integrity.cleanTree !== true
+    ) {
+      return decide(
+        false,
+        `${backend} reply delivery engine repository/treeOid/cleanTree differs from the audited source`,
+      )
+    }
+  } else if (expected.kind === "wasm") {
+    if (
+      identity.kind !== "js" ||
+      identity.runtimeFormat !== "wasm" ||
+      identity.loadedBinary.sha256 !== expected.sha256
+    ) {
+      return decide(false, `${backend} reply delivery engine.sha256 differs from the loaded WASM`)
+    }
+  } else {
+    return decide(false, `${backend} reply delivery has no recognized audited engine binding`)
+  }
+
+  try {
+    // Resolve from the exact URL imported for resolve(), never a neighboring vendor checkout.
+    const entry = realpathSync(runtime.adapterPath)
+    const checkout = owningCheckout(entry, runtime.adapterPackage)
+    if (git(checkout, "rev-parse", "HEAD") !== identity.termlessRevision) {
+      return decide(false, `${backend} reply delivery adapter revision differs from the measured runtime`)
+    }
+    const entryPath = relative(checkout, entry)
+    if (!declaration.adapterSources.some((source) => source.path === entryPath)) {
+      return decide(false, `${backend} reply delivery adapterSources does not bind the imported entry ${entryPath}`)
+    }
+    for (const source of declaration.adapterSources) {
+      if (!record(source) || typeof source.path !== "string" || typeof source.blobOid !== "string") {
+        return decide(false, `${backend} reply delivery adapterSources has no path/blobOid binding`)
+      }
+      const path = realpathSync(resolve(checkout, source.path))
+      if (!inside(path, checkout) || relative(checkout, path) !== source.path) {
+        return decide(
+          false,
+          `${backend} reply delivery adapterSources path is outside its imported checkout: ${source.path}`,
+        )
+      }
+      git(checkout, "ls-files", "--error-unmatch", source.path)
+      // hash-object reads the bytes actually imported, including an edit before its commit.
+      const actual = git(checkout, "hash-object", path)
+      if (actual !== source.blobOid) {
+        return decide(
+          false,
+          `${backend} reply delivery adapterSources.${source.path} differs: expected ${source.blobOid}, actual ${actual}`,
+        )
+      }
+    }
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    return decide(false, `${backend} source-backed reply delivery unavailable (dist-only loses coverage): ${detail}`)
+  }
+  return decide(true, `${backend} declares complete reply delivery bound to its loaded source and engine`)
+}
+
+const MODULE_PATH = fileURLToPath(import.meta.url)
+const TERMINFO_ROOT = realpathSync(resolve(dirname(MODULE_PATH), "../.."))
 const VENDOR_ROOT = resolve(TERMINFO_ROOT, "..")
 
 function ownedCheckout(path: string, name: string): string {
@@ -19,8 +149,8 @@ function ownedCheckout(path: string, name: string): string {
   }
 }
 
-const VTERM_ROOT = ownedCheckout(join(VENDOR_ROOT, "vterm"), "vterm")
-const CODE_ROOT = ownedCheckout(resolve(VENDOR_ROOT, ".."), "CODE workspace")
+const VTERM_ROOT = join(VENDOR_ROOT, "vterm")
+const CODE_ROOT = resolve(VENDOR_ROOT, "..")
 const UPSTREAM_PACKAGES: Record<string, string> = {
   xtermjs: "@xterm/headless",
   ghostty: "ghostty-web",
@@ -396,7 +526,10 @@ export async function headlessRuntimeIdentity(
   adapterSpecifier: string,
   adapterType: string,
 ): Promise<HeadlessRuntimeIdentity> {
-  const adapter = resolvedPackage(adapterSpecifier, import.meta.path)
+  // Identity measurement needs the owned resources; importing the comparer does not.
+  ownedCheckout(VTERM_ROOT, "vterm")
+  ownedCheckout(CODE_ROOT, "CODE workspace")
+  const adapter = resolvedPackage(adapterSpecifier, MODULE_PATH)
   const termlessRoot = owningCheckout(adapter.path, adapterSpecifier)
   const adapterRelative = relative(termlessRoot, adapter.directory)
   const dirtyAdapter = git(termlessRoot, "status", "--porcelain", "--", adapterRelative)

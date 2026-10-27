@@ -664,6 +664,8 @@ export type Interpretation = HistoricalInterpretation | CaptureDecision
 /** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
   readonly kind: ProbeSourceKind
+  /** The collector's measured loaded module/engine, never inferred from capabilities or versions. */
+  readonly runtimeIdentity?: HeadlessRuntimeIdentity
   /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
   getHyperlinkAt?(row: number, col: number): string | null
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
@@ -672,7 +674,7 @@ export interface LibProbeSource {
   feedCapture(text: string): string
   /**
    * F1 (27832) on a headless engine (#30554). Present only when the collector holds a proof that this
-   * backend delivers every engine reply inside the capture (packages/probes proven-reply-paths.ts); an
+   * adapter's complete reply-delivery declaration matches its loaded source and engine; an
    * arm that finds it absent keeps its plain capture, so a silent query stays inconclusive there. It
    * captures `sequence`, then a DA1 query in a capture of its own, and reads the two with the live
    * collector's rule (readSentinelReply): DA1 answered in its own capture with no reply is the
