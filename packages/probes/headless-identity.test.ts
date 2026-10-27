@@ -513,7 +513,11 @@ test.each([
 ] as const)("reply eligibility %s uses source/engine facts, not unchanged versions", (mode, member, reason) => {
   const run = runReplyDecision(mode)
   expect(run.status, run.stderr).toBe(0)
-  const body = JSON.parse(run.stdout)
+  const body = JSON.parse(run.stdout) as {
+    engineVersion: string
+    result: { member: boolean; reason: string }
+    warnings: string[]
+  }
   expect(body.engineVersion).toBe("0.7.1")
   expect(body.result.member).toBe(member)
   expect(body.result.reason).toContain(reason)
