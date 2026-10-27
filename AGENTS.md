@@ -10,7 +10,9 @@ TypeScript, Bun, VitePress, Termless (headless terminal testing), Vitest.
 
 ## Before working on probes
 
-Read the [current probe-system model](packages/probe-defs/README.md) before changing definitions, collectors, evidence or status mapping. Update it in the same change when those contracts change.
+Read the [current probe-system model](packages/probe-defs/README.md) before changing definitions, collectors, evidence or status mapping.
+Update it in the same change when those contracts change.
+Its [vocabulary and current code](packages/probe-defs/README.md#vocabulary-and-current-code) section maps the approved probe terms to existing identifiers and distinguishes future refactoring.
 
 ## Directory Structure
 
@@ -53,7 +55,7 @@ packages/terminfo.dev/              ← npm-publishable CLI (npx terminfo.dev)
   src/
     index.ts                      entry point: probe {here,server}, submit, detect
     serve.ts                      daemon: HTTP server for in-terminal probing
-    probes/                       probe implementations (run in real terminal context)
+    probes/                       probe implementations (run against real terminal apps)
     detect.ts                     terminal detection (TERM, DA1, etc.)
     submit.ts                     submit results to terminfo.dev
     tty.ts                        raw TTY I/O helpers
@@ -102,18 +104,18 @@ DERIVED     docs/data/*.ts        ← computed at build time from above two
 
 Each file: `{ backend, version, results: { featureId: boolean }, notes, probeHash, generated }`
 
-### One suite per collection (cut one commit, collect every context there)
+### One suite per collection (cut one commit, collect every subject configuration there)
 
 A merge that touches the collector sources changes the probe suite id, so a run collected before that
 merge cannot be admitted (30286). A collection therefore starts at ONE commit, never at whatever `main`
 reads on the day:
 
 1. **Cut.** Choose one terminfo commit and put a branch on it.
-2. **Collect every context at that commit.** Local Linux runs in a worktree at it; macOS and Windows
+2. **Collect every subject configuration at that commit.** Local Linux runs in a worktree at it; macOS and Windows
    dispatch their workflows at the same branch —
    `gh workflow run macos-measurement.yml --ref <branch>` and
    `gh workflow run windows-measurement.yml --ref <branch>`. Both check out the dispatched ref
-   (`actions/checkout@v4`, no `ref` override), so every context measures one suite.
+   (`actions/checkout@v4`, no `ref` override), so every subject configuration measures one suite.
 3. **Admit on that branch and merge it through Yrd** (next section), then move the release pointer onto
    that suite: `bun scripts/suite-manifest.ts --freeze <release>` while the tree is still at the cut, or
    later from `main` naming the admitted suite,
@@ -284,7 +286,8 @@ bun probe:mux                 # = bun terminfo probe mux --all
 
 - **Headless** (`probe termless`): Testing library parsers. Fast, automated, CI-friendly.
 - **App launch** (`probe app`): Testing real macOS terminals. Requires Accessibility permission for AppleScript. Doesn't work for all terminals (Warp, some Electron apps).
-- **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the target terminal, then `--all` from another session. Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
+- **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the probe subject's terminal, then `--all` from another session.
+  Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
 - **Mux** (`probe mux`): Testing multiplexer pass-through (tmux, screen). Launches the mux with a daemon inside, probes via HTTP, saves to `content/probes-mux/`. Shows which features each mux correctly relays vs. strips.
 - **Inline** (`probe here`): Quick test of the current terminal. Good for one-off checks.
 - **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
@@ -453,7 +456,7 @@ include the `"osc"` tag in addition to any vendor tag.
 | `ctx.getCursor()`    | Cursor movement, position   | Check cursor at expected row/col              |
 | `ctx.getMode()`      | DEC private modes           | Check `getMode("mouseTracking")` after enable |
 | `ctx.feedCapture()`  | Query-response protocols    | Check response matches expected pattern       |
-| `ctx.capabilities.*` | Declared capabilities       | Check `capabilities.kittyKeyboard`            |
+| `ctx.capabilities.*` | Declared term features      | Check `capabilities.kittyKeyboard`            |
 | `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
 | `null`               | Last resort only            | When NO verification is possible (rare)       |
 
