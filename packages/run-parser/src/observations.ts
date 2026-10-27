@@ -122,8 +122,9 @@ export function projectHistoricalResult(
   const { evidence, checks: _checks, ...fields } = value
   const result = { ...fields, tests } as unknown as ProbeResult
   if (evidence !== undefined) {
-    if (!HISTORICAL_EVIDENCE.includes(evidence as HistoricalEvidence))
+    if (!HISTORICAL_EVIDENCE.includes(evidence as HistoricalEvidence)) {
       fail("historical result", `invalid evidence for ${String(value.featureId)}`)
+    }
     const input = { ...value, outcome: value.status } as unknown as ObservationInput
     const assertionType = classifyHistorical(input, rawReplies)
     if (assertionType !== undefined) result.assertionType = assertionType
@@ -157,13 +158,13 @@ export function projectHistoricalAssertions(
         // A frame assertion must actually cite a retained frame digest.
         if (
           (type === "screenshot" || textRead(input)) &&
-          !(input.frames ?? []).some(
-            (frame) =>
-              assertion.observed.includes(frame.ref) ||
-              (frameDigests(frame).cells !== undefined && assertion.observed.includes(frameDigests(frame).cells!)),
-          )
-        )
+          !(input.frames ?? []).some((frame) => {
+            const cells = frameDigests(frame).cells
+            return assertion.observed.includes(frame.ref) || (cells !== undefined && assertion.observed.includes(cells))
+          })
+        ) {
           return []
+        }
         return type === undefined ? [] : [type]
       }),
     )
@@ -571,13 +572,16 @@ export function validateObservationOutcome(
   }
   if (schemaVersion === 4) {
     if (Object.hasOwn(value, "evidence")) fail(path, `schema 4 observation ${featureId} cannot carry evidence`)
-    if (!ASSERTION_TYPES.includes(value.assertionType as AssertionType))
+    if (!ASSERTION_TYPES.includes(value.assertionType as AssertionType)) {
       fail(path, `invalid assertionType for ${featureId}`)
+    }
   } else {
-    if (Object.hasOwn(value, "assertionType"))
+    if (Object.hasOwn(value, "assertionType")) {
       fail(path, `historical observation ${featureId} cannot carry assertionType`)
-    if (!HISTORICAL_EVIDENCE.includes(value.evidence as HistoricalEvidence))
+    }
+    if (!HISTORICAL_EVIDENCE.includes(value.evidence as HistoricalEvidence)) {
       fail(path, `invalid evidence for ${featureId}`)
+    }
   }
   if (value.reason !== undefined && !OBSERVATION_REASONS.includes(value.reason as NonNullable<Observation["reason"]>)) {
     fail(path, `invalid reason for ${featureId}`)
@@ -607,10 +611,12 @@ export function validateObservation(
 export function decodeHistoricalCorrection(value: unknown, path: string, featureId: string): ReadObservation {
   if (!object(value)) fail(path, `invalid observation in ${featureId}`)
   validateObservationOutcome(value, path, featureId, 2)
-  if (value.evidence === "pixels" && !nonempty(value.screenshotRef))
+  if (value.evidence === "pixels" && !nonempty(value.screenshotRef)) {
     fail(path, `pixels correction ${featureId} requires screenshotRef`)
-  if (value.evidence === "query" && !nonempty(value.rawReplyRef))
+  }
+  if (value.evidence === "query" && !nonempty(value.rawReplyRef)) {
     fail(path, `query correction ${featureId} requires rawReplyRef`)
+  }
   return projectHistorical(value as unknown as ObservationInput, {})
 }
 
@@ -689,8 +695,9 @@ export function consoleHostHold(
   if (
     (old !== undefined ? old !== "query" && old !== "behavior" : cell.assertionType !== "query_reply") ||
     cell.rawReplyRef === undefined
-  )
+  ) {
     return undefined
+  }
   const stored = run.rawReplies[cell.rawReplyRef]
   if (stored === undefined) {
     throw new Error(`Run ${run.runId}: ${cell.featureId} cites raw reply ${cell.rawReplyRef}, which the run lacks`)
@@ -730,18 +737,19 @@ export function validateCorrectedObservation(
     observation?: ReadObservation
   },
 ): ReadObservation {
-  if (!entry.observation || !entry.featureId) fail(entry.id, "correction requires feature and observation")
-  const recordedObservation = run.observations.find((observation) => observation.featureId === entry.featureId)
-  if (!recordedObservation) fail(entry.id, `no raw observation for ${entry.featureId}`)
-  const original = historical.get(entry.observation!)?.input
-  const input: ObservationInput = original ?? entry.observation!
+  const { observation: correctedObservation, featureId } = entry
+  if (!correctedObservation || !featureId) fail(entry.id, "correction requires feature and observation")
+  const recordedObservation = run.observations.find((observation) => observation.featureId === featureId)
+  if (!recordedObservation) fail(entry.id, `no raw observation for ${featureId}`)
+  const original = historical.get(correctedObservation)?.input
+  const input: ObservationInput = original ?? correctedObservation
   validateObservationOutcome(
     input as unknown as Record<string, unknown>,
     entry.id,
-    entry.featureId!,
+    featureId,
     original === undefined ? 4 : 2,
   )
-  const observation = original === undefined ? entry.observation! : projectHistorical(original, run.rawReplies)
+  const observation = original === undefined ? correctedObservation : projectHistorical(original, run.rawReplies)
   validateObservation(observation, `interpretation ${entry.id}`, run.rawReplies, run.assertions)
   if ((input.evidence === "query" || input.assertionType === "query_reply") && !observation.rawReplyRef) {
     throw new Error(`interpretation ${entry.id}: query requires rawReplyRef`)
@@ -758,7 +766,7 @@ export function validateCorrectedObservation(
   const frames = parseObservationFrames(
     observation.frames,
     `interpretation ${entry.id}`,
-    entry.featureId!,
+    featureId,
     run.screenshotRefs,
     run.textSnapshotRefs,
     observation.screenshotRef,
@@ -785,16 +793,13 @@ export function validateCorrectedObservation(
       )
       if (match < 0) {
         throw new Error(
-          `${kind} interpretation ${entry.id} cites a frame outside immutable ${entry.featureId} feature frames`,
+          `${kind} interpretation ${entry.id} cites a frame outside immutable ${featureId} feature frames`,
         )
       }
       originalFrames.splice(match, 1)
     }
     if (kind === "pixels") {
-      if (
-        TEMPORAL_PIXEL_FEATURES.has(entry.featureId) &&
-        frames.filter((frame) => frame.role === "target").length < 2
-      ) {
+      if (TEMPORAL_PIXEL_FEATURES.has(featureId) && frames.filter((frame) => frame.role === "target").length < 2) {
         throw new Error(`temporal pixels interpretation ${entry.id} requires 2 target frames`)
       }
       if (run.subject.os?.toLowerCase().startsWith("linux") && !run.provenance) {
@@ -815,11 +820,13 @@ export function validateCurrentAssertions(
 ): void {
   for (const assertion of assertions) {
     const { featureId, rawReplyRef, assertionType } = assertion
-    if (!nonempty(assertion.expected) || !nonempty(assertion.observed))
+    if (!nonempty(assertion.expected) || !nonempty(assertion.observed)) {
       fail(path, `${featureId} assertion requires expected and observed evidence`)
-    if (!rawReplyRef || !nonempty(rawReplies[rawReplyRef]))
+    }
+    const raw = rawReplyRef ? rawReplies[rawReplyRef] : undefined
+    if (!rawReplyRef || !nonempty(raw)) {
       fail(path, `${featureId} assertion requires its retained raw payload`)
-    const raw = rawReplies[rawReplyRef]!
+    }
     const frames = results.filter((result) => result.featureId === featureId).flatMap((result) => result.frames ?? [])
     if (assertionType === "query_reply") {
       // Raw replies are arbitrary bytes; only a real trace envelope has a query list.
@@ -857,10 +864,12 @@ export function validateCurrentAssertions(
       )
     } else if (assertionType === "buffer_state" || assertionType === "input_bytes") {
       const state = parseJsonStrict(`${path}: ${featureId} state snapshot`, assertion.observed)
-      if (!object(state) || Object.keys(state).length === 0)
+      if (!object(state) || Object.keys(state).length === 0) {
         fail(path, `${featureId} requires an actual state snapshot`)
-      if (assertionType === "input_bytes" && !nonempty(assertion.action))
+      }
+      if (assertionType === "input_bytes" && !nonempty(assertion.action)) {
         fail(path, `${featureId} requires the performed action`)
+      }
       if (assertionType === "buffer_state" && subjectKind === "lib" && assertion.observed !== raw) {
         fail(path, `${featureId} lib buffer_state assertion differs from its retained response`)
       }

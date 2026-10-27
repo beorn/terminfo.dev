@@ -23,8 +23,9 @@ function interpretationSubject(
   if (historical && Object.hasOwn(scope, "subject")) fail(path, "mixed interpretation scope target and subject")
   const value = scope[historical ? "target" : "subject"]
   const kinds = historical ? ["app", "headless", "mux"] : ["term", "lib", "mux"]
-  if (!object(value) || !kinds.includes(String(value.kind)) || !nonempty(value.id))
+  if (!object(value) || !kinds.includes(String(value.kind)) || !nonempty(value.id)) {
     fail(path, "invalid interpretation scope subject")
+  }
   return {
     historical,
     subject: {
