@@ -134,7 +134,8 @@ beforeEach(() => {
   vi.mocked(readRetainedDaemonProbeResponse).mockResolvedValue({
     path: "/private/http-responses/digest",
     sha256: "d".repeat(64),
-    run: { source: { kind: "live" },
+    run: {
+      source: { kind: "live" },
       schemaVersion: 4,
       intendedSubject: { kind: "term", id: "terminal-app", version: "2.15" },
       runId: "private-run",

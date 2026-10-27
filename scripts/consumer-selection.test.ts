@@ -89,7 +89,8 @@ function writeFrozenSuite(content: string, probeHash: string): void {
   mkdirSync(join(content, "suites"), { recursive: true })
   writeFileSync(
     join(content, "suites", `${probeHash}.json`),
-    JSON.stringify({ schemaVersion: 4 as const,
+    JSON.stringify({
+      schemaVersion: 4 as const,
       probeHash,
       adapterVersion: "4.0.0",
       freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
@@ -638,9 +639,7 @@ describe("consumer selection", () => {
       wezterm.headlessBackends = []
       writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
       const projection = stubProjection({})
-      expect(() => compatibilityTargets(projection, content)).toThrow(
-        /released key wezterm changed meaning from lib/,
-      )
+      expect(() => compatibilityTargets(projection, content)).toThrow(/released key wezterm changed meaning from lib/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }

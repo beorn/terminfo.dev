@@ -527,7 +527,11 @@ export async function collectPass(
           throw new Error(`collector returned raw output outside this private pass: ${file}`)
         }
         // This header only routes the file to its context; canonical parseRun validates every byte below.
-        const header = JSON.parse(readFileSync(file, "utf8")) as { schemaVersion?: unknown; subject?: { id?: unknown }; target?: { id?: unknown } }
+        const header = JSON.parse(readFileSync(file, "utf8")) as {
+          schemaVersion?: unknown
+          subject?: { id?: unknown }
+          target?: { id?: unknown }
+        }
         // Preserve historical raw output custody before the current-contract refusal below.
         const id = header.schemaVersion === 4 ? header.subject?.id : header.target?.id
         if (typeof id !== "string" || !census.some((row) => row.kind === "lib" && row.id === id)) {

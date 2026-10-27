@@ -11,7 +11,11 @@ import { fileURLToPath } from "node:url"
 import ts from "typescript"
 import { expect, test, vi } from "vitest"
 
-const changed = vi.hoisted(() => ({ file: "", extraCatalog: false, declaration: "original" as "original" | "null" | "absent" }))
+const changed = vi.hoisted(() => ({
+  file: "",
+  extraCatalog: false,
+  declaration: "original" as "original" | "null" | "absent",
+}))
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>()
   return {
@@ -21,9 +25,12 @@ vi.mock("node:fs", async (importOriginal) => {
       const bytes = fs.readFileSync(path)
       if (changed.declaration !== "original" && path.endsWith("packages/probe-defs/src/helpers.ts")) {
         // Snapshot hashes definition bytes verbatim: an explicit null is not an omitted declaration.
-        return Buffer.concat([bytes, Buffer.from(`
+        return Buffer.concat([
+          bytes,
+          Buffer.from(`
 const retainedObservableDeclarationFixture = ${changed.declaration === "null" ? "{ termAssertionType: null }" : "{}"}
-`)])
+`),
+        ])
       }
       return changed.file && path.endsWith(changed.file) ? Buffer.concat([bytes, Buffer.from("\n// changed")]) : bytes
     },

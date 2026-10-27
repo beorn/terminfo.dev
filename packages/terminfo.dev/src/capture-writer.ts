@@ -24,7 +24,8 @@ export function finalizeCollectedDraft(
   if (run.schemaVersion !== 4 || !Array.isArray(run.results)) {
     throw new Error("Final writer requires the current schema-4 draft; historical runs are read-only")
   }
-  if (run.source?.kind !== "live") throw new Error(`Probe source ${String(run.source?.kind)} has no implementation at this source`)
+  if (run.source?.kind !== "live")
+    throw new Error(`Probe source ${String(run.source?.kind)} has no implementation at this source`)
   if ("sealedAt" in run) {
     throw new Error(`Run ${run.runId} is already sealed; enrichment cannot change immutable results`)
   }
@@ -68,7 +69,12 @@ export function saveDaemonProbeRun(
   reviews: readonly CaptureReviewInput[] = [],
 ): string {
   const captured = finalizeCollectedDraft(run, intended, reviews)
-  for (const value of [captured.subject.id, captured.subject.version, captured.subject.os ?? "unknown", captured.runId]) {
+  for (const value of [
+    captured.subject.id,
+    captured.subject.version,
+    captured.subject.os ?? "unknown",
+    captured.runId,
+  ]) {
     if (!/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`Unsafe capture filename component: ${value}`)
   }
   mkdirSync(directory, { recursive: true })

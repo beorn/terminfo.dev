@@ -55,7 +55,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     )
     writeFileSync(
       join(root, "content", "suites", `${snapshot.probeHash}.json`),
-      JSON.stringify({ schemaVersion: 4 as const,
+      JSON.stringify({
+        schemaVersion: 4 as const,
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
@@ -69,7 +70,8 @@ test("report renders reviewed outcomes and missing cells without promoting legac
         },
       }),
     )
-    const run = { source: { kind: "live" },
+    const run = {
+      source: { kind: "live" },
       schemaVersion: 4,
       sealedAt: "2026-09-28T12:00:01.000Z",
       intendedSubject: { kind: "term", id: "kitty", version: "0.46.2" },

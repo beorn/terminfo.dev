@@ -38,7 +38,8 @@ import {
 } from "./daemon-client.ts"
 
 const trustedReceipt = {
-  manifest: { schemaVersion: 4 as const,
+  manifest: {
+    schemaVersion: 4 as const,
     probeHash: "abcdef123456",
     sourceRevision: "b".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
@@ -50,7 +51,8 @@ const trustedReceipt = {
 }
 
 function collectorRun(): CollectedProbeRun {
-  return { source: { kind: "live" },
+  return {
+    source: { kind: "live" },
     schemaVersion: 4,
     intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",
@@ -125,7 +127,8 @@ it("keeps the Darwin editor IPC path short despite a long per-user temporary dir
 
 it("writes one immutable current capture and refuses a mismatched intended version", () => {
   root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
-  const run: CollectedProbeRun = { source: { kind: "live" },
+  const run: CollectedProbeRun = {
+    source: { kind: "live" },
     schemaVersion: 4,
     intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
     runId: "1234567890abcdef1234567890abcdef",

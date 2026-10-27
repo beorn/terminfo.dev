@@ -315,7 +315,8 @@ describe("container run receipt composition", () => {
     expect(result.status).toBe(0)
     const containerBytes = readFileSync(join(dir, "container.json"))
     const final = join(dir, "reviewed-final.json")
-    const run = { source: { kind: "live" },
+    const run = {
+      source: { kind: "live" },
       schemaVersion: 4,
       runId: "b".repeat(32),
       sealedAt: "2026-10-21T05:00:00.000Z",

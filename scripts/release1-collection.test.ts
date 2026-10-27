@@ -263,7 +263,8 @@ it.each([
         ? vi.spyOn(versions, "probeSuiteSnapshot").mockReturnValue({
             ...parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")),
             catalogIds: Object.keys(catalog.loadFeatures(CONTENT)).sort(),
-            ...(textCase && { schemaVersion: 4 as const,
+            ...(textCase && {
+              schemaVersion: 4 as const,
               probes: {
                 term: ["text.overwrite"],
                 lib: parseSuiteManifest(manifestPath, readFileSync(manifestPath, "utf8")).probes.lib,

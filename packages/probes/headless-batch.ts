@@ -248,9 +248,18 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
   // instead of the old ungraded legacy-callback record.
   const widened: { observation?: ProbeCallbackResult["observation"] } = result
   const explicit = widened.observation
-  if (!explicit && result.tests?.length && result.tests.every((test) =>
-    (test.status === "test-todo" || test.status === "test-failure") && typeof test.reason === "string" && test.reason.trim().length > 0
-  ) && !result.assertions?.length) return
+  if (
+    !explicit &&
+    result.tests?.length &&
+    result.tests.every(
+      (test) =>
+        (test.status === "test-todo" || test.status === "test-failure") &&
+        typeof test.reason === "string" &&
+        test.reason.trim().length > 0,
+    ) &&
+    !result.assertions?.length
+  )
+    return
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
       kind: "collector-error",
@@ -263,8 +272,11 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
     return
   }
   if (!ASSERTION_TYPES.includes(explicit.assertionType)) {
-    batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error",
-      message: withRefusedClaim(`Callback for ${id} returned no valid assertion type`, result) }
+    batch.ungradedDiagnostics[id] = {
+      kind: "collector-error",
+      name: "Error",
+      message: withRefusedClaim(`Callback for ${id} returned no valid assertion type`, result),
+    }
     return
   }
   // Undefined is undeclared; null explicitly declares no deciding typed observable.
@@ -276,7 +288,10 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
       outcome: "error",
       reason: "collector-error",
       assertionType: explicit.assertionType,
-      note: withRefusedClaim(`Lib callback ${id} declares ${String(declared)} but returned ${explicit.assertionType}`, result),
+      note: withRefusedClaim(
+        `Lib callback ${id} declares ${String(declared)} but returned ${explicit.assertionType}`,
+        result,
+      ),
       ...(result.response !== undefined ? { rawReplyRef: id } : {}),
     })
     return
@@ -330,7 +345,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCall
   if (result.observation !== undefined || assertions.length > 0) {
     const mixedMessage = `Not-tested coverage for ${id} arrived beside ${refusedClaimEvidence(result)}; a probe that claims no semantic observable cannot also carry a measurement, so the coverage claim is refused and its evidence stays a collector error`
 
-      batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message: mixedMessage }
+    batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message: mixedMessage }
 
     return
   }
@@ -344,8 +359,7 @@ function recordNotTested(batch: Batch, probe: ProbeDefinition, result: ProbeCall
     response === undefined ||
     !bound
   ) {
-
-      batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
+    batch.ungradedDiagnostics[id] = { kind: "collector-error", name: "Error", message }
 
     return
   }
@@ -432,12 +446,11 @@ export async function collectBatch(
     } catch (error) {
       const message = `headless ${backendName} probe ${probe.id}: ${errorMessage(error)}`
 
-        batch.ungradedDiagnostics[probe.id] = {
-          kind: "collector-error",
-          name: error instanceof Error ? error.name : "Error",
-          message,
-        }
-
+      batch.ungradedDiagnostics[probe.id] = {
+        kind: "collector-error",
+        name: error instanceof Error ? error.name : "Error",
+        message,
+      }
     } finally {
       const observation = batch.observations.find((entry) => entry.featureId === probe.id)
       const diagnostic = batch.ungradedDiagnostics[probe.id]

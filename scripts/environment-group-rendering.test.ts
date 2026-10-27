@@ -57,7 +57,8 @@ describe("public test CLI coverage uses the collected manifest", () => {
     ["current", catalogIds, ` · 9 environment groups ${PHRASE}`],
     ["historical", gradedIds, ""],
   ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause) => {
-    const manifest = { schemaVersion: 4 as const,
+    const manifest = {
+      schemaVersion: 4 as const,
       probeHash: "abcdef123456",
       sourceRevision: "a".repeat(40),
       generatedAt: "2026-10-25T00:00:00.000Z",
@@ -66,7 +67,8 @@ describe("public test CLI coverage uses the collected manifest", () => {
       probes: { term: [], lib: [], mux: [] },
     } satisfies ProbeSuiteManifest
     const run: CapturedRunDraft = {
-      ...initializeRunDraft({ source: { kind: "live" },
+      ...initializeRunDraft({
+        source: { kind: "live" },
         runId: "1234567890abcdef1234567890abcdef",
         sourceRevision: manifest.sourceRevision,
         manifest,

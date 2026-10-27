@@ -56,7 +56,12 @@ describe("the site says why a text row does not count (30033 ruling f1f3c64b)", 
     "Run sample: missing text qualification shape empty-last-row",
     "Run sample: text qualification shape soft-wrap target does not match the expected character grid",
   ])("names the carried qualification cause: %s", (textQualificationReason) => {
-    const text = textEvidenceExplanation({ assertionType: "buffer_state", conclusive: false, os: "macos", textQualificationReason })
+    const text = textEvidenceExplanation({
+      assertionType: "buffer_state",
+      conclusive: false,
+      os: "macos",
+      textQualificationReason,
+    })
     expect(text).toContain(textQualificationReason)
     expect(text).toContain("not counted")
   })
@@ -210,7 +215,9 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Query · reply", code: "ESC P $ q m ESC \\ ESC [ c" },
       { label: "Reply", code: "ESC P 1 $ r 0 m ESC \\", text: "Observed: 0" },
     ])
-    expect(panes.tested.sourceLine).toBe("Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed")
+    expect(panes.tested.sourceLine).toBe(
+      "Historical run c70e8c3c · 2026-10-19 · query_reply · presentation not reviewed",
+    )
     expect(panes.tested.identityLine).toBe(
       "Identity unverified in run file; admitted by ghostty rule (DA1 ESC [ ?62;22;52 c, XTVERSION ghostty 1.3.1).",
     )
@@ -378,7 +385,9 @@ describe("popover trace panes for not-reviewed cells (#30565 AC3, AC4, @cto ruli
       { label: "Sent", text: "Nothing" },
       { label: "Observed", text: "Nothing" },
     ])
-    expect(panes.tested.sourceLine).toBe("Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed")
+    expect(panes.tested.sourceLine).toBe(
+      "Historical run 3105bbe9 · 2026-10-18 · no typed observation retained · presentation not reviewed",
+    )
     expect(panes.tested.identityLine).toBe(
       "Identity unverified in run file; admitted by kitty rule (DA1 ESC [ ?62;52; c, XTVERSION kitty(0.48.2)).",
     )

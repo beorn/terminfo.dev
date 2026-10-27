@@ -183,7 +183,11 @@ function qualificationFor(
 }
 
 /** Keeps a run's trace document for generate-api and returns the receipt its run version carries. */
-function traceReceipt(documents: PublicDocuments, trace: ReturnType<typeof currentTrace>, schemaVersion: 3 | 4): { trace?: TraceReceipt } {
+function traceReceipt(
+  documents: PublicDocuments,
+  trace: ReturnType<typeof currentTrace>,
+  schemaVersion: 3 | 4,
+): { trace?: TraceReceipt } {
   if (!trace) return {}
   const prior = documents.get(trace.url)
   if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
@@ -353,7 +357,10 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
         },
       }),
     }
-    const textQualification = result.frames?.some((frame) => frame.kind === "text-cells") === true ? qualificationFor(version, documents, 3) : undefined
+    const textQualification =
+      result.frames?.some((frame) => frame.kind === "text-cells") === true
+        ? qualificationFor(version, documents, 3)
+        : undefined
     evidenceCells[result.featureId] = {
       featureId: result.featureId,
       result: globalThis.structuredClone(result),

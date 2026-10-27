@@ -272,7 +272,8 @@ const BASES = ["supported", "unsupported"] as const
 // text Supported result whose mapping oracle was absent or attempted and broken.
 const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?: (typeof BASES)[number] } = {}) => {
   const featureId = "text.overwrite"
-  const manifest = { schemaVersion: 4 as const,
+  const manifest = {
+    schemaVersion: 4 as const,
     probeHash: "text-suite",
     adapterVersion: "3",
     catalogIds: [featureId],
@@ -280,7 +281,8 @@ const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?
     textClaims: [featureId],
     textQualification: TEXT_QUALIFICATION_SPEC,
   }
-  const base = initializeRunDraft({ source: { kind: "live" },
+  const base = initializeRunDraft({
+    source: { kind: "live" },
     runId: "text-execution",
     sourceRevision: "a".repeat(40),
     manifest,

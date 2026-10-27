@@ -363,7 +363,22 @@ export async function runProbeBatch(
   const disposable = resolveDisposableReceipt()
   // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
-  if (disposable) bindReceiptToRun(disposable, options.subject ? { ...options.subject, kind: options.subject.kind === "term" ? "app" : options.subject.kind === "lib" ? "headless" : options.subject.kind } : undefined, "collector.disposableOwnership")
+  if (disposable)
+    bindReceiptToRun(
+      disposable,
+      options.subject
+        ? {
+            ...options.subject,
+            kind:
+              options.subject.kind === "term"
+                ? "app"
+                : options.subject.kind === "lib"
+                  ? "headless"
+                  : options.subject.kind,
+          }
+        : undefined,
+      "collector.disposableOwnership",
+    )
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
   if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
@@ -446,7 +461,6 @@ export async function runProbeBatch(
           ? "no verified disposable-ownership receipt was presented"
           : undefined
     if (refusedBecause) {
-
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
       if (!pending) throw new Error(`Native prerequisite ${probe.id} is outside initialized catalogue`)
@@ -502,9 +516,7 @@ export async function runProbeBatch(
         pending.attempt = attempt
         pending.reason = diagnostic
         pending.rawReplyRef = probe.id
-        pending.tests = [
-          { id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id },
-        ]
+        pending.tests = [{ id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id }]
         options.onCheckpoint?.(batch)
         continue
       }
@@ -718,10 +730,7 @@ export async function runProbeBatch(
         if (result.response !== undefined) {
           batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
-        const rawReplyRef =
-          queries.length || captureAttempted || clipboardEvents.length
-            ? probe.id
-            : undefined
+        const rawReplyRef = queries.length || captureAttempted || clipboardEvents.length ? probe.id : undefined
         const post = geometryCheck?.post
         const resized =
           preGeometry?.status === "measured" &&
@@ -762,9 +771,15 @@ export async function runProbeBatch(
             ...(rawReplyRef ? { rawReplyRef } : {}),
           })
         }
-      } else if (result.tests?.length && result.tests.every((test) =>
-        (test.status === "test-todo" || test.status === "test-failure") && typeof test.reason === "string" && test.reason.trim().length > 0
-      )) {
+      } else if (
+        result.tests?.length &&
+        result.tests.every(
+          (test) =>
+            (test.status === "test-todo" || test.status === "test-failure") &&
+            typeof test.reason === "string" &&
+            test.reason.trim().length > 0,
+        )
+      ) {
         if (result.response !== undefined) batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
       } else {
         // The callback returned neither a measurement nor a coverage record. The type makes

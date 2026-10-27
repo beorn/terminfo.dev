@@ -10,11 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, expect, it, vi } from "vitest"
-import {
-  ALL_PROBES,
-  type ProbeSuiteManifest,
-  type TextQualification,
-} from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeSuiteManifest, type TextQualification } from "@terminfo/probe-defs"
 import { decodeHistoricalCollectorRun as decodeCollectorRun } from "@terminfo/run-parser"
 import * as terminalOwnership from "../owned-terminal.ts"
 import { verifyTerminalIdentity } from "../identity-guard.ts"
@@ -72,7 +68,8 @@ it("checkpoints the native attempt before invoking its callback", async () => {
   })
 })
 const sourceRevision = "e".repeat(40)
-const manifest: ProbeSuiteManifest = { schemaVersion: 4 as const,
+const manifest: ProbeSuiteManifest = {
+  schemaVersion: 4 as const,
   probeHash,
   sourceRevision,
   generatedAt: "2026-09-28T00:00:00.000Z",
@@ -83,9 +80,14 @@ const manifest: ProbeSuiteManifest = { schemaVersion: 4 as const,
 function asRun(batch: Awaited<ReturnType<typeof runProbeBatch>>) {
   const observations = batch.observations.map(({ assertionType, ...observation }) => ({
     ...observation,
-    evidence: assertionType === "buffer_state"
-      ? observation.frames?.some((frame) => frame.kind === "text-cells") ? "text" : "parser-state"
-      : ({ query_reply: "query", screenshot: "pixels", input_bytes: "interaction", clipboard: "behavior" } as const)[assertionType],
+    evidence:
+      assertionType === "buffer_state"
+        ? observation.frames?.some((frame) => frame.kind === "text-cells")
+          ? "text"
+          : "parser-state"
+        : ({ query_reply: "query", screenshot: "pixels", input_bytes: "interaction", clipboard: "behavior" } as const)[
+            assertionType
+          ],
   }))
   return {
     schemaVersion: 2,
@@ -136,7 +138,11 @@ it.each([
     // The collector records its own disposable-ownership verdict beside the replies.
     const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
     try {
-      definition.term = async () => ({ pass: false, ...responseFields, tests: [{id: "criterion", status: "test-todo", reason: note}] })
+      definition.term = async () => ({
+        pass: false,
+        ...responseFields,
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
+      })
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...responseFields, note })) as unknown as typeof definition.term
       const legacy = await runProbeBatch({ ids: [id] })
@@ -232,7 +238,11 @@ it.each([
     // The collector records its own disposable-ownership verdict beside the replies.
     const sharedOwnership = { "collector.disposableOwnership": JSON.stringify({ kind: "shared" }) }
     try {
-      definition.term = async () => ({ pass: false, ...resultNoteFields, tests: [{id: "criterion", status: "test-todo", reason: expectedNote!}] })
+      definition.term = async () => ({
+        pass: false,
+        ...resultNoteFields,
+        tests: [{ id: "criterion", status: "test-todo", reason: expectedNote! }],
+      })
       const explicit = await runProbeBatch({ ids: [id] })
       definition.term = (async () => ({ pass: false, ...resultNoteFields })) as unknown as typeof definition.term
       const legacy = await runProbeBatch({ ids: [id] })
@@ -292,8 +302,11 @@ it("refuses an unowned mutating callback without sending terminal bytes", async 
   const batch = await runProbeBatch({ ids: ["reset.ris"], captureRunId: "a".repeat(32) })
   expect(writes).toEqual([])
   expect(batch.observations).toEqual([])
-  expect(batch.results.find((result) => result.featureId === "reset.ris")).toMatchObject({status: "test-todo", attempt: {scope: "none"}})
-  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toEqual({writes: [], queries: [], events: []})
+  expect(batch.results.find((result) => result.featureId === "reset.ris")).toMatchObject({
+    status: "test-todo",
+    attempt: { scope: "none" },
+  })
+  expect(JSON.parse(batch.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
 
 it("records an owned default-profile OSC 52 refusal as unmeasured with an empty bound trace", async () => {
@@ -305,7 +318,9 @@ it("records an owned default-profile OSC 52 refusal as unmeasured with an empty 
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["extensions.osc52-write"], captureRunId: "a".repeat(32) })
   expect(writes).toEqual([])
-  expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "extensions.osc52-write",rawReplyRef: "extensions.osc52-write"}])
+  expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([
+    { status: "test-todo", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
+  ])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc52-write"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
@@ -323,7 +338,9 @@ it("refuses a structural terminal owner even with the same claimed capture ID", 
     ownedTerminal: geometryOwner(noGeometry),
   })
   expect(writes).toEqual([])
-  expect(batch.results.filter((result) => ["reset.ris"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "reset.ris"}])
+  expect(batch.results.filter((result) => ["reset.ris"].includes(result.featureId))).toMatchObject([
+    { status: "test-todo", featureId: "reset.ris" },
+  ])
 })
 
 it("lets reviewed DECRPM queries run while refusing cursor and title-writing callbacks", async () => {
@@ -347,7 +364,7 @@ it("lets reviewed DECRPM queries run while refusing cursor and title-writing cal
     assertionType: "query_reply",
   })
   for (const id of ["cursor.move.absolute", "device.xtwinops-20"]) {
-    expect(batch.results.find((item) => item.featureId === id)).toMatchObject({status: "test-todo"})
+    expect(batch.results.find((item) => item.featureId === id)).toMatchObject({ status: "test-todo" })
     expect(JSON.parse(batch.rawReplies[id]!)).toMatchObject({ writes: [], queries: [], events: [] })
   }
 })
@@ -503,7 +520,9 @@ it("refuses a mutating reset probe with no disposable receipt and writes nothing
   })
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
-  expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "extensions.osc110-reset-fg"}])
+  expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([
+    { status: "test-todo", featureId: "extensions.osc110-reset-fg" },
+  ])
   expect(batch.assertions).toEqual([])
   expect(JSON.parse(batch.rawReplies["extensions.osc110-reset-fg"]!)).toEqual({ writes: [], queries: [], events: [] })
 })
@@ -608,7 +627,9 @@ it("refuses a mutating probe when neither owned terminal nor disposable receipt 
   })
   expect(writes).toEqual([])
   expect(JSON.parse(batch.rawReplies["collector.disposableOwnership"]!)).toEqual({ kind: "shared" })
-  expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "extensions.osc110-reset-fg"}])
+  expect(batch.results.filter((result) => ["extensions.osc110-reset-fg"].includes(result.featureId))).toMatchObject([
+    { status: "test-todo", featureId: "extensions.osc110-reset-fg" },
+  ])
   expect(batch.assertions).toEqual([])
 })
 
@@ -682,7 +703,9 @@ it("gives the named geometry error for a geometry probe on disposable-only termi
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["cursor.shape"], subject: { kind: "term", id: "kitty", os: "linux" } })
   expect(writes).toEqual([])
-  expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([{status: "test-todo",featureId: "cursor.shape",reason: "No verified owned terminal for geometry read"}])
+  expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([
+    { status: "test-todo", featureId: "cursor.shape", reason: "No verified owned terminal for geometry read" },
+  ])
 })
 
 const measured = (
@@ -725,8 +748,11 @@ it("declines a declared callback with missing or conflicting owned geometry befo
     ids: ["reset.ris"],
     ownedTerminal: geometryOwner(noGeometry, async () => measured(24, 61)),
   })
-  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({status: "test-todo"})
-  expect(decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run.observations).toEqual([])
+  expect(missing.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "test-todo" })
+  expect(
+    decodeCollectorRun("missing-geometry.json", JSON.stringify(asRun(missing)), manifest, sourceRevision).run
+      .observations,
+  ).toEqual([])
   expect(JSON.parse(missing.rawReplies["reset.ris"]!)).toEqual({ writes: [], queries: [], events: [] })
   expect(writes).toEqual([])
   const conflict = await runProbeBatch({
@@ -747,7 +773,7 @@ it("declines a declared callback with missing or conflicting owned geometry befo
       },
     },
   })
-  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({status: "test-failure"})
+  expect(conflict.results.find((result) => result.featureId === "reset.ris")).toMatchObject({ status: "test-failure" })
   expect(writes).toEqual([])
   expect(JSON.parse(conflict.rawReplies["collector.geometry"]!)).toMatchObject({
     source: darwinGeometrySource,
@@ -792,7 +818,9 @@ it("prepares capture once before the first eligible callback and retains its cal
         context.write(`fixture:${ids[index]}`)
         return {
           pass: false,
-          tests: [{ id: "criterion", status: "test-todo", reason: "Lifecycle fixture does not measure terminal support" }],
+          tests: [
+            { id: "criterion", status: "test-todo", reason: "Lifecycle fixture does not measure terminal support" },
+          ],
         }
       }
     }
@@ -855,7 +883,7 @@ it("keeps query-only and nongeometry callbacks runnable when owned size is unava
     outcome: "supported",
     assertionType: "query_reply",
   })
-  expect(batch.results.find((item) => item.featureId === "reset.decaln")).toMatchObject({status: "test-todo"})
+  expect(batch.results.find((item) => item.featureId === "reset.decaln")).toMatchObject({ status: "test-todo" })
   expect(batch.ungradedDiagnostics["reset.decaln"]).toBeUndefined()
   expect(writes).not.toContain("\x1b#8")
   expect(writes).toContain("\x1b[?2004$p\x1b[c")
@@ -1004,7 +1032,12 @@ it("refuses app named coverage that arrives beside its returned error observatio
     pass: false,
     response: "\x1b[?62;4c",
     notTested: { reason: "no-semantic-observable", noObservable: "device attributes" },
-    observation: { outcome: "error", reason: "collector-error", assertionType: "query_reply", note: "TTY write failed" },
+    observation: {
+      outcome: "error",
+      reason: "collector-error",
+      assertionType: "query_reply",
+      note: "TTY write failed",
+    },
   })) as unknown as typeof definition.term
   try {
     const batch = await runProbeBatch({ ids: [definition.id] })
@@ -1385,7 +1418,7 @@ it("hands no adapter to a non-cell-readback probe on a text run", async () => {
   expect(reads).toBe(0)
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.textSnapshotRefs ?? []).toEqual([])
-  expect(batch.results.find((item) => item.featureId === "cursor.shape")).toMatchObject({status: "test-failure"})
+  expect(batch.results.find((item) => item.featureId === "cursor.shape")).toMatchObject({ status: "test-failure" })
   expect(batch.observations.find((item) => item.featureId === "cursor.shape")?.assertionType).not.toBe("pixels")
 })
 
@@ -1417,7 +1450,9 @@ it("records a text run's collector throw as text evidence", async () => {
     },
     ownedTerminal: geometryOwner(measured(24, 80)),
   })
-  expect(batch.results.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({status: "test-failure"})
+  expect(batch.results.find((item) => item.featureId === "erase.el-with-attrs")).toMatchObject({
+    status: "test-failure",
+  })
 })
 
 // The public inline runner must put both callback writes and nested CPR queries on its selected TTY.
@@ -1548,8 +1583,13 @@ it("records an opted-in query callback exception as collector error, never suppo
     throw new Error("TTY write failed")
   }) as typeof process.stdout.write
   const batch = await runProbeBatch({ ids: ["device.primary-da"] })
-  expect(batch.results.filter((result) => ["device.primary-da"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "device.primary-da",reason: "TTY write failed"}])
-  expect(batch.ungradedDiagnostics["device.primary-da"]).toMatchObject({kind: "collector-error", message: "TTY write failed"})
+  expect(batch.results.filter((result) => ["device.primary-da"].includes(result.featureId))).toMatchObject([
+    { status: "test-failure", featureId: "device.primary-da", reason: "TTY write failed" },
+  ])
+  expect(batch.ungradedDiagnostics["device.primary-da"]).toMatchObject({
+    kind: "collector-error",
+    message: "TTY write failed",
+  })
   expect(batch.suiteComplete).toBe(false)
 })
 
@@ -1566,8 +1606,10 @@ it("retains a generated region callback's early write failure as a collector err
       throw new Error("A frame cannot precede the failed region write")
     },
   })
-  expect(batch.results.filter((result) => [definition.id].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: definition.id,reason: "Region TTY write failed"}])
-  expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({kind: "collector-error"})
+  expect(batch.results.filter((result) => [definition.id].includes(result.featureId))).toMatchObject([
+    { status: "test-failure", featureId: definition.id, reason: "Region TTY write failed" },
+  ])
+  expect(batch.ungradedDiagnostics[definition.id]).toMatchObject({ kind: "collector-error" })
   expect(batch.suiteComplete).toBe(false)
 })
 
@@ -1753,7 +1795,9 @@ it("records failed clipboard restoration as collector error rather than retainin
       },
     },
   })
-  expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "extensions.osc52-write",rawReplyRef: "extensions.osc52-write"}])
+  expect(batch.results.filter((result) => ["extensions.osc52-write"].includes(result.featureId))).toMatchObject([
+    { status: "test-failure", featureId: "extensions.osc52-write", rawReplyRef: "extensions.osc52-write" },
+  ])
   expect(batch.suiteComplete).toBe(false)
 })
 
@@ -1846,7 +1890,13 @@ it("keeps today's graceful absence row when no capture callback is installed", a
     ownedTerminal: geometryOwner(measured(24, 80)),
     captureRunId: "a".repeat(32),
   })
-  expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "cursor.shape",reason: "DECRQSS cursor-style report unanswered; no pixel readback for shape"}])
+  expect(batch.results.filter((result) => ["cursor.shape"].includes(result.featureId))).toMatchObject([
+    {
+      status: "test-failure",
+      featureId: "cursor.shape",
+      reason: "DECRQSS cursor-style report unanswered; no pixel readback for shape",
+    },
+  ])
   expect(batch.ungradedDiagnostics).toEqual({})
 })
 
@@ -1861,7 +1911,9 @@ it("records an installed capture adapter failure as an error rather than quietly
     ownedTerminal: geometryOwner(measured(24, 80)),
     capture: () => Promise.reject(new Error("Owned window disappeared")),
   })
-  expect(batch.results.filter((result) => ["sgr.underline.curly"].includes(result.featureId))).toMatchObject([{status: "test-failure",featureId: "sgr.underline.curly",reason: "Owned window disappeared"}])
+  expect(batch.results.filter((result) => ["sgr.underline.curly"].includes(result.featureId))).toMatchObject([
+    { status: "test-failure", featureId: "sgr.underline.curly", reason: "Owned window disappeared" },
+  ])
   expect(batch.screenshotRefs).toEqual([])
   expect(batch.ungradedDiagnostics).toEqual({})
 })
@@ -2249,7 +2301,10 @@ it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic time
     expect(batch.observations).toContainEqual(
       expect.objectContaining({ featureId: "device.primary-da", outcome: "supported", assertionType: "query_reply" }),
     )
-    expect(batch.results.find((result) => result.featureId === "erase.line.all")).toMatchObject({status: "test-todo", reason: expect.stringMatching(/cursor visibility/)})
+    expect(batch.results.find((result) => result.featureId === "erase.line.all")).toMatchObject({
+      status: "test-todo",
+      reason: expect.stringMatching(/cursor visibility/),
+    })
     const trace = JSON.parse(batch.rawReplies["collector.captureCalibration.trace"]!)
     expect(trace).toMatchObject({
       writes: [],
@@ -2366,7 +2421,8 @@ it("records actual native callback failure and leaves an unscheduled frozen capa
   const id = "modes.bracketed-paste"
   const definition = ALL_PROBES.find((probe) => probe.id === id)!
   const original = definition.term
-  const draft = initializeRunDraft({ source: { kind: "live" },
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: "native-status-attempt",
     sourceRevision,
     manifest: { ...manifest, schemaVersion: 4, catalogIds: [id, "unimplemented.capability"] },
@@ -2433,7 +2489,10 @@ it("forwards explicit callback tests through the actual native batch attempt wit
     let next = 0
     definition.term = async () =>
       sgrCaptureFrames(
-        { write() {}, capture: async () => frames[next++]! } as unknown as import("@terminfo/probe-defs").TermProbeSource,
+        {
+          write() {},
+          capture: async () => frames[next++]!,
+        } as unknown as import("@terminfo/probe-defs").TermProbeSource,
         "control",
         "target",
         "visual target",

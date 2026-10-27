@@ -344,7 +344,7 @@ function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
  * schema-3 runs) and extract the cell record for `expectation.featureId`.
  */
 export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpectation): LoadedCellEvidence {
-  const expectedDocumentVersion = (expectation.schemaVersion === 3 || expectation.schemaVersion === 4) ? 4 : 2
+  const expectedDocumentVersion = expectation.schemaVersion === 3 || expectation.schemaVersion === 4 ? 4 : 2
   if (
     !isRecord(parsed) ||
     parsed.version !== expectedDocumentVersion ||
@@ -359,7 +359,7 @@ export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpec
     throw new Error("no evidence stored for this cell")
   }
   const payload = isRecord(cellEntry)
-    ? (expectation.schemaVersion === 3 || expectation.schemaVersion === 4)
+    ? expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? cellEntry.result
       : cellEntry.observation
     : undefined
@@ -418,9 +418,10 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
   if (
     !isRecord(cellEntry) ||
     !Array.isArray(cellEntry.assertions) ||
-    ((expectation.schemaVersion === 3 || expectation.schemaVersion === 4)
+    (expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? typeof cellEntry.status !== "string"
-      : typeof cellEntry.outcome !== "string" || (cellEntry.assertionType !== undefined && typeof cellEntry.assertionType !== "string"))
+      : typeof cellEntry.outcome !== "string" ||
+        (cellEntry.assertionType !== undefined && typeof cellEntry.assertionType !== "string"))
   ) {
     throw new Error("Trace document identity or structure does not match this result")
   }
@@ -449,7 +450,7 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
   const { cell } = trace
   const measuredDate = trace.measuredAt.slice(0, 10)
   const shortRunId = trace.runId.slice(0, 8)
-  const runPrefix = (trace.schemaVersion === 3 || trace.schemaVersion === 4) ? "Current run" : "Historical run"
+  const runPrefix = trace.schemaVersion === 3 || trace.schemaVersion === 4 ? "Current run" : "Historical run"
   const evidenceMethod = cell.assertionType ?? "no typed observation retained"
   const sourceLine = `${runPrefix} ${shortRunId} · ${measuredDate} · ${evidenceMethod} · presentation not reviewed`
   const identityLine = formatTraceIdentity(trace.identity)

@@ -342,7 +342,9 @@ test.each(ARM_CASES)(
     const plain = lib(contextOf(scripted((text) => replies[text] ?? "")))
     if (Object.keys(replies).length === 0) {
       expect(plain.observation, id).toBeUndefined()
-      expect(plain.tests, id).toContainEqual(expect.objectContaining({ status: "test-failure", reason: expect.any(String) }))
+      expect(plain.tests, id).toContainEqual(
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      )
     } else expect(plain.observation?.outcome, id).toBe("inconclusive")
   },
 )
@@ -361,7 +363,11 @@ test.each([
     outcomes.map((outcome) => outcome.reason),
     id,
   ).toStrictEqual(["sentinel"])
-  expect(headless.observation, id).toStrictEqual({ outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" })
+  expect(headless.observation, id).toStrictEqual({
+    outcome: "inconclusive",
+    reason: "no-response",
+    assertionType: "query_reply",
+  })
   expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
 })
 
@@ -501,7 +507,9 @@ test("G1: a byte the engine sends after the callback voids the negative as a col
     ),
   })
   expect(batch.results.find((result) => result.featureId === "device.xtversion")).toMatchObject({
-    status: "test-failure", rawReplyRef: "device.xtversion", reason: expect.stringContaining("late reply after sentinel"),
+    status: "test-failure",
+    rawReplyRef: "device.xtversion",
+    reason: expect.stringContaining("late reply after sentinel"),
   })
   expect(batch.assertions).toStrictEqual([])
   // The refusal keeps what was observed: the on-time read window, and the late bytes beside it.

@@ -150,7 +150,7 @@ function identityMatch(run: LoadedRun): IdentityAdmission | null {
     provenance: run.provenance,
     appLaunch: run.origin.appLaunch,
     results: Object.fromEntries(
-      (run.schemaVersion === 3 || run.schemaVersion === 4)
+      run.schemaVersion === 3 || run.schemaVersion === 4
         ? (run.results ?? []).map((result) => [result.featureId, result.status === "supported"])
         : run.observations.map((o) => [o.featureId, o.outcome === "supported"]),
     ),
@@ -453,7 +453,11 @@ export function assessRunAdmission(
         run.rawReplies["collector.disposableOwnership"],
         run.runId,
         // Custody receipt schema keeps app/headless wire kinds; adapt only this comparison.
-        { kind: run.subject.kind === "term" ? "app" : run.subject.kind === "lib" ? "headless" : run.subject.kind, id: run.subject.id, os: run.subject.os ?? "" },
+        {
+          kind: run.subject.kind === "term" ? "app" : run.subject.kind === "lib" ? "headless" : run.subject.kind,
+          id: run.subject.id,
+          os: run.subject.os ?? "",
+        },
         run,
         evidence.contentDir ?? dirname(dirname(run.path)),
         evidence.receiptPath ?? join(dirname(dirname(run.path)), "receipts", `${run.runId}.json`),
@@ -509,10 +513,17 @@ export function planAdmission(
   }
   // Historical run wire names are decoded strictly by parseRun below, without changing source bytes.
   const subject = parsed.schemaVersion === 4 ? parsed.subject : parsed.target
-  if (!isRecord(subject) || !(parsed.schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]).includes(String(subject.kind))) {
-    throw new Error(`Run to admit has no ${parsed.schemaVersion === 4 ? "term|lib|mux subject" : "app|headless|mux target"} kind: ${source}`)
+  if (
+    !isRecord(subject) ||
+    !(parsed.schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]).includes(String(subject.kind))
+  ) {
+    throw new Error(
+      `Run to admit has no ${parsed.schemaVersion === 4 ? "term|lib|mux subject" : "app|headless|mux target"} kind: ${source}`,
+    )
   }
-  const kind = (subject.kind === "app" ? "term" : subject.kind === "headless" ? "lib" : subject.kind) as ProbeSubject["kind"]
+  const kind = (
+    subject.kind === "app" ? "term" : subject.kind === "headless" ? "lib" : subject.kind
+  ) as ProbeSubject["kind"]
   const id = String(subject.id)
   const version = String(subject.version)
   const os = typeof subject.os === "string" && subject.os.length > 0 ? subject.os : "unknown"
@@ -984,7 +995,7 @@ function preflightLinuxCompletionReceipt(source: string, run: LoadedRun): void {
   if (!isRecord(receipt.receiptInputs) || receipt.receiptInputs.hostSha256 !== hostSha256) {
     throw new Error(`Linux completion receipt ${path} does not bind receiptInputs.hostSha256 to ${hostPath}${cure}`)
   }
-  if ((run.schemaVersion === 3 || run.schemaVersion === 4)) {
+  if (run.schemaVersion === 3 || run.schemaVersion === 4) {
     const containerPath = join(dirname(source), "container-receipt.json")
     const capturePath = join(dirname(source), "v3-capture.json")
     let container: unknown

@@ -213,8 +213,13 @@ function measuredExecutable(value: unknown): LiveExecutable {
   return { path, sha256 }
 }
 
-function assertLoadedAppSuite(manifest: ProbeSuiteManifest, probeHash: string, location: string): asserts manifest is ProbeSuiteManifest & { schemaVersion: 4 } {
-  if (manifest.schemaVersion !== 4) throw new Error(`Current collection requires schema-4 suite declaration: ${location}`)
+function assertLoadedAppSuite(
+  manifest: ProbeSuiteManifest,
+  probeHash: string,
+  location: string,
+): asserts manifest is ProbeSuiteManifest & { schemaVersion: 4 } {
+  if (manifest.schemaVersion !== 4)
+    throw new Error(`Current collection requires schema-4 suite declaration: ${location}`)
   const actual = ALL_PROBES.map((probe) => probe.id).sort()
   if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.term) !== JSON.stringify(actual)) {
     throw new Error(`Loaded app probes disagree with suite declaration ${location}`)
@@ -233,7 +238,10 @@ export function getCliSuiteProbeHash(): string {
   return probeSuiteSnapshot(SOURCE_ROOT).probeHash
 }
 
-export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest & { schemaVersion: 4 }; collectorRevision: string } {
+export function getTrustedSuiteReceipt(): {
+  manifest: ProbeSuiteManifest & { schemaVersion: 4 }
+  collectorRevision: string
+} {
   if (bundledSuite) {
     const { manifest, collectorRevision } = bundledSuite
     if (!/^[0-9a-f]{12}$/.test(manifest.probeHash) || !/^[0-9a-f]{40}$/.test(collectorRevision)) {

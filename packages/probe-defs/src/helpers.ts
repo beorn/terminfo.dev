@@ -186,9 +186,9 @@ export function unmeasuredCellResult(
     note: position ? `Cursor response does not measure ${feature}` : `No cursor response after ${feature}`,
     ...(position === null
       ? {
-          tests: [
-            { id: "criterion", status: "test-failure", reason: position ? "insufficient-evidence" : "no-response" },
-          ] as [{ id: string; status: "test-failure"; reason: string }],
+          tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }] as [
+            { id: string; status: "test-failure"; reason: string },
+          ],
         }
       : {
           observation: {

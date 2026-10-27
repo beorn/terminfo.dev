@@ -150,7 +150,12 @@ for (const [dir, files] of [
         throw new Error("expected a JSON object")
       }
       const probe = data as ProbeFile["data"]
-      if (probe.schemaVersion !== undefined && probe.schemaVersion !== 2 && probe.schemaVersion !== 3 && probe.schemaVersion !== 4) {
+      if (
+        probe.schemaVersion !== undefined &&
+        probe.schemaVersion !== 2 &&
+        probe.schemaVersion !== 3 &&
+        probe.schemaVersion !== 4
+      ) {
         throw new Error(`unsupported schemaVersion ${String(probe.schemaVersion)}`)
       }
       if (
@@ -176,7 +181,16 @@ for (const [dir, files] of [
         if (target === null || typeof target !== "object" || Array.isArray(target)) {
           throw new Error("v2 target must be a JSON object")
         }
-        const expectedKind = dir === "probes-libs" ? (probe.schemaVersion === 4 ? "lib" : "headless") : dir === "probes-apps" ? (probe.schemaVersion === 4 ? "term" : "app") : "mux"
+        const expectedKind =
+          dir === "probes-libs"
+            ? probe.schemaVersion === 4
+              ? "lib"
+              : "headless"
+            : dir === "probes-apps"
+              ? probe.schemaVersion === 4
+                ? "term"
+                : "app"
+              : "mux"
         if ((target as Record<string, unknown>).kind !== expectedKind) {
           throw new Error(`v2 target.kind must be "${expectedKind}" in ${dir}`)
         }
@@ -582,7 +596,9 @@ heading("Warnings (fix soon)")
   let count = 0
   for (const { file, dir, data } of probeFiles) {
     if (data.schemaVersion !== 2 && data.schemaVersion !== 3 && data.schemaVersion !== 4) continue
-    const target = (data.schemaVersion === 4 ? data.subject : data.target) as { kind?: unknown; id?: unknown } | undefined
+    const target = (data.schemaVersion === 4 ? data.subject : data.target) as
+      | { kind?: unknown; id?: unknown }
+      | undefined
     const kind = target?.kind
     const id = target?.id
     if (typeof kind !== "string" || typeof id !== "string") continue

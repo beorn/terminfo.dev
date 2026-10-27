@@ -17,7 +17,8 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
 })
 const receipt = {
-  manifest: { schemaVersion: 4 as const,
+  manifest: {
+    schemaVersion: 4 as const,
     probeHash: "abcdef123456",
     sourceRevision: "c".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",

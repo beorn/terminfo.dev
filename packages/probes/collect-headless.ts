@@ -265,7 +265,7 @@ export async function collectHeadlessRuns(
     const delegated =
       handed?.draft ??
       initializeRunDraft({
-    source: { kind: "live" },
+        source: { kind: "live" },
         runId: randomUUID(),
         sourceRevision,
         manifest: derivedSuiteManifest(suite),

@@ -70,7 +70,8 @@ it.each([
     suiteComplete: _complete,
     ...metadata
   } = historical
-  const run: CapturedRunDraft = { source: { kind: "live" },
+  const run: CapturedRunDraft = {
+    source: { kind: "live" },
     ...metadata,
     assertions: [],
     schemaVersion: 4,
@@ -84,7 +85,12 @@ it.each([
     })),
   }
   // Only transport/persistence is exercised: this synthetic identity is not native mux evidence.
-  run.subject = { ...(historical as unknown as { target: CapturedRunDraft["subject"] }).target, kind: "mux", id: "tmux", version: "3.6a" }
+  run.subject = {
+    ...(historical as unknown as { target: CapturedRunDraft["subject"] }).target,
+    kind: "mux",
+    id: "tmux",
+    version: "3.6a",
+  }
   const bytes = JSON.stringify(run)
   // COPYFILE_EXCL cannot overwrite the real package.json on the unfixed path; the correct guard must refuse first.
   const original = join(directory, mode === "symlink" ? "package.json" : "http-response.json")

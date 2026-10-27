@@ -1,16 +1,9 @@
-import {
-  PROBE_STATUSES,
-  type ProbeResult,
-  type ProbeStatus,
-} from "../../packages/probe-defs/src/types.ts"
+import { PROBE_STATUSES, type ProbeResult, type ProbeStatus } from "../../packages/probe-defs/src/types.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
 import type { PublicVersion, PublicProbeResult } from "./public-results.ts"
 
 /** Read a current (schema-3) published result without manufacturing any legacy observation. */
-export function publicResultFor(
-  version: PublicVersion | undefined,
-  featureId: string,
-): PublicProbeResult | undefined {
+export function publicResultFor(version: PublicVersion | undefined, featureId: string): PublicProbeResult | undefined {
   if (!version) return undefined
   return version.results.find((result) => result.featureId === featureId)
 }

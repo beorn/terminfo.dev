@@ -257,9 +257,7 @@ export function headlessName(terminals: LabelSource, id: string): string | undef
  * name for a headless target, else the entry label (or `fallback`) qualified by the kind.
  */
 export function targetLabel(terminals: LabelSource, id: string, kind: string, fallback: string = id): string {
-  return (
-    (kind === "lib" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
-  )
+  return (kind === "lib" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`
 }
 
 /** Load `content/terminals.json` from an absolute content directory. Cached per directory. */

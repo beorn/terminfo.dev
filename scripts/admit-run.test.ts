@@ -184,7 +184,8 @@ test("daemon-saved enriched run names the launcher cure without content placemen
     ...metadata
   } = decoded.run
   const staged = saveDaemonProbeRun(
-    { source: { kind: "live" },
+    {
+      source: { kind: "live" },
       ...metadata,
       assertions: [],
       schemaVersion: 4,
@@ -1024,7 +1025,8 @@ test("existing admission command resumes typed capture review and refuses a mism
     cwd: import.meta.dirname,
     encoding: "utf8",
   }).trim()
-  const base = initializeRunDraft({ source: { kind: "live" },
+  const base = initializeRunDraft({
+    source: { kind: "live" },
     runId: "review-command",
     sourceRevision,
     manifest,
@@ -1120,7 +1122,13 @@ test("Linux review command composes final bytes with original host, container an
   )
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: import.meta.dirname, encoding: "utf8" }).trim()
   const run: CapturedRunDraft = {
-    ...initializeRunDraft({ source: { kind: "live" }, runId: old.runId, sourceRevision: revision, manifest, intendedSubject: old.subject }),
+    ...initializeRunDraft({
+      source: { kind: "live" },
+      runId: old.runId,
+      sourceRevision: revision,
+      manifest,
+      intendedSubject: old.subject,
+    }),
     subject: old.subject,
     provenance: structuredClone(old.provenance),
     identity: old.identity,
@@ -1254,7 +1262,8 @@ test.each([
     new Map([[manifest.probeHash, manifest]]),
   )
   if (!old.sourceRevision) throw new Error("Fixture lacks collector source")
-  const draft = initializeRunDraft({ source: { kind: "live" },
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: old.runId,
     sourceRevision: old.sourceRevision,
     manifest,

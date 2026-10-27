@@ -1167,7 +1167,10 @@ describe("selected-run consumer parity", () => {
       for (const result of [...screen.results, ...tmux.results]) result.status = "unsupported"
       Object.assign(requiredResult(screen, "sgr.bold"), { ...structuredClone(bold), status: "unsupported" })
       Object.assign(requiredResult(tmux, "sgr.bold"), { ...structuredClone(bold), status: "supported" })
-      Object.assign(requiredResult(screen, "extensions.sixel"), { status: "unsupported", assertionType: "buffer_state" })
+      Object.assign(requiredResult(screen, "extensions.sixel"), {
+        status: "unsupported",
+        assertionType: "buffer_state",
+      })
       Object.assign(requiredResult(tmux, "extensions.sixel"), { status: "supported", assertionType: "query_reply" })
       refresh(screenEntry)
       refresh(tmuxEntry)

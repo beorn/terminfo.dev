@@ -40,9 +40,9 @@ const catalog = (rows: Record<string, string>): FeatureCatalog =>
 
 describe("derivedProbeStatus", () => {
   it("reads automated only when every running arm declares measuring evidence", () => {
-    expect(
-      derivedProbeStatus(definition({ termAssertionType: "query_reply", libAssertionType: "buffer_state" })),
-    ).toBe("automated")
+    expect(derivedProbeStatus(definition({ termAssertionType: "query_reply", libAssertionType: "buffer_state" }))).toBe(
+      "automated",
+    )
   })
 
   it("reads partial when an arm is absent, even if the other arm measures", () => {
@@ -50,9 +50,7 @@ describe("derivedProbeStatus", () => {
   })
 
   it("reads partial when a declared arm carries acceptance-only evidence", () => {
-    expect(
-      derivedProbeStatus(definition({ termAssertionType: "query_reply", libAssertionType: null })),
-    ).toBe("partial")
+    expect(derivedProbeStatus(definition({ termAssertionType: "query_reply", libAssertionType: null }))).toBe("partial")
   })
 
   it("lets the consumption signal outrank an undeclared arm, so the row is partial and not undeclared", () => {
@@ -173,9 +171,7 @@ describe("the real catalog", () => {
       expect(probeStatusOf(id, features), id).toBe("partial")
     }
     expect(ALL_PROBES.find((entry) => entry.id === "extensions.font-ligatures")?.termAssertionType).toBe("screenshot")
-    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termAssertionType).toBe(
-      "input_bytes",
-    )
+    expect(ALL_PROBES.find((entry) => entry.id === "input.kitty-click-events")?.termAssertionType).toBe("input_bytes")
   })
 
   it("derives decsscls partial from its two declared arms, with no catalog override", () => {

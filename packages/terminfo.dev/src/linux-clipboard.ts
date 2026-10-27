@@ -3,7 +3,12 @@ import { createHash } from "node:crypto"
 import { readFileSync, readdirSync, readlinkSync, realpathSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, dirname, sep } from "node:path"
-import type { ClipboardFixture, LinuxMuxAttachmentProof, ProbeCallbackResult, TermProbeSource } from "@terminfo/probe-defs"
+import type {
+  ClipboardFixture,
+  LinuxMuxAttachmentProof,
+  ProbeCallbackResult,
+  TermProbeSource,
+} from "@terminfo/probe-defs"
 import { assertLiveExecutable, type LiveExecutable } from "./linux-capture.ts"
 
 type MuxReceiptTarget = Pick<

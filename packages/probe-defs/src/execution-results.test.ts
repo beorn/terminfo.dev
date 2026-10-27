@@ -231,6 +231,18 @@ it("keeps native missing-observation note overrides and prompt consumption branc
 })
 
 it("preserves native callback note fallback for unmeasured widths and TERM_FEATURES", async () => {
+  // These native callbacks retained no deciding cells. Their final failure reason previously
+  // came from callback.note; status-only fixtures miss that producer-to-recorder loss.
+  for (const id of ["extensions.osc22-pointer", "editing.decsace"]) {
+    const term = [...extensionsProbes, ...editingProbes].find((row) => row.id === id)?.term
+    if (!term) throw new Error(`Missing native callback ${id}`)
+    const missing = await term({
+      write() {},
+      queryCursorPosition: async () => null,
+    } as unknown as TermProbeSource)
+    expect(missing.note).toMatch(/^No cursor response after /)
+    expect(record(missing)).toMatchObject({ status: "test-failure", reason: missing.note })
+  }
   for (const row of unicodeProbes) {
     if (!["unicode.east-asian-ambiguous", "unicode.grapheme-cursor"].includes(row.id)) continue
     if (!row.term) continue

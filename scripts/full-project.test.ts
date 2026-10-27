@@ -148,7 +148,12 @@ describe("full-scope rows", () => {
           os: "linux",
           results: recorded(catalogIds).map((result) =>
             result.featureId === "a.one"
-              ? { ...result, status: "test-failure", assertionType: "buffer_state", reason: "terminal never answered; timeout" }
+              ? {
+                  ...result,
+                  status: "test-failure",
+                  assertionType: "buffer_state",
+                  reason: "terminal never answered; timeout",
+                }
               : result,
           ),
         }),

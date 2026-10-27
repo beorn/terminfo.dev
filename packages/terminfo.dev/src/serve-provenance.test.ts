@@ -31,7 +31,8 @@ let collectProbeRun: (options: { ids?: string[] }) => Promise<unknown>
 
 beforeAll(async () => {
   vi.stubGlobal("__TERMINFO_BUNDLED_SUITE__", {
-    manifest: { schemaVersion: 4 as const,
+    manifest: {
+      schemaVersion: 4 as const,
       probeHash: "a".repeat(12),
       sourceRevision: "b".repeat(40),
       generatedAt: "2026-09-28T00:00:00Z",

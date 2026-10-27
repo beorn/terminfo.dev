@@ -389,7 +389,11 @@ test("attributes headless exceptions only to the headless marker and leaves lega
   ])
   expect(batch.observations).toEqual([])
   for (const id of ["marked", "app-only", "legacy"]) {
-    expect(batch.ungradedDiagnostics[id]).toEqual({kind: "collector-error", name: "TypeError", message: "headless xtermjs probe " + id + ": Callback failed"})
+    expect(batch.ungradedDiagnostics[id]).toEqual({
+      kind: "collector-error",
+      name: "TypeError",
+      message: "headless xtermjs probe " + id + ": Callback failed",
+    })
     expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
   }
   expect(batch.rawReplies).toEqual({})
@@ -422,7 +426,9 @@ test("routes real registry constructor markers while multi-method callbacks rema
   expect(batch.observations).toEqual([])
   expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual([...ids].sort())
   for (const id of ids) {
-    expect(batch.ungradedDiagnostics[id]).toMatchObject({ message: "headless xtermjs probe " + id + ": Registry setup failed" })
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      message: "headless xtermjs probe " + id + ": Registry setup failed",
+    })
     expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
   }
   expect(batch.assertions).toEqual([])
@@ -454,7 +460,9 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
     assertions: [],
     notTested: [],
     rawReplies: {},
-    ungradedDiagnostics: {"setup": {kind: "collector-error", name: "Error", message: `headless xtermjs probe setup: ${stage} failed`}},
+    ungradedDiagnostics: {
+      setup: { kind: "collector-error", name: "Error", message: `headless xtermjs probe setup: ${stage} failed` },
+    },
   })
 })
 
@@ -547,7 +555,9 @@ test("attributes a context operation failure and restores the backend response l
     assertions: [],
     notTested: [],
     rawReplies: {},
-    ungradedDiagnostics: {"query": {kind: "collector-error", name: "Error", message: "headless xtermjs probe query: Feed failed"}},
+    ungradedDiagnostics: {
+      query: { kind: "collector-error", name: "Error", message: "headless xtermjs probe query: Feed failed" },
+    },
   })
 })
 
@@ -564,9 +574,16 @@ test("attributes unavailable fixture grids to each probe without invoking callba
     definition("first", callback, { libAssertionType: "buffer_state" }),
     definition("second", callback, { libAssertionType: "query_reply" }),
   ])
-  expect(batch.results.filter((result) => ["first","second"].includes(result.featureId))).toMatchObject([{ featureId: "first", status: "test-failure" },{ featureId: "second", status: "test-failure" }])
-  expect(batch.ungradedDiagnostics.first).toMatchObject({ message: expect.stringContaining("headless xtermjs probe first:") })
-  expect(batch.ungradedDiagnostics.first).toMatchObject({ message: expect.stringContaining("no initialized row 0 grid") })
+  expect(batch.results.filter((result) => ["first", "second"].includes(result.featureId))).toMatchObject([
+    { featureId: "first", status: "test-failure" },
+    { featureId: "second", status: "test-failure" },
+  ])
+  expect(batch.ungradedDiagnostics.first).toMatchObject({
+    message: expect.stringContaining("headless xtermjs probe first:"),
+  })
+  expect(batch.ungradedDiagnostics.first).toMatchObject({
+    message: expect.stringContaining("no initialized row 0 grid"),
+  })
   expect(callback).not.toHaveBeenCalled()
 })
 
@@ -606,7 +623,12 @@ test("rejects a returned method that disagrees with the marker and preserves mat
         assertionType: "query_reply",
         note: "Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=inconclusive, reason=no-response, assertionType=query_reply)",
       },
-      { featureId: "matching", outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
+      {
+        featureId: "matching",
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        assertionType: "buffer_state",
+      },
     ],
     assertions: [],
     notTested: [],
@@ -637,7 +659,11 @@ test.each([
           const observed = ctx.getCell(0, 0).char
           return {
             pass: variant === "supported",
-            observation: { outcome: variant === "supported" ? "supported" : variant === "error" ? "error" : "inconclusive", evidence: "none", ...(variant !== "supported" && {reason: "insufficient-evidence"}) },
+            observation: {
+              outcome: variant === "supported" ? "supported" : variant === "error" ? "error" : "inconclusive",
+              evidence: "none",
+              ...(variant !== "supported" && { reason: "insufficient-evidence" }),
+            },
             ...((variant === "supported" || variant === "raw") && { response: observed }),
             ...((variant === "supported" || variant === "assertion") && {
               assertions: [{ kind: "positive" as const, expected: "X", observed }],
@@ -668,7 +694,7 @@ test.each([
 
 // 30581: a refused callback result keeps its response under its feature id and its refused observation and
 // assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
-test("an evidence kind that disagrees with the marker keeps the response and the refused claim", async () => {
+test("an assertion type that disagrees with the marker keeps the response and the refused claim", async () => {
   const response = "\x1b[?1;2c"
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
@@ -812,7 +838,10 @@ test("admits an inconclusive no-response result with its named reason and no syn
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
       "silent",
-      () => ({ pass: false, observation: { outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" } }),
+      () => ({
+        pass: false,
+        observation: { outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
+      }),
       { libAssertionType: "query_reply" },
     ),
   ])
@@ -890,7 +919,9 @@ test("refuses named coverage with no retained raw capture", async () => {
     ),
   ])
   expect(batch.notTested).toEqual([])
-  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([{ featureId: "modes.bracketed-paste", status: "test-failure" }])
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
+  ])
 })
 
 // A probe that never captured state cannot be recorded as not tested either.
@@ -905,7 +936,9 @@ test("a failed probe never becomes named coverage", async () => {
     ),
   ])
   expect(batch.notTested).toEqual([])
-  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([{ featureId: "modes.bracketed-paste", status: "test-failure" }])
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
+  ])
 })
 
 // A mixed result - named coverage beside its own failed measurement - is a loud collector error, never
@@ -945,11 +978,21 @@ test("refuses named coverage that arrives beside its returned error observation"
       rawReplyRef: "modes.focus-events",
     },
   ])
-  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([{ featureId: "modes.bracketed-paste", status: "test-failure" }])
-  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining("beside observation(outcome=error, reason=collector-error, assertionType=buffer_state") })
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
+  ])
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining(
+      "beside observation(outcome=error, reason=collector-error, assertionType=buffer_state",
+    ),
+  })
   expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: false }))
-  expect(batch.results.find((result) => result.featureId === "modes.bracketed-paste")?.rawReplyRef).toBe("modes.bracketed-paste")
-  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining('note="backend read failed"') })
+  expect(batch.results.find((result) => result.featureId === "modes.bracketed-paste")?.rawReplyRef).toBe(
+    "modes.bracketed-paste",
+  )
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining('note="backend read failed"'),
+  })
 })
 
 test("refuses named coverage that arrives beside supported observation and assertions", async () => {
@@ -968,11 +1011,19 @@ test("refuses named coverage that arrives beside supported observation and asser
   ])
   expect(batch.notTested).toEqual([])
   expect(batch.assertions).toEqual([])
-  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([{ featureId: "modes.bracketed-paste", status: "test-failure" }])
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
+  ])
   expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: true }))
-  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining("assertion(kind=positive") })
-  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining("expected=") })
-  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({ message: expect.stringContaining("observed=") })
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining("assertion(kind=positive"),
+  })
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining("expected="),
+  })
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining("observed="),
+  })
 })
 
 // AC3: feature support cannot authorize metadata readback. Existing tests grade
@@ -1006,11 +1057,13 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
 // old observation/coverage tests cannot express a catalogue member with no callback.
 test("records a complete explicit catalogue and retains probe attempt failure", async () => {
   const { initializeRunDraft } = await import("@terminfo/probe-defs")
-  const draft = initializeRunDraft({ source: { kind: "live" },
+  const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: "headless-status-contract",
     sourceRevision: "a".repeat(40),
     intendedSubject: { kind: "lib", id: "xtermjs" },
-    manifest: { schemaVersion: 4 as const,
+    manifest: {
+      schemaVersion: 4 as const,
       probeHash: "runtime-suite",
       adapterVersion: "3",
       catalogIds: ["attempted", "unimplemented"],
@@ -1040,20 +1093,32 @@ test("records a complete explicit catalogue and retains probe attempt failure", 
   expect(batch.results[1]?.attempt).toEqual({ scope: "none" })
 })
 
-
 // Execution-only callbacks retain their real response and cannot borrow legacy pass as support.
 test("retains execution-only failure bytes despite pass true and rejects a typed claim declared null", async () => {
   const result = await collectBatch(backend, "xtermjs", [
-    definition("execution-only", () => ({ pass: true, response: "retained refusal",
+    definition("execution-only", () => ({
+      pass: true,
+      response: "retained refusal",
       tests: [{ id: "criterion", status: "test-failure", reason: "Timed out without a deciding observable" }],
     })),
-    definition("declared-null", () => ({ pass: true, response: "retained state",
-      observation: { outcome: "supported", assertionType: "query_reply" },
-      assertions: [{ kind: "positive", assertionType: "query_reply", expected: "state", observed: "retained state" }],
-    }), { libAssertionType: null }),
+    definition(
+      "declared-null",
+      () => ({
+        pass: true,
+        response: "retained state",
+        observation: { outcome: "supported", assertionType: "query_reply" },
+        assertions: [{ kind: "positive", assertionType: "query_reply", expected: "state", observed: "retained state" }],
+      }),
+      { libAssertionType: null },
+    ),
   ])
   expect(result.results.map((entry) => entry.status)).toEqual(["test-failure", "test-failure"])
   expect(result.rawReplies).toMatchObject({ "execution-only": "retained refusal", "declared-null": "retained state" })
-  expect(result.results[0]).toMatchObject({ rawReplyRef: "execution-only", tests: [expect.objectContaining({status: "test-failure"})] })
-  expect(result.observations).toMatchObject([{featureId: "declared-null", outcome: "error", reason: "collector-error"}])
+  expect(result.results[0]).toMatchObject({
+    rawReplyRef: "execution-only",
+    tests: [expect.objectContaining({ status: "test-failure" })],
+  })
+  expect(result.observations).toMatchObject([
+    { featureId: "declared-null", outcome: "error", reason: "collector-error" },
+  ])
 })

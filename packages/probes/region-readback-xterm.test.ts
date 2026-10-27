@@ -106,7 +106,8 @@ test("an ASCII region fixture prepares its screen before reading a preceding Uni
   backend.feed(encode("\x1b[H👨‍👩‍👧"))
   const probe = probeDefs.ALL_PROBES.find((entry) => entry.id === "erase.character")
   if (!probe?.term) throw new Error("Missing erase.character app callback")
-  const context: probeDefs.TermProbeSource = { kind: "live",
+  const context: probeDefs.TermProbeSource = {
+    kind: "live",
     rows: 24,
     cols: 80,
     captureKind: "text-cells",
