@@ -59,8 +59,8 @@ describe("the expected context register", () => {
   it("counts each kind the way the plan does", () => {
     const { contexts } = fullContextCensus(contentDir)
     const count = (kind: string) => contexts.filter((entry) => entry.kind === kind).length
-    expect(count("app")).toBe(18)
+    expect(count("term")).toBe(18)
     expect(count("mux")).toBe(4)
-    expect(count("headless")).toBe(11)
+    expect(count("lib")).toBe(11)
   })
 })

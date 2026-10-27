@@ -222,7 +222,7 @@ it("propagates an unsupported catalog kind from the census owner before dispatch
   collector.mockClear()
   try {
     await expect(collectPass(directory)).rejects.toThrow(
-      'kitty: kind "unsupported-fixture" is not an app, mux or headless context',
+      'kitty: kind "unsupported-fixture" is not a term, mux or lib subject',
     )
     expect(collector).not.toHaveBeenCalled()
   } finally {

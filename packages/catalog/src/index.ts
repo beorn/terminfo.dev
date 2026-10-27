@@ -203,16 +203,13 @@ function parseFeature(path: string, id: string, raw: Record<string, unknown>): F
 
 function parseTerminal(path: string, id: string, raw: Record<string, unknown>): TerminalRecord {
   const headlessBackends = optionalStringArray(path, id, "headlessBackends", raw.headlessBackends)
-  // Catalog bytes retain historical kind labels; consumers use canonical subject kinds.
-  const historicalKind = optionalString(path, id, "kind", raw.kind)
-  const kind = historicalKind === "app" ? "term" : historicalKind === "headless" ? "lib" : historicalKind
   return {
     label: requireString(path, id, "label", raw.label),
     slug: requireString(path, id, "slug", raw.slug),
     url: requireString(path, id, "url", raw.url),
     description: requireString(path, id, "description", raw.description),
     body: requireString(path, id, "body", raw.body),
-    kind,
+    kind: optionalString(path, id, "kind", raw.kind),
     headlessBackends,
     headlessLabel: optionalHeadlessLabel(path, id, raw.headlessLabel, headlessBackends),
     manifestBackend: optionalString(path, id, "manifestBackend", raw.manifestBackend),
@@ -254,7 +251,7 @@ export function headlessName(terminals: LabelSource, id: string): string | undef
 
 /**
  * The display name of catalog id `id` measured as `kind` on a page of its own: the catalog's headless
- * name for a headless target, else the entry label (or `fallback`) qualified by the kind.
+ * name for a library subject, else the entry label (or `fallback`) qualified by the kind.
  */
 export function subjectLabel(terminals: LabelSource, id: string, kind: string, fallback: string = id): string {
   return (kind === "lib" ? headlessName(terminals, id) : undefined) ?? `${terminals[id]?.label ?? fallback} (${kind})`

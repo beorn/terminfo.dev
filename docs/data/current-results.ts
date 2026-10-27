@@ -113,7 +113,7 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
 
 function compatibilityKey(kind: SubjectKind, id: string, catalog: CatalogKeys): string {
   const declared = catalog.kinds.get(id)
-  if (!declared?.has(kind)) throw new Error(`Undeclared compatibility target ${kind}:${id} in terminals.json`)
+  if (!declared?.has(kind)) throw new Error(`Undeclared compatibility subject ${kind}:${id} in terminals.json`)
   const released = catalog.released.get(id)
   const bare = released?.key ?? id
   const owner = released?.kind ?? (declared.has("term") ? "term" : kind)

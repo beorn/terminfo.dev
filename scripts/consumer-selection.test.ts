@@ -124,7 +124,7 @@ describe("consumer selection", () => {
           'const content = join(root, "content")',
           "mkdirSync(content)",
           "const currentSuite = probeHash()",
-          "const isCurrent = (run) => run.schemaVersion === 3 || run.probeHash === currentSuite",
+          "const isCurrent = (run) => run.schemaVersion === 3 || run.schemaVersion === 4 || run.probeHash === currentSuite",
           "const excludedRunIds = new Set()",
           "for (const entry of readdirSync(liveContent, { withFileTypes: true })) {",
           "  const from = join(liveContent, entry.name)",
@@ -317,13 +317,14 @@ describe("consumer selection", () => {
       expect(generate.status).toBe(0)
       const inventory = JSON.parse(readFileSync(lock, "utf8")) as {
         sources: Array<{ lastChecked: string | null }>
-        terminals: Array<{ terminalId: string; lastProbedVersion: string | null; lastProbedDate: string }>
+        terminals: Array<{ terminalId: string; kind: string; lastProbedVersion: string | null; lastProbedDate: string }>
       }
       expect(inventory.sources.every((entry) => entry.lastChecked === null)).toBe(true)
       expect(inventory.terminals.find((entry) => entry.terminalId === "kitty")).toMatchObject({
         lastProbedVersion: null,
         lastProbedDate: "never",
       })
+      expect(inventory.terminals.find((entry) => entry.terminalId === "alacritty")).toMatchObject({ kind: "lib" })
       // The refresh command must preserve its child check's failure status.
       copyFileSync(join(source, "scripts", "update.ts"), join(root, "scripts", "update.ts"))
       writeFileSync(join(root, "scripts", "radar.ts"), 'console.log("radar fixture completed")\n')

@@ -51,7 +51,7 @@ export function fullContextCensus(contentDir: string): ContextCensus {
     }
     if (row.kind === "lib") continue
     if (row.kind !== "term" && row.kind !== "mux") {
-      throw new Error(`${id}: kind "${String(row.kind)}" is not an app, mux or headless context`)
+      throw new Error(`${id}: kind "${String(row.kind)}" is not a term, mux or lib subject`)
     }
     const platforms = row.platforms ?? []
     if (platforms.length === 0) {

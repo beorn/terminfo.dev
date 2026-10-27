@@ -8,7 +8,7 @@
  *   route generators and the scripts/ readers
  * @testonly none
  */
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -56,6 +56,12 @@ test("reads the live feature catalog: 273 entries, each with the five required f
 })
 
 test("reads the live terminal catalog: 26 entries, each with the five required fields", () => {
+  const declarations = JSON.parse(readFileSync(join(repoContent, "terminals.json"), "utf8")) as Record<
+    string,
+    { kind?: string }
+  >
+  expect(required(declarations, "ghostty").kind).toBe("term")
+  expect(required(declarations, "ghostty-native").kind).toBe("lib")
   const terminals = loadTerminals(repoContent)
   expect(Object.keys(terminals).length).toBe(26)
   expect(required(terminals, "ghostty").label).toBe("Ghostty")
