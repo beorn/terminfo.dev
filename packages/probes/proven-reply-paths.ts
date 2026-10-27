@@ -11,6 +11,12 @@
  * This table is the proof's one home until #30576 moves the proof into the adapters and deletes it.
  * A row is keyed by versions, not by the audited source, so a Termless change under an unchanged
  * version is caught only by a fresh audit (@cto 99bd165a n2).
+ *
+ * Re-audited 2026-10-27 at engine 0.8.0 for vt100, vt220 and vterm (vendor/vterm d7f69fe9, Termless
+ * 01f98b4, Terminfo 4ec774dd): DA1 still answers through feedCapture in each engine, and the onResponse
+ * call sites are unchanged from the ea1439b audit (vt100 3, vt220 4, vterm 42 -> 43 where the one
+ * addition is the truthful Kitty ENOTSUP refusal, #31020). Evidence:
+ * /hh/var/@dev8/30695-sentinel-reaudit-20261027.md and /hh/var/@dev8/31059-s1-onResponse-sites-20261027.md.
  */
 export interface ReplyPathProof {
   readonly adapterVersion: string
@@ -31,21 +37,21 @@ export const PROVEN_REPLY_PATHS: Readonly<Record<string, ReplyPathProof>> = {
   },
   vt100: {
     adapterVersion: "0.10.2",
-    engineVersion: "0.7.1",
+    engineVersion: "0.8.0",
     replySink:
       "the engine's onResponse forwarder (packages/vt100/src/backend.ts:53-55), inside s.process (:97, :105, :112); the adapter's 18t reply from engine state, in input order (:107)",
     da1Answer: "\x1b[?1;2c",
   },
   vt220: {
     adapterVersion: "0.10.2",
-    engineVersion: "0.7.1",
+    engineVersion: "0.8.0",
     replySink:
       "the engine's onResponse forwarder (packages/vt220/src/backend.ts:50-52), inside s.process (:94, :102, :109); the adapter's 18t reply from engine state, in input order (:104)",
     da1Answer: "\x1b[?62;1;2;6;7;8;9c",
   },
   vterm: {
     adapterVersion: "0.10.2",
-    engineVersion: "0.7.1",
+    engineVersion: "0.8.0",
     replySink: "the engine's onResponse forwarder (packages/vterm/src/backend.ts:73-76), inside process (:87)",
     da1Answer: "\x1b[?62;4c",
   },

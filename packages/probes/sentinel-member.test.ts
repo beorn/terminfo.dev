@@ -215,23 +215,25 @@ test.each(Object.keys(engines))("%s answers DA1 through feedCapture as its proof
   }
 })
 
-test("a proven backend at the versions its row names gets the member, silently", () => {
+test("the three backends re-audited at engine 0.8.0 get the member, silently", () => {
   const warn = vi.fn()
-  expect(replyPathDecision("vt100", { adapterVersion: "0.10.2", engineVersion: "0.7.1" }, warn)).toStrictEqual({
-    member: true,
-    backend: "vt100",
-    proof: proofOf("vt100"),
-  })
+  for (const name of ["vt100", "vt220", "vterm"]) {
+    expect(replyPathDecision(name, { adapterVersion: "0.10.2", engineVersion: "0.8.0" }, warn)).toStrictEqual({
+      member: true,
+      backend: name,
+      proof: proofOf(name),
+    })
+  }
   expect(warn).not.toHaveBeenCalled()
 })
 
 test("a proven backend at a version its row does not name gets no member and says so", () => {
   const warn = vi.fn()
-  const decision = replyPathDecision("vt100", { adapterVersion: "0.10.2", engineVersion: "0.7.2" }, warn)
-  expect(decision).toMatchObject({ member: false, backend: "vt100", adapterVersion: "0.10.2", engineVersion: "0.7.2" })
+  const decision = replyPathDecision("vt100", { adapterVersion: "0.10.2", engineVersion: "0.7.1" }, warn)
+  expect(decision).toMatchObject({ member: false, backend: "vt100", adapterVersion: "0.10.2", engineVersion: "0.7.1" })
   expect(warn).toHaveBeenCalledOnce()
   expect(warn.mock.calls[0]?.[0]).toMatch(
-    /^headless version drift: vt100 runs adapter 0\.10\.2 with engine 0\.7\.2, but its reply-path proof names adapter 0\.10\.2 with engine 0\.7\.1/,
+    /^headless version drift: vt100 runs adapter 0\.10\.2 with engine 0\.7\.1, but its reply-path proof names adapter 0\.10\.2 with engine 0\.8\.0/,
   )
 })
 
