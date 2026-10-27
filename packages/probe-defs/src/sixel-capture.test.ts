@@ -87,7 +87,10 @@ test("a pixel arm that reports no geometry refuses by name before painting anyth
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
   const result = await definition.term(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
   expect(writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
 })
 
@@ -144,9 +147,9 @@ test("a text-cells arm is the named instrument limit before a byte, not a query 
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
   const result = await definition.term(context)
-  expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+  ])
   expect(writes).toHaveLength(0)
 })

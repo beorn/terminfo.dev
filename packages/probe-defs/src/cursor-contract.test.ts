@@ -394,9 +394,11 @@ test("cursor.shape's app arm decides from the terminal's DECRQSS cursor-style re
   const block = await regradeRow(probe, row, { term: withReply("\x1bP1$r2 q\x1b\\") })
   expect(block.after, "a DECRQSS report of a non-beam style is a decided unsupported").toBe("unsupported")
   expect(block.satisfies).toBe(true)
-  const silent = await regradeRow(probe, row, { term: replayContext(new Map()) })
-  expect(silent.after, "an unanswered DECRQSS report is inconclusive, never a negative").toBe("inconclusive")
-  expect(silent.satisfies).toBe(false)
+  const silent = await probe.term!(replayContext(new Map()))
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
 })
 
 test("a decided Cursor row is unsatisfied when the origin control does not hold", async () => {

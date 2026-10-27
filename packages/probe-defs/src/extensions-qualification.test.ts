@@ -84,9 +84,12 @@ test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle 
   // requested direct colour is a measured negative, not a cursor-consumption verdict.
   const unsupported = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
-  // A silent terminal never becomes a negative: the existing cursor evidence stands.
+  // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
   const silent = await definition.term!(replayContext(new Map()))
-  expect(silent.observation?.outcome).toBe("inconclusive")
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([
+    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+  ])
 })
 
 test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
@@ -248,10 +251,10 @@ test.each(["extensions.osc710-font-normal", "extensions.osc2-title", "extensions
       },
     } as unknown as TermProbeSource)
     expect(writes, id).toEqual([])
-    expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
     expect(result.assertions, id).toBeUndefined()
   },
 )
@@ -316,8 +319,10 @@ test.each(appResetProbes)(
     expect(noControl.result.assertions, id).toBeUndefined()
     const noReply = await run([])
     expect(noReply.writes, id).toEqual([])
-    expect(noReply.result.observation, id).toMatchObject({ assertionType: "query_reply" })
-    expect(noReply.result.observation?.outcome, id).toBe("inconclusive")
+    expect(noReply.result.observation, id).toBeUndefined()
+    expect(noReply.result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+    ])
   },
 )
 
@@ -355,11 +360,10 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
   const silent = await run(null)
   expect(silent.pass, id).toBe(false)
   expect(silent.response, id).toBeUndefined()
-  expect(silent.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    assertionType: "query_reply",
-  })
+  expect(silent.observation, id).toBeUndefined()
+  expect(silent.tests, id).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
   expect(silent.assertions, id).toBeUndefined()
 })
 
@@ -434,7 +438,10 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 
   // A timeout never answered DA1 at all, so it cannot be a sentinel negative.
   const timedOut = await context({ match: null, reason: "timeout", raw: "", rawBase64: "" })
-  expect(timedOut.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+  expect(timedOut.observation).toBeUndefined()
+  expect(timedOut.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: "No OSC 21 reply; color rendering was not tested" }),
+  ])
   expect(timedOut.assertions).toBeUndefined()
 })
 
@@ -622,7 +629,10 @@ test.each([
 
   // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
   const silent = await definition.term!(replayContext(new Map()))
-  expect(silent.observation?.outcome).toBe("inconclusive")
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
 
   // A terminal that starts on the default test colour still needs an observed change: a fixed set
   // colour would let both readings agree while the reset was ignored.
@@ -637,10 +647,10 @@ test.each([
 })
 
 test.each([
-  ["extensions.osc117-reset-highlight-bg", "none"],
-  ["extensions.osc119-reset-highlight-fg", "none"],
+  ["extensions.osc117-reset-highlight-bg", null],
+  ["extensions.osc119-reset-highlight-fg", null],
 ] as const)(
-  "%s declares its headless arm as a refusal before measurement (%s), never parser state",
+  "%s declares its headless arm without a typed observable (%s), never parser state",
   (id, assertionType) => {
     const definition = callback(id)
     expect(definition.libAssertionType).toBe(assertionType)

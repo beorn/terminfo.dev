@@ -222,15 +222,11 @@ test("reset.sgr is a negative when the terminal keeps reporting the styles after
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
 })
 
-test("reset.sgr stays inconclusive and never negative when the terminal never answers DECRQSS", async () => {
+test("reset.sgr records FAILURE and no observation when the terminal never answers DECRQSS", async () => {
   const result = await termProbe("reset.sgr")(kittyContext(false))
   expect(result.pass).toBe(false)
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.outcome).not.toBe("unsupported")
-  // A full reset has no reference independent of itself, so the pixel oracle declines it BY NAME.
-  // This terminal's DECRQSS readback ran first and stayed silent, so the trace is NOT empty and the
-  // evidence is truthful "query" — never the zero-byte "none" shape a trace with no writes, queries
-  // or events reserves.
-  expect(result.observation).toMatchObject({ assertionType: "query_reply" })
-  expect(result.observation?.note ?? "").toContain("no independent reference exists for a multi-attribute reset")
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
 })

@@ -34,8 +34,8 @@ function app(rows: number, cols: number, events: string[]): TermProbeSource {
 
 /**
  * 28450 slice C: the thirteen converted rows are decided by the region verdict, so a run with no owned
- * capture can only answer "inconclusive". A fixture that can only answer that is deleted rather than
- * kept (@cto A2), so every one of them refuses BY NAME and writes nothing - on the smallest grid, on a
+ * capture has no deciding observable. The callback records a named execution-only TODO rather than
+ * retaining a typed observation, so every one of them writes nothing - on the smallest grid, on a
  * grid at the row's own derived need and on a large one alike. This replaces the old per-row
  * "declines incomplete extents before feature bytes or CPR" test for these ids, which had no meaning
  * once their cursor-only fallback was deleted.
@@ -52,11 +52,13 @@ test("every converted row refuses by name and writes nothing without an owned ca
     ] as const) {
       const events: string[] = []
       const result = await definition.term(app(rows, cols, events))
-      expect(result, `${row.id} at ${rows}x${cols}`).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-      })
-      expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
+      expect(result.observation, `${row.id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result.tests, `${row.id} at ${rows}x${cols}`).toMatchObject([
+        expect.objectContaining({
+          status: "test-todo",
+          reason: expect.stringContaining("no owned capture adapter"),
+        }),
+      ])
       expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])
     }
   }
@@ -91,11 +93,10 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
       }
       const result = await definition.term(context)
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
-      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-      })
-      expect(String(result.observation?.note), `${id} at ${rows}x${cols}`).toContain("at least")
+      expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("at least") }),
+      ])
     }
     // The other side of the boundary: 5x8 is the floor, so the arm must reach its own work instead
     // of refusing. A capture that throws is the cheapest proof it got past the geometry gate.

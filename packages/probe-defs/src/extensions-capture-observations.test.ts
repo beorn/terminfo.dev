@@ -70,6 +70,7 @@ test.each(capturedIds)("%s binds control+target pixels while visual review remai
   ])
   expect(result.assertions).toEqual([
     {
+      assertionType: "screenshot",
       kind: "positive",
       expected: expect.any(String),
       observed: JSON.stringify({ control: frames[0], target: frames[1] }),
@@ -83,10 +84,10 @@ test.each(capturedIds)("%s binds control+target pixels while visual review remai
 test.each(capturedIds)("%s refuses an undersized capture terminal before any bytes", async (id) => {
   const { context, writes, frames } = captureApp(2, 8)
   const result = await find(id).term!(context)
-  expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+  ])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])
@@ -97,7 +98,10 @@ test("each image target writes its own payload rather than a generic consumption
   // With no measured pixel report the sixel row refuses by name before painting: a tile that
   // cannot be sized from the run is not a measurement, and a guessed size would be.
   const refused = await find("extensions.sixel").term!(sixel.context)
-  expect(refused.observation?.outcome).toBe("inconclusive")
+  expect(refused.observation).toBeUndefined()
+  expect(refused.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
   expect(sixel.writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
   const iterm = captureApp(24, 80)
   await find("extensions.iterm2-images").term!(iterm.context)
@@ -125,6 +129,7 @@ test("extensions.font-ligatures captures a spaced control and a contiguous opera
   ])
   expect(result.assertions).toEqual([
     {
+      assertionType: "screenshot",
       kind: "positive",
       expected: expect.any(String),
       observed: JSON.stringify({ control: frames[0], target: frames[1] }),
@@ -160,10 +165,10 @@ test("extensions.font-ligatures names a missing capture instead of claiming a me
 test("extensions.font-ligatures refuses an undersized capture terminal before any bytes", async () => {
   const { context, writes, frames } = captureApp(2, 8)
   const result = await find("extensions.font-ligatures").term!(context)
-  expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+  ])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])

@@ -71,10 +71,10 @@ test("direct mode fixtures decline invalid geometry and classify only measured v
       const events: string[] = []
       const result = await definition.term(app(measuredRows, measuredCols, events))
       expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
-      expect(result, id).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-      })
+      expect(result.observation, id).toBeUndefined()
+      expect(result.tests, id).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      ])
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
     const events: string[] = []
@@ -149,10 +149,10 @@ test.each(stateFixtures)(
     const result = await definition.term(app(1, 1, validEvents))
     expect(validEvents).toEqual([enter, "CPR", restore])
     expect(result.pass).toBe(false)
-    expect(result).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
     expect(result.assertions).toBeUndefined()
   },
 )

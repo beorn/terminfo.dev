@@ -7,12 +7,17 @@
 import { expect, test } from "vitest"
 import { cursorProbes } from "./cursor.ts"
 import { cursorProbe } from "./helpers.ts"
-import type { TermProbeSource, LibProbeSource } from "./types.ts"
+import type { TermProbeSource, LibProbeSource, ProbeCallbackResult } from "./types.ts"
 
 function byId(id: string) {
   const probe = cursorProbes.find((value) => value.id === id)
   if (!probe?.lib || !probe.term) throw new Error(`missing cursor callbacks for ${id}`)
   return probe
+}
+
+function expectExecutionOnly(result: ProbeCallbackResult, status: "test-todo" | "test-failure") {
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([expect.objectContaining({ status, reason: expect.any(String) })])
 }
 
 function app(position: { row: number; col: number } | null): TermProbeSource {
@@ -201,15 +206,15 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   expect(shape.assertions).toBeUndefined()
 
   const appShape = await byId("cursor.shape").term!(app({ row: 1, col: 1 }))
-  expect(appShape.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    assertionType: "query_reply",
-  })
+  expectExecutionOnly(appShape, "test-failure")
   expect(appShape.assertions).toBeUndefined()
 
   const reverse = await byId("cursor.reverse-wrap").term!(app({ row: 1, col: 80 }))
-  expect(reverse.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
+  expect(reverse.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "insufficient-evidence",
+    assertionType: "query_reply",
+  })
   expect(reverse.assertions).toBeUndefined()
 })
 
@@ -362,7 +367,7 @@ test("cursor save/restore records the mismatched position and a missing app repl
     displaced: { row: 10, col: 15 },
     final: { row: 10, col: 15 },
   })
-  expect((await probe.term!(app(null))).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expectExecutionOnly(await probe.term!(app(null)), "test-failure")
 })
 
 test("bottom-row cursor result uses measured headless height and does not guess an app height", async () => {
@@ -427,10 +432,7 @@ test("DSR position report distinguishes a valid wrong coordinate from malformed 
     outcome: "supported",
     assertionType: "query_reply",
   })
-  expect(probe.lib!(headless(0, 0)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-  })
+  expectExecutionOnly(probe.lib!(headless(0, 0)), "test-failure")
 })
 
 test("cup-scroll-region records the DECOM relative samples and never grades placement", async () => {
@@ -578,7 +580,7 @@ test("missing CPR at origin, setup, or final cannot grade movement", async () =>
     const ctx = app({ row: 1, col: 1 })
     ctx.queryCursorPosition = async () => (++calls === missingAt ? null : { row: 1, col: calls === 1 ? 1 : 4 })
     const result = await byId("cursor.move.back").term!(ctx)
-    expect(result.observation, String(missingAt)).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    expectExecutionOnly(result, "test-failure")
     const raw: unknown = JSON.parse(result.response ?? "")
     expect(raw, String(missingAt)).toHaveProperty("origin")
     expect(raw, String(missingAt)).toHaveProperty("setup")
@@ -706,10 +708,7 @@ test("CUP declines a too-small grid or an unqualified edge", async () => {
   small.rows = 1
   small.cols = 1
   small.write = (sequence) => writes.push(sequence)
-  expect(await probe.term!(small)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expectExecutionOnly(await probe.term!(small), "test-todo")
   expect(writes).toEqual([])
   const ignoredEdge = app({ row: 1, col: 1 })
   ignoredEdge.cols = 61
@@ -726,10 +725,7 @@ test("cursor factory declines an undersized setup before the origin write", asyn
   context.cols = 9
   context.write = (sequence) => writes.push(sequence)
   const result = await byId("cursor.move.absolute").term!(context)
-  expect(result).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expectExecutionOnly(result, "test-todo")
   expect(writes).toEqual([])
 })
 
@@ -771,10 +767,7 @@ test("headless CUP does not grade missing geometry or an ignored edge control", 
   const missing = headless(0, 0, 0)
   const feeds: string[] = []
   missing.feed = (sequence) => feeds.push(sequence)
-  expect(probe.lib!(missing).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-  })
+  expectExecutionOnly(probe.lib!(missing), "test-todo")
   expect(feeds).toEqual([])
   const ignored = { ...headless(0, 0, 37), cols: 61 }
   ignored.feed = (sequence) => feeds.push(sequence)
@@ -801,10 +794,7 @@ test("position report grades a text-induced cursor advance, not just a CUP echo"
   narrow.cols = 5
   const writes: string[] = []
   narrow.write = (sequence) => writes.push(sequence)
-  expect(await byId("cursor.position-report").term!(narrow)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expectExecutionOnly(await byId("cursor.position-report").term!(narrow), "test-todo")
   expect(writes).toEqual([])
 })
 
@@ -831,10 +821,7 @@ test("remaining app cursor fixtures refuse undersized geometry without writing",
     context.write = (sequence) => writes.push(sequence)
     const definition = byId(id)
     expect(definition.termNeedsGeometry, id).toBe(true)
-    expect(await definition.term!(context), id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    expectExecutionOnly(await definition.term!(context), "test-todo")
     expect(writes, id).toEqual([])
   }
 })
@@ -917,10 +904,9 @@ test("app CUD grades against a newline-measured bottom and refuses an unqualifie
     const writes: string[] = []
     context.queryCursorPosition = async () => replies.shift() ?? null
     context.write = (sequence) => writes.push(sequence)
-    expect((await probe.term!(context)).observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: home ? "insufficient-evidence" : "no-response",
-    })
+    const result = await probe.term!(context)
+    if (home === null) expectExecutionOnly(result, "test-failure")
+    else expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(23), "\x1b[1;1H"])
   }
 })
@@ -946,10 +932,7 @@ test("app CUP refuses nonfinite geometry before a feature write", async () => {
     context.rows = rows
     context.write = (sequence) => writes.push(sequence)
     const result = await probe.term!(context)
-    expect(result).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    expectExecutionOnly(result, "test-todo")
     expect(writes).toEqual([])
   }
 })
@@ -1083,10 +1066,11 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
     context.capture = async () => {
       throw new Error("invalid fixture must not capture")
     }
-    expect(await byId("cursor.hide").term!(context)).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    const result = await byId("cursor.hide").term!(context)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
     expect(writes).toEqual([])
   }
   expect(byId("cursor.hide").termNeedsGeometry).toBe(true)
@@ -1094,7 +1078,11 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
   context.write = () => {
     throw new Error("absent capture must not write")
   }
-  expect((await byId("cursor.hide").term!(context)).observation?.assertionType).toBe("none")
+  const refused = await byId("cursor.hide").term!(context)
+  expect(refused.observation).toBeUndefined()
+  expect(refused.tests).toMatchObject([
+    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+  ])
 })
 
 test("cup-scroll-region capture refuses before painting when the grid or the pixel report cannot decide", async () => {
@@ -1114,10 +1102,7 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
       ref: "never",
     }),
   } as TermProbeSource
-  expect(await probe.term!(tiny)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expectExecutionOnly(await probe.term!(tiny), "test-todo")
   expect(short).toEqual([])
   // At the floor with a capture adapter but no pixel report the verdict has already queried and
   // cannot map cells onto the window: a named "query" refusal, still no paint.
@@ -1135,12 +1120,11 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
     }),
   } as TermProbeSource
   const result = await probe.term!(noReport)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("CSI 16 t") }),
+  ])
+  expect(result.tests?.[0]?.reason).toContain("CSI 16 t")
   expect(unpainted).toEqual([])
 })
 
@@ -1159,9 +1143,6 @@ test("cup-scroll-region capture refuses a narrow terminal before any bytes", asy
       ref: "never",
     }),
   } as TermProbeSource
-  expect(await probe.term!(context)).toMatchObject({
-    observation: undefined,
-    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-  })
+  expectExecutionOnly(await probe.term!(context), "test-todo")
   expect(writes).toEqual([])
 })

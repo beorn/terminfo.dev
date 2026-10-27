@@ -75,10 +75,11 @@ test.each([false, true])("title push restores its checkpoint when CPR rejects=%s
   if (rejectQuery) {
     await expect(result).rejects.toThrow("injected title CPR failure")
   } else {
-    expect(await result).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    const callbackResult = await result
+    expect(callbackResult.observation).toBeUndefined()
+    expect(callbackResult.tests).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
   }
   expect(writes.filter((bytes) => bytes === "\x1b[22;0t")).toHaveLength(1)
   expect(writes.filter((bytes) => bytes === "\x1b[23;0t")).toHaveLength(1)
@@ -288,11 +289,16 @@ describe("device query observations", () => {
   test("silence is inconclusive and a TTY deadline remains a timeout", async () => {
     for (const item of replies) {
       const probe = callback(item.id)
-      expect(probe.headless(headless("")).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
-      expect((await probe.terminal(terminal("", "timeout"))).observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "timeout",
-      })
+      const missing = probe.headless(headless(""))
+      expect(missing.observation).toBeUndefined()
+      expect(missing.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      ])
+      const timedOut = await probe.terminal(terminal("", "timeout"))
+      expect(timedOut.observation).toBeUndefined()
+      expect(timedOut.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      ])
     }
   })
 

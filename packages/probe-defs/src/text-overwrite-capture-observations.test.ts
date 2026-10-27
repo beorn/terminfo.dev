@@ -46,14 +46,14 @@ function find(id: string) {
 test("text.overwrite asks the terminal's pixel report before painting its overwrite fixture", async () => {
   const { context, writes, frames } = captureApp()
   const result = await find("text.overwrite")(context)
-  // The region verdict owns this row now: with no answer to CSI 16 t the cells cannot be mapped
-  // onto the owned window, so the probe refuses BY NAME and never paints the AB/AX fixture.
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    assertionType: "query_reply",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  // Missing pixel-geometry replies are execution failures; the fixture still proves no paint/read.
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({
+      status: "test-failure",
+      reason: expect.stringContaining("CSI 16 t"),
+    }),
+  ])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])
@@ -63,9 +63,8 @@ test("text.cr never captures; it keeps the CR cursor-query decision", async () =
   const { context, frames } = captureApp()
   const result = await find("text.cr")(context)
   expect(frames).toEqual([])
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    assertionType: "query_reply",
-  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
 })

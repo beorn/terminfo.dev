@@ -316,9 +316,11 @@ test("input.csi-u reads unsatisfied when protocol query is unacknowledged", asyn
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const silent = await regradeRow(probe, row, { headless: headlessContext(inputModel(false)) })
-  expect(silent.after).toBe("inconclusive")
-  expect(silent.satisfies).toBe(false)
+  const silent = probe.lib!(headlessContext(inputModel(false)))
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
 })
 
 test("input.xtest-key reads unsatisfied when delivery control fails", async () => {

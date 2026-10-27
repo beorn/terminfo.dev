@@ -10,6 +10,7 @@ import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
 import {
   ALL_PROBES,
+  recordExecutedProbe,
   type CaptureRequest,
   type ObservationFrame,
   type ProbeCallbackResult,
@@ -20,9 +21,11 @@ const FEATURE = "editing.delete-chars"
 const SUITE = "452ac343b55d"
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 const manifest: ProbeSuiteManifest = {
+  schemaVersion: 4,
   probeHash: SUITE,
   adapterVersion: "3.3.1",
   generatedAt: "2026-10-10T22:00:00.000Z",
+  catalogIds: [FEATURE],
   probes: { term: [FEATURE], lib: [], mux: [] },
 }
 /** The three capture behaviours the collector must survive, plus the geometry refusal and a run
@@ -151,21 +154,34 @@ function harness(mode: Mode): Harness {
 }
 
 /**
- * Assemble the run document the collector's own emission would seal, including the two things the
- * adapter adds at collection time and the probe cannot know: every observation and assertion
- * carries its own rawReplyRef, and the run lists every frame ref it captured.
+ * Assemble the schema-4 run the collector would seal, including global evidence references and the
+ * execution result derived from the callback's observation or tests.
  */
 function assemble(result: ProbeCallbackResult, trace: Harness["trace"], frames: ObservationFrame[], feature = FEATURE) {
-  const observation = {
+  const assertions = (result.assertions ?? []).map((entry) => ({
+    ...entry,
     featureId: feature,
-    ...result.observation,
     rawReplyRef: feature,
-  }
+  }))
+  const recorded = recordExecutedProbe({
+    featureId: feature,
+    attempt: { scope: "probe", startedAt: "2026-10-10T22:10:00.000Z" },
+    rawReplyRef: feature,
+    ...(result.observation && { observation: { ...result.observation, featureId: feature, rawReplyRef: feature } }),
+    assertions,
+    tests: result.tests,
+    criterionBranch: result.criterionBranch,
+  })
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
+    source: { kind: "live" },
     runId: `region-readback-contract-${feature}`,
-    target: {
-      kind: "app",
+    suiteId: SUITE,
+    probeHash: SUITE,
+    sourceRevision: "4".repeat(40),
+    intendedSubject: { kind: "term", id: "kitty" },
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "0.49.2",
       os: "linux",
@@ -176,20 +192,13 @@ function assemble(result: ProbeCallbackResult, trace: Harness["trace"], frames: 
       permissions: null,
     },
     identity: "unverified",
-    suiteId: SUITE,
-    probeHash: SUITE,
-    suiteComplete: true,
-    sourceRevision: "4".repeat(40),
     measuredAt: "2026-10-10T22:10:00.000Z",
     origin: { kind: "collector" },
+    sealedAt: "2026-10-10T22:11:00.000Z",
     rawReplies: { [feature]: JSON.stringify(trace) },
-    assertions: (result.assertions ?? []).map((entry) => ({
-      ...entry,
-      featureId: feature,
-      rawReplyRef: feature,
-    })),
+    assertions,
     screenshotRefs: [...new Set(frames.map((frame) => frame.ref))],
-    observations: [observation],
+    results: [recorded],
   }
 }
 
@@ -204,6 +213,7 @@ const drive = async (mode: Mode, feature = FEATURE) => {
 const parse = (run: unknown, feature = FEATURE) => {
   const featureManifest: ProbeSuiteManifest = {
     ...manifest,
+    catalogIds: [feature],
     probes: { term: [feature], lib: [], mux: [] },
   }
   return parseRun(
@@ -221,7 +231,7 @@ test("a deciding capture readback seals a pixels verdict the raw-run contract ad
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run)).not.toThrow()
   const loaded = parse(run)
-  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+  expect(loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
 
 test("a byte-stable capture that decides nothing still seals an observation the contract admits", async () => {
@@ -293,7 +303,7 @@ test("erase.character deciding capture readback seals a pixels verdict the raw-r
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run, feature)).not.toThrow()
   const loaded = parse(run, feature)
-  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+  expect(loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
 
 /**
@@ -307,7 +317,7 @@ test("charsets.dec-special deciding capture readback seals a pixels verdict the 
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run, feature)).not.toThrow()
   const loaded = parse(run, feature)
-  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+  expect(loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
 
 /**
@@ -377,7 +387,7 @@ for (const feature of SLICE_C_READBACK_IDS) {
     expect(() => parse(run, feature), feature).not.toThrow()
     const loaded = parse(run, feature)
     expect(
-      loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined),
+      loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined),
       feature,
     ).toBe(true)
   })

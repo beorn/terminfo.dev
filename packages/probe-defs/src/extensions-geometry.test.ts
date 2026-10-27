@@ -9,7 +9,7 @@ import { extensionsProbes } from "./extensions.ts"
 import type { TermProbeSource } from "./types.ts"
 
 const fixtures = [
-  { id: "extensions.osc8", rows: 1, cols: 7, columns: [7], outcome: "inconclusive", assertionType: "consumed" },
+  { id: "extensions.osc8", rows: 1, cols: 7, columns: [7], outcome: "inconclusive", assertionType: "query_reply" },
   {
     id: "extensions.osc66-text-sizing",
     rows: 1,
@@ -63,14 +63,24 @@ test.each(fixtures)("$id declines invalid or undersized geometry before bytes or
     const events: string[] = []
     const result = await definition.term(app(measuredRows, measuredCols, events, columns))
     expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
-    expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
   }
   expect(definition.termNeedsGeometry, id).toBe(true)
   const events: string[] = []
   const result = await definition.term(app(rows, cols, events, columns))
   expect(events.at(-1), id).toBe("CPR")
-  expect(result.observation, id).toMatchObject({ outcome, assertionType })
+  if (id === "extensions.osc8") {
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+      }),
+    ])
+  } else {
+    expect(result.observation, id).toMatchObject({ outcome, assertionType })
+  }
 })
