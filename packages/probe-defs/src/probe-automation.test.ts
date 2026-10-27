@@ -915,11 +915,12 @@ describe("Kitty protocol detection", () => {
             reason: "No answer to the Kitty keyboard flags query or the DA1 follow-up; no support conclusion",
           },
         ])
-      } else
+      } else {
         expect(result.observation, `term ${JSON.stringify(raw)}`).toMatchObject({
           outcome,
           assertionType: "query_reply",
         })
+      }
       expect(writes[0], `term ${JSON.stringify(raw)}`).toBe("\x1b[?u")
       if (outcome !== "supported") {
         expect(writes, `term ${JSON.stringify(raw)} push/pop`).toEqual(["\x1b[?u"])

@@ -648,12 +648,13 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     if (mode === null) {
       expect(result.observation).toBeUndefined()
       expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "DECAWM setup did not reply" }])
-    } else
+    } else {
       expect(result.observation, String(mode)).toMatchObject({
         outcome: "inconclusive",
         reason,
         assertionType: "query_reply",
       })
+    }
     expect(writes, String(mode)).toEqual([])
   }
 })

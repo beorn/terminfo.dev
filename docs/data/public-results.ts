@@ -7,7 +7,6 @@ import type {
   Observation,
   ObservationFrame,
   ProbeAssertion,
-  ProbeSubject,
   RunOrigin,
   TextQualification,
   TextCellsObservationFrame,

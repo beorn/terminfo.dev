@@ -25,13 +25,13 @@ A run reference includes its subject, source revision, suite, run ID/hash, froze
 
 ## Five recorded statuses
 
-| Stored value   | Display label | Meaning                                                          |
-| -------------- | ------------- | ---------------------------------------------------------------- |
-| `supported`    | Supported     | The recorded criterion was satisfied                             |
-| `unsupported`  | Unsupported   | The functioning test obtained the defined negative result        |
-| `untestable`   | Untestable    | A reviewed context impossibility prevents this criterion         |
-| `test-todo`    | TEST TODO     | Required work remains; this is not a terminal feature verdict |
-| `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result  |
+| Stored value   | Display label | Meaning                                                         |
+| -------------- | ------------- | --------------------------------------------------------------- |
+| `supported`    | Supported     | The recorded criterion was satisfied                            |
+| `unsupported`  | Unsupported   | The functioning test obtained the defined negative result       |
+| `untestable`   | Untestable    | A reviewed context impossibility prevents this criterion        |
+| `test-todo`    | TEST TODO     | Required work remains; this is not a terminal feature verdict   |
+| `test-failure` | TEST FAILURE  | An attempted test or collection failed to obtain a valid result |
 
 Each sealed run has exactly one result per frozen catalog ID. Its `results` array retains the recorded status and attempts/tests; readers never turn old observations into new current statuses.
 
