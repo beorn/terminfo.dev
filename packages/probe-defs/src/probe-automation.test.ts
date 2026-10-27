@@ -631,6 +631,71 @@ describe("Kitty protocol detection", () => {
         expect(result.pass).toBe(false)
       }
 
+      // Only the read claim may consume a proven reply path's measured silence.
+      const da1 = "\x1b[?1;2c"
+      const sentinel = { atMs: 9, graceMs: 250 }
+      const measuredSilence = p.lib(
+        context({
+          queryWithSentinelOutcome(sequence) {
+            expect(sequence).toBe("\x1b]52;c;?\x07")
+            return { reason: "sentinel", match: null, raw: da1, rawBase64: btoa(da1), sentinel }
+          },
+        }),
+      )
+      if (id === "extensions.osc52-read") {
+        expect(measuredSilence.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+        expect(measuredSilence.assertions).toMatchObject([{ kind: "negative" }])
+        expect(measuredSilence.response).toBe(da1)
+
+        const seeded: string[] = []
+        const positive = p.lib(
+          context({
+            feed: (text) => seeded.push(text),
+            feedCapture() {
+              throw new Error("A qualified query outcome must not be replaced by another capture")
+            },
+            queryWithSentinelOutcome(sequence, pattern) {
+              expect(sequence).toBe("\x1b]52;c;?\x07")
+              const encoded = /\x1b\]52;c;([A-Za-z0-9+/=]+)\x07/.exec(seeded.join(""))?.[1]
+              if (!encoded) throw new Error("Read probe never seeded its isolated clipboard")
+              const raw = `\x1b]52;c;${encoded}\x1b\\`
+              return { reason: "reply", match: pattern.exec(raw), raw, rawBase64: btoa(raw) }
+            },
+          }),
+        )
+        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+
+        for (const [raw, reason, facts] of [
+          [da1, "timeout", sentinel], // A DA1-shaped capture alone is not a measured sentinel.
+          [da1, "sentinel", undefined],
+          [`x${da1}`, "sentinel", sentinel],
+          [`${da1}\x1b]52;c;`, "sentinel", sentinel],
+          ["\x1b]52;c;d3Jvbmc=\x07", "reply", undefined],
+          ["\x1b]52;p;d3Jvbmc=\x07", "sentinel", sentinel],
+          ["\x1b]52;c;not-base64!\x07", "sentinel", sentinel],
+          ["\x1b]52;c;Zh==\x07", "reply", undefined], // Decodes, but is not canonical base64.
+          ["\x1b]52;c;d3Jvbmc=\x1b", "sentinel", sentinel],
+          ["", "timeout", undefined],
+        ] as const) {
+          const result = p.lib(
+            context({
+              feedCapture() {
+                throw new Error("Do not rescue an unqualified query outcome with a second capture")
+              },
+              queryWithSentinelOutcome: () => ({ reason, match: null, raw, rawBase64: btoa(raw), sentinel: facts }),
+            }),
+          )
+          expect(result.response).toBe(raw)
+          expect(result.observation?.outcome).not.toBe("unsupported")
+          expect(result.pass).toBe(false)
+          if (raw === "") expect(result.tests).toMatchObject([{ status: "test-failure" }])
+          else expect(result.observation?.outcome).toBe("inconclusive")
+        }
+      } else {
+        expect(measuredSilence.observation).toBeUndefined()
+        expect(measuredSilence.tests).toMatchObject([{ status: "test-failure" }])
+      }
+
       const liveWrites: string[] = []
       const live = await p.term(
         terminalSource({

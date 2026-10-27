@@ -1454,7 +1454,24 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
-  const response = ctx.feedCapture("\x1b]52;c;?\x07")
+  return headlessClipboardResult(ctx.feedCapture("\x1b]52;c;?\x07"), nonce)
+}
+
+/** Read silence is conclusive only on a collector-qualified, ordered reply path. */
+function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
+  const nonce = `terminfo-osc52-${randomUUID()}`
+  ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
+  if (ctx.queryWithSentinelOutcome) {
+    const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
+    return (
+      sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") ??
+      headlessClipboardResult(outcome.raw, nonce)
+    )
+  }
+  return headlessClipboardResult(ctx.feedCapture("\x1b]52;c;?\x07"), nonce)
+}
+
+function headlessClipboardResult(response: string, nonce: string): ProbeCallbackResult {
   const frames = response.matchAll(/\x1b\]52;c;([^\x07\x1b]*)(?:\x07|\x1b\\)/g)
   let sawCompleteFrame = false
   let sawInvalidFrame = false
@@ -2242,12 +2259,7 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
   {
-    ...probe(
-      "extensions.osc52-read",
-      headlessClipboardRoundtrip,
-      (ctx) => liveClipboardProbe(ctx, "read"),
-      "query_reply",
-    ),
+    ...probe("extensions.osc52-read", headlessClipboardRead, (ctx) => liveClipboardProbe(ctx, "read"), "query_reply"),
     libAssertionType: "query_reply",
   },
 
