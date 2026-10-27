@@ -43,7 +43,7 @@ This page reads sealed schema-3 execution results on the required suite. A conte
   </tbody>
 </table>
 
-## Capability results
+## Probe results
 
 <div v-for="row in collected" :key="row.context">
   <h3>{{ row.context }} <small>{{ row.result.fraction }} Supported / all</small></h3>

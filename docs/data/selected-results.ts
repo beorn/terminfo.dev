@@ -388,9 +388,9 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
  * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
-export function projectedContextKey(target: ProbeSubject, contextCount: number): string {
-  const stem = `${target.kind}:${target.id}`
-  return contextCount === 1 ? stem : `${stem}@${contextKey(target)}`
+export function projectedContextKey(subject: ProbeSubject, contextCount: number): string {
+  const stem = `${subject.kind}:${subject.id}`
+  return contextCount === 1 ? stem : `${stem}@${contextKey(subject)}`
 }
 
 /** The eight fields `projectedContextKey` writes, in its order. */

@@ -11,8 +11,8 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadFeatures, loadTerminals, targetLabel, type FeatureCatalog } from "@terminfo/catalog"
-import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
+import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
+import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
@@ -185,8 +185,8 @@ export { data }
 export function loadFullProbes(): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
-  const byTarget = new Map(Object.entries(published.selectedByBackend))
+  const published = publicResults(projection, compatibilitySubjects(projection, contentDir))
+  const bySubject = new Map(Object.entries(published.selectedByBackend))
   const featureDescriptions = loadFeatureDescriptions()
   const features: FeatureResult[] = Object.entries(featureDescriptions)
     .filter(([id]) => !id.startsWith("$"))
@@ -202,10 +202,10 @@ export function loadFullProbes(): ProbeData {
   }
   // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
   // not a matrix row any more; it gets no metadata and no page.
-  for (const [key, { selected }] of byTarget) {
+  for (const [key, { selected }] of bySubject) {
     const id = selected.subject.id
     if (key !== id) {
-      const label = targetLabel(catalog, id, selected.subject.kind, meta[id]?.label)
+      const label = subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label)
       meta[key] = { ...meta[id], label, slug: key }
     }
   }
@@ -214,8 +214,8 @@ export function loadFullProbes(): ProbeData {
   const results: ProbeData["results"] = {}
   const notes: ProbeData["notes"] = {}
   const stats: ProbeData["stats"] = {}
-  const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
-  for (const [key, { selected }] of byTarget) {
+  const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(bySubject)
+  for (const [key, { selected }] of bySubject) {
     const { kind, os } = selected.subject
     if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
     backends.push({
@@ -253,7 +253,7 @@ export function loadFullProbes(): ProbeData {
   const releaseBars: Record<string, CurrentAggregate> = {}
   const releaseShares: Record<string, string> = {}
   const releaseStale: Record<string, string | null> = {}
-  for (const [key, entry] of byTarget) {
+  for (const [key, entry] of bySubject) {
     const { selected } = entry
     // The sealed run's complete frozen catalog is the current score basis.
     const original = projection.current[entry.contextKey]

@@ -18,12 +18,12 @@ import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   loadFeatures as loadFeatureCatalog,
   loadTerminals as loadTerminalCatalog,
-  targetLabel,
+  subjectLabel,
 } from "@terminfo/catalog"
 import { siteAnalysisPath } from "./site-out.ts"
 
@@ -194,7 +194,7 @@ interface SelectedAnalysisInput {
 
 function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
-  const selected = compatibilityTargets(projection, contentDir)
+  const selected = compatibilitySubjects(projection, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
   for (const [key, { selected: version }] of selected) {
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
@@ -1219,7 +1219,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const meta =
       termId === data.sourceId && terminals[data.sourceId]
         ? source
-        : { ...source, slug: termId, label: targetLabel(terminals, data.sourceId, data.type, source.label) }
+        : { ...source, slug: termId, label: subjectLabel(terminals, data.sourceId, data.type, source.label) }
     const stats = computeTerminalStats(termId, meta, data, features, baselineFeatures, resultMap)
     allStats.set(termId, stats)
   }

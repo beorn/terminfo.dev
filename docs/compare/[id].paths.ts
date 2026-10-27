@@ -102,11 +102,11 @@ export default {
         // Always put alphabetically-first slug as A for deterministic URLs
         const [a, b] = left.slug.localeCompare(right.slug) <= 0 ? [left, right] : [right, left]
 
-        const targetA = a.selected.subject
-        const targetB = b.selected.subject
+        const subjectA = a.selected.subject
+        const subjectB = b.selected.subject
         const comparableScope = Boolean(
-          targetA.os &&
-          targetB.os &&
+          subjectA.os &&
+          subjectB.os &&
           a.selected.probeHash &&
           b.selected.probeHash &&
           a.selected.complete &&
@@ -187,22 +187,22 @@ export default {
             termBUrl: b.url,
             termAType: a.type,
             termBType: b.type,
-            termAKind: targetA.kind,
-            termBKind: targetB.kind,
-            termAVersion: targetA.version,
-            termBVersion: targetB.version,
-            termAOs: targetA.os ?? "Not recorded",
-            termBOs: targetB.os ?? "Not recorded",
-            termAOsVersion: targetA.osVersion ?? "Not recorded",
-            termBOsVersion: targetB.osVersion ?? "Not recorded",
-            termAOuter: targetA.outerTerminal ?? "Not recorded",
-            termBOuter: targetB.outerTerminal ?? "Not recorded",
-            termAMux: targetA.mux ?? "Not recorded",
-            termBMux: targetB.mux ?? "Not recorded",
-            termAConfig: targetA.config ?? "Not recorded",
-            termBConfig: targetB.config ?? "Not recorded",
-            termAPermissions: targetA.permissions ?? "Not recorded",
-            termBPermissions: targetB.permissions ?? "Not recorded",
+            termAKind: subjectA.kind,
+            termBKind: subjectB.kind,
+            termAVersion: subjectA.version,
+            termBVersion: subjectB.version,
+            termAOs: subjectA.os ?? "Not recorded",
+            termBOs: subjectB.os ?? "Not recorded",
+            termAOsVersion: subjectA.osVersion ?? "Not recorded",
+            termBOsVersion: subjectB.osVersion ?? "Not recorded",
+            termAOuter: subjectA.outerTerminal ?? "Not recorded",
+            termBOuter: subjectB.outerTerminal ?? "Not recorded",
+            termAMux: subjectA.mux ?? "Not recorded",
+            termBMux: subjectB.mux ?? "Not recorded",
+            termAConfig: subjectA.config ?? "Not recorded",
+            termBConfig: subjectB.config ?? "Not recorded",
+            termAPermissions: subjectA.permissions ?? "Not recorded",
+            termBPermissions: subjectB.permissions ?? "Not recorded",
             termASuite: a.selected.suiteId,
             termBSuite: b.selected.suiteId,
             termASuiteComplete: String(a.selected.complete),

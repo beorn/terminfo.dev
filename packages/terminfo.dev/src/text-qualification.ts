@@ -17,7 +17,7 @@ import {
 } from "@terminfo/probe-defs"
 import type { TextFrameCheckpoint } from "./serve.ts"
 
-/** Measure mapping witnesses through the installed adapter before recording the execution check. */
+/** Measure mapping witnesses through the installed adapter before recording the execution test. */
 export async function collectTextQualification({
   ctx,
   capture,

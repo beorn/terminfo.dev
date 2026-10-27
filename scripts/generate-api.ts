@@ -26,7 +26,7 @@ import {
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
@@ -274,7 +274,7 @@ export function generateApi(
   const resultsDir = options.contentDir ?? contentDir
   const featuresJson = loadFeaturesJson()
   const { projection } = loadCurrentResults(resultsDir)
-  const published = publicResults(projection, compatibilityTargets(projection, resultsDir))
+  const published = publicResults(projection, compatibilitySubjects(projection, resultsDir))
   const runDocuments = new Map<string, Buffer>()
   const allFeatureIds = new Set(Object.keys(featuresJson))
 

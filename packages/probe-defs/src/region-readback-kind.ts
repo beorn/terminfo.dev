@@ -600,7 +600,7 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
     termAssertionType: "screenshot",
     libAssertionType: "buffer_state",
     lib(ctx) {
-      // The termless context reports its width and nothing else: the parser arms address cells by
+      // The library source reports its width and nothing else: the parser arms address cells by
       // row directly, so the only geometry they can be refused on is the compared region's width.
       if (!Number.isSafeInteger(ctx.cols) || ctx.cols < geometry.right) {
         return parserStateResult(

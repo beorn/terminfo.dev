@@ -82,7 +82,7 @@ export {
   type CellRegion,
   type PixelGeometrySource,
   type PixelGeometry,
-  type PixelGeometryContext,
+  type PixelGeometryQuerySource,
   type PixelGeometryRefusal,
   type RegionCapture,
   type RegionRead,

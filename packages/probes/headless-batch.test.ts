@@ -640,13 +640,13 @@ test("rejects a returned method that disagrees with the marker and preserves mat
 test.each([
   [
     "supported",
-    'observation(outcome=supported, evidence=none) and assertion(kind=positive, expected="X", observed="X")',
+    'observation(outcome=supported, assertionType=none) and assertion(kind=positive, expected="X", observed="X")',
   ],
-  ["error", "observation(outcome=error, reason=insufficient-evidence, evidence=none)"],
-  ["raw", "observation(outcome=inconclusive, reason=insufficient-evidence, evidence=none)"],
+  ["error", "observation(outcome=error, reason=insufficient-evidence, assertionType=none)"],
+  ["raw", "observation(outcome=inconclusive, reason=insufficient-evidence, assertionType=none)"],
   [
     "assertion",
-    'observation(outcome=inconclusive, reason=insufficient-evidence, evidence=none) and assertion(kind=positive, expected="X", observed="X")',
+    'observation(outcome=inconclusive, reason=insufficient-evidence, assertionType=none) and assertion(kind=positive, expected="X", observed="X")',
   ],
 ] as const)(
   "rejects a marked none result with %s instead of an unmeasured inconclusive refusal",

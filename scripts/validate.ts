@@ -576,7 +576,7 @@ heading("Warnings (fix soon)")
 
 // 8b. Every schema-2/3 run names a target declared in terminals.json
 {
-  // compatibilityTargets (docs/data/current-results.ts) derives every published v1 and site key from
+  // compatibilitySubjects (docs/data/current-results.ts) derives every published v1 and site key from
   // (target.kind, target.id) against terminals.json alone, and throws "Undeclared compatibility target"
   // for a current run it cannot name. Admitting a run before its target is declared is what turned
   // main red on app:xterm (27892), so an undeclared v2 target is an error here, before any consumer reads it.

@@ -300,8 +300,8 @@ function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] 
 }
 
 /** The API and the site consume the same current/history split; only current v3 runs are published. */
-export function publicResults(projection: SelectedProjection, targets: ReadonlyMap<string, CurrentResult>) {
-  const traced = new Set([...targets.values()].map((value) => value.selected.runId))
+export function publicResults(projection: SelectedProjection, subjects: ReadonlyMap<string, CurrentResult>) {
+  const traced = new Set([...subjects.values()].map((value) => value.selected.runId))
   const documents: PublicDocuments = new Map()
   const mapResult = (
     result: ProbeResult,
@@ -447,7 +447,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     exclusions: projection.exclusions.map(({ runId, reason }) => ({ runId, reason })),
   }
   const selectedByBackend: Record<string, PublicCurrentResult> = Object.fromEntries(
-    [...targets].map(([key, value]) => [
+    [...subjects].map(([key, value]) => [
       key,
       {
         contextKey: value.contextKey,

@@ -237,7 +237,7 @@ it("preserves the pixel screenshot reference through recorder, seal and canonica
       ["sgr.bold"],
       new Map([[draft.probeHash, manifest]]),
     ),
-  ).toThrow(/decided check.*no attempt/)
+  ).toThrow(/decided test.*no attempt/)
 })
 
 // The current-writer tests cannot detect re-hashing an old capture with renamed keys. This fixture

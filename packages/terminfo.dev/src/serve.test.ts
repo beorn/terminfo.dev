@@ -1080,7 +1080,7 @@ describe("private finite daemon startup", () => {
           if (retained) {
             assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
             await options.prepareCapture({
-              context: {
+              source: {
                 rows: 4, cols: 12, queryMode: async () => "unknown",
                 queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
                 write: () => { throw new Error("Paint before known mode state") }

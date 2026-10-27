@@ -27,7 +27,7 @@ import probesLoader from "../docs/data/probes.data.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
@@ -41,7 +41,7 @@ type StubRun = { subject: { kind: string; id: string; os?: string; permissions?:
 /**
  * A stub projection for the selection tests. The projection carries the ONE classified table
  * (28792 item 1), so each stub run gets a run id and an EMPTY classified row — the selection rule reads
- * no cells, and `compatibilityTargets` only needs a row to exist for every current run.
+ * no cells, and `compatibilitySubjects` only needs a row to exist for every current run.
  */
 function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
   const table: Record<string, Record<string, import("@terminfo/probe-defs").ProbeStatus>> = {}
@@ -116,7 +116,7 @@ describe("consumer selection", () => {
         [
           'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"',
           'import { join } from "node:path"',
-          'import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"',
+          'import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"',
           'import { publicResults } from "../docs/data/public-results.ts"',
           'import { probeHash } from "../packages/admin/versions.ts"',
           'import { generateApi } from "./generate-api.ts"',
@@ -173,7 +173,7 @@ describe("consumer selection", () => {
           'const fixtureRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))',
           'const currentFixtureRuns = fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8")))).length',
           "const { projection } = loadCurrentResults(content)",
-          "const published = publicResults(projection, compatibilityTargets(projection, content))",
+          "const published = publicResults(projection, compatibilitySubjects(projection, content))",
           'const out = join(root, "out")',
           "const { dataPath } = generateApi(out)",
           'const current = JSON.parse(readFileSync(dataPath, "utf8"))',
@@ -388,7 +388,7 @@ describe("consumer selection", () => {
       const contentDir = fixtureContentDir()
       const { dataPath } = generateApi(out, { contentDir })
       const projection = loadCurrentResults(contentDir).projection
-      const expected = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
+      const expected = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
       const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
         current: Record<string, RunReference>
         versions: Record<string, RunReference[]>
@@ -558,7 +558,7 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
-      expect(() => compatibilityTargets(projection, content)).toThrow(/Ambiguous current term:kitty/)
+      expect(() => compatibilitySubjects(projection, content)).toThrow(/Ambiguous current term:kitty/)
       writeFileSync(
         join(content, "default-contexts.json"),
         JSON.stringify({
@@ -572,7 +572,7 @@ describe("consumer selection", () => {
           },
         }),
       )
-      expect(compatibilityTargets(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
+      expect(compatibilitySubjects(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -589,12 +589,12 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-kind-selection-"))
     try {
       writeCatalog(content)
-      const rows = compatibilityTargets(projection, content)
+      const rows = compatibilitySubjects(projection, content)
       expect(rows.get("kitty")?.selected.subject.kind).toBe("term")
       expect(rows.get("headless-kitty")?.selected.subject.kind).toBe("lib")
       expect(rows.get("xtermjs")?.selected.subject.kind).toBe("lib")
       delete projection.current["term:kitty"]
-      expect(compatibilityTargets(projection, content).get("headless-kitty")?.contextKey).toBe("lib:kitty")
+      expect(compatibilitySubjects(projection, content).get("headless-kitty")?.contextKey).toBe("lib:kitty")
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -614,13 +614,13 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-released-keys-"))
     try {
       writeCatalog(content)
-      const rows = compatibilityTargets(projection, content)
+      const rows = compatibilitySubjects(projection, content)
       expect(rows.get("wezterm")?.selected.subject.kind).toBe("lib")
       expect(rows.get("app-wezterm")?.selected.subject.kind).toBe("term")
       expect(rows.get("alacritty")?.selected.subject.kind).toBe("lib")
       expect(rows.get("app-alacritty")?.selected.subject.kind).toBe("term")
       delete projection.current["headless:wezterm"]
-      expect(compatibilityTargets(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
+      expect(compatibilitySubjects(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -639,7 +639,7 @@ describe("consumer selection", () => {
       wezterm.headlessBackends = []
       writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
       const projection = stubProjection({})
-      expect(() => compatibilityTargets(projection, content)).toThrow(/released key wezterm changed meaning from lib/)
+      expect(() => compatibilitySubjects(projection, content)).toThrow(/released key wezterm changed meaning from lib/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -651,7 +651,7 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
     try {
       writeCatalog(content)
-      const rows = compatibilityTargets(projection, content)
+      const rows = compatibilitySubjects(projection, content)
       expect(rows.get("xterm")?.contextKey).toBe("term:xterm")
       expect(rows.get("xterm")?.selected.subject.kind).toBe("term")
     } finally {

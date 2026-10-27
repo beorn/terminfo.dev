@@ -282,7 +282,7 @@ vi.mock("../docs/data/current-results.ts", async () => {
     loadCurrentResults: () => ({ projection: build() }),
     // The projection under test, never a fresh fixture: a test that seeds a run must see the
     // resolver read exactly that run (the retired promotion enumerated historical.current).
-    compatibilityTargets: (projection: SelectedProjection) =>
+    compatibilitySubjects: (projection: SelectedProjection) =>
       new Map(
         Object.entries(projection.current).map(([key, selected]) => [
           selected.subject.id,
@@ -323,7 +323,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       import { createHash } from "node:crypto";
       import { readFileSync, readdirSync } from "node:fs";
       import { join } from "node:path";
-      import { loadCurrentResults, compatibilityTargets } from ${entry("docs/data/current-results.ts")};
+      import { loadCurrentResults, compatibilitySubjects } from ${entry("docs/data/current-results.ts")};
       import { loadFullProbes } from ${entry("docs/data/probes.data.ts")};
       import probesLoader from ${entry("docs/data/probes.data.ts")};
       import terminalPaths from ${entry("docs/terminals/[id].paths.ts")};
@@ -336,7 +336,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       // Each real loader retains the whole corpus; reclaim prior temporary parse objects between consumers.
       const { projection } = loadCurrentResults(content);
       Bun.gc(true);
-      const compatibility = compatibilityTargets(projection, content);
+      const compatibility = compatibilitySubjects(projection, content);
       const site = loadFullProbes();
       const matrix = probesLoader.load();
       const pages = terminalPaths.paths();
@@ -458,14 +458,14 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
       schema3Files: number
-      compatibilityTargets: number
+      compatibilitySubjects: number
       referencedRuns: number
     }
     // Current contexts come from sealed schema-3 run files and from nothing else: none without a file,
     // at least one once a file exists, never more contexts than files.
     expect(receipt.exactContexts > 0).toBe(receipt.schema3Files > 0)
     expect(receipt.exactContexts).toBeLessThanOrEqual(receipt.schema3Files)
-    expect(receipt.compatibilityTargets).toBeUndefined()
+    expect(receipt.compatibilitySubjects).toBeUndefined()
     // A corpus with current contexts must reference at least one run; the post-#30764 corpus has none
     // to reference, and referencing nothing is correct. Symmetric on purpose: the collector refills
     // this corpus, so this is not a permanent zero-total rule.
@@ -1388,7 +1388,7 @@ it("labels the headless Ghostty cores libghostty-vt and keeps Ghostty for the ap
     return { contextKey, selected }
   }
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
-  const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
+  const targets = vi.spyOn(currentResults, "compatibilitySubjects").mockReturnValue(
     new Map([
       ["ghostty", as("app:ghostty", "term", "ghostty")],
       ["headless-ghostty", as("headless:ghostty", "lib", "ghostty")],
@@ -1486,7 +1486,7 @@ it("terminalPaths.paths() refuses loudly when two pages mint one id", () => {
   const selection = vi.spyOn(currentResults, "loadCurrentResults").mockReturnValue({ projection })
   const app = as("app:ghostty", "term", "ghostty")
   const native = as("headless:ghostty-native", "lib", "ghostty-native")
-  const targets = vi.spyOn(currentResults, "compatibilityTargets").mockReturnValue(
+  const targets = vi.spyOn(currentResults, "compatibilitySubjects").mockReturnValue(
     new Map([
       ["ghostty", app],
       ["ghostty-native", native],

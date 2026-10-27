@@ -159,7 +159,7 @@ describe("release watch consumer", () => {
         const app = { subject: { kind: "term", id: "kitty", version: process.env.TEST_REVIEWED_APP_VERSION }, runId: "reviewed-kitty", sha256: "${"a".repeat(64)}" }
         const headless = { subject: { kind: "lib", id: "kitty", version: "0.99" }, runId: "reviewed-parser", sha256: "${"b".repeat(64)}" }
         export function loadCurrentResults() { return { projection: { current: { "term:kitty": app, "lib:kitty": headless } } } }
-        export function compatibilityTargets() { return new Map([
+        export function compatibilitySubjects() { return new Map([
           ["kitty", { contextKey: "lib:kitty", selected: headless }],
           ...(!process.env.NO_REVIEWED_APP ? [["app-kitty", { contextKey: "term:kitty", selected: app }]] : []),
         ]) }

@@ -413,7 +413,7 @@ export async function collectBatch(
       reason: "Callback attempt started; no result recorded yet",
     }
     onCheckpoint?.(batch)
-    let callbackChecks: ProbeCallbackResult["tests"]
+    let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
     try {
       backend = await createBackend()
@@ -441,7 +441,7 @@ export async function collectBatch(
           ),
         )
       }
-      callbackChecks = callback.tests
+      callbackTests = callback.tests
       criterionBranch = callback.criterionBranch
       recordResult(batch, probe, callback)
     } catch (error) {
@@ -463,7 +463,7 @@ export async function collectBatch(
         diagnostic,
         coverage,
         assertions: batch.assertions,
-        tests: callbackChecks,
+        tests: callbackTests,
         ...(Object.hasOwn(batch.rawReplies, probe.id) ? { rawReplyRef: probe.id } : {}),
         criterionBranch,
       })

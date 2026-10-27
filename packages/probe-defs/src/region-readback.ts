@@ -481,17 +481,17 @@ export interface PixelGeometryRefusal {
 }
 
 /**
- * Everything the pixel-geometry queries below touch of a terminal context: ONE method, and nothing
+ * Everything the pixel-geometry queries below touch of a terminal source: ONE method, and nothing
  * else. Naming it lets a collector that owns the terminal ask the SAME implementation before it
  * starts a batch (there is no second geometry implementation to drift from), without inventing a
  * whole fake TermProbeSource for a question that sends at most three QUERIES — CSI 16 t, then CSI 14 t
  * always, then CSI 18 t only when 16 t went unanswered — and reads at most TWO replies (a terminal
  * that answers 16 t is still asked 14 t for the text area).
  */
-export type PixelGeometryContext = Pick<TermProbeSource, "queryWithSentinelOutcome">
+export type PixelGeometryQuerySource = Pick<TermProbeSource, "queryWithSentinelOutcome">
 
 export async function queryPixelGeometry(
-  ctx: PixelGeometryContext,
+  ctx: PixelGeometryQuerySource,
 ): Promise<{ geometry: PixelGeometry; source: PixelGeometrySource } | PixelGeometryRefusal> {
   const cell = await ctx.queryWithSentinelOutcome("\x1b[16t", /\x1b\[6;(\d+);(\d+)t/)
   if (cell.reason !== "reply") return deriveCellSizeFromTextArea(ctx, cell.reason)
@@ -532,7 +532,7 @@ export async function queryPixelGeometry(
  * reply was asked for and what came back.
  */
 async function deriveCellSizeFromTextArea(
-  ctx: PixelGeometryContext,
+  ctx: PixelGeometryQuerySource,
   cellReason: TerminalQueryOutcome["reason"],
 ): Promise<{ geometry: PixelGeometry; source: PixelGeometrySource } | PixelGeometryRefusal> {
   const text = await ctx.queryWithSentinelOutcome("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
@@ -625,14 +625,12 @@ export async function captureRegionGeometry(
 /**
  * The whole region decision for one row, or null when this run has no owned capture. Bounds are
  * refused before any byte; then the terminal's own pixel report is queried here, once. A terminal
- * that answers those queries with something unusable is inconclusive BY NAME with evidence "query"
- * — the query bytes are already written, so it is not the zero-byte "none" shape, and a missing
+ * that answers those queries with something unusable is inconclusive BY NAME. Retained replies
+ * carry query_reply observations; an unanswered query remains an execution failure, and a missing
  * report is never a capability verdict.
  *
- * `refusalEvidence` is the caller's account of bytes it already wrote on this row before asking:
- * every "none" refusal below defaults to "none" only for a genuinely untouched run, and a caller
- * whose own readback (the DECRQSS SGR report) wrote and queried first passes "query", which is
- * applied to whichever refusal this oracle takes.
+ * `callerHasQuery` records that the caller already attempted its own query before asking. That
+ * attempt preserves failure on a subsequent refusal; a genuinely unattempted fixture stays TODO.
  */
 export async function captureRegionVerdict(
   ctx: TermProbeSource,
@@ -645,8 +643,7 @@ export async function captureRegionVerdict(
   // A row whose reset clears two or more setup attributes has no reference independent of that
   // reset, so this oracle declines it BY NAME before a byte: a reference that misses the same part of
   // the cleared set would reproduce the fault and grade it supported.
-  // A caller that already wrote and queried says so: evidence "none" promises run-parser a
-  // zero-byte trace, and that promise is false after a silent DECRQSS attempt.
+  // A caller that already queried keeps that attempted failure when this oracle cannot proceed.
   if (spec.noIndependentReference) {
     return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), callerHasQuery)
   }

@@ -661,7 +661,7 @@ export interface CaptureDecision {
 }
 export type Interpretation = HistoricalInterpretation | CaptureDecision
 
-/** Context for headless backends (synchronous cell-state access) */
+/** Source for library probing (synchronous cell-state access) */
 export interface LibProbeSource {
   readonly kind: ProbeSourceKind
   /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
@@ -738,7 +738,7 @@ export type Utf8Decoding = "utf8" | "8-bit"
  */
 export type Utf8DecodingReading = Utf8Decoding | "silent" | "unusable"
 
-/** Context for real terminal probing (async TTY I/O) */
+/** Source for terminal probing (async TTY I/O) */
 export interface TerminalQueryOutcome {
   match: string[] | null
   reason: "reply" | "sentinel" | "timeout"

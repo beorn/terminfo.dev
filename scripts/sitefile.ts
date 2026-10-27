@@ -13,7 +13,7 @@
  *   bun -e "import { sources } from './scripts/sitefile.ts'; console.log(sources.length, 'sources')"
  */
 
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals } from "@terminfo/catalog"
 
@@ -597,7 +597,7 @@ async function generateLockfile() {
   // Reuse the site/API's reviewed context selection; filenames and advertised
   // versions are not measurements. Partial/unreviewed history stays excluded.
   const { projection } = loadCurrentResults(contentDir)
-  const selected = [...compatibilityTargets(projection, contentDir).values()]
+  const selected = [...compatibilitySubjects(projection, contentDir).values()]
   const catalogPath = path.join(contentDir, "terminals.json")
   const catalog = loadTerminals(contentDir)
   const terminalLock = terminals.map((terminal) => {

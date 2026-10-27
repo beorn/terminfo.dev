@@ -808,14 +808,14 @@ it("prepares capture once before the first eligible callback and retains its cal
       if (index === 0) delete definition.termNeedsGeometry
       else definition.termNeedsGeometry = true
       if (index === 0) definition.termWrites = "query"
-      definition.term = async (context) => {
+      definition.term = async (probeSource) => {
         expect(prepared, `${ids[index]} must observe capture preparation`).toBe(true)
-        expect(context.captureGeometry).toEqual({
+        expect(probeSource.captureGeometry).toEqual({
           geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
           source: "measured by complete raster calibration",
         })
         order.push(`callback:${ids[index]}`)
-        context.write(`fixture:${ids[index]}`)
+        probeSource.write(`fixture:${ids[index]}`)
         return {
           pass: false,
           tests: [
@@ -827,13 +827,13 @@ it("prepares capture once before the first eligible callback and retains its cal
     const batch = await runProbeBatch({
       ids,
       ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ context, featureId, recordCapture }) => {
+      prepareCapture: async ({ source: probeSource, featureId, recordCapture }) => {
         expect(featureId).toBe("collector.captureCalibration")
         expect(prepared).toBe(false)
         order.push("prepare")
-        context.write("calibration:paint-witness")
+        probeSource.write("calibration:paint-witness")
         prepared = true
-        Object.assign(context, {
+        Object.assign(probeSource, {
           captureGeometry: {
             geometry: { cellWidth: 8, cellHeight: 16, textWidth: 640, textHeight: 384 },
             source: "measured by complete raster calibration",
@@ -1026,7 +1026,7 @@ it("refuses app named coverage that arrives beside its returned error observatio
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "device.primary-da")!
   const originalTerm = definition.term
-  const originalEvidence = definition.termAssertionType
+  const originalAssertionType = definition.termAssertionType
   definition.termAssertionType = "query_reply"
   definition.term = (async () => ({
     pass: false,
@@ -1061,7 +1061,7 @@ it("refuses app named coverage that arrives beside its returned error observatio
     expect(batch.suiteComplete).toBe(false)
   } finally {
     definition.term = originalTerm
-    definition.termAssertionType = originalEvidence
+    definition.termAssertionType = originalAssertionType
   }
 })
 
@@ -1106,7 +1106,7 @@ it("reports undeclared geometry reads as collector errors without invented evide
   verifiedBatchFixture()
   const definition = ALL_PROBES.find((item) => item.id === "text.wrap")!
   const original = definition.termNeedsGeometry
-  const originalEvidence = definition.termAssertionType
+  const originalAssertionType = definition.termAssertionType
   definition.termNeedsGeometry = undefined
   definition.termAssertionType = "query_reply"
   const writes: string[] = []
@@ -1125,7 +1125,7 @@ it("reports undeclared geometry reads as collector errors without invented evide
     expect(writes).toEqual([])
   } finally {
     definition.termNeedsGeometry = original
-    definition.termAssertionType = originalEvidence
+    definition.termAssertionType = originalAssertionType
   }
 })
 
@@ -1147,9 +1147,9 @@ it.each([
   const definition = ALL_PROBES.find((item) => item.id === id)!
   expect(definition.termNeedsGeometry, id).toBe(true)
   const original = definition.termNeedsGeometry
-  const originalEvidence = definition.termAssertionType
+  const originalAssertionType = definition.termAssertionType
   // Clearing the declaration must make the real collector seam refuse the callback's rows/cols read,
-  // proving the declaration is load-bearing rather than only satisfied by a fake plain-number context.
+  // proving the declaration is load-bearing rather than only satisfied by a fake plain-number probeSource.
   definition.termNeedsGeometry = undefined
   definition.termAssertionType = "screenshot"
   const writes: string[] = []
@@ -1174,7 +1174,7 @@ it.each([
     expect(writes, id).toEqual([])
   } finally {
     definition.termNeedsGeometry = original
-    definition.termAssertionType = originalEvidence
+    definition.termAssertionType = originalAssertionType
   }
 })
 
@@ -1200,8 +1200,8 @@ it("grades editing.decsace on measured pixel cells and keeps suiteComplete", asy
     for (const probe of others) probe.term = null
     const batch = await runProbeBatch({
       ownedTerminal: geometryOwner(measured(24, 80)),
-      prepareCapture: async ({ context }) => {
-        context.captureGeometry = { geometry, source: "measured by complete raster calibration" }
+      prepareCapture: async ({ source: probeSource }) => {
+        probeSource.captureGeometry = { geometry, source: "measured by complete raster calibration" }
       },
       capture: async ({ role, label, cells, pixelGeometry }) => {
         expect(cells).toEqual({ top: 1, left: 1, bottom: 2, right: 8 })
@@ -1657,9 +1657,9 @@ it.each(["start", "read", "write"])(
     const readGeometry = vi.fn(async () => measured(24, 80))
     const originals = probes.map((probe) => ({ probe, term: probe.term }))
     try {
-      probes[0]!.term = async (context) => {
+      probes[0]!.term = async (probeSource) => {
         callbacks()
-        return context.withClipboardFixture!(async (fixture) => {
+        return probeSource.withClipboardFixture!(async (fixture) => {
           await fixture.readText()
           await fixture.writeText("fixture")
           return { pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }
@@ -2203,8 +2203,8 @@ it("a retained terminal grid reply supplies preparation counts when declared siz
         rawBase64: Buffer.from(raw).toString("base64"),
       },
     },
-    prepareCapture: async ({ context }) => {
-      seen = [context.rows, context.cols]
+    prepareCapture: async ({ source: probeSource }) => {
+      seen = [probeSource.rows, probeSource.cols]
     },
   })
   expect(seen).toEqual([30, 120])
@@ -2292,8 +2292,8 @@ it.each(["unknown reply", "sentinel diagnostic reply", "sentinel diagnostic time
       ids: ["device.primary-da", "erase.line.all"],
       ownedTerminal: geometryOwner(measured(24, 80)),
       capture,
-      prepareCapture: async ({ context }) => {
-        await calibrateCaptureOrigin({ ctx: context, timeoutMs: 100, captureRaw })
+      prepareCapture: async ({ source: probeSource }) => {
+        await calibrateCaptureOrigin({ ctx: probeSource, timeoutMs: 100, captureRaw })
       },
     })
     const [batch] = await Promise.all([pending, vi.runAllTimersAsync()])
@@ -2373,8 +2373,8 @@ it.each([25, 7].flatMap((missing) => ["reply", "malformed", "timeout"].map((diag
       const pending = runProbeBatch({
         ids: ["device.primary-da"],
         ownedTerminal: geometryOwner(measured(24, 80)),
-        prepareCapture: async ({ context }) => {
-          qualification = await collectTextQualification({ ctx: context, capture })
+        prepareCapture: async ({ source: probeSource }) => {
+          qualification = await collectTextQualification({ ctx: probeSource, capture })
           preparedAt = Date.now()
         },
       })

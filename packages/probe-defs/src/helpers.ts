@@ -66,7 +66,7 @@ export function notTestedResult(noObservable: string, state: object): ProbeCallb
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
- * notTestedResult, with the explicit branch selecting the existing review check. The position
+ * notTestedResult, with the explicit branch selecting the existing review test. The position
  * stays TEST TODO with a required review pending; nothing here grades support, delivery or
  * Untestable.
  */
@@ -1147,14 +1147,14 @@ export function initializeRunDraft(input: {
 /** Fold only the tests still required by the frozen probe's explicitly selected criterion branch. */
 export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeResult {
   const tests = input.tests
-  const failed = tests.find((check) => check.status === "test-failure")
-  const pending = tests.find((check) => check.status === "test-todo")
-  const impossible = tests.find((check) => check.status === "untestable")
+  const failed = tests.find((test) => test.status === "test-failure")
+  const pending = tests.find((test) => test.status === "test-todo")
+  const impossible = tests.find((test) => test.status === "untestable")
   let status: ProbeResult["status"]
   let reason = input.reason
   if (failed) {
     status = "test-failure"
-    reason ??= failed.reason ?? "Required check failed after its attempt"
+    reason ??= failed.reason ?? "Required test failed after its attempt"
   } else if (pending || tests.length === 0) {
     status = "test-todo"
     reason ??= pending?.reason ?? "Required capability implementation has not run"
@@ -1162,7 +1162,7 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
     status = impossible.reviewRef ? "untestable" : "test-todo"
     reason ??= impossible.reason ?? "Context-impossibility review is required"
   } else {
-    status = tests.some((check) => check.status === "unsupported") ? "unsupported" : "supported"
+    status = tests.some((test) => test.status === "unsupported") ? "unsupported" : "supported"
   }
   return { ...input, status, ...(reason === undefined ? {} : { reason }) }
 }
@@ -1175,7 +1175,7 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
     throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
   }
   if (
-    draft.results.some((result) => result.tests.some((check) => check.id === "review" && check.status === "test-todo"))
+    draft.results.some((result) => result.tests.some((test) => test.id === "review" && test.status === "test-todo"))
   ) {
     throw new Error(`Run ${draft.runId} has a required review pending; retain its unsealed capture`)
   }
@@ -1235,29 +1235,29 @@ export function recordExecutedProbe(input: {
     attempt,
     tests:
       input.tests && !diagnostic && observation?.outcome !== "error"
-        ? input.tests.map((check) => {
-            if (!check.id || !PROBE_STATUSES.includes(check.status)) {
-              throw new Error(`Invalid callback check for ${featureId}`)
+        ? input.tests.map((test) => {
+            if (!test.id || !PROBE_STATUSES.includes(test.status)) {
+              throw new Error(`Invalid callback test for ${featureId}`)
             }
             const refs =
-              check.assertionRefs === undefined
-                ? check.status === "test-todo"
+              test.assertionRefs === undefined
+                ? test.status === "test-todo"
                   ? []
                   : assertionRefs
-                : check.assertionRefs.map((index) => {
+                : test.assertionRefs.map((index) => {
                     const globalIndex = assertionRefs[index]
                     if (globalIndex === undefined) {
-                      throw new Error(`Callback check ${featureId}/${check.id} names an absent assertion`)
+                      throw new Error(`Callback test ${featureId}/${test.id} names an absent assertion`)
                     }
                     return globalIndex
                   })
             return {
-              id: check.id,
-              status: check.status,
-              attempt: check.status === "test-todo" ? { scope: "none" } : attempt,
+              id: test.id,
+              status: test.status,
+              attempt: test.status === "test-todo" ? { scope: "none" } : attempt,
               assertionRefs: refs,
               ...(rawReplyRef && { rawReplyRef }),
-              ...(check.reason && { reason: check.reason }),
+              ...(test.reason && { reason: test.reason }),
             }
           })
         : [
@@ -1298,7 +1298,7 @@ export function recordCollectionFailure(
           attempt,
           reason: diagnostic,
           tests: [
-            ...result.tests.filter((check) => check.id !== "collection"),
+            ...result.tests.filter((test) => test.id !== "collection"),
             { id: "collection", status: "test-failure", attempt, reason: diagnostic },
           ],
         })
