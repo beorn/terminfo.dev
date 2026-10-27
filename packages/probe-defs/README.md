@@ -81,6 +81,19 @@ Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`.
 
 That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only TODO can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
+Feature-specific criteria keep those distinctions local. OSC 5522 tests protocol detection only:
+a complete matching DECRPM 5522 Ps 0 or 4 is negative, and Ps 1/2/3 is positive.
+Absent, malformed, unmatched, partial or late evidence is never a negative. A complete positive received within the
+sentinel grace window remains positive, with its ordering note; later bytes outside the capture still fail at the collector.
+The generic mode-behavior grader is unchanged.
+
+Headless DECCOLM reads ordered CSI 18t geometry before the mode change, while changed, and after restoration.
+It enables the ?40 policy gate before switching 80→132→80, or reverses the order from an initial 132 columns.
+It uses existing `feedCapture`; `cols` remains the initialization reading. No resize is manufactured inside the probe.
+An unanswered first 18t names that missing observable; malformed or incomplete attempted geometry stays inconclusive.
+Headless DECSCLM names its missing presentation-timing capture; headless 2031 names its missing host palette actuator
+and persistent event listener. Mode recognition or enabled metadata cannot decide those effects.
+
 These run statuses are separate from the catalog's [probe-coverage labels](../../docs/data/probe-status.ts), such as `automated`, `partial` and `manual`, which describe the available test definitions.
 
 ## Collector routes and persistence

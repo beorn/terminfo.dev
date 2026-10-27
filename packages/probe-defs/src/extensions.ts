@@ -10,14 +10,15 @@ import {
   REPLY_AFTER_SENTINEL_NOTE,
   decrpmPs,
   decrpmReplyPattern,
+  decrpmReading,
   decrpmResult,
   notTestedResult,
   osInputReviewResult,
   colorReadbackReviewResult,
   parserStateResult,
   probe,
-  queryDecrpm,
   readHyperlinkMetadata,
+  readSentinelReply,
   replyFrame,
   sameRgb as sameRgbCells,
   sentinelNegativeResult,
@@ -43,6 +44,39 @@ const FONT_LIGATURE_TARGET = "!= -> => <= =="
 
 function queryOnly(definition: ProbeDefinition): ProbeDefinition {
   return { ...definition, termWrites: "query" }
+}
+
+/** Q16: this ID detects OSC5522 protocol recognition; it does not test clipboard effects. */
+function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentinel = false): ProbeCallbackResult {
+  const window = readSentinelReply(raw, decrpmReplyPattern(5522))
+  const ps = replyMatched ? decrpmPs(window.match?.[1]) : null
+  const late = afterSentinel || window.kind === "answered" || window.kind === "unmatched"
+  if (ps === null || ((ps === 0 || ps === 4) && late)) {
+    const note = "OSC5522 detection has no complete matching reply in the deciding window"
+    return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+  }
+  // Keep the shared mode-behavior criterion unchanged; only this detector makes Ps0 negative.
+  if (ps !== 0) {
+    const result = decrpmResult(ps, 5522)
+    return late && result.observation
+      ? { ...result, observation: { ...result.observation, note: REPLY_AFTER_SENTINEL_NOTE } }
+      : result
+  }
+  const reading = decrpmReading(ps)
+  return {
+    pass: false,
+    response: reading,
+    note: "OSC5522 protocol detection: mode 5522 is not recognized",
+    observation: { outcome: "unsupported", assertionType: "query_reply" },
+    assertions: [
+      {
+        assertionType: "query_reply",
+        kind: "negative",
+        expected: "OSC5522 protocol detection is recognized",
+        observed: reading,
+      },
+    ],
+  }
 }
 
 /**
@@ -2563,12 +2597,20 @@ export const extensionsProbes: ProbeDefinition[] = [
         "extensions.osc5522-clipboard",
         (ctx) => {
           const pattern = decrpmReplyPattern(5522)
-          const reply = ctx.queryWithSentinelOutcome
-            ? ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern).raw
-            : ctx.feedCapture("\x1b[?5522$p")
-          return { ...decrpmResult(decrpmPs(pattern.exec(reply)?.[1]), 5522), response: reply }
+          if (ctx.queryWithSentinelOutcome) {
+            const reply = ctx.queryWithSentinelOutcome("\x1b[?5522$p", pattern)
+            return {
+              ...osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined),
+              response: reply.raw,
+            }
+          }
+          const raw = ctx.feedCapture("\x1b[?5522$p")
+          return { ...osc5522DetectionResult(raw, true), response: raw }
         },
-        async (ctx) => decrpmResult(await queryDecrpm(ctx, 5522), 5522),
+        async (ctx) => {
+          const reply = await ctx.queryWithSentinelOutcome("\x1b[?5522$p", decrpmReplyPattern(5522))
+          return osc5522DetectionResult(reply.raw, replyFrame(reply) !== null, reply.sentinel !== undefined)
+        },
         "query_reply",
       ),
     ),

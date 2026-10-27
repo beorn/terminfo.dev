@@ -1807,64 +1807,99 @@ export const modesProbes: ProbeDefinition[] = [
 
   // ?3 — DECCOLM 80/132 column switch
   decrpmModeProbe("modes.deccolm", 3, (ctx) => {
-    ctx.feed("\x1b[?3h")
-    // Verify via DECRPM query — response CSI ? 3 ; Ps $ y where Ps=1 means set
-    const response = ctx.feedCapture("\x1b[?3$p")
-    ctx.feed("\x1b[?3l")
-    if (response.includes("$y")) {
-      return parserStateResult(
-        null,
-        "DECCOLM switches the measured grid width",
-        { response, cols: ctx.cols },
-        "DECRPM state does not establish a width transition",
-      )
+    const before = ctx.feedCapture("\x1b[18t")
+    if (before.length === 0) return notTestedResult("18t unanswered", { before })
+    const geometryReply = /\x1b\[8;([1-9][0-9]*);([1-9][0-9]*)t/
+    const initial = geometryReply.exec(before)
+    const initialCols = Number(initial?.[2])
+    if (!initial || !Number.isSafeInteger(Number(initial[1])) || !Number.isSafeInteger(initialCols)) {
+      return {
+        pass: false,
+        response: JSON.stringify({ before }),
+        observation: {
+          outcome: "inconclusive",
+          assertionType: "query_reply",
+          reason: "invalid-reply",
+          note: "Initial 18t did not return a complete positive row/column geometry",
+        },
+      }
     }
-    // Fallback: verify sequence didn't break the terminal
-    ctx.feed("X")
-    const ok = ctx.getText().includes("X")
-    return parserStateResult(
-      null,
-      "DECCOLM switches the measured grid width",
-      { responsive: ok, cols: ctx.cols },
-      "Parser responsiveness does not measure a width transition",
-    )
+    if (initialCols !== 80 && initialCols !== 132) {
+      return {
+        pass: false,
+        response: JSON.stringify({ before }),
+        observation: {
+          outcome: "inconclusive",
+          assertionType: "query_reply",
+          reason: "insufficient-evidence",
+          note: "DECCOLM requires an initial measured width of 80 or 132 columns",
+        },
+      }
+    }
+
+    const targetCols = initialCols === 80 ? 132 : 80
+    const change = initialCols === 80 ? "\x1b[?3h" : "\x1b[?3l"
+    const restore = initialCols === 80 ? "\x1b[?3l" : "\x1b[?3h"
+    // Open the 80/132 policy gate before measuring the effect. The collector destroys this
+    // probe's disposable backend; no unavailable prior ?40 state is invented for cleanup.
+    ctx.feed("\x1b[?40h")
+    let enabled: string
+    try {
+      ctx.feed(change)
+      enabled = ctx.feedCapture("\x1b[18t")
+    } finally {
+      ctx.feed(restore)
+    }
+    const restored = ctx.feedCapture("\x1b[18t")
+    const response = JSON.stringify({ before, enabled, restored })
+    const measured = [enabled, restored].map((reply) => geometryReply.exec(reply))
+    if (
+      measured.some(
+        (match) => !match || !Number.isSafeInteger(Number(match[1])) || !Number.isSafeInteger(Number(match[2])),
+      )
+    ) {
+      return {
+        pass: false,
+        response,
+        observation: {
+          outcome: "inconclusive",
+          assertionType: "query_reply",
+          reason: enabled.length === 0 || restored.length === 0 ? "no-response" : "invalid-reply",
+          note: "DECCOLM did not measure complete enabled and restored 18t geometry",
+        },
+      }
+    }
+    const pass = Number(measured[0]?.[2]) === targetCols && Number(measured[1]?.[2]) === initialCols
+    return {
+      pass,
+      response,
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
+      assertions: [
+        {
+          assertionType: "query_reply",
+          kind: pass ? "positive" : "negative",
+          expected: `DECCOLM changes measured columns ${initialCols} -> ${targetCols} -> ${initialCols} after ?40 is enabled`,
+          observed: response,
+        },
+      ],
+    }
   }),
 
-  // ?4 — DECSCLM smooth scroll mode. This is observable through DECRPM even
-  // though modern emulators often render both smooth and jump scrolling instantly.
-  decrpmModeProbe("modes.decsclm", 4, (ctx) => {
-    ctx.feed("\x1b[?4h")
-    const response = ctx.feedCapture("\x1b[?4$p")
-    ctx.feed("\x1b[?4l")
-    return parserStateResult(
-      null,
-      "DECSCLM changes scroll timing",
-      { response },
-      "DECRPM state does not measure scroll timing",
-    )
-  }),
+  // ?4 — DECSCLM needs presentation timing, not mode recognition or final parser state.
+  decrpmModeProbe("modes.decsclm", 4, () =>
+    notTestedResult("DECSCLM requires presentation timing capture", { presentation: false }),
+  ),
 
   // Mode 2031 — color scheme reporting (dark/light mode notifications)
   // Adopted by: iTerm2, tmux 3.6, Contour, foot, kitty
   {
     ...probe(
       "modes.color-scheme-reporting",
-      (ctx) => {
-        const initiallyEnabled = ctx.getMode("colorSchemeReporting")
-        try {
-          ctx.feed("\x1b[?2031h")
-          const enabled = ctx.getMode("colorSchemeReporting")
-          return parserStateResult(
-            null,
-            "Mode 2031 emits color-scheme changes",
-            { enabled },
-            "Mode metadata does not measure update events",
-          )
-        } finally {
-          // #30574: the runtime getter can be null despite its current boolean type.
-          if (initiallyEnabled !== null) ctx.feed(initiallyEnabled ? "\x1b[?2031h" : "\x1b[?2031l")
-        }
-      },
+      () =>
+        notTestedResult("Mode 2031 requires a host palette actuator and persistent unsolicited-event listener", {
+          paletteActuator: false,
+          persistentListener: false,
+        }),
       async (ctx) => {
         const ps = await queryDecrpm(ctx, 2031)
         // Ps 4 says the terminal knows the mode and cannot set it: unsupported, as decrpmResult grades it (#30557).

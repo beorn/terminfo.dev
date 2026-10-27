@@ -436,74 +436,133 @@ describe("Kitty protocol detection", () => {
   })
 
   test.each([
-    [0, false, "inconclusive", "insufficient-evidence", "not recognized (Ps 0)"],
+    [0, false, "unsupported", undefined, "not recognized (Ps 0)"],
     [1, true, "supported", undefined, "set (Ps 1)"],
     [2, true, "supported", undefined, "reset (Ps 2)"],
     [3, true, "supported", undefined, "permanently set (Ps 3)"],
     [4, false, "unsupported", undefined, "permanently reset (Ps 4)"],
     [null, false, "inconclusive", "no-response", undefined],
-  ] as const)(
-    "OSC 5522 Ps %s uses the shared DECRPM reading on both arms",
-    async (ps, pass, outcome, reason, reading) => {
-      const p = probe("extensions.osc5522-clipboard")
-      if (!p.term || !p.lib) throw new Error("OSC 5522 needs both probe methods")
-      const response = ps === null ? "" : `\x1b[?5522;${ps}$y`
-      const sentinel = "\x1b[?1;2c"
-      const queries: string[] = []
-      const headless = p.lib(
-        context({
-          feedCapture() {
-            throw new Error("The installed headless outcome owns its full reply window")
-          },
-          queryWithSentinelOutcome(sequence, pattern) {
-            queries.push(sequence)
-            return {
-              match: response.match(pattern),
-              reason: ps === null ? "sentinel" : "reply",
-              raw: response + sentinel,
-              rawBase64: btoa(response + sentinel),
-            }
-          },
-        }),
-      )
-      const term = await p.term(
-        terminalSource({
-          queryMode: async () => {
-            throw new Error("OSC 5522 must retain the Ps, not its folded mode")
-          },
-          queryWithSentinel: async (sequence, pattern) => {
-            queries.push(sequence)
-            return sequence === "\x1b[?5522$p" ? response.match(pattern) : null
-          },
-          queryWithSentinelOutcome: async (sequence, pattern) => {
-            queries.push(sequence)
-            return {
-              match: sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
-              reason: ps === null ? "timeout" : "reply",
-              raw: response,
-              rawBase64: btoa(response),
-            }
-          },
-        }),
-      )
-      expect(queries).toEqual(["\x1b[?5522$p", "\x1b[?5522$p"])
-      for (const result of [headless, term]) {
-        expect(result.pass).toBe(pass)
-        if (ps === null) {
-          expect(result.observation).toBeUndefined()
-          expect(result.assertions).toBeUndefined()
-          expect(result.tests).toMatchObject([
-            expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-          ])
-        } else {
-          expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
-          expect(result.observation?.reason).toBe(reason)
-        }
-        expect(result.response).toBe(result === headless ? response + sentinel : reading)
-        expect(result.assertions?.[0]?.observed).toBe(pass || ps === 4 ? reading : undefined)
+  ] as const)("OSC 5522 Ps %s decides protocol detection on both arms", async (ps, pass, outcome, reason, reading) => {
+    const p = probe("extensions.osc5522-clipboard")
+    if (!p.term || !p.lib) throw new Error("OSC 5522 needs both probe methods")
+    const response = ps === null ? "" : `\x1b[?5522;${ps}$y`
+    const sentinel = "\x1b[?1;2c"
+    const queries: string[] = []
+    const headless = p.lib(
+      context({
+        feedCapture() {
+          throw new Error("The installed headless outcome owns its full reply window")
+        },
+        queryWithSentinelOutcome(sequence, pattern) {
+          queries.push(sequence)
+          return {
+            match: response.match(pattern),
+            reason: ps === null ? "sentinel" : "reply",
+            raw: response + sentinel,
+            rawBase64: btoa(response + sentinel),
+          }
+        },
+      }),
+    )
+    const term = await p.term(
+      terminalSource({
+        queryMode: async () => {
+          throw new Error("OSC 5522 must retain the Ps, not its folded mode")
+        },
+        queryWithSentinel: async (sequence, pattern) => {
+          queries.push(sequence)
+          return sequence === "\x1b[?5522$p" ? response.match(pattern) : null
+        },
+        queryWithSentinelOutcome: async (sequence, pattern) => {
+          queries.push(sequence)
+          return {
+            match: sequence === "\x1b[?5522$p" ? response.match(pattern) : null,
+            reason: ps === null ? "timeout" : "reply",
+            raw: response,
+            rawBase64: btoa(response),
+          }
+        },
+      }),
+    )
+    expect(queries).toEqual(["\x1b[?5522$p", "\x1b[?5522$p"])
+    for (const result of [headless, term]) {
+      expect(result.pass).toBe(pass)
+      if (ps === null) {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+        ])
+      } else {
+        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+        expect(result.observation?.reason).toBe(reason)
       }
-    },
-  )
+      expect(result.response).toBe(result === headless ? response + sentinel : reading)
+      expect(result.assertions?.[0]?.observed).toBe(ps === null ? undefined : reading)
+      if (ps !== null) expect(result.assertions?.[0]?.kind).toBe(pass ? "positive" : "negative")
+    }
+  })
+
+  // Q16: retained bytes outside the matching reply window must never become a detector negative.
+  // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
+  test.each([
+    ["malformed", "\x1b[?5522;9$y", false],
+    ["unmatched", "\x1b[?5523;4$y", false],
+    ["partial", "\x1b[?5522;4$", false],
+    ["late", "\x1b[?1;2c\x1b[?5522;4$y", true],
+  ] as const)("OSC 5522 %s evidence stays nonnegative on both arms", async (_name, raw, late) => {
+    const p = probe("extensions.osc5522-clipboard")
+    if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
+    const outcome = (pattern: RegExp) => ({
+      match: raw.match(pattern),
+      reason: "reply" as const,
+      raw,
+      rawBase64: btoa(raw),
+      ...(late ? { sentinel: { atMs: 1, graceMs: 20 } } : {}),
+    })
+    const headless = p.lib(
+      context({
+        queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern),
+      }),
+    )
+    const term = await p.term(
+      terminalSource({
+        queryWithSentinel: async (_sequence, pattern) => raw.match(pattern),
+        queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern),
+      }),
+    )
+    for (const result of [headless, term]) {
+      expect(result.observation?.outcome).not.toBe("unsupported")
+      expect(result.assertions ?? []).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ kind: "negative" })]),
+      )
+    }
+    expect(headless.response).toBe(raw)
+  })
+
+  // A complete positive after DA1 but inside the captured grace window is still positive evidence.
+  // Q16 withholds late negatives; it must not narrow the existing positive-reply contract.
+  test("OSC 5522 retains a complete positive received within the sentinel grace window", async () => {
+    const p = probe("extensions.osc5522-clipboard")
+    if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
+    const raw = "\x1b[?1;2c\x1b[?5522;1$y"
+    const outcome = (pattern: RegExp) => ({
+      match: raw.match(pattern),
+      reason: "reply" as const,
+      raw,
+      rawBase64: btoa(raw),
+      sentinel: { atMs: 1, graceMs: 20 },
+    })
+    const headless = p.lib(context({ queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern) }))
+    const term = await p.term(
+      terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
+    )
+    for (const result of [headless, term]) {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: "set (Ps 1)" }])
+    }
+    expect(headless.response).toBe(raw)
+  })
 
   // OSC 52 previously passed on any substring or on unrelated CPR, and left live clipboard writes behind.
   // No existing protocol test covers these three callbacks or the collector's no-clipboard policy.
@@ -1533,33 +1592,47 @@ describe("headless charset cell evidence", () => {
 })
 
 describe("partial probe automation candidates", () => {
-  test("modes.decsclm keeps DECRPM recognition distinct from measured scroll timing", () => {
+  // Q17: a mode-state reply cannot substitute for the absent presentation-timing observer.
+  test("modes.decsclm names missing presentation timing instead of attempting a mode-state criterion", () => {
     const p = probe("modes.decsclm")
-    expect(p.lib).toBeTypeOf("function")
-
+    if (!p.lib) throw new Error("Missing headless DECSCLM callback")
     const seen: string[] = []
-    const result = p.lib!(
+    const result = p.lib(
       context({
-        feed(text) {
-          seen.push(text)
-        },
-        feedCapture(text) {
+        feed: (text) => seen.push(text),
+        feedCapture: (text) => {
           seen.push(text)
           return "\x1b[?4;1$y"
         },
       }),
     )
-
-    expect(result.pass).toBe(false)
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      assertionType: "buffer_state",
+    expect(result.notTested).toMatchObject({
+      reason: "no-semantic-observable",
+      noObservable: expect.stringMatching(/presentation.*tim|scroll.*tim/i),
     })
-    expect(JSON.parse(result.response ?? "null")).toEqual({ response: "\x1b[?4;1$y" })
+    expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
-    expect(seen).toEqual(["\x1b[?4h", "\x1b[?4$p", "\x1b[?4l"])
+    expect(seen).toEqual([])
   })
+
+  // Q17: enabled metadata cannot supply a host palette actuator or persistent unsolicited-event listener.
+  // The native DECRPM recognition table below never exercises this library coverage boundary.
+  test.each([true, false, null] as const)(
+    "mode 2031 names missing palette-event observation despite metadata %s",
+    (enabled) => {
+      const p = probe("modes.color-scheme-reporting")
+      if (!p.lib) throw new Error("Missing headless color-scheme callback")
+      const seen: string[] = []
+      const result = p.lib(context({ getMode: () => enabled as boolean, feed: (text) => seen.push(text) }))
+      expect(result.notTested).toMatchObject({
+        reason: "no-semantic-observable",
+        noObservable: expect.stringMatching(/palette|color.scheme/i),
+      })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(seen).toEqual([])
+    },
+  )
 
   test("device.dsr-996-color-scheme verifies the color-scheme response", () => {
     const p = probe("device.dsr-996-color-scheme")
