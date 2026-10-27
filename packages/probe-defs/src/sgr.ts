@@ -625,36 +625,92 @@ export const sgrProbes: ProbeDefinition[] = [
 
   sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold === true, undefined, { require: [1] }),
 
-  sgrProbe("sgr.faint", "\x1b[2m", (cell) => cell.dim === true, undefined, { require: [2] }),
+  sgrProbe(
+    "sgr.faint",
+    "\x1b[2m",
+    (cell) => cell.dim === true,
+    undefined,
+    { require: [2] },
+    "Cell readback cannot distinguish unsupported faint styling from an unreported or collapsed attribute",
+  ),
 
-  sgrProbe("sgr.italic", "\x1b[3m", (cell) => cell.italic === true, undefined, { require: [3] }),
+  sgrProbe(
+    "sgr.italic",
+    "\x1b[3m",
+    (cell) => cell.italic === true,
+    undefined,
+    { require: [3] },
+    "Cell readback cannot distinguish unsupported italic styling from an unreported attribute",
+  ),
 
   sgrProbe("sgr.underline.single", "\x1b[4m", (cell) => !!cell.underline, undefined, { require: [4] }),
 
-  sgrProbe("sgr.underline.double", "\x1b[21m", (cell) => cell.underline === "double", undefined, { require: [21] }),
+  sgrProbe(
+    "sgr.underline.double",
+    "\x1b[21m",
+    (cell) => cell.underline === "double",
+    undefined,
+    { require: [21] },
+    "Cell readback cannot distinguish unsupported double underline from a collapsed underline style",
+  ),
 
-  sgrProbe("sgr.underline.curly", "\x1b[4:3m", (cell) => cell.underline === "curly", undefined, {
-    require: [4],
-    requireTokens: ["4:3"],
-  }),
+  sgrProbe(
+    "sgr.underline.curly",
+    "\x1b[4:3m",
+    (cell) => cell.underline === "curly",
+    undefined,
+    {
+      require: [4],
+      requireTokens: ["4:3"],
+    },
+    "Cell readback cannot distinguish unsupported curly underline from a collapsed underline style",
+  ),
 
-  sgrProbe("sgr.underline.dotted", "\x1b[4:4m", (cell) => cell.underline === "dotted", undefined, {
-    require: [4],
-    requireTokens: ["4:4"],
-  }),
+  sgrProbe(
+    "sgr.underline.dotted",
+    "\x1b[4:4m",
+    (cell) => cell.underline === "dotted",
+    undefined,
+    {
+      require: [4],
+      requireTokens: ["4:4"],
+    },
+    "Cell readback cannot distinguish unsupported dotted underline from a collapsed underline style",
+  ),
 
-  sgrProbe("sgr.underline.dashed", "\x1b[4:5m", (cell) => cell.underline === "dashed", undefined, {
-    require: [4],
-    requireTokens: ["4:5"],
-  }),
+  sgrProbe(
+    "sgr.underline.dashed",
+    "\x1b[4:5m",
+    (cell) => cell.underline === "dashed",
+    undefined,
+    {
+      require: [4],
+      requireTokens: ["4:5"],
+    },
+    "Cell readback cannot distinguish unsupported dashed underline from a collapsed underline style",
+  ),
 
   sgrProbe("sgr.blink", "\x1b[5m", (cell) => cell.blink === true, undefined, { require: [5] }),
 
   sgrProbe("sgr.inverse", "\x1b[7m", (cell) => cell.inverse === true, undefined, { require: [7] }),
 
-  sgrProbe("sgr.hidden", "\x1b[8m", (cell) => cell.hidden === true, undefined, { require: [8] }),
+  sgrProbe(
+    "sgr.hidden",
+    "\x1b[8m",
+    (cell) => cell.hidden === true,
+    undefined,
+    { require: [8] },
+    "Cell readback cannot distinguish unsupported conceal from a default or unreported hidden flag",
+  ),
 
-  sgrProbe("sgr.strikethrough", "\x1b[9m", (cell) => cell.strikethrough === true, undefined, { require: [9] }),
+  sgrProbe(
+    "sgr.strikethrough",
+    "\x1b[9m",
+    (cell) => cell.strikethrough === true,
+    undefined,
+    { require: [9] },
+    "Cell readback cannot distinguish unsupported strikethrough from an unreported attribute",
+  ),
 
   sgrProbe(
     "sgr.overline",

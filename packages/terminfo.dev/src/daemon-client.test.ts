@@ -654,9 +654,11 @@ it("resumes a retained pending capture through the final writer without changing
     sources: ["collector.capture.device.primary-da"],
     supersedes: [],
   })
-  const final = saveDaemonProbeRun(pending, root, undefined, [
-    { source: review, startedAt: "2026-10-21T05:00:00.000Z" },
-  ])
+  const final = saveDaemonProbeRun(pending, root, undefined, {
+    manifest: trustedReceipt.manifest,
+    decisions: [{ source: review, startedAt: "2026-10-21T05:00:00.000Z" }],
+    origin: () => undefined,
+  })
   expect(final).not.toMatch(/draft.json$/)
   expect(readFileSync(path, "utf8")).toBe(original)
   const parsed = parseRun(
@@ -706,20 +708,24 @@ it("retains partial reviews as immutable snapshots, then seals the same logical 
       sources: ["collector.capture." + featureId],
       supersedes: [],
     })
-  const partialPath = saveDaemonProbeRun(pending, root, undefined, [
-    { source: decision("device.primary-da", "first-review"), startedAt: "2026-10-21T05:00:00.000Z" },
-  ])
+  const manifest = {
+    ...trustedReceipt.manifest,
+    catalogIds: ["device.primary-da", "device.secondary-da"],
+    probes: { ...trustedReceipt.manifest.probes, term: ["device.primary-da", "device.secondary-da"] },
+  }
+  const partialPath = saveDaemonProbeRun(pending, root, undefined, {
+    manifest,
+    decisions: [{ source: decision("device.primary-da", "first-review"), startedAt: "2026-10-21T05:00:00.000Z" }],
+    origin: () => undefined,
+  })
   expect(partialPath).not.toBe(originalPath)
   expect(partialPath).toMatch(/\.[a-f0-9]{64}\.draft.json$/)
   const partial = readFileSync(partialPath, "utf8")
-  const finalPath = saveDaemonProbeRun(JSON.parse(partial) as CollectedProbeRun, root, undefined, [
-    { source: decision("device.secondary-da", "second-review"), startedAt: "2026-10-21T05:01:00.000Z" },
-  ])
-  const manifest = {
-    ...trustedReceipt.manifest,
-    catalogIds: run.results.map((result) => result.featureId),
-    probes: { ...trustedReceipt.manifest.probes, term: run.results.map((result) => result.featureId) },
-  }
+  const finalPath = saveDaemonProbeRun(JSON.parse(partial) as CollectedProbeRun, root, undefined, {
+    manifest,
+    decisions: [{ source: decision("device.secondary-da", "second-review"), startedAt: "2026-10-21T05:01:00.000Z" }],
+    origin: () => undefined,
+  })
   const parsed = parseRun(
     finalPath,
     readFileSync(finalPath, "utf8"),
@@ -730,4 +736,201 @@ it("retains partial reviews as immutable snapshots, then seals the same logical 
   expect(parsed.results?.map((result) => result.status)).toEqual(["untestable", "untestable"])
   expect(readFileSync(originalPath, "utf8")).toBe(original)
   expect(readFileSync(partialPath, "utf8")).toBe(partial)
+})
+
+// B4/B5 and Amendment3: the old writer sealed an undecided FAILURE and never retained its binding.
+// Existing TODO-review journeys do not expose that error or cross-cohort origin-file validation.
+it("retains a failed source review, then reuses its sealed origin through a caller-trusted review batch", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-owned-"))
+  const directory = root
+  const manifest: ProbeSuiteManifest = {
+    ...trustedReceipt.manifest,
+    catalogIds: ["sgr.faint"],
+    probes: { term: ["sgr.faint"], lib: ["sgr.faint"], mux: [] },
+  }
+  const raw = JSON.stringify({ original: { faint: false }, changed: { faint: false }, restored: { faint: false } })
+  const make = (runId: string): CollectedProbeRun => ({
+    ...collectorRun(),
+    runId,
+    rawReplies: { "sgr.faint": raw, "collector.collectionAttempt": JSON.stringify({ runId }) },
+    assertions: [
+      {
+        featureId: "sgr.faint",
+        kind: "positive",
+        assertionType: "buffer_state",
+        expected: "changed faint=true; restored faint=false",
+        observed: raw,
+        rawReplyRef: "sgr.faint",
+      },
+    ],
+    results: [
+      {
+        featureId: "sgr.faint",
+        status: "test-failure",
+        criterionBranch: "source-negative-review",
+        assertionType: "buffer_state",
+        rawReplyRef: "sgr.faint",
+        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+        tests: [
+          {
+            id: "capture",
+            status: "supported",
+            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+            assertionRefs: [0],
+          },
+          {
+            id: "review",
+            status: "test-failure",
+            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+            reason: "Source review required",
+          },
+        ],
+      },
+    ],
+  })
+  const originRun = make("source-origin")
+  const pendingPath = saveDaemonProbeRun(originRun, directory)
+  expect(pendingPath).toMatch(/\.draft\.json$/)
+  const pendingBytes = readFileSync(pendingPath, "utf8")
+  const pending = JSON.parse(pendingBytes) as CollectedProbeRun
+  const decision = {
+    id: "faint-source",
+    runId: originRun.runId,
+    featureId: "sgr.faint",
+    captureSha256: createHash("sha256").update(pending.rawReplies["collector.capture.sgr.faint"]!).digest("hex"),
+    decision: "unsupported",
+    reviewed: true,
+    reviewer: "fixture reviewer",
+    reason: "Fixture source and captured state establish the negative",
+    scope: {
+      subject: { kind: "term", id: "kitty" },
+      versions: ["0.49.1", "0.49.1"],
+      suites: [manifest.probeHash, manifest.probeHash],
+    },
+    sources: ["fixture@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:state.ts:1-4"],
+    supersedes: [],
+  }
+  const source = JSON.stringify(decision)
+  const decisions = [{ source, startedAt: "2026-10-21T05:01:00.000Z" }]
+  const originPath = saveDaemonProbeRun(pending, directory, undefined, { manifest, decisions, origin: () => undefined })
+  const originBytes = readFileSync(originPath, "utf8")
+  const origin = vi.fn((runId: string) => ({
+    path: join(directory, `kitty-0.49.1-linux-${runId}.json`),
+    source: originBytes,
+  }))
+  const reusedPath = saveDaemonProbeRun(make("source-current"), directory, undefined, { manifest, decisions, origin })
+  const parsed = parseRun(
+    reusedPath,
+    readFileSync(reusedPath, "utf8"),
+    manifest.catalogIds!,
+    new Map([[manifest.probeHash, manifest]]),
+  )
+  expect(origin).toHaveBeenCalledWith("source-origin")
+  expect(parsed.runId).toBe("source-current")
+  expect(parsed.results?.[0]?.status).toBe("unsupported")
+  expect(parsed.rawReplies["collector.review.faint-source"]).toBe(source)
+  expect(parsed.rawReplies["collector.review.faint-source.capture"]).toBe(
+    pending.rawReplies["collector.capture.sgr.faint"],
+  )
+  expect(readFileSync(pendingPath, "utf8")).toBe(pendingBytes)
+  expect(readFileSync(originPath, "utf8")).toBe(originBytes)
+})
+
+// Amendment2/3: unavailable origins lapse without fabricating evidence; foreign suites never trigger origin I/O.
+// The successful origin journey above cannot prove these writer-side short-circuit boundaries.
+it("records an unavailable origin lapse and skips origin lookup for a foreign-suite decision", () => {
+  root = mkdtempSync(join(tmpdir(), "terminfo-origin-boundary-"))
+  const manifest: ProbeSuiteManifest = {
+    ...trustedReceipt.manifest,
+    catalogIds: ["sgr.faint"],
+    probes: { term: ["sgr.faint"], lib: ["sgr.faint"], mux: [] },
+  }
+  const raw = JSON.stringify({ original: { faint: false }, changed: { faint: false }, restored: { faint: false } })
+  const make = (runId: string, observation = raw): CollectedProbeRun => ({
+    ...collectorRun(),
+    runId,
+    rawReplies: { "sgr.faint": observation, "collector.collectionAttempt": JSON.stringify({ runId }) },
+    assertions: [
+      {
+        featureId: "sgr.faint",
+        kind: "positive",
+        assertionType: "buffer_state",
+        expected: "changed faint=true; restored faint=false",
+        observed: observation,
+        rawReplyRef: "sgr.faint",
+      },
+    ],
+    results: [
+      {
+        featureId: "sgr.faint",
+        status: "test-failure",
+        criterionBranch: "source-negative-review",
+        assertionType: "buffer_state",
+        rawReplyRef: "sgr.faint",
+        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+        tests: [
+          {
+            id: "capture",
+            status: "supported",
+            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+            assertionRefs: [0],
+          },
+          {
+            id: "review",
+            status: "test-failure",
+            attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+            reason: "Source review required",
+          },
+        ],
+      },
+    ],
+  })
+  const sourceRun = make("source-origin")
+  const sourceDraft = saveDaemonProbeRun(sourceRun, root)
+  const draft = JSON.parse(readFileSync(sourceDraft, "utf8")) as CollectedProbeRun
+  const decision = {
+    id: "faint-boundary",
+    runId: sourceRun.runId,
+    featureId: "sgr.faint",
+    captureSha256: createHash("sha256").update(draft.rawReplies["collector.capture.sgr.faint"]!).digest("hex"),
+    decision: "unsupported",
+    reviewed: true,
+    reviewer: "fixture reviewer",
+    reason: "Fixture source and retained state establish the negative",
+    scope: {
+      subject: { kind: "term" as const, id: "kitty" },
+      versions: ["0.49.1", "0.49.1"],
+      suites: [manifest.probeHash, manifest.probeHash],
+    },
+    sources: ["fixture@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:state.ts:1-4"],
+    supersedes: [],
+  }
+  const origin = vi.fn(() => undefined)
+  const unavailable = make(
+    "cohort-origin-gone",
+    JSON.stringify({ original: { faint: true }, changed: { faint: true }, restored: { faint: true } }),
+  )
+  const unavailablePath = saveDaemonProbeRun(unavailable, root, undefined, {
+    manifest,
+    decisions: [{ source: JSON.stringify(decision), startedAt: "2026-10-21T05:01:00.000Z" }],
+    origin,
+  })
+  const unavailableRun = JSON.parse(readFileSync(unavailablePath, "utf8")) as CollectedProbeRun
+  expect(origin).toHaveBeenCalledWith("source-origin")
+  expect(unavailableRun.results[0]?.status).toBe("test-failure")
+  expect(unavailableRun.results[0]?.reason).toContain("origin binding text unavailable: run source-origin")
+
+  const foreignOrigin = vi.fn(() => {
+    throw new Error("foreign suite must not read an origin")
+  })
+  const foreign = { ...decision, scope: { ...decision.scope, suites: ["foreign-suite", "foreign-suite"] } }
+  const foreignPath = saveDaemonProbeRun(make("cohort-foreign-suite"), root, undefined, {
+    manifest,
+    decisions: [{ source: JSON.stringify(foreign), startedAt: "2026-10-21T05:02:00.000Z" }],
+    origin: foreignOrigin,
+  })
+  const foreignRun = JSON.parse(readFileSync(foreignPath, "utf8")) as CollectedProbeRun
+  expect(foreignOrigin).not.toHaveBeenCalled()
+  expect(foreignRun.results[0]?.status).toBe("test-failure")
+  expect(foreignRun.results[0]?.reason).toContain("suite differ")
 })

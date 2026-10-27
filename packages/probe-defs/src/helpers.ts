@@ -26,19 +26,28 @@ export function parserStateResult(
   expected: string,
   state: object,
   note?: string,
+  sourceReviewReason?: string,
 ): ProbeCallbackResult {
+  if (sourceReviewReason !== undefined && pass === true) {
+    throw new Error("A positive parser state cannot require source review")
+  }
+  const sourceReview = sourceReviewReason !== undefined
   const response = JSON.stringify(state)
   const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
-    pass === null
+    pass === null && !sourceReview
       ? undefined
       : [{ assertionType: "buffer_state" as const, kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
     ...(note && { note }),
+    ...(sourceReview && {
+      criterionBranch: SOURCE_NEGATIVE_REVIEW,
+      tests: [{ id: "review", status: "test-failure" as const, reason: sourceReviewReason }],
+    }),
     observation: {
-      outcome: pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
-      ...(pass === null && { reason: "insufficient-evidence" as const }),
+      outcome: sourceReview || pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
+      ...((sourceReview || pass === null) && { reason: "insufficient-evidence" as const }),
       assertionType: "buffer_state",
       ...(note && { note }),
     },
@@ -63,6 +72,8 @@ export function notTestedResult(noObservable: string, state: object): ProbeCallb
     notTested: { reason: "no-semantic-observable", noObservable },
   }
 }
+
+export const SOURCE_NEGATIVE_REVIEW = "source-negative-review"
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
@@ -586,6 +597,7 @@ export function sgrProbe(
   check: (cell: ReturnType<LibProbeSource["getCell"]>) => boolean | null,
   noObservableWhen?: (cell: ReturnType<LibProbeSource["getCell"]>) => string | null,
   readback?: SgrReadback,
+  sourceReviewReason?: string,
 ): ProbeDefinition {
   return {
     id,
@@ -605,9 +617,10 @@ export function sgrProbe(
         cell,
         cell.char !== "X"
           ? "No rendered X cell to evaluate"
-          : measured
+          : measured || sourceReviewReason !== undefined
             ? undefined
             : "Cell readback cannot distinguish unsupported styling from unreported attributes or collapsed styles; a negative needs rendering review",
+        cell.char === "X" && !measured ? sourceReviewReason : undefined,
       )
     },
     async term(ctx) {
@@ -1175,7 +1188,14 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
     throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
   }
   if (
-    draft.results.some((result) => result.tests.some((test) => test.id === "review" && test.status === "test-todo"))
+    draft.results.some((result) =>
+      result.tests.some(
+        (test) =>
+          test.id === "review" &&
+          (test.status === "test-todo" ||
+            (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
+      ),
+    )
   ) {
     throw new Error(`Run ${draft.runId} has a required review pending; retain its unsealed capture`)
   }

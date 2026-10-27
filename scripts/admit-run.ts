@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /** Executable admission facade; the shared module owns the one implementation. */
 import { dirname, join } from "node:path"
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { decodeCollectorDraft } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot } from "../packages/admin/versions.ts"
 import { execFileSync } from "node:child_process"
@@ -60,12 +60,21 @@ if (import.meta.main) {
       const manifest = derivedSuiteManifest(probeSuiteSnapshot())
       const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: import.meta.dirname, encoding: "utf8" }).trim()
       const decoded = decodeCollectorDraft(source, readFileSync(source, "utf8"), manifest, revision)
-      source = saveDaemonProbeRun(
-        decoded.run,
-        dirname(source),
-        undefined,
-        reviews.map((path) => ({ source: readFileSync(path, "utf8"), startedAt })),
-      )
+      const directory = dirname(source)
+      source = saveDaemonProbeRun(decoded.run, directory, undefined, {
+        manifest,
+        decisions: reviews.map((path) => ({ source: readFileSync(path, "utf8"), startedAt })),
+        origin: (runId) => {
+          const matches = readdirSync(directory).filter((name) => name.endsWith(`-${runId}.json`))
+          if (matches.length > 1) {
+            throw new Error(`Origin run ${runId} has ${matches.length} retained sealed candidates in ${directory}`)
+          }
+          const [name] = matches
+          if (name === undefined) return undefined
+          const path = join(directory, name)
+          return { path, source: readFileSync(path, "utf8") }
+        },
+      })
       console.log(`Retained reviewed capture ${source}; original draft unchanged`)
       if (source.endsWith(".draft.json")) throw new Error(`Required reviews remain pending in ${source}; no admission`)
       if (

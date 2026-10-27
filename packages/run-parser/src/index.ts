@@ -1,6 +1,7 @@
 /** Canonical parser and decoder for immutable terminal runs. */
 import { createHash } from "node:crypto"
 import {
+  SOURCE_NEGATIVE_REVIEW,
   PROBE_STATUSES,
   finalizeProbeResult,
   type CaptureDecision,
@@ -804,6 +805,7 @@ function captureBindingSource(
       | "sourceRevision"
       | "intendedSubject"
       | "subject"
+      | "runtimeIdentity"
       | "results"
       | "rawReplies"
       | "assertions"
@@ -815,6 +817,7 @@ function captureBindingSource(
 ): string {
   const result = draft.results.find((entry) => entry.featureId === featureId)
   if (!result) throw new Error(`Capture feature ${featureId} is outside frozen catalogue`)
+  const sourceNegative = historicalSource === undefined && result.criterionBranch === SOURCE_NEGATIVE_REVIEW
   const rawKeys = new Set<string>()
   if (result.rawReplyRef) rawKeys.add(result.rawReplyRef)
   for (const test of result.tests) if (test.rawReplyRef) rawKeys.add(test.rawReplyRef)
@@ -822,7 +825,12 @@ function captureBindingSource(
     if (frame.sourceRef && Object.hasOwn(draft.rawReplies, frame.sourceRef)) rawKeys.add(frame.sourceRef)
   }
   for (const key of Object.keys(draft.rawReplies)) {
-    if (key.startsWith("collector.") && !key.startsWith("collector.capture.") && !key.startsWith("collector.review.")) {
+    if (
+      !sourceNegative &&
+      key.startsWith("collector.") &&
+      !key.startsWith("collector.capture.") &&
+      !key.startsWith("collector.review.")
+    ) {
       rawKeys.add(key)
     }
   }
@@ -835,31 +843,75 @@ function captureBindingSource(
   // Review assertions are derived from this immutable capture after review, and are bound
   // separately by the retained typed decision. Capture assertions remain byte-for-byte bound.
   const reviewAssertions = new Set(
-    result.tests.filter((test) => test.id === "review").flatMap((test) => test.assertionRefs ?? []),
+    result.tests
+      .filter(
+        (test) =>
+          test.id === "review" && (!sourceNegative || (test.reviewRef !== undefined && test.status !== "test-failure")),
+      )
+      .flatMap((test) => test.assertionRefs ?? []),
   )
   const assertionRefs = draft.assertions.flatMap((assertion, index) =>
     assertion.featureId === featureId && !reviewAssertions.has(index)
-      ? [{ index, sha256: hash(JSON.stringify(assertion)) }]
+      ? [
+          sourceNegative
+            ? { sha256: hash(JSON.stringify(assertion)) }
+            : { index, sha256: hash(JSON.stringify(assertion)) },
+        ]
       : [],
   )
+  if (sourceNegative) assertionRefs.sort((left, right) => left.sha256.localeCompare(right.sha256))
   const historicalResult =
     historicalSource === undefined
       ? undefined
       : (historicalSource.results as Array<Record<string, unknown>>).find((entry) => entry.featureId === featureId)
   return JSON.stringify({
-    runId: draft.runId,
+    ...(!sourceNegative && { runId: draft.runId }),
     probeHash: draft.probeHash,
     sourceRevision: draft.sourceRevision,
     ...(historicalSource === undefined
-      ? { intendedSubject: draft.intendedSubject, ...(draft.subject && { subject: draft.subject }) }
+      ? {
+          intendedSubject: sourceNegative
+            ? normalizeIntendedSubject(draft.intendedSubject, 4, "capture binding")
+            : draft.intendedSubject,
+          ...(draft.subject && {
+            subject: sourceNegative ? parseSubject(draft.subject, "capture binding") : draft.subject,
+          }),
+        }
       : {
           intendedContext: historicalSource.intendedContext,
           ...(historicalSource.target !== undefined ? { target: historicalSource.target } : {}),
         }),
+    ...(sourceNegative &&
+      draft.runtimeIdentity && {
+        runtimeIdentity: {
+          kind: draft.runtimeIdentity.kind,
+          engineVersion: draft.runtimeIdentity.engineVersion,
+          adapterVersion: draft.runtimeIdentity.adapterVersion,
+          termlessRevision: draft.runtimeIdentity.termlessRevision,
+          ...("integrity" in draft.runtimeIdentity && { integrity: draft.runtimeIdentity.integrity }),
+          ...("loadedBinary" in draft.runtimeIdentity && {
+            loadedBinary: { sha256: draft.runtimeIdentity.loadedBinary.sha256 },
+          }),
+        },
+      }),
     featureId,
     rawReplyRefs,
     assertionRefs,
-    frames: result.frames ?? [],
+    frames: sourceNegative
+      ? (result.frames ?? []).map((frame) => ({
+          role: frame.role,
+          label: frame.label,
+          ...(frame.kind && { kind: frame.kind }),
+          ...(/^sha256:[0-9a-f]{64}$/.test(frame.ref) && { ref: frame.ref }),
+          ...(frame.sourceRef && { sourceRef: frame.sourceRef }),
+          ...(frame.regionDigest && { regionDigest: frame.regionDigest }),
+          ...(frame.pixelsDigest && { pixelsDigest: frame.pixelsDigest }),
+          ...(frame.regionRectangle && { regionRectangle: frame.regionRectangle }),
+          ...(frame.cellDigest && { cellDigest: frame.cellDigest }),
+          ...(frame.frameDigest && { frameDigest: frame.frameDigest }),
+          ...(frame.cellRectangle && { cellRectangle: frame.cellRectangle }),
+        }))
+      : (result.frames ?? []),
     ...(result.screenshotRef && { screenshotRef: result.screenshotRef }),
     ...(result.host && { host: result.host }),
     ...(historicalSource === undefined
@@ -895,8 +947,98 @@ function validateCaptureBinding(
   decision: CaptureDecision,
   path: string,
   historicalSource?: Record<string, unknown>,
-): void {
+  allowLapse = false,
+): string | undefined {
   const source = draft.rawReplies[`collector.capture.${decision.featureId}`]
+  const result = draft.results.find((entry) => entry.featureId === decision.featureId)
+  if (historicalSource === undefined && result?.criterionBranch === SOURCE_NEGATIVE_REVIEW) {
+    const currentSource = captureBindingSource(draft, decision.featureId)
+    if (!source || source !== currentSource) fail(path, "capture context/source/suite/evidence binding changed")
+    const current = parseJsonStrict(path, currentSource) as Record<string, unknown>
+    const originSource = draft.rawReplies[`collector.review.${decision.id}.capture`]
+    const digest = createHash("sha256").update(currentSource, "utf8").digest("hex")
+    if (
+      originSource !== undefined &&
+      createHash("sha256").update(originSource, "utf8").digest("hex") !== decision.captureSha256
+    ) {
+      fail(path, "origin capture binding digest mismatch")
+    }
+    const origin = originSource === undefined ? undefined : parseJsonStrict(path, originSource)
+    if (
+      origin !== undefined &&
+      (!object(origin) ||
+        !nonempty(origin.featureId) ||
+        !nonempty(origin.sourceRevision) ||
+        !Array.isArray(origin.rawReplyRefs) ||
+        !Array.isArray(origin.assertionRefs))
+    ) {
+      fail(path, "malformed origin capture binding")
+    }
+    const differences = new Set<string>()
+    const subject = draft.subject
+    if (decision.featureId !== current.featureId) differences.add("feature")
+    if (
+      !subject ||
+      decision.scope.subject.kind !== subject.kind ||
+      decision.scope.subject.id !== subject.id ||
+      draft.intendedSubject.kind !== subject.kind ||
+      draft.intendedSubject.id !== subject.id ||
+      (subject.kind === "lib" && !draft.runtimeIdentity)
+    ) {
+      differences.add("subject")
+    }
+    if (decision.scope.versions[0] !== subject?.version || draft.intendedSubject.version !== subject?.version) {
+      differences.add("versions")
+    }
+    if (decision.scope.suites[0] !== draft.probeHash || draft.probeHash !== draft.suiteId) differences.add("suite")
+    if (object(origin)) {
+      if (origin.featureId !== current.featureId) differences.add("feature")
+      const withoutVersion = (value: unknown) => {
+        if (!object(value)) return value
+        const { version: _version, ...context } = value
+        return context
+      }
+      if (
+        JSON.stringify(withoutVersion(origin.subject)) !== JSON.stringify(withoutVersion(current.subject)) ||
+        JSON.stringify(withoutVersion(origin.intendedSubject)) !==
+          JSON.stringify(withoutVersion(current.intendedSubject))
+      ) {
+        differences.add("subject")
+      }
+      if ((object(origin.subject) ? origin.subject.version : undefined) !== subject?.version) {
+        differences.add("versions")
+      }
+      if (origin.probeHash !== draft.probeHash) differences.add("suite")
+      if (origin.sourceRevision !== draft.sourceRevision) differences.add("source revision")
+      if (
+        [
+          "rawReplyRefs",
+          "assertionRefs",
+          "frames",
+          "screenshotRef",
+          "host",
+          "assertionType",
+          "criterionBranch",
+          "runtimeIdentity",
+        ].some((key) => JSON.stringify(origin[key]) !== JSON.stringify(current[key]))
+      ) {
+        differences.add("bytes")
+      }
+    }
+    const missingOrigin = origin === undefined && digest !== decision.captureSha256
+    if (missingOrigin || differences.size) {
+      const components = ["feature", "subject", "versions", "suite", "source revision", "bytes"].filter((part) =>
+        differences.has(part),
+      )
+      const detail = missingOrigin
+        ? `binding differs (origin binding text unavailable: run ${decision.runId})${components.length ? `; ${components.join(", ")} differ` : ""}`
+        : `${components.join(", ")} differ`
+      const reason = `capture decision ${decision.id} lapsed: ${detail}`
+      if (allowLapse) return reason
+      fail(path, reason)
+    }
+    return
+  }
   if (!source || createHash("sha256").update(source, "utf8").digest("hex") !== decision.captureSha256) {
     fail(path, "capture digest mismatch or absent capture")
   }
@@ -917,7 +1059,7 @@ function validateCaptureBinding(
 }
 
 /** Apply one typed decision to its still-open required review; final-run reviews cannot use this path. */
-export function applyCaptureDecision(draft: RunDraft, source: string, startedAt: string): void {
+export function applyCaptureDecision(draft: RunDraft, source: string, startedAt: string, originBinding?: string): void {
   if ("sealedAt" in draft) throw new Error(`Run ${draft.runId} is already sealed`)
   if (!date(startedAt)) throw new Error("Capture review requires its actual attempt timestamp")
   const decision = parseCaptureDecision(
@@ -925,14 +1067,53 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
     "capture review",
     new Set(draft.results.map((result) => result.featureId)),
   )
-  validateCaptureBinding(draft, decision, "capture review")
   const index = draft.results.findIndex((result) => result.featureId === decision.featureId)
   const result = draft.results[index]
-  if (!result || !result.tests.some((test) => test.id === "review" && test.status === "test-todo")) {
+  const sourceNegative = result?.criterionBranch === SOURCE_NEGATIVE_REVIEW
+  if (
+    !result ||
+    !result.tests.some(
+      (test) =>
+        test.id === "review" && (test.status === "test-todo" || (sourceNegative && test.status === "test-failure")),
+    )
+  ) {
     throw new Error(`Capture ${decision.featureId} has no pending required review`)
   }
   const reviewRef = `collector.review.${decision.id}`
   if (Object.hasOwn(draft.rawReplies, reviewRef)) throw new Error(`Capture review ${decision.id} already retained`)
+  if (sourceNegative && originBinding !== undefined) {
+    if (createHash("sha256").update(originBinding, "utf8").digest("hex") !== decision.captureSha256) {
+      throw new Error(`Capture review ${decision.id} origin capture binding digest mismatch`)
+    }
+    const originKey = `${reviewRef}.capture`
+    if (draft.rawReplies[originKey] !== undefined && draft.rawReplies[originKey] !== originBinding) {
+      throw new Error(`Capture review ${decision.id} origin binding is immutable`)
+    }
+    draft.rawReplies[originKey] = originBinding
+  }
+  const lapse = validateCaptureBinding(draft, decision, "capture review", undefined, sourceNegative)
+  if (lapse) {
+    draft.rawReplies[reviewRef] = source
+    draft.rawReplies[`${reviewRef}.lapse`] = lapse
+    draft.results[index] = finalizeProbeResult({
+      ...result,
+      reviewRef,
+      reason: lapse,
+      attempt: { scope: "probe", startedAt },
+      tests: result.tests.map((test) =>
+        test.id === "review"
+          ? {
+              ...test,
+              status: "test-failure",
+              reason: lapse,
+              reviewRef,
+              attempt: { scope: "probe", startedAt },
+            }
+          : test,
+      ),
+    })
+    return
+  }
   let assertionRefs: number[] | undefined
   if (decision.decision !== "untestable") {
     const captured = draft.assertions.filter((assertion) => assertion.featureId === decision.featureId)
@@ -949,18 +1130,18 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       return index
     })
   }
-  const tests = result.tests.map((test): ProbeTestResult =>
-    test.id === "review"
-      ? {
-          ...test,
-          status: decision.decision,
-          attempt: { scope: "probe", startedAt },
-          reviewRef,
-          reason: decision.reason,
-          ...(assertionRefs && { assertionRefs }),
-        }
-      : test,
-  )
+  const tests = result.tests.map((test): ProbeTestResult => {
+    if (test.id !== "review") return test
+    return {
+      ...test,
+      status: decision.decision,
+      attempt: { scope: "probe", startedAt },
+      reviewRef,
+      reason: decision.reason,
+      // Untestable creates no derived assertions: clear pending refs so the original capture stays bound.
+      ...(sourceNegative || assertionRefs ? { assertionRefs: assertionRefs ?? [] } : {}),
+    }
+  })
   draft.rawReplies[reviewRef] = source
   draft.results[index] = finalizeProbeResult({
     ...result,
@@ -1408,7 +1589,14 @@ export function parseRun(
     if (current && results) {
       if (
         raw.sealedAt !== undefined &&
-        results.some((result) => result.tests.some((test) => test.id === "review" && test.status === "test-todo"))
+        results.some((result) =>
+          result.tests.some(
+            (test) =>
+              test.id === "review" &&
+              (test.status === "test-todo" ||
+                (result.criterionBranch === SOURCE_NEGATIVE_REVIEW && test.status === "test-failure")),
+          ),
+        )
       ) {
         fail(path, "required review pending; retain its unsealed capture")
       }
@@ -1420,6 +1608,7 @@ export function parseRun(
         sourceRevision,
         intendedSubject: normalizeIntendedSubject(raw[intendedKey], schemaVersion, path),
         subject: subject,
+        ...(runtimeIdentity && { runtimeIdentity }),
         results,
         rawReplies: raw.rawReplies as Record<string, string>,
         assertions,
@@ -1435,9 +1624,25 @@ export function parseRun(
           if (!bytes) fail(path, `missing immutable capture decision ${ref}`)
           const decision = parseCaptureDecision(parseJsonStrict(path, bytes), path, expected, schemaVersion)
           if (decision.featureId !== result.featureId) fail(path, "capture decision feature mismatch")
-          validateCaptureBinding(captureRun, decision, path, schemaVersion === 3 ? raw : undefined)
+          const pendingLapse =
+            result.criterionBranch === SOURCE_NEGATIVE_REVIEW &&
+            result.tests.some(
+              (test) => test.id === "review" && test.status === "test-failure" && test.reviewRef === ref,
+            )
+          const lapse = validateCaptureBinding(
+            captureRun,
+            decision,
+            path,
+            schemaVersion === 3 ? raw : undefined,
+            pendingLapse,
+          )
+          if (lapse && (result.reason !== lapse || captureRun.rawReplies[`${ref}.lapse`] !== lapse)) {
+            fail(path, "capture lapse diagnostic differs from its binding")
+          }
           for (const test of result.tests.filter((test) => test.reviewRef === ref)) {
-            if (test.status !== decision.decision) fail(path, "capture decision differs from recorded test")
+            if (lapse ? test.status !== "test-failure" || test.reason !== lapse : test.status !== decision.decision) {
+              fail(path, "capture decision differs from recorded test")
+            }
           }
         }
       }

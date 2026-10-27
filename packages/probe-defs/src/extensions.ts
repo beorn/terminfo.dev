@@ -2078,9 +2078,22 @@ export const extensionsProbes: ProbeDefinition[] = [
           cell.hyperlink !== undefined ? { reported: true, uri: cell.hyperlink } : { reported: false },
         )
         const response = JSON.stringify({ chars: cells.map((cell) => cell.char), links })
+        const expected = JSON.stringify({
+          chars: [...expectedChars],
+          links: [null, uri, uri, uri, uri, null].map((link) => ({ reported: true, uri: link })),
+        })
         const reported = links.every((link) => link.reported)
         const charsMatch = cells.every((cell, index) => cell.char === expectedChars[index])
-        if (!reported || !charsMatch || cells.slice(1, 5).some((cell) => cell.hyperlink === null)) {
+        if (charsMatch && !reported) {
+          return parserStateResult(
+            null,
+            expected,
+            { chars: cells.map((cell) => cell.char), links },
+            undefined,
+            "Cell readback cannot report OSC 8 link metadata for the rendered text fixture",
+          )
+        }
+        if (!charsMatch) {
           return {
             pass: false,
             response,
@@ -2092,10 +2105,6 @@ export const extensionsProbes: ProbeDefinition[] = [
             },
           }
         }
-        const expected = JSON.stringify({
-          chars: [...expectedChars],
-          links: [null, uri, uri, uri, uri, null].map((link) => ({ reported: true, uri: link })),
-        })
         const observed = response
         const pass = observed === expected
         return {
