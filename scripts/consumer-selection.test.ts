@@ -323,7 +323,7 @@ describe("consumer selection", () => {
           join(source, "test-fixtures", "probes-libs", "xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"),
           "utf8",
         ),
-      )
+      ) as { runtimeIdentity: unknown }
       const libBytes = JSON.stringify({
         schemaVersion: 4,
         source: { kind: "live" },
@@ -354,7 +354,10 @@ describe("consumer selection", () => {
       })
       writeFileSync(join(root, "content", "probes-libs", "xtermjs-current.json"), libBytes)
       const suitePath = join(root, "content", "suites", "deadbeefcafe.json")
-      const libSuite = JSON.parse(readFileSync(suitePath, "utf8"))
+      const libSuite = JSON.parse(readFileSync(suitePath, "utf8")) as {
+        catalogIds?: string[]
+        probes: { lib: string[] }
+      }
       libSuite.catalogIds = ["sgr.bold"]
       libSuite.probes.lib = ["sgr.bold"]
       writeFileSync(suitePath, JSON.stringify(libSuite))
