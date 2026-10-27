@@ -37,6 +37,7 @@ import { object } from "./interpretations.ts"
 import { parseDisposableReceipt } from "../packages/terminfo.dev/src/disposable-receipt.ts"
 import { derivedSuiteManifest } from "./suite-manifest.ts"
 import { frozenSuiteIdFor } from "../docs/data/load-release-scope.ts"
+import muxIdentity from "../packages/terminfo.dev/src/fixtures/mux-identity.json"
 
 const temporaryPaths: string[] = []
 afterEach(() => {
@@ -350,6 +351,35 @@ test.each(["8c50df5834ccb938c208aa91467e9a2b", "2912118b74039bf72ac84070921836ce
     const destination = join(temp("terminfo-dirty-plan-"), "run.json")
     expect(() => planAdmission(source, destination)).toThrow(/native-provenance-dirty/)
     expect(existsSync(destination)).toBe(false)
+  },
+)
+
+// Missing outer-app evidence must remain a custody refusal on Darwin after the platform gate is removed.
+// These projected Linux identity specimens test refusal logic only, not Darwin qualification.
+test.each(muxIdentity.specimens)(
+  "refuses macOS $mux admission without retained outer-app proof",
+  ({ mux, version, run: specimen }) => {
+    const manifest = parseSuiteManifest(
+      "mux-identity-suite.json",
+      JSON.stringify({
+        probeHash: specimen.probeHash,
+        adapterVersion: "fixture",
+        probes: { app: [], headless: [], mux: muxIdentity.featureIds },
+      }),
+    )
+    const parsed = parseRun(
+      "darwin-mux.json",
+      JSON.stringify({
+        ...specimen,
+        target: { ...specimen.target, kind: "mux", id: mux, version, os: "macos", mux },
+      }),
+      muxIdentity.featureIds,
+      new Map([[manifest.probeHash, manifest]]),
+    )
+    expect(assessRunAdmission(parsed, [], { mode: "historical" })).toMatchObject({
+      accepted: false,
+      reason: "outer-app-proof-missing",
+    })
   },
 )
 
