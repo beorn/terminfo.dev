@@ -404,8 +404,11 @@ it("scrubs absolute host folder prefixes from recorded draft failures while keep
   // AC1: recorded run drafts keep filenames without any host folder segments, and preserve URL schemes.
   const files = readdirSync(dir).filter((entry) => entry.endsWith(".draft.json"))
   expect(files).toHaveLength(2)
-  const xtermDraftBytes = readFileSync(join(dir, files.find((f) => f.startsWith("xtermjs-"))!), "utf8")
-  const libvtermDraftBytes = readFileSync(join(dir, files.find((f) => f.startsWith("libvterm-"))!), "utf8")
+  const xtermFile = files.find((file) => file.startsWith("xtermjs-"))
+  const libvtermFile = files.find((file) => file.startsWith("libvterm-"))
+  if (!xtermFile || !libvtermFile) throw new Error("Expected both retained engine draft files")
+  const xtermDraftBytes = readFileSync(join(dir, xtermFile), "utf8")
+  const libvtermDraftBytes = readFileSync(join(dir, libvtermFile), "utf8")
   expect(xtermDraftBytes).toContain("index.ts")
   expect(xtermDraftBytes).toContain("win=xterm.wasm")
   expect(xtermDraftBytes).toContain(`upstream=${sshUrl}`)

@@ -208,8 +208,9 @@ describe("immutable pre-seal capture binding", () => {
       applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:02:00.000Z")
       expect(draft.results[0]!.tests.find((test) => test.id === "review")?.status).toBe("unsupported")
       expect(draft.results[0]!.status).toBe(unrelatedFailure ? "test-failure" : "unsupported")
-      if (unrelatedFailure)
+      if (unrelatedFailure) {
         expect(draft.results[0]!.tests.find((test) => test.id === "cleanup")?.status).toBe("test-failure")
+      }
     },
   )
   // FINAL B4 negative control: granting this criterion never admits an arbitrary failed review.
@@ -383,8 +384,9 @@ describe("immutable pre-seal capture binding", () => {
       JSON.stringify({ faint: false }),
       { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" },
       (draft) => {
-        if (draft.runtimeIdentity?.kind !== "js" || draft.runtimeIdentity.integrity.kind !== "source")
+        if (draft.runtimeIdentity?.kind !== "js" || draft.runtimeIdentity.integrity.kind !== "source") {
           throw Error("fixture source identity missing")
+        }
         draft.runtimeIdentity.integrity.revision = "7".repeat(40)
       },
     )

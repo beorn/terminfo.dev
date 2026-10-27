@@ -1130,19 +1130,17 @@ export function applyCaptureDecision(draft: RunDraft, source: string, startedAt:
       return index
     })
   }
-  const tests = result.tests.map(
-    (test): ProbeTestResult =>
-      test.id === "review"
-        ? {
-            ...test,
-            status: decision.decision,
-            attempt: { scope: "probe", startedAt },
-            reviewRef,
-            reason: decision.reason,
-            ...(assertionRefs && { assertionRefs }),
-          }
-        : test,
-  )
+  const tests = result.tests.map((test): ProbeTestResult => {
+    if (test.id !== "review") return test
+    return {
+      ...test,
+      status: decision.decision,
+      attempt: { scope: "probe", startedAt },
+      reviewRef,
+      reason: decision.reason,
+      ...(assertionRefs && { assertionRefs }),
+    }
+  })
   draft.rawReplies[reviewRef] = source
   draft.results[index] = finalizeProbeResult({
     ...result,
