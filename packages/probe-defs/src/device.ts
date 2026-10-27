@@ -527,13 +527,13 @@ export const deviceProbes: ProbeDefinition[] = [
     libAssertionType: "query_reply",
   },
 
-  // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t
+  // XTWINOPS 14 — report text-area size in pixels: CSI 14 t → CSI 4 ; H ; W t
   deviceQuery({
     id: "device.xtwinops-14",
     query: "\x1b[14t",
     valid: /\x1b\[4;[1-9][0-9]*;[1-9][0-9]*t/,
     malformed: /\x1b\[4;/,
-    expected: "CSI 14 t returns a complete CSI 4;positive-height;positive-width t frame",
+    expected: "CSI 14 t reports text-area pixels as CSI 4;positive-height;positive-width t",
   }),
 
   // XTWINOPS 16 — report cell size in pixels: CSI 16 t → CSI 6 ; H ; W t
@@ -702,8 +702,7 @@ export const deviceProbes: ProbeDefinition[] = [
     libAssertionType: "buffer_state",
   },
 
-  // XTREPORTCOLORS — report color/graphics capabilities: CSI # R → CSI Pm # Q
-  // Added in xterm patch 400; updated in patches 401/402 (2025).
+  // XTREPORTCOLORS — report palette-stack current entry and stored palette count.
   deviceQuery({
     id: "device.xtreportcolors",
     query: "\x1b[#R",
@@ -711,9 +710,9 @@ export const deviceProbes: ProbeDefinition[] = [
     // CSI ? 0 ; 1 # Q on xterm 411); kitty answers without it (CSI 0 ; 0 # Q).
     // The `?` is part of the reference implementation's reply, so the matcher accepts
     // it rather than grading xterm's own extension as an invalid reply.
-    valid: /\x1b\[\??[0-9;]*#Q/,
+    valid: /\x1b\[\??[0-9]+;[0-9]+#Q/,
     malformed: /\x1b\[\??[0-9;]*#|#Q/,
-    expected: "CSI # R returns a complete CSI Pm # Q frame",
+    expected: "CSI # R reports palette-stack entry and stored count as CSI [optional ?] entry;count # Q",
   }),
 
   // XTGETXRES — query xterm resource value: DCS + Q Pt ST → DCS response

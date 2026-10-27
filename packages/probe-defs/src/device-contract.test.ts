@@ -53,7 +53,7 @@ const DEVICE_CONTRACT: GroupContract = [
   {
     id: "device.xtwinops-14",
     expected: "decided",
-    claim: "CSI 14 t returns a complete CSI 4;positive-height;positive-width t frame",
+    claim: "CSI 14 t reports text-area pixels as CSI 4;positive-height;positive-width t",
   },
   {
     id: "device.xtwinops-16",
@@ -85,7 +85,11 @@ const DEVICE_CONTRACT: GroupContract = [
     expected: "decided",
     claim: "XTWINOPS 23 restores the title saved before a different title was set",
   },
-  { id: "device.xtreportcolors", expected: "decided", claim: "CSI # R returns a complete CSI Pm # Q frame" },
+  {
+    id: "device.xtreportcolors",
+    expected: "decided",
+    claim: "CSI # R reports palette-stack entry and stored count as CSI [optional ?] entry;count # Q",
+  },
   {
     id: "device.xtgetxres",
     expected: "decided",

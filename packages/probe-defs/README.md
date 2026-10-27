@@ -18,6 +18,13 @@ The five assertion types classify the deciding observation: `query_reply` reads 
 
 Status names remain supported, unsupported, untestable, TEST TODO and TEST FAILURE. The last two retain code values `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior.
 
+Device query criteria name the state actually reported. XTREPORTCOLORS (`CSI # R`)
+reports the palette-stack current entry and stored palette count as two
+nonnegative decimal fields, retaining the existing optional DEC-private `?`
+reply prefix. XTWINOPS 14 (`CSI 14 t`) reports text-area pixels; the outer-window
+query is `CSI 14;2 t`. These criteria establish query replies, without measuring
+palette push/pop effects or graphics capabilities.
+
 ## From definition to recorded result
 
 **A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:

@@ -542,18 +542,27 @@ describe("device query observations", () => {
  * @testonly none
  */
 describe("window-operation qualification", () => {
-  test("XTWINOPS 14 binds a complete pixel-size frame in both collectors", async () => {
+  test("XTWINOPS 14 queries text-area pixels and binds a complete size frame in both collectors", async () => {
     const probe = callback("device.xtwinops-14")
     const frame = "\x1b[4;720;1280t"
     const app = {
-      queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
-        match: pattern.exec(frame),
-        reason: "reply",
-        raw: frame,
-        rawBase64: Buffer.from(frame).toString("base64"),
-      }),
+      queryWithSentinelOutcome: async (query: string, pattern: RegExp) => {
+        expect(query).toBe("\x1b[14t")
+        return {
+          match: pattern.exec(frame),
+          reason: "reply",
+          raw: frame,
+          rawBase64: Buffer.from(frame).toString("base64"),
+        }
+      },
     } as unknown as TermProbeSource
-    for (const result of [probe.headless(headless(frame)), await probe.terminal(app)]) {
+    const lib = {
+      feedCapture: (query: string) => {
+        expect(query).toBe("\x1b[14t")
+        return frame
+      },
+    } as unknown as LibProbeSource
+    for (const result of [probe.headless(lib), await probe.terminal(app)]) {
       expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
       expect(result.response).toBe(frame)
@@ -697,7 +706,7 @@ describe("device contracts without prior coverage", () => {
     })
   })
 
-  test("XTREPORTCOLORS binds a complete CSI Pm # Q frame", async () => {
+  test("XTREPORTCOLORS binds a complete palette-stack entry and count frame", async () => {
     const probe = callback("device.xtreportcolors")
     const frame = "\x1b[0;1#Q"
     for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
@@ -713,6 +722,19 @@ describe("device contracts without prior coverage", () => {
       reason: "no-response",
     })
   })
+
+  test.each(["", "0", ";1", "0;", "0;1;2", "0;x"])(
+    "XTREPORTCOLORS keeps malformed palette-stack fields %j inconclusive in both collectors",
+    async (fields) => {
+      const probe = callback("device.xtreportcolors")
+      const raw = `\x1b[${fields}#Q`
+      for (const result of [probe.headless(headless(raw)), await probe.terminal(app(raw))]) {
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+        expect(result.assertions).toBeUndefined()
+        expect(result.response).toBe(raw)
+      }
+    },
+  )
 
   test("XTGETXRES binds a status-1 termName value and reads status 0 as a refusal", async () => {
     const probe = callback("device.xtgetxres")
