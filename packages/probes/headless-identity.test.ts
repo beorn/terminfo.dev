@@ -1,4 +1,5 @@
 /**
+ * @source-grep copies headless-identity.ts into a temp repo so file: installs resolve; assertions are on the loader, not the source text
  * @failure Local file:/workspace: vt100.js/vt220.js/vterm.js resolve into bun's .bun store, so identity
  *   falls through to registryIntegrity and every vterm-family collect dies before a run exists.
  * @level l2
