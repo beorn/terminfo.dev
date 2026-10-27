@@ -1,4 +1,32 @@
 /**
+ * Lay out a throwaway repository root that runs the real `terminfo report` command,
+ * so the test reads the same copy → select → render → stdout path a piped run does.
+ */
+function stageRepo(root: string): void {
+  const source = join(import.meta.dirname, "..", "..", "..")
+  const admin = join(root, "packages", "admin")
+  mkdirSync(join(admin, "src"), { recursive: true })
+  mkdirSync(join(root, "content", "probes-apps"), { recursive: true })
+  mkdirSync(join(root, "content", "probes-libs"))
+  mkdirSync(join(root, "content", "probes-mux"))
+  mkdirSync(join(root, "content", "suites"))
+  // The published exclusion list is archived data since #30759 AC3; these fixtures hold no
+  // legacy refusals, so the archive is present and empty rather than absent.
+  writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
+  copyFileSync(join(source, "packages", "admin", "src", "report.ts"), join(admin, "src", "report.ts"))
+  copyFileSync(join(source, "packages", "admin", "report.tsx"), join(admin, "report.tsx"))
+  symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
+  symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
+  symlinkSync(join(source, "packages", "admin", "node_modules"), join(admin, "node_modules"), "dir")
+  symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
+  symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
+  writeFileSync(
+    join(root, "run.ts"),
+    'import { handleReport } from "./packages/admin/src/report.ts"; await handleReport()\n',
+  )
+}
+
+/**
  * @failure Report promotes newer unverified booleans and renders absent cells as unsupported.
  * @level l2
  * @consumer Admin CLI report readers comparing selected terminal observations.
@@ -14,29 +42,9 @@ import { probeSuiteSnapshot } from "../versions.ts"
 import { loadCurrentResults } from "../../../docs/data/current-results.ts"
 
 test("report renders reviewed outcomes and missing cells without promoting legacy history", () => {
-  const source = join(import.meta.dirname, "..", "..", "..")
   const root = mkdtempSync(join(tmpdir(), "terminfo-report-"))
   try {
-    const admin = join(root, "packages", "admin")
-    mkdirSync(join(admin, "src"), { recursive: true })
-    mkdirSync(join(root, "content", "probes-apps"), { recursive: true })
-    mkdirSync(join(root, "content", "probes-libs"))
-    mkdirSync(join(root, "content", "probes-mux"))
-    mkdirSync(join(root, "content", "suites"))
-    // The published exclusion list is archived data since #30759 AC3; these fixtures hold no
-    // legacy refusals, so the archive is present and empty rather than absent.
-    writeFileSync(join(root, "content", "archived-exclusions.json"), JSON.stringify({ archivedExclusions: [] }))
-    copyFileSync(join(source, "packages", "admin", "src", "report.ts"), join(admin, "src", "report.ts"))
-    copyFileSync(join(source, "packages", "admin", "report.tsx"), join(admin, "report.tsx"))
-    symlinkSync(join(source, "packages", "admin", "versions.ts"), join(admin, "versions.ts"))
-    symlinkSync(join(source, "packages", "admin", "parse.ts"), join(admin, "parse.ts"))
-    symlinkSync(join(source, "packages", "admin", "node_modules"), join(admin, "node_modules"), "dir")
-    symlinkSync(join(source, "node_modules"), join(root, "node_modules"), "dir")
-    symlinkSync(join(source, "docs"), join(root, "docs"), "dir")
-    writeFileSync(
-      join(root, "run.ts"),
-      'import { handleReport } from "./packages/admin/src/report.ts"; await handleReport()\n',
-    )
+    stageRepo(root)
 
     const snapshot = probeSuiteSnapshot()
     // A small synthetic suite exercises the real selection/report boundary, not collector suite coverage.
@@ -244,6 +252,119 @@ test("report renders reviewed outcomes and missing cells without promoting legac
     expect(corrupt.error).toBeUndefined()
     expect(corrupt.status, corrupt.stdout + corrupt.stderr).not.toBe(0)
     expect(corrupt.stdout + corrupt.stderr).toContain(corruptPath)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// @failure A piped report loses its tail: the feature matrix or the sections after it are
+// clipped, so the command exits 0 with an apparently complete report missing its counts.
+// @level l2 @consumer Terminfo administration reports read through a pipe (#30909).
+test("a long report keeps every row and its last section on a pipe", () => {
+  const root = mkdtempSync(join(tmpdir(), "terminfo-report-long-"))
+  try {
+    stageRepo(root)
+    const snapshot = probeSuiteSnapshot()
+    const featureCount = 300
+    const fixtureFeatures = Array.from(
+      { length: featureCount },
+      (_, index) => `fixture.feature-${String(index).padStart(3, "0")}`,
+    )
+    writeFileSync(
+      join(root, "content", "features.json"),
+      JSON.stringify(
+        Object.fromEntries(
+          fixtureFeatures.map((id) => [
+            id,
+            { name: id, slug: id.replaceAll(".", "-"), body: "fixture", probe: "fixture", baseline: "supported" },
+          ]),
+        ),
+      ),
+    )
+    writeFileSync(
+      join(root, "content", "suites", `${snapshot.probeHash}.json`),
+      JSON.stringify({
+        probeHash: snapshot.probeHash,
+        sourceRevision: "1".repeat(40),
+        generatedAt: "2026-09-28T00:00:00.000Z",
+        freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
+        adapterVersion: snapshot.adapterVersion,
+        catalogIds: fixtureFeatures,
+        probes: { app: fixtureFeatures, headless: [], mux: [] },
+      }),
+    )
+    const run = {
+      schemaVersion: 3,
+      sealedAt: "2026-09-28T12:00:01.000Z",
+      intendedContext: { kind: "app", id: "kitty", version: "0.46.2" },
+      runId: "long-kitty",
+      target: {
+        kind: "app",
+        id: "kitty",
+        version: "0.46.2",
+        os: "macos",
+        osVersion: "25.4.0",
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      },
+      identity: "verified",
+      suiteId: snapshot.probeHash,
+      probeHash: snapshot.probeHash,
+      sourceRevision: "2".repeat(40),
+      measuredAt: "2026-09-28T12:00:00.000Z",
+      origin: { kind: "collector" },
+      rawReplies: { "device.primary-da": "\x1b[?62;52;c", "device.xtversion": "kitty(0.46.2)" },
+      assertions: [],
+      screenshotRefs: [],
+      results: fixtureFeatures.map((featureId) => ({
+        featureId,
+        status: "test-todo",
+        attempt: { scope: "none" },
+        checks: [],
+        reason: "Missing implementation",
+      })),
+    }
+    const runPath = join(root, "content", "probes-apps", "long.json")
+    const runBytes = JSON.stringify(run)
+    writeFileSync(runPath, runBytes)
+    writeFileSync(
+      join(root, "content", "interpretations.json"),
+      JSON.stringify([
+        {
+          id: "review-long",
+          runId: run.runId,
+          runSha256: createHash("sha256").update(runBytes).digest("hex"),
+          reviewer: "reviewer",
+          reason: "checked captured identity",
+          scope: {
+            target: { kind: "app", id: "kitty" },
+            versions: [run.target.version, run.target.version],
+            suites: [run.suiteId, run.suiteId],
+          },
+          sources: [runPath],
+          supersedes: [],
+          verifiesIdentity: true,
+          reviewed: true,
+        },
+      ]),
+    )
+
+    const invoked = spawnSync(process.execPath, [join(root, "run.ts")], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 30_000,
+    })
+    expect(invoked.error).toBeUndefined()
+    expect(invoked.status, invoked.stdout + invoked.stderr).toBe(0)
+    const plain = invoked.stdout.replace(/\x1b\[[0-9;]*m/g, "")
+    const lastFeature = fixtureFeatures[fixtureFeatures.length - 1]!
+    const rows = fixtureFeatures.filter((id) => plain.split("\n").some((line) => line.trimStart().startsWith(id)))
+    expect(rows).toHaveLength(featureCount)
+    const tail = plain.slice(plain.indexOf(lastFeature))
+    expect(tail).toContain("Observation reasons and notes")
+    expect(tail).toContain("Excluded runs:")
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
