@@ -2,7 +2,7 @@
  * The ONE decidable-basis predicate. A cohort's ids are split by the required app schedule into the
  * ids the schedule HAS a probe for (decidable) and the ids it does NOT cover (unavailable). The
  * decisive-share reader and the probe-defs group harness both call this, so an id absent from the
- * required suite can never be counted as a failed capability by one reader and excluded by another:
+ * required suite can never be counted as a failed feature by one reader and excluded by another:
  * an absent id is not decidable, and it must not penalize a context (the 28018 one-basis ruling,
  * @dev/3 2026-10-10, @cto PROCEED 2026-10-10T15:49Z).
  *

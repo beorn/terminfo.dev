@@ -1,19 +1,17 @@
 /**
  * A feature's probe status, DERIVED at build time from the probe definitions (28792 item 4).
  *
- * What the definitions settle, they settle. A row whose arms all declare evidence reads `automated`
- * when every arm that runs declares MEASURING evidence, and `partial` when an arm is null or declares
- * non-measuring evidence (consumed / legacy / none), because then the probe establishes consumption or
- * acceptance, not the feature's effect.
+ * A row is `automated` when both callback arms exist and declare a concrete assertion type.
+ * An absent arm or an explicit null assertion-type declaration makes it `partial`: null says
+ * the existing callback has no typed deciding observable, not that its arm is absent.
  *
- * What they cannot settle reads `undeclared`, the honest word for "this row's assertion type is not
- * declared yet". It is a temporary value: 28450 declares the evidence in each family's kind, and
- * 28801 deletes the value and its badge when the count reaches zero. Nothing derives `automated` by
- * default, and no badge claims more than the evidence behind it.
+ * An undefined declaration remains `undeclared` unless another arm already establishes partial.
+ * This is temporary: 28450 declares each family's deciding observable, and 28801 removes undefined
+ * and the undeclared badge when its count reaches zero. No row becomes automated by default.
  *
  * Two exceptions carry a REVIEWED value instead of a derivation, and a reviewed value wins:
  *  - 23 rows were hand-marked partial in the catalog before the derivation existed, and keep it;
- *  - 3 rows (the 27832 section F2 osc52 family) declare measuring evidence on both arms yet are
+ *  - 3 rows (the 27832 section F2 osc52 family) declare concrete assertion types on both arms yet are
  *    fixture-gated: `liveClipboardProbe` policy-refuses before sending unless an owned clipboard
  *    fixture is installed, so the standard run reads back only a round-trip against that fixture. A
  *    definition cannot express that gate until 28450, so it is a reviewed partial that stands OVER a
@@ -41,7 +39,7 @@ const featureIds = (catalog: FeatureCatalog): string[] => Object.keys(catalog).f
 
 /**
  * The one owner of the derivation. `partial` outranks "undeclared": an arm that is absent, or one
- * that declares acceptance-only evidence, fixes the row as partial even when another arm is silent.
+ * that explicitly declares no typed deciding observable, fixes the row as partial even when another arm is undeclared.
  */
 export function derivedProbeStatus(definition: ProbeDefinition): DerivedProbeStatus {
   const declared = [definition.termAssertionType, definition.libAssertionType]

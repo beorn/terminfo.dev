@@ -55,7 +55,7 @@ This page reads current sealed execution results on the required suite. A contex
   <details>
     <summary>All {{ row.observations.length }} features and their recorded evidence</summary>
     <table>
-      <thead><tr><th>Capability</th><th>Result</th><th>Method</th><th>Recorded reason</th></tr></thead>
+      <thead><tr><th>Feature</th><th>Result</th><th>Assertion type</th><th>Recorded reason</th></tr></thead>
       <tbody><tr v-for="observation in row.observations" :key="observation.id">
         <td><code>{{ observation.id }}</code></td>
         <td><ResultEvidenceCell v-if="resultFor(row, observation.id)"

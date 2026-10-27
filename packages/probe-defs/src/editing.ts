@@ -88,19 +88,19 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
 
 /**
  * The 15 measured editing rows, as one region-readback kind table (28450 slice C). Each row
- * holds its claim ONCE: the termless arm reads its seed, its steps and its target cells against the
+ * holds its claim ONCE: the lib arm reads its seed, its steps and its target cells against the
  * parser, and the kind derives the capture-region oracle's seed / edit / expected frames from the
  * same fields, so the two arms cannot grade two different fixtures.
  *
  * Two notes this table carries, both named in the diff:
  *  - DECERA's two hand-written copies of the fixture disagreed: the capture spec seeded the third
  *    row's flank "W", while the readback seeded "X" AND expected that flank preserved. One row ends
- *    the disagreement, and the readback's "X" - the flank the termless arm also used - is what it
+ *    the disagreement, and the readback's "X" - the flank the lib arm also used - is what it
  *    keeps.
  *  - DECCRA's region covers its SOURCE rows as well as its destination (rows 1..6, columns 1..14),
  *    because the claim is two-sided: "copies ... WITHOUT changing the source". The hand-written
  *    pixel spec compared the destination only, so a destination-only region would have dropped the
- *    source control its own termless arm asserted; one rectangle spanning both keeps the whole claim
+ *    source control its own lib arm asserted; one rectangle spanning both keeps the whole claim
  *    on both arms.
  */
 export const editingReadbackRows: readonly RegionReadbackRow[] = [

@@ -85,7 +85,7 @@ function oscReplyResult(
 }
 
 /**
- * Live's grading of one OSC query outcome. A headless context on a proven reply path offers the same
+ * Live's grading of one OSC query outcome. A library probe source on a proven reply path offers the same
  * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here.
  */
 function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string, prefix: RegExp): ProbeCallbackResult {
@@ -1094,7 +1094,7 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallba
 
 /**
  * Live's reading of one string-graded query outcome: no matched frame grades through unansweredQuery, a
- * matched frame through the site's grader. A headless context on a proven reply path offers the same
+ * matched frame through the site's grader. A library probe source on a proven reply path offers the same
  * outcome through `queryWithSentinelOutcome` (#30554), so both arms read it here. The grader reads only the
  * frame; the result keeps the whole read window, DA1 answer included, as the observed evidence.
  */
@@ -1939,7 +1939,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       async (ctx) => {
         // Sixel paints outside the cell grid. On an arm that reads cells there is nothing to
         // compare, and the missing adapter is pixel capture — named before a byte, as an
-        // instrument limit in the 3a8bddd5 shape, never a capability verdict.
+        // instrument limit in the 3a8bddd5 shape, never a feature verdict.
         if (!ctx.capture || ctx.captureKind === "text-cells") {
           const note =
             "Sixel paints pixels outside the cell grid; this arm has no pixel capture, so the missing adapter is pixel capture and the rendering is not observable here"

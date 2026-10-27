@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * terminfo CLI — unified terminal capability testing.
+ * terminfo CLI — unified terminal feature testing.
  *
  * Four probe mechanisms:
  *   termless   Headless library probes via Termless backends (Vitest)

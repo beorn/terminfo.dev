@@ -725,7 +725,7 @@ export interface LibProbeSource {
  * owning collector through one DSR 6n round trip: a UTF-8 context advances the cursor one cell per
  * code point, an 8-bit (ISO-8859-1) context advances one cell per BYTE. A pixel oracle that
  * compares a sequence's pixels with the same terminal's rendering of the literal glyph assumes
- * the first, so the second is a fact about the CONTEXT, never a terminal capability (#28752).
+ * the first, so the second is a fact about the SUBJECT CONFIGURATION, never a terminal feature (#28752).
  */
 export type Utf8Decoding = "utf8" | "8-bit"
 
@@ -790,7 +790,7 @@ export interface TermProbeSource {
    * answered-but-unreadable reply is never recorded as silence; absent means this context has no
    * collector that measures it. A row whose oracle compares plainly written glyphs reads it before
    * grading, so a Latin-1 context is named as the cause instead of being read as a terminal
-   * capability negative (#28752).
+   * feature negative (#28752).
    */
   utf8Decoding?: () => Promise<Utf8DecodingReading>
   /**

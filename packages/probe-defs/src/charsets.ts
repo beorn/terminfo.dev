@@ -4,7 +4,7 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
  * The Character Sets family, as one region-readback kind table (@cto A2; 28450 slice B).
  *
  * Each row is seed / sequence / expected over one row of cells, and BOTH arms derive from it: the
- * termless arm reads the seed, the steps and the target cells against the parser, and the kind builds
+ * lib arm reads the seed, the steps and the target cells against the parser, and the kind builds
  * the capture-region oracle's seed / edit / expected frames from the same fields. The row holds the
  * claim once, and a probe that needs more than this adds a KIND, not a callback.
  *
@@ -13,7 +13,7 @@ import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-
  * maintenance cost (and one of them disagreed with the oracle's own geometry).
  */
 
-/** The 4 Character Sets capabilities, one row each: seed, the sequence under test, and its cells. */
+/** The 4 Character Sets features, one row each: seed, the sequence under test, and its cells. */
 export const charsetReadbackRows: readonly RegionReadbackRow[] = [
   {
     id: "charsets.dec-special",

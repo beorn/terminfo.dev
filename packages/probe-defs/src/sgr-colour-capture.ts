@@ -1,15 +1,15 @@
 /**
  * @failure A colour row's capture arm compares a control frame and a target frame from two paint
  *   contexts and grades "the frames differ" as support: any repaint, including one the terminal
- *   produced for an unrelated reason, then reads as a colour capability. The eleven sgr.* colour
+ *   produced for an unrelated reason, then reads as a colour feature. The eleven sgr.* colour
  *   rows therefore declare one capture-region fixture each, painted in the same run, and the
  *   decision rests on the catalogue's own discriminator: the styled sample must differ from the
- *   neutral sample AND from a named sibling that a terminal LACKING exactly the claimed capability
+ *   neutral sample AND from a named sibling that a terminal LACKING exactly the claimed feature
  *   would paint identically. The expected frame is the sequence under test painted a second time,
  *   never an independent reference, so "the target equals the expected frame" proves only that the
  *   paint is stable — never that the colour is correct.
  *
- *   Each sibling rules out the missing capability rather than merely being another colour:
+ *   Each sibling rules out the missing feature rather than merely being another colour:
  *   - basic colour: another index in the same family (31 against 32), so a terminal that ignores
  *     the sequence is separated from one that paints a colour;
  *   - bright: its normal counterpart (91 against 31), so a terminal that paints bright as normal
@@ -37,7 +37,7 @@ const CURSOR_ROW = 5
 interface ColourRow {
   /** The sequence under test, painted on the sample in the target and expected frames. */
   sequence: string
-  /** The colour a terminal lacking exactly this capability would paint identically. */
+  /** The colour a terminal lacking exactly this feature would paint identically. */
   sibling: string
   /** The sibling in words, so the observation note says what was compared. */
   siblingLabel: string

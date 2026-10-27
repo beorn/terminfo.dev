@@ -1,4 +1,4 @@
-/** Canonical CLI capability matrix, rendered through the existing Silvery text layout. */
+/** Canonical CLI feature matrix, rendered through the existing Silvery text layout. */
 
 import React from "react"
 import { Box, Text, renderString } from "silvery"

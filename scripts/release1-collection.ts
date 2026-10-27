@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The existing collection entry point, extended toward the full 273-capability, 33-context pass.
+ * The existing collection entry point, extended toward the full 273-feature, 33-subject-configuration pass.
  * Bare/--plan prints a read-only census and historical Linux launcher recipes.
  * --collect --development invokes existing raw collectors, validates the current suite in memory,
  * and retains private classifications. WIP: headless, Linux and hosted dispatch are wired; other contexts

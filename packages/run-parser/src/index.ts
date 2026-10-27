@@ -706,7 +706,7 @@ export function parseOuterApp(
   }
 }
 
-/** Typed capability review of immutable capture bytes, separate from final-run admission review. */
+/** Typed feature review of immutable capture bytes, separate from final-run admission review. */
 export function parseCaptureDecision(
   value: unknown,
   path: string,
@@ -977,7 +977,7 @@ export function parseProbeResults(
   const results = value.map((item): ProbeResult => {
     if (!object(item) || !nonempty(item.featureId)) fail(path, "invalid probe result")
     const featureId = item.featureId
-    if (seen.has(featureId)) fail(path, `duplicate capability ${featureId}`)
+    if (seen.has(featureId)) fail(path, `duplicate feature ${featureId}`)
     seen.add(featureId)
     if (!expected.has(featureId)) fail(path, `${featureId} is outside frozen catalogue membership`)
     if (!PROBE_STATUSES.includes(item.status as ProbeResult["status"])) {

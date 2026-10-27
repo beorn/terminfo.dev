@@ -85,7 +85,7 @@ function reviewResult(branch: string, reason: string, noObservable: string, stat
 export function osInputReviewResult(
   noObservable: string,
   state: object,
-  reason = "Headless context injects no OS-level input; required independent review of the retained raw state pending",
+  reason = "Library probe source injects no OS-level input; required independent review of the retained raw state pending",
 ): ProbeCallbackResult {
   return reviewResult("os-input-review", reason, noObservable, state)
 }
@@ -99,7 +99,7 @@ export function osInputReviewResult(
 export function colorReadbackReviewResult(noObservable: string, state: object): ProbeCallbackResult {
   return reviewResult(
     "color-readback-review",
-    "Headless context offers no colour readback; required independent review of the retained raw state pending",
+    "Library probe source offers no colour readback; required independent review of the retained raw state pending",
     noObservable,
     state,
   )
@@ -1157,7 +1157,7 @@ export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeRe
     reason ??= failed.reason ?? "Required test failed after its attempt"
   } else if (pending || tests.length === 0) {
     status = "test-todo"
-    reason ??= pending?.reason ?? "Required capability implementation has not run"
+    reason ??= pending?.reason ?? "Required feature implementation has not run"
   } else if (impossible) {
     status = impossible.reviewRef ? "untestable" : "test-todo"
     reason ??= impossible.reason ?? "Context-impossibility review is required"
@@ -1280,7 +1280,7 @@ export function recordExecutedProbe(input: {
   })
 }
 
-/** The execution owner records an aborted collection against affected unfinished capabilities. */
+/** The execution owner records an aborted collection against affected unfinished features. */
 export function recordCollectionFailure(
   draft: RunDraft,
   startedAt: string,

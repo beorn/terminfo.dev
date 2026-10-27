@@ -91,7 +91,7 @@ export type RegionReadbackCell = string | { char: string; attributes: RegionRead
 
 export interface RegionReadbackRow extends Pick<ProbeDefinition, "textClaim"> {
   id: string
-  /** The claim in words: the termless arm's `expected`, and the kind table test's row label. */
+  /** The claim in words: the lib arm's `expected`, and the kind table test's row label. */
   expected: string
   /** The seed frame's writes. */
   seed: string
@@ -112,14 +112,14 @@ export interface RegionReadbackRow extends Pick<ProbeDefinition, "textClaim"> {
   /**
    * Cells whose position the sequence must preserve. A control is a real control only when the
    * sequence does not write it. Only when every one holds is `after` a verdict; a moved control means
-   * the fixture, not the capability, is what failed, so the row reads inconclusive instead.
+   * the fixture, not the feature, is what failed, so the row reads inconclusive instead.
    */
   controls: readonly RegionReadbackControl[]
   /** The note when the seed frame was not measured. */
   seedNote: string
   /** The note when a control cell moved, so the claim cannot be read. */
   controlNote: string
-  /** The normalizing write the termless arm makes whether or not it decided, and the pixel prelude. */
+  /** The normalizing write the lib arm makes whether or not it decided, and the pixel prelude. */
   reset: string
   /** The grid the sequence would leave if it IGNORED the one attribute it claims. */
   ignored?: readonly (readonly RegionReadbackCell[])[]
@@ -584,7 +584,7 @@ function regionReadbackSpec(
 }
 
 /**
- * Build the one probe a row describes. The termless arm measures the parser's cells; the term arm
+ * Build the one probe a row describes. The lib arm measures the parser's cells; the term arm
  * hands the derived seed / edit / expected frames to the capture-region oracle. A run with no owned
  * capture cannot read a window back at all, so that arm refuses by NAME and writes nothing: a
  * fixture that can only answer "inconclusive" is not evidence, and is deleted rather than kept.

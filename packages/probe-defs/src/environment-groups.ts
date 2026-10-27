@@ -2,7 +2,7 @@
  * The ONE environment-group partition. Nine catalogue positions ask about the environment the engine
  * process was started in (TERM, COLORTERM, TERM_PROGRAM and friends). They are recorded
  * `probeStatus: "manual"` with the reason "manual by design: no automatable probe exists for this
- * feature", and they are not graded capabilities: no capture route reads the environment today, so
+ * feature", and they are not graded features: no capture route reads the environment today, so
  * grading them would claim a measurement nobody made.
  *
  * Operator ruling D132 B (2026-10-23 20:03:29 PDT), CPO plan 16502c90: 264 graded capability entries
@@ -30,7 +30,7 @@ export type EnvironmentGroupId = (typeof ENVIRONMENT_GROUP_IDS)[number]
 
 const ENVIRONMENT_GROUP_SET: ReadonlySet<string> = new Set(ENVIRONMENT_GROUP_IDS)
 
-/** Whether `id` is one of the nine environment positions, never a graded capability. */
+/** Whether `id` is one of the nine environment positions, never a graded feature. */
 export function isEnvironmentGroup(id: string): boolean {
   return ENVIRONMENT_GROUP_SET.has(id)
 }

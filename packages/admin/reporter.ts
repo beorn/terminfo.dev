@@ -1,5 +1,5 @@
 /**
- * Census reporter — shows capability matrix instead of pass/fail noise.
+ * Census reporter — shows feature matrix instead of pass/fail noise.
  */
 
 export default class CensusReporter {

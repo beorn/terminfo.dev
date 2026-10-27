@@ -4,7 +4,7 @@ import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 
 /**
  * The nine measured Erase rows, as one region-readback kind table (28450; @cto 218ec7fe's rule
- * applied to Erase). Each row holds its claim ONCE: the termless arm reads its seed, its steps and its
+ * applied to Erase). Each row holds its claim ONCE: the lib arm reads its seed, its steps and its
  * target cells against the parser, and the kind derives the capture-region oracle's frames from the
  * same fields, so the two arms cannot grade two fixtures.
  *

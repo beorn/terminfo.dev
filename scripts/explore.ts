@@ -152,7 +152,7 @@ in 2025-2026 from influential sources? Check:
 
 Focus on articles that:
 - Describe features terminfo.dev should track
-- Compare terminals on specific capabilities
+- Compare terminals on specific features
 - Propose new protocols or best practices
 - Discuss deprecations or compatibility issues
 

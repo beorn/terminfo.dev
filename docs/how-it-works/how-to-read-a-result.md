@@ -13,7 +13,7 @@ next:
 
 # How to read a result
 
-A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "TEST FAILURE: the attempted query produced no usable result". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". TEST TODO means required work remains, including an unattempted probe or a required review. TEST FAILURE means an attempted check broke or could not produce a valid result; a functioning oracle's documented negative result is Unsupported instead.
+A result label states the outcome, then the evidence or the reason, as in "Supported: verified in screenshot" or "TEST FAILURE: the attempted query produced no usable result". A page that shows a single result may name what was checked: "Supported: underline shows in screenshot", "Supported: bracketed paste reported in terminal response". TEST TODO means required work remains, including an unattempted probe or a required review. TEST FAILURE means an attempted test broke or could not produce a valid result; a functioning oracle's documented negative result is Unsupported instead.
 
 ## Supported and Unsupported: verified in …
 
@@ -37,12 +37,12 @@ Automated image tests can decide criteria with machine-readable comparisons. Whe
 
 ## Untestable, TEST TODO and TEST FAILURE
 
-**Untestable** means a reviewer established that this context cannot expose the feature. **TEST TODO** means required work remains, including an unattempted probe or a pending review. **TEST FAILURE** means an attempted check broke or could not produce a valid result; it describes the test, not the terminal.
+**Untestable** means a reviewer established that this context cannot expose the feature. **TEST TODO** means required work remains, including an unattempted probe or a pending review. **TEST FAILURE** means an attempted test broke or could not produce a valid result; it describes the test, not the terminal.
 
 - **TEST FAILURE: no usable reply** or **TEST FAILURE: no reply in time** — the query was attempted, but no result arrived before the deadline and no documented negative response established Unsupported.
 - **TEST FAILURE: the reply was not in the expected form** — we do not grade a reply we cannot parse.
 - **TEST TODO: permission prevented the query from starting** — no measurement was attempted.
-- **TEST FAILURE: an attempted permission check did not produce a valid result** — a denial is a failure only when the attempted check did not establish a documented negative result.
+- **TEST FAILURE: an attempted permission test did not produce a valid result** — a denial is a failure only when the attempted test did not establish a documented negative result.
 - **TEST TODO: the probe was not sent** — the run skipped this probe, for example because it would change the terminal's state; we send such probes only to a disposable test terminal.
 - **TEST FAILURE: the terminal accepted the query, but nothing visible changed** — this is a failure when the required observation did not resolve the claim; a validated negative oracle can establish Unsupported instead.
 - **TEST FAILURE: the attempt did not establish a result** — a reply, measurement or engine state was recorded, but proves nothing either way.

@@ -1,5 +1,5 @@
 /**
- * probes types -- terminal capability probing via vitest.
+ * probes types -- terminal feature probing via vitest.
  */
 
 export type SupportLevel = "yes" | "no" | "partial" | "unknown"

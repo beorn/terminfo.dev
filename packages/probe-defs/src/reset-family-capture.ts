@@ -2,7 +2,7 @@
  * @failure A reset-family row's capture arm compares a control frame and a target frame from two
  *   different paint contexts and grades "the frames differ" as support: a terminal that ignores the
  *   reset still differs from a control painted with a different setup, and a sequence that never
- *   reached the screen is reported as a capability claim. The nine reset-family rows therefore
+ *   reached the screen is reported as a feature claim. The nine reset-family rows therefore
  *   declare one capture-region row each: seed, expected and ignored frames are painted in the same
  *   run and compared cell-for-cell by the exact-digest oracle.
  * @level l1

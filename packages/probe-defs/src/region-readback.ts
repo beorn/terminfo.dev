@@ -627,7 +627,7 @@ export async function captureRegionGeometry(
  * refused before any byte; then the terminal's own pixel report is queried here, once. A terminal
  * that answers those queries with something unusable is inconclusive BY NAME. Retained replies
  * carry query_reply observations; an unanswered query remains an execution failure, and a missing
- * report is never a capability verdict.
+ * report is never a feature verdict.
  *
  * `callerHasQuery` records that the caller already attempted its own query before asking. That
  * attempt preserves failure on a subsequent refusal; a genuinely unattempted fixture stays TODO.

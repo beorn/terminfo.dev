@@ -39,7 +39,7 @@ function buildCategories(featureIds: string[]): Map<string, string[]> {
 }
 
 /**
- * Transform raw vitest assertion messages into human-readable capability notes.
+ * Transform raw vitest assertion messages into human-readable feature notes.
  *
  * "AssertionError: expected false to be true // Object.is equality\n    at ..."
  * becomes: "not supported"
