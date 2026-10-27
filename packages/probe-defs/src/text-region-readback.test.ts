@@ -57,7 +57,7 @@ function textFrame(
   }
 }
 
-const textContext = (): TermProbeSource => ({
+const textSource = (): TermProbeSource => ({
   kind: "live",
   rows: 24,
   cols: 80,
@@ -76,7 +76,7 @@ const textContext = (): TermProbeSource => ({
 
 describe("a text arm decides its rows from cells it read, never from pixels", () => {
   it("names outside-cell whole-window motion while deciding stable compared cells", async () => {
-    const ctx = textContext()
+    const ctx = textSource()
     ctx.capture = async (request) => {
       const frame = textFrame(request.label, request.role)
       if (frame.kind !== "text-cells" || !request.label.endsWith("capture stability 2")) return frame
@@ -95,7 +95,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   })
 
   it("decides a supported row without ever demanding a pixel report", async () => {
-    const result = await captureRegionVerdict(textContext(), "erase.el", spec)
+    const result = await captureRegionVerdict(textSource(), "erase.el", spec)
     expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     // No image to point at, and a text digest in screenshotRef would be refused at admission.
     expect(result?.observation?.screenshotRef).toBeUndefined()
@@ -106,7 +106,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   })
 
   it("keeps the pixel path untouched when the run's adapter reads pixels", async () => {
-    const ctx: TermProbeSource = { ...textContext(), captureKind: "pixels", captureGeometry: undefined }
+    const ctx: TermProbeSource = { ...textSource(), captureKind: "pixels", captureGeometry: undefined }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
     expect(result?.observation).toBeUndefined()
@@ -121,7 +121,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   // verdict and its reason stay exactly as they were.
   it("names the cell axis space on a third distinct frame and keeps the verdict inconclusive", async () => {
     const ctx: TermProbeSource = {
-      ...textContext(),
+      ...textSource(),
       capture: async (request) => textFrame(request.label, request.role, "other"),
     }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)

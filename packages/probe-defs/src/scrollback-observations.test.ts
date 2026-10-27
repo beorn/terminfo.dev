@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { createHash } from "node:crypto"
 import { scrollbackProbes, scrollbackReadbackRows } from "./scrollback.ts"
 import type { ObservationFrame, TermProbeSource, LibProbeSource } from "./types.ts"
-import { headlessContext } from "./testing/group-harness.ts"
+import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
@@ -150,7 +150,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   expect(writes.filter((s) => s.startsWith("line-"))).toHaveLength(47)
 })
 
-function silentAppContext(rows: number, cols: number): { context: TermProbeSource; writes: string[] } {
+function silentAppSource(rows: number, cols: number): { context: TermProbeSource; writes: string[] } {
   const writes: string[] = []
   const context: TermProbeSource = {
     kind: "live",
@@ -173,7 +173,7 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
   for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
     const definition = scrollbackProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
-    const result = await definition.term(silentAppContext(12, 61).context)
+    const result = await definition.term(silentAppSource(12, 61).context)
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       assertionType: "query_reply",
@@ -197,7 +197,7 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
     const definition = scrollbackProbes.find((item) => item.id === id)
     if (!definition?.term) throw new Error(`Missing ${id} app callback`)
     let queried = false
-    const { context, writes } = silentAppContext(12, 61)
+    const { context, writes } = silentAppSource(12, 61)
     const result = await definition.term({
       ...context,
       queryCursorPosition: async () => {
@@ -423,7 +423,7 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   }
   const decstbm = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
   if (!decstbm?.term) throw new Error("Missing scrollback.decstbm app callback")
-  const { context, writes } = silentAppContext(12, 1)
+  const { context, writes } = silentAppSource(12, 1)
   const result = await decstbm.term({
     ...context,
     capture: async () => {
@@ -686,7 +686,7 @@ test.each(["scrollback.set-region", "scrollback.alt-screen", "scrollback.decstbm
   (id) => {
     const probe = scrollbackProbes.find((item) => item.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
-    const result = probe.lib(headlessContext(createSemanticSurface()))
+    const result = probe.lib(libProbeSource(createSemanticSurface()))
     expect(result.observation?.outcome, id).toBe("supported")
     // A decided row carries its assertion, never a bare outcome.
     expect(result.assertions ?? [], id).not.toEqual([])
@@ -700,7 +700,7 @@ test.each([
 ] as const)("%s reads unsupported when the surface ignores exactly that operation", (id, mutation) => {
   const probe = scrollbackProbes.find((item) => item.id === id)
   if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
-  const result = probe.lib(headlessContext(createSemanticSurface({ mutations: [mutation] })))
+  const result = probe.lib(libProbeSource(createSemanticSurface({ mutations: [mutation] })))
   expect(result.observation?.outcome, `${id} under ${mutation}`).toBe("unsupported")
 })
 

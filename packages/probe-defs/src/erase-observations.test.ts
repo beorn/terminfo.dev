@@ -10,7 +10,7 @@ import { createHash } from "node:crypto"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { headlessContext, regradeRow } from "./testing/group-harness.ts"
+import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 
@@ -227,7 +227,7 @@ test("every kind row decides from its own cells, through the shared kind", async
     if (!probe) continue
     expect(probe.termNeedsGeometry, row.id).toBe(true)
     expect(probe.libAssertionType, row.id).toBe("buffer_state")
-    const measured = probe.lib!(headlessContext(createSemanticSurface()))
+    const measured = probe.lib!(libProbeSource(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     expect(toSpaces(state.before), `${row.id} reads the row's seed cells`).toEqual(toSpaces(row.before))
     expect(toSpaces(state.after), `${row.id} reads the row's target cells`).toEqual(toSpaces(row.after))
@@ -236,7 +236,7 @@ test("every kind row decides from its own cells, through the shared kind", async
     const contract = KIND_TABLE_ROWS.find((entry) => entry.id === row.id)
     expect(contract, `${row.id} is named in the table`).toBeDefined()
     if (!contract) continue
-    const graded = await regradeRow(probe, contract, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, contract, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
   }
@@ -246,8 +246,8 @@ test("the kind table replays every row deterministically", async () => {
   for (const row of KIND_TABLE_ROWS) {
     const probe = eraseProbes.find((entry) => entry.id === row.id)
     if (!probe) continue
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
   }

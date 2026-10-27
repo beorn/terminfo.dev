@@ -37,7 +37,7 @@ const WITNESS_WRITE = /\x1b\[3;1H([\s\S])/u
  * elsewhere. Writes never remove it — that is the measured fact the clear could not change — and
  * the only cell they move is the paint witness the probe parks at row 3, column 1.
  */
-function poisonedContext(): { ctx: TermProbeSource; writes: string[]; requests: CaptureRequest[] } {
+function poisonedSource(): { ctx: TermProbeSource; writes: string[]; requests: CaptureRequest[] } {
   const writes: string[] = []
   const requests: CaptureRequest[] = []
   const screen: string[][] = Array.from({ length: 24 }, () => Array.from(" ".repeat(80)))
@@ -93,7 +93,7 @@ function poisonedContext(): { ctx: TermProbeSource; writes: string[]; requests: 
 
 describe("a stand-in outside the compared cells does not decide a region row", () => {
   it("measures its own region while the previous probe's leftover is still on screen", async () => {
-    const { ctx, writes } = poisonedContext()
+    const { ctx, writes } = poisonedSource()
     const result = await captureRegionVerdict(ctx, "erase.character", spec)
     expect(result).not.toBeNull()
     expect(result?.observation?.note ?? "").not.toContain("refused the text snapshot")
@@ -107,7 +107,7 @@ describe("a stand-in outside the compared cells does not decide a region row", (
   })
 
   it("still refuses by name when the compared region holds that same cell", async () => {
-    const { ctx } = poisonedContext()
+    const { ctx } = poisonedSource()
     await expect(
       captureRegionVerdict(ctx, "erase.character", { ...spec, region: { top: 1, left: 1, bottom: 1, right: 8 } }),
     ).rejects.toThrow(/row 1, column 1 holds U\+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit/u)

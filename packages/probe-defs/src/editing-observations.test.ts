@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell } from "./region-readback-kind.ts"
-import { headlessContext, regradeRow } from "./testing/group-harness.ts"
+import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import type { LibProbeSource } from "./types.ts"
 
@@ -217,7 +217,7 @@ test("every kind row decides from its own cells, through the shared kind", async
     if (!probe) continue
     expect(probe.termNeedsGeometry, row.id).toBe(true)
     expect(probe.libAssertionType, row.id).toBe("buffer_state")
-    const measured = probe.lib!(headlessContext(createSemanticSurface()))
+    const measured = probe.lib!(libProbeSource(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     expect(toSpaces(state.before), `${row.id} reads the row's seed cells`).toEqual(toSpaces(row.before))
     expect(toSpaces(state.after), `${row.id} reads the row's target cells`).toEqual(toSpaces(row.after))
@@ -226,7 +226,7 @@ test("every kind row decides from its own cells, through the shared kind", async
     const contract = KIND_TABLE_ROWS.find((entry) => entry.id === row.id)
     expect(contract, `${row.id} is named in the table`).toBeDefined()
     if (!contract) continue
-    const graded = await regradeRow(probe, contract, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, contract, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
   }
@@ -236,8 +236,8 @@ test("the kind table replays every row deterministically", async () => {
   for (const row of KIND_TABLE_ROWS) {
     const probe = editingProbes.find((entry) => entry.id === row.id)
     if (!probe) continue
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
   }
@@ -349,7 +349,7 @@ test("every row's controls survive the row's own steps on the reference parser",
   for (const row of editingReadbackRows) {
     // SL and SR shift every compared column, so neither declares a control.
     if (row.controls.length === 0) continue
-    const ctx = headlessContext(createSemanticSurface())
+    const ctx = libProbeSource(createSemanticSurface())
     ctx.feed(row.seed)
     for (const control of row.controls) ctx.feed(`\x1b[${control.row + 1};${control.col + 1}H\u00b5`)
     for (const step of row.steps) ctx.feed(step.write)

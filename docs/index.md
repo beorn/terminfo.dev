@@ -355,7 +355,7 @@ function backendTooltip(name, version) {
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in appBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="backendLabel(b.name)"
           :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
       </td>
     </tr>
@@ -438,7 +438,7 @@ function backendTooltip(name, version) {
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="backendLabel(b.name)"
           :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
       </td>
     </tr>
@@ -496,7 +496,7 @@ function backendTooltip(name, version) {
         <a class="hover-link" :href="'/' + f.category + '/' + featureSlug(f.id)">{{ f.name }}</a>
       </td>
       <td v-for="b in muxBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="backendLabel(b.name)"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="backendLabel(b.name)"
           :version="displayedSelections[b.name]?.selected" :cell="publicResultFor(displayedSelections[b.name]?.selected, f.id)" />
       </td>
     </tr>

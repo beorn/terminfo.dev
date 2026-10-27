@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import { replayContext } from "./testing/group-harness.ts"
+import { replayTermProbeSource } from "./testing/group-harness.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 function callback(id: string) {
@@ -77,7 +77,7 @@ test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle 
   const definition = callback("extensions.truecolor")
   const sgrQuery = "\x1bP$qm\x1b\\"
   const answering = (raw: string) =>
-    replayContext(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
+    replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
   const supported = await definition.term!(answering("\x1bP1$r0;38;2;255;128;0m\x1b\\"))
   expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   // The cell-storage claim is exactly what sgr.fg.truecolor decides, so a report without the
@@ -85,7 +85,7 @@ test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle 
   const unsupported = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
   expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
-  const silent = await definition.term!(replayContext(new Map()))
+  const silent = await definition.term!(replayTermProbeSource(new Map()))
   expect(silent.observation).toBeUndefined()
   expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
 })
@@ -626,7 +626,7 @@ test.each([
   expect(ignoring.colour()).toBe("1111/2222/3333")
 
   // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
-  const silent = await definition.term!(replayContext(new Map()))
+  const silent = await definition.term!(replayTermProbeSource(new Map()))
   expect(silent.observation).toBeUndefined()
   expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 

@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { textProbes, textReadbackRows } from "./text.ts"
 import { unicodeProbes } from "./unicode.ts"
 import { regionReadbackProbe } from "./region-readback-kind.ts"
-import { headlessContext } from "./testing/group-harness.ts"
+import { libProbeSource } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 import { recordExecutedProbe } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
@@ -948,7 +948,7 @@ test("text.reverse-index-scroll leaves default margins so a later probe does not
   expect(row, "the kind table names text.reverse-index-scroll").toBeDefined()
   if (!row) return
   expect(row.reset, "the row restores the full-screen region").toBe("\x1b[r")
-  const ctx = headlessContext(createSemanticSurface({ rows: 24, cols: 80 }))
+  const ctx = libProbeSource(createSemanticSurface({ rows: 24, cols: 80 }))
   expect(regionReadbackProbe(row).lib!(ctx).observation?.outcome).toBe("supported")
   // The row left "KEEPS!" on screen row 1. With default margins a screen-top RI scrolls it away; while
   // margins 3-10 stand, row 1 sits ABOVE the region and cannot move.

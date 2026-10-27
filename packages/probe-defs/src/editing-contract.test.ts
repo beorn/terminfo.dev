@@ -1,5 +1,5 @@
 /**
- * @failure An Editing capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure An Editing feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so the Editing group reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Editing group (child 28022); the 28453 harness's fourth adopter.
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { editingProbes } from "./editing.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -22,7 +22,7 @@ import {
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 /**
- * The 17 Editing capabilities of 28018's Editing row; ids drawn from editing.ts, claims are the
+ * The 17 Editing features of 28018's Editing row; ids drawn from editing.ts, claims are the
  * contract. `editing.decsace` measures attribute-change extent by differential: DECSACE 2 confines
  * the same DECCARA to its rectangle, DECSACE 0 reaches the rest of the reading-order span.
  */
@@ -67,7 +67,7 @@ const EDITING_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
-test("the Editing contract covers every editing capability and names none unknown", () => {
+test("the Editing contract covers every editing feature and names none unknown", () => {
   const gaps = contractGaps(editingProbes, EDITING_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -100,14 +100,14 @@ test("editing.decsace declares the measuring evidence kind of both its arms", ()
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the table below.
-test("the harness replays every editing capability deterministically", async () => {
+test("the harness replays every editing feature deterministically", async () => {
   for (const row of EDITING_CONTRACT) {
     const probe = editingProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing editing probe ${row.id}`).toBeDefined()
     if (!probe) continue
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -124,7 +124,7 @@ test("every editing contract row reads its declared outcome against a surface th
     const probe = editingProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing editing probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     const expected = row.expected === "decided" ? "supported" : row.expected
     expect(graded.after, `${row.id} reads ${expected} from a surface implementing its claim`).toBe(expected)
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
@@ -139,7 +139,7 @@ test("an attribute change starts at the stream extent until the row selects rect
   const paint = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
   const change = "\x1b[1;2;2;3;7$r"
   const pattern = (selectExtent: string): string => {
-    const ctx = headlessContext(createSemanticSurface({ cols: 8, rows: 2 }))
+    const ctx = libProbeSource(createSemanticSurface({ cols: 8, rows: 2 }))
     ctx.feed(paint + selectExtent + change)
     return Array.from({ length: 2 }, (_, row) =>
       Array.from({ length: 8 }, (_, col) => (ctx.getCell(row, col).inverse ? "#" : ".")).join(""),
@@ -159,7 +159,7 @@ test("an ICH that does not insert reads unsupported", async () => {
   expect(probe, "the Editing contract names a real editing.insert-chars probe").toBeDefined()
   if (!row || !probe) return
   const graded = await regradeRow(probe, row, {
-    headless: headlessContext(createSemanticSurface({ mutations: ["ich-noop"] })),
+    headless: libProbeSource(createSemanticSurface({ mutations: ["ich-noop"] })),
   })
   expect(graded.after, "editing.insert-chars detects an inert ICH").toBe("unsupported")
 })

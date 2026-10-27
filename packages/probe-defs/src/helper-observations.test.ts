@@ -1084,7 +1084,7 @@ test("cursor movement binds measured positions and parser state, never a missing
 
 test("DECRPM recognizes explicit set/reset/unknown without changing an existing mode", async () => {
   const written: string[] = []
-  const makeContext = (ps: DecrpmPs | null) =>
+  const makeSource = (ps: DecrpmPs | null) =>
     terminal({
       write(text) {
         written.push(text)
@@ -1104,20 +1104,20 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
     [2, "reset (Ps 2)"],
     [3, "permanently set (Ps 3)"],
   ] as const) {
-    const result = await decrpm.term(makeContext(ps))
+    const result = await decrpm.term(makeSource(ps))
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.response).toBe(reading)
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
   }
   // Ps 4: known, cannot be set (#30557).
-  const four = await decrpm.term(makeContext(4))
+  const four = await decrpm.term(makeSource(4))
   expect(four.pass).toBe(false)
   expect(four.response).toBe("permanently reset (Ps 4)")
   expect(four.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(four.assertions).toMatchObject([
     { kind: "negative", expected: "DECRPM mode 42 can be set", observed: "permanently reset (Ps 4)" },
   ])
-  const unknown = await decrpm.term(makeContext(0))
+  const unknown = await decrpm.term(makeSource(0))
   expect(unknown.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
@@ -1125,7 +1125,7 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   })
   expect(unknown.response).toBe("not recognized (Ps 0)")
   expect(unknown.assertions).toBeUndefined()
-  const missing = await decrpm.term(makeContext(null))
+  const missing = await decrpm.term(makeSource(null))
   expect(missing.observation).toBeUndefined()
   expect(missing.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No DECRPM response" }])
   expect(written).toEqual([])

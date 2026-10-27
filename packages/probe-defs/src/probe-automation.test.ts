@@ -78,7 +78,7 @@ function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   }
 }
 
-function terminalContext(overrides: Partial<TermProbeSource>): TermProbeSource {
+function terminalSource(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     kind: "live",
     write() {},
@@ -121,7 +121,7 @@ describe("Sixel geometry item-2 report", () => {
 
   async function fromTerminal(raw: string, sentinelFirst = false) {
     return terminal(
-      terminalContext({
+      terminalSource({
         queryWithSentinelOutcome: async (sequence, pattern) => {
           expect(sequence).toBe(query)
           const match = sentinelFirst ? null : raw.match(pattern)
@@ -199,7 +199,7 @@ describe("OSC 8 link metadata observation", () => {
   const uri = "https://example.com/osc8-proof"
   const positions = [null, uri, uri, uri, uri, null] as const
 
-  function linkedContext(links: readonly (string | null | undefined)[], declared = true): LibProbeSource {
+  function linkedSource(links: readonly (string | null | undefined)[], declared = true): LibProbeSource {
     const base = context({})
     return Object.assign(
       context({
@@ -224,7 +224,7 @@ describe("OSC 8 link metadata observation", () => {
   test("four exact URI cells bracketed by unlinked controls establish support", () => {
     const p = probe("extensions.osc8")
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
-    const result = p.lib(linkedContext(positions))
+    const result = p.lib(linkedSource(positions))
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
     // The headless batch admits parser-state conclusions only when the exact
@@ -239,7 +239,7 @@ describe("OSC 8 link metadata observation", () => {
       [null, uri, "https://wrong.example", uri, uri, null],
       [null, uri, uri, uri, uri, uri],
     ]) {
-      const result = p.lib(linkedContext(links))
+      const result = p.lib(linkedSource(links))
       expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
       expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
       expect(result.assertions?.[0]?.observed).toBe(result.response)
@@ -249,16 +249,16 @@ describe("OSC 8 link metadata observation", () => {
   test("missing link metadata is inconclusive, but a true declaration with absent field is an error", () => {
     const p = probe("extensions.osc8")
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
-    const unreported = p.lib(linkedContext(Array(6).fill(undefined), false))
+    const unreported = p.lib(linkedSource(Array(6).fill(undefined), false))
     expect(unreported.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(() => p.lib?.(linkedContext(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
+    expect(() => p.lib?.(linkedSource(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
   })
 
   // AC3: the published feature flag does not declare metadata exposure.
   test("a true feature flag with no metadata extension stays unreported", () => {
     const p = probe("extensions.osc8")
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
-    const result = p.lib(linkedContext(Array(6).fill(null), false))
+    const result = p.lib(linkedSource(Array(6).fill(null), false))
     expect(result.observation).toMatchObject({ outcome: "inconclusive" })
     expect(JSON.parse(result.response ?? "")).toMatchObject({ links: Array(6).fill({ reported: false }) })
   })
@@ -266,11 +266,14 @@ describe("OSC 8 link metadata observation", () => {
   test("application CPR consumption remains inconclusive", async () => {
     const p = probe("extensions.osc8")
     if (!p.term) throw new Error("OSC 8 needs application callback")
-    const result = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 7 }) }))
+    const result = await p.term(terminalSource({ queryCursorPosition: async () => ({ row: 1, col: 7 }) }))
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
     expect(result.tests).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior" }),
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+      }),
     ])
   })
 })
@@ -296,7 +299,7 @@ describe("Kitty protocol detection", () => {
         }),
       )
       const terminal = await p.term(
-        terminalContext({
+        terminalSource({
           write(sequence) {
             writes.push(sequence)
           },
@@ -339,7 +342,7 @@ describe("Kitty protocol detection", () => {
       const written: string[] = []
       let index = 0
       const term = await p.term(
-        terminalContext({
+        terminalSource({
           write(text) {
             written.push(text)
           },
@@ -370,7 +373,7 @@ describe("Kitty protocol detection", () => {
     const missingWrites: string[] = []
     let missingQueries = 0
     const missing = await p.term(
-      terminalContext({
+      terminalSource({
         write(sequence) {
           missingWrites.push(sequence)
         },
@@ -399,7 +402,7 @@ describe("Kitty protocol detection", () => {
       const writes: string[] = []
       let queries = 0
       const terminal = await p.term(
-        terminalContext({
+        terminalSource({
           write(sequence) {
             writes.push(sequence)
           },
@@ -464,7 +467,7 @@ describe("Kitty protocol detection", () => {
         }),
       )
       const term = await p.term(
-        terminalContext({
+        terminalSource({
           queryMode: async () => {
             throw new Error("OSC 5522 must retain the Ps, not its folded mode")
           },
@@ -538,7 +541,10 @@ describe("Kitty protocol detection", () => {
           expect(result.observation, `${id}: ${JSON.stringify(reply)}`).toBeUndefined()
           expect(result.assertions).toBeUndefined()
           expect(result.tests).toMatchObject([
-            expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No OSC 52 c query response") }),
+            expect.objectContaining({
+              status: "test-failure",
+              reason: expect.stringContaining("No OSC 52 c query response"),
+            }),
           ])
         } else {
           expect(result.observation?.outcome, `${id}: ${JSON.stringify(reply)}`).toBe("inconclusive")
@@ -548,7 +554,7 @@ describe("Kitty protocol detection", () => {
 
       const liveWrites: string[] = []
       const live = await p.term(
-        terminalContext({
+        terminalSource({
           write(text) {
             liveWrites.push(text)
           },
@@ -567,7 +573,10 @@ describe("Kitty protocol detection", () => {
       expect(live.observation).toBeUndefined()
       expect(live.assertions).toBeUndefined()
       expect(live.tests).toMatchObject([
-        expect.objectContaining({ status: "test-todo", reason: "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent" }),
+        expect.objectContaining({
+          status: "test-todo",
+          reason: "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent",
+        }),
       ])
       expect(live.note).toMatch(/collector|owned clipboard/i)
     }
@@ -600,7 +609,7 @@ describe("Kitty protocol detection", () => {
       const p = probe(id)
       if (!p.term) throw new Error(`${id} needs a live callback`)
       const result = await p.term(
-        terminalContext({
+        terminalSource({
           withClipboardFixture,
           write(text) {
             written.push(text)
@@ -624,7 +633,7 @@ describe("Kitty protocol detection", () => {
     if (!read.term) throw new Error("read callback missing")
     for (const raw of ["\x1b[1;1R", "\x1b]52;p;d3Jvbmc=\x07", "\x1b]52;c;bad!\x07", "\x1b]52;c;d3Jvbmc=\x1b", ""]) {
       const result = await read.term(
-        terminalContext({
+        terminalSource({
           withClipboardFixture,
           queryOutcome: async () => ({
             match: null,
@@ -645,7 +654,7 @@ describe("Kitty protocol detection", () => {
       }
     }
     const uncorrelated = await read.term(
-      terminalContext({
+      terminalSource({
         withClipboardFixture,
         queryOutcome: async () => {
           const raw = `\x1b]52;c;${btoa(clipboard)}\x07`
@@ -653,12 +662,17 @@ describe("Kitty protocol detection", () => {
         },
       }),
     )
-    expect(uncorrelated.observation).toEqual({ outcome: "inconclusive", assertionType: "query_reply", reason: "invalid-reply", note: "No complete OSC 52 c reply" })
+    expect(uncorrelated.observation).toEqual({
+      outcome: "inconclusive",
+      assertionType: "query_reply",
+      reason: "invalid-reply",
+      note: "No complete OSC 52 c reply",
+    })
     expect(uncorrelated.assertions).toBeUndefined()
     expect(uncorrelated.tests).toBeUndefined()
     let captured = false
     const prompt = await read.term(
-      terminalContext({
+      terminalSource({
         withClipboardFixture,
         queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
         capture: async (request) => {
@@ -696,7 +710,7 @@ describe("Kitty protocol detection", () => {
       // DA1-only detection: unsupported, no push, no pop.
       {
         const writes: string[] = []
-        const absentCtx = terminalContext({
+        const absentCtx = terminalSource({
           write(text) {
             writes.push(text)
           },
@@ -716,7 +730,7 @@ describe("Kitty protocol detection", () => {
         const writes: string[] = []
         let queryCall = 0
         const failure = new Error(`${id}: query failed`)
-        const ctx = terminalContext({
+        const ctx = terminalSource({
           write(text) {
             writes.push(text)
           },
@@ -788,7 +802,7 @@ describe("Kitty protocol detection", () => {
     for (const mode of ["push-write-throws", "query-throws"] as const) {
       const writes: string[] = []
       let queryCall = 0
-      const ctx = terminalContext({
+      const ctx = terminalSource({
         write(sequence) {
           writes.push(sequence)
           if (mode === "push-write-throws" && sequence.startsWith("\x1b[>")) throw new Error("push failed")
@@ -852,7 +866,10 @@ describe("Kitty protocol detection", () => {
         expect(result.observation, `termless ${JSON.stringify(raw)}`).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.tests).toMatchObject([
-          expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No answer to the Kitty keyboard flags query") }),
+          expect.objectContaining({
+            status: "test-failure",
+            reason: expect.stringContaining("No answer to the Kitty keyboard flags query"),
+          }),
         ])
       } else {
         expect(result.observation?.outcome, `termless ${JSON.stringify(raw)}`).toBe(outcome)
@@ -870,7 +887,7 @@ describe("Kitty protocol detection", () => {
     for (const [raw, outcome] of detections) {
       const writes: string[] = []
       const result = await p.term(
-        terminalContext({
+        terminalSource({
           write(text) {
             writes.push(text)
           },
@@ -891,8 +908,18 @@ describe("Kitty protocol detection", () => {
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.response).toBe("")
-        expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No answer to the Kitty keyboard flags query or the DA1 follow-up; no support conclusion" }])
-      } else expect(result.observation, `term ${JSON.stringify(raw)}`).toMatchObject({ outcome, assertionType: "query_reply" })
+        expect(result.tests).toEqual([
+          {
+            id: "criterion",
+            status: "test-failure",
+            reason: "No answer to the Kitty keyboard flags query or the DA1 follow-up; no support conclusion",
+          },
+        ])
+      } else
+        expect(result.observation, `term ${JSON.stringify(raw)}`).toMatchObject({
+          outcome,
+          assertionType: "query_reply",
+        })
       expect(writes[0], `term ${JSON.stringify(raw)}`).toBe("\x1b[?u")
       if (outcome !== "supported") {
         expect(writes, `term ${JSON.stringify(raw)} push/pop`).toEqual(["\x1b[?u"])
@@ -912,7 +939,7 @@ describe("Kitty protocol detection", () => {
       const raw = `\x1b[?${flags}u`
       const writes: string[] = []
       const result = await p.term(
-        terminalContext({
+        terminalSource({
           write(sequence) {
             writes.push(sequence)
           },
@@ -929,11 +956,14 @@ describe("Kitty protocol detection", () => {
       expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
       expect(result.assertions?.[0]?.observed).toContain(String(flags))
     }
-    const timeout = await p.term(terminalContext({}))
+    const timeout = await p.term(terminalSource({}))
     expect(timeout.observation).toBeUndefined()
     expect(timeout.assertions).toBeUndefined()
     expect(timeout.tests).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No answer to the Kitty keyboard flags query") }),
+      expect.objectContaining({
+        status: "test-failure",
+        reason: expect.stringContaining("No answer to the Kitty keyboard flags query"),
+      }),
     ])
   })
 
@@ -946,7 +976,7 @@ describe("Kitty protocol detection", () => {
       ["", "inconclusive"],
     ] as const) {
       const result = await p.term(
-        terminalContext({
+        terminalSource({
           queryWithSentinelOutcome: async (_sequence, pattern) => ({
             match: raw.match(pattern),
             reason: raw ? "reply" : "sentinel",
@@ -959,7 +989,10 @@ describe("Kitty protocol detection", () => {
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.tests).toMatchObject([
-          expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No answer to the Kitty keyboard flags query") }),
+          expect.objectContaining({
+            status: "test-failure",
+            reason: expect.stringContaining("No answer to the Kitty keyboard flags query"),
+          }),
         ])
       } else {
         expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
@@ -978,7 +1011,7 @@ describe("Kitty protocol detection", () => {
       ["silence", "inconclusive"],
     ] as const) {
       const result = await p.term(
-        terminalContext({
+        terminalSource({
           write: () => {
             throw new Error("Support detection must not display a notification")
           },
@@ -997,7 +1030,10 @@ describe("Kitty protocol detection", () => {
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.tests).toMatchObject([
-          expect.objectContaining({ status: "test-failure", reason: "No matching notification query reply; OS display was not tested" }),
+          expect.objectContaining({
+            status: "test-failure",
+            reason: "No matching notification query reply; OS display was not tested",
+          }),
         ])
       } else {
         expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
@@ -1019,7 +1055,7 @@ describe("Kitty protocol detection", () => {
     ] as const) {
       const raw = body === null ? "" : `\x1b]21;${body}\x1b\\`
       const result = await p.term(
-        terminalContext({
+        terminalSource({
           queryWithSentinelOutcome: async (_sequence, pattern) => ({
             match: raw.match(pattern),
             reason: raw ? "reply" : "sentinel",
@@ -1032,7 +1068,10 @@ describe("Kitty protocol detection", () => {
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.tests).toMatchObject([
-          expect.objectContaining({ status: "test-failure", reason: "No OSC 21 reply; color rendering was not tested" }),
+          expect.objectContaining({
+            status: "test-failure",
+            reason: "No OSC 21 reply; color rendering was not tested",
+          }),
         ])
       } else {
         expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
@@ -1045,7 +1084,7 @@ describe("Kitty protocol detection", () => {
     for (const kind of ["transmit", "display"]) {
       const p = probe(`extensions.kitty-graphics.${kind}`)
       if (!p.term || !p.lib) throw new Error("missing graphics callback")
-      const silent = await p.term(terminalContext({}))
+      const silent = await p.term(terminalSource({}))
       expect(silent.pass).toBe(false) // A normal CPR must not turn an ignored APC into support.
       expect(silent.observation).toBeUndefined()
       expect(silent.assertions).toBeUndefined()
@@ -1064,7 +1103,7 @@ describe("Kitty protocol detection", () => {
           throw new Error(`Unexpected graphics request ${JSON.stringify(sequence)}`)
         }
         const result = await p.term(
-          terminalContext({
+          terminalSource({
             write: (sequence) => {
               writes.push(sequence)
             },
@@ -1089,7 +1128,7 @@ describe("Kitty protocol detection", () => {
     const failure = new Error("placement query failed")
     await expect(
       display.term(
-        terminalContext({
+        terminalSource({
           write: (sequence) => {
             writes.push(sequence)
           },
@@ -1109,7 +1148,7 @@ describe("Kitty protocol detection", () => {
     const p = probe("extensions.kitty-graphics")
     if (!p.term) throw new Error("missing graphics callback")
     const result = await p.term(
-      terminalContext({
+      terminalSource({
         queryWithSentinelOutcome: async (sequence, pattern) => {
           expect(sequence).toContain("a=q")
           const id = /(?:G|,)i=(\d+)/.exec(sequence)?.[1]
@@ -1120,11 +1159,14 @@ describe("Kitty protocol detection", () => {
       }),
     )
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-    const silent = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 9, col: 9 }) }))
+    const silent = await p.term(terminalSource({ queryCursorPosition: async () => ({ row: 9, col: 9 }) }))
     expect(silent.observation).toBeUndefined()
     expect(silent.assertions).toBeUndefined()
     expect(silent.tests).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: "No matching graphics query reply; image rendering was not tested" }),
+      expect.objectContaining({
+        status: "test-failure",
+        reason: "No matching graphics query reply; image rendering was not tested",
+      }),
     ])
   })
 })
@@ -1222,7 +1264,7 @@ describe("extensions without a complete behavior oracle", () => {
       if (!callback) throw new Error(`${id} needs an application callback`)
       const writes: string[] = []
       const result = await callback(
-        terminalContext({
+        terminalSource({
           write(sequence) {
             writes.push(sequence)
           },
@@ -1718,7 +1760,7 @@ describe("partial probe automation candidates", () => {
         const stack: string[] = []
         const writes: string[] = []
         const result = await probe(id).term!(
-          terminalContext({
+          terminalSource({
             write(sequence) {
               writes.push(sequence)
               if (sequence.includes("]30001")) {
@@ -1747,7 +1789,7 @@ describe("partial probe automation candidates", () => {
       let queries = 0
       await expect(
         probe(id).term!(
-          terminalContext({
+          terminalSource({
             write(sequence) {
               writes.push(sequence)
             },
@@ -1764,7 +1806,7 @@ describe("partial probe automation candidates", () => {
 
       const noReplyWrites: string[] = []
       const noReply = await probe(id).term!(
-        terminalContext({
+        terminalSource({
           write: (sequence) => noReplyWrites.push(sequence),
           queryWithSentinelOutcome: async () => {
             const raw = "\x1b]10;rgb:1010/2020/3030\x1b\\"
@@ -1772,7 +1814,12 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(noReply.observation).toEqual({ outcome: "inconclusive", assertionType: "query_reply", reason: "timeout", note: "No original OSC 10 foreground reply; color stack was not changed" })
+      expect(noReply.observation).toEqual({
+        outcome: "inconclusive",
+        assertionType: "query_reply",
+        reason: "timeout",
+        note: "No original OSC 10 foreground reply; color stack was not changed",
+      })
       expect(noReply.response).toBe("\x1b]10;rgb:1010/2020/3030\x1b\\")
       expect(noReply.assertions).toBeUndefined()
       expect(noReply.tests).toBeUndefined()
@@ -1791,7 +1838,7 @@ describe("partial probe automation candidates", () => {
       [null, "inconclusive"],
     ] as const) {
       const result = await p.term!(
-        terminalContext({
+        terminalSource({
           queryMode: async () => {
             throw new Error("the 2031 arm reads Ps through queryWithSentinel, never the folded word (#30557)")
           },
@@ -1805,7 +1852,10 @@ describe("partial probe automation candidates", () => {
         expect(result.observation).toBeUndefined()
         expect(result.assertions).toBeUndefined()
         expect(result.tests).toMatchObject([
-          expect.objectContaining({ status: "test-failure", reason: "No DECRPM 2031 reply; update events were not tested" }),
+          expect.objectContaining({
+            status: "test-failure",
+            reason: "No DECRPM 2031 reply; update events were not tested",
+          }),
         ])
       } else {
         expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, assertionType: "query_reply" })
@@ -1827,7 +1877,7 @@ describe("partial probe automation candidates", () => {
       ["\x1b[?997;1", "inconclusive"],
     ] as const) {
       const result = await p.term!(
-        terminalContext({
+        terminalSource({
           queryWithSentinelOutcome: async (sequence, pattern) => {
             expect(sequence).toBe("\x1b[?996n")
             return { match: raw.match(pattern), reason: "reply", raw, rawBase64: btoa(raw) }
@@ -1841,16 +1891,19 @@ describe("partial probe automation candidates", () => {
   test("semantic prompt OSC consumption and CPR do not claim prompt integration", async () => {
     // Constant 1;2 CPR for every read must never qualify as a measured home / target / control sequence.
     for (const id of OSC_SEMANTIC_MARK_IDS) {
-      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
+      const result = await probe(id).term!(terminalSource({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
       expect(result.notTested).toBeUndefined()
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
       expect(result.tests).toMatchObject([
-        expect.objectContaining({ status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" }),
+        expect.objectContaining({
+          status: "test-todo",
+          reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+        }),
       ])
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
-      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => null }))
+      const result = await probe(id).term!(terminalSource({ queryCursorPosition: async () => null }))
       expect(result.notTested).toBeUndefined()
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
@@ -1860,7 +1913,7 @@ describe("partial probe automation candidates", () => {
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Constant 1;1 CPR: target never advances from home, so consumption is false and no coverage is claimed.
-      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 1 }) }))
+      const result = await probe(id).term!(terminalSource({ queryCursorPosition: async () => ({ row: 1, col: 1 }) }))
       expect(result.notTested).toBeUndefined()
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
@@ -1879,7 +1932,7 @@ describe("partial probe automation candidates", () => {
         { row: 1, col: 2 },
       ]
       let read = 0
-      const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => reads[read++] ?? null }))
+      const result = await probe(id).term!(terminalSource({ queryCursorPosition: async () => reads[read++] ?? null }))
       expect(read).toBe(3)
       expect(result.notTested).toBeUndefined()
       expect(result.observation).toBeUndefined()
@@ -1892,9 +1945,17 @@ describe("partial probe automation candidates", () => {
         ],
       })
     }
-    const noPromptMetadata = await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null }))
+    const noPromptMetadata = await probe("extensions.semantic-prompts").term!(
+      terminalSource({ queryCursorPosition: async () => null }),
+    )
     expect(noPromptMetadata.observation).toBeUndefined()
-    expect(noPromptMetadata.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "No shell prompt integration metadata or behavior readback for OSC 133" }])
+    expect(noPromptMetadata.tests).toEqual([
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: "No shell prompt integration metadata or behavior readback for OSC 133",
+      },
+    ])
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Qualified cursor movement (0,0 -> 1,0 -> 0,0) with empty or non-X cell: consumed && keeps this inconclusive.
       for (const char of ["", "-"]) {
@@ -1953,7 +2014,7 @@ describe("partial probe automation candidates", () => {
       ]
       let read = 0
       const result = await probe(id).term!(
-        terminalContext({
+        terminalSource({
           write: (data) => {
             writes.push(data)
           },

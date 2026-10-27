@@ -213,7 +213,7 @@ function platformIcons(b) {
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
       <td v-for="b in appBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="b.label"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="b.label"
           :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>
@@ -244,7 +244,7 @@ function platformIcons(b) {
         <a :href="'/' + f.category + '/' + f.slug">{{ f.name }}</a>
       </td>
       <td v-for="b in headlessBackends" :key="b.name">
-        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :target-name="b.label"
+        <ResultEvidenceCell :feature-id="f.id" :probe-guidance="data.featureDescriptions[f.id]?.probe" :feature-name="f.name" :subject-name="b.label"
           :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, f.id)" />
       </td>
     </tr>

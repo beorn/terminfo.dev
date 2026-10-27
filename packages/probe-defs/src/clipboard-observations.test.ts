@@ -15,7 +15,7 @@ function writeProbe() {
   return probe.term
 }
 
-function termContext(overrides: Partial<TermProbeSource>): TermProbeSource {
+function termSource(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
     kind: "live",
     write() {},
@@ -53,7 +53,7 @@ describe("live OSC 52 write ordering", () => {
       },
     }
     const result = await writeProbe()(
-      termContext({
+      termSource({
         write(sequence) {
           events.push("osc-write")
           queued = writtenNonce(sequence)
@@ -82,7 +82,7 @@ describe("live OSC 52 write ordering", () => {
   test("a terminal that answers CPR but ignores OSC 52 remains inconclusive", async () => {
     const events: string[] = []
     const result = await writeProbe()(
-      termContext({
+      termSource({
         write(sequence) {
           writtenNonce(sequence)
           events.push("osc-write")
@@ -110,7 +110,7 @@ describe("live OSC 52 write ordering", () => {
     const events: string[] = []
     let clipboard = "baseline"
     const result = await writeProbe()(
-      termContext({
+      termSource({
         write(sequence) {
           clipboard = writtenNonce(sequence)
           events.push("osc-write")
@@ -141,7 +141,10 @@ describe("live OSC 52 write ordering", () => {
     expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
     expect(result.tests).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: "No cursor reply after OSC 52 write; clipboard contents were not measured" }),
+      expect.objectContaining({
+        status: "test-failure",
+        reason: "No cursor reply after OSC 52 write; clipboard contents were not measured",
+      }),
     ])
     expect(clipboard).toBe("baseline")
   })
@@ -154,7 +157,7 @@ function pasteProbe() {
 }
 
 function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
-  return termContext({
+  return termSource({
     queryCursorPosition: async () => {
       throw new Error("Unexpected queryCursorPosition in paste observation")
     },

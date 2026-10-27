@@ -1,5 +1,5 @@
 /**
- * @failure A Modes capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure A Modes feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28450 slice B Modes group (29 definitions); 28453 harness. Outside Candidate-2 denominator 125.
@@ -15,13 +15,13 @@ import {
   missingContractTests,
   regradeCommand,
   regradeRow,
-  replayContext,
+  replayTermProbeSource,
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
 } from "./testing/group-harness.ts"
 
-/** The 29 Modes capabilities of 28450 slice B; ids drawn from modes.ts, claims are the contract. */
+/** The 29 Modes features of 28450 slice B; ids drawn from modes.ts, claims are the contract. */
 const MODES_CONTRACT: GroupContract = [
   { id: "modes.alt-screen.enter", expected: "decided", claim: "DECRPM 1049 recognizes alt-screen enter" },
   {
@@ -133,8 +133,8 @@ const MODES_CONTRACT_SPEC: GroupContractSpec = {
 }
 
 /** Every private DECRQM answers Ps; queryMode keeps the fold for the arms that only ask whether a mode is on. */
-function modeQueryContext(ps: 0 | 1 | 2 | 3 | 4 | null) {
-  return replayContext(new Map(), {
+function modeQuerySource(ps: 0 | 1 | 2 | 3 | 4 | null) {
+  return replayTermProbeSource(new Map(), {
     queryMode: async () => (ps === null ? null : decrpmStatus(String(ps))),
     queryWithSentinel: async (sequence, pattern) => {
       const mode = /^\x1b\[\?(\d+)\$p$/.exec(sequence)?.[1]
@@ -143,9 +143,9 @@ function modeQueryContext(ps: 0 | 1 | 2 | 3 | 4 | null) {
   })
 }
 
-function modesTermContext(id: string) {
+function modesTermSource(id: string) {
   if (id === "modes.application-keypad") {
-    return replayContext(new Map(), {
+    return replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async (pattern: RegExp) => {
         if (pattern.test("a")) return ["a"]
@@ -156,7 +156,7 @@ function modesTermContext(id: string) {
   }
   if (id === "modes.alt-scroll-1007") {
     let callCount = 0
-    return replayContext(new Map(), {
+    return replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async (pattern: RegExp) => {
         callCount += 1
@@ -169,7 +169,7 @@ function modesTermContext(id: string) {
   if (id === "modes.decsscls") {
     let calls = 0
     const rectangle = { x: 0, y: 0, width: 800, height: 440 }
-    return replayContext(new Map(), {
+    return replayTermProbeSource(new Map(), {
       captureGeometry: {
         geometry: { cellWidth: 10, cellHeight: 20, textWidth: 800, textHeight: 480 },
         source: "measured by complete raster calibration",
@@ -198,10 +198,10 @@ function modesTermContext(id: string) {
       },
     })
   }
-  return modeQueryContext(1)
+  return modeQuerySource(1)
 }
 
-test("the Modes contract covers every Modes capability and names none unknown", () => {
+test("the Modes contract covers every Modes feature and names none unknown", () => {
   const gaps = contractGaps(modesProbes, MODES_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -220,9 +220,9 @@ test("the Modes contract names its focused tests, and every named file exists", 
   for (const path of MODES_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every Modes capability deterministically through DECRPM replay", async () => {
+test("the harness replays every Modes feature deterministically through DECRPM replay", async () => {
   for (const row of MODES_CONTRACT) {
-    const term = modesTermContext(row.id)
+    const term = modesTermSource(row.id)
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue
@@ -237,7 +237,7 @@ test("the harness replays every Modes capability deterministically through DECRP
 
 test("each Modes row retains its measured grade or named execution disposition under the replay fixture", async () => {
   for (const row of MODES_CONTRACT) {
-    const term = modesTermContext(row.id)
+    const term = modesTermSource(row.id)
     const probe = modesProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Modes probe ${row.id}`).toBeDefined()
     if (!probe) continue
@@ -245,9 +245,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       const result = await probe.term?.(term)
       expect(result?.observation).toBeUndefined()
       expect(result?.assertions).toBeUndefined()
-      expect(result?.tests).toMatchObject([
-        expect.objectContaining({ status: "test-failure", reason: "no-response" }),
-      ])
+      expect(result?.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
       continue
     }
     if (row.id === "modes.origin" || row.id === "modes.left-right-margin") {
@@ -257,9 +255,10 @@ test("each Modes row retains its measured grade or named execution disposition u
       expect(result?.tests).toMatchObject([
         expect.objectContaining({
           status: "test-todo",
-          reason: row.id === "modes.origin"
-            ? "modes.origin: no owned capture adapter is installed in this run, so the region fixture cannot be read back"
-            : "Margin mode left unchanged; this probe does not measure left/right margin behavior",
+          reason:
+            row.id === "modes.origin"
+              ? "modes.origin: no owned capture adapter is installed in this run, so the region fixture cannot be read back"
+              : "Margin mode left unchanged; this probe does not measure left/right margin behavior",
         }),
       ])
       continue
@@ -268,9 +267,7 @@ test("each Modes row retains its measured grade or named execution disposition u
       const result = await probe.term?.(term)
       expect(result?.observation).toBeUndefined()
       expect(result?.assertions).toBeUndefined()
-      expect(result?.tests).toMatchObject([
-        expect.objectContaining({ status: "test-failure", reason: "no-response" }),
-      ])
+      expect(result?.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
       continue
     }
     if (row.id === "modes.altscreen-47" || row.id === "modes.altscreen-1048") {
@@ -278,16 +275,28 @@ test("each Modes row retains its measured grade or named execution disposition u
       const result = await probe.term(term)
       expect(result.observation).toBeUndefined()
       expect(result.assertions).toBeUndefined()
-      expect(result.tests).toEqual([{
-        id: "criterion",
-        status: row.id === "modes.altscreen-47" ? "test-todo" : "test-failure",
-        reason: row.id === "modes.altscreen-47"
-          ? "Alternate buffer left unchanged; this probe does not measure its visible contents"
-          : "Cursor-save fixture did not establish its start position",
-      }])
+      expect(result.tests).toEqual([
+        {
+          id: "criterion",
+          status: row.id === "modes.altscreen-47" ? "test-todo" : "test-failure",
+          reason:
+            row.id === "modes.altscreen-47"
+              ? "Alternate buffer left unchanged; this probe does not measure its visible contents"
+              : "Cursor-save fixture did not establish its start position",
+        },
+      ])
       continue
     }
-    if (["modes.xtpushsgr", "modes.xtpopsgr", "modes.xtsave", "modes.xtrestore", "modes.xtpushcolors", "modes.xtpopcolors"].includes(row.id)) {
+    if (
+      [
+        "modes.xtpushsgr",
+        "modes.xtpopsgr",
+        "modes.xtsave",
+        "modes.xtrestore",
+        "modes.xtpushcolors",
+        "modes.xtpopcolors",
+      ].includes(row.id)
+    ) {
       if (!probe.term) throw new Error(`${row.id}: expected the application callback`)
       const result = await probe.term(term)
       expect(result.observation).toBeUndefined()
@@ -306,10 +315,10 @@ test("a decided Modes row is unsatisfied when DECRPM is silent", async () => {
   expect(row, "the Modes contract names modes.auto-wrap").toBeDefined()
   expect(probe, "the Modes contract names a real modes.auto-wrap probe").toBeDefined()
   if (!row || !probe) return
-  const silent = await regradeRow(probe, row, { term: modeQueryContext(null) })
+  const silent = await regradeRow(probe, row, { term: modeQuerySource(null) })
   expect(silent.after).toBeUndefined()
   expect(silent.satisfies).toBe(false)
-  const result = await probe.term?.(modeQueryContext(null))
+  const result = await probe.term?.(modeQuerySource(null))
   expect(result?.observation).toBeUndefined()
   expect(result?.assertions).toBeUndefined()
   expect(result?.tests).toMatchObject([

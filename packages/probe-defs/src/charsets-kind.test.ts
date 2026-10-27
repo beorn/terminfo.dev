@@ -8,7 +8,7 @@ import { expect, test } from "vitest"
 import { charsetReadbackRows, charsetsProbes } from "./charsets.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe } from "./region-readback-kind.ts"
-import { headlessContext, regradeRow, type ContractRow } from "./testing/group-harness.ts"
+import { libProbeSource, regradeRow, type ContractRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 /**
@@ -65,14 +65,14 @@ test("every kind row decides from its own cells, through the shared kind", async
     if (!probe || !kindRow) continue
     expect(probe.termNeedsGeometry, row.id).toBe(true)
     expect(probe.libAssertionType, row.id).toBe("buffer_state")
-    const measured = probe.lib!(headlessContext(createSemanticSurface()))
+    const measured = probe.lib!(libProbeSource(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     // One entry per compared COLUMN, so a wide follower is a cell the array names, not a join that
     // silently drops it; one row per compared ROW, so a multi-row grid can no longer be read as a
     // single line of cells.
     expect(state.before, `${row.id} reads the row's seed cells`).toEqual(kindRow.before.map((cells) => [...cells]))
     expect(state.after, `${row.id} reads the row's target cells`).toEqual(kindRow.after.map((cells) => [...cells]))
-    const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
   }
@@ -82,8 +82,8 @@ test("the kind table replays every row deterministically", async () => {
   for (const row of KIND_TABLE_ROWS) {
     const probe = charsetsProbes.find((entry) => entry.id === row.id)
     if (!probe) continue
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
   }
@@ -101,7 +101,7 @@ test("an inert designation reads charsets.dec-special unsupported", async () => 
   expect(probe, "the kind table names a real charsets.dec-special probe").toBeDefined()
   if (!row || !probe) return
   const graded = await regradeRow(probe, row, {
-    headless: headlessContext(createSemanticSurface({ mutations: ["charset-noop"] })),
+    headless: libProbeSource(createSemanticSurface({ mutations: ["charset-noop"] })),
   })
   expect(graded.after, "charsets.dec-special detects an inert designation").toBe("unsupported")
 })
@@ -115,7 +115,7 @@ test("an inert designation reads charsets.dec-special unsupported", async () => 
 test("every row's controls survive the row's own steps on the reference parser", () => {
   for (const row of charsetReadbackRows) {
     expect(row.controls.length, `${row.id} names at least one control`).toBeGreaterThan(0)
-    const ctx = headlessContext(createSemanticSurface())
+    const ctx = libProbeSource(createSemanticSurface())
     ctx.feed(row.seed)
     for (const control of row.controls) ctx.feed(`\x1b[${control.row + 1};${control.col + 1}H\u00b5`)
     for (const step of row.steps) ctx.feed(step.write)
@@ -134,7 +134,7 @@ test("a backend that reports the wide follower as a space still reads charsets.u
   const probe = charsetsProbes.find((entry) => entry.id === "charsets.utf8")
   expect(probe, "charsets.utf8 has a kind-built probe").toBeDefined()
   if (!probe) return
-  const ctx = headlessContext(createSemanticSurface())
+  const ctx = libProbeSource(createSemanticSurface())
   const spaced = {
     ...ctx,
     getCell: (row: number, col: number) => {

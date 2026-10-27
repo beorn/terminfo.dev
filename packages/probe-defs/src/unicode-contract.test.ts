@@ -1,5 +1,5 @@
 /**
- * @failure A Unicode capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure A Unicode feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so the Unicode group reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Unicode group (child 28026); adopts the 28453 harness.
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { unicodeProbes } from "./unicode.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -21,7 +21,7 @@ import {
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
-/** The 4 Unicode capabilities of 28018's Unicode row; ids from unicode.ts, claims are the contract. */
+/** The 4 Unicode features of 28018's Unicode row; ids from unicode.ts, claims are the contract. */
 const UNICODE_CONTRACT: GroupContract = [
   {
     id: "unicode.east-asian-ambiguous",
@@ -59,7 +59,7 @@ const UNICODE_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
-test("the Unicode contract covers every unicode capability and names none unknown", () => {
+test("the Unicode contract covers every unicode feature and names none unknown", () => {
   const gaps = contractGaps(unicodeProbes, UNICODE_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -80,14 +80,14 @@ test("the Unicode contract names its focused tests, and every named file exists"
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the table below.
-test("the harness replays every unicode capability deterministically", async () => {
+test("the harness replays every unicode feature deterministically", async () => {
   for (const row of UNICODE_CONTRACT) {
     const probe = unicodeProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing unicode probe ${row.id}`).toBeDefined()
     if (!probe) continue
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -102,7 +102,7 @@ test("every unicode contract row reads supported against a surface that implemen
     const probe = unicodeProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing unicode probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, `${row.id} reads supported from a surface implementing its claim`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
@@ -118,7 +118,7 @@ test("a surface whose HT is inert reads unicode.tab-stops unsupported", async ()
   expect(probe, "the Unicode contract names a real unicode.tab-stops probe").toBeDefined()
   if (!row || !probe) return
   const graded = await regradeRow(probe, row, {
-    headless: headlessContext(createSemanticSurface({ mutations: ["ht-noop"] })),
+    headless: libProbeSource(createSemanticSurface({ mutations: ["ht-noop"] })),
   })
   expect(graded.after, "unicode.tab-stops detects an inert HT").toBe("unsupported")
 })

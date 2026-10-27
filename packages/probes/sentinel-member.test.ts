@@ -52,7 +52,7 @@ function scripted(script: (text: string) => string): TerminalBackend {
   return backend
 }
 
-function contextOf(backend: TerminalBackend, path?: ProvenReplyPath) {
+function sourceOf(backend: TerminalBackend, path?: ProvenReplyPath) {
   backend.init({ cols: 80, rows: 24 })
   return createLibProbeSource(backend, path)
 }
@@ -60,12 +60,12 @@ function contextOf(backend: TerminalBackend, path?: ProvenReplyPath) {
 const base64 = (raw: string) => Buffer.from(raw).toString("base64")
 
 test("an unproven context has no sentinel member", () => {
-  expect(contextOf(scripted(() => "")).queryWithSentinelOutcome).toBeUndefined()
+  expect(sourceOf(scripted(() => "")).queryWithSentinelOutcome).toBeUndefined()
 })
 
 test("a proven engine that answers DA1 and nothing else gives live's sentinel outcome and facts", () => {
   const onSentinel = vi.fn()
-  const ctx = contextOf(
+  const ctx = sourceOf(
     scripted((text) => (text === DA1_QUERY ? DA1 : "")),
     proven(onSentinel),
   )
@@ -121,7 +121,7 @@ test.each([
   { name: "no DA1 answer at all", query: "", answer: "", reason: "timeout", match: null },
 ])("$name gives no sentinel outcome and no facts", ({ query, answer, reason, match }) => {
   const onSentinel = vi.fn()
-  const ctx = contextOf(
+  const ctx = sourceOf(
     scripted((text) => (text === DA1_QUERY ? answer : query)),
     proven(onSentinel),
   )
@@ -138,7 +138,7 @@ test.each([
   { name: "unmatched bytes ahead of the answer in DA1's own capture", query: "", answer: `x${DA1}` },
 ])("$name gives live's sentinel outcome and facts", ({ query, answer }) => {
   const onSentinel = vi.fn()
-  const ctx = contextOf(
+  const ctx = sourceOf(
     scripted((text) => (text === DA1_QUERY ? answer : query)),
     proven(onSentinel),
   )
@@ -159,7 +159,7 @@ test.each([
 ])("$name grades by the reply and carries the sentinel facts", ({ query }) => {
   const onSentinel = vi.fn()
   const answer = `${DA1}\x1b[3;7R`
-  const ctx = contextOf(
+  const ctx = sourceOf(
     scripted((text) => (text === DA1_QUERY ? answer : query)),
     proven(onSentinel),
   )
@@ -183,7 +183,7 @@ test("a reply an adapter makes after the whole feed stays a reply because DA1 ha
     if (text === "\x1b[14t") return winops
     return text === `\x1b[14t${DA1_QUERY}` ? `${DA1}${winops}` : ""
   })
-  const ctx = contextOf(backend, proven())
+  const ctx = sourceOf(backend, proven())
   const together = feedCapture(backend, `\x1b[14t${DA1_QUERY}`)
   expect(together.indexOf(winops)).toBeGreaterThan(together.indexOf(DA1))
   const outcome = ctx.queryWithSentinelOutcome?.("\x1b[14t", /\x1b\[4;(\d+);(\d+)t/)
@@ -263,8 +263,8 @@ function armsOf(id: string) {
 }
 
 /** A proven context that keeps every outcome its sentinel member gave, in order. */
-function recordingContext(script: (text: string) => string) {
-  const ctx = contextOf(scripted(script), proven())
+function recordingSource(script: (text: string) => string) {
+  const ctx = sourceOf(scripted(script), proven())
   const member = ctx.queryWithSentinelOutcome?.bind(ctx)
   if (!member) throw new Error("a proven context has the sentinel member")
   const outcomes: TerminalQueryOutcome[] = []
@@ -332,14 +332,14 @@ test.each(ARM_CASES)(
   "$id, $when: the proven headless arm grades exactly as live grades the same outcomes",
   async ({ id, replies, outcome }) => {
     const { lib, term } = armsOf(id)
-    const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
+    const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : (replies[text] ?? "")))
     const headless = lib(ctx)
     expect(outcomes.length, id).toBeGreaterThan(0)
     expect(headless.observation?.outcome, id).toBe(outcome)
     if (outcome === "unsupported") expect(headless.observation?.note, id).toBe("negative by sentinel")
     expect(headless).toStrictEqual(await term(replayingLive(outcomes)))
     // Without the member the arm keeps today's capture-only reading, where silence never grades.
-    const plain = lib(contextOf(scripted((text) => replies[text] ?? "")))
+    const plain = lib(sourceOf(scripted((text) => replies[text] ?? "")))
     if (Object.keys(replies).length === 0) {
       expect(plain.observation, id).toBeUndefined()
       expect(plain.tests, id).toContainEqual(
@@ -357,7 +357,7 @@ test.each([
   { id: "device.tertiary-da", query: "\x1b[=c", reply: DA1 },
 ])("$id: bytes ahead of the DA1 answer grade no-response, as live grades them", async ({ id, query, reply }) => {
   const { lib, term } = armsOf(id)
-  const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : text === query ? reply : ""))
+  const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : text === query ? reply : ""))
   const headless = lib(ctx)
   expect(
     outcomes.map((outcome) => outcome.reason),
@@ -375,7 +375,7 @@ test("extensions.kitty-keyboard: once detection answers, a silent flags query gr
   const { lib, term } = armsOf("extensions.kitty-keyboard")
   const detection = `\x1b[?0u${DA1}`
   const fed: string[] = []
-  const { ctx, outcomes } = recordingContext((text) => {
+  const { ctx, outcomes } = recordingSource((text) => {
     fed.push(text)
     if (text === "\x1b[?u\x1b[c") return detection
     return text === DA1_QUERY ? DA1 : ""
@@ -437,7 +437,7 @@ test.each(ANSWERED_CASES)(
     // Both arms draw the same image number, so the live twin can take the headless arm's allocation outcome.
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("0000002a-0000-4000-8000-000000000000")
     const { lib, term } = armsOf(id)
-    const { ctx, outcomes } = recordingContext((text) => (text === DA1_QUERY ? DA1 : reply(text)))
+    const { ctx, outcomes } = recordingSource((text) => (text === DA1_QUERY ? DA1 : reply(text)))
     const headless = lib(ctx)
     const graded = outcomes.at(-1)
     const frame = graded?.match?.[0]

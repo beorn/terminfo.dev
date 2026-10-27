@@ -19,7 +19,7 @@ function timeout(): TerminalQueryOutcome {
  * or stays silent when `reply` is null. Capture is installed, so a probe that did not query would
  * land on the ungraded pixel path and could not decide.
  */
-function sgrReadbackContext(reply: string | null | readonly (string | null)[]) {
+function sgrReadbackSource(reply: string | null | readonly (string | null)[]) {
   const queries: string[] = []
   const writes: string[] = []
   const writesAtQuery: string[] = []
@@ -66,9 +66,9 @@ const RESET_SETUP: Readonly<Record<string, string>> = {
 }
 
 /** Existing final-state cases now supply independently qualified baseline and setup responses. */
-function qualifiedSgrReadbackContext(id: string, reply: string | null) {
+function qualifiedSgrReadbackSource(id: string, reply: string | null) {
   const setup = RESET_SETUP[id]
-  return sgrReadbackContext(setup !== undefined && reply !== null ? ["0", setup, reply] : reply)
+  return sgrReadbackSource(setup !== undefined && reply !== null ? ["0", setup, reply] : reply)
 }
 
 function sgrTerm(id: string): (ctx: TermProbeSource) => Promise<ProbeCallbackResult> {
@@ -115,7 +115,7 @@ const DECIDED: ReadonlyArray<readonly [id: string, reply: string]> = [
 
 test("every sgr probe decides from the terminal's own DECRQSS report", async () => {
   for (const [id, reply] of DECIDED) {
-    const { ctx, queries } = qualifiedSgrReadbackContext(id, reply)
+    const { ctx, queries } = qualifiedSgrReadbackSource(id, reply)
     const result = await sgrTerm(id)(ctx)
     expect(queries, `${id} must query DECRQSS`).toContain("\x1bP$qm\x1b\\")
     expect(result.observation, `${id} with reply ${JSON.stringify(reply)}`).toMatchObject({
@@ -139,7 +139,7 @@ test.each([
   ["sgr.underline-color-reset", "0;4"],
   ["reset.sgr", "0"],
 ] as const)("%s cannot qualify a reset from constant final-state reply %s", async (id, reply) => {
-  const { ctx } = sgrReadbackContext(reply)
+  const { ctx } = sgrReadbackSource(reply)
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(result.pass).toBe(false)
@@ -165,7 +165,7 @@ test.each([
   ["sgr.selective-reset.bold", "0"],
   ["sgr.underline-color-reset", "0"],
 ] as const)("%s is unsupported when DECRQSS reports %s", async (id, reply) => {
-  const { ctx } = qualifiedSgrReadbackContext(id, reply)
+  const { ctx } = qualifiedSgrReadbackSource(id, reply)
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
 })
@@ -179,7 +179,7 @@ test.each([
   ["sgr.selective-reset.underline", "0;1;4"],
   ["sgr.underline-color-reset", "0;4;58;2;255;0;128"],
 ] as const)("%s is unsupported when DECRQSS still reports the setup it should have cleared (%s)", async (id, reply) => {
-  const { ctx } = qualifiedSgrReadbackContext(id, reply)
+  const { ctx } = qualifiedSgrReadbackSource(id, reply)
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
 })
@@ -190,13 +190,13 @@ test.each([
   ["sgr.fg.default", "0"],
   ["sgr.bg.default", "0"],
 ] as const)("%s is supported on the measured %s reply", async (id, reply) => {
-  const { ctx } = qualifiedSgrReadbackContext(id, reply)
+  const { ctx } = qualifiedSgrReadbackSource(id, reply)
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test.each(DECIDED.map(([id]) => id))("%s stays inconclusive, never negative, when DECRQSS is silent", async (id) => {
-  const { ctx } = sgrReadbackContext(null)
+  const { ctx } = sgrReadbackSource(null)
   const result = await sgrTerm(id)(ctx)
   expect(result.pass).toBe(false)
   expect(result.observation?.outcome).not.toBe("unsupported")
@@ -239,7 +239,7 @@ test.each([
   ["sgr.selective-reset.underline", "0;1;4:0", "supported"],
   ["sgr.selective-reset.underline", "0;1;4:6", "inconclusive"],
 ] as const)("%s with DECRQSS %s is %s", async (id, reply, outcome) => {
-  const { ctx } = qualifiedSgrReadbackContext(id, reply)
+  const { ctx } = qualifiedSgrReadbackSource(id, reply)
   const result = await sgrTerm(id)(ctx)
   expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
   expect(result.pass).toBe(outcome === "supported")
@@ -266,7 +266,7 @@ test.each([
 // A scripted response alone would miss sending reset before reading setup. Check the bytes that
 // actually precede each protocol query, while allowing the writer to batch bytes differently.
 test("a reset reads baseline and setup before sending the reset, and retains every phase", async () => {
-  const { ctx, writes, writesAtQuery } = qualifiedSgrReadbackContext("sgr.selective-reset.bold", "0;3")
+  const { ctx, writes, writesAtQuery } = qualifiedSgrReadbackSource("sgr.selective-reset.bold", "0;3")
   const result = await sgrTerm("sgr.selective-reset.bold")(ctx)
   expect(result.observation?.outcome).toBe("supported")
   expect(writesAtQuery).toEqual(["\x1b[0m", "\x1b[0m\x1b[1;2;3m", "\x1b[0m\x1b[1;2;3m\x1b[22m"])
@@ -275,7 +275,7 @@ test("a reset reads baseline and setup before sending the reset, and retains eve
 })
 
 test("an explicit no-underline report qualifies a neutral baseline and a cleared reset", async () => {
-  const { ctx } = sgrReadbackContext(["0;4:0", "1;4", "1;4:0"])
+  const { ctx } = sgrReadbackSource(["0;4:0", "1;4", "1;4:0"])
   const result = await sgrTerm("sgr.selective-reset.underline")(ctx)
   expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(JSON.parse(result.response!)).toEqual({ baseline: "0;4:0", setup: "1;4", sgr: "1;4:0" })
@@ -290,7 +290,7 @@ test.each([
   ["sgr.underline-color-reset", ["0", "4;58;2;255;0"], "setup"],
   ["sgr.underline-color-reset", ["0", "4;58;2;255;0;129"], "setup"],
 ] as const)("%s retains an unqualified %s response without a reset verdict (%s)", async (id, replies, phase) => {
-  const { ctx, queries, writes } = sgrReadbackContext(replies)
+  const { ctx, queries, writes } = sgrReadbackSource(replies)
   let captures = 0
   ctx.capture = async () => {
     captures++
@@ -314,7 +314,7 @@ test.each(["baseline", "setup", "final"] as const)(
   async (phase) => {
     const stage = ["baseline", "setup", "final"].indexOf(phase)
     for (const kind of ["missing", "status-zero"] as const) {
-      const { ctx, writes } = sgrReadbackContext(["0", "1;2;3", "0;3"])
+      const { ctx, writes } = sgrReadbackSource(["0", "1;2;3", "0;3"])
       ctx.capture = undefined
       const read = ctx.queryWithSentinelOutcome
       let queries = 0
@@ -340,7 +340,7 @@ test.each(["baseline", "setup", "final"] as const)(
 
 test.each(["baseline", "setup", "final"] as const)("a throwing %s readback propagates with cleanup", async (phase) => {
   const stage = ["baseline", "setup", "final"].indexOf(phase)
-  const { ctx, writes } = sgrReadbackContext(["0", "1;2;3", "0;3"])
+  const { ctx, writes } = sgrReadbackSource(["0", "1;2;3", "0;3"])
   const read = ctx.queryWithSentinelOutcome
   let queries = 0
   ctx.queryWithSentinelOutcome = async (...args) => {

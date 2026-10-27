@@ -1,5 +1,5 @@
 /**
- * @failure An extension capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure An extension feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so extension probe steps reinvent their own fixture and silently drift.
  * @level l2
  * @consumer 28449 probe definitions slice A: extension protocols.
@@ -11,11 +11,11 @@ import { join } from "node:path"
 import { extensionsProbes } from "./extensions.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
-  replayContext,
+  replayTermProbeSource,
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
@@ -23,9 +23,9 @@ import {
 } from "./testing/group-harness.ts"
 
 /**
- * The 79 extension capabilities (78 defined in extensions.ts + 1 catalog-only in features.json).
+ * The 79 extension features (78 defined in extensions.ts + 1 catalog-only in features.json).
  * 42 protocol queries are decided in real terminal runs; 36 unasserted/state probes evaluate to
- * inconclusive pending external apparatus or capture; 1 catalog capability lacks a probe definition.
+ * inconclusive pending external apparatus or capture; 1 catalog feature lacks a probe definition.
  */
 const EXTENSIONS_CONTRACT: GroupContract = [
   { id: "extensions.truecolor", expected: "inconclusive", claim: "24-bit truecolor: ESC [ 38;2;R;G;B m" },
@@ -271,7 +271,9 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
-const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<Record<string, { status: "test-todo" | "test-failure"; reason: string }>> = {
+const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<
+  Record<string, { status: "test-todo" | "test-failure"; reason: string }>
+> = {
   "extensions.truecolor": { status: "test-todo", reason: "No cursor response; RGB color was not measured" },
   "extensions.kitty-graphics.animation": {
     status: "test-todo",
@@ -286,30 +288,95 @@ const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<Record<string, { status
     reason:
       "extensions.sixel: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
   },
-  "extensions.osc8": { status: "test-todo", reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior" },
-  "extensions.reflow": { status: "test-todo", reason: "No controlled resize and cell-content readback to measure reflow" },
-  "extensions.semantic-prompts": { status: "test-todo", reason: "No shell prompt integration metadata or behavior readback for OSC 133" },
-  "extensions.osc2-title": { status: "test-todo", reason: "OSC 2 window title was not attempted; this probe has no effect readback or prior-state restoration" },
+  "extensions.osc8": {
+    status: "test-todo",
+    reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+  },
+  "extensions.reflow": {
+    status: "test-todo",
+    reason: "No controlled resize and cell-content readback to measure reflow",
+  },
+  "extensions.semantic-prompts": {
+    status: "test-todo",
+    reason: "No shell prompt integration metadata or behavior readback for OSC 133",
+  },
+  "extensions.osc2-title": {
+    status: "test-todo",
+    reason: "OSC 2 window title was not attempted; this probe has no effect readback or prior-state restoration",
+  },
   "extensions.osc7-cwd": { status: "test-todo", reason: "No working-directory metadata readback for OSC 7" },
-  "extensions.osc-633-vscode": { status: "test-todo", reason: "No VS Code shell integration metadata or behavior readback for OSC 633" },
-  "extensions.osc133-a": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc133-b": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc133-c": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc133-d": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc133-p": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc633-a": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc633-b": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc633-c": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc633-d": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc633-e": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
-  "extensions.osc633-p": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc-633-vscode": {
+    status: "test-todo",
+    reason: "No VS Code shell integration metadata or behavior readback for OSC 633",
+  },
+  "extensions.osc133-a": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc133-b": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc133-c": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc133-d": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc133-p": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc633-a": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc633-b": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc633-c": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc633-d": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc633-e": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
+  "extensions.osc633-p": {
+    status: "test-todo",
+    reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+  },
   "extensions.notifications": { status: "test-todo", reason: "No desktop notification delivery readback for OSC 9" },
-  "extensions.osc9-progress": { status: "test-todo", reason: "OSC 9;4 progress display was not attempted; this probe has no effect readback or prior-state restoration" },
+  "extensions.osc9-progress": {
+    status: "test-todo",
+    reason: "OSC 9;4 progress display was not attempted; this probe has no effect readback or prior-state restoration",
+  },
   "extensions.osc1-icon": { status: "test-todo", reason: "No icon-name readback for OSC 1" },
-  "extensions.osc117-reset-highlight-bg": { status: "test-failure", reason: "extensions.osc117-reset-highlight-bg: OSC 17 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it" },
-  "extensions.osc119-reset-highlight-fg": { status: "test-failure", reason: "extensions.osc119-reset-highlight-fg: OSC 19 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it" },
-  "extensions.osc710-font-normal": { status: "test-todo", reason: "OSC 710 font selection was not attempted; this probe has no effect readback or prior-state restoration" },
-  "extensions.osc720-scroll-up": { status: "test-todo", reason: "Cursor answered; scrollback viewport was not measured" },
+  "extensions.osc117-reset-highlight-bg": {
+    status: "test-failure",
+    reason:
+      "extensions.osc117-reset-highlight-bg: OSC 17 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it",
+  },
+  "extensions.osc119-reset-highlight-fg": {
+    status: "test-failure",
+    reason:
+      "extensions.osc119-reset-highlight-fg: OSC 19 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it",
+  },
+  "extensions.osc710-font-normal": {
+    status: "test-todo",
+    reason: "OSC 710 font selection was not attempted; this probe has no effect readback or prior-state restoration",
+  },
+  "extensions.osc720-scroll-up": {
+    status: "test-todo",
+    reason: "Cursor answered; scrollback viewport was not measured",
+  },
 }
 
 function inertModel(): HeadlessModel {
@@ -364,10 +431,10 @@ const COLOR_RESET_CODES: Record<string, string> = {
   "extensions.osc114-reset-pointer-bg": "14",
 }
 
-function decidedSatisfactionContext(id: string) {
+function decidedSatisfactionSources(id: string) {
   if (DIRECT_QUERY_REPLIES[id]) {
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: () => DIRECT_QUERY_REPLIES[id] ?? "",
       }),
@@ -375,7 +442,7 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id.startsWith("extensions.kitty-keyboard")) {
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: () => "\x1b[?31u\x1b[?1;0c",
       }),
@@ -383,7 +450,7 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id === "extensions.kitty-graphics") {
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: () => "\x1b_Gi=31;OK\x1b\\",
       }),
@@ -391,7 +458,7 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id === "extensions.kitty-graphics.transmit" || id === "extensions.kitty-graphics.display") {
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: (seq) => {
           const num = /I=(\d+)/.exec(seq)?.[1] || "1"
@@ -404,7 +471,7 @@ function decidedSatisfactionContext(id: string) {
   if (id.startsWith("extensions.osc52-")) {
     let last = ""
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feed: (text) => {
           last = text
@@ -415,7 +482,7 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id === "extensions.osc5522-clipboard") {
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: () => "\x1b[?5522;1$y",
       }),
@@ -423,7 +490,7 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id === "extensions.osc21-kitty-color") {
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: () => "\x1b]21;foreground=rgb:ffff/ffff/ffff\x1b\\",
       }),
@@ -434,7 +501,7 @@ function decidedSatisfactionContext(id: string) {
     const color = (val: string) => `\x1b]${code};rgb:${val}\x07`
     const queue = [color("00/00/00"), color("aa/bb/cc"), color("00/00/00")]
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: () => queue.shift() ?? "",
       }),
@@ -444,7 +511,7 @@ function decidedSatisfactionContext(id: string) {
     let current = "rgb:1010/2020/3030"
     const stack: string[] = []
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feed: (seq) => {
           if (seq.includes("]30001")) stack.push(current)
@@ -461,7 +528,7 @@ function decidedSatisfactionContext(id: string) {
   if (id === "extensions.osc66-text-sizing") {
     let step = 0
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feed: () => {
           step++
@@ -477,7 +544,7 @@ function decidedSatisfactionContext(id: string) {
   if (id === "extensions.osc0-icon-title") {
     const payload = "osc0-icon-title"
     return {
-      headless: headlessContext({
+      headless: libProbeSource({
         ...inertModel(),
         feedCapture: (text) => {
           if (text === "\x1b[20t") return `\x1b]L${payload}\x07`
@@ -489,7 +556,7 @@ function decidedSatisfactionContext(id: string) {
   }
   if (id === "extensions.osc99-kitty-notify") {
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         queryWithSentinelOutcome: async (query: string, pattern: RegExp) => {
           const nonce = /i=([^:]+):/.exec(query)?.[1]
           const raw = `\x1b]99;i=${nonce}:p=?;p=title\x1b\\`
@@ -507,7 +574,7 @@ function decidedSatisfactionContext(id: string) {
     let nonce = ""
     let callCount = 0
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         withClipboardFixture: async (work) =>
           work({
@@ -528,7 +595,7 @@ function decidedSatisfactionContext(id: string) {
   throw new Error(`No satisfaction context configured for decided row ${id}`)
 }
 
-test("the extensions contract covers every extension capability and names none unknown", () => {
+test("the extensions contract covers every extension feature and names none unknown", () => {
   const gaps = contractGaps(extensionsProbes, EXTENSIONS_CONTRACT, EXTENSIONS_CONTRACT_SPEC.namedUnavailable)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -547,9 +614,9 @@ test("the extensions contract names its focused tests, and every named file exis
   for (const path of EXTENSIONS_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every extension capability deterministically", async () => {
-  const headless = headlessContext(inertModel())
-  const term = replayContext(new Map(), {
+test("the harness replays every extension feature deterministically", async () => {
+  const headless = libProbeSource(inertModel())
+  const term = replayTermProbeSource(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
   })
 
@@ -575,7 +642,7 @@ test("every decided extension contract row is satisfied by its required protocol
     const probe = extensionsProbes.find((p) => p.id === row.id)
     expect(probe, `missing probe for ${row.id}`).toBeDefined()
     if (!probe) continue
-    const context = decidedSatisfactionContext(row.id)
+    const context = decidedSatisfactionSources(row.id)
     const graded = await regradeRow(probe, row, context)
     expect(graded.after, `${row.id} outcome must be supported when simulated reply arrives`).toBe("supported")
     expect(graded.satisfies, `${row.id} must satisfy contract`).toBe(true)
@@ -586,18 +653,18 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
   const inconclusiveRows = EXTENSIONS_CONTRACT.filter((row) => row.expected === "inconclusive")
   expect(inconclusiveRows).toHaveLength(36)
 
-  const term = replayContext(new Map(), {
+  const term = replayTermProbeSource(new Map(), {
     queryCursorPosition: async () => ({ row: 0, col: 0 }),
     write: () => {},
     capture: async () => ({ role: "control", label: "test", capturedAt: 1, ref: "sha256:0" }),
   })
-  const headless = headlessContext(inertModel())
+  const headless = libProbeSource(inertModel())
 
   for (const row of inconclusiveRows) {
     const probe = extensionsProbes.find((p) => p.id === row.id)
     expect(probe, `missing probe for ${row.id}`).toBeDefined()
     if (!probe) continue
-    const rowTerm = row.id === "extensions.truecolor" ? replayContext(new Map()) : term
+    const rowTerm = row.id === "extensions.truecolor" ? replayTermProbeSource(new Map()) : term
     const callbackResult = probe.term ? await probe.term(rowTerm) : probe.lib?.(headless)
     expect(callbackResult, `${row.id} has the selected callback`).toBeDefined()
     if (callbackResult && callbackResult.observation === undefined) {
@@ -625,16 +692,14 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
   expect(row).toBeDefined()
   if (!probe?.lib || !row) throw new Error("Expected the OSC 10 lib callback and its contract row")
 
-  const silentContext = headlessContext(inertModel())
-  const silent = await regradeRow(probe, row, { headless: silentContext })
+  const silentSource = libProbeSource(inertModel())
+  const silent = await regradeRow(probe, row, { headless: silentSource })
   expect(silent.after).toBeUndefined()
   expect(silent.satisfies).toBe(false)
-  const result = probe.lib(silentContext)
+  const result = probe.lib(silentSource)
   expect(result.observation).toBeUndefined()
   expect(result.assertions).toBeUndefined()
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: "no-response" }),
-  ])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
@@ -644,7 +709,7 @@ test("semantic observables omitted in headless mode return notTested without fai
     "extensions.osc119-reset-highlight-fg",
     "extensions.font-ligatures",
   ]
-  const headless = headlessContext(inertModel())
+  const headless = libProbeSource(inertModel())
   for (const id of omittedProbes) {
     const probe = extensionsProbes.find((p) => p.id === id)
     expect(probe).toBeDefined()
@@ -661,13 +726,11 @@ test("a non-empty unparsed colour-stack readback fails with its raw reply retain
   for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
     const probe = extensionsProbes.find((p) => p.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless arm`)
-    const result = probe.lib(headlessContext({ ...inertModel(), feedCapture: () => unparsed }))
+    const result = probe.lib(libProbeSource({ ...inertModel(), feedCapture: () => unparsed }))
     expect(result.criterionBranch, id).toBeUndefined()
     expect(result.observation, id).toBeUndefined()
     expect(result.assertions, id).toBeUndefined()
-    expect(result.tests, id).toMatchObject([
-      expect.objectContaining({ status: "test-failure", reason: "no-response" }),
-    ])
+    expect(result.tests, id).toMatchObject([expect.objectContaining({ status: "test-failure", reason: "no-response" })])
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
   }
 })

@@ -59,7 +59,7 @@ This page reads sealed schema-3 execution results on the required suite. A conte
       <tbody><tr v-for="observation in row.observations" :key="observation.id">
         <td><code>{{ observation.id }}</code></td>
         <td><ResultEvidenceCell v-if="resultFor(row, observation.id)"
-          :feature-id="observation.id" :feature-name="observation.id" :target-name="row.context"
+          :feature-id="observation.id" :feature-name="observation.id" :subject-name="row.context"
           :version="data.evidenceVersions[row.context]" :cell="resultFor(row, observation.id)" display="text" />
           <template v-else>{{ observation.state }}</template></td>
         <td>{{ observation.method ?? '—' }}</td>

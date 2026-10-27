@@ -30,7 +30,7 @@ const props = withDefaults(
     featureId: string
     featureName: string
     probeGuidance?: string
-    targetName: string
+    subjectName: string
     version?: PublicVersion
     cell?: PublicProbeResult
     display?: "compact" | "text"
@@ -71,9 +71,7 @@ const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATION
 const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status))
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
-  props.cell?.assertionType === "query_reply"
-    ? "Terminal query"
-    : (props.cell?.assertionType ?? ""),
+  props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
 )
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
@@ -209,7 +207,7 @@ const actionLabel = computed(() => {
 })
 const accessibleName = computed(
   () =>
-    `${props.featureName} in ${props.targetName}${props.version ? ` ${props.version.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
+    `${props.featureName} in ${props.subjectName}${props.version ? ` ${props.version.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
 )
 const rawReplyDisplay = computed(() => (rawReply.value === undefined ? "" : JSON.stringify(rawReply.value)))
 const evidenceIdentity = computed(() => {
@@ -504,7 +502,10 @@ function closePreview(): void {
 }
 
 function outsidePreview(event: PointerEvent): void {
-  if (event.subject instanceof Node && (preview.value?.contains(event.subject) || trigger.value?.contains(event.subject)))
+  if (
+    event.subject instanceof Node &&
+    (preview.value?.contains(event.subject) || trigger.value?.contains(event.subject))
+  )
     return
   hidePreview()
 }
@@ -598,7 +599,7 @@ onBeforeUnmount(() => {
         >
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
-          >{{ targetName
+          >{{ subjectName
           }}<template v-if="version"> · {{ version.subject.version }} · {{ version.subject.os }}</template></span
         >
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
@@ -721,7 +722,7 @@ onBeforeUnmount(() => {
             <p class="result-evidence__eyebrow">Result details</p>
             <h2 :id="dialogTitleId">{{ featureName }}</h2>
             <p class="result-evidence__context">
-              {{ targetName
+              {{ subjectName
               }}<template v-if="version">
                 · {{ version.subject.version }} · {{ version.subject.os || "OS not recorded" }}</template
               >
@@ -744,7 +745,9 @@ onBeforeUnmount(() => {
         >
           This result is based on the query's recorded evidence, not every use of this feature.
         </p>
-        <p v-else-if="cell?.assertionType === 'query_reply'">This query did not establish a yes-or-no result for the feature.</p>
+        <p v-else-if="cell?.assertionType === 'query_reply'">
+          This query did not establish a yes-or-no result for the feature.
+        </p>
         <p v-if="cell?.reason">Reason: {{ readerSafeExplanation(cell.reason) }}</p>
         <p v-if="selectionExplanation">{{ selectionExplanation }}</p>
         <p v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</p>
@@ -827,7 +830,7 @@ onBeforeUnmount(() => {
               <figure class="result-evidence__image">
                 <img
                   :src="evidenceScreenshotUrl"
-                  :alt="`Original recorded image for ${featureName} in ${targetName}`"
+                  :alt="`Original recorded image for ${featureName} in ${subjectName}`"
                 />
                 <figcaption>Original recorded image · SHA-256 {{ evidenceScreenshot?.sha256 }}</figcaption>
               </figure>

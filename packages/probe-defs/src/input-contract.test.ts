@@ -1,5 +1,5 @@
 /**
- * @failure An input capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure An input feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so input protocol steps reinvent their own fixture and silently drift.
  * @level l2
  * @consumer 28449 probe definitions slice A: input protocols.
@@ -12,11 +12,11 @@ import { inputProbes } from "./input.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
-  replayContext,
+  replayTermProbeSource,
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
@@ -24,7 +24,7 @@ import {
 } from "./testing/group-harness.ts"
 
 /**
- * The 11 input protocol capabilities (10 defined in input.ts + 1 catalog-only in features.json).
+ * The 11 input protocol features (10 defined in input.ts + 1 catalog-only in features.json).
  * input.modify-other-keys grades through OS XTEST after CSI >4;2m (ctrl+i vs Tab);
  * input.modify-other-keys-3 grades unmodified i after CSI >4;3m with delivery control before enable;
  * input.csi-u negotiates Kitty keyboard protocol flag 1;
@@ -133,10 +133,10 @@ function inputModel(csiUAnswered = false): HeadlessModel {
   }
 }
 
-function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSource; readonly term?: TermProbeSource } {
+function inputSatisfactionSources(id: string): { readonly headless?: LibProbeSource; readonly term?: TermProbeSource } {
   if (id === "input.modify-other-keys") {
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           if (pattern.test("a")) return ["a"]
@@ -148,7 +148,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   }
   if (id === "input.modify-other-keys-3") {
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           if (pattern.test("a")) return ["a"]
@@ -160,7 +160,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   }
   if (id === "input.xtest-key") {
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           if (pattern.test("a")) return ["a"]
@@ -173,7 +173,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   if (id === "input.pixel-mouse") {
     let callCount = 0
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async () => {
           callCount++
@@ -185,7 +185,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   if (id === "input.kitty-click-events") {
     const writes: string[] = []
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         write: (text) => writes.push(text),
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
@@ -201,7 +201,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   if (id === "input.urxvt-mouse") {
     let callCount = 0
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async () => {
           callCount++
@@ -213,7 +213,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   if (id === "input.x10-mouse") {
     let callCount = 0
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async () => {
           callCount++
@@ -225,7 +225,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   if (id === "input.button-event-mouse") {
     let callCount = 0
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: {
           injectKey: async () => {},
           injectClick: async () => {},
@@ -240,7 +240,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   }
   if (id === "input.xtest-click") {
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           if (pattern.test("\x1b[<0;1;1M")) return ["\x1b[<0;1;1M"]
@@ -252,7 +252,7 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
   if (id === "input.xtest-wheel") {
     let callCount = 0
     return {
-      term: replayContext(new Map(), {
+      term: replayTermProbeSource(new Map(), {
         input: { injectKey: async () => {}, injectClick: async () => {} },
         readInput: async (pattern) => {
           callCount++
@@ -262,10 +262,10 @@ function inputSatisfactionContext(id: string): { readonly headless?: LibProbeSou
       }),
     }
   }
-  return { headless: headlessContext(inputModel(true)) }
+  return { headless: libProbeSource(inputModel(true)) }
 }
 
-test("the input contract covers every input capability and names none unknown", () => {
+test("the input contract covers every input feature and names none unknown", () => {
   const gaps = contractGaps(inputProbes, INPUT_CONTRACT, INPUT_CONTRACT_SPEC.namedUnavailable)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -284,13 +284,13 @@ test("the input contract names its focused tests, and every named file exists", 
   for (const path of INPUT_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every input capability deterministically", async () => {
+test("the harness replays every input feature deterministically", async () => {
   for (const row of INPUT_CONTRACT) {
     const probe = inputProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing input probe ${row.id}`).toBeDefined()
     if (!probe) continue
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const context = inputSatisfactionContext(row.id)
+    const context = inputSatisfactionSources(row.id)
     const first = await regradeRow(probe, row, context)
     const second = await regradeRow(probe, row, context)
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
@@ -304,7 +304,7 @@ test("every defined input contract row is satisfied by the harness context its c
     const probe = inputProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing input probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const context = inputSatisfactionContext(row.id)
+    const context = inputSatisfactionSources(row.id)
     const graded = await regradeRow(probe, row, context)
     expect(graded.satisfies, `${row.id} satisfies its contract row (after=${graded.after})`).toBe(true)
   }
@@ -316,7 +316,7 @@ test("input.csi-u reads unsatisfied when protocol query is unacknowledged", asyn
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const silent = probe.lib!(headlessContext(inputModel(false)))
+  const silent = probe.lib!(libProbeSource(inputModel(false)))
   expect(silent.observation).toBeUndefined()
   expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })
@@ -327,13 +327,13 @@ test("input.xtest-key reads unsatisfied when delivery control fails", async () =
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control/i)
 })
 
 test("input.modify-other-keys reads unsatisfied when delivery control fails", async () => {
@@ -342,13 +342,13 @@ test("input.modify-other-keys reads unsatisfied when delivery control fails", as
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|plain a/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control|plain a/i)
 })
 
 test("input.pixel-mouse reads unsatisfied when delivery control fails", async () => {
@@ -357,13 +357,13 @@ test("input.pixel-mouse reads unsatisfied when delivery control fails", async ()
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|1000\+1006/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control|1000\+1006/i)
 })
 
 test("input.urxvt-mouse reads unsatisfied when delivery control fails", async () => {
@@ -372,13 +372,13 @@ test("input.urxvt-mouse reads unsatisfied when delivery control fails", async ()
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|1000\+1006/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control|1000\+1006/i)
 })
 
 test("input.x10-mouse reads unsatisfied when delivery control fails", async () => {
@@ -387,13 +387,13 @@ test("input.x10-mouse reads unsatisfied when delivery control fails", async () =
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|1000\+1006/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control|1000\+1006/i)
 })
 
 test("input.button-event-mouse reads unsatisfied when delivery control fails", async () => {
@@ -402,13 +402,13 @@ test("input.button-event-mouse reads unsatisfied when delivery control fails", a
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {}, injectDrag: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|1000\+1006/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control|1000\+1006/i)
 })
 
 test("input.modify-other-keys-3 reads unsatisfied when delivery control fails", async () => {
@@ -417,11 +417,11 @@ test("input.modify-other-keys-3 reads unsatisfied when delivery control fails", 
   expect(row).toBeDefined()
   expect(probe).toBeDefined()
   if (!row || !probe) return
-  const failingContext = {
-    term: replayContext(new Map(), {
+  const failingSources = {
+    term: replayTermProbeSource(new Map(), {
       input: { injectKey: async () => {}, injectClick: async () => {} },
       readInput: async () => null,
     }),
   }
-  await expect(regradeRow(probe, row, failingContext)).rejects.toThrow(/delivery control|plain a/i)
+  await expect(regradeRow(probe, row, failingSources)).rejects.toThrow(/delivery control|plain a/i)
 })

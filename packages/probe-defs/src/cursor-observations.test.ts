@@ -338,28 +338,28 @@ test("cursor visibility restores its measured initial state when the hide write 
 
 test("cursor save/restore records the mismatched position and a missing app reply stays inconclusive", async () => {
   const probe = byId("cursor.ansi-save")
-  const headlessContext = headless(0, 0)
+  const libProbeSource = headless(0, 0)
   let position = { x: 0, y: 0 }
   let saved = { x: 0, y: 0 }
-  headlessContext.feed = (sequence) => {
+  libProbeSource.feed = (sequence) => {
     if (sequence === "\x1b[3;5H") position = { x: 4, y: 2 }
     if (sequence === "\x1b[10;15H") position = { x: 14, y: 9 }
     if (sequence === "\x1b[s") saved = { ...position }
     if (sequence === "\x1b[u") position = { ...saved }
   }
-  headlessContext.getCursor = () => ({ ...position, visible: true, style: null })
-  const headlessResult = probe.lib!(headlessContext)
+  libProbeSource.getCursor = () => ({ ...position, visible: true, style: null })
+  const headlessResult = probe.lib!(libProbeSource)
   expect(headlessResult.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(headlessResult.assertions).toMatchObject([{ kind: "positive", observed: headlessResult.response }])
 
   let appPosition = { row: 1, col: 1 }
-  const wrongContext = app(null)
-  wrongContext.write = (sequence) => {
+  const wrongSource = app(null)
+  wrongSource.write = (sequence) => {
     if (sequence === "\x1b[3;5H") appPosition = { row: 3, col: 5 }
     if (sequence === "\x1b[10;15H") appPosition = { row: 10, col: 15 }
   }
-  wrongContext.queryCursorPosition = async () => appPosition
-  const wrong = await probe.term!(wrongContext)
+  wrongSource.queryCursorPosition = async () => appPosition
+  const wrong = await probe.term!(wrongSource)
   expect(wrong.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(wrong.assertions).toMatchObject([{ kind: "negative", observed: wrong.response }])
   expect(JSON.parse(wrong.response ?? "")).toMatchObject({

@@ -1,5 +1,5 @@
 /**
- * @failure An Erase capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure An Erase feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so the Erase group reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Erase group (child 28023); the 28453 harness's second adopter.
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { eraseProbes } from "./erase.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -22,7 +22,7 @@ import {
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
-/** The 11 Erase capabilities of 28018's Erase row; ids drawn from erase.ts, claims are the contract. */
+/** The 11 Erase features of 28018's Erase row; ids drawn from erase.ts, claims are the contract. */
 const ERASE_CONTRACT: GroupContract = [
   { id: "erase.line.right", expected: "decided", claim: "EL0 erases from the cursor to the end of the line" },
   { id: "erase.line.left", expected: "decided", claim: "EL1 erases from the line start through the cursor" },
@@ -60,7 +60,7 @@ const ERASE_CONTRACT_SPEC: GroupContractSpec = {
   tests: ["packages/probe-defs/src/erase-contract.test.ts", "packages/probe-defs/src/erase-observations.test.ts"],
 }
 
-test("the Erase contract covers every erase capability and names none unknown", () => {
+test("the Erase contract covers every erase feature and names none unknown", () => {
   const gaps = contractGaps(eraseProbes, ERASE_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -81,14 +81,14 @@ test("the Erase contract names its focused tests, and every named file exists", 
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the table below.
-test("the harness replays every erase capability deterministically", async () => {
+test("the harness replays every erase feature deterministically", async () => {
   for (const row of ERASE_CONTRACT) {
     const probe = eraseProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing erase probe ${row.id}`).toBeDefined()
     if (!probe) continue
     expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -103,7 +103,7 @@ test("every erase contract row reads supported against a surface that implements
     const probe = eraseProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing erase probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, `${row.id} reads supported from a surface implementing its claim`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
@@ -121,7 +121,7 @@ test("an EL that does not erase reads unsupported", async () => {
     expect(probe, `the Erase contract names a real ${id} probe`).toBeDefined()
     if (!row || !probe) continue
     const graded = await regradeRow(probe, row, {
-      headless: headlessContext(createSemanticSurface({ mutations: ["el-noop"] })),
+      headless: libProbeSource(createSemanticSurface({ mutations: ["el-noop"] })),
     })
     expect(graded.after, `${id} detects an inert EL`).toBe("unsupported")
   }

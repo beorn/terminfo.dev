@@ -20,7 +20,7 @@ import {
 } from "../types.ts"
 import { splitDecidableBasis } from "../decidable-basis.ts"
 
-/** One capability's contract: the id, the outcome it must read when its controls hold, and its claim. */
+/** One feature's contract: the id, the outcome it must read when its controls hold, and its claim. */
 export interface ContractRow {
   readonly id: string
   /** "decided" = a pass/fail is required; an explicit outcome = exactly that observation. */
@@ -44,14 +44,14 @@ export interface GroupContractSpec {
   /** Repo-relative paths of the focused test files that bind this group's observations. Named, never a glob. */
   readonly tests: readonly string[]
   /**
-   * Named capabilities the group declares but cannot bind here — a catalog id with no probe definition
+   * Named features the group declares but cannot bind here — a catalog id with no probe definition
    * in the frozen suite. They are carried so the contract NAMES them instead of silently dropping them
    * (the NotTestedCoverageResult reason at contract scope; @cto 27832: every contract row binds).
    */
   readonly namedUnavailable?: readonly NamedUnavailable[]
 }
 
-/** A named capability the contract reports but cannot bind, with the reason (reuses the coverage reason). */
+/** A named feature the contract reports but cannot bind, with the reason (reuses the coverage reason). */
 export interface NamedUnavailable {
   readonly id: string
   readonly reason: "no-semantic-observable"
@@ -252,7 +252,7 @@ export interface HeadlessModel extends Partial<LibProbeSource> {
   getCursor(): ReturnType<LibProbeSource["getCursor"]>
 }
 
-export function headlessContext(model: HeadlessModel): LibProbeSource {
+export function libProbeSource(model: HeadlessModel): LibProbeSource {
   const getText = (): string => {
     const lines: string[] = []
     for (let row = 0; row < 24; row++) {
@@ -303,7 +303,7 @@ export interface StoredQuery {
 }
 
 /** Part 3 (query rows) - a TermProbeSource whose queries replay stored raw, not a terminal. */
-export function replayContext(
+export function replayTermProbeSource(
   bySequence: ReadonlyMap<string, StoredQuery>,
   defaults: Partial<TermProbeSource> = {},
 ): TermProbeSource {
@@ -346,11 +346,11 @@ export interface RegradeResult {
 export async function regradeRow(
   probe: ProbeDefinition,
   row: ContractRow,
-  contexts: { readonly headless?: LibProbeSource; readonly term?: TermProbeSource },
+  sources: { readonly headless?: LibProbeSource; readonly term?: TermProbeSource },
 ): Promise<RegradeResult> {
   let result: ProbeCallbackResult | undefined
-  if (probe.lib && contexts.headless !== undefined) result = probe.lib(contexts.headless)
-  else if (probe.term && contexts.term !== undefined) result = await probe.term(contexts.term)
+  if (probe.lib && sources.headless !== undefined) result = probe.lib(sources.headless)
+  else if (probe.term && sources.term !== undefined) result = await probe.term(sources.term)
   const after = result?.observation?.outcome
   return {
     id: probe.id,
