@@ -88,7 +88,7 @@ export async function handleServer(
       )
 
       const { verifyTerminalIdentity } = await import("../../terminfo.dev/src/identity-guard.ts")
-      const identityCheck = verifyTerminalIdentity(data.target.id, data.rawReplies)
+      const identityCheck = verifyTerminalIdentity(data.subject.id, data.rawReplies)
       const run = {
         ...data,
         rawReplies: { ...data.rawReplies, "collector.identityCheck": JSON.stringify(identityCheck) },

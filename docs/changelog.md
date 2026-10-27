@@ -2,7 +2,7 @@
 
 ## Unreleased — draft
 
-Private preparation; final corrected-suite data and publication checks remain pending.
+Private preparation; final corrected-suite data and publication tests remain pending.
 
 - **Recorded runtime identity.** Results are checked against recorded terminal or emulator identities and environments. Missing required data stops processing; unavailable historical provenance is not invented.
 - **Claims bounded by evidence.** Recognition, query replies and engine state establish limited claims, not full feature behavior or app pixels. A probe that was not run is TEST TODO; an attempted probe without a Supported or Unsupported finding is TEST FAILURE. Reviewed inability to measure a feature is Untestable.

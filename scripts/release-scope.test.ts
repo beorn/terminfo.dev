@@ -129,10 +129,11 @@ function writeSuite(dir: string, probeHash: string, freeze?: { release: string; 
   writeFileSync(
     join(dir, `${probeHash}.json`),
     JSON.stringify({
+      schemaVersion: 4 as const,
       probeHash,
       adapterVersion: "4.0.0",
       ...(freeze === undefined ? {} : { freeze }),
-      probes: { app: [], headless: [], mux: [] },
+      probes: { term: [], lib: [], mux: [] },
     }),
   )
 }

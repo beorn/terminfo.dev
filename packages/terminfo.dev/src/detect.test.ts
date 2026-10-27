@@ -1,7 +1,7 @@
 /**
- * @failure Darwin target identity records the kernel release instead of the measured macOS product version.
+ * @failure Darwin subject identity records the kernel release instead of the measured macOS product version.
  * @level l1
- * @consumer detectTerminal target identity used by the real collector.
+ * @consumer detectTerminal subject identity used by the real collector.
  * @testonly none
  */
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
@@ -80,7 +80,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-test("Darwin target identity uses the bounded sw_vers product version", () => {
+test("Darwin subject identity uses the bounded sw_vers product version", () => {
   expect(detectTerminal()).toMatchObject({ os: "macos", osVersion: "26.6.2" })
   expect(execFile).toHaveBeenCalledWith(
     "/usr/bin/sw_vers",
@@ -91,21 +91,21 @@ test("Darwin target identity uses the bounded sw_vers product version", () => {
 })
 
 test.each(["", "Darwin Kernel Version 25.6.0", "26..6", "26.6.2 extra"])(
-  "Darwin target identity refuses invalid sw_vers output %j",
+  "Darwin subject identity refuses invalid sw_vers output %j",
   (value) => {
     execFile.mockReturnValue(value)
     expect(() => detectTerminal()).toThrow(/sw_vers.*productVersion/)
   },
 )
 
-test("Darwin target identity surfaces sw_vers failure", () => {
+test("Darwin subject identity surfaces sw_vers failure", () => {
   execFile.mockImplementation(() => {
     throw new Error("measured sw_vers failure")
   })
   expect(() => detectTerminal()).toThrow(/sw_vers.*productVersion.*measured sw_vers failure/)
 })
 
-test("non-Darwin target identity keeps the OS release", () => {
+test("non-Darwin subject identity keeps the OS release", () => {
   Object.defineProperty(process, "platform", { value: "linux", configurable: true })
   kernelRelease.mockReturnValue("6.17.0")
   expect(detectTerminal()).toMatchObject({ os: "linux", osVersion: "6.17.0" })

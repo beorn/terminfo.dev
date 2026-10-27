@@ -15,7 +15,7 @@
 import { describe, expect, it } from "vitest"
 import { textCellsFrame } from "../../terminfo.dev/src/serve.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import type { CaptureRequest, TermContext } from "./types.ts"
+import type { CaptureRequest, TermProbeSource } from "./types.ts"
 
 const spec: Omit<RegionReadback, "pixelGeometry"> = {
   region: { top: 2, left: 1, bottom: 2, right: 8 },
@@ -37,14 +37,15 @@ const WITNESS_WRITE = /\x1b\[3;1H([\s\S])/u
  * elsewhere. Writes never remove it — that is the measured fact the clear could not change — and
  * the only cell they move is the paint witness the probe parks at row 3, column 1.
  */
-function poisonedContext(): { ctx: TermContext; writes: string[]; requests: CaptureRequest[] } {
+function poisonedSource(): { ctx: TermProbeSource; writes: string[]; requests: CaptureRequest[] } {
   const writes: string[] = []
   const requests: CaptureRequest[] = []
   const screen: string[][] = Array.from({ length: 24 }, () => Array.from(" ".repeat(80)))
   const firstRow = screen[0]
   if (firstRow === undefined) throw new Error("the fixture screen has no row 1")
   firstRow[0] = "\ufffd"
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
+    kind: "live",
     rows: 24,
     cols: 80,
     captureKind: "text-cells",
@@ -92,7 +93,7 @@ function poisonedContext(): { ctx: TermContext; writes: string[]; requests: Capt
 
 describe("a stand-in outside the compared cells does not decide a region row", () => {
   it("measures its own region while the previous probe's leftover is still on screen", async () => {
-    const { ctx, writes } = poisonedContext()
+    const { ctx, writes } = poisonedSource()
     const result = await captureRegionVerdict(ctx, "erase.character", spec)
     expect(result).not.toBeNull()
     expect(result?.observation?.note ?? "").not.toContain("refused the text snapshot")
@@ -106,7 +107,7 @@ describe("a stand-in outside the compared cells does not decide a region row", (
   })
 
   it("still refuses by name when the compared region holds that same cell", async () => {
-    const { ctx } = poisonedContext()
+    const { ctx } = poisonedSource()
     await expect(
       captureRegionVerdict(ctx, "erase.character", { ...spec, region: { top: 1, left: 1, bottom: 1, right: 8 } }),
     ).rejects.toThrow(/row 1, column 1 holds U\+FFFD, the host's stand-in for a glyph longer than one UTF-16 unit/u)

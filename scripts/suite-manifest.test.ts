@@ -90,11 +90,8 @@ test("a same-hash declaration stays immutable and mismatched membership fails lo
   expect(readFileSync(path, "utf8")).toBe(originalBytes)
   expect(verifySuiteManifest(path, snapshot)).toEqual(first)
 
-  writeFileSync(
-    path,
-    JSON.stringify({ ...first, probes: { ...first.probes, headless: first.probes.headless.slice(1) } }),
-  )
-  expect(() => persistSuiteManifest(path, later, snapshot)).toThrow(/headless|membership/)
+  writeFileSync(path, JSON.stringify({ ...first, probes: { ...first.probes, lib: first.probes.lib.slice(1) } }))
+  expect(() => persistSuiteManifest(path, later, snapshot)).toThrow(/lib|membership/)
 })
 
 /** A bare invocation may not declare: only `--check` is a public verb (27843 AC2 + 27859). */
@@ -114,6 +111,7 @@ test("the declared manifest carries only the derived record", () => {
     "catalogIds",
     "probeHash",
     "probes",
+    "schemaVersion",
     "textClaims",
     "textQualification",
   ])
@@ -126,7 +124,7 @@ test("current suite verification and persistence reject altered text declaration
     probeHash: "c".repeat(12),
     adapterVersion: "1.0.0",
     catalogIds: ["attributes", "character"],
-    probes: { app: ["character", "attributes"], headless: [], mux: ["character", "attributes"] },
+    probes: { term: ["character", "attributes"], lib: [], mux: ["character", "attributes"] },
     sourcePaths: [],
     textClaims: ["character"],
     textQualification: { version: 1, recipe: "macos-text-cells-v1" },
@@ -164,7 +162,12 @@ test("current suite verification and persistence reject altered text declaration
 
 /** A manifest is legacy-complete (both) or new-minimal (neither); a half pair refuses by name. */
 test("the parser accepts both provenance shapes and refuses a partial pair", () => {
-  const base = { probeHash: "a".repeat(12), adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const base = {
+    schemaVersion: 4 as const,
+    probeHash: "a".repeat(12),
+    adapterVersion: "1.0.0",
+    probes: { term: ["x"], lib: [], mux: ["x"] },
+  }
   const legacy = parseSuiteManifest(
     "legacy.json",
     JSON.stringify({
@@ -203,7 +206,7 @@ const snapshotOf = (probeHash: string): ProbeSuiteSnapshot => ({
   probeHash,
   adapterVersion: "1.0.0",
   catalogIds: ["fixture.catalogue"],
-  probes: { app: [], headless: [], mux: [] },
+  probes: { term: [], lib: [], mux: [] },
   sourcePaths: [],
 })
 
@@ -219,7 +222,12 @@ function citedFixture(schemaVersion: 2 | 3 = 2): string {
   )
   writeFileSync(
     join(directory, "content", "suites", `${CITED}.json`),
-    JSON.stringify({ probeHash: CITED, adapterVersion: "1.0.0", probes: { app: [], headless: [], mux: [] } }),
+    JSON.stringify({
+      schemaVersion: 4 as const,
+      probeHash: CITED,
+      adapterVersion: "1.0.0",
+      probes: { term: [], lib: [], mux: [] },
+    }),
   )
   return directory
 }
@@ -251,7 +259,12 @@ test("the check is red when a declaration is not named for the hash it declares"
   const directory = citedFixture()
   writeFileSync(
     join(directory, "content", "suites", `${CITED}.json`),
-    JSON.stringify({ probeHash: COMPOSED, adapterVersion: "1.0.0", probes: { app: [], headless: [], mux: [] } }),
+    JSON.stringify({
+      schemaVersion: 4 as const,
+      probeHash: COMPOSED,
+      adapterVersion: "1.0.0",
+      probes: { term: [], lib: [], mux: [] },
+    }),
   )
   expect(() => checkCitedSuiteManifests(directory, snapshotOf(COMPOSED))).toThrow(/not its filename/)
 })
@@ -551,7 +564,12 @@ test("a move writes the new claim before it clears the old one, so a failed writ
 })
 
 test("the parser refuses a freeze lineage that is not the carried list", () => {
-  const base = { probeHash: "a".repeat(12), adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const base = {
+    schemaVersion: 4 as const,
+    probeHash: "a".repeat(12),
+    adapterVersion: "1.0.0",
+    probes: { term: ["x"], lib: [], mux: ["x"] },
+  }
   const entry = {
     suite: "b".repeat(12),
     from: "2026-10-16T09:30:22.506Z",
@@ -570,7 +588,12 @@ test("the parser refuses a freeze lineage that is not the carried list", () => {
 
 test("the parser refuses a lineage that names the suite the record freezes, or windows out of order", () => {
   const own = "a".repeat(12)
-  const base = { probeHash: own, adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const base = {
+    schemaVersion: 4 as const,
+    probeHash: own,
+    adapterVersion: "1.0.0",
+    probes: { term: ["x"], lib: [], mux: ["x"] },
+  }
   const at = "2026-10-18T03:00:00.000Z"
   const first = { suite: "b".repeat(12), from: "2026-10-16T09:30:22.506Z", until: "2026-10-18T02:27:38.228Z" }
   const second = { suite: "c".repeat(12), from: "2026-10-18T02:27:38.228Z", until: at }
@@ -695,7 +718,12 @@ test.each([
 })
 
 test("the parser refuses a gap between windows that are otherwise in order and end at the freeze", () => {
-  const base = { probeHash: "a".repeat(12), adapterVersion: "1.0.0", probes: { app: ["x"], headless: [], mux: ["x"] } }
+  const base = {
+    schemaVersion: 4 as const,
+    probeHash: "a".repeat(12),
+    adapterVersion: "1.0.0",
+    probes: { term: ["x"], lib: [], mux: ["x"] },
+  }
   const at = "2026-10-18T03:00:00.000Z"
   const first = { suite: "b".repeat(12), from: "2026-10-16T09:30:22.506Z", until: "2026-10-18T02:27:38.228Z" }
   // Each window runs forwards and the last ends at this freeze, but the second does not start where the
@@ -705,7 +733,7 @@ test("the parser refuses a gap between windows that are otherwise in order and e
   expect(() => parseSuiteManifest("x.json", source)).toThrow(/previous window for suite c{12}/)
 })
 
-test("an ordinary freeze checks the bytes it writes, so a bad instant never lands", () => {
+test("an ordinary freeze tests the bytes it writes, so a bad instant never lands", () => {
   const directory = authoringRepo("terminfo-suite-freeze-bytes-")
   const second = declareFixture(directory, "b".repeat(12))
   const path = join(directory, "content", "suites", `${second.probeHash}.json`)
@@ -911,7 +939,12 @@ test("an explicit --suite refuses an unknown id, a malformed id and a record mis
   )
   writeFileSync(
     join(directory, "content", "suites", `${known.probeHash}.json`),
-    JSON.stringify({ probeHash: "1".repeat(12), adapterVersion: "1.0.0", probes: { app: [], headless: [], mux: [] } }),
+    JSON.stringify({
+      schemaVersion: 4 as const,
+      probeHash: "1".repeat(12),
+      adapterVersion: "1.0.0",
+      probes: { term: [], lib: [], mux: [] },
+    }),
   )
   expect(() => freezeCurrentSuiteManifest(directory, "candidate2", { suite: known.probeHash })).toThrow(
     /declares suite 111111111111, not eeeeeeeeeeee/,

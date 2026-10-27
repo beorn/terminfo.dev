@@ -10,7 +10,7 @@ import type { ConsoleBufferOwner } from "@terminfo/probe-defs"
  * character claim only once that app's hosted run passes the five readback shapes.
  */
 export interface TextEvidenceRead {
-  readonly evidence: string
+  readonly assertionType: string
   readonly conclusive: boolean
   readonly os: string
   /** The console host the cited run recorded, when it has one. */
@@ -19,7 +19,7 @@ export interface TextEvidenceRead {
 }
 
 export function textEvidenceExplanation(read: TextEvidenceRead | undefined): string | undefined {
-  if (read === undefined || read.evidence !== "text" || read.conclusive) return undefined
+  if (read === undefined || read.assertionType !== "buffer_state" || read.conclusive) return undefined
   if (read.os === "windows") {
     // When the run recorded the host, the page names it and prints the digest in full, so a reader
     // can check it rather than being told it exists somewhere (@cto ruling 6255e75d condition 3).

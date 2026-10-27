@@ -289,7 +289,7 @@ bun probe:mux                 # = bun terminfo probe mux --all
 - **Daemon** (`probe server`): Testing ANY terminal. Run `--start` in the probe subject's terminal, then `--all` from another session.
   Works for Warp, SSH sessions, Linux, anything with a TTY. **Most flexible method.**
 - **Mux** (`probe mux`): Testing multiplexer pass-through (tmux, screen). Launches the mux with a daemon inside, probes via HTTP, saves to `content/probes-mux/`. Shows which features each mux correctly relays vs. strips.
-- **Inline** (`probe here`): Quick test of the current terminal. Good for one-off checks.
+- **Inline** (`probe here`): Quick test of the current terminal. Good for one-off tests.
 - **Manual**: For terminals where none of the above work, run `terminfo detect` and submit results.
 
 ### Full Update Workflow
@@ -396,7 +396,7 @@ bun run build
 
 ## Adding a New Feature
 
-1. Add probe to `packages/probe-defs/src/<category>.ts` (unified — covers both termless and term)
+1. Add probe to `packages/probe-defs/src/<category>.ts` (unified — covers both lib and term)
 2. Add metadata to `content/features.json` (name, slug, url, tags, body, probe, baseline)
 3. Re-probe all terminals (see "Re-Probing All Terminals" above)
 4. Add annotations for any unexpected failures
@@ -404,13 +404,14 @@ bun run build
 
 ### Probe Status
 
-`probeStatus` is DERIVED at build time (`docs/data/probe-status.ts`), never hand-kept per row:
-a feature with a probe definition reads `"automated"`, one with no definition reads `"unprobed"`.
+Coverage is derived by [derivedProbeStatus](docs/data/probe-status.ts), with reviewed catalog overrides.
+See the [canonical declaration contract](packages/probe-defs/README.md#from-definition-to-recorded-result)
+and [nullable declaration comments](packages/probe-defs/src/types.ts) for the distinction between measured, partial and undeclared coverage.
 
 The catalog may declare a reviewed override for exactly two statuses, each with a
 `probeStatusReason`:
 
-- `"partial"` — the definition establishes acceptance only (evidence `consumed`): we can tell the
+- `"partial"` — the definition establishes acceptance only (an execution-only pending test): we can tell the
   sequence was accepted, not that its effect happened. Examples: the SGR colour resets, OSC 8 and
   the OSC 133 / OSC 633 prompt marks.
 - `"manual"` — support data comes from docs or manual testing and no automatable probe exists
@@ -448,7 +449,8 @@ include the `"osc"` tag in addition to any vendor tag.
 
 ### Probe Quality Rules
 
-**Every termless callback MUST verify actual terminal state.** Never `return { pass: true }` without checking something. Use one of these verification strategies:
+[The canonical callback contract](packages/probe-defs/README.md#from-definition-to-recorded-result) permits measured, coverage and execution-only results.
+Support claims require retained observations and deciding assertions; legacy `pass` is diagnostic only. Useful lib observation strategies:
 
 | Strategy             | When to use                 | Example                                       |
 | -------------------- | --------------------------- | --------------------------------------------- |
@@ -458,9 +460,8 @@ include the `"osc"` tag in addition to any vendor tag.
 | `ctx.feedCapture()`  | Query-response protocols    | Check response matches expected pattern       |
 | `ctx.capabilities.*` | Declared term features      | Check `capabilities.kittyKeyboard`            |
 | `ctx.getTitle()`     | OSC title sequences         | Check title changed                           |
-| `null`               | Last resort only            | When NO verification is possible (rare)       |
 
-If a termless callback returns `{ pass: true }` unconditionally, it's a false positive — every backend will pass regardless of whether it implements the feature.
+Execution-only refusals retain TODO or FAILURE tests with reasons, without inventing a measured observation.
 
 ## Content Enrichment
 

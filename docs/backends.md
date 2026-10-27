@@ -46,7 +46,7 @@ Embeddable terminal emulator libraries -- these **are** the terminal. They don't
     <span class="backend-name">xterm.js</span>
     <span class="backend-lang">TypeScript</span>
   </div>
-  <p class="backend-desc">The most widely deployed terminal emulator. Powers VS Code, Cursor, Hyper, and most web-based terminals. Its feature support defines the capability floor for millions of developers.</p>
+  <p class="backend-desc">The most widely deployed terminal emulator. Powers VS Code, Cursor, Hyper, and most web-based terminals. Its feature support defines the feature floor for millions of developers.</p>
 </a>
 
 <a class="backend-card" href="/terminals/vterm-js">
@@ -100,7 +100,7 @@ Parser probes run through [Termless](https://termless.dev), a headless terminal 
 3. **Reads back terminal state** — cursor position, cell attributes, mode flags, response strings
 4. **Asserts correctness** — did the parser interpret the sequence as specified?
 
-These checks inspect backend state without an app window. Execution time and process isolation depend on the backend.
+These tests inspect backend state without an app window. Execution time and process isolation depend on the backend.
 
 ```
 Probe: "SGR bold"
@@ -117,7 +117,7 @@ Kitty and Ghostty have headless parser results too, but neither has a sealed cur
 The two test types answer different questions:
 
 - **Headless results** report what the backend exposes: cell attributes, state or protocol replies. They do not establish the app's pixels or user interaction.
-- **App results** report what the specific probe observed in a running terminal. Query replies establish response behavior; controlled screenshots can establish the visible property they show. Input and permission behavior need their own checks.
+- **App results** report what the specific probe observed in a running terminal. Query replies establish response behavior; controlled screenshots can establish the visible property they show. Input and permission behavior need their own tests.
 
 When results differ, compare the terminal version, configuration, probe method and evidence before attributing a cause. A difference can come from the adapter or probe as well as the terminal. The [result definitions](/contribute#reading-results) distinguish Unsupported results, TEST TODO, TEST FAILURE and reviewed Untestable results.
 

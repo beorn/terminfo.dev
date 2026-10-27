@@ -8,9 +8,9 @@ import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell } from "./region-readback-kind.ts"
-import { headlessContext, regradeRow } from "./testing/group-harness.ts"
+import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 /**
  * The kind table's own rows, one per CONVERTED Editing probe, listed BY NAME so a row that loses its
@@ -46,9 +46,10 @@ const KIND_TABLE_ROWS = editingReadbackRows.map((row) => ({
  *    the nine columns it compares, so a wider screen can no longer move what the row reads.
  */
 
-/** A minimal TermlessContext the declared screens below override. */
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+/** A minimal LibProbeSource the declared screens below override. */
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    kind: "live",
     cols: 24,
     feed() {},
     feedCapture: () => "",
@@ -93,12 +94,12 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<LibProbeSource["getCell"]> {
   if (cell === undefined || typeof cell === "string") {
     // A plain cell is a cell the row claims NO attributes for, not one whose backend reports no
     // field: a real `getCell` always says what the background is (null = none).
     return { char: cell ?? " ", bold: false, inverse: false, fg: null, bg: null } as ReturnType<
-      TermlessContext["getCell"]
+      LibProbeSource["getCell"]
     >
   }
   const attributes = cell.attributes
@@ -108,13 +109,13 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
     inverse: attributes.inverse === true,
     fg: null,
     bg: attributes.bg ?? null,
-  } as ReturnType<TermlessContext["getCell"]>
+  } as ReturnType<LibProbeSource["getCell"]>
 }
 
 function declaredScreen(
   screens: Record<string, readonly (readonly RegionReadbackCell[])[]>,
   cols: number,
-): TermlessContext {
+): LibProbeSource {
   let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
@@ -168,7 +169,7 @@ test("a stream-extent DECCARA that inverts the right flank reads unsupported", (
   const row = editingReadbackRows.find((entry) => entry.id === "editing.deccara")
   if (!row) throw new Error("missing editing.deccara")
   const probe = editingProbes.find((entry) => entry.id === row.id)
-  if (!probe?.termless) throw new Error("missing headless editing.deccara")
+  if (!probe?.lib) throw new Error("missing headless editing.deccara")
   const step = row.steps[0]?.write
   if (step === undefined) throw new Error("missing editing.deccara step")
   const marked = new Set(["a", "b", "c"])
@@ -178,8 +179,8 @@ test("a stream-extent DECCARA that inverts the right flank reads unsupported", (
       return marked.has(char) ? cell : { char, attributes: { inverse: true } }
     }),
   )
-  const result = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: streamExtent }, 24))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const result = probe.lib(declaredScreen({ [row.seed]: row.before, [step]: streamExtent }, 24))
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
 })
 
@@ -192,14 +193,14 @@ test("a DECCARA seed whose right flank is already inverse reads inconclusive", (
   const row = editingReadbackRows.find((entry) => entry.id === "editing.deccara")
   if (!row) throw new Error("missing editing.deccara")
   const probe = editingProbes.find((entry) => entry.id === row.id)
-  if (!probe?.termless) throw new Error("missing headless editing.deccara")
+  if (!probe?.lib) throw new Error("missing headless editing.deccara")
   const flanksInversed = row.before.map((cells) =>
     cells.map((cell) => {
       const char = typeof cell === "string" ? cell : cell.char
       return char === "Z" || char === "Y" || char === "X" ? { char, attributes: { inverse: true } } : cell
     }),
   )
-  const result = probe.termless(declaredScreen({ [row.seed]: flanksInversed }, 24))
+  const result = probe.lib(declaredScreen({ [row.seed]: flanksInversed }, 24))
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions).toBeUndefined()
 })
@@ -215,17 +216,17 @@ test("every kind row decides from its own cells, through the shared kind", async
     expect(probe, `${row.id} has a kind-built probe`).toBeDefined()
     if (!probe) continue
     expect(probe.termNeedsGeometry, row.id).toBe(true)
-    expect(probe.termlessObservationEvidence, row.id).toBe("parser-state")
-    const measured = probe.termless!(headlessContext(createSemanticSurface()))
+    expect(probe.libAssertionType, row.id).toBe("buffer_state")
+    const measured = probe.lib!(libProbeSource(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     expect(toSpaces(state.before), `${row.id} reads the row's seed cells`).toEqual(toSpaces(row.before))
     expect(toSpaces(state.after), `${row.id} reads the row's target cells`).toEqual(toSpaces(row.after))
-    expect(measured.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(measured.observation, row.id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(measured.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
     const contract = KIND_TABLE_ROWS.find((entry) => entry.id === row.id)
     expect(contract, `${row.id} is named in the table`).toBeDefined()
     if (!contract) continue
-    const graded = await regradeRow(probe, contract, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, contract, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
   }
@@ -235,8 +236,8 @@ test("the kind table replays every row deterministically", async () => {
   for (const row of KIND_TABLE_ROWS) {
     const probe = editingProbes.find((entry) => entry.id === row.id)
     if (!probe) continue
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
   }
@@ -250,21 +251,21 @@ test("the kind table replays every row deterministically", async () => {
 for (const row of editingReadbackRows) {
   test(`${row.id} binds its claim to its own cells and calibrated controls`, () => {
     const probe = editingProbes.find((entry) => entry.id === row.id)
-    if (!probe?.termless) throw new Error(`Missing headless ${row.id}`)
+    if (!probe?.lib) throw new Error(`Missing headless ${row.id}`)
     const cols = 24
     const step = firstStep(row.id)
     const right = (row.region?.left ?? 1) + (row.before[0]?.length ?? 0) - 1
 
-    const supported = probe.termless(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols))
-    expect(supported.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    const supported = probe.lib(declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols))
+    expect(supported.observation, row.id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(supported.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
 
-    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols))
-    expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    const ignored = probe.lib(declaredScreen({ [row.seed]: row.before }, cols))
+    expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored.assertions?.[0], row.id).toMatchObject({ kind: "negative" })
 
     const badSeed = row.before.map((cells) => cells.map(() => "?"))
-    expect(probe.termless(declaredScreen({ [row.seed]: badSeed }, cols)).observation, row.id).toMatchObject({
+    expect(probe.lib(declaredScreen({ [row.seed]: badSeed }, cols)).observation, row.id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
     })
@@ -274,7 +275,7 @@ for (const row of editingReadbackRows) {
       const moved = row.after.map((cells) => [...cells])
       moved[control.row]![control.col] = "?"
       expect(
-        probe.termless(declaredScreen({ [row.seed]: row.before, [step]: moved }, cols)).observation,
+        probe.lib(declaredScreen({ [row.seed]: row.before, [step]: moved }, cols)).observation,
         `${row.id} moved control ${control.row},${control.col}`,
       ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     }
@@ -283,7 +284,7 @@ for (const row of editingReadbackRows) {
     const narrow = declaredScreen({ [row.seed]: row.before, [step]: row.after }, right - 1)
     const fed: string[] = []
     const watched = { ...narrow, feed: (sequence: string) => fed.push(sequence) }
-    expect(probe.termless(watched).observation, `${row.id} at ${right - 1} columns`).toMatchObject({
+    expect(probe.lib(watched).observation, `${row.id} at ${right - 1} columns`).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
     })
@@ -302,11 +303,11 @@ for (const id of ["editing.deccara", "editing.decrara"]) {
     const row = editingReadbackRows.find((entry) => entry.id === id)
     if (!row) throw new Error(`missing ${id}`)
     const probe = editingProbes.find((entry) => entry.id === id)
-    if (!probe?.termless) throw new Error(`missing headless ${id}`)
-    const termless = probe.termless
+    if (!probe?.lib) throw new Error(`missing headless ${id}`)
+    const lib = probe.lib
     const step = firstStep(id)
 
-    const watch = (ctx: TermlessContext) => {
+    const watch = (ctx: LibProbeSource) => {
       const fed: string[] = []
       const watched = {
         ...ctx,
@@ -315,15 +316,15 @@ for (const id of ["editing.deccara", "editing.decrara"]) {
           ctx.feed(sequence)
         },
       }
-      return { fed, run: () => termless(watched) }
+      return { fed, run: () => lib(watched) }
     }
 
     const supported = watch(declaredScreen({ [row.seed]: row.before, [step]: row.after }, 24))
-    expect(supported.run().observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.run().observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(supported.fed.slice(-2), `${id} cleanup on success`).toEqual(["\x1b[0*x", "\x1b[0m"])
 
     const ignored = watch(declaredScreen({ [row.seed]: row.before }, 24))
-    expect(ignored.run().observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored.run().observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored.fed.slice(-2), `${id} cleanup on refusal`).toEqual(["\x1b[0*x", "\x1b[0m"])
 
     const throwing = watch({
@@ -348,7 +349,7 @@ test("every row's controls survive the row's own steps on the reference parser",
   for (const row of editingReadbackRows) {
     // SL and SR shift every compared column, so neither declares a control.
     if (row.controls.length === 0) continue
-    const ctx = headlessContext(createSemanticSurface())
+    const ctx = libProbeSource(createSemanticSurface())
     ctx.feed(row.seed)
     for (const control of row.controls) ctx.feed(`\x1b[${control.row + 1};${control.col + 1}H\u00b5`)
     for (const step of row.steps) ctx.feed(step.write)
@@ -402,27 +403,33 @@ test("an explicit minimum geometry below what a row uses refuses at load", () =>
   )
 })
 
-test("decrqcra checks the one-cell character delta of the seeded rectangle", () => {
+test("decrqcra tests the one-cell character delta of the seeded rectangle", () => {
   const probe = ALL_PROBES.find((entry) => entry.id === "editing.decrqcra")
-  if (!probe?.termless) throw new Error("decrqcra termless callback missing")
-  expect(probe.termObservationEvidence).toBe("query")
-  expect(probe.termlessObservationEvidence).toBe("query")
+  if (!probe?.lib) throw new Error("decrqcra termless callback missing")
+  expect(probe.termAssertionType).toBe("query_reply")
+  expect(probe.libAssertionType).toBe("query_reply")
   const run = (values: readonly string[]) => {
     let index = 0
-    return probe.termless!(headless({ feedCapture: () => values[index++] ?? "" }))
+    return probe.lib!(headless({ feedCapture: () => values[index++] ?? "" }))
   }
   expect(run(["\x1bP1!~014F\x1b\\", "\x1bP1!~0150\x1b\\"])).toMatchObject({
     pass: true,
-    observation: { outcome: "supported", evidence: "query" },
+    observation: { outcome: "supported", assertionType: "query_reply" },
   })
   // DEC-compatible default: the negated sum moves E->F by 65535 (modular -1).
   expect(run(["\x1bP1!~014F\x1b\\", "\x1bP1!~014E\x1b\\"])).toMatchObject({
     pass: true,
-    observation: { outcome: "supported", evidence: "query" },
+    observation: { outcome: "supported", assertionType: "query_reply" },
   })
   expect(run(["\x1bP1!~014F\x1b\\", "\x1bP1!~014F\x1b\\"])).toMatchObject({
     pass: false,
-    observation: { outcome: "unsupported", evidence: "query" },
+    observation: { outcome: "unsupported", assertionType: "query_reply" },
   })
-  expect(run(["", ""])).toMatchObject({ pass: false, observation: { outcome: "inconclusive" } })
+  const missing = run(["", ""])
+  expect(missing.observation).toBeUndefined()
+  expect(missing).toMatchObject({
+    pass: false,
+    response: JSON.stringify({ first: "", second: "" }),
+    tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+  })
 })

@@ -6,11 +6,13 @@
  */
 import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
-import type { CapabilityResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { classifyDevelopmentRun, projectResults } from "../docs/data/selected-results.ts"
 
 // #30720 (@cto rulings fc63f412, 1ee8cf0b, f126327b): no other test reads a Windows run, so none sees the
 // reader count conhost's DA1-ordered answers as the terminal's.
+// Explicit schema-3 wire fixture; current public results use tests and assertionType.
+type Schema3Result = Omit<ProbeResult, "tests" | "assertionType"> & { checks: ProbeResult["tests"]; evidence?: string }
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
 const suite: ProbeSuiteManifest = {
   probeHash: "windows-console-host",
@@ -18,7 +20,7 @@ const suite: ProbeSuiteManifest = {
   generatedAt: "2026-10-22T05:00:00.000Z",
   adapterVersion: "3.3.2",
   catalogIds: ids,
-  probes: { app: ids, headless: [], mux: [] },
+  probes: { term: ids, lib: [], mux: [] },
 }
 const attempt = { scope: "probe" as const, startedAt: "2026-10-22T05:00:00.000Z" }
 const HOST_DA1 = "\u001b[?61;6;7;14;21;22;23;24;28;32;42c"
@@ -80,7 +82,7 @@ const common = (os: string) => ({
   screenshotRefs: [],
 })
 const current = (os: string) => {
-  const results: CapabilityResult[] = ids.map((featureId) => ({
+  const results: Schema3Result[] = ids.map((featureId) => ({
     featureId,
     status: "test-todo",
     attempt: { scope: "none" },
@@ -143,7 +145,7 @@ describe("Windows console-host rule", () => {
     const run = current("windows")
     const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash }, [])
     // History holds every valid run before admission, which needs a Windows ownership receipt this rule ignores.
-    const selected = projection.history["app:windows-terminal"]![0]!
+    const selected = projection.history["term:windows-terminal"]![0]!
     const byId = new Map(selected.results.map((result) => [result.featureId, result]))
     expect([0, 1, 2, 3, 4, 5].map((index) => byId.get(ids[index]!)?.status)).toEqual([
       "test-todo",

@@ -18,7 +18,7 @@
  * ruling): the third attribute-rectangle probe converted the kind once, so DECCARA, DECRARA and the
  * EL background row grade attribute changes on both arms instead of being hand-written beside it.
  */
-import type { ProbeDefinition, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, LibProbeSource } from "./types.ts"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
 import { isBlank, notTestedResult, parserStateResult } from "./helpers.ts"
 
@@ -211,7 +211,7 @@ interface RegionReadbackGeometry {
  * either side, is the same blank (the shared `isBlank` helper) — a terminal that implements a
  * sequence must never grade unsupported for choosing the other spelling (28450 must-fix 1).
  */
-type MeasuredCell = ReturnType<TermlessContext["getCell"]>
+type MeasuredCell = ReturnType<LibProbeSource["getCell"]>
 
 /**
  * One cell compared against its declared expectation. The character keeps the blank rule; an
@@ -381,7 +381,7 @@ function gridMatch(
 }
 
 /** The compared region's cells, read from the parser at their own screen positions. */
-function readGrid(ctx: TermlessContext, geometry: RegionReadbackGeometry): MeasuredCell[][] {
+function readGrid(ctx: LibProbeSource, geometry: RegionReadbackGeometry): MeasuredCell[][] {
   return Array.from({ length: geometry.rows }, (_, row) =>
     Array.from({ length: geometry.columns }, (_, col) => ctx.getCell(geometry.top - 1 + row, geometry.left - 1 + col)),
   )
@@ -597,10 +597,10 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
     termNeedsGeometry: true,
     cellReadback: true,
     ...(row.textClaim === undefined ? {} : { textClaim: row.textClaim }),
-    termObservationEvidence: "pixels",
-    termlessObservationEvidence: "parser-state",
-    termless(ctx) {
-      // The termless context reports its width and nothing else: the parser arms address cells by
+    termAssertionType: "screenshot",
+    libAssertionType: "buffer_state",
+    lib(ctx) {
+      // The library source reports its width and nothing else: the parser arms address cells by
       // row directly, so the only geometry they can be refused on is the compared region's width.
       if (!Number.isSafeInteger(ctx.cols) || ctx.cols < geometry.right) {
         return parserStateResult(
@@ -724,15 +724,16 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
       // (28785 must 1).
       return {
         pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note:
-            ctx.captureGeometryRefusal === undefined
-              ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`
-              : `${row.id}: this run installs no capture adapter because the run's cell-to-pixel geometry was refused — ${ctx.captureGeometryRefusal}`,
-        },
+        tests: [
+          {
+            id: "criterion",
+            status: "test-todo",
+            reason:
+              ctx.captureGeometryRefusal === undefined
+                ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`
+                : `${row.id}: this run installs no capture adapter because the run's cell-to-pixel geometry was refused — ${ctx.captureGeometryRefusal}`,
+          },
+        ],
       }
     },
   }

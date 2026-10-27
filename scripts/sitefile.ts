@@ -13,7 +13,7 @@
  *   bun -e "import { sources } from './scripts/sitefile.ts'; console.log(sources.length, 'sources')"
  */
 
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures, loadTerminals } from "@terminfo/catalog"
 
@@ -597,7 +597,7 @@ async function generateLockfile() {
   // Reuse the site/API's reviewed context selection; filenames and advertised
   // versions are not measurements. Partial/unreviewed history stays excluded.
   const { projection } = loadCurrentResults(contentDir)
-  const selected = [...compatibilityTargets(projection, contentDir).values()]
+  const selected = [...compatibilitySubjects(projection, contentDir).values()]
   const catalogPath = path.join(contentDir, "terminals.json")
   const catalog = loadTerminals(contentDir)
   const terminalLock = terminals.map((terminal) => {
@@ -607,9 +607,9 @@ async function generateLockfile() {
     }
     const chosenDeclaration = declarations[0]
     if (!chosenDeclaration) throw new Error(`${catalogPath}: missing tracked terminal ${terminal.id}`)
-    const [targetId, declaration] = chosenDeclaration
+    const [subjectId, declaration] = chosenDeclaration
     const kind: string | undefined = terminal.probeMethod === "termless" ? "headless" : declaration.kind
-    const entry = selected.find(({ selected: run }) => run.target.kind === kind && run.target.id === targetId)
+    const entry = selected.find(({ selected: run }) => run.subject.kind === kind && run.subject.id === subjectId)
     const run = entry?.selected
     return {
       terminalId: terminal.id,
@@ -617,7 +617,7 @@ async function generateLockfile() {
       contextKey: entry?.contextKey ?? null,
       runId: run?.runId ?? null,
       runSha256: run?.sha256 ?? null,
-      lastProbedVersion: run?.target.version ?? null,
+      lastProbedVersion: run?.subject.version ?? null,
       lastProbedDate: run?.measuredAt ?? "never",
       featureCount: run?.catalogIds.length ?? 0,
     }

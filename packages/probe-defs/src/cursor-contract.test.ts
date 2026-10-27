@@ -1,5 +1,5 @@
 /**
- * @failure A group capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure A group feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Cursor group (child 28020); second adopter of the 28453 harness.
@@ -11,11 +11,11 @@ import { join } from "node:path"
 import { cursorProbes } from "./cursor.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
-  replayContext,
+  replayTermProbeSource,
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
@@ -23,7 +23,7 @@ import {
   type StoredQuery,
 } from "./testing/group-harness.ts"
 
-/** The 22 Cursor capabilities of 28018's Cursor row; ids drawn from cursor.ts, claims are the contract. */
+/** The 22 Cursor features of 28018's Cursor row; ids drawn from cursor.ts, claims are the contract. */
 const CURSOR_CONTRACT: GroupContract = [
   { id: "cursor.move.absolute", expected: "decided", claim: "CUP CSI 5;10H selects row 4 col 9 (0-based)" },
   { id: "cursor.move.home", expected: "decided", claim: "CUP with no args homes the cursor" },
@@ -313,7 +313,7 @@ function interpretingCursor(cols = 80, rows = 24): HeadlessModel {
   }
 }
 
-test("the Cursor contract covers every Cursor capability and names none unknown", () => {
+test("the Cursor contract covers every Cursor feature and names none unknown", () => {
   const gaps = contractGaps(cursorProbes, CURSOR_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -332,14 +332,14 @@ test("the Cursor contract names its focused tests, and every named file exists",
   for (const path of CURSOR_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every Cursor capability deterministically (satisfaction is bound by the interpreter test below)", async () => {
+test("the harness replays every Cursor feature deterministically (satisfaction is bound by the interpreter test below)", async () => {
   for (const row of CURSOR_CONTRACT) {
     const probe = cursorProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Cursor probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(interpretingCursor()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(interpretingCursor()) })
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    const first = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -351,7 +351,7 @@ test("every Cursor contract row is satisfied by the headless cursor state its cl
     const probe = cursorProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Cursor probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(interpretingCursor()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
     expect(graded.after, `${row.id} reads supported from its claim's cursor state`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
@@ -363,17 +363,17 @@ test("cursor.shape is inconclusive when style readback is omitted, bound when pr
   expect(row, "the Cursor contract names cursor.shape").toBeDefined()
   expect(probe, "the Cursor contract names a real cursor.shape probe").toBeDefined()
   if (!row || !probe) return
-  const present = await regradeRow(probe, row, { headless: headlessContext(interpretingCursor()) })
+  const present = await regradeRow(probe, row, { headless: libProbeSource(interpretingCursor()) })
   expect(present.after).toBe("supported")
   expect(present.satisfies).toBe(true)
-  const omitted = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
+  const omitted = await regradeRow(probe, row, { headless: libProbeSource(inertModel()) })
   expect(omitted.after).toBe("inconclusive")
   expect(omitted.satisfies).toBe(false)
-  const result = probe.termless?.(headlessContext(inertModel()))
+  const result = probe.lib?.(libProbeSource(inertModel()))
   expect(result?.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
 })
 
@@ -385,7 +385,7 @@ test("cursor.shape's app arm decides from the terminal's DECRQSS cursor-style re
   if (!row || !probe) return
   const styleQuery = "\x1bP$q q\x1b\\"
   const withReply = (raw: string) =>
-    replayContext(
+    replayTermProbeSource(
       new Map<string, StoredQuery>([[styleQuery, { sequence: styleQuery, match: null, reason: "reply", raw }]]),
     )
   const beam = await regradeRow(probe, row, { term: withReply("\x1bP1$r6 q\x1b\\") })
@@ -394,9 +394,9 @@ test("cursor.shape's app arm decides from the terminal's DECRQSS cursor-style re
   const block = await regradeRow(probe, row, { term: withReply("\x1bP1$r2 q\x1b\\") })
   expect(block.after, "a DECRQSS report of a non-beam style is a decided unsupported").toBe("unsupported")
   expect(block.satisfies).toBe(true)
-  const silent = await regradeRow(probe, row, { term: replayContext(new Map()) })
-  expect(silent.after, "an unanswered DECRQSS report is inconclusive, never a negative").toBe("inconclusive")
-  expect(silent.satisfies).toBe(false)
+  const silent = await probe.term!(replayTermProbeSource(new Map()))
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })
 
 test("a decided Cursor row is unsatisfied when the origin control does not hold", async () => {
@@ -411,7 +411,7 @@ test("a decided Cursor row is unsatisfied when the origin control does not hold"
     getCell: () => ({ ...INERT_CELL }),
     getCursor: () => ({ x: 1, y: 1, visible: true, style: null }),
   }
-  const inert = await regradeRow(probe, row, { headless: headlessContext(displaced) })
+  const inert = await regradeRow(probe, row, { headless: libProbeSource(displaced) })
   expect(inert.after).toBe("inconclusive")
   expect(inert.satisfies).toBe(false)
 })

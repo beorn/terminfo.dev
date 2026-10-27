@@ -27,7 +27,7 @@ vi.mock("node:fs", async (importOriginal) => {
   }
 })
 
-// Metadata checks do not need to parse the populated archive on every retry.
+// Metadata tests do not need to parse the populated archive on every retry.
 vi.mock("../docs/data/current-results.ts", () => ({
   loadCurrentResults: () => ({
     projection: {
@@ -51,7 +51,7 @@ vi.mock("../docs/data/current-results.ts", () => ({
       },
     },
   }),
-  compatibilityTargets: () => new Map(),
+  compatibilitySubjects: () => new Map(),
 }))
 
 test.each(["missing", "malformed", "non-object"] as const)(

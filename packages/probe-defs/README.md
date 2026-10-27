@@ -2,94 +2,84 @@
 
 `@terminfo/probe-defs` defines term feature probes, their observations and the shared run model. Start at the [exports and probe registry](src/index.ts); [types.ts](src/types.ts) owns the record types.
 
-This describes the implemented system. A proposed redesign would separate live capture from offline assertions; that separation is not implemented here. Update this document as the system changes.
+This describes the implemented system. Callbacks still perform live I/O and evaluate it together. General ordered recording and replay belong to recorder #30932 and are not implemented here.
 
 ## Vocabulary and current code
 
-The approved vocabulary below names the concepts; the code identifiers remain unchanged.
+- **Probe subject**: the exact terminal app, emulator library or multiplexer being probed, at a recorded path, OS and version. `ProbeSubject.kind` is `term`, `lib` or `mux`.
+- **Term feature**: one terminal behaviour being tested, identified by `featureId`, with one `ProbeDefinition` supplying lib and/or term paths. A mux uses the term path.
+- **Probe source**: where answers come from. `TermProbeSource` and `LibProbeSource` currently supply only `live` answers from the subject. A `trace` source remains future work.
+- **Probe trace**: everything one probe run did and saw, entry by entry, including referenced files. Current collectors retain subsets, not a complete replayable record.
+- **Test**: one required condition of a probe, with its own status and assertion references. `ProbeTestResult` is stored; `ProbeTestInput` is supplied by a callback.
+- **Assertion**: one expected-versus-observed comparison. `ProbeAssertion` carries positive/negative polarity independently of its `assertionType`.
+- **Probe result**: one probe on one subject, with its status, tests, assertions and retained evidence. Stored `ProbeResult` and callback `ProbeCallbackResult` are separate shapes.
 
-- **Probe subject**: the exact terminal app, emulator library or multiplexer being probed, at a recorded path, OS and version. Current identity type: `ProbeTarget`.
-- Subject kinds are called **term**, **lib** and **mux**; current `ProbeTarget.kind` values remain `app`, `headless` and `mux`, respectively.
-- **Term feature**: one terminal behaviour being tested, identified by `featureId`, with one probe per term feature.
-- **Probe**: the code for one term feature; current `ProbeDefinition` supplies lib and/or term paths. A mux uses the term path.
-- **Probe source**: where answers come from, **live** from the probe subject or **trace** from a recorded probe trace. Current live callback APIs are `TermContext` and `TermlessContext`.
-- **Probe trace**: everything one probe run did and saw, entry by entry, including referenced files. Current collectors retain subsets, not this complete replayable record.
-- **Test**: one required condition of a probe, with its own status, holding assertions. Current records are `CheckResult` and callback `ProbeCheckResult`.
-- **Assertion**: one expected-versus-observed comparison inside a test. Current `ProbeAssertion` records are stored separately and referenced by `CheckResult.assertionRefs`.
-- **Probe result**: one probe on one subject, with its status, tests, assertions and probe trace. Current `CapabilityResult` holds the feature result; the run supplies shared evidence and identity.
+The five assertion types classify the deciding observation: `query_reply` reads a query reply; `buffer_state` reads cells, cursor or modes; `screenshot` reads captured pixels; `input_bytes` reads bytes received for an OS input event; `clipboard` reads what an OSC 52 write put on the clipboard. Probe setup and feed writes retain their existing order and bytes; they are not a sixth assertion type.
 
-The approved assertion types name the probe-trace observation entries they read:
-
-- `query_reply`: a query sequence's reply.
-- `buffer_state`: cells, cursor and modes read from the probe subject.
-- `screenshot`: captured pixels.
-- `input_bytes`: bytes the app received for an OS input event.
-- `clipboard`: what an OSC 52 write put on the clipboard.
-
-- Probe traces also retain the probe's setup and feed writes in order for exact replay matching. Writes are not a sixth assertion type; their stored representation belongs to the future refactor.
-- These five types, a trace probe source and nested tests/assertions describe the future refactor, not the current schema or a replay API.
-- Today's `ProbeAssertion.kind` is `positive` or `negative`; `Observation.evidence` is the existing code discriminator, not the new assertion type.
-- Old identifiers stay until the planned vocabulary rename. Mapping existing records into tests and assertions is part of that refactor, not a new schema defined here.
-
-- Status names remain supported, unsupported, untestable, TEST TODO and TEST FAILURE.
-- The last two retain code values `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior.
+Status names remain supported, unsupported, untestable, TEST TODO and TEST FAILURE. The last two retain code values `test-todo` and `test-failure`; this vocabulary change does not change status or publication behavior.
 
 ## From definition to recorded result
 
-**A definition is executable, not a saved result.** `ProbeDefinition` identifies a term feature and supplies either or both callback arms:
+**A definition is executable, not a saved result.** `ProbeDefinition` identifies a feature and supplies either or both callback arms:
 
-- `termless(ctx)` is synchronous and reads a `TermlessContext` backed by a headless engine.
-- `term(ctx)` is asynchronous and uses a `TermContext` for real-terminal I/O and any available owned capture, clipboard or input facilities.
-- A null arm has no implementation for that route. Ownership, geometry, text-readback and evidence declarations constrain the arms that do exist.
+- `lib(ctx)` is synchronous and reads a `LibProbeSource` backed by a headless engine.
+- `term(ctx)` is asynchronous and uses a `TermProbeSource` for real-terminal I/O and any available owned capture, clipboard or input facilities.
+- A null arm has no implementation for that route. Ownership, geometry, text-readback and assertion-type declarations constrain the arms that do exist.
 
-`ALL_PROBES` collects the category definitions. A `ProbeSuiteManifest` separates complete `catalogIds` membership from the callback schedules in `probes.app`, `probes.headless` and `probes.mux`.
+Both source interfaces carry `readonly kind: ProbeSourceKind` directly. The only implemented source kind is `live`; writer and reader reject `trace` by name until #30932 implements it. Runs retain `source: { kind: "live" }`, so adding trace later needs no schema bump.
+
+`termAssertionType` and `libAssertionType` declare a retained deciding-observation class. An explicit null means the callback runs without a typed deciding observable; undefined is temporarily undeclared (#28801). Neither means the callback arm itself is absent, and neither becomes a null observation or assertion type.
+
+`ALL_PROBES` collects the category definitions. A current `ProbeSuiteManifest` explicitly carries schema version 4 and separates complete `catalogIds` membership from the callback schedules in `probes.term`, `probes.lib` and `probes.mux`. Historical declarations normalize their schedules on read while retaining their original absent schema marker.
 
 The [shared execution helpers](src/helpers.ts) initialize every catalog member as `test-todo` with no attempt, then record only the work actually performed.
 
 **Callback and stored shapes are different.** Follow these names in [types.ts](src/types.ts):
 
-- `ProbeResult` is either a measured result with an `observation`, or `notTested` coverage naming a missing semantic observable. It can carry callback tests (`checks`) and a criterion branch.
-- `Observation` records an outcome, `evidence` discriminator and any reason or frame references. `ProbeAssertion` records a positive/negative predicate, expected state and observed evidence.
-- `CapabilityResult` stores the term feature's execution status, attempt, required tests (`checks`), selected criterion branch and evidence references. It is not the callback's `pass` boolean.
-- `RunDraft` is a private schema-3 envelope holding run/suite/source identity and intended subject configuration (`intendedContext`).
-  It also holds measured identity when available, raw replies, assertions, artifact references and term feature results.
-- `CapturedRunDraft` requires measured probe subject, identity, time and origin. `CurrentProbeRun` additionally has `sealedAt`; `ProbeRun` aliases this current shape. Older runs have separate historical types.
+- `ProbeCallbackResult` has three arms: a measured `observation`; `notTested` coverage naming a missing semantic observable; or execution-only, nonempty TODO/FAILURE `tests`, each with a mandatory reason. Execution-only callbacks have no observation, assertions or coverage. Callbacks can select a criterion branch.
+- `Observation` records an outcome and required `assertionType`. `ProbeAssertion` records the independently positive/negative predicate, required `assertionType`, expected state and retained observed evidence.
+- `ProbeResult` stores the feature's execution status, attempt, required tests, selected criterion branch and evidence references. Its optional primary `assertionType` names only a retained observation; absence is not a sixth type. Legacy `pass` never grades it.
+- `RunDraft` is a private schema-4 envelope: explicit source, run/suite identity, `intendedSubject`, measured `subject` when available, raw replies, assertions, artifact references and probe results. Subject kinds are `term`, `lib` and `mux`.
+- `CapturedRunDraft` requires measured subject, identity, time and origin. `CurrentProbeRun` additionally has `sealedAt`; `ProbeRun` aliases this current shape. Historical reader outputs retain their schema marker, canonical names and an absent source. Their assertion type may remain absent when retained historical evidence cannot establish it.
 
-The legacy callback `pass` still exists. The [diagnostic Vitest runner](../probes/run-unified.probe.ts) checks it; current collectors record observations/tests through `recordExecutedCapability` instead.
+The legacy callback `pass` still exists for the [diagnostic Vitest runner](../probes/run-unified.probe.ts), including the execution-only arm. Current collectors record observations/tests through `recordExecutedProbe`; even `pass: true` with an explicit FAILURE test stays failure. Cleanup #30929 removes `pass` from every arm.
 
 ## Evidence, capture and assertion
 
 Callbacks currently perform I/O and judge it in the same implementation. There is no general persisted callback transcript or independently replayable assertion API supplied by this package.
 
+The five `AssertionType` values classify an actually retained deciding observation: `query_reply`, `buffer_state`, `screenshot`, `input_bytes` and `clipboard`. Pixel versus text-cells capture payloads and positive versus negative assertion polarity remain separate facts. An OSC 52 write decided by independent clipboard readback is `clipboard`; paste decided by `readInput` is `input_bytes`, including its existing control/report envelope and performed action.
+
 **Headless evidence** comes through [headless-batch.ts](../probes/headless-batch.ts). It retains callback `response` values as raw replies, not every probe-source call or every engine-state read.
 
-Conclusive headless observations need nonempty raw evidence and matching positive/negative assertions. A parser-state assertion must match the retained response; invalid claims become collector errors.
+Conclusive library observations need nonempty raw evidence and matching positive/negative assertions. A direct buffer-state assertion must match the retained response; invalid claims become collector errors.
 
 **Native evidence** comes through [probes/unified.ts](../terminfo.dev/src/probes/unified.ts). It retains writes, queries, ordered events and available capture/clipboard records separately from callback responses.
 
 Most native raw-reply entries are serialized traces. Identity-query entries retain queried bytes and a separate `.trace`; a callback response, when supplied for a measurement, uses `.callbackResponse`.
 
-Native execution can also change the recorded result: for example, a measured resize retains the callback observation but adds a failed geometry test. A callback conclusion is not the final run status.
+Native execution can also change the recorded result: for example, a measured resize retains the callback observation but adds a failed geometry test. A callback conclusion is not the final run status. This migration classifies existing observations; probe writes retain their existing representation, order and bytes.
 
 **Frames are evidence, not verdicts.** `ObservationFrame` distinguishes pixel frames from `text-cells` frames; pixel and cell rectangles/digests are not interchangeable.
 
-`TermContext.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
+`TermProbeSource.capture` supplies owned pixel capture; `cells` is a separate terminal-text route for declared cell readback. [Region readback](src/region-readback.ts) and callbacks evaluate the resulting evidence.
 
 The run retains screenshot/text references and assertion references. A captured frame does not by itself establish support, and a pending required review does not become an unsupported result.
 
 ## How execution becomes status
 
-Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded term feature statuses are `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`.
+Observation outcomes are `supported`, `unsupported`, `inconclusive` and `error`. Recorded probe statuses are `supported`, `unsupported`, `untestable`, `test-todo` and `test-failure`.
 
-[recordExecutedCapability](src/helpers.ts) uses explicit callback tests when valid. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
+[recordExecutedProbe](src/helpers.ts) uses explicit callback tests when valid. Diagnostics and errors retain precedence. Otherwise its default criterion preserves supported/unsupported observations and maps the other cases:
 
 - Missing capture reported as `FrameUnavailable` becomes `test-todo`.
 - Diagnostics and error observations become `test-failure`.
-- Coverage or inconclusive `none`/`consumed` evidence becomes `test-todo`; remaining undecided cases become `test-failure`.
+- Coverage becomes `test-todo`. Refusal and consumption without a deciding observation explicitly supply TODO tests; unanswered queries and errors explicitly supply FAILURE tests. No reply, clipboard value or frame is invented to satisfy a type.
+- A measured inconclusive observation stays typed and defaults to `test-failure` unless an existing explicit criterion test selects a different status.
 
-`finalizeCapabilityResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference.
+`finalizeProbeResult` folds the required tests in order: failure, pending or empty tests, reviewed impossibility, unsupported, then supported. `untestable` needs a review reference.
 
-That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that.
+That order matters: a failed test wins over a pending one. Timeout or lack of an observable is not automatically evidence that a terminal lacks the feature; the probe's criterion must establish that. An execution-only TODO can follow real I/O and does not promise an empty trace; pre-I/O refusal fixtures separately prove their zero-byte behavior.
 
 These run statuses are separate from the catalog's [probe-coverage labels](../../docs/data/probe-status.ts), such as `automated`, `partial` and `manual`, which describe the available test definitions.
 
@@ -105,7 +95,7 @@ The five admin routes share definitions, but do not all execute or persist throu
 
 The [daemon client](../terminfo.dev/src/daemon-client.ts) retains HTTP responses. The [capture writer](../terminfo.dev/src/capture-writer.ts) finalizes enriched runs and writes immutable result snapshots.
 
-The writer checks intended id/version against known measured values without replacing them, but sets `target.kind` from the intended app/mux configuration and retains that intent separately.
+The writer checks intended id/version against known measured values without replacing them, but sets `subject.kind` from the intended term/mux subject and retains `intendedSubject` separately. Both current source and suite version are explicit inputs; a historical declaration cannot silently become a live writer's manifest.
 
 `sealRunDraft` requires complete measured identity and no pending required review; other `test-todo` results can remain in a sealed run.
 
@@ -117,4 +107,4 @@ Admission is a separate operation owned by [run-admission.ts](../admin/run-admis
 
 That owner checks the run, suite and cited artifacts before placing admitted content. A private collection, successful test or sealed result alone does not mean site data has been published.
 
-The [execution and seal-boundary tests](src/execution-checks.test.ts) exercise these distinctions without collecting new terminal data.
+The [execution and seal-boundary tests](src/execution-results.test.ts) exercise these distinctions without collecting new terminal data.

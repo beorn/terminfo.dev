@@ -4,7 +4,7 @@ import { loadFeatures } from "@terminfo/catalog"
 import { loadProbes, featureSlug, catLabel, terminalSlug } from "../data/load-probes"
 import type { PublicVersion } from "../data/public-results"
 import { publicResultFor } from "../data/release-scope"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const contentDir = join(__dirname, "..", "..", "content")
@@ -13,26 +13,26 @@ const contentDir = join(__dirname, "..", "..", "content")
  * The reader's ONE classification, said in the compare page's own words. This is presentation over the
  * state, never a second chain over the raw cell (28792 item 1).
  */
-function resultFor(state: CapabilityStatus | undefined): "yes" | "no" | "unknown" {
+function resultFor(state: ProbeStatus | undefined): "yes" | "no" | "unknown" {
   if (state === "supported") return "yes"
   if (state === "unsupported") return "no"
   return "unknown"
 }
 
 /** The two states the reader calls decided; inconclusive, error and untested are all not decided. */
-function decided(state: CapabilityStatus | undefined): boolean {
+function decided(state: ProbeStatus | undefined): boolean {
   return state === "supported" || state === "unsupported"
 }
 
 function recordedScope(selected: PublicVersion): unknown[] {
   return [
-    selected.target.kind,
-    selected.target.os,
-    selected.target.osVersion,
-    selected.target.outerTerminal,
-    selected.target.mux,
-    selected.target.config,
-    selected.target.permissions,
+    selected.subject.kind,
+    selected.subject.os,
+    selected.subject.osVersion,
+    selected.subject.outerTerminal,
+    selected.subject.mux,
+    selected.subject.config,
+    selected.subject.permissions,
     selected.suiteId,
     selected.probeHash,
   ]
@@ -102,11 +102,11 @@ export default {
         // Always put alphabetically-first slug as A for deterministic URLs
         const [a, b] = left.slug.localeCompare(right.slug) <= 0 ? [left, right] : [right, left]
 
-        const targetA = a.selected.target
-        const targetB = b.selected.target
+        const subjectA = a.selected.subject
+        const subjectB = b.selected.subject
         const comparableScope = Boolean(
-          targetA.os &&
-          targetB.os &&
+          subjectA.os &&
+          subjectB.os &&
           a.selected.probeHash &&
           b.selected.probeHash &&
           a.selected.complete &&
@@ -132,8 +132,8 @@ export default {
               cellA !== undefined &&
               cellB !== undefined &&
               // Evidence is a raw field, not a classification: the same-method check still reads it.
-              cellA.evidence !== undefined &&
-              cellA.evidence === cellB.evidence &&
+              cellA.assertionType !== undefined &&
+              cellA.assertionType === cellB.assertionType &&
               resultA !== "unknown" &&
               resultB !== "unknown",
             )
@@ -187,22 +187,22 @@ export default {
             termBUrl: b.url,
             termAType: a.type,
             termBType: b.type,
-            termAKind: targetA.kind,
-            termBKind: targetB.kind,
-            termAVersion: targetA.version,
-            termBVersion: targetB.version,
-            termAOs: targetA.os ?? "Not recorded",
-            termBOs: targetB.os ?? "Not recorded",
-            termAOsVersion: targetA.osVersion ?? "Not recorded",
-            termBOsVersion: targetB.osVersion ?? "Not recorded",
-            termAOuter: targetA.outerTerminal ?? "Not recorded",
-            termBOuter: targetB.outerTerminal ?? "Not recorded",
-            termAMux: targetA.mux ?? "Not recorded",
-            termBMux: targetB.mux ?? "Not recorded",
-            termAConfig: targetA.config ?? "Not recorded",
-            termBConfig: targetB.config ?? "Not recorded",
-            termAPermissions: targetA.permissions ?? "Not recorded",
-            termBPermissions: targetB.permissions ?? "Not recorded",
+            termAKind: subjectA.kind,
+            termBKind: subjectB.kind,
+            termAVersion: subjectA.version,
+            termBVersion: subjectB.version,
+            termAOs: subjectA.os ?? "Not recorded",
+            termBOs: subjectB.os ?? "Not recorded",
+            termAOsVersion: subjectA.osVersion ?? "Not recorded",
+            termBOsVersion: subjectB.osVersion ?? "Not recorded",
+            termAOuter: subjectA.outerTerminal ?? "Not recorded",
+            termBOuter: subjectB.outerTerminal ?? "Not recorded",
+            termAMux: subjectA.mux ?? "Not recorded",
+            termBMux: subjectB.mux ?? "Not recorded",
+            termAConfig: subjectA.config ?? "Not recorded",
+            termBConfig: subjectB.config ?? "Not recorded",
+            termAPermissions: subjectA.permissions ?? "Not recorded",
+            termBPermissions: subjectB.permissions ?? "Not recorded",
             termASuite: a.selected.suiteId,
             termBSuite: b.selected.suiteId,
             termASuiteComplete: String(a.selected.complete),

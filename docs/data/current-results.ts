@@ -9,7 +9,7 @@ import {
   type SelectedVersion,
   type CurrentSelectedVersion,
 } from "./selected-results.ts"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import type { CellState } from "./release-scope.ts"
 import { frozenSuiteIdFor } from "./load-release-scope.ts"
 import { candidateFromSelected, pickContextRun } from "./run-selection.ts"
@@ -33,25 +33,25 @@ export interface CurrentResults {
   projection: SelectedProjection
 }
 
-type TargetKind = SelectedVersion["target"]["kind"]
+type SubjectKind = SelectedVersion["subject"]["kind"]
 
-interface CatalogTarget {
-  kind: TargetKind
+interface CatalogSubject {
+  kind: SubjectKind
   slug: string
   headlessBackends: string[]
 }
 
 interface CatalogKeys {
-  kinds: Map<string, Set<TargetKind>>
-  released: Map<string, { key: string; kind: TargetKind }>
+  kinds: Map<string, Set<SubjectKind>>
+  released: Map<string, { key: string; kind: SubjectKind }>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
 }
 
-function isTargetKind(value: unknown): value is TargetKind {
-  return value === "app" || value === "headless" || value === "mux"
+function isSubjectKind(value: unknown): value is SubjectKind {
+  return value === "term" || value === "lib" || value === "mux"
 }
 
 function isIdList(value: unknown): value is string[] {
@@ -62,16 +62,16 @@ function isIdList(value: unknown): value is string[] {
 function loadCatalogKeys(contentDir: string): CatalogKeys {
   const catalogPath = join(contentDir, "terminals.json")
   const rawCatalog = loadTerminals(contentDir)
-  const catalog = new Map<string, CatalogTarget>()
-  const kinds = new Map<string, Set<TargetKind>>()
-  const declare = (id: string, kind: TargetKind): void => {
-    const declared = kinds.get(id) ?? new Set<TargetKind>()
+  const catalog = new Map<string, CatalogSubject>()
+  const kinds = new Map<string, Set<SubjectKind>>()
+  const declare = (id: string, kind: SubjectKind): void => {
+    const declared = kinds.get(id) ?? new Set<SubjectKind>()
     declared.add(kind)
     kinds.set(id, declared)
   }
   for (const [id, value] of Object.entries(rawCatalog)) {
     if (value.historical === true) continue
-    if (!isTargetKind(value.kind) || typeof value.slug !== "string" || !value.slug) {
+    if (!isSubjectKind(value.kind) || typeof value.slug !== "string" || !value.slug) {
       throw new Error(`${catalogPath}: ${id} requires a declared kind and slug`)
     }
     const backends = value.headlessBackends ?? []
@@ -80,7 +80,7 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
     }
     catalog.set(id, { kind: value.kind, slug: value.slug, headlessBackends: backends })
     declare(id, value.kind)
-    for (const backend of backends) declare(backend, "headless")
+    for (const backend of backends) declare(backend, "lib")
   }
 
   const snapshotPath = join(import.meta.dirname, "..", "..", "content", "released-v1-keys.json")
@@ -88,9 +88,11 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
   if (!isRecord(snapshot) || !isRecord(snapshot.keys) || !/^[0-9a-f]{40}$/.test(String(snapshot.sourceRevision))) {
     throw new Error(`${snapshotPath}: invalid released v1 key declaration`)
   }
-  const released = new Map<string, { key: string; kind: TargetKind }>()
-  for (const [key, value] of Object.entries(snapshot.keys)) {
-    if (!isTargetKind(value) || value === "mux") throw new Error(`${snapshotPath}: invalid released kind for ${key}`)
+  const released = new Map<string, { key: string; kind: SubjectKind }>()
+  for (const [key, historicalValue] of Object.entries(snapshot.keys)) {
+    // Released-key declarations retain their original wire labels.
+    const value = historicalValue === "app" ? "term" : historicalValue === "headless" ? "lib" : historicalValue
+    if (!isSubjectKind(value) || value === "mux") throw new Error(`${snapshotPath}: invalid released kind for ${key}`)
     const matches = [...catalog.entries()].filter(([id, row]) => id === key || row.slug === key)
     if (matches.length !== 1) {
       throw new Error(`${snapshotPath}: released key ${key} has ${matches.length} catalog owners`)
@@ -109,13 +111,15 @@ function loadCatalogKeys(contentDir: string): CatalogKeys {
   return { kinds, released }
 }
 
-function compatibilityKey(kind: TargetKind, id: string, catalog: CatalogKeys): string {
+function compatibilityKey(kind: SubjectKind, id: string, catalog: CatalogKeys): string {
   const declared = catalog.kinds.get(id)
   if (!declared?.has(kind)) throw new Error(`Undeclared compatibility target ${kind}:${id} in terminals.json`)
   const released = catalog.released.get(id)
   const bare = released?.key ?? id
-  const owner = released?.kind ?? (declared.has("app") ? "app" : kind)
-  return kind === owner ? bare : `${kind}-${bare}`
+  const owner = released?.kind ?? (declared.has("term") ? "term" : kind)
+  // Published route IDs retain their historical prefixes; the subject kind is canonical above.
+  const routeKind = kind === "lib" ? "headless" : kind === "term" ? "app" : kind
+  return kind === owner ? bare : `${routeKind}-${bare}`
 }
 
 /**
@@ -172,7 +176,7 @@ function releaseSuiteIdFor(contentDir: string): string {
 /**
  * Parse the reviewed choice for a compatibility key without changing v2's complete context map. Also
  * consumed by `scripts/decisive-share.ts`, so the bar reader resolves a multi-current tie by the SAME
- * reviewed row `compatibilityTargets` applies — one policy source, not a second parser.
+ * reviewed row `compatibilitySubjects` applies — one policy source, not a second parser.
  */
 export function loadDefaultContextPolicy(contentDir: string): Record<string, DefaultContextReview> {
   const path = join(contentDir, "default-contexts.json")
@@ -196,7 +200,8 @@ export function loadDefaultContextPolicy(contentDir: string): Record<string, Def
     // Normalize the reviewed key by the same rule the projection uses, so a row recorded before a
     // re-collect (with the era's runner store path in its key) still chooses the context it reviewed
     // (27929 D5). See maskRunnerStorePath.
-    policy[id] = {
+    const canonicalId = id.replace(/^app:/, "term:").replace(/^headless:/, "lib:")
+    policy[canonicalId] = {
       ...(row as unknown as DefaultContextReview),
       contextKey: maskRunnerStorePath(row.contextKey) as string,
     }
@@ -223,30 +228,30 @@ export function reviewedContextFor<Row extends { contextKey: string }>(
 }
 
 /** Compatibility consumers select one reviewed context per kind:id, then derive stable v1/site keys. */
-export function compatibilityTargets(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
-  return compatibilityTargetsFor(projection, contentDir)
+export function compatibilitySubjects(projection: SelectedProjection, contentDir: string): Map<string, CurrentResult> {
+  return compatibilitySubjectsFor(projection, contentDir)
 }
 
-function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelectedVersion>(
+function compatibilitySubjectsFor<Version extends SelectedVersion | CurrentSelectedVersion>(
   projection: {
     current: Record<string, Version>
-    table: Readonly<Record<string, Readonly<Record<string, CellState | CapabilityStatus>>>>
+    table: Readonly<Record<string, Readonly<Record<string, CellState | ProbeStatus>>>>
   },
   contentDir: string,
 ): Map<string, { contextKey: string; selected: Version; policy?: DefaultContextReview }> {
   const policy = loadDefaultContextPolicy(contentDir)
   const catalog = loadCatalogKeys(contentDir)
-  type TargetResult = { contextKey: string; selected: Version; policy?: DefaultContextReview }
-  const groups = new Map<string, TargetResult[]>()
+  type SubjectResult = { contextKey: string; selected: Version; policy?: DefaultContextReview }
+  const groups = new Map<string, SubjectResult[]>()
   for (const [contextKey, selected] of Object.entries(projection.current)) {
-    const targetKey = `${selected.target.kind}:${selected.target.id}`
-    const group = groups.get(targetKey) ?? []
+    const subjectKey = `${selected.subject.kind}:${selected.subject.id}`
+    const group = groups.get(subjectKey) ?? []
     group.push({ contextKey, selected })
-    groups.set(targetKey, group)
+    groups.set(subjectKey, group)
   }
-  const byTarget = new Map<string, TargetResult>()
-  for (const [targetKey, group] of groups) {
-    const review = policy[targetKey]
+  const bySubject = new Map<string, SubjectResult>()
+  for (const [subjectKey, group] of groups) {
+    const review = policy[subjectKey]
     // The one run-selection rule; this site and the decisive-share reader must not hold two copies.
     const byKey = new Map(group.map((entry) => [entry.contextKey, entry]))
     const picked = pickContextRun(
@@ -255,32 +260,32 @@ function compatibilityTargetsFor<Version extends SelectedVersion | CurrentSelect
       ),
       review,
     )
-    if (picked === undefined) throw new Error(`No current run for ${targetKey}`)
+    if (picked === undefined) throw new Error(`No current run for ${subjectKey}`)
     if ("ambiguous" in picked) {
       throw new Error(
-        `Ambiguous current ${targetKey}: ${picked.ambiguous.join(", ")}; reviewed defaultContext row required`,
+        `Ambiguous current ${subjectKey}: ${picked.ambiguous.join(", ")}; reviewed defaultContext row required`,
       )
     }
     if ("stale" in picked) throw new Error(picked.stale)
     if (review && picked.selection !== "reviewed default-context row") {
       throw new Error(
-        `${join(contentDir, "default-contexts.json")}: ${targetKey} chooses a noncurrent context ${review.contextKey}`,
+        `${join(contentDir, "default-contexts.json")}: ${subjectKey} chooses a noncurrent context ${review.contextKey}`,
       )
     }
     // pickContextRun returns one of the candidates it was given, so this lookup cannot miss.
     const chosen = byKey.get(picked.run.key)
-    if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${targetKey} current contexts`)
-    const key = compatibilityKey(chosen.selected.target.kind, chosen.selected.target.id, catalog)
-    if (byTarget.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
-    byTarget.set(key, { ...chosen, ...(review && { policy: review }) })
+    if (!chosen) throw new Error(`Selected run ${picked.run.key} is not among ${subjectKey} current contexts`)
+    const key = compatibilityKey(chosen.selected.subject.kind, chosen.selected.subject.id, catalog)
+    if (bySubject.has(key)) throw new Error(`Ambiguous compatibility key ${key}: multiple catalog targets`)
+    bySubject.set(key, { ...chosen, ...(review && { policy: review }) })
   }
-  return byTarget
+  return bySubject
 }
 
 function selectedStates(
-  table: Readonly<Record<string, Readonly<Record<string, CellState | CapabilityStatus>>>>,
+  table: Readonly<Record<string, Readonly<Record<string, CellState | ProbeStatus>>>>,
   runId: string,
-): Readonly<Record<string, CellState | CapabilityStatus>> {
+): Readonly<Record<string, CellState | ProbeStatus>> {
   const states = table[runId]
   if (!states) throw new Error(`Selected run ${runId} has no projected result table`)
   return states

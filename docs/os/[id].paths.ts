@@ -24,14 +24,14 @@ interface TerminalRow {
   slug: string
   url: string
   description: string
-  kind: "app" | "parser" | "mux"
+  kind: "term" | "lib" | "mux"
   score: string
   notMeasured: boolean
   scoreTitle: string
   yes: string
   total: string
   evidence: string
-  evidenceKind: "measured" | "parser" | "inherited" | "reference" | "unprobed"
+  evidenceKind: "measured" | "lib" | "inherited" | "reference" | "unprobed"
   sourceBackendId: string
   sourcePlatforms: string
   note: string
@@ -55,13 +55,13 @@ export default {
       return data.backends.find((b) => b.name === name && (!type || b.type === type))
     }
 
-    function rowForTerminal(id: string, platformId: string, kind: "app" | "parser" | "mux"): TerminalRow | null {
+    function rowForTerminal(id: string, platformId: string, kind: "term" | "lib" | "mux"): TerminalRow | null {
       const term = terminals[id]
       if (!term) return null
 
-      const app = findBackend(id, kind === "mux" ? "mux" : "app")
-      const parserName = term.headlessBackends?.find((b) => findBackend(b, "headless"))
-      const parser = parserName ? findBackend(parserName, "headless") : undefined
+      const app = findBackend(id, kind === "mux" ? "mux" : "term")
+      const parserName = term.headlessBackends?.find((b) => findBackend(b, "lib"))
+      const parser = parserName ? findBackend(parserName, "lib") : undefined
       const inherited = term.manifestBackend ? findBackend(term.manifestBackend) : undefined
 
       let source = app
@@ -81,12 +81,12 @@ export default {
         evidenceKind = "inherited"
         evidence = `Inherited from ${backendLabel(inherited.name)}`
         note =
-          inherited.type === "headless"
+          inherited.type === "lib"
             ? "Uses the underlying parser/backend reference score; not a platform-specific app probe."
             : "Uses the same underlying terminal engine; not probed separately."
       } else if (parser?.platforms?.includes(platformId)) {
         source = parser
-        evidenceKind = "parser"
+        evidenceKind = "lib"
         evidence = "Parser probe"
         note = "Parser/state-machine coverage only; renderer, font, input, and compositor behavior are not included."
       } else if (app) {
@@ -101,7 +101,7 @@ export default {
         note = "Engine-equivalent reference score; not a platform-specific app probe."
       } else if (parser) {
         source = parser
-        evidenceKind = "parser"
+        evidenceKind = "lib"
         evidence = "Parser probe"
         note = "Parser/state-machine coverage only; no full app probe is currently available."
       }
@@ -133,13 +133,13 @@ export default {
       }
     }
 
-    function rowsFor(ids: string[], platformId: string, kind: "app" | "parser" | "mux"): TerminalRow[] {
+    function rowsFor(ids: string[], platformId: string, kind: "term" | "lib" | "mux"): TerminalRow[] {
       return ids.map((id) => rowForTerminal(id, platformId, kind)).filter((row): row is TerminalRow => row !== null)
     }
 
     return Object.entries(platforms).map(([id, platform]) => {
-      const appRows = rowsFor(platform.appTerminalIds ?? [], id, "app")
-      const parserRows = rowsFor(platform.parserBackendIds ?? [], id, "parser")
+      const appRows = rowsFor(platform.appTerminalIds ?? [], id, "term")
+      const parserRows = rowsFor(platform.parserBackendIds ?? [], id, "lib")
       const muxRows = rowsFor(platform.multiplexerIds ?? [], id, "mux")
       const allRows = [...appRows, ...parserRows, ...muxRows]
       const measuredAppCount = appRows.filter((r) => r.evidenceKind === "measured").length

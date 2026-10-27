@@ -1,33 +1,29 @@
 /** Reviewed selection and projection for terminal observations. */
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
-import { aggregateCurrentResults, treeMovedPastRelease, type CellState, type SuiteRelation } from "./release-scope.ts"
+import { aggregateCurrentResults, treeMovedPastRelease, type SuiteRelation } from "./release-scope.ts"
 import { loadFeatures } from "@terminfo/catalog"
 import {
   type Interpretation,
-  type CapabilityResult,
-  type CapabilityStatus,
-  type Observation,
+  type ProbeResult,
+  type ProbeStatus,
+  type HistoricalProbeRun,
   type ObservationFrame,
-  type ProbeAssertion,
-  type ProbeTarget,
+  type ProbeSubject,
   type RunOrigin,
   type UngradedDiagnostic,
   type ProbeSuiteManifest,
   type TextQualification,
-  isNonMeasuringEvidence,
-  finalizeCapabilityResult,
+  finalizeProbeResult,
   type TextQualificationAssessment,
 } from "@terminfo/probe-defs"
+import { type LoadedRun, parseSuiteManifest, parseRun, parseJsonStrict } from "@terminfo/run-parser"
 import {
-  type LoadedRun,
-  parseSuiteManifest,
-  parseRun,
-  parseJsonStrict,
-  parseObservationFrames,
-  validateObservation,
-  validateObservationOutcome,
-} from "@terminfo/run-parser"
+  canConcludeObservation,
+  textQualificationFailure,
+  consoleHostHold,
+  validateCorrectedObservation,
+} from "../../packages/run-parser/src/observations.ts"
 import {
   assessRunAdmission,
   RETAINED_ARTIFACT_KINDS,
@@ -50,7 +46,9 @@ export { parseInterpretations } from "../../scripts/interpretations.ts"
 /** Public migration explanation derived from legacy booleans, never an original run note. */
 export const HISTORICAL_RERUN_NOTE = "Historical result lacks retained attempt evidence; rerun required (TEST TODO)."
 
-export interface SelectedCell extends Observation {
+type ReadObservation = HistoricalProbeRun["observations"][number]
+type ReadAssertion = HistoricalProbeRun["assertions"][number]
+export interface SelectedCell extends ReadObservation {
   conclusive: boolean
   /** Same-run mapping failure, computed from retained evidence; absent when no assessment failed. */
   textQualificationReason?: string
@@ -58,7 +56,7 @@ export interface SelectedCell extends Observation {
   consoleHostHold?: string
   record: {
     rawReply?: string
-    assertions: ProbeAssertion[]
+    assertions: ReadAssertion[]
     screenshot?: { url: string; sha256: string }
     frames?: Array<{
       role: ObservationFrame["role"]
@@ -73,7 +71,7 @@ export interface SelectedCell extends Observation {
   }
   chain: {
     origin: RunOrigin
-    method: Observation["evidence"]
+    method: ReadObservation["assertionType"]
     runId: string
     runSha256: string
     rawReplyRef?: string
@@ -83,7 +81,7 @@ export interface SelectedCell extends Observation {
   }
   presentation?: {
     decision: Pick<Interpretation, "id" | "reviewer" | "reason" | "sources"> & { presentsEvidence: boolean }
-    original: { observation: Observation; record: SelectedCell["record"] }
+    original: { observation: ReadObservation; record: SelectedCell["record"] }
   }
 }
 
@@ -92,7 +90,7 @@ export type { IdentityAdmission } from "../../packages/admin/run-admission.ts"
 export interface SelectedVersion {
   schemaVersion: 1 | 2
   runId: string
-  target: ProbeTarget
+  subject: ProbeSubject
   measuredAt: string
   suiteId: string
   probeHash: string | null
@@ -110,7 +108,6 @@ export interface SelectedVersion {
   cells: Record<string, SelectedCell>
   v1: Record<string, boolean>
   ungradedDiagnostics: {
-    evidence: "legacy"
     label: "old callback result, unverified"
     results: Record<string, UngradedDiagnostic>
   }
@@ -146,9 +143,11 @@ export interface SelectedExclusion {
  * goes to @cto first.
  */
 export interface CurrentSelectedVersion {
-  schemaVersion: 3
+  schemaVersion: 3 | 4
+  /** Recorded by schema 4; historical source absence remains absence. */
+  source?: { kind: "live" }
   runId: string
-  target: ProbeTarget
+  subject: ProbeSubject
   measuredAt: string
   suiteId: string
   probeHash: string
@@ -158,9 +157,9 @@ export interface CurrentSelectedVersion {
   /** The identity the run recorded for itself. Only its trace document publishes it. */
   identity: LoadedRun["identity"]
   catalogIds: string[]
-  results: CapabilityResult[]
+  results: ProbeResult[]
   rawReplies: Record<string, string>
-  assertions: ProbeAssertion[]
+  assertions: ReadAssertion[]
   origin: RunOrigin
   textQualification?: TextQualification
   presentations: Record<
@@ -170,7 +169,7 @@ export interface CurrentSelectedVersion {
   identityAdmission?: IdentityAdmission
   suiteRelation: SuiteRelation
   suiteFreshness: string
-  counts: Record<CapabilityStatus, number>
+  counts: Record<ProbeStatus, number>
   score: { supported: number; all: number }
   complete: boolean
 }
@@ -179,22 +178,15 @@ export interface SelectedProjection {
   current: Record<string, CurrentSelectedVersion>
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
-  table: Readonly<Record<string, Readonly<Record<string, CapabilityStatus>>>>
-  /** Archived assessment refusals followed by the schema-3 refusals this reading assessed. */
+  table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
+  /** Archived assessment refusals followed by the current-run refusals this reading assessed. */
   exclusions: SelectedExclusion[]
   releaseSuiteId: string | null
   treeSuiteId: string
   treeMovedPastRelease: boolean
 }
 
-const TEMPORAL_PIXEL_FEATURES = new Set([
-  "sgr.blink",
-  "extensions.kitty-graphics.animation",
-  "modes.synchronized-output",
-  "extensions.osc555-flash",
-])
-
-function observationRecord(run: LoadedRun, observation: Observation): SelectedCell["record"] {
+function observationRecord(run: LoadedRun, observation: ReadObservation): SelectedCell["record"] {
   const { rawReplyRef, screenshotRef } = observation
   return {
     ...(rawReplyRef && { rawReply: run.rawReplies[rawReplyRef] }),
@@ -243,94 +235,19 @@ export type { TextQualificationAssessment } from "@terminfo/probe-defs"
  * host passes queries straight through is held here (under-counted), never mislabeled. Whoever adds such
  * a context changes this scope on purpose.
  */
-const DA1_QUERY = "\u001b[c"
-const DA1_REPLY = /\u001b\[\?[0-9;]*c/u
-
-function replySource(sequence: string, reply: string): "host" | "terminal" | "none" {
-  const da1 = sequence !== DA1_QUERY && sequence.endsWith(DA1_QUERY) ? DA1_REPLY.exec(reply) : null
-  if (da1 === null) return reply === "" ? "none" : "host"
-  if (da1.index > 0) return "host"
-  return da1.index + da1[0].length < reply.length ? "terminal" : "none"
-}
-
-/** The console host a reason names: a text read's recorded host, else the ownership receipt's image. */
-function consoleHostBinary(run: LoadedRun): string {
-  const hosts = new Set(
-    [...(run.results ?? []), ...run.observations].flatMap((cell) =>
-      cell.host ? [`${cell.host.image} ${cell.host.executableSha256.slice(0, "sha256:".length + 12)}`] : [],
-    ),
-  )
-  if (hosts.size > 1) throw new Error(`Run ${run.runId} names ${hosts.size} console hosts; one run has one`)
-  const [host] = hosts
-  if (host !== undefined) return host
-  const receipt = run.rawReplies["collector.terminalOwnership"]
-  const image =
-    receipt === undefined
-      ? undefined
-      : (JSON.parse(receipt) as { windowsHosted?: { consoleHost?: { image?: unknown } } }).windowsHosted?.consoleHost
-          ?.image
-  return typeof image === "string" && image !== "" ? image : "(console host binary not recorded)"
-}
-
-function consoleHostHold(
-  run: LoadedRun,
-  cell: { featureId: string; evidence?: string; rawReplyRef?: string },
-  verdict: string,
-): string | undefined {
-  if (run.target.kind !== "app" || run.target.os?.toLowerCase() !== "windows") return undefined
-  if (verdict !== "supported" && verdict !== "unsupported") return undefined
-  if ((cell.evidence !== "query" && cell.evidence !== "behavior") || cell.rawReplyRef === undefined) return undefined
-  const stored = run.rawReplies[cell.rawReplyRef]
-  if (stored === undefined) {
-    throw new Error(`Run ${run.runId}: ${cell.featureId} cites raw reply ${cell.rawReplyRef}, which the run lacks`)
-  }
-  const queries = stored.startsWith("{") ? (JSON.parse(stored) as { queries?: unknown }).queries : undefined
-  if (stored.startsWith("{") && (!Array.isArray(queries) || queries.length === 0)) return undefined
-  const sources = Array.isArray(queries)
-    ? queries.map((query: unknown, index) => {
-        const { sequence, raw } = (query ?? {}) as { sequence?: unknown; raw?: unknown }
-        if (typeof sequence !== "string" || (raw !== undefined && typeof raw !== "string")) {
-          throw new Error(`Run ${run.runId}: ${cell.featureId} query ${index} has no readable sequence and reply`)
-        }
-        return replySource(sequence, raw ?? "")
-      })
-    : [replySource("", stored)]
-  if (sources.every((source) => source === "terminal")) return undefined
-  return sources.includes("host")
-    ? `answered by the Windows console host ${consoleHostBinary(run)}, not measured on the terminal`
-    : "no reply after the console host's DA1; the host may have swallowed the query"
-}
-
 /** A current run's sealed results as this reader counts them: unchanged but for the console-host rule. */
-export function consoleHostHeldResults(run: LoadedRun): CapabilityResult[] {
-  if (!run.results) throw new Error(`Run ${run.runId} has no current schema-3 results`)
+export function consoleHostHeldResults(run: LoadedRun): ProbeResult[] {
+  if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
   return run.results.map((result) => {
     const hold = consoleHostHold(run, result, result.status)
     if (hold === undefined) return result
     const { status: _sealed, ...unsealed } = result
-    return finalizeCapabilityResult({
+    return finalizeProbeResult({
       ...unsealed,
-      checks: [...result.checks, { id: "console-host", status: "test-todo", attempt: { scope: "none" }, reason: hold }],
+      tests: [...result.tests, { id: "console-host", status: "test-todo", attempt: { scope: "none" }, reason: hold }],
       reason: hold,
     })
   })
-}
-
-function isConclusiveObservation(run: LoadedRun, observation: Observation, text: TextQualificationAssessment): boolean {
-  return (
-    !run.legacy &&
-    (observation.evidence !== "text" ||
-      (run.target.kind === "app" &&
-        run.target.os?.toLowerCase() === "macos" &&
-        observation.host === undefined &&
-        !run.observations.some(
-          (recorded) => recorded.featureId === observation.featureId && recorded.host !== undefined,
-        ) &&
-        text.qualified &&
-        run.textClaims?.includes(observation.featureId) === true)) &&
-    !isNonMeasuringEvidence(observation.evidence) &&
-    (observation.outcome === "supported" || observation.outcome === "unsupported")
-  )
 }
 
 function prepareRunCells(
@@ -347,16 +264,13 @@ function prepareRunCells(
       ...(run.legacy ? { note: HISTORICAL_RERUN_NOTE } : {}),
       ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
       record: observationRecord(run, observation),
-      conclusive: hold === undefined && isConclusiveObservation(run, observation, text),
-      ...(observation.evidence === "text" &&
-      run.textQualification !== undefined &&
-      !text.qualified &&
-      text.reason !== undefined
-        ? { textQualificationReason: text.reason }
-        : {}),
+      conclusive: hold === undefined && canConcludeObservation(run, observation, text),
+      ...(textQualificationFailure(run, observation, text) === undefined
+        ? {}
+        : { textQualificationReason: textQualificationFailure(run, observation, text) }),
       chain: {
         origin: run.origin,
-        method: observation.evidence,
+        method: observation.assertionType,
         runId: run.runId,
         runSha256: run.sha256,
         ...(observation.rawReplyRef && { rawReplyRef: observation.rawReplyRef }),
@@ -373,85 +287,22 @@ function prepareRunCells(
     if (!recordedObservation) {
       throw new Error(`interpretation ${entry.id}: no raw observation for ${entry.featureId}`)
     }
-    const observation = entry.observation
+    let observation = entry.observation
     if (correctedFeatures.has(entry.featureId)) throw new Error(`conflicting active corrections for ${entry.featureId}`)
     correctedFeatures.add(entry.featureId)
-    validateObservationOutcome(observation as unknown as Record<string, unknown>, entry.id, entry.featureId)
-    validateObservation(observation, `interpretation ${entry.id}`, run.rawReplies, run.assertions)
-    if (observation.evidence === "query" && !observation.rawReplyRef) {
-      throw new Error(`interpretation ${entry.id}: query requires rawReplyRef`)
-    }
-    if (observation.evidence === "pixels" && !observation.screenshotRef) {
-      throw new Error(`interpretation ${entry.id}: pixels requires screenshotRef`)
-    }
-    if (observation.evidence === "text" && observation.screenshotRef) {
-      throw new Error(`interpretation ${entry.id}: text evidence cannot carry screenshotRef`)
-    }
-    if (observation.screenshotRef && !run.screenshotRefs.includes(observation.screenshotRef)) {
-      throw new Error(`interpretation ${entry.id}: unknown screenshotRef ${observation.screenshotRef}`)
-    }
-    const frames = parseObservationFrames(
-      observation.frames,
-      `interpretation ${entry.id}`,
-      entry.featureId,
-      run.screenshotRefs,
-      run.textSnapshotRefs,
-      observation.screenshotRef,
-      observation.evidence,
-    )
-    // A decided interpretation is recomputable from the run alone, pixels or cells: both kinds cite
-    // frames, and both must cite THIS run's bytes and the frames that run already recorded.
-    const decided = observation.outcome === "supported" || observation.outcome === "unsupported"
-    if ((observation.evidence === "pixels" || observation.evidence === "text") && decided) {
-      const kind = observation.evidence
-      if (entry.runId !== run.runId || entry.runSha256 !== run.sha256) {
-        throw new Error(`${kind} interpretation ${entry.id} requires exact run SHA256`)
-      }
-      if (!frames) throw new Error(`${kind} interpretation ${entry.id} requires control and target frames`)
-      const originalFrames = [...(recordedObservation.frames ?? [])]
-      for (const frame of frames) {
-        const match = originalFrames.findIndex(
-          (recorded) =>
-            recorded.role === frame.role &&
-            recorded.ref === frame.ref &&
-            recorded.capturedAt === frame.capturedAt &&
-            recorded.label === frame.label &&
-            recorded.sourceRef === frame.sourceRef,
-        )
-        if (match < 0) {
-          throw new Error(
-            `${kind} interpretation ${entry.id} cites a frame outside immutable ${entry.featureId} feature frames`,
-          )
-        }
-        originalFrames.splice(match, 1)
-      }
-      if (kind === "pixels") {
-        if (
-          TEMPORAL_PIXEL_FEATURES.has(entry.featureId) &&
-          frames.filter((frame) => frame.role === "target").length < 2
-        ) {
-          throw new Error(`temporal pixels interpretation ${entry.id} requires 2 target frames`)
-        }
-        if (run.target.os?.toLowerCase().startsWith("linux") && !run.provenance) {
-          throw new Error(`pixels interpretation ${entry.id} requires Linux fixture provenance for geometry and font`)
-        }
-      }
-    }
+    observation = validateCorrectedObservation(run, entry)
     const hold = consoleHostHold(run, observation, observation.outcome)
     cells[entry.featureId] = {
       ...observation,
       ...(hold !== undefined && { note: hold, consoleHostHold: hold }),
       record: observationRecord(run, observation),
-      conclusive: hold === undefined && isConclusiveObservation(run, observation, text),
-      ...(observation.evidence === "text" &&
-      run.textQualification !== undefined &&
-      !text.qualified &&
-      text.reason !== undefined
-        ? { textQualificationReason: text.reason }
-        : {}),
+      conclusive: hold === undefined && canConcludeObservation(run, observation, text),
+      ...(textQualificationFailure(run, observation, text) === undefined
+        ? {}
+        : { textQualificationReason: textQualificationFailure(run, observation, text) }),
       chain: {
         origin: run.origin,
-        method: observation.evidence,
+        method: observation.assertionType,
         runId: run.runId,
         runSha256: run.sha256,
         ...(observation.rawReplyRef && { rawReplyRef: observation.rawReplyRef }),
@@ -468,11 +319,11 @@ function prepareRunCells(
 export function classifyDevelopmentRun(run: LoadedRun): {
   mode: "development"
   runId: string
-  states: Record<string, CapabilityStatus>
+  states: Record<string, ProbeStatus>
 } {
-  if (run.schemaVersion !== 3 || !run.results) {
+  if ((run.schemaVersion !== 3 && run.schemaVersion !== 4) || !run.results) {
     throw new Error(
-      `Development run ${run.runId} requires current schema-3 recorded results; use the historical reader for old runs`,
+      `Development run ${run.runId} requires current sealed recorded results; use the historical reader for old runs`,
     )
   }
   return {
@@ -492,11 +343,17 @@ export function classifyDevelopmentRun(run: LoadedRun): {
  */
 export function maskRunnerStorePath(config: unknown): unknown {
   return typeof config === "string"
-    ? config.replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+    ? config
+        .replace(/\/nix\/store\/[a-z0-9]+-terminfo-linux-runner\/index\.js/g, "<terminfo-linux-runner>")
+        // Only the kind positions of an actual reviewed context key are historical vocabulary.
+        .replace(/^(app|headless):([^@]+)@\["\1",/, (_prefix, kind: string, id: string) => {
+          const canonical = kind === "app" ? "term" : "lib"
+          return `${canonical}:${id}@["${canonical}",`
+        })
     : config
 }
 
-const contextKey = (t: ProbeTarget): string =>
+const contextKey = (t: ProbeSubject): string =>
   JSON.stringify([
     t.kind,
     t.id,
@@ -510,15 +367,15 @@ const contextKey = (t: ProbeTarget): string =>
 
 /**
  * Distinct contexts per `<kind>:<id>` across the given runs: the group size `projectedContextKey` keys by.
- * Count over EVERY run the corpus holds for the target, legacy and schema 3, and pass the one result to
+ * Count over EVERY run the corpus holds for the target, legacy and current, and pass the one result to
  * both projections; a projection counting its own runs keys one context two ways (30661).
  */
 export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<string>> {
   const counts = new Map<string, Set<string>>()
   for (const run of runs) {
-    const stem = `${run.target.kind}:${run.target.id}`
+    const stem = `${run.subject.kind}:${run.subject.id}`
     const contexts = counts.get(stem) ?? new Set<string>()
-    contexts.add(contextKey(run.target))
+    contexts.add(contextKey(run.subject))
     counts.set(stem, contexts)
   }
   return counts
@@ -527,13 +384,13 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
 /**
  * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
  * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
- * behind an id-level key. The group spans every run of the target, legacy and schema 3, so one context
+ * behind an id-level key. The group spans every run of the target, legacy and current, so one context
  * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
-export function projectedContextKey(target: ProbeTarget, contextCount: number): string {
-  const stem = `${target.kind}:${target.id}`
-  return contextCount === 1 ? stem : `${stem}@${contextKey(target)}`
+export function projectedContextKey(subject: ProbeSubject, contextCount: number): string {
+  const stem = `${subject.kind}:${subject.id}`
+  return contextCount === 1 ? stem : `${stem}@${contextKey(subject)}`
 }
 
 /** The eight fields `projectedContextKey` writes, in its order. */
@@ -574,8 +431,8 @@ export type RecognizedProjectedContextKey =
   | { shape: "bare-stem" }
   | { shape: "unreadable" }
 
-/** The stems a bare key can name: exactly `ProbeTarget.kind` (`packages/probe-defs/src/types.ts`). */
-const BARE_STEM = /^(?:app|headless|mux):[^@/]+$/
+/** The stems a bare key can name: exactly `ProbeSubject.kind` (`packages/probe-defs/src/types.ts`). */
+const BARE_STEM = /^(?:term|lib|mux):[^@/]+$/
 
 /** Read a context key as one of the shapes the builder writes; a bare stem is legitimate, not a defect. */
 export function recognizeProjectedContextKey(key: string): RecognizedProjectedContextKey {
@@ -588,7 +445,7 @@ const versionCompare = (a: string, b: string): number => a.localeCompare(b, unde
 /**
  * Read current execution results without applying later feature interpretations or grading.
  * `archivedExclusions` are the frozen refusals of legacy runs (#30759 AC3); they lead the published
- * list, and refusals this reading assesses for schema-3 runs are appended after them.
+ * list, and refusals this reading assesses for schema-3 or schema-4 runs are appended after them.
  */
 export function projectResults(
   runs: readonly LoadedRun[],
@@ -610,7 +467,7 @@ export function projectResults(
     if (entry.runSha256 !== run.sha256) throw new Error(`presentation ${entry.id}: run SHA256 mismatch`)
     if (!applies(entry, run)) throw new Error(`presentation ${entry.id}: scope does not match exact run`)
     if (
-      !(run.schemaVersion === 3 ? run.results : run.observations)?.some(
+      !(run.schemaVersion === 3 || run.schemaVersion === 4 ? run.results : run.observations)?.some(
         (result) => result.featureId === entry.featureId,
       )
     ) {
@@ -620,7 +477,7 @@ export function projectResults(
   // 30661: the context count is per target across every run the projection read, so a context key is
   // qualified exactly as the runs measured it rather than as whichever runs are current today.
   const contexts = countContexts(runs)
-  const currentRuns = runs.filter((run) => run.schemaVersion === 3)
+  const currentRuns = runs.filter((run) => run.schemaVersion === 3 || run.schemaVersion === 4)
   const releaseSuiteId = policy.releaseSuiteId ?? null
   const ids = new Set<string>()
   for (const run of runs) {
@@ -637,7 +494,7 @@ export function projectResults(
     treeSuiteId: policy.currentProbeHash,
     treeMovedPastRelease: treeMovedPastRelease(policy.currentProbeHash, releaseSuiteId),
   }
-  const table: Record<string, Record<string, CapabilityStatus>> = {}
+  const table: Record<string, Record<string, ProbeStatus>> = {}
   validatePresentationSupersession(interpretations, "interpretations")
   const active = activeInterpretations(interpretations)
   for (const run of currentRuns) {
@@ -675,9 +532,10 @@ export function projectResults(
       }
     }
     const version: CurrentSelectedVersion = {
-      schemaVersion: 3,
+      schemaVersion: run.schemaVersion as 3 | 4,
+      ...(run.schemaVersion === 4 ? { source: { ...run.source } } : {}),
       runId: run.runId,
-      target: run.target,
+      subject: run.subject,
       measuredAt: run.measuredAt,
       suiteId: run.suiteId,
       probeHash: run.probeHash,
@@ -701,8 +559,8 @@ export function projectResults(
       score: { supported: aggregate.supported, all: aggregate.denominator },
       complete: aggregate.complete,
     }
-    const stem = `${run.target.kind}:${run.target.id}`
-    const key = projectedContextKey(run.target, contexts.get(stem)?.size ?? 0)
+    const stem = `${run.subject.kind}:${run.subject.id}`
+    const key = projectedContextKey(run.subject, contexts.get(stem)?.size ?? 0)
     ;(projection.history[key] ??= []).push(version)
     if (!assessment.accepted) {
       projection.exclusions.push({ runId: run.runId, path: run.path, reason: assessment.reason })
@@ -719,13 +577,13 @@ export function projectResults(
   for (const [key, versions] of Object.entries(projection.versions)) {
     versions.sort(
       (a, b) =>
-        versionCompare(b.target.version, a.target.version) ||
+        versionCompare(b.subject.version, a.subject.version) ||
         rank(b) - rank(a) ||
         Date.parse(b.measuredAt) - Date.parse(a.measuredAt) ||
         b.runId.localeCompare(a.runId),
     )
     const unique = versions.filter(
-      (version, index) => versions.findIndex((entry) => entry.target.version === version.target.version) === index,
+      (version, index) => versions.findIndex((entry) => entry.subject.version === version.subject.version) === index,
     )
     projection.versions[key] = unique
     const selected = unique[0]
@@ -735,7 +593,7 @@ export function projectResults(
   return { ...projection, table }
 }
 
-export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, CapabilityStatus>> {
+export function statesFor(projection: SelectedProjection, runId: string): Readonly<Record<string, ProbeStatus>> {
   const states = projection.table[runId]
   if (!states) throw new Error(`The projection classified no row for run ${runId}`)
   return states

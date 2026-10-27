@@ -1,4 +1,4 @@
-import type { CapturePixelGeometry, CaptureRectangle, TermContext } from "@terminfo/probe-defs"
+import type { CapturePixelGeometry, CaptureRectangle, TermProbeSource } from "@terminfo/probe-defs"
 import type { CapturedFrame, NamedTextOrigin } from "./capture-core.ts"
 
 const BLANK = [0, 0, 0] as const
@@ -461,7 +461,7 @@ export async function calibrateCaptureOrigin({
   timeoutMs,
   captureRaw,
 }: {
-  ctx: TermContext
+  ctx: TermProbeSource
   pixelGeometry?: CapturePixelGeometry
   timeoutMs: number
   captureRaw: (label: string, deadline: number) => Promise<CapturedFrame>

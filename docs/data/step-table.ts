@@ -29,7 +29,7 @@ export interface StepAssertion {
 }
 
 export interface StepSource {
-  /** The displayed capability status, e.g. `supported`, `unsupported`, `test-todo`. */
+  /** The displayed feature status, e.g. `supported`, `unsupported`, `test-todo`. */
   status: string
   assertions: readonly StepAssertion[]
   queries?: readonly StepQuery[]

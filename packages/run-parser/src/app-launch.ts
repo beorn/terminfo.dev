@@ -17,7 +17,7 @@ import type {
   AppLaunchReceipt,
   AppSourceArtifact,
   DerivedSourceTreeArtifact,
-  ProbeTarget,
+  ProbeSubject,
   RunOrigin,
   WindowsMesaRendererReceipt,
 } from "@terminfo/probe-defs"
@@ -85,11 +85,11 @@ export function parseDerivedSourceTree(
 export function parseAppLaunchReceipt(
   value: unknown,
   originKind: RunOrigin["kind"],
-  targetKind: ProbeTarget["kind"],
+  subjectKind: ProbeSubject["kind"],
   path: string,
 ): AppLaunchReceipt | undefined {
   if (value === undefined) return undefined
-  if (originKind !== "collector" || targetKind !== "app" || !object(value)) {
+  if (originKind !== "collector" || subjectKind !== "term" || !object(value)) {
     fail(path, "appLaunch requires an app collector run")
   }
   if (Object.hasOwn(value, "platform") && value.platform !== "win32") {

@@ -11,7 +11,7 @@
  */
 import { loadTerminals } from "@terminfo/catalog"
 
-export type ContextKind = "app" | "mux" | "headless"
+export type ContextKind = "term" | "mux" | "lib"
 
 export interface CensusContext {
   /** Stable display key: `kitty/linux`, `tmux/macos`, `libvterm/headless`. */
@@ -49,8 +49,8 @@ export function fullContextCensus(contentDir: string): ContextCensus {
       historical.push(id)
       continue
     }
-    if (row.kind === "headless") continue
-    if (row.kind !== "app" && row.kind !== "mux") {
+    if (row.kind === "lib") continue
+    if (row.kind !== "term" && row.kind !== "mux") {
       throw new Error(`${id}: kind "${String(row.kind)}" is not an app, mux or headless context`)
     }
     const platforms = row.platforms ?? []
@@ -69,7 +69,7 @@ export function fullContextCensus(contentDir: string): ContextCensus {
 
   const engineIds = [...engines].sort()
   for (const engine of engineIds) {
-    contexts.push({ context: `${engine}/headless`, terminalId: engine, os: "headless", kind: "headless" })
+    contexts.push({ context: `${engine}/headless`, terminalId: engine, os: "headless", kind: "lib" })
   }
 
   return { contexts, engines: engineIds, historical }

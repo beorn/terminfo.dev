@@ -16,14 +16,14 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { isDeepStrictEqual } from "node:util"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import { aggregateCurrentResults, type CurrentAggregate } from "../docs/data/release-scope.ts"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { loadCategories, type CategoryMeta } from "../docs/data/categories.ts"
 import {
   loadFeatures as loadFeatureCatalog,
   loadTerminals as loadTerminalCatalog,
-  targetLabel,
+  subjectLabel,
 } from "@terminfo/catalog"
 import { siteAnalysisPath } from "./site-out.ts"
 
@@ -87,13 +87,13 @@ interface TerminalStats {
   yes: number
   no: number
   pct: number
-  results: Record<string, CapabilityStatus>
+  results: Record<string, ProbeStatus>
   baselineCompliance: Record<string, { total: number; yes: number; pct: number; complete: boolean }>
   uniquelySupported: string[]
   uniquelyMissing: string[]
   missingFeatures: string[]
   version: string
-  type: "app" | "headless" | "mux"
+  type: "term" | "lib" | "mux"
   runSha256: string
   measuredAt: string
 }
@@ -106,7 +106,7 @@ interface AnalysisEntry {
   runSha256?: string
   measuredAt?: string
   score?: { supported: number; all: number }
-  counts?: Record<CapabilityStatus, number>
+  counts?: Record<ProbeStatus, number>
   complete?: boolean
 }
 
@@ -181,31 +181,31 @@ function loadAnnotations(): Record<string, { note: string; url?: string; result?
 }
 
 interface SelectedAnalysisInput {
-  capabilities: CapabilityResult[]
+  recordedResults: ProbeResult[]
   catalogIds: string[]
   aggregate: CurrentAggregate
   sourceId: string
-  results: Record<string, CapabilityStatus>
+  results: Record<string, ProbeStatus>
   version: string
-  type: "app" | "headless" | "mux"
+  type: "term" | "lib" | "mux"
   runSha256: string
   measuredAt: string
 }
 
 function buildTerminalResultMap(): Map<string, SelectedAnalysisInput> {
   const { projection } = loadCurrentResults(contentDir)
-  const selected = compatibilityTargets(projection, contentDir)
+  const selected = compatibilitySubjects(projection, contentDir)
   const resultMap = new Map<string, SelectedAnalysisInput>()
   for (const [key, { selected: version }] of selected) {
     if (resultMap.has(key)) throw new Error(`Ambiguous analysis terminal ${key}: multiple selected targets`)
     resultMap.set(key, {
-      sourceId: version.target.id,
+      sourceId: version.subject.id,
       results: Object.fromEntries(version.results.map((result) => [result.featureId, result.status])),
-      capabilities: version.results,
+      recordedResults: version.results,
       catalogIds: version.catalogIds,
       aggregate: aggregateCurrentResults(version.results, version.catalogIds),
-      version: version.target.version,
-      type: version.target.kind,
+      version: version.subject.version,
+      type: version.subject.kind,
       runSha256: version.sha256,
       measuredAt: version.measuredAt,
     })
@@ -241,7 +241,7 @@ function crossValidate(
   for (const [termId, meta] of Object.entries(terminals)) {
     if (meta.historical) continue
     if (![...resultMap.values()].some((data) => data.sourceId === termId && data.type === meta.kind)) {
-      console.warn(`Warning: Terminal '${termId}' has no sealed current schema-3 runs`)
+      console.warn(`Warning: Terminal '${termId}' has no current sealed runs`)
     }
   }
 
@@ -273,7 +273,7 @@ function computeTerminalStats(
   data: SelectedAnalysisInput,
   features: Record<string, FeatureMeta>,
   baselineFeatures: Record<string, string[]>,
-  allTerminalResults: Map<string, { results: Record<string, CapabilityStatus> }>,
+  allTerminalResults: Map<string, { results: Record<string, ProbeStatus> }>,
 ): TerminalStats {
   const results = data.results
   const total = data.aggregate.denominator
@@ -288,7 +288,7 @@ function computeTerminalStats(
     const frozenIds = data.catalogIds.filter((id) => wanted.has(id))
     const aggregate = frozenIds.length
       ? aggregateCurrentResults(
-          data.capabilities.filter((result) => wanted.has(result.featureId)),
+          data.recordedResults.filter((result) => wanted.has(result.featureId)),
           frozenIds,
         )
       : undefined
@@ -593,7 +593,7 @@ function generateCategoryAnalysis(
   }
 
   parts.push(
-    "App and headless checks establish different evidence scopes; open individual results for their method and evidence",
+    "App and headless tests establish different evidence scopes; open individual results for their method and evidence",
   )
 
   return {
@@ -690,8 +690,7 @@ function generateFeatureAnalysis(
   }
   if (total === 0) {
     return {
-      analysis:
-        "<p>Analysis awaiting verified measurements for this feature. No sealed current schema-3 result covers it.</p>",
+      analysis: "<p>Analysis awaiting verified measurements for this feature. No current sealed result covers it.</p>",
       date: "",
       changes: null,
     }
@@ -702,13 +701,13 @@ function generateFeatureAnalysis(
   // Support summary
   if (supported === total) {
     parts.push(
-      `Recorded checks report support in <strong>all ${total}</strong> sealed current context runs for this feature`,
+      `Recorded tests report support in <strong>all ${total}</strong> sealed current context runs for this feature`,
     )
   } else if (supported === 0) {
     parts.push(`No recorded support among <strong>${total}</strong> measured targets`)
   } else {
     parts.push(
-      `Recorded checks report support for <strong>${supported}</strong> of <strong>${total}</strong> sealed current targets (${pct}%)`,
+      `Recorded tests report support for <strong>${supported}</strong> of <strong>${total}</strong> sealed current targets (${pct}%)`,
     )
   }
 
@@ -724,7 +723,7 @@ function generateFeatureAnalysis(
     parts.push(`Part of the <strong>${baseline.label}</strong> baseline`)
   }
 
-  parts.push("These summaries describe the recorded checks; open individual results for their method and evidence")
+  parts.push("These summaries describe the recorded tests; open individual results for their method and evidence")
 
   return {
     analysis: `<p>${parts.join(". ")}.</p>`,
@@ -888,7 +887,7 @@ function generateStandardsIndexAnalysis(
   const worst = stdAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest average support among frozen tagged-feature checks: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
+      `Highest average support among frozen tagged-feature tests: <strong>${best.label}</strong> at ${best.avgPct}%. Lowest: <strong>${worst.label}</strong> at ${worst.avgPct}%`,
     )
   }
 
@@ -961,7 +960,7 @@ function generateFeaturesIndexAnalysis(
   const worst = catAdoption.at(-1)
   if (best && worst && best !== worst) {
     parts.push(
-      `Highest observed average support among frozen category checks: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
+      `Highest observed average support among frozen category tests: <strong>${best.label}</strong> (${best.avgPct}%). Lowest observed average: <strong>${worst.label}</strong> (${worst.avgPct}%)`,
     )
   }
 
@@ -986,7 +985,7 @@ function generateFeaturesIndexAnalysis(
 
   if (zeroSupport > 0) {
     parts.push(
-      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} no recorded support among selected catalog positions; unfinished checks do not establish unsupported behavior`,
+      `<strong>${zeroSupport}</strong> feature${zeroSupport === 1 ? " has" : "s have"} no recorded support among selected catalog positions; unfinished tests do not establish unsupported behavior`,
     )
   }
 
@@ -1219,7 +1218,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     const meta =
       termId === data.sourceId && terminals[data.sourceId]
         ? source
-        : { ...source, slug: termId, label: targetLabel(terminals, data.sourceId, data.type, source.label) }
+        : { ...source, slug: termId, label: subjectLabel(terminals, data.sourceId, data.type, source.label) }
     const stats = computeTerminalStats(termId, meta, data, features, baselineFeatures, resultMap)
     allStats.set(termId, stats)
   }
@@ -1328,7 +1327,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (meta.historical || slugSeen.has(meta.slug)) continue
     output[`terminals/${meta.slug}`] = {
       analysis:
-        "<p>Analysis awaiting verified measurements. No current schema-3 runs; historical results remain available.</p>",
+        "<p>Analysis awaiting verified measurements. No current sealed runs; historical results remain available.</p>",
       date: "",
       changes: null,
     }
@@ -1339,7 +1338,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
       if (key.startsWith("terminals/")) continue // specific unmeasured message above
       output[key] = {
         analysis:
-          "<p>Analysis awaiting verified measurements. No current schema-3 runs; historical results remain available.</p>",
+          "<p>Analysis awaiting verified measurements. No current sealed runs; historical results remain available.</p>",
         date: "",
         changes: null,
       }

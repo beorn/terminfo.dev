@@ -7,7 +7,7 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 const PAYLOAD = "osc0-icon-title"
 const ICON_QUERY = "\x1b[20t"
@@ -26,12 +26,12 @@ function termCallback() {
 }
 
 function termlessCallback() {
-  const callback = find().termless
+  const callback = find().lib
   if (!callback) throw new Error("extensions.osc0-icon-title has no headless callback")
   return callback
 }
 
-function termless(replies: Record<string, string>): TermlessContext {
+function lib(replies: Record<string, string>): LibProbeSource {
   return {
     cols: 80,
     rows: 24,
@@ -44,10 +44,10 @@ function termless(replies: Record<string, string>): TermlessContext {
     getCell: () => ({ char: " " }),
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
 }
 
-function terminal(replies: Record<string, string>): TermContext {
+function terminal(replies: Record<string, string>): TermProbeSource {
   const outcome = (sequence: string, pattern: RegExp) => {
     const raw = replies[sequence] ?? ""
     if (raw === "") return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
@@ -64,7 +64,7 @@ function terminal(replies: Record<string, string>): TermContext {
     queryOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
     queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => outcome(sequence, pattern),
     queryMode: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
 }
 
 const exactReplies = {
@@ -74,40 +74,40 @@ const exactReplies = {
 
 test("both arms declare measuring query evidence, so the catalog can derive automated", () => {
   const definition = find()
-  expect(definition.termObservationEvidence).toBe("query")
-  expect(definition.termlessObservationEvidence).toBe("query")
+  expect(definition.termAssertionType).toBe("query_reply")
+  expect(definition.libAssertionType).toBe("query_reply")
 })
 
 test("the termless arm supports OSC 0 only when both replies return the exact payload", () => {
-  const result = termlessCallback()(termless(exactReplies))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  const result = termlessCallback()(lib(exactReplies))
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "positive"])
 })
 
 test("the termless arm reads a complete wrong icon payload as unsupported", () => {
-  const result = termlessCallback()(termless({ ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  const result = termlessCallback()(lib({ ...exactReplies, [ICON_QUERY]: "\x1b]Lother-icon\x07" }))
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative", "positive"])
 })
 
 test("the termless arm names a missing title reply as inconclusive, never unsupported", () => {
-  const result = termlessCallback()(termless({ [ICON_QUERY]: `\x1b]L${PAYLOAD}\x07` }))
+  const result = termlessCallback()(lib({ [ICON_QUERY]: `\x1b]L${PAYLOAD}\x07` }))
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(result.observation?.note).toContain("window title (CSI 21 t)")
 })
 
 test("the sentinel app arm supports OSC 0 when both replies return the exact payload", async () => {
   const result = await termCallback()(terminal(exactReplies))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test("the sentinel app arm reads a complete wrong title payload as unsupported", async () => {
   const result = await termCallback()(terminal({ ...exactReplies, [TITLE_QUERY]: "\x1b]lother-title\x07" }))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["positive", "negative"])
 })
 
@@ -116,7 +116,7 @@ test("the sentinel app arm names a missing icon reply as inconclusive", async ()
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(result.observation?.note).toContain("icon label (CSI 20 t)")
 })

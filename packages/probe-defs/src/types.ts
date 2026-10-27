@@ -6,10 +6,13 @@ export interface NoSemanticObservable {
   noObservable: string
 }
 
-/** A probe result is exactly one of two things: a measured observation, or a coverage record. */
-export type ProbeResult = MeasuredProbeResult | NotTestedCoverageResult
+/** A callback retains a measurement, named coverage, or an execution-only TODO/FAILURE. */
+export type ProbeCallbackResult =
+  | MeasuredProbeCallbackResult
+  | NotTestedCoverageResult
+  | ExecutionOnlyProbeCallbackResult
 
-export interface MeasuredProbeResult extends ProbeExecutionChecks {
+export interface MeasuredProbeCallbackResult extends ProbeExecutionTests {
   /** Historical raw documents carry it; the live collector reads only observation. */
   pass: boolean
   note?: string
@@ -20,7 +23,7 @@ export interface MeasuredProbeResult extends ProbeExecutionChecks {
   notTested?: never
 }
 
-export interface NotTestedCoverageResult extends ProbeExecutionChecks {
+export interface NotTestedCoverageResult extends ProbeExecutionTests {
   pass: boolean
   note?: string
   response?: string
@@ -30,35 +33,50 @@ export interface NotTestedCoverageResult extends ProbeExecutionChecks {
   notTested: NoSemanticObservable
 }
 
+/** No deciding observation was retained. Legacy pass belongs only to the diagnostic runner (#30929). */
+export interface ExecutionOnlyProbeCallbackResult {
+  pass: boolean
+  note?: string
+  response?: string
+  observation?: never
+  assertions?: never
+  notTested?: never
+  tests: [
+    ProbeTestInput & { status: "test-todo" | "test-failure"; reason: string },
+    ...Array<ProbeTestInput & { status: "test-todo" | "test-failure"; reason: string }>,
+  ]
+  criterionBranch?: string
+}
+
 /** Execution-owned disposition; historical ObservationOutcome is never a current result. */
-export const CAPABILITY_STATUSES = ["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const
-export type CapabilityStatus = (typeof CAPABILITY_STATUSES)[number]
-export type CapabilityAttempt =
+export const PROBE_STATUSES = ["supported", "unsupported", "untestable", "test-todo", "test-failure"] as const
+export type ProbeStatus = (typeof PROBE_STATUSES)[number]
+export type ProbeAttempt =
   | { scope: "none" }
   | { scope: "collection" | "probe"; startedAt: string; diagnosticRef?: string }
 
-/** The still-required checks for the frozen criterion branch, retained at execution. */
-export interface CheckResult {
+/** The still-required tests for the frozen criterion branch, retained at execution. */
+export interface ProbeTestResult {
   id: string
-  status: CapabilityStatus
-  attempt: CapabilityAttempt
+  status: ProbeStatus
+  attempt: ProbeAttempt
   assertionRefs?: number[]
   rawReplyRef?: string
   reviewRef?: string
   reason?: string
 }
 /** Callback criterion facts; the producer supplies actual attempt timestamps and global evidence refs. */
-export type ProbeCheckResult = Pick<CheckResult, "id" | "status" | "reason" | "assertionRefs">
-interface ProbeExecutionChecks {
-  checks?: ProbeCheckResult[]
+export type ProbeTestInput = Pick<ProbeTestResult, "id" | "status" | "reason" | "assertionRefs">
+interface ProbeExecutionTests {
+  tests?: ProbeTestInput[]
   criterionBranch?: string
 }
 
-export interface CapabilityResult {
+export interface ProbeResult {
   featureId: string
-  status: CapabilityStatus
-  attempt: CapabilityAttempt
-  checks: CheckResult[]
+  status: ProbeStatus
+  attempt: ProbeAttempt
+  tests: ProbeTestResult[]
   criterionBranch?: string
   rawReplyRef?: string
   reviewRef?: string
@@ -66,18 +84,19 @@ export interface CapabilityResult {
   frames?: ObservationFrame[]
   screenshotRef?: string
   host?: ConsoleBufferOwner
-  evidence?: ObservationEvidence
+  assertionType?: AssertionType
 }
 
-/** A private in-flight run; intended context is never measured identity/provenance. */
+/** A private in-flight run; intended subject is never measured identity/provenance. */
 export interface RunDraft {
-  schemaVersion: 3
+  schemaVersion: 4
+  source: { kind: ProbeSourceKind }
   runId: string
   suiteId: string
   probeHash: string
   sourceRevision: string
-  intendedContext: Partial<ProbeTarget>
-  target?: ProbeTarget
+  intendedSubject: Partial<ProbeSubject>
+  subject?: ProbeSubject
   identity?: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
   provenance?: RunProvenance
@@ -89,16 +108,16 @@ export interface RunDraft {
   screenshotRefs: string[]
   textSnapshotRefs?: string[]
   textQualification?: TextQualification
-  results: CapabilityResult[]
+  results: ProbeResult[]
   sealedAt?: never
 }
 
 /** Captured identity is present, but HTTP/intent/app-launch enrichment and review can still run. */
-export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "target" | "identity" | "measuredAt" | "origin">>
+export type CapturedRunDraft = RunDraft & Required<Pick<RunDraft, "subject" | "identity" | "measuredAt" | "origin">>
 
 /** Final status bytes are immutable after all legitimate enrichment and required review. */
-export interface CurrentProbeRun extends Omit<RunDraft, "target" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
-  target: ProbeTarget
+export interface CurrentProbeRun extends Omit<RunDraft, "subject" | "identity" | "measuredAt" | "origin" | "sealedAt"> {
+  subject: ProbeSubject
   identity: "verified" | "unverified" | "disputed"
   measuredAt: string
   origin: RunOrigin
@@ -121,31 +140,11 @@ export const OBSERVATION_REASONS = [
 ] as const
 export type ObservationReason = (typeof OBSERVATION_REASONS)[number]
 
-/** Method of observing a claim, independent of the run's source origin. */
-export const OBSERVATION_EVIDENCE = [
-  "query",
-  "behavior",
-  "parser-state",
-  "pixels",
-  /** The terminal's own text snapshot: the cells it reports, never its pixels. */
-  "text",
-  "interaction",
-  "consumed",
-  "legacy",
-  /** No terminal measurement: the collector declined to run the callback. */
-  "none",
-] as const
-export type ObservationEvidence = (typeof OBSERVATION_EVIDENCE)[number]
-
-/** These methods cannot by themselves establish a support result. */
-export const NON_MEASURING_EVIDENCE: ReadonlySet<ObservationEvidence> = new Set<ObservationEvidence>([
-  "consumed",
-  "legacy",
-  "none",
-])
-export function isNonMeasuringEvidence(evidence: ObservationEvidence): boolean {
-  return NON_MEASURING_EVIDENCE.has(evidence)
-}
+/** Class of the retained deciding observation, independent of assertion polarity and capture payload kind. */
+export const ASSERTION_TYPES = ["query_reply", "buffer_state", "screenshot", "input_bytes", "clipboard"] as const
+export type AssertionType = (typeof ASSERTION_TYPES)[number]
+/** Trace is added with its recorder/replay implementation (#30932), without a schema bump. */
+export type ProbeSourceKind = "live"
 
 /** The program whose console buffer a TEXT read returned. */
 export interface ConsoleBufferOwner {
@@ -158,7 +157,7 @@ export interface Observation {
   featureId: string
   outcome: ObservationOutcome
   reason?: ObservationReason
-  evidence: ObservationEvidence
+  assertionType: AssertionType
   rawReplyRef?: string
   screenshotRef?: string
   frames?: ObservationFrame[]
@@ -314,8 +313,8 @@ export interface CaptureRequest {
   pixelGeometry?: CapturePixelGeometry
 }
 
-export interface ProbeTarget {
-  kind: "app" | "headless" | "mux"
+export interface ProbeSubject {
+  kind: "term" | "lib" | "mux"
   id: string
   version: string
   os: string | null
@@ -406,13 +405,15 @@ export type AppSourceArtifact =
  * or corruption, so the parser refuses it by name.
  */
 export interface ProbeSuiteManifest {
+  /** Absent only on normalized historical declarations; every current writer emits 4. */
+  schemaVersion?: 4
   probeHash: string
   sourceRevision?: string
   generatedAt?: string
   adapterVersion: string
   /** Complete frozen membership, distinct from callback schedules. Absent only in historical suites. */
   catalogIds?: string[]
-  probes: Record<ProbeTarget["kind"], string[]>
+  probes: Record<ProbeSubject["kind"], string[]>
   textClaims?: string[]
   textQualification?: TextQualificationSpec
   /**
@@ -426,6 +427,7 @@ export interface ProbeSuiteManifest {
 export interface ProbeAssertion {
   featureId: string
   kind: "positive" | "negative"
+  assertionType: AssertionType
   rawReplyRef?: string
   /** The predicate/expected state and the actually observed bytes or serialized state. */
   expected: string
@@ -503,7 +505,7 @@ export type HeadlessRuntimeIdentity =
 
 /** One app preflight measured before attaching a mux. */
 export interface OuterAppProof {
-  target: ProbeTarget & { kind: "app" }
+  subject: ProbeSubject & { kind: "term" }
   rawReplies: Record<string, string>
   provenance?: RunProvenance
   appLaunch?: AppLaunchReceipt
@@ -566,7 +568,8 @@ export type MuxAttachmentProof = LinuxMuxAttachmentProof | DarwinMuxAttachmentPr
 export interface HistoricalProbeRun {
   schemaVersion: 2
   runId: string
-  target: ProbeTarget
+  subject: ProbeSubject
+  source?: never
   identity: "verified" | "unverified" | "disputed"
   runtimeIdentity?: HeadlessRuntimeIdentity
   /** Measured in the running native-app environment before the run is sealed. */
@@ -585,13 +588,13 @@ export interface HistoricalProbeRun {
    * only as text in the collector-error note or message, never as claims. A late reply adds `<id>.late`.
    */
   rawReplies: Record<string, string>
-  assertions: ProbeAssertion[]
+  assertions: Array<Omit<ProbeAssertion, "assertionType"> & { assertionType?: AssertionType }>
   screenshotRefs: string[]
   /** Retained TEXT snapshots, the text-frame twin of `screenshotRefs` and a separate list because
    * every consumer of that one assumes a PNG. Absent in runs written before it existed. */
   textSnapshotRefs?: string[]
   textQualification?: TextQualification
-  observations: Observation[]
+  observations: Array<Omit<Observation, "assertionType"> & { assertionType?: AssertionType }>
   /** Named coverage records for features with no applicable observable here; disjoint from observations. */
   notTested?: NotTestedCoverage[]
   ungradedDiagnostics?: Record<string, UngradedDiagnostic>
@@ -622,14 +625,14 @@ export interface HistoricalInterpretation {
   reviewer: string
   reason: string
   scope: {
-    target: Pick<ProbeTarget, "kind" | "id">
+    subject: Pick<ProbeSubject, "kind" | "id">
     versions: [string, string]
     suites: [string, string]
   }
   sources: string[]
   supersedes: string[]
   featureId?: string
-  observation?: Observation
+  observation?: Omit<Observation, "assertionType"> & { assertionType?: AssertionType }
   reviewed?: boolean
   verifiesIdentity?: boolean
   /** Controls evidence shown by the site and API; not a privacy control in this public repository. */
@@ -658,8 +661,9 @@ export interface CaptureDecision {
 }
 export type Interpretation = HistoricalInterpretation | CaptureDecision
 
-/** Context for headless backends (synchronous cell-state access) */
-export interface TermlessContext {
+/** Source for library probing (synchronous cell-state access) */
+export interface LibProbeSource {
+  readonly kind: ProbeSourceKind
   /** Existing HyperlinkExtension method; present only for exposed parser metadata. */
   getHyperlinkAt?(row: number, col: number): string | null
   /** Width read back from the backend after initialization, never inferred from cursor behavior. */
@@ -734,7 +738,7 @@ export type Utf8Decoding = "utf8" | "8-bit"
  */
 export type Utf8DecodingReading = Utf8Decoding | "silent" | "unusable"
 
-/** Context for real terminal probing (async TTY I/O) */
+/** Source for terminal probing (async TTY I/O) */
 export interface TerminalQueryOutcome {
   match: string[] | null
   reason: "reply" | "sentinel" | "timeout"
@@ -764,7 +768,8 @@ export interface InputFixture {
   injectDrag?(button: 1): Promise<void>
 }
 
-export interface TermContext {
+export interface TermProbeSource {
+  readonly kind: ProbeSourceKind
   /** Complete same-run raster geometry, installed only after witnessed paint and restore. */
   captureGeometry?: {
     geometry: CapturePixelGeometry
@@ -799,7 +804,9 @@ export interface TermContext {
    */
   captureGeometryRefusal?: string
   /** An owned Linux collector installs this only after verifying the launch receipt. */
-  withClipboardFixture?: (work: (fixture: ClipboardFixture) => Promise<ProbeResult>) => Promise<ProbeResult>
+  withClipboardFixture?: (
+    work: (fixture: ClipboardFixture) => Promise<ProbeCallbackResult>,
+  ) => Promise<ProbeCallbackResult>
   /** Present only when an owned OS capture adapter is installed for this run. */
   capture?: (request: CaptureRequest) => Promise<ObservationFrame>
   /** The terminal's OWN CELLS, on a text arm. Separate from `capture` because only the region
@@ -820,8 +827,8 @@ export interface TermContext {
 
 export interface ProbeDefinition {
   id: string
-  termless: ((ctx: TermlessContext) => ProbeResult) | null
-  term: ((ctx: TermContext) => Promise<ProbeResult>) | null
+  lib: ((ctx: LibProbeSource) => ProbeCallbackResult) | null
+  term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null
   /** Only an explicitly reviewed report request may run without a disposable terminal. */
   termWrites?: "query"
   /**
@@ -837,10 +844,11 @@ export interface ProbeDefinition {
   cellReadback?: true
   /** Reviewed character-only claim; adapter routing alone never implies eligibility. */
   textClaim?: "characters"
-  /** Explicit opt-in for recording callback exceptions as observations. */
-  termObservationEvidence?: ObservationEvidence
-  /** Every observation this Termless callback returns names this method, or none for a refusal before measurement. */
-  termlessObservationEvidence?: ObservationEvidence
+  /** A null term arm is absent. A null declaration means the running arm retains no typed deciding
+   * observable; undefined is temporarily undeclared (#28801), never equivalent to null. */
+  termAssertionType?: AssertionType | null
+  /** Same declaration contract as termAssertionType, for the library callback. */
+  libAssertionType?: AssertionType | null
 }
 
 /** The only live run contract; v1/v2 are historical reader inputs. */

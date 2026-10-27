@@ -2,7 +2,7 @@
 
 [terminfo.dev](https://terminfo.dev) records what particular terminal implementations did under particular tests. Its feature descriptions, protocol references and measurements answer different questions. A reply to a cursor query, for example, cannot establish that truecolor text rendered correctly.
 
-Run `npx terminfo.dev test` to record available observations from your terminal. In an ordinary terminal, state-changing checks are recorded as inconclusive unless a verified disposable test environment is available. The [contribution guide](docs/contribute.md) explains the methods, limits and submission flow. The published npm CLI and website may use older probe suites than this checkout; record the CLI version and suite identity with a result.
+Run `npx terminfo.dev test` to record available observations from your terminal. In an ordinary terminal, state-changing tests are recorded as inconclusive unless a verified disposable test environment is available. The [contribution guide](docs/contribute.md) explains the methods, limits and submission flow. The published npm CLI and website may use older probe suites than this checkout; record the CLI version and suite identity with a result.
 
 ## Which things are measured?
 
@@ -39,7 +39,7 @@ The shared selection logic lives in [`docs/data/selected-results.ts`](docs/data/
 
 [`scripts/validate.ts`](scripts/validate.ts) exits nonzero for structural errors such as unknown tags, duplicate slugs and names, missing terminal bodies, invalid platform references and malformed identity. It **warns** about missing or brief feature bodies (the current target is 260 characters), missing probe descriptions, orphaned annotations and terminals without data; warning-free content still needs factual review. [`scripts/sitefile.ts`](scripts/sitefile.ts) lists specs, vendor docs, proposals, release feeds and freshness intervals. Its `--check` reads the same reviewed current measurements as the site/API, fails on missing or stale measurements, and leaves the inventory unchanged. Generating the inventory does not verify upstream sources or stamp them as checked.
 
-The package scripts run the relevant local checks:
+The package scripts run the relevant local tests:
 
 ```bash
 bun run validate                  # structural validation + trusted suite-manifest check
@@ -50,4 +50,4 @@ bun scripts/check-404s.ts         # built-site internal links
 bun scripts/check-private-leak.ts # built-site private-content scan
 ```
 
-[`deploy.yml`](.github/workflows/deploy.yml) uses a frozen install, validation, tests, build, private-content scan and 404 check, then deploys the same hashed archive it validated. [`validate.yml`](.github/workflows/validate.yml) runs weekly and on `main`; its content warnings are reported separately from errors. [`format-check.yml`](.github/workflows/format-check.yml) checks formatter idempotence. [`links.yml`](.github/workflows/links.yml) checks Markdown links. The repository's [agent guide](AGENTS.md) describes authoring paths, but current command behavior and these gates govern claims about enforcement. A clean build verifies the artifact's construction, not the truth of every feature description or historic measurement.
+[`deploy.yml`](.github/workflows/deploy.yml) uses a frozen install, validation, tests, build, private-content scan and 404 check, then deploys the same hashed archive it validated. [`validate.yml`](.github/workflows/validate.yml) runs weekly and on `main`; its content warnings are reported separately from errors. [`format-check.yml`](.github/workflows/format-check.yml) tests formatter idempotence. [`links.yml`](.github/workflows/links.yml) tests Markdown links. The repository's [agent guide](AGENTS.md) describes authoring paths, but current command behavior and these gates govern claims about enforcement. A clean build verifies the artifact's construction, not the truth of every feature description or historic measurement.

@@ -5,7 +5,7 @@ import React from "react"
 import { Box, Text } from "silvery"
 import { renderString } from "silvery"
 
-interface ProbeResult {
+interface ProbeCallbackResult {
   id: string
   name: string
   pass: boolean
@@ -21,7 +21,7 @@ interface ReportProps {
   categoryCount: number
   passed: number
   total: number
-  categories: Map<string, ProbeResult[]>
+  categories: Map<string, ProbeCallbackResult[]>
 }
 
 /** OSC 8 hyperlink wrapper */
@@ -74,7 +74,7 @@ function CategorySection({
   slugs,
 }: {
   name: string
-  probes: ProbeResult[]
+  probes: ProbeCallbackResult[]
   slugs: Record<string, string>
 }) {
   const catPassed = probes.filter((p) => p.pass).length

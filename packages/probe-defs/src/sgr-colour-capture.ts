@@ -27,7 +27,7 @@
  *   both read inconclusive BY NAME. Deciding colour unsupported is a separate ruling.
  */
 import type { RegionReadback } from "./region-readback.ts"
-import type { ProbeResult } from "./types.ts"
+import type { ProbeCallbackResult } from "./types.ts"
 
 const SAMPLE = "AaBb"
 const REGION = { top: 3, left: 3, bottom: 3, right: 3 + SAMPLE.length - 1 } as const
@@ -106,7 +106,7 @@ function frame(row: ColourRow, paint: string): string {
 /**
  * The eleven colour rows, keyed by the probe id that owns each claim. The target and the expected
  * frames paint the sequence under test; the ignored frame paints the sibling. The two degenerate
- * checks the oracle performs on those frames — expected differs from seed, expected differs from
+ * tests the oracle performs on those frames — expected differs from seed, expected differs from
  * ignored — are the whole claim: the colour value itself is never interpreted.
  */
 export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = Object.fromEntries(
@@ -141,7 +141,7 @@ export function colourCaptureNote(id: string): string | undefined {
  * cannot separate an ignored sequence from one painted identically to the sibling, so they read
  * inconclusive BY NAME here. A supported observation carries the note that says what was compared.
  */
-export function colourCaptureVerdict(id: string, verdict: ProbeResult): ProbeResult {
+export function colourCaptureVerdict(id: string, verdict: ProbeCallbackResult): ProbeCallbackResult {
   const note = colourCaptureNote(id)
   const observation = verdict.observation
   if (note === undefined || observation === undefined) return verdict

@@ -77,7 +77,7 @@ function evidenceClass(row) {
         <span v-if="row.url" class="external-link"> · <a :href="row.url" target="_blank" rel="noopener">site</a></span>
       </td>
       <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
-      <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.evidence }}</span></td>
+      <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.assertionType }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
   </tbody>
@@ -100,7 +100,7 @@ function evidenceClass(row) {
     <tr v-for="row in parserRows" :key="row.id">
       <td><a :href="'/terminals/' + row.slug">{{ row.label }}</a></td>
       <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
-      <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.evidence }}</span></td>
+      <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.assertionType }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
   </tbody>
@@ -125,7 +125,7 @@ function evidenceClass(row) {
     <tr v-for="row in muxRows" :key="row.id">
       <td><a :href="'/terminals/' + row.slug">{{ row.label }}</a></td>
       <td class="score-cell" :title="row.scoreTitle"><span v-if="row.notMeasured">{{ NOT_MEASURED_TEXT }}</span><span v-else-if="row.score">{{ row.score }}%</span><span v-else>—</span></td>
-      <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.evidence }}</span></td>
+      <td><span :class="['evidence-badge', evidenceClass(row)]">{{ row.assertionType }}</span></td>
       <td class="note-cell">{{ row.note }}</td>
     </tr>
   </tbody>
@@ -235,7 +235,7 @@ function evidenceClass(row) {
   margin-top: 4px;
 }
 
-.evidence-note {
+.assertionType-note {
   background: var(--vp-c-brand-soft);
   border-left: 3px solid var(--vp-c-brand-1);
   border-radius: 6px;
@@ -290,7 +290,7 @@ function evidenceClass(row) {
   font-size: 0.9em;
 }
 
-.evidence-badge {
+.assertionType-badge {
   border-radius: 999px;
   display: inline-block;
   font-size: 0.78em;
@@ -300,27 +300,27 @@ function evidenceClass(row) {
   white-space: nowrap;
 }
 
-.evidence-measured {
+.assertionType-measured {
   background: var(--vp-c-green-soft);
   color: var(--vp-c-green-1);
 }
 
-.evidence-parser {
+.assertionType-parser {
   background: var(--vp-c-indigo-soft);
   color: var(--vp-c-indigo-1);
 }
 
-.evidence-inherited {
+.assertionType-inherited {
   background: var(--vp-c-brand-soft);
   color: var(--vp-c-brand-1);
 }
 
-.evidence-reference {
+.assertionType-reference {
   background: var(--vp-c-yellow-soft);
   color: var(--vp-c-yellow-1);
 }
 
-.evidence-unprobed {
+.assertionType-unprobed {
   background: var(--vp-c-default-soft);
   color: var(--vp-c-text-2);
 }

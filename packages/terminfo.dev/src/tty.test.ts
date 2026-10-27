@@ -34,7 +34,7 @@ function reply(bytes: string) {
 }
 
 describe("TTY transaction replies", () => {
-  it("checks a scoped owner before nested queries and releases it with the operation", async () => {
+  it("tests a scoped owner before nested queries and releases it with the operation", async () => {
     const failure = new Error("attachment continuity lost")
     const writes: string[] = []
     let revoked = false

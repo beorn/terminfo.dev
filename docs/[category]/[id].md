@@ -63,9 +63,9 @@ function termTooltip(r) {
   <span v-else-if="p.probeStatus === 'partial'" class="probe-badge probe-partial" title="Probe definition covers only part of this feature">partial</span>
   <span v-else-if="p.probeStatus === 'manual'" class="probe-badge probe-manual" title="Not automated — support data is from manual testing or documentation">manual</span>
   <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
-  <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's evidence kind is declared when its family converts to an observation kind.">evidence undeclared</span>
+  <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's assertion type is not declared yet.">assertion type undeclared</span>
   <br><span v-html="p.probeMethod"></span>
-  <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that target and method.</p>
+  <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that subject and method.</p>
 </div>
 
 <div v-if="p.analysis" class="analysis">
@@ -78,9 +78,9 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current targets in this catalog ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current subjects in this catalog ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
-<p v-else class="feature-score">No current schema-3 results for this feature.</p>
+<p v-else class="feature-score">No current sealed results for this feature.</p>
 
 ## Terminal Applications
 
@@ -97,7 +97,7 @@ function termTooltip(r) {
     <tr v-for="r in appResults" :key="r.name">
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :target-name="r.label"
+      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="r.label"
         :version="data.selectedByBackend[r.name]?.selected" :cell="publicResultFor(data.selectedByBackend[r.name]?.selected, p.featureId)" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
@@ -126,7 +126,7 @@ function termTooltip(r) {
     <tr v-for="r in headlessResults" :key="r.name">
       <td :data-tooltip="termTooltip(r)"><a :href="'/terminals/' + r.slug">{{ r.label }}</a></td>
       <td class="version-cell">{{ r.version }}</td>
-      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :target-name="r.label"
+      <td class="result-cell"><ResultEvidenceCell :feature-id="p.featureId" :probe-guidance="data.featureDescriptions[p.featureId]?.probe" :feature-name="p.featureName" :subject-name="r.label"
         :version="data.selectedByBackend[r.name]?.selected" :cell="publicResultFor(data.selectedByBackend[r.name]?.selected, p.featureId)" display="text" /></td>
       <td class="note-cell">
         {{ r.note }}
@@ -153,7 +153,7 @@ function termTooltip(r) {
   <tbody>
     <tr v-for="sf in subFeatures" :key="sf.id">
       <td><a :href="'/' + p.featureCategory + '/' + sf.slug">{{ sf.name }}</a></td>
-      <td v-for="b in appBackends" :key="b.name" class="result-cell"><ResultEvidenceCell :feature-id="sf.id" :probe-guidance="data.featureDescriptions[sf.id]?.probe" :feature-name="sf.name" :target-name="b.label"
+      <td v-for="b in appBackends" :key="b.name" class="result-cell"><ResultEvidenceCell :feature-id="sf.id" :probe-guidance="data.featureDescriptions[sf.id]?.probe" :feature-name="sf.name" :subject-name="b.label"
         :version="data.selectedByBackend[b.name]?.selected" :cell="publicResultFor(data.selectedByBackend[b.name]?.selected, sf.id)" /></td>
     </tr>
   </tbody>

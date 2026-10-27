@@ -10,9 +10,9 @@ import { createHash } from "node:crypto"
 import { eraseProbes, eraseReadbackRows } from "./erase.ts"
 import { ALL_PROBES } from "./index.ts"
 import { regionReadbackProbe, type RegionReadbackCell, type RegionReadbackRow } from "./region-readback-kind.ts"
-import { headlessContext, regradeRow } from "./testing/group-harness.ts"
+import { libProbeSource, regradeRow } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
-import type { ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 
 /**
  * The kind table's own rows, one per CONVERTED Erase probe, listed BY NAME so a row that loses its
@@ -48,9 +48,10 @@ const KIND_TABLE_ROWS = eraseReadbackRows.map((row) => ({
  *  - "region erase requires changed cells and a preserved preceding row" -> the row's own `controls`.
  */
 
-/** A minimal TermlessContext the declared screens below override. */
-function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
+/** A minimal LibProbeSource the declared screens below override. */
+function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    kind: "live",
     cols: 24,
     feed() {},
     feedCapture: () => "",
@@ -90,14 +91,15 @@ function headless(overrides: Partial<TermlessContext> = {}): TermlessContext {
 }
 
 /**
- * The same TermContext shape the kept hand-written rows use, plus an event log and measured geometry,
+ * The same TermProbeSource shape the kept hand-written rows use, plus an event log and measured geometry,
  * so a converted row is driven at the exact size on which it must refuse.
  */
-function appWithEvents(rows: number, cols: number, events: string[]): TermContext {
+function appWithEvents(rows: number, cols: number, events: string[]): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in erase geometry fixture`)
   }
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -122,7 +124,7 @@ function appWithEvents(rows: number, cols: number, events: string[]): TermContex
  * ignored that operation". The declared grid is the terminal's own behaviour, so a row reads supported
  * only when its frame agrees with a terminal the test drove independently.
  */
-function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<TermlessContext["getCell"]> {
+function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<LibProbeSource["getCell"]> {
   if (cell === undefined || typeof cell === "string") {
     // A plain cell is a cell the row claims NO attributes for, not a cell whose backend reports no
     // field: a real `getCell` always says what the background is (null = none). Leaving `bg`
@@ -133,7 +135,7 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
       inverse: false,
       fg: null,
       bg: null,
-    } as ReturnType<TermlessContext["getCell"]>
+    } as ReturnType<LibProbeSource["getCell"]>
   }
   const attributes = cell.attributes
   return {
@@ -142,7 +144,7 @@ function declaredCell(cell: RegionReadbackCell | undefined): ReturnType<Termless
     inverse: attributes.inverse === true,
     fg: null,
     bg: attributes.bg ?? null,
-  } as ReturnType<TermlessContext["getCell"]>
+  } as ReturnType<LibProbeSource["getCell"]>
 }
 
 function declaredScreen(
@@ -150,7 +152,7 @@ function declaredScreen(
   cols: number,
   cursor: { x: number; y: number } = { x: 0, y: 0 },
   baseline?: { seed: string; cells: readonly (readonly RegionReadbackCell[])[] },
-): TermlessContext {
+): LibProbeSource {
   let cells: readonly (readonly RegionReadbackCell[])[] = []
   return headless({
     cols,
@@ -224,17 +226,17 @@ test("every kind row decides from its own cells, through the shared kind", async
     expect(probe, `${row.id} has a kind-built probe`).toBeDefined()
     if (!probe) continue
     expect(probe.termNeedsGeometry, row.id).toBe(true)
-    expect(probe.termlessObservationEvidence, row.id).toBe("parser-state")
-    const measured = probe.termless!(headlessContext(createSemanticSurface()))
+    expect(probe.libAssertionType, row.id).toBe("buffer_state")
+    const measured = probe.lib!(libProbeSource(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     expect(toSpaces(state.before), `${row.id} reads the row's seed cells`).toEqual(toSpaces(row.before))
     expect(toSpaces(state.after), `${row.id} reads the row's target cells`).toEqual(toSpaces(row.after))
-    expect(measured.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(measured.observation, row.id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(measured.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
     const contract = KIND_TABLE_ROWS.find((entry) => entry.id === row.id)
     expect(contract, `${row.id} is named in the table`).toBeDefined()
     if (!contract) continue
-    const graded = await regradeRow(probe, contract, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, contract, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, row.id).toBe("supported")
     expect(graded.satisfies, row.id).toBe(true)
   }
@@ -244,8 +246,8 @@ test("the kind table replays every row deterministically", async () => {
   for (const row of KIND_TABLE_ROWS) {
     const probe = eraseProbes.find((entry) => entry.id === row.id)
     if (!probe) continue
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
   }
@@ -259,24 +261,24 @@ test("the kind table replays every row deterministically", async () => {
 for (const row of eraseReadbackRows) {
   test(`${row.id} binds its claim to its own cells`, () => {
     const probe = eraseProbes.find((entry) => entry.id === row.id)
-    if (!probe?.termless) throw new Error(`Missing headless ${row.id}`)
+    if (!probe?.lib) throw new Error(`Missing headless ${row.id}`)
     const cols = 24
     const step = firstStep(row.id)
     const cursor = stepCursor(row.id)
     const right = (row.region?.left ?? 1) + (row.before[0]?.length ?? 0) - 1
 
-    const supported = probe.termless(
+    const supported = probe.lib(
       declaredScreen({ [row.seed]: row.before, [step]: row.after }, cols, cursor, row.baseline),
     )
-    expect(supported.observation, row.id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.observation, row.id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(supported.assertions?.[0], row.id).toMatchObject({ kind: "positive" })
 
-    const ignored = probe.termless(declaredScreen({ [row.seed]: row.before }, cols, cursor, row.baseline))
-    expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    const ignored = probe.lib(declaredScreen({ [row.seed]: row.before }, cols, cursor, row.baseline))
+    expect(ignored.observation, row.id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored.assertions?.[0], row.id).toMatchObject({ kind: "negative" })
 
     const badSeed = row.before.map((cells) => cells.map(() => "?"))
-    expect(probe.termless(declaredScreen({ [row.seed]: badSeed }, cols)).observation, row.id).toMatchObject({
+    expect(probe.lib(declaredScreen({ [row.seed]: badSeed }, cols)).observation, row.id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
     })
@@ -285,7 +287,7 @@ for (const row of eraseReadbackRows) {
     const narrow = declaredScreen({ [row.seed]: row.before, [step]: row.after }, right - 1, cursor)
     const fed: string[] = []
     const watched = { ...narrow, feed: (sequence: string) => fed.push(sequence) }
-    expect(probe.termless(watched).observation, `${row.id} at ${right - 1} columns`).toMatchObject({
+    expect(probe.lib(watched).observation, `${row.id} at ${right - 1} columns`).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
     })
@@ -307,10 +309,10 @@ test.each([
 ] as const)("%s reads an over-erase or wrong side unsupported (%s)", (id, lines, label) => {
   const row = rowById(id)
   const probe = eraseProbes.find((entry) => entry.id === id)
-  if (!probe?.termless) throw new Error(`Missing headless ${id}`)
+  if (!probe?.lib) throw new Error(`Missing headless ${id}`)
   const after = lines.map((line) => line.split(""))
-  const result = probe.termless(declaredScreen({ [row.seed]: row.before, [firstStep(id)]: after }, 24, stepCursor(id)))
-  expect(result.observation, `${id}: ${label}`).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const result = probe.lib(declaredScreen({ [row.seed]: row.before, [firstStep(id)]: after }, 24, stepCursor(id)))
+  expect(result.observation, `${id}: ${label}`).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions?.[0], id).toMatchObject({ kind: "negative" })
 })
 
@@ -323,12 +325,10 @@ test.each([
 test.each(eraseReadbackRows.map((row) => row.id))("%s reads an ignored CUP inconclusive, not a bad erase", (id) => {
   const row = rowById(id)
   const probe = eraseProbes.find((entry) => entry.id === id)
-  if (!probe?.termless) throw new Error(`Missing headless ${id}`)
+  if (!probe?.lib) throw new Error(`Missing headless ${id}`)
   const cursor = stepCursor(id)
   if (cursor.x === 0 && cursor.y === 0) return
-  const result = probe.termless(
-    declaredScreen({ [row.seed]: row.before, [firstStep(id)]: row.after }, 24, { x: 0, y: 0 }),
-  )
+  const result = probe.lib(declaredScreen({ [row.seed]: row.before, [firstStep(id)]: row.after }, 24, { x: 0, y: 0 }))
   expect(result.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(result.assertions, id).toBeUndefined()
 })
@@ -342,8 +342,8 @@ test.each(eraseReadbackRows.map((row) => row.id))("%s reads an ignored CUP incon
 test("erase.el-with-attrs reads an ignored CUP inconclusive before grading cells", () => {
   const row = rowById("erase.el-with-attrs")
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
-  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
-  const result = probe.termless(
+  if (!probe?.lib) throw new Error("Missing headless erase.el-with-attrs")
+  const result = probe.lib(
     declaredScreen({ [row.seed]: row.before, [firstStep(row.id)]: row.after }, 24, { x: 0, y: 1 }, row.baseline),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -370,12 +370,16 @@ test("every converted row refuses by name and writes nothing without an owned ca
     ] as const) {
       const events: string[] = []
       const result = await definition.term(appWithEvents(rows, cols, events))
-      expect(result.observation, `${row.id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result.observation, `${row.id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result, `${row.id} at ${rows}x${cols}`).toMatchObject({
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason: `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`,
+          }),
+        ],
       })
-      expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
+      expect(String(result.tests?.[0]?.reason), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
       expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])
     }
   }
@@ -395,12 +399,11 @@ test("every converted row refuses by name when the terminal answers no pixel geo
         ref: `sha256:${"1".repeat(64)}`,
       }),
     })
-    expect(result.observation, row.id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "query",
-    })
-    expect(String(result.observation?.note), row.id).toContain("CSI 16 t")
+    expect(result.observation, row.id).toBeUndefined()
+    expect(result.tests, row.id).toMatchObject([
+      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    ])
+    expect(String(result.tests?.[0]?.reason), row.id).toContain("CSI 16 t")
     expect(result.observation?.outcome, row.id).not.toBe("supported")
     expect(events, row.id).toEqual([])
   }
@@ -450,8 +453,8 @@ test("an explicit minimum geometry below what a row uses refuses at load", () =>
 
 function byId(id: string) {
   const probe = eraseProbes.find((item) => item.id === id)
-  if (!probe?.termless || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
-  return { ...probe, term: probe.term, termless: probe.termless }
+  if (!probe?.lib || !probe.term) throw new Error(`missing erase callbacks for ${id}`)
+  return { ...probe, term: probe.term, lib: probe.lib }
 }
 
 function eraseCellsHeadless(
@@ -459,12 +462,13 @@ function eraseCellsHeadless(
   adjacentAfter = "KEEP!",
   missingCell?: number,
   ignoreCursorSetup = false,
-): TermlessContext {
+): LibProbeSource {
   let erased = false
   let cursorX = 5
   const before = ["ABCDE", "KEEP!"]
   const afterRows = [after, adjacentAfter]
   return {
+    kind: "live",
     cols: 80,
     feed(sequence) {
       if (!ignoreCursorSetup) {
@@ -514,8 +518,9 @@ function eraseCellsHeadless(
   }
 }
 
-function app(position: { row: number; col: number } | null): TermContext {
+function app(position: { row: number; col: number } | null): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => position,
     measureRenderedWidth: async () => null,
@@ -540,7 +545,7 @@ test("scrollback erase requires existing history and measured removal", () => {
     const base = eraseCellsHeadless("ABCDE")
     let seeded = false
     let erased = false
-    const result = byId("erase.screen.scrollback").termless({
+    const result = byId("erase.screen.scrollback").lib({
       ...base,
       feed(bytes) {
         if (bytes.includes("\r\n")) seeded = true
@@ -552,7 +557,7 @@ test("scrollback erase requires existing history and measured removal", () => {
         totalLines: seeded && history && !(erased && clears) ? 26 : 24,
       }),
     })
-    expect(result.observation).toMatchObject({ outcome: expected, evidence: "parser-state" })
+    expect(result.observation).toMatchObject({ outcome: expected, assertionType: "buffer_state" })
   }
 })
 
@@ -574,7 +579,7 @@ function scrollbackApp(script: {
   encodingOnly?: boolean
   divergentPixels?: boolean
 }): {
-  ctx: TermContext
+  ctx: TermProbeSource
   keys: string[]
   clicks: number[]
   writes: string[]
@@ -592,7 +597,7 @@ function scrollbackApp(script: {
   let ed3 = false
   let captureCount = 0
   let sawHistory = false
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
     ...app({ row: 5, col: 5 }),
     write(text) {
       writes.push(text)
@@ -720,7 +725,7 @@ test("erase.screen.scrollback is inconclusive, naming the cause, when wheel-down
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    assertionType: "screenshot",
     screenshotRef: HISTORY_REF,
   })
   expect(result.observation?.note).toMatch(/captured pixels differ/i)
@@ -730,27 +735,27 @@ test("erase.screen.scrollback grades when the refs differ but the pixels agree",
   // A ref names the encoded container; two identical screens can carry different refs. Before 30080
   // this read not tested on every Linux context, because the restore check compared refs alone.
   const { ctx } = scrollbackApp({ clears: true, encodingOnly: true })
-  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
   expect(result.notTested).toBeUndefined()
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
 })
 
 test("erase.screen.scrollback names moving pixels as inconclusive when the return never settles", async () => {
   const { ctx } = scrollbackApp({ restore: false, divergentPixels: true })
   const result = await byId("erase.screen.scrollback").term(ctx)
   expect(result.notTested).toBeUndefined()
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
   expect(result.observation?.note).toMatch(/captured pixels differ/i)
 })
 
 test("erase.screen.scrollback records unsupported when history remains after ED3", async () => {
   const { ctx, keys, clicks, writes } = scrollbackApp({ clears: false })
-  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a"])
   expect(clicks).toEqual([4, 5, 4, 5])
   expect(writes.join("")).toContain("\x1b[3J")
   expect(writes.join("")).not.toMatch(/\x1b\[\?100[027]h/)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "erase.screen.scrollback:ed3" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ history: HISTORY_REF, after: HISTORY_REF })
@@ -758,12 +763,12 @@ test("erase.screen.scrollback records unsupported when history remains after ED3
 
 test("erase.screen.scrollback records supported when wheel-up after ED3 stays on the post-ED3 frame", async () => {
   const { ctx, keys, clicks, writes } = scrollbackApp({ clears: true })
-  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeResult
+  const result = (await byId("erase.screen.scrollback").term(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a"])
   expect(clicks).toEqual([4, 5, 4, 5])
   expect(writes.join("")).toContain("\x1b[3J")
   expect(writes.join("")).not.toMatch(/\x1b\[\?100[027]h/)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "erase.screen.scrollback:ed3" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ history: HISTORY_REF, erased: ERASED_REF, after: ERASED_REF })
@@ -777,7 +782,7 @@ test("erase.screen.scrollback stays inconclusive when post-ED3 wheel-up matches 
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    assertionType: "screenshot",
   })
   expect(result.notTested).toBeUndefined()
 })
@@ -804,7 +809,7 @@ test("background erase measures a blank target that carries the seeded backgroun
   const row = rowById("erase.el-with-attrs")
   const step = firstStep("erase.el-with-attrs")
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
-  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  if (!probe?.lib) throw new Error("Missing headless erase.el-with-attrs")
   const background = { r: 130, g: 20, b: 70 }
   const other = { r: 1, g: 2, b: 3 }
   const baselineSeed = row.baseline?.seed
@@ -817,7 +822,7 @@ test("background erase measures a blank target that carries the seeded backgroun
   ) => {
     // Three measured phases: the terminal's own default, the seed the row paints, then the erase.
     let phase: "default" | "seed" | "after" = "default"
-    return probe.termless!(
+    return probe.lib!(
       headless({
         feed: (sequence) => {
           if (sequence === baselineSeed) phase = "default"
@@ -842,11 +847,11 @@ test("background erase measures a blank target that carries the seeded backgroun
     )
   }
   // The claim, measured: a blank cell keeping the seed's own background is the ONLY supported frame.
-  expect(run(background, background).observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(run(background, background).observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(run(background, background).assertions?.[0]).toMatchObject({ kind: "positive" })
   // The measured negative: the erased cells fall back to the default background, or keep the
   // character that EL should have removed.
-  expect(run(background, null).observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(run(background, null).observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(run(background, background, "X").observation).toMatchObject({ outcome: "unsupported" })
   // A different colour is not the seeded one: the relative claim is exact on this adapter.
   expect(run(background, other).observation).toMatchObject({ outcome: "unsupported" })
@@ -876,11 +881,11 @@ test("an unread default-background colour cannot qualify the painted seed", () =
   const row = rowById("erase.el-with-attrs")
   const step = firstStep("erase.el-with-attrs")
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
-  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  if (!probe?.lib) throw new Error("Missing headless erase.el-with-attrs")
   const baselineSeed = row.baseline?.seed
   if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
   let phase: "default" | "seed" | "after" = "default"
-  const result = probe.termless(
+  const result = probe.lib(
     headless({
       feed: (sequence) => {
         if (sequence === baselineSeed) phase = "default"
@@ -902,7 +907,7 @@ test("an unread default-background colour cannot qualify the painted seed", () =
           // The default-background seed never reports its colour; the painted seed does.
           bg: phase === "default" ? undefined : { r: 130, g: 20, b: 70 },
           wide: false,
-        }) as ReturnType<TermlessContext["getCell"]>,
+        }) as ReturnType<LibProbeSource["getCell"]>,
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -918,13 +923,13 @@ test("a step that throws still feeds the row's reset", () => {
   const row = rowById("erase.el-with-attrs")
   const step = firstStep("erase.el-with-attrs")
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
-  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  if (!probe?.lib) throw new Error("Missing headless erase.el-with-attrs")
   const writes: string[] = []
   const baselineSeed = row.baseline?.seed
   if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
   let phase: "default" | "seed" = "default"
   expect(() =>
-    probe.termless!(
+    probe.lib!(
       headless({
         feed: (sequence) => {
           writes.push(sequence)
@@ -946,7 +951,7 @@ test("a step that throws still feeds the row's reset", () => {
             fg: null,
             bg: phase === "seed" ? { r: 130, g: 20, b: 70 } : null,
             wide: false,
-          }) as ReturnType<TermlessContext["getCell"]>,
+          }) as ReturnType<LibProbeSource["getCell"]>,
       }),
     ),
   ).toThrow(/step write failed/)
@@ -965,8 +970,8 @@ test("a constant default background cannot establish the painted seed", () => {
   const constant = { r: 0, g: 0, b: 0 }
   let erased = false
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
-  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
-  const result = probe.termless(
+  if (!probe?.lib) throw new Error("Missing headless erase.el-with-attrs")
+  const result = probe.lib(
     headless({
       feed: (sequence) => {
         if (sequence === step) erased = true
@@ -1000,11 +1005,11 @@ test("an unread background on the erased cells is named inconclusive", () => {
   const row = rowById("erase.el-with-attrs")
   const step = firstStep("erase.el-with-attrs")
   const probe = eraseProbes.find((entry) => entry.id === "erase.el-with-attrs")
-  if (!probe?.termless) throw new Error("Missing headless erase.el-with-attrs")
+  if (!probe?.lib) throw new Error("Missing headless erase.el-with-attrs")
   const baselineSeed = row.baseline?.seed
   if (baselineSeed === undefined) throw new Error("erase.el-with-attrs has no default-background fixture")
   let phase: "default" | "seed" | "after" = "default"
-  const result = probe.termless(
+  const result = probe.lib(
     headless({
       feed: (sequence) => {
         if (sequence === baselineSeed) phase = "default"
@@ -1025,7 +1030,7 @@ test("an unread background on the erased cells is named inconclusive", () => {
           fg: null,
           bg: phase === "after" ? undefined : phase === "seed" ? { r: 1, g: 2, b: 3 } : null,
           wide: false,
-        }) as ReturnType<TermlessContext["getCell"]>,
+        }) as ReturnType<LibProbeSource["getCell"]>,
     }),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -1054,7 +1059,8 @@ function regionReadbackApp(rows: number, cols: number, mutations: readonly strin
     }
     return text
   }
-  const context: TermContext = {
+  const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (bytes) => {
@@ -1096,13 +1102,13 @@ function regionReadbackApp(rows: number, cols: number, mutations: readonly strin
 
 test("the EL-with-attrs row names an erase that drops the current background unsupported", async () => {
   const conforming = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10).context)
-  expect(conforming.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(conforming.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
 
   const inert = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-noop"]).context)
-  expect(inert.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(inert.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
 
   const noBackground = await byId("erase.el-with-attrs").term(regionReadbackApp(6, 10, ["el-default-bg"]).context)
-  expect(noBackground.observation).toMatchObject({ outcome: "unsupported", evidence: "pixels" })
+  expect(noBackground.observation).toMatchObject({ outcome: "unsupported", assertionType: "screenshot" })
 })
 
 /**

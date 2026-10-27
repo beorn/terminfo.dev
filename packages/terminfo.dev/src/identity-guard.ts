@@ -8,7 +8,7 @@
 
 export interface TerminalIdentityRule {
   terminal: string
-  targetKind?: "mux"
+  subjectKind?: "mux"
   da1Pattern?: RegExp
   da1ForbiddenPattern?: RegExp
   da2Pattern?: RegExp
@@ -23,14 +23,14 @@ export const TERMINAL_IDENTITY_RULES: Record<string, TerminalIdentityRule> = {
   // fixtures/mux-identity.json. Identity alone does not establish an owned outer context.
   tmux: {
     terminal: "tmux",
-    targetKind: "mux",
+    subjectKind: "mux",
     da1Pattern: /^\x1b\[\?1;2;4c$/,
     xtversionPattern: /^tmux (?<version>\d+\.\d+[a-z]?)$/,
     requireXtversion: "complete",
   },
   screen: {
     terminal: "screen",
-    targetKind: "mux",
+    subjectKind: "mux",
     da1Pattern: /^\x1b\[\?1;2c$/,
     da2Pattern: /^\x1b\[>83;(?<version>[1-9]\d{4,14});0c(?:\x1b\[\?[0-9;]+c)?$/,
     da2VersionEncoding: "screen",

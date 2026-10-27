@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const rootDir = join(__dirname, "..")
@@ -338,16 +338,16 @@ async function main() {
   const policy = latestMode ? "latest" : "monthly"
   const cutoff = latestMode ? runAt : calendarMonthCutoff(runAt)
   const projection = loadCurrentResults(contentDir).projection
-  const currentTargets = compatibilityTargets(projection, contentDir)
+  const currentSubjects = compatibilitySubjects(projection, contentDir)
 
   const results: ReleaseResult[] = []
 
   // Fetch all release pages for each source, even if API pages are out of date order.
   const promises = RELEASE_SOURCES.map(async (source): Promise<ReleaseResult> => {
-    const current = [...currentTargets.values()].find(
-      ({ selected }) => selected.target.kind === "app" && selected.target.id === source.terminal,
+    const current = [...currentSubjects.values()].find(
+      ({ selected }) => selected.subject.kind === "term" && selected.subject.id === source.terminal,
     )
-    const currentVersion = current?.selected.target.version ?? null
+    const currentVersion = current?.selected.subject.version ?? null
     const currentEvidence = current
       ? { contextKey: current.contextKey, runId: current.selected.runId, sha256: current.selected.sha256 }
       : null

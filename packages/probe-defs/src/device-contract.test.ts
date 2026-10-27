@@ -1,5 +1,5 @@
 /**
- * @failure A Device capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure A Device feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28450 slice B Device group (19 definitions); 28453 harness. Outside Candidate-2 denominator 125.
@@ -11,18 +11,18 @@ import { join } from "node:path"
 import { deviceProbes } from "./device.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
-  replayContext,
+  replayTermProbeSource,
   satisfiesContract,
   type GroupContract,
   type GroupContractSpec,
   type HeadlessModel,
 } from "./testing/group-harness.ts"
 
-/** The 19 Device capabilities of 28450 slice B; ids drawn from device.ts, claims are the contract. */
+/** The 19 Device features of 28450 slice B; ids drawn from device.ts, claims are the contract. */
 const DEVICE_CONTRACT: GroupContract = [
   { id: "device.primary-da", expected: "decided", claim: "DA1 CSI c returns complete CSI ? numeric attributes c" },
   { id: "device.status-report", expected: "decided", claim: "DSR 5 returns status 0 (ready) or 3 (malfunction)" },
@@ -179,11 +179,11 @@ function echoingDevice(cols = 80): HeadlessModel {
   }
 }
 
-function deviceContexts(model: HeadlessModel) {
-  return { headless: headlessContext(model), term: replayContext(new Map()) }
+function deviceSources(model: HeadlessModel) {
+  return { headless: libProbeSource(model), term: replayTermProbeSource(new Map()) }
 }
 
-test("the Device contract covers every Device capability and names none unknown", () => {
+test("the Device contract covers every Device feature and names none unknown", () => {
   const gaps = contractGaps(deviceProbes, DEVICE_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -202,28 +202,42 @@ test("the Device contract names its focused tests, and every named file exists",
   for (const path of DEVICE_CONTRACT_SPEC.tests) expect(command).toContain(path)
 })
 
-test("the harness replays every Device capability deterministically through the echoing fixture", async () => {
+test("the harness replays every Device feature deterministically through the echoing fixture", async () => {
   for (const row of DEVICE_CONTRACT) {
     const probe = deviceProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Device probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, deviceContexts(echoingDevice()))
-    const second = await regradeRow(probe, row, deviceContexts(echoingDevice()))
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    const first = await regradeRow(probe, row, deviceSources(echoingDevice()))
+    const second = await regradeRow(probe, row, deviceSources(echoingDevice()))
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
   }
 })
 
-test("every Device contract row is satisfied by the echoing fixture its claim requires", async () => {
+test("every measurable Device contract row is satisfied by the echoing fixture its claim requires", async () => {
   for (const row of DEVICE_CONTRACT) {
     const probe = deviceProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Device probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, deviceContexts(echoingDevice()))
+    if (row.id === "device.term-features") continue
+    const graded = await regradeRow(probe, row, deviceSources(echoingDevice()))
     expect(graded.satisfies, `${row.id} satisfies its contract row (after=${graded.after})`).toBe(true)
   }
+})
+
+test("TERM_FEATURES fails with its unverified-source reason and no terminal observation", async () => {
+  const probe = deviceProbes.find((entry) => entry.id === "device.term-features")
+  expect(probe?.term, "the TERM_FEATURES application callback exists").toBeDefined()
+  if (!probe?.term) return
+  const result = await probe.term(deviceSources(echoingDevice()).term)
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  const reason = process.env.TERM_FEATURES
+    ? "TERM_FEATURES advertised; source unverified"
+    : "TERM_FEATURES not advertised"
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason })])
 })
 
 test("a decided Device row is unsatisfied when the query reply is silent", async () => {
@@ -232,7 +246,7 @@ test("a decided Device row is unsatisfied when the query reply is silent", async
   expect(row, "the Device contract names device.primary-da").toBeDefined()
   expect(probe, "the Device contract names a real device.primary-da probe").toBeDefined()
   if (!row || !probe) return
-  const silent = await regradeRow(probe, row, deviceContexts(inertModel()))
+  const silent = await regradeRow(probe, row, deviceSources(inertModel()))
   expect(silent.after).toBe("inconclusive")
   expect(silent.satisfies).toBe(false)
 })

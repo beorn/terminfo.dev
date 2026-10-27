@@ -17,7 +17,7 @@ import {
   type ConsoleBufferOwner,
   type TextCellsObservationFrame,
 } from "@terminfo/probe-defs"
-import { recordTextQualificationChecks } from "./text-qualification.ts"
+import { recordTextQualificationTests } from "./text-qualification.ts"
 import { textCellsFrame } from "./serve.ts"
 
 const sha = (bytes: Uint8Array) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`
@@ -273,23 +273,25 @@ const BASES = ["supported", "unsupported"] as const
 const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?: (typeof BASES)[number] } = {}) => {
   const featureId = "text.overwrite"
   const manifest = {
+    schemaVersion: 4 as const,
     probeHash: "text-suite",
     adapterVersion: "3",
     catalogIds: [featureId],
-    probes: { app: [featureId], headless: [], mux: [] },
+    probes: { term: [featureId], lib: [], mux: [] },
     textClaims: [featureId],
     textQualification: TEXT_QUALIFICATION_SPEC,
   }
   const base = initializeRunDraft({
+    source: { kind: "live" },
     runId: "text-execution",
     sourceRevision: "a".repeat(40),
     manifest,
-    intendedContext: { kind: "app", id: "iterm2" },
+    intendedSubject: { kind: "term", id: "iterm2" },
   })
   const run: CapturedRunDraft = {
     ...base,
-    target: {
-      kind: "app",
+    subject: {
+      kind: "term",
       id: "iterm2",
       version: "1",
       os: overrides.os ?? "macos",
@@ -309,8 +311,8 @@ const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?
     featureId,
     status: seed,
     attempt,
-    evidence: "text",
-    checks: [{ id: "criterion", status: seed, attempt }],
+    assertionType: "buffer_state",
+    tests: [{ id: "criterion", status: seed, attempt }],
     ...(overrides.host && { host: overrides.host }),
   }
   const fixtures = textQualificationFixtures(4, 12)
@@ -329,6 +331,7 @@ const executionRun = (overrides: { os?: string; host?: ConsoleBufferOwner; base?
       frames: [frame(fixture.controlRows, "control"), frame(fixture.targetRows, "target")],
     })),
   }
+  run.results[0]!.frames = run.textQualification.shapes[0]!.frames
   return { run, manifest, snapshots, attempt }
 }
 
@@ -336,24 +339,24 @@ it("records text qualification attempts before seal, distinguishing absent and b
   for (const base of BASES) {
     const { run, manifest, snapshots, attempt } = executionRun({ base })
     const qualified = structuredClone(run)
-    recordTextQualificationChecks(qualified, manifest, snapshots, attempt)
+    recordTextQualificationTests(qualified, manifest, snapshots, attempt)
     // A passing qualification admits the base verdict; it neither invents Supported nor drops Unsupported.
     expect(qualified.results[0]!.status, base).toBe(base)
-    expect(qualified.results[0]!.checks.find((check) => check.id === "text-qualification")?.attempt).toEqual(attempt)
+    expect(qualified.results[0]!.tests.find((check) => check.id === "text-qualification")?.attempt).toEqual(attempt)
     // T3: an unattempted run says so, on either base.
     const unattempted = structuredClone(run)
-    recordTextQualificationChecks(unattempted, manifest, snapshots)
+    recordTextQualificationTests(unattempted, manifest, snapshots)
     const unattemptedResult = unattempted.results[0]!
     expect(unattemptedResult.status, base).toBe("test-todo")
     expect(unattemptedResult.reason, base).toBe("Text qualification has not been attempted")
-    expect(unattemptedResult.checks.find((check) => check.id === "text-qualification")?.attempt).toEqual({
+    expect(unattemptedResult.tests.find((check) => check.id === "text-qualification")?.attempt).toEqual({
       scope: "none",
     })
     const corrupted = new Map(snapshots)
     corrupted.set(run.textQualification!.shapes[0]!.frames![0]!.ref, Buffer.from("wrong grid"))
-    recordTextQualificationChecks(run, manifest, corrupted, attempt)
+    recordTextQualificationTests(run, manifest, corrupted, attempt)
     expect(run.results[0]!.status, base).toBe("test-failure")
-    expect(run.results[0]!.checks.find((check) => check.id === "text-qualification")?.reason).toContain(
+    expect(run.results[0]!.tests.find((check) => check.id === "text-qualification")?.reason).toContain(
       "expected character grid",
     )
   }
@@ -369,11 +372,11 @@ it("refuses a character verdict for each missing shape witness through the execu
         ...run.textQualification!,
         shapes: run.textQualification!.shapes.filter((witness) => witness.shape !== shape),
       }
-      recordTextQualificationChecks(run, manifest, snapshots, attempt)
+      recordTextQualificationTests(run, manifest, snapshots, attempt)
       const result = run.results[0]!
       expect(result.status, `${base} ${shape}`).toBe("test-failure")
       expect(result.status, `${base} ${shape}`).not.toBe("unsupported")
-      expect(result.checks.find((check) => check.id === "text-qualification")?.reason, `${base} ${shape}`).toContain(
+      expect(result.tests.find((check) => check.id === "text-qualification")?.reason, `${base} ${shape}`).toContain(
         `missing text qualification shape ${shape}`,
       )
     }
@@ -387,11 +390,11 @@ it("refuses a character verdict for each missing shape witness through the execu
           witness.shape === shape ? { shape, reason: "the collector could not read this shape" } : witness,
         ),
       }
-      recordTextQualificationChecks(run, manifest, snapshots, attempt)
+      recordTextQualificationTests(run, manifest, snapshots, attempt)
       const result = run.results[0]!
       expect(result.status, `${base} ${shape}`).toBe("test-failure")
       expect(result.status, `${base} ${shape}`).not.toBe("unsupported")
-      expect(result.checks.find((check) => check.id === "text-qualification")?.reason, `${base} ${shape}`).toBe(
+      expect(result.tests.find((check) => check.id === "text-qualification")?.reason, `${base} ${shape}`).toBe(
         `Run text-execution: text qualification shape ${shape}: the collector could not read this shape`,
       )
     }
@@ -400,7 +403,7 @@ it("refuses a character verdict for each missing shape witness through the execu
   for (const base of BASES) {
     const { run, manifest, snapshots } = executionRun({ base })
     run.textQualification = { ...run.textQualification!, shapes: run.textQualification!.shapes.slice(1) }
-    recordTextQualificationChecks(run, manifest, snapshots)
+    recordTextQualificationTests(run, manifest, snapshots)
     expect(run.results[0]!.status, base).toBe("test-todo")
     expect(run.results[0]!.reason, base).toBe("Text qualification has not been attempted")
   }
@@ -432,7 +435,7 @@ it("records Windows and console-host text as TEST TODO through the execution wri
       }),
     ]
     for (const { run, manifest, snapshots, attempt } of cases) {
-      recordTextQualificationChecks(run, manifest, snapshots, attempt)
+      recordTextQualificationTests(run, manifest, snapshots, attempt)
       const result = run.results[0]!
       expect(result.status, base).toBe("test-todo")
       expect(result.status, base).not.toBe("supported")
@@ -440,7 +443,7 @@ it("records Windows and console-host text as TEST TODO through the execution wri
       expect(result.reason, base).toBe(
         "Text criterion requires a declared claim and terminal-owned macOS cell observer",
       )
-      const check = result.checks.find((entry) => entry.id === "text-qualification")
+      const check = result.tests.find((entry) => entry.id === "text-qualification")
       expect(check?.status).toBe("test-todo")
       expect(check?.attempt).toEqual({ scope: "none" })
     }

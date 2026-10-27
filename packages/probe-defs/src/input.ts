@@ -1,27 +1,27 @@
-import type { ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
 export const inputProbes: ProbeDefinition[] = [
-  probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "interaction"),
+  probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "input_bytes"),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
-  probe("input.pixel-mouse", () => headlessXtestReview("click injection"), pixelMouse, "interaction"),
-  probe("input.urxvt-mouse", () => headlessXtestReview("click injection"), urxvtMouse, "interaction"),
-  probe("input.x10-mouse", () => headlessXtestReview("click injection"), x10Mouse, "interaction"),
+  probe("input.pixel-mouse", () => headlessXtestReview("click injection"), pixelMouse, "input_bytes"),
+  probe("input.urxvt-mouse", () => headlessXtestReview("click injection"), urxvtMouse, "input_bytes"),
+  probe("input.x10-mouse", () => headlessXtestReview("click injection"), x10Mouse, "input_bytes"),
 
-  probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "interaction"),
+  probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "input_bytes"),
 
-  probe("input.button-event-mouse", () => headlessXtestReview("click injection"), buttonEventMouse, "interaction"),
+  probe("input.button-event-mouse", () => headlessXtestReview("click injection"), buttonEventMouse, "input_bytes"),
 
-  probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "interaction"),
-  probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "interaction"),
-  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "interaction"),
+  probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "input_bytes"),
+  probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "input_bytes"),
+  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "input_bytes"),
   {
-    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "interaction"),
-    termlessObservationEvidence: "none",
+    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "input_bytes"),
+    libAssertionType: null,
   },
 ]
 
@@ -63,18 +63,18 @@ const KITTY_CLICK_END = "\x1b]133;B\x07"
 const SGR_MOUSE_PRESS = /\x1b\[<\d+;\d+;\d+M/
 const SGR_MOUSE_RELEASE = /\x1b\[<\d+;\d+;\d+m/
 
-function xtestCoverage(kind: string): ProbeResult {
+function xtestCoverage(kind: string): ProbeCallbackResult {
   return notTestedResult(`OS-level XTEST ${kind}`, { input: false })
 }
 
 /** The headless arm of an XTEST criterion: the same coverage, with the required review selected. */
-function headlessXtestReview(kind: string): ProbeResult {
+function headlessXtestReview(kind: string): ProbeCallbackResult {
   return osInputReviewResult(`OS-level XTEST ${kind}`, { input: false })
 }
 
 async function deliveryControl(
   inject: () => Promise<void>,
-  read: NonNullable<TermContext["readInput"]>,
+  read: NonNullable<TermProbeSource["readInput"]>,
   pattern: RegExp,
   message: string,
 ): Promise<string> {
@@ -83,25 +83,33 @@ async function deliveryControl(
   return report
 }
 
-function interactionResult(action: string, expected: string, observed: Record<string, unknown>): ProbeResult {
+function interactionResult(action: string, expected: string, observed: Record<string, unknown>): ProbeCallbackResult {
   return {
     pass: true,
     response: JSON.stringify(observed),
-    observation: { outcome: "supported", evidence: "interaction" },
-    assertions: [{ kind: "positive", expected, observed: JSON.stringify(observed), action }],
+    observation: { outcome: "supported", assertionType: "input_bytes" },
+    assertions: [
+      { assertionType: "input_bytes" as const, kind: "positive", expected, observed: JSON.stringify(observed), action },
+    ],
   }
 }
 
-function unsupportedInteraction(action: string, expected: string, observed: Record<string, unknown>): ProbeResult {
+function unsupportedInteraction(
+  action: string,
+  expected: string,
+  observed: Record<string, unknown>,
+): ProbeCallbackResult {
   return {
     pass: false,
     response: JSON.stringify(observed),
-    observation: { outcome: "unsupported", evidence: "interaction" },
-    assertions: [{ kind: "negative", expected, observed: JSON.stringify(observed), action }],
+    observation: { outcome: "unsupported", assertionType: "input_bytes" },
+    assertions: [
+      { assertionType: "input_bytes" as const, kind: "negative", expected, observed: JSON.stringify(observed), action },
+    ],
   }
 }
 
-async function withModifyOtherKeys<T>(ctx: TermContext, enable: string, work: () => Promise<T>): Promise<T> {
+async function withModifyOtherKeys<T>(ctx: TermProbeSource, enable: string, work: () => Promise<T>): Promise<T> {
   ctx.write(enable)
   try {
     return await work()
@@ -110,7 +118,7 @@ async function withModifyOtherKeys<T>(ctx: TermContext, enable: string, work: ()
   }
 }
 
-async function modifyOtherKeys2(ctx: TermContext): Promise<ProbeResult> {
+async function modifyOtherKeys2(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("key injection")
@@ -134,7 +142,7 @@ async function modifyOtherKeys2(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function modifyOtherKeys3(ctx: TermContext): Promise<ProbeResult> {
+async function modifyOtherKeys3(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("key injection")
@@ -158,7 +166,7 @@ async function modifyOtherKeys3(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-export async function applicationKeypad(ctx: TermContext): Promise<ProbeResult> {
+export async function applicationKeypad(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("key injection")
@@ -185,7 +193,7 @@ export async function applicationKeypad(ctx: TermContext): Promise<ProbeResult> 
   }
 }
 
-export async function altScroll1007(ctx: TermContext): Promise<ProbeResult> {
+export async function altScroll1007(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("wheel injection")
@@ -214,7 +222,7 @@ export async function altScroll1007(ctx: TermContext): Promise<ProbeResult> {
   }
 }
 
-async function xtestKey(ctx: TermContext): Promise<ProbeResult> {
+async function xtestKey(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("key injection")
@@ -234,7 +242,7 @@ async function xtestKey(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function withMouseModes<T>(ctx: TermContext, work: () => Promise<T>): Promise<T> {
+async function withMouseModes<T>(ctx: TermProbeSource, work: () => Promise<T>): Promise<T> {
   ctx.write(MOUSE_SET)
   try {
     return await work()
@@ -274,7 +282,7 @@ function isButtonEventMotion(report: string): boolean {
   return button !== undefined && (button & 32) !== 0
 }
 
-async function urxvtMouse(ctx: TermContext): Promise<ProbeResult> {
+async function urxvtMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("click injection")
@@ -305,7 +313,7 @@ async function urxvtMouse(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function x10Mouse(ctx: TermContext): Promise<ProbeResult> {
+async function x10Mouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("click injection")
@@ -334,7 +342,7 @@ async function x10Mouse(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function buttonEventMouse(ctx: TermContext): Promise<ProbeResult> {
+async function buttonEventMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("click injection")
@@ -367,7 +375,7 @@ async function buttonEventMouse(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function pixelMouse(ctx: TermContext): Promise<ProbeResult> {
+async function pixelMouse(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("click injection")
@@ -398,7 +406,7 @@ async function pixelMouse(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function xtestClick(ctx: TermContext): Promise<ProbeResult> {
+async function xtestClick(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("click injection")
@@ -421,7 +429,7 @@ async function xtestClick(ctx: TermContext): Promise<ProbeResult> {
   })
 }
 
-async function xtestWheel(ctx: TermContext): Promise<ProbeResult> {
+async function xtestWheel(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("wheel injection")
@@ -454,7 +462,7 @@ async function xtestWheel(ctx: TermContext): Promise<ProbeResult> {
  * afterwards. The control click's release is drained and the target report must correlate with
  * the control's button and cell, so an arbitrary SGR report is never read as prompt support.
  */
-async function kittyClickEvents(ctx: TermContext): Promise<ProbeResult> {
+async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   const input = ctx.input
   const readInput = ctx.readInput
   if (!input || !readInput) return xtestCoverage("click injection")
@@ -488,7 +496,7 @@ async function kittyClickEvents(ctx: TermContext): Promise<ProbeResult> {
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "interaction",
+          assertionType: "input_bytes",
           note: "A click report arrived but did not correlate with the control click's button and cell",
         },
       }

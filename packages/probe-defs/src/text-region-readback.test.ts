@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 import { captureRegionVerdict, type RegionReadback } from "./region-readback.ts"
-import type { ObservationFrame, TermContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 
@@ -57,7 +57,8 @@ function textFrame(
   }
 }
 
-const textContext = (): TermContext => ({
+const textSource = (): TermProbeSource => ({
+  kind: "live",
   rows: 24,
   cols: 80,
   captureKind: "text-cells",
@@ -75,7 +76,7 @@ const textContext = (): TermContext => ({
 
 describe("a text arm decides its rows from cells it read, never from pixels", () => {
   it("names outside-cell whole-window motion while deciding stable compared cells", async () => {
-    const ctx = textContext()
+    const ctx = textSource()
     ctx.capture = async (request) => {
       const frame = textFrame(request.label, request.role)
       if (frame.kind !== "text-cells" || !request.label.endsWith("capture stability 2")) return frame
@@ -83,7 +84,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
       return { ...frame, ref: whole, frameDigest: whole }
     }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
-    expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
+    expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(JSON.parse(String(result?.response))).toMatchObject({
       stability: {
         regionDigest: [digest("stable:measured"), digest("stable:measured")],
@@ -94,8 +95,8 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   })
 
   it("decides a supported row without ever demanding a pixel report", async () => {
-    const result = await captureRegionVerdict(textContext(), "erase.el", spec)
-    expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
+    const result = await captureRegionVerdict(textSource(), "erase.el", spec)
+    expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     // No image to point at, and a text digest in screenshotRef would be refused at admission.
     expect(result?.observation?.screenshotRef).toBeUndefined()
     expect(result?.observation?.frames?.every((frame) => frame.kind === "text-cells")).toBe(true)
@@ -105,10 +106,13 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   })
 
   it("keeps the pixel path untouched when the run's adapter reads pixels", async () => {
-    const ctx: TermContext = { ...textContext(), captureKind: "pixels", captureGeometry: undefined }
+    const ctx: TermProbeSource = { ...textSource(), captureKind: "pixels", captureGeometry: undefined }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
-    expect(result?.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+    expect(result?.observation).toBeUndefined()
+    expect(result?.tests).toMatchObject([
+      { id: "criterion", status: "test-failure", reason: expect.stringContaining("cell size in pixels") },
+    ])
   })
 
   // 29577 option A: a text arm holds one exact cell digest, so it can name only the axes that
@@ -116,15 +120,15 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
   // would claim evidence the arm never read; and naming the axes is not naming a cause, so the
   // verdict and its reason stay exactly as they were.
   it("names the cell axis space on a third distinct frame and keeps the verdict inconclusive", async () => {
-    const ctx: TermContext = {
-      ...textContext(),
+    const ctx: TermProbeSource = {
+      ...textSource(),
       capture: async (request) => textFrame(request.label, request.role, "other"),
     }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     expect(result?.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "text",
+      assertionType: "buffer_state",
     })
     expect(result?.observation?.note).toContain("a third distinct frame")
     expect(result?.observation?.note).toContain("the characters")

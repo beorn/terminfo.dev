@@ -30,11 +30,11 @@ import {
   type PixelGeometrySource,
   type PixelGeometry,
   type CapturedRunDraft,
-  type ProbeTarget,
+  type ProbeSubject,
   initializeRunDraft,
   recordCollectionFailure,
   type ProbeSuiteManifest,
-  type TermContext,
+  type TermProbeSource,
   type TerminalQueryOutcome,
   type TextQualification,
 } from "@terminfo/probe-defs"
@@ -45,7 +45,7 @@ import { ALL_PROBES, runProbeBatch, type GeometryCorroboration, type ProbeCaptur
 import { createLinuxCapture, type LiveExecutable } from "./linux-capture.ts"
 import { createDarwinCapture, type DarwinInstallCensus } from "./darwin-capture.ts"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
-import { collectTextQualification, recordTextQualificationChecks } from "./text-qualification.ts"
+import { collectTextQualification, recordTextQualificationTests } from "./text-qualification.ts"
 import { retain } from "./capture-core.ts"
 import { createLinuxInput } from "./linux-input.ts"
 import {
@@ -58,7 +58,7 @@ import {
 } from "./owned-terminal.ts"
 import type { ConsoleCellRead } from "./windows-console-cells.ts"
 import type { TerminalTextRead } from "./darwin-terminal-text.ts"
-import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseTarget } from "@terminfo/run-parser"
+import { parseJsonStrict, parseOuterApp, parseRunProvenance, parseSubject } from "@terminfo/run-parser"
 import { derivedSuiteManifest, probeSuiteSnapshot, uncommittedCollectorDirt } from "../../admin/versions.ts"
 
 /**
@@ -213,9 +213,16 @@ function measuredExecutable(value: unknown): LiveExecutable {
   return { path, sha256 }
 }
 
-function assertLoadedAppSuite(manifest: ProbeSuiteManifest, probeHash: string, location: string): void {
+function assertLoadedAppSuite(
+  manifest: ProbeSuiteManifest,
+  probeHash: string,
+  location: string,
+): asserts manifest is ProbeSuiteManifest & { schemaVersion: 4 } {
+  if (manifest.schemaVersion !== 4) {
+    throw new Error(`Current collection requires schema-4 suite declaration: ${location}`)
+  }
   const actual = ALL_PROBES.map((probe) => probe.id).sort()
-  if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.app) !== JSON.stringify(actual)) {
+  if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.term) !== JSON.stringify(actual)) {
     throw new Error(`Loaded app probes disagree with suite declaration ${location}`)
   }
 }
@@ -232,7 +239,10 @@ export function getCliSuiteProbeHash(): string {
   return probeSuiteSnapshot(SOURCE_ROOT).probeHash
 }
 
-export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collectorRevision: string } {
+export function getTrustedSuiteReceipt(): {
+  manifest: ProbeSuiteManifest & { schemaVersion: 4 }
+  collectorRevision: string
+} {
   if (bundledSuite) {
     const { manifest, collectorRevision } = bundledSuite
     if (!/^[0-9a-f]{12}$/.test(manifest.probeHash) || !/^[0-9a-f]{40}$/.test(collectorRevision)) {
@@ -251,7 +261,7 @@ export function getTrustedSuiteReceipt(): { manifest: ProbeSuiteManifest; collec
   const sourceRevision = process.env.TERMINFO_SOURCE_REVISION
   if (!probeHash || !/^[0-9a-f]{12}$/.test(probeHash) || !sourceRevision || !/^[0-9a-f]{40}$/.test(sourceRevision)) {
     throw new Error(
-      "v2 collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
+      "Current collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
     )
   }
   const snapshot = probeSuiteSnapshot(SOURCE_ROOT)
@@ -368,7 +378,7 @@ export async function collectProbeRun(
     processOwner?: ProcessOwnerAssertion
     expectedLaunchRunId?: string
     captureRunId?: string
-    intendedContext?: Partial<ProbeTarget>
+    intendedSubject?: Partial<ProbeSubject>
   } = {},
 ): Promise<CapturedRunDraft> {
   const out = options.out ?? process.stdout
@@ -377,11 +387,12 @@ export async function collectProbeRun(
   if (!/^[a-zA-Z0-9._-]+$/.test(captureRunId)) throw new Error("Unsafe capture runId")
   const { manifest, collectorRevision: sourceRevision } = getTrustedSuiteReceipt()
   const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: captureRunId,
     sourceRevision,
     manifest,
-    intendedContext: options.intendedContext ?? {
-      kind: "app",
+    intendedSubject: options.intendedSubject ?? {
+      kind: "term",
       ...(process.env.TERMINFO_TARGET_ID && { id: process.env.TERMINFO_TARGET_ID }),
       ...(process.env.TERMINFO_TARGET_VERSION && { version: process.env.TERMINFO_TARGET_VERSION }),
     },
@@ -392,7 +403,7 @@ export async function collectProbeRun(
   writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { flag: "wx", mode: 0o600 })
   const checkpoint = () => writeFileSync(draftPath, `${JSON.stringify(draft)}\n`, { mode: 0o600 })
   let collectionStartedAt: string | undefined
-  let delegatedIds = manifest.probes.app.filter((id) => !options.ids || options.ids.includes(id))
+  let delegatedIds = manifest.probes.term.filter((id) => !options.ids || options.ids.includes(id))
   try {
     const terminal = detectTerminal()
     const probeHash = manifest.probeHash
@@ -430,30 +441,30 @@ export async function collectProbeRun(
       Object.hasOwn(provenanceSource, "outerApp")
         ? (provenanceSource as Record<string, unknown>)
         : undefined
-    if (envelope && Object.keys(envelope).some((key) => key !== "target" && key !== "outerApp")) {
+    if (envelope && Object.keys(envelope).some((key) => key !== "subject" && key !== "outerApp")) {
       throw new Error("Mux runtime provenance envelope has unexpected fields")
     }
-    const muxTarget = envelope ? parseTarget(envelope.target, provenancePath ?? "mux runtime provenance") : undefined
-    delegatedIds = manifest.probes[muxTarget ? "mux" : "app"].filter((id) => !options.ids || options.ids.includes(id))
+    const muxSubject = envelope ? parseSubject(envelope.subject, provenancePath ?? "mux runtime provenance") : undefined
+    delegatedIds = manifest.probes[muxSubject ? "mux" : "term"].filter((id) => !options.ids || options.ids.includes(id))
     if (
-      muxTarget &&
-      (muxTarget.kind !== "mux" || muxTarget.os !== terminal.os || muxTarget.osVersion !== terminal.osVersion)
+      muxSubject &&
+      (muxSubject.kind !== "mux" || muxSubject.os !== terminal.os || muxSubject.osVersion !== terminal.osVersion)
     ) {
       throw new Error("Mux runtime provenance target disagrees with the collector platform")
     }
-    const outerApp = muxTarget
+    const outerApp = muxSubject
       ? parseOuterApp(
           envelope?.outerApp,
-          muxTarget,
+          muxSubject,
           "collector",
           { probeHash, sourceRevision },
           provenancePath ?? "mux runtime provenance",
         )
       : undefined
-    if (muxTarget && !outerApp?.provenance) throw new Error("Mux runtime provenance lacks outer app provenance")
+    if (muxSubject && !outerApp?.provenance) throw new Error("Mux runtime provenance lacks outer app provenance")
     const executableSource = outerApp?.provenance ?? provenanceSource
     const executable = executableSource ? measuredExecutable(executableSource) : undefined
-    const measuredTerminal = muxTarget ? { name: muxTarget.id, version: muxTarget.version } : terminal
+    const measuredTerminal = muxSubject ? { name: muxSubject.id, version: muxSubject.version } : terminal
     if ((captureDirectory || clipboardReceipt) && !executable && !nonLinuxCapture) {
       throw new Error("Controlled Linux collection lacks measured executable")
     }
@@ -519,9 +530,9 @@ export async function collectProbeRun(
       textCapture = true
       if (process.platform === "darwin") {
         const textAdapter = capture
-        prepareCapture = async ({ context, featureId, recordCapture }) => {
+        prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           textQualification = await collectTextQualification({
-            ctx: context,
+            ctx: probeSource,
             onAttempt: () => {
               textQualificationStartedAt = new Date().toISOString()
             },
@@ -537,7 +548,7 @@ export async function collectProbeRun(
     }
     let prepareCapture:
       | ((input: {
-          context: TermContext
+          source: TermProbeSource
           featureId: string
           recordCapture: (result: Awaited<ReturnType<ProbeCapture>>) => void
         }) => Promise<void>)
@@ -574,7 +585,7 @@ export async function collectProbeRun(
         return error
       }
       // The ONE place a capture adapter is installed, and it takes the geometry the pre-flight
-      // already measured: the adapter never queries the terminal itself, so the geometry it checks a
+      // already measured: the adapter never queries the terminal itself, so the geometry it tests a
       // frame request against and the geometry the origin was calibrated on can never diverge.
       const installCapture = (reportedGeometry: PixelGeometry | undefined, queries: CaptureCalibrationQuery[]) => {
         capture = async (checkpoint) => {
@@ -596,10 +607,10 @@ export async function collectProbeRun(
           }
           return darwinCapture.capture(checkpoint, textOrigin)
         }
-        prepareCapture = async ({ context, featureId, recordCapture }) => {
+        prepareCapture = async ({ source: probeSource, featureId, recordCapture }) => {
           try {
             textOrigin = await calibrateCaptureOrigin({
-              ctx: context,
+              ctx: probeSource,
               pixelGeometry: reportedGeometry,
               timeoutMs: DEFAULT_TIMEOUT_MS,
               captureRaw: async (label, deadline) => {
@@ -608,13 +619,13 @@ export async function collectProbeRun(
                 return result.decoded
               },
             })
-            context.captureGeometry = {
+            probeSource.captureGeometry = {
               geometry: textOrigin.pixelGeometry,
               source: "measured by complete raster calibration",
             }
             captureCalibration = {
               outcome: "installed",
-              basis: context.captureGeometry.source,
+              basis: probeSource.captureGeometry.source,
               geometry: textOrigin.pixelGeometry,
               queries,
               installCensus,
@@ -623,7 +634,7 @@ export async function collectProbeRun(
             const error = cause instanceof Error ? cause : new Error(String(cause))
             if (error.name !== "CaptureCalibrationRefused") throw error
             calibrationError = error
-            context.captureGeometryRefusal = error.message
+            probeSource.captureGeometryRefusal = error.message
             const causes: Array<{ name: string; message: string }> = []
             const seen = new Set<Error>()
             for (
@@ -746,17 +757,17 @@ export async function collectProbeRun(
     let batch: Awaited<ReturnType<typeof runProbeBatch>>
     try {
       if (
-        muxTarget &&
+        muxSubject &&
         (!attachment ||
           attachment.captureRunId !== captureRunId ||
-          attachment.mux !== muxTarget.id ||
-          attachment.mux !== muxTarget.mux ||
-          attachment.executable.version !== muxTarget.version ||
-          attachment.config.path !== muxTarget.config)
+          attachment.mux !== muxSubject.id ||
+          attachment.mux !== muxSubject.mux ||
+          attachment.executable.version !== muxSubject.version ||
+          attachment.config.path !== muxSubject.config)
       ) {
         throw new Error("Mux target differs from the verified mux attachment")
       }
-      if (attachment && !muxTarget) {
+      if (attachment && !muxSubject) {
         throw new Error("Verified mux attachment requires its mux runtime provenance envelope")
       }
       if (attachment && outerApp) {
@@ -851,7 +862,7 @@ export async function collectProbeRun(
                   checkpoint()
                 },
                 // The run's own target, from the launched app: the receipt is bound to this before any write.
-                target: { kind: muxTarget?.kind ?? "app", id: measuredTerminal.name, os: terminal.os },
+                subject: { kind: muxSubject?.kind ?? "term", id: measuredTerminal.name, os: terminal.os },
                 ...(capture && { capture }),
                 ...(textCapture && { captureKind: "text-cells" as const }),
                 ...(input && { input }),
@@ -882,7 +893,7 @@ export async function collectProbeRun(
       await ownedTerminal?.dispose()
     }
     batch.rawReplies["collector.selection"] = JSON.stringify({
-      ids: options.ids ?? manifest.probes[muxTarget ? "mux" : "app"],
+      ids: options.ids ?? manifest.probes[muxSubject ? "mux" : "term"],
     })
     if (ownedTerminal) batch.rawReplies["collector.terminalOwnership"] = ownedTerminal.summary
     if (clipboard) batch.rawReplies["collector.clipboardFixture"] = clipboard.summary
@@ -891,10 +902,10 @@ export async function collectProbeRun(
         ? batch.appLaunch.productVersion
         : resolveMeasuredAppVersion(measuredTerminal.name, measuredTerminal.version, batch.rawReplies)
     const declaredVersion = (process.env.TERMINFO_TARGET_VERSION || "").trim()
-    const target: ProbeTarget = muxTarget
-      ? { ...muxTarget, version: measuredVersion }
+    const subject: ProbeSubject = muxSubject
+      ? { ...muxSubject, version: measuredVersion }
       : {
-          kind: "app",
+          kind: "term",
           id: terminal.name,
           // Windows Terminal uses its parsed launched-executable ProductVersion; other apps use terminal
           // identity replies. alacritty reports none at all -
@@ -914,22 +925,22 @@ export async function collectProbeRun(
           permissions: null,
         }
     const provenance =
-      provenancePath && !muxTarget
-        ? parseRunProvenance(provenanceSource, target, { probeHash, sourceRevision }, provenancePath)
+      provenancePath && !muxSubject
+        ? parseRunProvenance(provenanceSource, subject, { probeHash, sourceRevision }, provenancePath)
         : undefined
     if (provenancePath && !provenance && !outerApp?.provenance) {
       throw new Error(`Missing runtime provenance in ${provenancePath}`)
     }
-    if (provenance) target.config = provenance.fixture.config
+    if (provenance) subject.config = provenance.fixture.config
     if (clipboard) {
       if ((outerApp?.provenance ?? provenance)?.fixture.config !== clipboard.config) {
         throw new Error("Owned clipboard profile config differs from runtime provenance")
       }
-      if (clipboard.profile !== "default") target.permissions = clipboard.permissions
+      if (clipboard.profile !== "default") subject.permissions = clipboard.permissions
     }
     const captured: CapturedRunDraft = {
       ...draft,
-      target,
+      subject,
       ...(provenance && { provenance }),
       ...(outerApp && { outerApp }),
       identity: "unverified",
@@ -942,7 +953,7 @@ export async function collectProbeRun(
       ...(textQualification === undefined ? {} : { textQualification }),
       results: batch.results,
     }
-    recordTextQualificationChecks(
+    recordTextQualificationTests(
       captured,
       manifest,
       retainedTextSnapshots,
@@ -1120,7 +1131,7 @@ export function startDaemon(port = 0): void {
           expectedLaunchRunId: runId,
         })
         console.log(
-          s.dim(`Captured ${run.results.length} explicit capability results; draft ${run.runId} awaits final writer`),
+          s.dim(`Captured ${run.results.length} explicit probe results; draft ${run.runId} awaits final writer`),
         )
         res.end(JSON.stringify(run))
         return

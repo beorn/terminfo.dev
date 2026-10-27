@@ -6,7 +6,7 @@
  * non-measuring evidence (consumed / legacy / none), because then the probe establishes consumption or
  * acceptance, not the feature's effect.
  *
- * What they cannot settle reads `undeclared`, the honest word for "this row's evidence kind is not
+ * What they cannot settle reads `undeclared`, the honest word for "this row's assertion type is not
  * declared yet". It is a temporary value: 28450 declares the evidence in each family's kind, and
  * 28801 deletes the value and its badge when the count reaches zero. Nothing derives `automated` by
  * default, and no badge claims more than the evidence behind it.
@@ -21,7 +21,7 @@
  * The build and validate print the undeclared count beside the gated rows, so the gap is visible and
  * never silent.
  */
-import { ALL_PROBES, isNonMeasuringEvidence, type ProbeDefinition } from "@terminfo/probe-defs"
+import { ALL_PROBES, type ProbeDefinition } from "@terminfo/probe-defs"
 import type { FeatureCatalog } from "@terminfo/catalog"
 
 /** The two statuses a catalog row may carry as a reviewed value; each needs a reason beside it. */
@@ -29,7 +29,7 @@ export const REVIEWED_PROBE_STATUSES = ["manual", "partial"] as const
 export type ReviewedProbeStatus = (typeof REVIEWED_PROBE_STATUSES)[number]
 
 /** The five states a feature page can show. `undeclared` is temporary (28801 deletes it). */
-export type ProbeStatus = "automated" | ReviewedProbeStatus | "unprobed" | "undeclared"
+export type ProbeCoverageStatus = "automated" | ReviewedProbeStatus | "unprobed" | "undeclared"
 
 /** What the definitions alone settle; `null` leaves the row to its reviewed value, or to undeclared. */
 export type DerivedProbeStatus = "automated" | "partial" | null
@@ -44,10 +44,10 @@ const featureIds = (catalog: FeatureCatalog): string[] => Object.keys(catalog).f
  * that declares acceptance-only evidence, fixes the row as partial even when another arm is silent.
  */
 export function derivedProbeStatus(definition: ProbeDefinition): DerivedProbeStatus {
-  const declared = [definition.termObservationEvidence, definition.termlessObservationEvidence]
-  if (definition.term === null || definition.termless === null) return "partial"
-  if (declared.some((evidence) => evidence !== undefined && isNonMeasuringEvidence(evidence))) return "partial"
-  if (declared.some((evidence) => evidence === undefined)) return null
+  const declared = [definition.termAssertionType, definition.libAssertionType]
+  if (definition.term === null || definition.lib === null) return "partial"
+  if (declared.some((assertionType) => assertionType === null)) return "partial"
+  if (declared.some((assertionType) => assertionType === undefined)) return null
   return "automated"
 }
 
@@ -56,7 +56,7 @@ export function derivedProbeStatus(definition: ProbeDefinition): DerivedProbeSta
  * carries its reason; otherwise the definitions decide; a row with no definition at all reads
  * unprobed; a row the definitions cannot settle and no one reviewed reads undeclared.
  */
-export function probeStatusOf(id: string, catalog: FeatureCatalog): ProbeStatus {
+export function probeStatusOf(id: string, catalog: FeatureCatalog): ProbeCoverageStatus {
   const reviewed = catalog[id]?.probeStatus
   if (isReviewed(reviewed)) return reviewed
   const definition = BY_ID.get(id)
@@ -65,7 +65,7 @@ export function probeStatusOf(id: string, catalog: FeatureCatalog): ProbeStatus 
 }
 
 export interface ProbeStatusSummary {
-  counts: Record<ProbeStatus, number>
+  counts: Record<ProbeCoverageStatus, number>
   /** Rows the definitions cannot settle and no one reviewed: the temporary `undeclared` value. */
   undeclared: string[]
   /** Rows with a definition whose reviewed value stands over a derivation the definitions DO settle. */
@@ -76,7 +76,7 @@ export interface ProbeStatusSummary {
 
 /** One summary for every printer and for validate: the distribution, and the undeclared gap. */
 export function probeStatusSummary(catalog: FeatureCatalog): ProbeStatusSummary {
-  const counts: Record<ProbeStatus, number> = {
+  const counts: Record<ProbeCoverageStatus, number> = {
     automated: 0,
     partial: 0,
     manual: 0,

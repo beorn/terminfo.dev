@@ -1,6 +1,6 @@
 import type {
-  CapabilityResult,
-  CapabilityStatus,
+  ProbeResult,
+  ProbeStatus,
   Observation,
   ObservationReason,
   ProbeAssertion,
@@ -18,7 +18,7 @@ export interface CellEvidenceExpectation {
   runSha256: string
   featureId: string
   reviewId: string
-  status?: CapabilityStatus
+  status?: ProbeStatus
 }
 
 export interface TraceQuery {
@@ -42,8 +42,8 @@ export interface TraceAssertion {
 
 export interface TraceCellRecord {
   outcome?: Observation["outcome"]
-  status?: CapabilityStatus
-  evidence?: Observation["evidence"] | CapabilityResult["evidence"]
+  status?: ProbeStatus
+  assertionType?: Observation["assertionType"] | ProbeResult["assertionType"]
   reason?: ObservationReason
   replyWithheld?: true
   writes?: string[]
@@ -104,7 +104,7 @@ export interface TracePaneCopy {
 export interface TracePaneOptions {
   sequence?: string
   probeGuidance?: string
-  targetKind?: string
+  subjectKind?: string
   hasReferenceImage?: boolean
 }
 
@@ -341,10 +341,10 @@ function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
 
 /**
  * Validate a parsed per-run evidence document (`version: 2` for historical runs, `version: 4` for
- * schema-3 runs) and extract the cell record for `expectation.featureId`.
+ * schema-3 or schema-4 runs) and extract the cell record for `expectation.featureId`.
  */
 export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpectation): LoadedCellEvidence {
-  const expectedDocumentVersion = expectation.schemaVersion === 3 ? 4 : 2
+  const expectedDocumentVersion = expectation.schemaVersion === 3 || expectation.schemaVersion === 4 ? 4 : 2
   if (
     !isRecord(parsed) ||
     parsed.version !== expectedDocumentVersion ||
@@ -359,7 +359,7 @@ export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpec
     throw new Error("no evidence stored for this cell")
   }
   const payload = isRecord(cellEntry)
-    ? expectation.schemaVersion === 3
+    ? expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? cellEntry.result
       : cellEntry.observation
     : undefined
@@ -418,9 +418,10 @@ export function readCellTrace(parsed: unknown, expectation: CellTraceExpectation
   if (
     !isRecord(cellEntry) ||
     !Array.isArray(cellEntry.assertions) ||
-    (expectation.schemaVersion === 3
+    (expectation.schemaVersion === 3 || expectation.schemaVersion === 4
       ? typeof cellEntry.status !== "string"
-      : typeof cellEntry.outcome !== "string" || typeof cellEntry.evidence !== "string")
+      : typeof cellEntry.outcome !== "string" ||
+        (cellEntry.assertionType !== undefined && typeof cellEntry.assertionType !== "string"))
   ) {
     throw new Error("Trace document identity or structure does not match this result")
   }
@@ -449,8 +450,8 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
   const { cell } = trace
   const measuredDate = trace.measuredAt.slice(0, 10)
   const shortRunId = trace.runId.slice(0, 8)
-  const runPrefix = trace.schemaVersion === 3 ? "Current run" : "Historical run"
-  const evidenceMethod = cell.evidence ?? "none"
+  const runPrefix = trace.schemaVersion === 3 || trace.schemaVersion === 4 ? "Current run" : "Historical run"
+  const evidenceMethod = cell.assertionType ?? "no typed observation retained"
   const sourceLine = `${runPrefix} ${shortRunId} · ${measuredDate} · ${evidenceMethod} · presentation not reviewed`
   const identityLine = formatTraceIdentity(trace.identity)
   const reasonLine = cell.reason ? `${cell.reason}: ${REASON_EXPLANATIONS[cell.reason] ?? cell.reason}` : undefined
@@ -459,7 +460,7 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
   let notKeptLine: string
 
   const isHeadless =
-    options.targetKind === "headless" || cell.evidence === "parser-state" || cell.parserState !== undefined
+    options.subjectKind === "lib" || cell.assertionType === "buffer_state" || cell.parserState !== undefined
   const writes =
     cell.writes && cell.writes.length > 0
       ? cell.writes
@@ -555,7 +556,7 @@ export function describeTracePanes(trace: LoadedCellTrace, options: TracePaneOpt
     })
     notKeptLine = "Not kept: screenshot, raw read window, reviewed evidence file"
   } else {
-    const nothingSent = cell.evidence === "none" || cell.reason === "policy-refused" || cell.reason === "permission"
+    const nothingSent = cell.reason === "policy-refused" || cell.reason === "permission"
     items.push({
       label: "Sent",
       text: nothingSent ? "Nothing" : "Input bytes were not stored by this run.",

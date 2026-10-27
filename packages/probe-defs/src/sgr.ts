@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 import {
   notTestedResult,
   parserStateResult,
@@ -33,9 +33,9 @@ export function sgrTermReadback(
   id: string,
   sequence: string,
   readback: SgrReadback,
-  fallback: (ctx: TermContext) => ProbeResult | Promise<ProbeResult>,
+  fallback: (ctx: TermProbeSource) => ProbeCallbackResult | Promise<ProbeCallbackResult>,
   setup?: Parameters<typeof sgrReadbackDecision>[4],
-): (ctx: TermContext) => Promise<ProbeResult> {
+): (ctx: TermProbeSource) => Promise<ProbeCallbackResult> {
   return async (ctx) => {
     // The capture fixture guard refuses before any bytes on a measured small terminal, so the
     // readback must not emit its own sequences ahead of it.
@@ -50,12 +50,12 @@ export function sgrTermReadback(
     // "none" shape run-parser demands. A caller that wrote nothing still passes "none".
     const region = RESET_FAMILY_CAPTURE[id]
     if (region) {
-      const verdict = await captureRegionVerdict(ctx, id, region, "query")
+      const verdict = await captureRegionVerdict(ctx, id, region, true)
       if (verdict) return verdict
     }
     const colour = COLOUR_CAPTURE[id]
     if (colour) {
-      const verdict = await captureRegionVerdict(ctx, id, colour, "query")
+      const verdict = await captureRegionVerdict(ctx, id, colour, true)
       if (verdict) return colourCaptureVerdict(id, verdict)
     }
     return fallback(ctx)
@@ -64,11 +64,11 @@ export function sgrTermReadback(
 
 /** A cursor reply proves consumption of the SGR sequence, never the visual attribute. */
 async function consumedSgr(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   sequence: string,
   controlLabel = `${id} control`,
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -95,19 +95,20 @@ async function consumedSgr(
       return {
         pass: false,
         note: "No cursor response",
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
       }
     }
     return {
       pass: false,
       note: "Cursor advance does not verify SGR styling",
       response: `${pos.row};${pos.col}`,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: pos.row === 1 && pos.col === 2 ? "consumed" : "query",
-        note: "Cursor advance does not verify SGR styling",
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: pos.row === 1 && pos.col === 2 ? "test-todo" : "test-failure",
+          reason: `Cursor advance does not verify SGR styling${pos.row === 1 && pos.col === 2 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[0m")
@@ -121,12 +122,12 @@ async function consumedSgr(
  * identical to a supported one. Consumption alone never proves the visual reset.
  */
 async function consumedSgrReset(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   setup: string,
   reset: string,
   controlPrefix = "",
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -153,19 +154,20 @@ async function consumedSgrReset(
       return {
         pass: false,
         note: "No cursor response",
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
       }
     }
     return {
       pass: false,
       note: "Cursor advance does not verify the reset rendered",
       response: `${pos.row};${pos.col}`,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: pos.row === 1 && pos.col === 3 ? "consumed" : "query",
-        note: "Cursor advance does not verify the reset rendered",
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: pos.row === 1 && pos.col === 3 ? "test-todo" : "test-failure",
+          reason: `Cursor advance does not verify the reset rendered${pos.row === 1 && pos.col === 3 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[0m")
@@ -227,15 +229,15 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
       },
       // Unchanged from the sgrProbe this replaced: an exception in this arm is recorded as query
       // evidence, because the arm asks DECRQSS before any capture falls back.
-      "query",
+      "query_reply",
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
 type ResetAttribute = "bold" | "dim" | "italic" | "underline" | "inverse"
-type ResetCell = ReturnType<TermlessContext["getCell"]>
+type ResetCell = ReturnType<LibProbeSource["getCell"]>
 
 /** DECRQSS parameter code reported while each resettable attribute is active. */
 const RESET_ATTRIBUTE_CODE: Record<ResetAttribute, number> = { bold: 1, dim: 2, italic: 3, underline: 4, inverse: 7 }
@@ -248,13 +250,13 @@ function measuredAttribute(cell: ResetCell, attribute: ResetAttribute): boolean 
 }
 
 function measuredReset(
-  ctx: TermlessContext,
+  ctx: LibProbeSource,
   id: string,
   setup: string,
   reset: string,
   set: readonly ResetAttribute[],
   preserve: readonly ResetAttribute[],
-): ProbeResult {
+): ProbeCallbackResult {
   ctx.feed(`C${setup}X${reset}Y`)
   const baseline = ctx.getCell(0, 0)
   const before = ctx.getCell(0, 1)
@@ -293,7 +295,12 @@ function measuredReset(
   )
 }
 
-async function consumedResetSgr(ctx: TermContext, id: string, setup: string, reset: string): Promise<ProbeResult> {
+async function consumedResetSgr(
+  ctx: TermProbeSource,
+  id: string,
+  setup: string,
+  reset: string,
+): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -319,19 +326,22 @@ async function consumedResetSgr(ctx: TermContext, id: string, setup: string, res
     if (!pos) {
       return {
         pass: false,
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
       }
     }
     const advanced = pos.row === 1 && pos.col === 3
     return {
       pass: false,
       response: `${pos.row};${pos.col}`,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: advanced ? "consumed" : "query",
-        note: advanced ? "Cursor advance does not verify SGR reset" : "Cursor did not reach the expected position",
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: advanced ? "test-todo" : "test-failure",
+          reason: advanced
+            ? `Cursor advance does not verify SGR reset${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`
+            : "Cursor did not reach the expected position",
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[0m")
@@ -363,10 +373,10 @@ function resetProbe(
           readback: { require: [...set, ...preserve].map((attribute) => RESET_ATTRIBUTE_CODE[attribute]) },
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -423,10 +433,10 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
         )
       },
       sgrTermReadback(id, first, { require: [firstCode] }, (ctx) => consumedSgr(ctx, id, first)),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -481,10 +491,10 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
       sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr], requireTokens: [`${sgr}:5:67`] }, (ctx) =>
         consumedSgr(ctx, id, `\x1b[${sgr};5;67m`),
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -549,10 +559,10 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         { require: [sgr], requireTokens: [`${sgr}:2:${first.r}:${first.g}:${first.b}`] },
         (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -603,10 +613,10 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           readback: { require: [setup] },
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -721,10 +731,10 @@ export const sgrProbes: ProbeDefinition[] = [
         { require: [4, 58], requireTokens: ["58:5:5"] },
         (ctx) => consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   rgbUnderlineProbe("sgr.underline-color-rgb"),
@@ -784,10 +794,10 @@ export const sgrProbes: ProbeDefinition[] = [
           readback: { require: [4, 58], requireTokens: ["58:2:255:0:128"] },
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // ── Colors ──

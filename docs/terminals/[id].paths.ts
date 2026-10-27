@@ -23,10 +23,10 @@ function versionsForBackend(data: ReturnType<typeof loadProbes>, backendName: st
   const versions = (contextKey ? (data.selected.versions[contextKey] ?? []) : [])
     .filter(
       (selected) =>
-        selected.target.id === current?.selected.target.id && selected.target.kind === current.selected.target.kind,
+        selected.subject.id === current?.selected.subject.id && selected.subject.kind === current.selected.subject.kind,
     )
     .map((selected) => ({
-      version: selected.target.version,
+      version: selected.subject.version,
       total: selected.score.all,
       yes: selected.score.supported,
       suiteFreshness: selected.suiteFreshness,
@@ -113,8 +113,8 @@ export default {
             .flat()
             .filter(
               (run) =>
-                run.target.id === selected.target.id &&
-                run.target.kind === selected.target.kind &&
+                run.subject.id === selected.subject.id &&
+                run.subject.kind === selected.subject.kind &&
                 run.sha256 !== selected.sha256,
             )
         : []
@@ -153,7 +153,7 @@ export default {
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: "false",
-          terminalType: "app",
+          terminalType: "term",
         },
       }
     })
@@ -163,17 +163,17 @@ export default {
 
     // Classify terminal type from terminals.json metadata
     function getTerminalType(backendName: string): string {
-      const selectedKind = data.selectedByBackend[backendName]?.selected.target.kind
+      const selectedKind = data.selectedByBackend[backendName]?.selected.subject.kind
       if (selectedKind) return selectedKind
       for (const [, entry] of Object.entries(terminalsData)) {
         if (entry.slug === terminalSlug(backendName, data.meta)) {
           if (entry.historical) return "historical"
-          if (entry.kind === "headless" || entry.kind === "mux") return entry.kind
+          if (entry.kind === "lib" || entry.kind === "mux") return entry.kind
           if (entry.headlessBackends?.length) return "app+headless"
-          return "app"
+          return "term"
         }
       }
-      return "app"
+      return "term"
     }
 
     // Enrich pages with terminal type
@@ -239,7 +239,7 @@ export default {
           analysisDate: a?.date ?? "",
           analysisChanges: a?.changes ?? "",
           historical: term.historical ? "true" : "false",
-          terminalType: term.historical ? "historical" : (term.kind ?? "app"),
+          terminalType: term.historical ? "historical" : (term.kind ?? "term"),
           year: String(term.year ?? ""),
           manufacturer: term.manufacturer ?? "",
           significance: term.significance ?? "",

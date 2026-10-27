@@ -1,4 +1,4 @@
-import type { ProbeDefinition, ProbeResult, TermlessContext, ObservationFrame } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, ObservationFrame } from "./types.ts"
 import { frameDigests } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import {
@@ -34,7 +34,7 @@ function checksumValue(response: string): number | undefined {
   return framed?.[1] === undefined ? undefined : Number.parseInt(framed[1], 16)
 }
 
-function checksumResult(first: string, second: string, lateNote?: string): ProbeResult {
+function checksumResult(first: string, second: string, lateNote?: string): ProbeCallbackResult {
   const before = checksumValue(first)
   const after = checksumValue(second)
   const both = before !== undefined && after !== undefined
@@ -51,9 +51,10 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
     : both
       ? `The same rectangle changed by ${delta}, which is neither +1 nor the DEC-compatible 65535.${late}`
       : `A complete checksum reply is missing for one of the two requests; expected ${DECRQCRA_EXPECTED}.${late}`
-  const assertions: NonNullable<ProbeResult["assertions"]> | undefined = both
+  const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined = both
     ? [
         {
+          assertionType: "query_reply" as const,
           kind: matches ? "positive" : "negative",
           expected: `Request 1 returns ${DECRQCRA_EXPECTED}`,
           observed: JSON.stringify({ first, second, delta }),
@@ -61,13 +62,21 @@ function checksumResult(first: string, second: string, lateNote?: string): Probe
       ]
     : undefined
   const outcome = matches ? ("supported" as const) : both ? ("unsupported" as const) : ("inconclusive" as const)
+  if (first.length === 0 && second.length === 0) {
+    return {
+      pass: matches,
+      response: JSON.stringify({ first, second }),
+      note,
+      tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+    }
+  }
   return {
     pass: matches,
     response: JSON.stringify({ first, second }),
     note,
     observation: {
       outcome,
-      evidence: "query",
+      assertionType: "query_reply",
       ...(lateNote && { note }),
       ...(outcome === "inconclusive" && {
         reason: first || second ? ("invalid-reply" as const) : ("no-response" as const),
@@ -598,7 +607,7 @@ const DECSACE_EXPECTED =
   "DECSACE rectangle extent confines DECCARA to the 2x2 block; stream extent reaches the rest of the reading-order span"
 const DECSACE_PAINT = "\x1b[0m\x1b[2J\x1b[H\x1b[1;1Habcdefgh\x1b[2;1Hijklmnop"
 const DECSACE_DEC_CARA = "\x1b[1;2;2;3;7$r" // top 1, left 2, bottom 2, right 3; reverse video
-const decsaceFrame = (ctx: TermlessContext) =>
+const decsaceFrame = (ctx: LibProbeSource) =>
   Array.from({ length: 2 }, (_, row) => Array.from({ length: 8 }, (_, col) => ctx.getCell(row, col)))
 const DECSACE_RECTANGLE_PATTERN = ".##.....|.##....."
 const DECSACE_STREAM_PATTERN = ".#######|###....."
@@ -695,18 +704,19 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         if (ctx.captureKind === "text-cells") {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "editing.decsace: text-cells captures cannot establish this pixel-cell extent comparison",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "editing.decsace: text-cells captures cannot establish this pixel-cell extent comparison",
+              },
+            ],
           }
         }
         const cells = { top: 1, left: 1, bottom: 2, right: 8 }
         const reported = await captureRegionGeometry(ctx, "editing.decsace", { region: cells, minRows: 2, minCols: 8 })
         if ("pass" in reported) return reported
-        const captureEligibilityRefusal = (captures: ObservationFrame[]): ProbeResult | null => {
+        const captureEligibilityRefusal = (captures: ObservationFrame[]): ProbeCallbackResult | null => {
           const text = captures.find((frame) => frame.kind === "text-cells")
           if (text) {
             return {
@@ -715,7 +725,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "text",
+                assertionType: "buffer_state",
                 note: `editing.decsace: ${text.label} returned text-cells instead of the pixel cells required for this extent comparison`,
               },
             }
@@ -730,7 +740,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "pixels",
+              assertionType: "screenshot",
               screenshotRef: target?.ref ?? invalid.ref,
               ...(target ? { frames: captures.slice(-3) } : {}),
               note: `editing.decsace: ${invalid.label} is pixels without the required pixel cells digest and rectangle`,
@@ -761,7 +771,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             stability,
           } = await captureStabilityPair(
             "editing.decsace",
-            "pixels",
+            "screenshot",
             () => stabilityRead("editing.decsace: seed stability 1"),
             () => stabilityRead("editing.decsace: seed stability 2"),
           )
@@ -817,7 +827,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: stream.ref,
                 frames,
                 note: "Both DECSACE extent modes left the same frame; the setting is not measurable on this adapter",
@@ -834,7 +844,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: stream.ref,
                 frames,
                 note: `The ${still} frame did not differ from the seed, so DECCARA left no measurable change and an ignored DECCARA cannot be separated from a digest that cannot see attributes`,
@@ -850,13 +860,14 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             response: observed,
             observation: {
               outcome: "supported",
-              evidence: "pixels",
+              assertionType: "screenshot",
               screenshotRef: stream.ref,
               frames,
               note: "The rectangle and stream frames differ from the seed and from each other; exact extents are graded by the parser arm",
             },
             assertions: [
               {
+                assertionType: "screenshot" as const,
                 kind: "positive",
                 expected: DECSACE_EXPECTED,
                 observed: JSON.stringify({ kind, seed: measured[0], rectangle: measured[1], stream: measured[2] }),
@@ -872,8 +883,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
     // separates the two extents by its frames. probeStatus derives from these two declarations, so
     // leaving them off keeps the row on a reviewed partial however complete the measurement becomes.
     termNeedsGeometry: true,
-    termObservationEvidence: "pixels",
-    termlessObservationEvidence: "parser-state",
+    termAssertionType: "screenshot",
+    libAssertionType: "buffer_state",
   },
 
   {
@@ -927,11 +938,23 @@ const editingProbeDefinitions: ProbeDefinition[] = [
             pass: false,
             response: reply.raw,
             note: "No complete checksum reply before the DA1 sentinel",
-            observation: {
-              outcome: "inconclusive",
-              evidence: "query",
-              reason: reply.reason === "timeout" ? "timeout" : "no-response",
-            },
+            ...(reply.raw.length === 0
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "No complete checksum reply before the DA1 sentinel",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    assertionType: "query_reply",
+                    reason: reply.reason === "timeout" ? "timeout" : "no-response",
+                  },
+                }),
           }
         }
         const [firstRead, secondRead] = reads
@@ -939,8 +962,8 @@ const editingProbeDefinitions: ProbeDefinition[] = [
         return checksumResult(firstRead.raw, secondRead.raw, reads.find((read) => read.frame)?.frame)
       },
     ),
-    termObservationEvidence: "query",
-    termlessObservationEvidence: "query",
+    termAssertionType: "query_reply",
+    libAssertionType: "query_reply",
   },
 ]
 

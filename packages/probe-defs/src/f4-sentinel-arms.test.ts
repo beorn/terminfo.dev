@@ -11,7 +11,7 @@ import { expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
 import { editingProbes } from "./editing.ts"
 import { extensionsProbes } from "./extensions.ts"
-import type { ProbeDefinition, ProbeResult, TermlessContext, TerminalQueryOutcome } from "./types.ts"
+import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const da1 = "\x1b[?1;2c"
 const sentinelAt = { atMs: 1, graceMs: 250 }
@@ -33,14 +33,14 @@ const F4 = [
 
 function definition(id: string): ProbeDefinition {
   const found = [...deviceProbes, ...editingProbes, ...extensionsProbes].find((entry) => entry.id === id)
-  if (!found?.termless) throw new Error(`${id} has no headless callback`)
+  if (!found?.lib) throw new Error(`${id} has no headless callback`)
   return found
 }
 
-function run(id: string, ctx: Partial<TermlessContext>): ProbeResult {
-  const callback = definition(id).termless
+function run(id: string, ctx: Partial<LibProbeSource>): ProbeCallbackResult {
+  const callback = definition(id).lib
   if (!callback) throw new Error(`${id} lost its headless callback`)
-  return callback(ctx as TermlessContext)
+  return callback(ctx as LibProbeSource)
 }
 
 function silentSentinel(reason: TerminalQueryOutcome["reason"] = "sentinel"): TerminalQueryOutcome {
@@ -55,7 +55,11 @@ function silentSentinel(reason: TerminalQueryOutcome["reason"] = "sentinel"): Te
 
 test.each(F4)("%s: an answered DA1 with no reply is the measured negative F4 asks for", (id) => {
   const result = run(id, { ...base, queryWithSentinelOutcome: () => silentSentinel() })
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query", note: "negative by sentinel" })
+  expect(result.observation).toMatchObject({
+    outcome: "unsupported",
+    assertionType: "query_reply",
+    note: "negative by sentinel",
+  })
   expect(result.response).toBe(da1)
   expect(result.assertions?.map(({ kind }) => kind)).toEqual(["negative"])
 })

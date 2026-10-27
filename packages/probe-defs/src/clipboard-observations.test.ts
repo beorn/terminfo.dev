@@ -7,7 +7,7 @@
  * @testonly none
  */
 import { describe, expect, test } from "vitest"
-import { ALL_PROBES, type ClipboardFixture, type ProbeResult, type TermContext } from "./index.ts"
+import { ALL_PROBES, type ClipboardFixture, type ProbeCallbackResult, type TermProbeSource } from "./index.ts"
 
 function writeProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.osc52-write")
@@ -15,8 +15,9 @@ function writeProbe() {
   return probe.term
 }
 
-function termContext(overrides: Partial<TermContext>): TermContext {
+function termSource(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
     measureRenderedWidth: async () => null,
@@ -52,7 +53,7 @@ describe("live OSC 52 write ordering", () => {
       },
     }
     const result = await writeProbe()(
-      termContext({
+      termSource({
         write(sequence) {
           events.push("osc-write")
           queued = writtenNonce(sequence)
@@ -73,7 +74,7 @@ describe("live OSC 52 write ordering", () => {
       }),
     )
     expect(events).toEqual(["osc-write", "cpr", "independent-read", "restore"])
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "clipboard" })
     expect(result.assertions?.[0]?.observed).toBe(queued)
     expect(clipboard).toBe("baseline")
   })
@@ -81,7 +82,7 @@ describe("live OSC 52 write ordering", () => {
   test("a terminal that answers CPR but ignores OSC 52 remains inconclusive", async () => {
     const events: string[] = []
     const result = await writeProbe()(
-      termContext({
+      termSource({
         write(sequence) {
           writtenNonce(sequence)
           events.push("osc-write")
@@ -109,7 +110,7 @@ describe("live OSC 52 write ordering", () => {
     const events: string[] = []
     let clipboard = "baseline"
     const result = await writeProbe()(
-      termContext({
+      termSource({
         write(sequence) {
           clipboard = writtenNonce(sequence)
           events.push("osc-write")
@@ -137,20 +138,26 @@ describe("live OSC 52 write ordering", () => {
       }),
     )
     expect(events).toEqual(["osc-write", "cpr-missing", "restore"])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({
+        status: "test-failure",
+        reason: "No cursor reply after OSC 52 write; clipboard contents were not measured",
+      }),
+    ])
     expect(clipboard).toBe("baseline")
   })
 })
 
 function pasteProbe() {
   const probe = ALL_PROBES.find((item) => item.id === "extensions.clipboard-paste")
-  if (!probe?.term || !probe.termless) throw new Error("Missing extension callbacks for extensions.clipboard-paste")
+  if (!probe?.term || !probe.lib) throw new Error("Missing extension callbacks for extensions.clipboard-paste")
   return probe
 }
 
-function pasteTerm(overrides: Partial<TermContext> = {}): TermContext {
-  return termContext({
+function pasteTerm(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
+  return termSource({
     queryCursorPosition: async () => {
       throw new Error("Unexpected queryCursorPosition in paste observation")
     },
@@ -176,7 +183,7 @@ function pasteTerm(overrides: Partial<TermContext> = {}): TermContext {
 function pasteAndRead(
   script: { control?: string | null; paste?: "bracketed" | "raw" | "silent" },
   writes: string[] = [],
-): { ctx: TermContext; keys: string[]; clipboardWrites: string[] } {
+): { ctx: TermProbeSource; keys: string[]; clipboardWrites: string[] } {
   const keys: string[] = []
   const clipboardWrites: string[] = []
   let clipboard = ""
@@ -232,7 +239,8 @@ function pasteAndRead(
 test("extensions.clipboard-paste is not tested without an OS XTEST adapter", async () => {
   const definition = pasteProbe()
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -321,14 +329,14 @@ test("extensions.clipboard-paste aborts when the plain-a control does not reach 
 test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the distinct PRIMARY selection", async () => {
   const writes: string[] = []
   const { ctx, clipboardWrites } = pasteAndRead({ paste: "bracketed" }, writes)
-  const result = (await pasteProbe().term!(ctx)) as ProbeResult
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
   expect(clipboardWrites).toHaveLength(1)
   const nonce = clipboardWrites[0] ?? ""
   expect(nonce.length).toBeGreaterThan(0)
   expect(writes.join("")).toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
   expect(writes.join("")).not.toContain("\x1b]52;")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "clipboard-paste:ctrl+shift+v" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({
@@ -341,12 +349,12 @@ test("extensions.clipboard-paste reads the seeded CLIPBOARD rather than the dist
 test("extensions.clipboard-paste records unsupported interaction when paste arrives as the raw nonce", async () => {
   const writes: string[] = []
   const { ctx, keys, clipboardWrites } = pasteAndRead({ paste: "raw" }, writes)
-  const result = (await pasteProbe().term!(ctx)) as ProbeResult
+  const result = (await pasteProbe().term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+shift+v"])
   const nonce = clipboardWrites[0] ?? ""
   expect(writes.join("")).toContain("\x1b[?2004h")
   expect(writes.join("")).toContain("\x1b[?2004l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "clipboard-paste:ctrl+shift+v" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "clipboard-paste", control: "a", report: nonce })

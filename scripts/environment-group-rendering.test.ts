@@ -13,7 +13,7 @@ import { join } from "node:path"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import { Command } from "@silvery/commander"
 import { ENVIRONMENT_GROUP_IDS, initializeRunDraft } from "@terminfo/probe-defs"
-import type { CapabilityResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
+import type { ProbeResult, CapturedRunDraft, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import * as publicCollector from "../packages/terminfo.dev/src/serve.ts"
 import { currentCoverageSentence, aggregateCurrentResults } from "../docs/data/release-scope.ts"
 import { scopeAggregate } from "../docs/data/full-scope.ts"
@@ -29,12 +29,12 @@ vi.mock("../packages/terminfo.dev/src/serve.ts", () => ({
 }))
 const gradedIds = Array.from({ length: 264 }, (_, index) => `capability.${index}`)
 const catalogIds = [...ENVIRONMENT_GROUP_IDS, ...gradedIds]
-const todos = (): CapabilityResult[] =>
+const todos = (): ProbeResult[] =>
   catalogIds.map((featureId) => ({
     featureId,
     status: "test-todo",
     attempt: { scope: "none" },
-    checks: [],
+    tests: [],
     reason: "No implementation",
   }))
 
@@ -58,22 +58,24 @@ describe("public test CLI coverage uses the collected manifest", () => {
     ["historical", gradedIds, ""],
   ] as const)("prints the %s catalogue's environment clause", async (_label, ids, clause) => {
     const manifest = {
+      schemaVersion: 4 as const,
       probeHash: "abcdef123456",
       sourceRevision: "a".repeat(40),
       generatedAt: "2026-10-25T00:00:00.000Z",
       adapterVersion: "test",
       catalogIds: [...ids],
-      probes: { app: [], headless: [], mux: [] },
+      probes: { term: [], lib: [], mux: [] },
     } satisfies ProbeSuiteManifest
     const run: CapturedRunDraft = {
       ...initializeRunDraft({
+        source: { kind: "live" },
         runId: "1234567890abcdef1234567890abcdef",
         sourceRevision: manifest.sourceRevision,
         manifest,
-        intendedContext: { kind: "app", id: "kitty", version: "1" },
+        intendedSubject: { kind: "term", id: "kitty", version: "1" },
       }),
-      target: {
-        kind: "app",
+      subject: {
+        kind: "term",
         id: "kitty",
         version: "1",
         os: "linux",
@@ -143,6 +145,8 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     const terminal = source("docs/terminals/[id].md")
     expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
     expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
+    expect(terminal).toContain("selectedRun.value?.schemaVersion === 3 || selectedRun.value?.schemaVersion === 4")
+    expect(terminal).toContain("run.schemaVersion === 3 || run.schemaVersion === 4")
   })
 
   it("gives the evidence cell the manual-by-design words only for a stored TEST TODO", () => {
@@ -174,7 +178,7 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     expect(full).toContain("data.gradedRows")
     expect(full).toContain("data.environmentGroups")
     expect(full).toContain("(manual by design, ungraded)")
-    expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded capabilities")
+    expect(full).toContain("zero TEST TODO and zero TEST FAILURE among the graded features")
   })
 
   it("names the nine on the OS page tooltip too (D2)", () => {

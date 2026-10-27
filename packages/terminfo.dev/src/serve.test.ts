@@ -16,7 +16,7 @@ let child: ChildProcess | undefined
 let home: string | undefined
 const packageRoot = join(import.meta.dirname, "../../..")
 
-// The owner factory has its own live-custody tests. This consumer case checks that the collector
+// The owner factory has its own live-custody tests. This consumer case tests that the collector
 // carries its verified subject rather than treating an untrusted envelope as an app or a grant.
 it.each(["tmux", "screen"])(
   "collects a %s envelope only when its target agrees with the verified attachment",
@@ -35,10 +35,10 @@ it.each(["tmux", "screen"])(
     const tty=await import("./packages/terminfo.dev/src/tty.ts")
     const owned=await import("./packages/terminfo.dev/src/owned-terminal.ts")
     const hash="a".repeat(12),revision="b".repeat(40)
-    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest:{catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:hash,probes:{app:unified.ALL_PROBES.map(p=>p.id).sort(),mux:unified.ALL_PROBES.map(p=>p.id).sort(),headless:[]}},collectorRevision:revision}
+    globalThis.__TERMINFO_BUNDLED_SUITE__={manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:hash,probes: { term:unified.ALL_PROBES.map(p=>p.id).sort(),mux:unified.ALL_PROBES.map(p=>p.id).sort(),lib:[]}},collectorRevision:revision}
     const mux=process.env.TERMINFO_TEST_MUX, version=mux==="screen"?"4.09.01":"3.6"
     const target={kind:"mux",id:mux,version,os:"linux",osVersion:"fixture",outerTerminal:"kitty",mux,config:"/out/mux.conf",permissions:null}
-    const outerApp={target:{...target,kind:"app",id:"kitty",version:"0.49.2",outerTerminal:null,mux:null,config:"--config NONE"},
+    const outerApp={subject:{...target,kind:"term",id:"kitty",version:"0.49.2",outerTerminal:null,mux:null,config:"--config NONE"},
       rawReplies:{"device.primary-da":"\x1b[?62;52;c","device.xtversion":"kitty(0.49.2)","collector.preflightIdentity":JSON.stringify({pid:95,startTicks:"115",launchRunId:"a".repeat(32)})},
       provenance:{executable:{path:"/fixture/kitty",sha256:"cd".repeat(32),version:"kitty 0.49.2"},
         sourceArtifact:{url:"https://example.invalid/kitty.tar",sha256:"de".repeat(32)},
@@ -48,7 +48,7 @@ it.each(["tmux", "screen"])(
     process.env.TERMINFO_RUNTIME_PROVENANCE=path
     let suppliedTarget=target,hasAttachment=true,verifierCalls=0,custodyFailure,inBatch=false,collectionAttempt
     const verify=async()=>{if(inBatch){verifierCalls++;if(custodyFailure)throw custodyFailure}}
-    const write=()=>writeFileSync(path,JSON.stringify({target:suppliedTarget,outerApp}))
+    const write=()=>writeFileSync(path,JSON.stringify({subject:suppliedTarget,outerApp}))
     write()
     mock.module("./packages/terminfo.dev/src/detect.ts",()=>({detectTerminal:()=>({name:mux,version,os:"linux",osVersion:"fixture"})}))
     mock.module("./packages/terminfo.dev/src/tty.ts",()=>({...tty,withRawMode:async fn=>fn(),drainStdin:async()=>{},
@@ -60,7 +60,7 @@ it.each(["tmux", "screen"])(
         clipboard:{profile:"default",config:"--config NONE",permissions:"fixture",summary:"{}",assertOwned:verify,...(hasAttachment?{muxAttachmentProof:attachment}:{})},dispose:async()=>{}}
     }}))
     mock.module("./packages/terminfo.dev/src/probes/unified.ts",()=>({...unified,runProbeBatch:async options=>{
-      assert.equal(options.target.kind,"mux");assert.equal(options.target.id,mux)
+      assert.equal(options.subject.kind,"mux");assert.equal(options.subject.id,mux)
       assert.equal(options.ownedTerminal.clipboard.assertOwned,verify)
       inBatch=true
       try{await options.ownedTerminal.clipboard.assertOwned()}finally{inBatch=false}
@@ -85,7 +85,7 @@ it.each(["tmux", "screen"])(
     await assert.rejects(collectProbeRun({ids:["device.xtversion"]}),error=>error===custodyFailure)
     assert.equal(verifierCalls,2)
     custodyFailure=undefined
-    assert.deepEqual(run.target,target)
+    assert.deepEqual(run.subject,target)
     assert.deepEqual(run.outerApp,outerApp)
     assert.equal(run.provenance,undefined)
     assert.equal(JSON.parse(run.rawReplies["collector.terminalOwnership"]).muxAttachment.captureRunId,run.runId)
@@ -170,7 +170,7 @@ describe("daemon HTTP boundary", () => {
           return execFile(process.execPath, ["-e", "process.stderr.write(Buffer.from([100, 0, 255, 10]));process.exit(17)"], options, callback)
         }}))
         const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
-        globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest:{catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12),probes:{app:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:"b".repeat(40)}
+        globalThis.__TERMINFO_BUNDLED_SUITE__ = {manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash:"a".repeat(12),probes: { term:unified.ALL_PROBES.map(p=>p.id).sort()}},collectorRevision:"b".repeat(40)}
         const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
         const {createDarwinCapture} = await import("./packages/terminfo.dev/src/darwin-capture.ts")
         mock.module("./packages/terminfo.dev/src/detect.ts", () => ({detectTerminal:()=>({name:"kitty",version:"0.49.1",os:"macos",osVersion:"fixture"})}))
@@ -293,7 +293,7 @@ describe("daemon HTTP boundary", () => {
     const body: unknown = await response.json()
     expect(body).toEqual({
       name: "Error",
-      error: "v2 collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
+      error: "Current collection requires TERMINFO_PROBE_HASH and TERMINFO_SOURCE_REVISION from a source-tree launcher",
     })
   })
 
@@ -421,7 +421,7 @@ function runDarwinProcessCaptureFixture(ownerPid: number | undefined) {
     }))
     const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
     globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-      manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+      manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
       collectorRevision: "b".repeat(40)
     }
     const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
@@ -522,7 +522,7 @@ describe("private finite daemon startup", () => {
         }))
         const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
         globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-          manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+          manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
           collectorRevision: "b".repeat(40)
         }
         const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
@@ -608,8 +608,8 @@ describe("private finite daemon startup", () => {
         calibrations++
         throw Object.assign(new Error("Capture calibration nonuniform columns: native fixture has unequal cell edges"), { name: "CaptureCalibrationRefused" })
       } }))
-      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
-        probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
+        probes: { term: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const refused = await collectProbeRun({})
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
@@ -721,8 +721,8 @@ describe("private finite daemon startup", () => {
         assert.deepEqual(pixelGeometry, { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 })
         return { origin: { x: 0, y: 0 }, pixelGeometry: { cellWidth: 6, cellHeight: 13, textWidth: 798, textHeight: 598 }, basis: "fixture complete raster" }
       } }))
-      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
-        probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
+        probes: { term: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const derived = await collectProbeRun({})
       reportedCellSize = "\\x1b[6;13;6t"
@@ -750,7 +750,7 @@ describe("private finite daemon startup", () => {
         { name: "CaptureCalibrationRefused", message: calibrationFailure.message },
         { name: "Error", message: originalTimeout.message },
       ])
-      assert.ok(!unseen.results.some(o => o.evidence === "pixels"))
+      assert.ok(!unseen.results.some(o => o.assertionType === "screenshot"))
       calibrationFailure = undefined
       delete process.env.TERMINFO_CAPTURE_DIRECTORY
       reportedCellSize = null
@@ -767,7 +767,7 @@ describe("private finite daemon startup", () => {
       // The derived basis still calibrates, once per run, and its probes reach pixels.
       assert.equal(calibrations, 5)
       assert.ok(frames > 0)
-      const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.evidence === "pixels"), (key, value) => ["startedAt", "completedAt"].includes(key) ? undefined : value))
+      const pixels = (run) => JSON.parse(JSON.stringify(run.results.filter((o) => o.assertionType === "screenshot"), (key, value) => ["startedAt", "completedAt"].includes(key) ? undefined : value))
       assert.ok(pixels(derived).length > 0)
       assert.deepEqual(pixels(derived), pixels(reported))
       assert.deepEqual(pixels(bare), [])
@@ -860,8 +860,8 @@ describe("private finite daemon startup", () => {
         calibrations++
         throw Object.assign(new Error("Capture calibration nonuniform columns: measured unequal cell edges"), { name: "CaptureCalibrationRefused" })
       } }))
-      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
-        probes: { app: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
+      globalThis.__TERMINFO_BUNDLED_SUITE__ = { manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12),
+        probes: { term: unified.ALL_PROBES.map((p) => p.id).sort() } }, collectorRevision: "b".repeat(40) }
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const measured = []
       for (const shape of shapes) {
@@ -933,7 +933,7 @@ describe("private finite daemon startup", () => {
       let launch
       let terminal={name:"kitty",version:"",os:"linux",osVersion:"fixture"}
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({ detectTerminal: () => terminal }))
@@ -962,7 +962,7 @@ describe("private finite daemon startup", () => {
         sourceArtifact:{path:"/Library/Caches/Homebrew/downloads/iterm2.zip",sha256:"b".repeat(64)}}
       const run=await collectProbeRun({ids,terminalAppOwner:{}})
       assert.deepEqual(run.origin,{kind:"collector",appLaunch:launch})
-      assert.equal(run.target.version,"0.49.2")
+      assert.equal(run.subject.version,"0.49.2")
       assert.deepEqual(JSON.parse(run.rawReplies["fixture.selected"]),ids)
       assert.ok(run.results.every(row=>row.status==="test-todo"))
       assert.equal(run.rawReplies["device.xtversion"],undefined)
@@ -976,7 +976,7 @@ describe("private finite daemon startup", () => {
         sourceArtifact:{url:"https://example.invalid/kitty.txz",sha256:digest("fixture source artifact")},
         runtime:{imageId:"sha256:"+"e".repeat(64),imageTarSha256:digest("fixture image tar"),arch:"amd64",nixLockRevision:"1".repeat(40),sourceRevision:"b".repeat(40),cleanTree:true,suiteHash:"a".repeat(12)},
         fixture:{definition:"fixture",config:"fixture",font:"fixture",geometry:"80x24",display:"fixture",gl:"fixture"}}
-      assert.equal(parseRunProvenance(provenance,run.target,{probeHash:run.probeHash,sourceRevision:run.sourceRevision},"fixture").executable.version,"kitty 0.49.2")
+      assert.equal(parseRunProvenance(provenance,run.subject,{probeHash:run.probeHash,sourceRevision:run.sourceRevision},"fixture").executable.version,"kitty 0.49.2")
       const feature=await collectProbeRun({ids:["device.xtversion"],terminalAppOwner:{}})
       assert.equal(feature.rawReplies["device.xtversion"],"feature-owned reply")
       assert.equal(feature.rawReplies["collector.xtversion"],raw)
@@ -993,7 +993,7 @@ describe("private finite daemon startup", () => {
       assert.equal(disposed,5)
       calls=[]
       const nonowned=await collectProbeRun({ids})
-      assert.equal(nonowned.target.version,"unknown")
+      assert.equal(nonowned.subject.version,"unknown")
       assert.equal(nonowned.rawReplies["collector.xtversion"],undefined)
       assert.deepEqual(calls,[])
       // Actual run 38303792334 reported stale detection 1.23.20211.0 despite measured executable
@@ -1002,10 +1002,10 @@ describe("private finite daemon startup", () => {
       for(const productVersion of ["1.21.240823001","1.21.240823001-build42"]){
         launch=parseAppLaunchReceipt({platform:"win32",executablePath:"C:/runner/WindowsTerminal.exe",
           productVersion,executableSha256:"c3".repeat(32),
-          sourceArtifact:{kind:"portable-zip",path:"C:/runner/wt.zip",sha256:"d4".repeat(32)}},"collector","app","fixture")
+          sourceArtifact:{kind:"portable-zip",path:"C:/runner/wt.zip",sha256:"d4".repeat(32)}},"collector","term","fixture")
         process.env.TERMINFO_TARGET_VERSION=productVersion.trim()
         const windows=await collectProbeRun({ids:["device.xtversion"]})
-        assert.equal(windows.target.version,productVersion)
+        assert.equal(windows.subject.version,productVersion)
         assert.deepEqual(windows.origin.appLaunch,launch)
       }
       terminal={name:"alacritty",version:"",os:"windows",osVersion:"fixture"}
@@ -1014,10 +1014,10 @@ describe("private finite daemon startup", () => {
         sourceArtifact:{kind:"portable-exe",path:"D:/a/_temp/Alacritty-v0.17.0-portable.exe",sha256:"c3".repeat(32)},
         mesaRenderer:{upstream:"https://github.com/mmozeiko/build-mesa",version:"26.2.5",
           archivePath:"D:/a/_temp/mesa.7z",archiveSha256:"d4".repeat(32),
-          dlls:[{name:"opengl32.dll",path:"D:/a/_temp/alacritty/opengl32.dll",sha256:"e5".repeat(32)}]}},"collector","app","fixture")
+          dlls:[{name:"opengl32.dll",path:"D:/a/_temp/alacritty/opengl32.dll",sha256:"e5".repeat(32)}]}},"collector","term","fixture")
       process.env.TERMINFO_TARGET_VERSION=""
       const winAlacritty=await collectProbeRun({ids:["device.xtversion"]})
-      assert.equal(winAlacritty.target.version,"0.17.0")
+      assert.equal(winAlacritty.subject.version,"0.17.0")
       assert.deepEqual(winAlacritty.origin.appLaunch,launch)
     `,
       ],
@@ -1050,7 +1050,7 @@ describe("private finite daemon startup", () => {
       let captureKind = "absent"
       let reads = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
@@ -1080,7 +1080,7 @@ describe("private finite daemon startup", () => {
           if (retained) {
             assert.equal(typeof options.prepareCapture, "function", "macOS text needs once-per-run preparation")
             await options.prepareCapture({
-              context: {
+              source: {
                 rows: 4, cols: 12, queryMode: async () => "unknown",
                 queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
                 write: () => { throw new Error("Paint before known mode state") }
@@ -1091,7 +1091,7 @@ describe("private finite daemon startup", () => {
           }
           return {
             results: options.draft.results, rawReplies: {},
-            observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
+            observations: [],
             assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
           }
         }
@@ -1104,7 +1104,7 @@ describe("private finite daemon startup", () => {
       assert.equal(captureKind, retained ? "text-cells" : "absent")
       assert.equal(reads, 0)
       assert.deepEqual(run.textSnapshotRefs ?? [], [])
-      assert.equal(run.results.filter(observation => observation.evidence === "text").length, 0)
+      assert.equal(run.results.filter(observation => observation.frames?.some(frame => frame.kind === "text-cells")).length, 0)
       if (retained) {
         assert.equal(run.textQualification.shapes.length, 5)
         assert.ok(run.textQualification.shapes.every(shape => typeof shape.reason === "string" && !shape.frames))
@@ -1191,7 +1191,7 @@ describe("private finite daemon startup", () => {
       let captureKind = "absent"
       let captured = false
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
@@ -1258,7 +1258,7 @@ describe("private finite daemon startup", () => {
           }
           return {
             results: options.draft.results, rawReplies: {},
-            observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
+            observations: [],
             assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
           }
         }
@@ -1276,9 +1276,9 @@ describe("private finite daemon startup", () => {
           assert.equal(queryWrites, 1, JSON.stringify({ results: run.results }))
           const row = run.results.find(row => row.featureId === "erase.character")
           assert.equal(row.status, "test-failure")
-          assert.equal(row.evidence, "text")
-          assert.ok(row.checks.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
-          assert.match(row.reason, /Text criterion requires a declared claim and terminal-owned macOS cell observer/u)
+          assert.equal(row.assertionType, "buffer_state")
+          assert.ok(row.tests.some(check => /timeout.*7 bytes/u.test(check.reason ?? "")), "retain the original acknowledgement timeout on its check")
+          assert.match(row.reason, /capture stability 1: console read refused: cursor query timeout, 7 bytes/u)
           const trace = JSON.parse(run.rawReplies[row.rawReplyRef])
           assert.ok(trace.queries.some(query => query.sequence === "\\x1b[6n" && query.reason === "timeout" && query.raw === "partial"))
           assert.equal(readdirSync(process.env.TERMINFO_CAPTURE_DIRECTORY).filter(name => name.endsWith(".txt")).length, 0)
@@ -1343,7 +1343,7 @@ describe("private finite daemon startup", () => {
       const owned = await import("./packages/terminfo.dev/src/owned-terminal.ts")
       let detectedName = fixture.id, receiptAppId = fixture.id, batchCalls = 0
       globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-        manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+        manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
         collectorRevision: "b".repeat(40)
       }
       mock.module("./packages/terminfo.dev/src/detect.ts", () => ({
@@ -1384,14 +1384,14 @@ describe("private finite daemon startup", () => {
               sha256: "5ad70ddc5c2a2bfe84084a2c4c73558e9360914f035a902d7a69277be7249f1f"
             }
           } : undefined,
-          observations: options.ids.map(featureId => ({ featureId, outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })),
+          observations: [],
           assertions: [], screenshotRefs: [], ungradedDiagnostics: {}, suiteComplete: false
         }) }
       }))
       const { collectProbeRun } = await import("./packages/terminfo.dev/src/serve.ts")
       const run = await collectProbeRun({ ids: ["device.xtversion"] })
-      assert.equal(run.target.id, fixture.id)
-      assert.equal(run.target.version, fixture.version)
+      assert.equal(run.subject.id, fixture.id)
+      assert.equal(run.subject.version, fixture.version)
       detectedName = fixture.id === "cmux" ? "ghostty" : fixture.id === "cursor" ? "com.microsoft.VSCode" : "cursor"
       await assert.rejects(
         collectProbeRun({ ids: ["device.xtversion"] }),
@@ -1435,7 +1435,7 @@ describe("private finite daemon startup", () => {
           const unified = await import("./packages/terminfo.dev/src/probes/unified.ts")
           const tty = await import("./packages/terminfo.dev/src/tty.ts")
           globalThis.__TERMINFO_BUNDLED_SUITE__ = {
-            manifest: { catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { app: unified.ALL_PROBES.map(p => p.id).sort() } },
+            manifest: { schemaVersion: 4, catalogIds: Object.keys((await import("@terminfo/catalog")).loadFeatures(process.cwd() + "/content")).sort(), probeHash: "a".repeat(12), probes: { term: unified.ALL_PROBES.map(p => p.id).sort() } },
             collectorRevision: "b".repeat(40)
           }
           mock.module("./packages/terminfo.dev/src/tty.ts", () => ({

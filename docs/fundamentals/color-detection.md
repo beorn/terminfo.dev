@@ -30,7 +30,7 @@ This is a heuristic stack. Lower tiers are safer defaults; higher tiers require 
 
 ## `NO_COLOR` — the universal opt-out
 
-The [no-color.org](https://web.archive.org/web/20260616201813/https://no-color.org/) standard (linked via archived snapshot — the domain's DNS delegation broke in 2026-07): if `NO_COLOR` is set to any non-empty value, applications MUST NOT add color to their output. This is an accessibility + user-preference feature, not a capability question. Honor it absolutely.
+The [no-color.org](https://web.archive.org/web/20260616201813/https://no-color.org/) standard (linked via archived snapshot — the domain's DNS delegation broke in 2026-07): if `NO_COLOR` is set to any non-empty value, applications MUST NOT add color to their output. This is an accessibility + user-preference feature, not a feature question. Honor it absolutely.
 
 ```sh
 NO_COLOR=1 myapp     # no color

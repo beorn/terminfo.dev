@@ -12,7 +12,7 @@
  * no path, so no path reaches a trace.
  */
 import { createHash } from "node:crypto"
-import type { CapabilityResult, Observation, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
+import type { ProbeResult, Observation, ProbeAssertion } from "../../packages/probe-defs/src/types.ts"
 import type { CurrentSelectedVersion, SelectedVersion } from "./selected-results.ts"
 
 /**
@@ -306,11 +306,12 @@ interface TraceRecord {
 }
 
 interface CurrentTraceCell extends TraceRecord {
-  status: CapabilityResult["status"]
-  evidence?: CapabilityResult["evidence"]
+  status: ProbeResult["status"]
+  assertionType?: ProbeResult["assertionType"]
 }
 
 export interface TraceDocument<Cell> {
+  source?: { kind: "live" }
   version: 1
   runId: string
   runSha256: string
@@ -443,7 +444,7 @@ function traceRecord(
   headless: boolean,
   reason: string | undefined,
   rawReply: string | undefined,
-  assertions: readonly ProbeAssertion[],
+  assertions: readonly Pick<ProbeAssertion, "kind" | "expected" | "observed">[],
   where: string,
 ): TraceRecord {
   const listed = REPLY_LIST.has(featureId)
@@ -481,6 +482,8 @@ function traceRecord(
 
 type TraceVersion = Pick<SelectedVersion, "runId" | "sha256" | "measuredAt" | "identity" | "identityAdmission"> & {
   sourceRevision: string | null
+  schemaVersion?: 1 | 2 | 3 | 4
+  source?: { kind: "live" }
 }
 
 function traceDocument<Cell>(
@@ -491,6 +494,7 @@ function traceDocument<Cell>(
   if (Object.keys(cells).length === 0) return undefined
   if (version.identity === undefined) throw new Error(`run ${version.runId}: no recorded identity for its trace`)
   const document: TraceDocument<Cell> = {
+    ...(version.schemaVersion === 4 && version.source && { source: { ...version.source } }),
     version: 1,
     runId: version.runId,
     runSha256: version.sha256,
@@ -513,7 +517,7 @@ function traceDocument<Cell>(
 
 /** The trace of a current run's results that carry no presentation decision; none when every result has one. */
 export function currentTrace(version: CurrentSelectedVersion) {
-  const headless = version.target.kind === "headless"
+  const headless = version.subject.kind === "lib"
   const cells: Record<string, CurrentTraceCell> = {}
   for (const result of version.results) {
     if (version.presentations[result.featureId]) continue
@@ -523,7 +527,7 @@ export function currentTrace(version: CurrentSelectedVersion) {
     }
     cells[result.featureId] = {
       status: result.status,
-      ...(result.evidence && { evidence: result.evidence }),
+      ...(result.assertionType && { assertionType: result.assertionType }),
       ...traceRecord(
         result.featureId,
         headless,

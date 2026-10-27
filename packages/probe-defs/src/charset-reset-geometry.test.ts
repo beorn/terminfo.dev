@@ -7,7 +7,7 @@
 import { afterEach, expect, test, vi } from "vitest"
 import { charsetsProbes } from "./charsets.ts"
 import { resetProbes } from "./reset.ts"
-import type { ObservationFrame, TermContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 afterEach(() => vi.useRealTimers())
 
@@ -23,12 +23,13 @@ function app(
   events: string[],
   cursorResponses: ReadonlyArray<{ row: number; col: number } | null> = [{ row: 1, col: 2 }],
   decrqss: "unexpected" | "silent" = "unexpected",
-): TermContext {
+): TermProbeSource {
   let cursorIndex = 0
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in charset/reset geometry fixture`)
   }
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -73,11 +74,10 @@ test("fixed charset and reset fixtures require valid measured room before any by
       const events: string[] = []
       const result = await definition.term(app(rows, cols, events))
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
-      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-      })
+      expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      ])
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
     if (id === "reset.ris") {
@@ -88,7 +88,7 @@ test("fixed charset and reset fixtures require valid measured room before any by
           { row: 1, col: 1 },
         ]),
       )
-      expect(valid.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(valid.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(valid.response, id).toBe(JSON.stringify({ before: { row: 5, col: 5 }, after: { row: 1, col: 1 } }))
       expect(events).toEqual(["\x1b[5;5H", "CPR", "\x1bc", "CPR"])
     } else {
@@ -96,11 +96,10 @@ test("fixed charset and reset fixtures require valid measured room before any by
       // reset.sgr asks the terminal's own DECRQSS for its SGR state first; this fixture models a
       // terminal that never answers it, so the probe keeps its CPR path unchanged.
       const valid = await definition.term(app(minRows, minCols, events, [], "silent"))
-      expect(valid.observation, id).toMatchObject({
-        outcome: "inconclusive",
-        reason: "no-response",
-        evidence: "query",
-      })
+      expect(valid.observation, id).toBeUndefined()
+      expect(valid.tests, id).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      ])
       expect(events.at(-1), id).toBe(id === "reset.soft" ? "mode" : "CPR")
     }
   }
@@ -125,12 +124,10 @@ test("a charset row with no owned capture refuses by name and writes nothing", a
       const result = await definition.term(app(rows, cols, events))
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
       expect(result.pass, id).toBe(false)
-      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-        note: expect.stringContaining("no owned capture adapter"),
-      })
+      expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("no owned capture adapter") }),
+      ])
     }
   }
 })
@@ -213,13 +210,14 @@ test("DEC special capture requires safe measured 3x5 before writes or captures",
     const result = await definition.term(context)
     expect(events, `${rows}x${cols}`).toEqual([])
     expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-    })
-    expect(result.observation?.note).toContain(`3x5`)
-    expect(result.observation?.note).toContain(`measured ${rows}x${cols}`)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({
+        status: "test-todo",
+        reason: expect.stringContaining(`3x5`),
+      }),
+    ])
+    expect(result.tests?.[0]?.reason).toContain(`measured ${rows}x${cols}`)
   }
 })
 
@@ -231,12 +229,10 @@ test("DEC special capture names a silent CSI 16 t as query, not ungraded pixels"
   context.queryWithSentinelOutcome = async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" })
   context.capture = async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `sha256:${"c".repeat(64)}` })
   const result = await definition.term(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "query",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("CSI 16 t") }),
+  ])
   expect(result.observation?.frames ?? []).toHaveLength(0)
 })
 
@@ -287,17 +283,13 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
   // A row whose reset clears two or more attributes has no reference
   // independent of a full reset, so the region oracle declines it before any pixel read. The shared
   // DECRQSS readback ran first and this fixture answered nothing, so the trace is NOT empty and the
-  // evidence is truthful "query" — never the zero-byte "none" shape run-parser reserves.
+  // A missing DECRQSS reply is an execution failure with no fabricated observation.
   expect(capture).not.toHaveBeenCalled()
   expect(events).toContain("\x1b[0m")
   expect(events.some((event) => event.includes("\x1b[1;3;7mX"))).toBe(false)
   expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "query",
-    note: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
-  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })
 
 test("reset.sgr capture refuses an undersized terminal before any bytes or frames", async () => {
@@ -321,12 +313,10 @@ test("reset.sgr capture refuses an undersized terminal before any bytes or frame
     const result = await definition.term(context)
     expect(events, `${rows}x${cols}`).toEqual([])
     expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
-    expect(result.observation, `${rows}x${cols}`).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-    })
-    expect(result.observation?.note, `${rows}x${cols}`).toContain("3x34")
+    expect(result.observation, `${rows}x${cols}`).toBeUndefined()
+    expect(result.tests, `${rows}x${cols}`).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("3x34") }),
+    ])
   }
 })
 
@@ -359,7 +349,7 @@ test.each([{ row: 1, col: 1 }, null])(
     expect(checkpointTimes[2]! - checkpointTimes[1]!).toBe(5000)
     expect(checkpoints[3]).toBe(`${checkpoints[2]}\x1b[H`)
     expect(checkpoints[4]).toBe(`${checkpoints[3]}X`)
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
     if (cursor === null) expect(result.observation?.note).toContain("processing barrier unconfirmed")
     expect(result.observation?.frames?.map(({ role }) => role)).toEqual([
       "control",
@@ -415,12 +405,16 @@ test("DECALN refuses invalid geometry and absent capture without writes", async 
     context.capture = async () => {
       throw new Error("invalid fixture must not capture")
     }
-    expect((await decaln().term!(context)).observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    const result = await decaln().term!(context)
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
     expect(events).toEqual([])
   }
   expect(decaln().termNeedsGeometry).toBe(true)
   const events: string[] = []
-  expect((await decaln().term!(app(3, 6, events))).observation?.evidence).toBe("none")
+  const refused = await decaln().term!(app(3, 6, events))
+  expect(refused.observation).toBeUndefined()
+  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
   expect(events).toEqual([])
 })
 
@@ -438,12 +432,10 @@ test("charsets.utf8 asks the terminal's pixel report before painting its two-cel
     return frame
   }
   const result = await definition.term(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "query",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("CSI 16 t") }),
+  ])
   expect(frames).toEqual([])
   expect(events).toEqual([])
 })
@@ -476,7 +468,7 @@ test("every plain-written charset row names an 8-bit decoding context before it 
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(String(result.observation?.note), id).toContain("decodes plain-written UTF-8 as ISO-8859-1")
     expect(captured, id).toBe(false)

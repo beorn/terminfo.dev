@@ -152,13 +152,13 @@ test.each([2, 3] as const)(
       rmSync(legacyAppPath)
       writeFileSync(
         join(root, "content", "probes-libs", "broken.json"),
-        JSON.stringify({ schemaVersion: 4, backend: "xtermjs", results: {} }),
+        JSON.stringify({ schemaVersion: 5, backend: "xtermjs", results: {} }),
       )
       const unsupportedVersion = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 10_000 })
       expect(unsupportedVersion.error).toBeUndefined()
       expect(unsupportedVersion.status, unsupportedVersion.stdout + unsupportedVersion.stderr).toBe(1)
       expect(unsupportedVersion.stdout).toContain("probes-libs/broken.json")
-      expect(unsupportedVersion.stdout).toContain("unsupported schemaVersion 4")
+      expect(unsupportedVersion.stdout).toContain("unsupported schemaVersion 5")
 
       rmSync(join(root, "content", "probes-libs", "broken.json"))
       writeFileSync(

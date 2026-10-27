@@ -26,7 +26,7 @@ import type {
   CaptureRequest,
   CaptureRectangle,
   ObservationFrame,
-  TermContext,
+  TermProbeSource,
 } from "./types.ts"
 
 const ROWS = 24
@@ -466,7 +466,7 @@ function wholeDigest(grid: Cell[][]): string {
 }
 
 interface ColourTerminal {
-  ctx: TermContext
+  ctx: TermProbeSource
   writes: string[]
 }
 
@@ -496,7 +496,8 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
       ...(digests.region === undefined ? {} : { regionDigest: digests.region, regionRectangle: RECTANGLE }),
     }
   }
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
+    kind: "live",
     rows: geometry.rows,
     cols: geometry.cols,
     captureKind: "pixels",
@@ -526,7 +527,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
   return { ctx, writes }
 }
 
-async function run(id: string, ctx: TermContext) {
+async function run(id: string, ctx: TermProbeSource) {
   const definition = sgrProbes.find((candidate) => candidate.id === id)
   if (!definition?.term) throw new Error(`${id}: no term arm in sgrProbes`)
   return definition.term(ctx)
@@ -540,7 +541,7 @@ for (const id of COLOUR_IDS) {
       const note = result.observation?.note ?? ""
       expect(note).not.toContain("visual interpretation requires review")
       expect(result.observation?.outcome).toBe("supported")
-      expect(result.observation?.evidence).toBe("pixels")
+      expect(result.observation?.assertionType).toBe("screenshot")
       expect(result.pass).toBe(true)
       expect(result.observation?.frames?.length ?? 0).toBeGreaterThanOrEqual(2)
       expect(note).toContain("neutral sample")
@@ -563,7 +564,7 @@ for (const id of COLOUR_IDS) {
       colourTerminal("deferred-paint", PALETTES[0] as Palette).ctx,
       id,
       spec,
-      "query",
+      true,
     )
     // The fixture must actually reach the negative branch, or the routing below proves nothing.
     expect(oracle?.observation?.outcome).toBe("unsupported")
@@ -584,16 +585,22 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb"] as const) {
     const captured = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
     const onCapture = await run(id, captured.ctx)
-    expect(onCapture.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    expect(onCapture.observation).toBeUndefined()
+    expect(onCapture).toMatchObject({
+      tests: [expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" })],
+    })
     // The generic 1x2 floor is checked first on both arms, exactly as it was before these rows moved
     // onto the capture row; the 3x34 capture guard is the stricter floor behind it.
-    expect(onCapture.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(onCapture.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
     expect(captured.writes).toEqual([])
 
     const plain = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
     const onTerm = await run(id, { ...plain.ctx, capture: undefined, captureKind: undefined })
-    expect(onTerm.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
-    expect(onTerm.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
+    expect(onTerm.observation).toBeUndefined()
+    expect(onTerm).toMatchObject({
+      tests: [expect.objectContaining({ status: "test-todo", reason: "SGR fixture needs at least 1x2, measured 1x1" })],
+    })
+    expect(onTerm.tests?.[0]?.reason ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
     expect(plain.writes).toEqual([])
   }
 })
@@ -609,11 +616,18 @@ test("the colour verdict drops the oracle's negative assertion and keeps the fra
     response: "seed=1 after=1 expected=2",
     observation: {
       outcome: "unsupported",
-      evidence: "pixels",
+      assertionType: "screenshot",
       screenshotRef: "sha256:abc",
       frames,
     },
-    assertions: [{ kind: "negative", expected: "sgr.fg.standard: equals the expected frame", observed: "1" }],
+    assertions: [
+      {
+        assertionType: "screenshot",
+        kind: "negative",
+        expected: "sgr.fg.standard: equals the expected frame",
+        observed: "1",
+      },
+    ],
   })
   expect(downgraded.observation?.outcome).toBe("inconclusive")
   expect(downgraded.observation?.reason).toBe("insufficient-evidence")
@@ -681,13 +695,32 @@ for (const id of REVIEW_IDS) {
   test(`${id} stays inconclusive by name, never graded from colour pixels`, async () => {
     const { ctx } = colourTerminal("render", PALETTES[0] as Palette)
     const result = await run(id, ctx)
-    expect(result.observation?.outcome).toBe("inconclusive")
-    expect(result.observation?.note ?? "").toMatch(/review|blink|reference/i)
+    if (id === "sgr.blink") {
+      expect(result.observation).toMatchObject({
+        outcome: "inconclusive",
+        assertionType: "screenshot",
+        reason: "insufficient-evidence",
+        note: "Control and target pixels captured; visual interpretation requires review",
+      })
+      expect(result.observation?.frames).toHaveLength(2)
+      expect(result.assertions).toMatchObject([
+        { kind: "positive", assertionType: "screenshot", observed: expect.any(String) },
+      ])
+    } else {
+      expect(result.observation).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
+        },
+      ])
+    }
     expect(result.pass).toBe(false)
   })
 }
 
-/** The fixture is the whole test's evidence: prove it separates the pairs it claims to, and that
+/** The fixture is the whole test's assertionType: prove it separates the pairs it claims to, and that
  * each negative mode collapses exactly the pair its row's sibling is meant to exclude. */
 test("the modelled 256-to-16 quantiser keeps entries 0-15 and sends others to their nearest entry", () => {
   // The fixture stands in for a real 16-colour terminal, so the quantiser is asserted on ENTRIES, not

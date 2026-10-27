@@ -27,7 +27,7 @@ import probesLoader from "../docs/data/probes.data.ts"
 import { generateApi } from "./generate-api.ts"
 import { loadAnalysis } from "../docs/data/load-probes.ts"
 import terminalPaths from "../docs/terminals/[id].paths.ts"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
 import { publicResults } from "../docs/data/public-results.ts"
 import type { PublicVersion } from "../docs/data/public-results.ts"
 import { projectedContextKey, type SelectedProjection } from "../docs/data/selected-results.ts"
@@ -36,15 +36,15 @@ import { probeHash } from "../packages/admin/versions.ts"
 import { fixtureContentDir } from "../test-fixtures/content-root.ts"
 
 /** One synthetic current run: only the target fields the selection rule reads. */
-type StubRun = { target: { kind: string; id: string; os?: string; permissions?: string | null } }
+type StubRun = { subject: { kind: string; id: string; os?: string; permissions?: string | null } }
 
 /**
  * A stub projection for the selection tests. The projection carries the ONE classified table
  * (28792 item 1), so each stub run gets a run id and an EMPTY classified row — the selection rule reads
- * no cells, and `compatibilityTargets` only needs a row to exist for every current run.
+ * no cells, and `compatibilitySubjects` only needs a row to exist for every current run.
  */
 function stubProjection(current: Record<string, StubRun>, history: Record<string, unknown[]> = {}): SelectedProjection {
-  const table: Record<string, Record<string, import("@terminfo/probe-defs").CapabilityStatus>> = {}
+  const table: Record<string, Record<string, import("@terminfo/probe-defs").ProbeStatus>> = {}
   for (const [key, run] of Object.entries(current)) {
     const runId = `run:${key}`
     ;(run as StubRun & { runId?: string }).runId = runId
@@ -90,10 +90,11 @@ function writeFrozenSuite(content: string, probeHash: string): void {
   writeFileSync(
     join(content, "suites", `${probeHash}.json`),
     JSON.stringify({
+      schemaVersion: 4 as const,
       probeHash,
       adapterVersion: "4.0.0",
       freeze: { release: "candidate2", at: "2026-10-12T03:33:42.000Z" },
-      probes: { app: [], headless: [], mux: [] },
+      probes: { term: [], lib: [], mux: [] },
     }),
   )
 }
@@ -115,7 +116,7 @@ describe("consumer selection", () => {
         [
           'import { copyFileSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs"',
           'import { join } from "node:path"',
-          'import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"',
+          'import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"',
           'import { publicResults } from "../docs/data/public-results.ts"',
           'import { probeHash } from "../packages/admin/versions.ts"',
           'import { generateApi } from "./generate-api.ts"',
@@ -172,7 +173,7 @@ describe("consumer selection", () => {
           'const fixtureRuns = readdirSync(content).filter((name) => name.startsWith("probes-")).flatMap((dir) => readdirSync(join(content, dir)).map((file) => join(content, dir, file)))',
           'const currentFixtureRuns = fixtureRuns.filter((file) => isCurrent(JSON.parse(readFileSync(file, "utf8")))).length',
           "const { projection } = loadCurrentResults(content)",
-          "const published = publicResults(projection, compatibilityTargets(projection, content))",
+          "const published = publicResults(projection, compatibilitySubjects(projection, content))",
           'const out = join(root, "out")',
           "const { dataPath } = generateApi(out)",
           'const current = JSON.parse(readFileSync(dataPath, "utf8"))',
@@ -279,7 +280,7 @@ describe("consumer selection", () => {
     }
   })
 
-  it("checks freshness without changing inventory or treating unreviewed files as current", () => {
+  it("tests freshness without changing inventory or treating unreviewed files as current", () => {
     const root = mkdtempSync(join(tmpdir(), "terminfo-freshness-"))
     const source = join(import.meta.dirname, "..")
     try {
@@ -387,7 +388,7 @@ describe("consumer selection", () => {
       const contentDir = fixtureContentDir()
       const { dataPath } = generateApi(out, { contentDir })
       const projection = loadCurrentResults(contentDir).projection
-      const expected = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
+      const expected = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
       const v3 = JSON.parse(readFileSync(dataPath, "utf8")) as {
         current: Record<string, RunReference>
         versions: Record<string, RunReference[]>
@@ -410,7 +411,7 @@ describe("consumer selection", () => {
             if (!ref) throw new Error(`Missing run reference for ${version.runId}`)
             expect(ref).toMatchObject({
               runId: version.runId,
-              target: version.target,
+              subject: version.subject,
               measuredAt: version.measuredAt,
               suiteId: version.suiteId,
               probeHash: version.probeHash,
@@ -479,17 +480,17 @@ describe("consumer selection", () => {
         // No current kitty run: kitty is scored nowhere, whatever other targets the corpus holds as current.
         expect(site.results.kitty).toBeUndefined()
         expect(site.stats.kitty).toBeUndefined()
-        expect(Object.keys(api.current).filter((key) => key.startsWith("app:kitty"))).toEqual([])
-        expect(analysis["terminals/kitty"]?.analysis).toContain("No current schema-3")
+        expect(Object.keys(api.current).filter((key) => key.startsWith("term:kitty"))).toEqual([])
+        expect(analysis["terminals/kitty"]?.analysis).toContain("No current sealed")
       }
       if (api.currentRunCount === 0) {
-        expect(analysis["baseline/core"]?.analysis).toContain("No current schema-3")
+        expect(analysis["baseline/core"]?.analysis).toContain("No current sealed")
       }
       expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
@@ -523,11 +524,11 @@ describe("consumer selection", () => {
   })
 
   it("requires a reviewed default row for two exact contexts of one terminal", () => {
-    const mac = { target: { kind: "app", id: "kitty", os: "macos" } }
-    const linux = { target: { kind: "app", id: "kitty", os: "linux" } }
+    const mac = { subject: { kind: "term", id: "kitty", os: "macos" } }
+    const linux = { subject: { kind: "term", id: "kitty", os: "linux" } }
     const macKey = projectedContextKey(
       {
-        kind: "app",
+        kind: "term",
         id: "kitty",
         version: "0.48.2",
         os: "macos",
@@ -541,7 +542,7 @@ describe("consumer selection", () => {
     )
     const linuxKey = projectedContextKey(
       {
-        kind: "app",
+        kind: "term",
         id: "kitty",
         version: "0.49.2",
         os: "linux",
@@ -557,12 +558,12 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-context-selection-"))
     try {
       writeCatalog(content)
-      expect(() => compatibilityTargets(projection, content)).toThrow(/Ambiguous current app:kitty/)
+      expect(() => compatibilitySubjects(projection, content)).toThrow(/Ambiguous current term:kitty/)
       writeFileSync(
         join(content, "default-contexts.json"),
         JSON.stringify({
           defaultContext: {
-            "app:kitty": {
+            "term:kitty": {
               contextKey: linuxKey,
               reviewer: "reviewer",
               reason: "controlled Linux context selected for default view",
@@ -571,39 +572,39 @@ describe("consumer selection", () => {
           },
         }),
       )
-      expect(compatibilityTargets(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
+      expect(compatibilitySubjects(projection, content).get("kitty")?.contextKey).toBe(linuxKey)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
   })
 
   it("keeps same-named app and headless runs in distinct compatibility rows", () => {
-    const app = { target: { kind: "app", id: "kitty" } }
-    const headless = { target: { kind: "headless", id: "kitty" } }
-    const library = { target: { kind: "headless", id: "xtermjs" } }
+    const app = { subject: { kind: "term", id: "kitty" } }
+    const headless = { subject: { kind: "lib", id: "kitty" } }
+    const library = { subject: { kind: "lib", id: "xtermjs" } }
     const projection = stubProjection(
-      { "app:kitty": app, "headless:kitty": headless, "headless:xtermjs": library },
-      { "app:kitty": [app], "headless:kitty": [headless], "headless:xtermjs": [library] },
+      { "term:kitty": app, "lib:kitty": headless, "lib:xtermjs": library },
+      { "term:kitty": [app], "lib:kitty": [headless], "lib:xtermjs": [library] },
     )
     const content = mkdtempSync(join(tmpdir(), "terminfo-kind-selection-"))
     try {
       writeCatalog(content)
-      const rows = compatibilityTargets(projection, content)
-      expect(rows.get("kitty")?.selected.target.kind).toBe("app")
-      expect(rows.get("headless-kitty")?.selected.target.kind).toBe("headless")
-      expect(rows.get("xtermjs")?.selected.target.kind).toBe("headless")
-      delete projection.current["app:kitty"]
-      expect(compatibilityTargets(projection, content).get("headless-kitty")?.contextKey).toBe("headless:kitty")
+      const rows = compatibilitySubjects(projection, content)
+      expect(rows.get("kitty")?.selected.subject.kind).toBe("term")
+      expect(rows.get("headless-kitty")?.selected.subject.kind).toBe("lib")
+      expect(rows.get("xtermjs")?.selected.subject.kind).toBe("lib")
+      delete projection.current["term:kitty"]
+      expect(compatibilitySubjects(projection, content).get("headless-kitty")?.contextKey).toBe("lib:kitty")
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
   })
 
   it("keeps released headless keys when same-id app runs arrive", () => {
-    const headlessWezterm = { target: { kind: "headless", id: "wezterm" } }
-    const appWezterm = { target: { kind: "app", id: "wezterm" } }
-    const headlessAlacritty = { target: { kind: "headless", id: "alacritty" } }
-    const appAlacritty = { target: { kind: "app", id: "alacritty" } }
+    const headlessWezterm = { subject: { kind: "lib", id: "wezterm" } }
+    const appWezterm = { subject: { kind: "term", id: "wezterm" } }
+    const headlessAlacritty = { subject: { kind: "lib", id: "alacritty" } }
+    const appAlacritty = { subject: { kind: "term", id: "alacritty" } }
     const projection = stubProjection({
       "headless:wezterm": headlessWezterm,
       "app:wezterm": appWezterm,
@@ -613,13 +614,13 @@ describe("consumer selection", () => {
     const content = mkdtempSync(join(tmpdir(), "terminfo-released-keys-"))
     try {
       writeCatalog(content)
-      const rows = compatibilityTargets(projection, content)
-      expect(rows.get("wezterm")?.selected.target.kind).toBe("headless")
-      expect(rows.get("app-wezterm")?.selected.target.kind).toBe("app")
-      expect(rows.get("alacritty")?.selected.target.kind).toBe("headless")
-      expect(rows.get("app-alacritty")?.selected.target.kind).toBe("app")
+      const rows = compatibilitySubjects(projection, content)
+      expect(rows.get("wezterm")?.selected.subject.kind).toBe("lib")
+      expect(rows.get("app-wezterm")?.selected.subject.kind).toBe("term")
+      expect(rows.get("alacritty")?.selected.subject.kind).toBe("lib")
+      expect(rows.get("app-alacritty")?.selected.subject.kind).toBe("term")
       delete projection.current["headless:wezterm"]
-      expect(compatibilityTargets(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
+      expect(compatibilitySubjects(projection, content).get("app-wezterm")?.contextKey).toBe("app:wezterm")
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
@@ -638,23 +639,21 @@ describe("consumer selection", () => {
       wezterm.headlessBackends = []
       writeFileSync(join(content, "terminals.json"), JSON.stringify(catalog))
       const projection = stubProjection({})
-      expect(() => compatibilityTargets(projection, content)).toThrow(
-        /released key wezterm changed meaning from headless/,
-      )
+      expect(() => compatibilitySubjects(projection, content)).toThrow(/released key wezterm changed meaning from lib/)
     } finally {
       rmSync(content, { recursive: true, force: true })
     }
   })
 
   it("names the declared xterm app run as a compatibility target", () => {
-    const appXterm = { target: { kind: "app", id: "xterm" } }
-    const projection = stubProjection({ "app:xterm": appXterm })
+    const appXterm = { subject: { kind: "term", id: "xterm" } }
+    const projection = stubProjection({ "term:xterm": appXterm })
     const content = mkdtempSync(join(tmpdir(), "terminfo-xterm-target-"))
     try {
       writeCatalog(content)
-      const rows = compatibilityTargets(projection, content)
-      expect(rows.get("xterm")?.contextKey).toBe("app:xterm")
-      expect(rows.get("xterm")?.selected.target.kind).toBe("app")
+      const rows = compatibilitySubjects(projection, content)
+      expect(rows.get("xterm")?.contextKey).toBe("term:xterm")
+      expect(rows.get("xterm")?.selected.subject.kind).toBe("term")
     } finally {
       // raw-delete-allow: standalone component repository whose CI installs without hh's workspace, so removely is unavailable; content is this test's own mkdtemp scratch root
       rmSync(content, { recursive: true, force: true })

@@ -1,5 +1,5 @@
 /**
- * @failure A group capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure A group feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so a group step reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 SGR group (child 28019); the first adopter of the 28453 harness.
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { sgrProbes } from "./sgr.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -21,7 +21,7 @@ import {
   type HeadlessModel,
 } from "./testing/group-harness.ts"
 
-/** The 32 SGR capabilities of 28018's SGR row; ids drawn from sgr.ts, claims are the contract. */
+/** The 32 SGR features of 28018's SGR row; ids drawn from sgr.ts, claims are the contract. */
 const SGR_CONTRACT: GroupContract = [
   { id: "sgr.bold", expected: "decided", claim: "SGR 1 selects the bold attribute" },
   { id: "sgr.faint", expected: "decided", claim: "SGR 2 selects the faint attribute" },
@@ -220,7 +220,7 @@ function cellsModel(cells: readonly TableCell[]): HeadlessModel {
   }
 }
 
-test("the SGR contract covers every SGR capability and names none unknown", () => {
+test("the SGR contract covers every SGR feature and names none unknown", () => {
   const gaps = contractGaps(sgrProbes, SGR_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -243,14 +243,14 @@ test("the SGR contract names its focused tests, and every named file exists", ()
 // prove the harness is deterministic, NOT that a decided row is satisfied. The satisfaction binding is
 // proven by SGR_SATISFACTION_CELLS below (one required cell state per row, driven through regradeRow);
 // helper-observations.test.ts additionally pins several rows against real parse paths.
-test("the harness replays every SGR capability deterministically (satisfaction is bound by the table test below)", async () => {
+test("the harness replays every SGR feature deterministically (satisfaction is bound by the table test below)", async () => {
   for (const row of SGR_CONTRACT) {
     const probe = sgrProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing SGR probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    const first = await regradeRow(probe, row, { headless: libProbeSource(inertModel()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(inertModel()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     // The harness APPLIES the contract predicate; a re-grade is never a rubber stamp.
@@ -269,7 +269,7 @@ test("every SGR contract row is satisfied by the headless cell state its claim r
     const cells = SGR_SATISFACTION_CELLS[row.id]
     expect(cells, `no satisfaction cell state declared for ${row.id}`).toBeDefined()
     if (!cells) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(cellsModel(cells)) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(cellsModel(cells)) })
     expect(graded.after, `${row.id} reads supported from its claim's cell state`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
@@ -288,14 +288,14 @@ test("a row reading an OPTIONAL cell field is notTested when the field is omitte
   expect(row, "the SGR contract names sgr.overline").toBeDefined()
   expect(probe, "the SGR contract names a real sgr.overline probe").toBeDefined()
   if (!row || !probe) return
-  const present = await regradeRow(probe, row, { headless: headlessContext(cellsModel([X({ overline: true })])) })
+  const present = await regradeRow(probe, row, { headless: libProbeSource(cellsModel([X({ overline: true })])) })
   expect(present.after).toBe("supported")
   expect(present.satisfies).toBe(true)
-  const omittedContext = headlessContext(cellsModel([{ char: "X" }]))
-  const omitted = await regradeRow(probe, row, { headless: omittedContext })
+  const omittedSource = libProbeSource(cellsModel([{ char: "X" }]))
+  const omitted = await regradeRow(probe, row, { headless: omittedSource })
   expect(omitted.after).toBeUndefined()
   expect(omitted.satisfies).toBe(false)
-  expect(probe.termless?.(omittedContext).notTested).toEqual({
+  expect(probe.lib?.(omittedSource).notTested).toEqual({
     reason: "no-semantic-observable",
     noObservable: "cell.overline field not exposed",
   })
@@ -310,6 +310,6 @@ test("a decided SGR row reads unsatisfied from an inert cell", async () => {
   expect(row, "the SGR contract names sgr.bold").toBeDefined()
   expect(probe, "the SGR contract names a real sgr.bold probe").toBeDefined()
   if (!row || !probe) return
-  const inert = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
+  const inert = await regradeRow(probe, row, { headless: libProbeSource(inertModel()) })
   expect(inert.satisfies).toBe(false)
 })

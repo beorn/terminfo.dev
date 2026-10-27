@@ -1,30 +1,37 @@
-import { CAPABILITY_STATUSES } from "./types.ts"
-import type { ProbeCheckResult } from "./types.ts"
+import { PROBE_STATUSES } from "./types.ts"
+import type { ProbeTestInput } from "./types.ts"
 import type {
-  CapabilityAttempt,
+  ProbeAttempt,
   Observation,
   NotTestedCoverage,
   ProbeAssertion,
   UngradedDiagnostic,
-  CapabilityResult,
+  ProbeResult,
   CurrentProbeRun,
   ProbeSuiteManifest,
   RunDraft,
 } from "./types.ts"
 import type {
-  ObservationEvidence,
+  AssertionType,
   ProbeDefinition,
-  ProbeResult,
+  ProbeCallbackResult,
   TerminalQueryOutcome,
-  TermlessContext,
-  TermContext,
+  LibProbeSource,
+  TermProbeSource,
 } from "./types.ts"
 
 /** Keep the serialized state alongside the exact assertion that used it. */
-export function parserStateResult(pass: boolean | null, expected: string, state: object, note?: string): ProbeResult {
+export function parserStateResult(
+  pass: boolean | null,
+  expected: string,
+  state: object,
+  note?: string,
+): ProbeCallbackResult {
   const response = JSON.stringify(state)
-  const assertions: NonNullable<ProbeResult["assertions"]> | undefined =
-    pass === null ? undefined : [{ kind: pass ? "positive" : "negative", expected, observed: response }]
+  const assertions: NonNullable<ProbeCallbackResult["assertions"]> | undefined =
+    pass === null
+      ? undefined
+      : [{ assertionType: "buffer_state" as const, kind: pass ? "positive" : "negative", expected, observed: response }]
   return {
     pass: pass === true,
     response,
@@ -32,7 +39,7 @@ export function parserStateResult(pass: boolean | null, expected: string, state:
     observation: {
       outcome: pass === null ? "inconclusive" : pass ? "supported" : "unsupported",
       ...(pass === null && { reason: "insufficient-evidence" as const }),
-      evidence: "parser-state",
+      assertionType: "buffer_state",
       ...(note && { note }),
     },
     ...(assertions && { assertions }),
@@ -48,7 +55,7 @@ export function sameRgb(a: { r: number; g: number; b: number }, b: { r: number; 
  * The probe ran and retained raw state, but this environment exposes no applicable observable for
  * the claim. This is a coverage/applicability record, never a fifth measurement outcome.
  */
-export function notTestedResult(noObservable: string, state: object): ProbeResult {
+export function notTestedResult(noObservable: string, state: object): ProbeCallbackResult {
   return {
     pass: false,
     response: JSON.stringify(state),
@@ -59,15 +66,15 @@ export function notTestedResult(noObservable: string, state: object): ProbeResul
 
 /**
  * A criterion this context has no observable for: the same coverage record and raw state as
- * notTestedResult, with the explicit branch selecting the existing review check. The position
+ * notTestedResult, with the explicit branch selecting the existing review test. The position
  * stays TEST TODO with a required review pending; nothing here grades support, delivery or
  * Untestable.
  */
-function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeResult {
+function reviewResult(branch: string, reason: string, noObservable: string, state: object): ProbeCallbackResult {
   return {
     ...notTestedResult(noObservable, state),
     criterionBranch: branch,
-    checks: [{ id: "review", status: "test-todo", reason }],
+    tests: [{ id: "review", status: "test-todo", reason }],
   }
 }
 
@@ -79,7 +86,7 @@ export function osInputReviewResult(
   noObservable: string,
   state: object,
   reason = "Headless context injects no OS-level input; required independent review of the retained raw state pending",
-): ProbeResult {
+): ProbeCallbackResult {
   return reviewResult("os-input-review", reason, noObservable, state)
 }
 
@@ -89,7 +96,7 @@ export function osInputReviewResult(
  * sent. Never a sentinel negative (C10) and never graded from a source read (C7); the reviewer
  * names the engine's missing observable from its source audit row.
  */
-export function colorReadbackReviewResult(noObservable: string, state: object): ProbeResult {
+export function colorReadbackReviewResult(noObservable: string, state: object): ProbeCallbackResult {
   return reviewResult(
     "color-readback-review",
     "Headless context offers no colour readback; required independent review of the retained raw state pending",
@@ -109,13 +116,13 @@ export function colorReadbackReviewResult(noObservable: string, state: object): 
  * to its own oracle: a context that cannot answer this round trip already fails its geometry and
  * width reads by name (@dev/review2).
  */
-export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise<ProbeResult | null> {
+export async function utf8DecodingRefusal(ctx: TermProbeSource, id: string): Promise<ProbeCallbackResult | null> {
   if (!ctx.utf8Decoding) return null
   if ((await ctx.utf8Decoding()) !== "8-bit") return null
   return {
     pass: false,
     criterionBranch: "utf8-prerequisite",
-    checks: [
+    tests: [
       {
         id: "utf8-context",
         status: "test-todo",
@@ -125,14 +132,14 @@ export async function utf8DecodingRefusal(ctx: TermContext, id: string): Promise
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
       note: `${id}: this run decodes plain-written UTF-8 as ISO-8859-1 (measured: the Neutral-width sample ë advanced the cursor two cells, not one), so the expected frame paints a different string from the one this row claims; the pinned locale is the context to correct, not a capability of this terminal`,
     },
   }
 }
 
 /** Selective erase must remove unprotected cells and retain a protected control. */
-export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rectangular: boolean): ProbeResult {
+export function selectiveEraseResult(ctx: LibProbeSource, sequence: string, rectangular: boolean): ProbeCallbackResult {
   const expected = "DECSCA-protected P survives while selective erase clears ABCD"
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6) {
     return parserStateResult(null, expected, { cols: ctx.cols }, "Need six measured columns")
@@ -169,16 +176,27 @@ export function selectiveEraseResult(ctx: TermlessContext, sequence: string, rec
 }
 
 /** CPR cannot establish changed cells, styling, or scrollback contents. */
-export function unmeasuredCellResult(position: { row: number; col: number } | null, feature: string): ProbeResult {
+export function unmeasuredCellResult(
+  position: { row: number; col: number } | null,
+  feature: string,
+): ProbeCallbackResult {
   return {
     pass: false,
     ...(position && { response: `${position.row};${position.col}` }),
     note: position ? `Cursor response does not measure ${feature}` : `No cursor response after ${feature}`,
-    observation: {
-      outcome: "inconclusive",
-      reason: position ? "insufficient-evidence" : "no-response",
-      evidence: "query",
-    },
+    ...(position === null
+      ? {
+          tests: [{ id: "criterion", status: "test-failure", reason: `No cursor response after ${feature}` }] as [
+            { id: string; status: "test-failure"; reason: string },
+          ],
+        }
+      : {
+          observation: {
+            outcome: "inconclusive",
+            reason: position ? "insufficient-evidence" : "no-response",
+            assertionType: "query_reply",
+          },
+        }),
   }
 }
 
@@ -200,7 +218,7 @@ export interface SgrReadback {
  * `DCS 0 $ r ST` "request not recognized" reply all return null. A missing readback is
  * never a negative.
  */
-export async function querySgrState(ctx: TermContext): Promise<string[] | null> {
+export async function querySgrState(ctx: TermProbeSource): Promise<string[] | null> {
   const outcome = await ctx.queryWithSentinelOutcome("\x1bP$qm\x1b\\", /\x1bP1\$r([0-9;:]*)m\x1b\\/)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
@@ -231,7 +249,7 @@ export function decrpmPs(ps: string | undefined): DecrpmPs | null {
 
 /**
  * The fold over decrpmPs, 1/3 set, 2/4 reset, 0 not recognized, for tty.ts queryMode and the readers that only
- * save, restore or compare a prior state: the cursor-visibility and autowrap equality checks
+ * save, restore or compare a prior state: the cursor-visibility and autowrap equality tests
  * (text-qualification.ts, capture-calibration.ts), the DECSCLM restore (modes.ts) and the DECAWM gate (text.ts).
  * No grader reads this word: it hides Ps 4 behind "reset", so a grader reads the Ps through queryDecrpm (#30557).
  */
@@ -247,7 +265,7 @@ export function decrpmStatus(ps: string | undefined): "set" | "reset" | "unknown
  * (the same bytes queryMode folds), `CSI Ps $ p` for an ANSI mode such as IRM.
  */
 export async function queryDecrpm(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   modeNum: number,
   kind: "private" | "ansi" = "private",
 ): Promise<DecrpmPs | null> {
@@ -261,7 +279,7 @@ export async function queryDecrpm(
  * `DCS 1 $ r <Ps> SP q ST` reply yields `<Ps>`; a timeout, a DA1 sentinel, or a `DCS 0 $ r ST`
  * "request not recognized" reply all return null. A missing readback is never a negative.
  */
-export async function queryCursorStyle(ctx: TermContext): Promise<number | null> {
+export async function queryCursorStyle(ctx: TermProbeSource): Promise<number | null> {
   const outcome = await ctx.queryWithSentinelOutcome("\x1bP$q q\x1b\\", /\x1bP1\$r([0-9]+) q\x1b\\/)
   if (outcome.reason !== "reply") return null
   const payload = outcome.match?.[1]
@@ -276,10 +294,10 @@ export async function queryCursorStyle(ctx: TermContext): Promise<number | null>
  * readback is never a negative.
  */
 export async function cursorStyleReadbackDecision(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   sequence: string,
   expected: number,
-): Promise<ProbeResult | null> {
+): Promise<ProbeCallbackResult | null> {
   ctx.write(sequence)
   try {
     const ps = await queryCursorStyle(ctx)
@@ -287,9 +305,10 @@ export async function cursorStyleReadbackDecision(
     const pass = ps === expected
     return {
       pass,
-      observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
       assertions: [
         {
+          assertionType: "query_reply" as const,
           kind: pass ? "positive" : "negative",
           expected: `DECRQSS reports cursor style ${expected} after ${sequence}`,
           observed: String(ps),
@@ -315,7 +334,7 @@ export function sgrReadbackResult(
   sequence: string,
   state: readonly string[],
   readback: SgrReadback,
-): ProbeResult {
+): ProbeCallbackResult {
   // Extended-color operands are one parameter, never independent attributes. Keep the raw state
   // below, but compare equivalent legacy semicolon and colon reports as complete color tokens.
   const parameters: string[] = []
@@ -366,7 +385,12 @@ export function sgrReadbackResult(
       pass: false,
       response: JSON.stringify({ sgr: observed }),
       note: unmeasured,
-      observation: { outcome: "inconclusive", evidence: "query", reason: "insufficient-evidence", note: unmeasured },
+      observation: {
+        outcome: "inconclusive",
+        assertionType: "query_reply",
+        reason: "insufficient-evidence",
+        note: unmeasured,
+      },
     }
   }
   const codes = parameters.flatMap((token) => {
@@ -391,9 +415,12 @@ export function sgrReadbackResult(
   return {
     pass: ok,
     response: JSON.stringify({ sgr: observed }),
-    observation: ok ? { outcome: "supported", evidence: "query" } : { outcome: "unsupported", evidence: "query" },
+    observation: ok
+      ? { outcome: "supported", assertionType: "query_reply" }
+      : { outcome: "unsupported", assertionType: "query_reply" },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: ok ? "positive" : "negative",
         expected: `${id}: DECRQSS reports ${expected} after ${sequence}`,
         observed,
@@ -408,12 +435,12 @@ export function sgrReadbackResult(
  * readback is never a negative.
  */
 export async function sgrReadbackDecision(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   id: string,
   sequence: string,
   readback: SgrReadback,
   setup?: { sequence: string; baseline: SgrReadback; readback: SgrReadback },
-): Promise<ProbeResult | null> {
+): Promise<ProbeCallbackResult | null> {
   const observed: Record<string, string> = {}
   try {
     ctx.write("\x1b[0m")
@@ -435,7 +462,12 @@ export async function sgrReadbackDecision(
             pass: false,
             response: JSON.stringify({ phase, ...observed }),
             note,
-            observation: { outcome: "inconclusive", evidence: "query", reason: "insufficient-evidence", note },
+            observation: {
+              outcome: "inconclusive",
+              assertionType: "query_reply",
+              reason: "insufficient-evidence",
+              note,
+            },
           }
         }
       }
@@ -471,22 +503,19 @@ export const SGR_CAPTURE_MIN_COLS = 34
  * whose arm writes before falling back (the DECRQSS readback) still calls this first, so the refusal
  * is never preceded by bytes of its own.
  */
-export function sgrPlainFixtureTooSmall(ctx: TermContext): ProbeResult | undefined {
+export function sgrPlainFixtureTooSmall(ctx: TermProbeSource): ProbeCallbackResult | undefined {
   const { rows, cols } = ctx
   if (Number.isSafeInteger(rows) && Number.isSafeInteger(cols) && rows >= 1 && cols >= 2) return undefined
   return {
     pass: false,
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: `SGR fixture needs at least 1x2, measured ${rows}x${cols}`,
-    },
+    tests: [
+      { id: "criterion", status: "test-todo", reason: `SGR fixture needs at least 1x2, measured ${rows}x${cols}` },
+    ],
   }
 }
 
 /** Refuse an SGR capture fixture before any bytes when the measured geometry is too small. */
-export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): ProbeResult | undefined {
+export function sgrCaptureTooSmall(ctx: TermProbeSource, feature = "SGR capture"): ProbeCallbackResult | undefined {
   if (!ctx.capture) return undefined
   const { rows, cols } = ctx
   if (
@@ -499,25 +528,26 @@ export function sgrCaptureTooSmall(ctx: TermContext, feature = "SGR capture"): P
   }
   return {
     pass: false,
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: `${feature} needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
-    },
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `${feature} needs at least ${SGR_CAPTURE_MIN_ROWS}x${SGR_CAPTURE_MIN_COLS}, measured ${rows}x${cols}`,
+      },
+    ],
   }
 }
 
 /** Render a control screen and a target screen and return both frames as inconclusive pixel evidence. */
 export async function sgrCaptureFrames(
-  ctx: TermContext,
+  ctx: TermProbeSource,
   control: string,
   target: string,
   targetLabel: string,
   meta: Record<string, unknown> = {},
   note = "Control and target pixels captured; visual interpretation requires review",
   controlLabel = `${targetLabel} control`,
-): Promise<ProbeResult> {
+): Promise<ProbeCallbackResult> {
   if (!ctx.capture) throw new Error(`${targetLabel}: SGR pixel capture requires a capture callback`)
   ctx.write(control)
   const controlFrame = await ctx.capture({ role: "control", label: controlLabel })
@@ -527,12 +557,13 @@ export async function sgrCaptureFrames(
     pass: false,
     response: JSON.stringify({ ...meta, control: controlFrame.label, target: targetFrame.label }),
     criterionBranch: "visual-review",
-    checks: [
+    tests: [
       { id: "capture", status: "supported", assertionRefs: [0] },
       { id: "review", status: "test-todo", reason: "Valid control and target capture; required visual review pending" },
     ],
     assertions: [
       {
+        assertionType: "screenshot" as const,
         kind: "positive",
         expected: `${targetLabel} compared with ${controlLabel}`,
         observed: JSON.stringify({ control: controlFrame, target: targetFrame }),
@@ -541,7 +572,7 @@ export async function sgrCaptureFrames(
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "pixels",
+      assertionType: "screenshot",
       screenshotRef: targetFrame.ref,
       frames: [controlFrame, targetFrame],
       note,
@@ -552,15 +583,15 @@ export async function sgrCaptureFrames(
 export function sgrProbe(
   id: string,
   sequence: string,
-  check: (cell: ReturnType<TermlessContext["getCell"]>) => boolean | null,
-  noObservableWhen?: (cell: ReturnType<TermlessContext["getCell"]>) => string | null,
+  check: (cell: ReturnType<LibProbeSource["getCell"]>) => boolean | null,
+  noObservableWhen?: (cell: ReturnType<LibProbeSource["getCell"]>) => string | null,
   readback?: SgrReadback,
 ): ProbeDefinition {
   return {
     id,
     termNeedsGeometry: true,
-    termObservationEvidence: readback ? "query" : "consumed",
-    termless(ctx) {
+    termAssertionType: readback ? "query_reply" : null,
+    lib(ctx) {
       ctx.feed(sequence + "X")
       const cell = ctx.getCell(0, 0)
       if (cell.char === "X") {
@@ -617,7 +648,7 @@ export function sgrProbe(
         return {
           pass: false,
           note: "No cursor response",
-          observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+          tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
         }
       }
       // Cursor should be at col 2 (wrote 1 char "X")
@@ -625,16 +656,17 @@ export function sgrProbe(
         pass: pos.col === 2,
         note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
         response: `${pos.row};${pos.col}`,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "consumed",
-          note: "Cursor advance does not verify SGR styling",
-        },
+        tests: [
+          {
+            id: "criterion",
+            status: "test-todo",
+            reason: `Cursor advance does not verify SGR styling${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+          },
+        ],
       }
     },
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -653,20 +685,26 @@ export function cursorProbe(
     origin: object | null,
     setupPosition: object | null,
     final: object | null,
-    evidence: ObservationEvidence,
+    assertionType: AssertionType,
     reason: "no-response" | "insufficient-evidence",
     note: string,
-  ): ProbeResult => ({
+  ): ProbeCallbackResult => ({
     pass: false,
     response: JSON.stringify({ origin, setup: setupPosition, final }),
     note,
-    observation: { outcome: "inconclusive", reason, evidence, note },
+    ...(reason === "no-response"
+      ? {
+          tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
+            ProbeTestInput & { status: "test-failure"; reason: string },
+          ],
+        }
+      : { observation: { outcome: "inconclusive", reason, assertionType, note } }),
   })
   return {
     id,
     termNeedsGeometry: true,
-    termObservationEvidence: "query",
-    termless(ctx) {
+    termAssertionType: "query_reply",
+    lib(ctx) {
       ctx.feed("\x1b[1;1H")
       const origin = ctx.getCursor()
       if (origin.x !== 0 || origin.y !== 0) {
@@ -674,7 +712,7 @@ export function cursorProbe(
           origin,
           null,
           null,
-          "parser-state",
+          "buffer_state",
           "insufficient-evidence",
           `Cursor origin measured ${origin.y};${origin.x}, expected 0;0`,
         )
@@ -686,7 +724,7 @@ export function cursorProbe(
           origin,
           setupPosition,
           null,
-          "parser-state",
+          "buffer_state",
           "insufficient-evidence",
           "Cursor setup has no expected position",
         )
@@ -697,7 +735,7 @@ export function cursorProbe(
           origin,
           setupPosition,
           null,
-          "parser-state",
+          "buffer_state",
           "insufficient-evidence",
           `Cursor setup measured ${setupPosition.y};${setupPosition.x}, expected ${wantedSetup.row};${wantedSetup.col}`,
         )
@@ -718,31 +756,33 @@ export function cursorProbe(
         return {
           pass: false,
           note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
         }
       }
       ctx.write("\x1b[1;1H")
       const origin = await ctx.queryCursorPosition()
-      if (!origin) return inconclusive(null, null, null, "query", "no-response", "No cursor reply at origin")
+      if (!origin) return inconclusive(null, null, null, "query_reply", "no-response", "No cursor reply at origin")
       if (origin.row !== 1 || origin.col !== 1) {
         return inconclusive(
           origin,
           null,
           null,
-          "query",
+          "query_reply",
           "insufficient-evidence",
           `Cursor origin measured ${origin.row};${origin.col}, expected 1;1`,
         )
       }
       if (setup) ctx.write(setup)
       const setupPosition = setup ? await ctx.queryCursorPosition() : origin
-      if (!setupPosition) return inconclusive(origin, null, null, "query", "no-response", "No cursor reply after setup")
+      if (!setupPosition) {
+        return inconclusive(origin, null, null, "query_reply", "no-response", "No cursor reply after setup")
+      }
       if (setup && !setupExpected) {
         return inconclusive(
           origin,
           setupPosition,
           null,
-          "query",
+          "query_reply",
           "insufficient-evidence",
           "Cursor setup has no expected position",
         )
@@ -753,7 +793,7 @@ export function cursorProbe(
           origin,
           setupPosition,
           null,
-          "query",
+          "query_reply",
           "insufficient-evidence",
           `Cursor setup measured ${setupPosition.row};${setupPosition.col}, expected ${wantedSetup.row + 1};${wantedSetup.col + 1}`,
         )
@@ -761,7 +801,7 @@ export function cursorProbe(
       ctx.write(move)
       const final = await ctx.queryCursorPosition()
       if (!final) {
-        return inconclusive(origin, setupPosition, null, "query", "no-response", "No cursor reply after movement")
+        return inconclusive(origin, setupPosition, null, "query_reply", "no-response", "No cursor reply after movement")
       }
       const response = JSON.stringify({ origin, setup: setupPosition, final })
       const pass = final.row === expected.row + 1 && final.col === expected.col + 1
@@ -771,9 +811,10 @@ export function cursorProbe(
         ...(pass
           ? {}
           : { note: `Cursor measured ${final.row};${final.col}, expected ${expected.row + 1};${expected.col + 1}` }),
-        observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+        observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
         assertions: [
           {
+            assertionType: "query_reply" as const,
             kind: pass ? "positive" : "negative",
             expected: `cursor row=${expected.row + 1}, col=${expected.col + 1} after ${JSON.stringify(move)}`,
             observed: response,
@@ -782,7 +823,7 @@ export function cursorProbe(
       }
     },
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -793,13 +834,13 @@ export function cursorProbe(
 export function decrpmModeProbe(
   id: string,
   modeNum: number,
-  termlessFn: ((ctx: TermlessContext) => ProbeResult) | null,
+  termlessFn: ((ctx: LibProbeSource) => ProbeCallbackResult) | null,
 ): ProbeDefinition {
   return {
     id,
     termWrites: "query",
-    termObservationEvidence: "query",
-    termless: termlessFn,
+    termAssertionType: "query_reply",
+    lib: termlessFn,
     async term(ctx) {
       return decrpmResult(await queryDecrpm(ctx, modeNum), modeNum)
     },
@@ -812,7 +853,7 @@ export function decrpmModeProbe(
  * The adapter's getMode value rides along as context only, never as evidence (libvterm hard-codes it; wezterm
  * derives part of it from a byte scan). The branch keys on the observed reply, never on an engine name.
  */
-export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: TermlessContext) => ProbeResult {
+export function headlessDecrpmArm(modeNum: number, modeName?: string): (ctx: LibProbeSource) => ProbeCallbackResult {
   return (ctx) => {
     ctx.feed(`\x1b[?${modeNum}h`)
     // Read the adapter's mode view before the query. vt100 and vt220 used to run `CSI ? 1 $ p` as a DECCKM
@@ -853,17 +894,12 @@ export function decrpmReading(ps: DecrpmPs): string {
  * Ps 1, 2 and 3 grade supported; Ps 4 grades unsupported, because the terminal says it knows the mode and
  * that the mode cannot be set (xterm.js answers exactly that for 1005); Ps 0 and no reply are inconclusive.
  */
-export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeResult {
+export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeCallbackResult {
   if (ps === null) {
     return {
       pass: false,
       note: "No DECRPM response",
-      observation: {
-        outcome: "inconclusive",
-        reason: "no-response",
-        evidence: "query",
-        note: "No DECRPM response",
-      },
+      tests: [{ id: "criterion", status: "test-failure", reason: "No DECRPM response" }],
     }
   }
   const reading = decrpmReading(ps)
@@ -875,7 +911,7 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeResult 
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note: `DECRPM mode ${modeNum}: not recognized; mode behavior unmeasured`,
       },
     }
@@ -886,9 +922,10 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeResult 
       pass: false,
       note,
       response: reading,
-      observation: { outcome: "unsupported", evidence: "query", note },
+      observation: { outcome: "unsupported", assertionType: "query_reply", note },
       assertions: [
         {
+          assertionType: "query_reply" as const,
           kind: "negative",
           expected: `DECRPM mode ${modeNum} can be set`,
           observed: reading,
@@ -900,9 +937,10 @@ export function decrpmResult(ps: DecrpmPs | null, modeNum: number): ProbeResult 
     pass: true,
     note: `DECRPM mode ${modeNum}: ${reading}`,
     response: reading,
-    observation: { outcome: "supported", evidence: "query" },
+    observation: { outcome: "supported", assertionType: "query_reply" },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: "positive",
         expected: `DECRPM mode ${modeNum} recognized (set or reset)`,
         observed: reading,
@@ -921,17 +959,17 @@ export function isBlank(char: string): boolean {
  */
 export function probe(
   id: string,
-  termless: ((ctx: TermlessContext) => ProbeResult) | null,
-  term: ((ctx: TermContext) => Promise<ProbeResult>) | null,
-  termObservationEvidence?: ObservationEvidence,
+  lib: ((ctx: LibProbeSource) => ProbeCallbackResult) | null,
+  term: ((ctx: TermProbeSource) => Promise<ProbeCallbackResult>) | null,
+  termAssertionType?: AssertionType | null,
 ): ProbeDefinition {
-  return { id, termless, term, ...(termObservationEvidence && { termObservationEvidence }) }
+  return { id, lib, term, ...(termAssertionType !== undefined ? { termAssertionType } : {}) }
 }
 
 /** Feature support is independent of whether an observer can inspect link metadata. */
 export function readHyperlinkMetadata(
   available: boolean,
-  readLink: TermlessContext["getHyperlinkAt"],
+  readLink: LibProbeSource["getHyperlinkAt"],
   row: number,
   col: number,
   backendName: string,
@@ -978,15 +1016,15 @@ export function sentinelNegativeResult(
   raw: string,
   sentinel: { atMs: number; graceMs: number } | undefined,
   expected: string,
-): ProbeResult | null {
+): ProbeCallbackResult | null {
   const answer = sentinelAnswer(raw)
   if (!sentinel || answer === null || answer.start > 0 || raw.slice(answer.end).trim() !== "") return null
   const observed = `DA1 answered at +${String(sentinel.atMs)}ms; no reply through the ${String(sentinel.graceMs)} ms window`
   return {
     pass: false,
     response: raw,
-    observation: { outcome: "unsupported", evidence: "query", note: "negative by sentinel" },
-    assertions: [{ kind: "negative", expected, observed }],
+    observation: { outcome: "unsupported", assertionType: "query_reply", note: "negative by sentinel" },
+    assertions: [{ assertionType: "query_reply" as const, kind: "negative", expected, observed }],
   }
 }
 
@@ -997,7 +1035,7 @@ export function sentinelNegativeResult(
  * exactly as live grades it. Every other outcome returns null and the probe keeps its own capture
  * reading, so an engine off the proven list is unchanged.
  */
-export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeResult | null {
+export function sentinelSilenceResult(outcome: TerminalQueryOutcome, expected: string): ProbeCallbackResult | null {
   if (outcome.reason !== "sentinel") return null
   return sentinelNegativeResult(outcome.raw, outcome.sentinel, expected)
 }
@@ -1073,26 +1111,32 @@ export function sentinelGraceMs(
 export function initializeRunDraft(input: {
   runId: string
   sourceRevision: string
-  manifest: ProbeSuiteManifest
-  intendedContext: RunDraft["intendedContext"]
+  manifest: ProbeSuiteManifest & { schemaVersion: 4 }
+  source: RunDraft["source"]
+  intendedSubject: RunDraft["intendedSubject"]
 }): RunDraft {
+  if (input.manifest.schemaVersion !== 4) {
+    throw new Error("Current run writer requires a schemaVersion 4 suite manifest")
+  }
+  assertLiveSource(input.source)
   const ids = input.manifest.catalogIds
   if (!ids || ids.length === 0 || new Set(ids).size !== ids.length) {
     throw new Error(`Suite ${input.manifest.probeHash} requires a nonempty unique frozen catalogIds set`)
   }
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
+    source: { kind: input.source.kind },
     runId: input.runId,
     suiteId: input.manifest.probeHash,
     probeHash: input.manifest.probeHash,
     sourceRevision: input.sourceRevision,
-    intendedContext: { ...input.intendedContext },
+    intendedSubject: { ...input.intendedSubject },
     results: ids.map((featureId) => ({
       featureId,
       status: "test-todo",
       attempt: { scope: "none" },
-      checks: [],
-      reason: "Required capability test has not started",
+      tests: [],
+      reason: "Required probe test has not started",
     })),
     rawReplies: {},
     assertions: [],
@@ -1100,42 +1144,44 @@ export function initializeRunDraft(input: {
   }
 }
 
-/** Fold only the checks still required by the frozen probe's explicitly selected criterion branch. */
-export function finalizeCapabilityResult(input: Omit<CapabilityResult, "status">): CapabilityResult {
-  const checks = input.checks
-  const failed = checks.find((check) => check.status === "test-failure")
-  const pending = checks.find((check) => check.status === "test-todo")
-  const impossible = checks.find((check) => check.status === "untestable")
-  let status: CapabilityResult["status"]
+/** Fold only the tests still required by the frozen probe's explicitly selected criterion branch. */
+export function finalizeProbeResult(input: Omit<ProbeResult, "status">): ProbeResult {
+  const tests = input.tests
+  const failed = tests.find((test) => test.status === "test-failure")
+  const pending = tests.find((test) => test.status === "test-todo")
+  const impossible = tests.find((test) => test.status === "untestable")
+  let status: ProbeResult["status"]
   let reason = input.reason
   if (failed) {
     status = "test-failure"
-    reason ??= failed.reason ?? "Required check failed after its attempt"
-  } else if (pending || checks.length === 0) {
+    reason ??= failed.reason ?? "Required test failed after its attempt"
+  } else if (pending || tests.length === 0) {
     status = "test-todo"
     reason ??= pending?.reason ?? "Required capability implementation has not run"
   } else if (impossible) {
     status = impossible.reviewRef ? "untestable" : "test-todo"
     reason ??= impossible.reason ?? "Context-impossibility review is required"
   } else {
-    status = checks.some((check) => check.status === "unsupported") ? "unsupported" : "supported"
+    status = tests.some((test) => test.status === "unsupported") ? "unsupported" : "supported"
   }
   return { ...input, status, ...(reason === undefined ? {} : { reason }) }
 }
 
 /** Seal only measured/enriched identity; pending required review keeps the same draft open. */
 export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString()): CurrentProbeRun {
-  if (!draft.target || !draft.identity || !draft.measuredAt || !draft.origin) {
+  assertLiveSource(draft.source)
+  if (draft.schemaVersion !== 4) throw new Error("Current run writer requires schemaVersion 4")
+  if (!draft.subject || !draft.identity || !draft.measuredAt || !draft.origin) {
     throw new Error(`Run ${draft.runId} has no complete measured identity to seal; retain its private draft`)
   }
   if (
-    draft.results.some((result) => result.checks.some((check) => check.id === "review" && check.status === "test-todo"))
+    draft.results.some((result) => result.tests.some((test) => test.id === "review" && test.status === "test-todo"))
   ) {
     throw new Error(`Run ${draft.runId} has a required review pending; retain its unsealed capture`)
   }
   return {
     ...draft,
-    target: draft.target,
+    subject: draft.subject,
     identity: draft.identity,
     measuredAt: draft.measuredAt,
     origin: draft.origin,
@@ -1143,18 +1189,33 @@ export function sealRunDraft(draft: RunDraft, sealedAt = new Date().toISOString(
   }
 }
 
+function assertLiveSource(source: RunDraft["source"]): void {
+  const kind = (source as { kind?: unknown } | undefined)?.kind
+  if (kind === "trace") throw new Error("trace probe source has no implementation at this source; see recorder #30932")
+  if (kind !== "live") throw new Error("Current run writer requires an explicit live probe source")
+}
+
 /** Execute the declared callback's proposition once; readers consume this recorded result. */
-export function recordExecutedCapability(input: {
+export function recordExecutedProbe(input: {
   featureId: string
-  attempt: Exclude<CapabilityAttempt, { scope: "none" }>
+  attempt: Exclude<ProbeAttempt, { scope: "none" }>
   observation?: Observation
   diagnostic?: UngradedDiagnostic
   coverage?: NotTestedCoverage
+  rawReplyRef?: string
   assertions: readonly ProbeAssertion[]
-  checks?: ProbeCheckResult[]
+  tests?: ProbeTestInput[]
   criterionBranch?: string
-}): CapabilityResult {
+}): ProbeResult {
   const { featureId, attempt, observation, diagnostic, coverage } = input
+  if (!observation && !coverage && input.tests && !diagnostic) {
+    if (
+      input.tests.length === 0 ||
+      input.tests.some((test) => !["test-todo", "test-failure"].includes(test.status) || !test.reason?.trim())
+    ) {
+      throw new Error(`Execution-only callback ${featureId} requires nonempty TODO/FAILURE tests with reasons`)
+    }
+  }
   const assertionRefs = input.assertions.flatMap((entry, index) => (entry.featureId === featureId ? [index] : []))
   const missingCapture = diagnostic?.kind === "collector-error" && diagnostic.name === "FrameUnavailable"
   const status = missingCapture
@@ -1163,40 +1224,40 @@ export function recordExecutedCapability(input: {
       ? "test-failure"
       : observation?.outcome === "supported" || observation?.outcome === "unsupported"
         ? observation.outcome
-        : coverage || observation?.evidence === "none" || observation?.evidence === "consumed"
+        : coverage
           ? "test-todo"
           : "test-failure"
   const diagnosticReason = diagnostic?.kind === "collector-error" ? diagnostic.message : diagnostic?.note
   const reason = diagnosticReason ?? observation?.note ?? coverage?.noObservable ?? observation?.reason
-  const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef
-  return finalizeCapabilityResult({
+  const rawReplyRef = observation?.rawReplyRef ?? coverage?.rawReplyRef ?? input.rawReplyRef
+  return finalizeProbeResult({
     featureId,
     attempt,
-    checks:
-      input.checks && !diagnostic && observation?.outcome !== "error"
-        ? input.checks.map((check) => {
-            if (!check.id || !CAPABILITY_STATUSES.includes(check.status)) {
-              throw new Error(`Invalid callback check for ${featureId}`)
+    tests:
+      input.tests && !diagnostic && observation?.outcome !== "error"
+        ? input.tests.map((test) => {
+            if (!test.id || !PROBE_STATUSES.includes(test.status)) {
+              throw new Error(`Invalid callback test for ${featureId}`)
             }
             const refs =
-              check.assertionRefs === undefined
-                ? check.status === "test-todo"
+              test.assertionRefs === undefined
+                ? test.status === "test-todo"
                   ? []
                   : assertionRefs
-                : check.assertionRefs.map((index) => {
+                : test.assertionRefs.map((index) => {
                     const globalIndex = assertionRefs[index]
                     if (globalIndex === undefined) {
-                      throw new Error(`Callback check ${featureId}/${check.id} names an absent assertion`)
+                      throw new Error(`Callback test ${featureId}/${test.id} names an absent assertion`)
                     }
                     return globalIndex
                   })
             return {
-              id: check.id,
-              status: check.status,
-              attempt: check.status === "test-todo" ? { scope: "none" } : attempt,
+              id: test.id,
+              status: test.status,
+              attempt: test.status === "test-todo" ? { scope: "none" } : attempt,
               assertionRefs: refs,
               ...(rawReplyRef && { rawReplyRef }),
-              ...(check.reason && { reason: check.reason }),
+              ...(test.reason && { reason: test.reason }),
             }
           })
         : [
@@ -1210,7 +1271,7 @@ export function recordExecutedCapability(input: {
             },
           ],
     ...(input.criterionBranch && { criterionBranch: input.criterionBranch }),
-    ...(observation?.evidence && { evidence: observation.evidence }),
+    ...(observation?.assertionType && { assertionType: observation.assertionType }),
     ...(rawReplyRef && { rawReplyRef }),
     ...(observation?.frames && { frames: observation.frames }),
     ...(observation?.screenshotRef && { screenshotRef: observation.screenshotRef }),
@@ -1232,12 +1293,12 @@ export function recordCollectionFailure(
   const attempt = { scope: "collection" as const, startedAt, diagnosticRef }
   draft.results = draft.results.map((result) =>
     result.status === "test-todo" && delegated.has(result.featureId)
-      ? finalizeCapabilityResult({
+      ? finalizeProbeResult({
           ...result,
           attempt,
           reason: diagnostic,
-          checks: [
-            ...result.checks.filter((check) => check.id !== "collection"),
+          tests: [
+            ...result.tests.filter((test) => test.id !== "collection"),
             { id: "collection", status: "test-failure", attempt, reason: diagnostic },
           ],
         })

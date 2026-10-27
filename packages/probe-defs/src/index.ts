@@ -1,9 +1,12 @@
 export type {
   ProbeDefinition,
-  ProbeResult,
+  ProbeCallbackResult,
+  MeasuredProbeCallbackResult,
+  ExecutionOnlyProbeCallbackResult,
+  ProbeSourceKind,
   NoSemanticObservable,
-  TermlessContext,
-  TermContext,
+  LibProbeSource,
+  TermProbeSource,
   TerminalQueryOutcome,
   ClipboardFixture,
   InputFixture,
@@ -14,18 +17,11 @@ export type {
   CaptureRectangle,
   CaptureRequest,
 } from "./types.ts"
-export {
-  OBSERVATION_OUTCOMES,
-  OBSERVATION_REASONS,
-  OBSERVATION_EVIDENCE,
-  NON_MEASURING_EVIDENCE,
-  frameDigests,
-  isNonMeasuringEvidence,
-} from "./types.ts"
+export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, frameDigests } from "./types.ts"
 export type {
   ObservationOutcome,
   ObservationReason,
-  ObservationEvidence,
+  AssertionType,
   Observation,
   ConsoleBufferOwner,
   ObservationFrame,
@@ -33,7 +29,7 @@ export type {
   TextQualification,
   TextQualificationShape,
   TextQualificationSpec,
-  ProbeTarget,
+  ProbeSubject,
   ProbeSuiteManifest,
   RunOrigin,
   AppLaunchReceipt,
@@ -86,7 +82,7 @@ export {
   type CellRegion,
   type PixelGeometrySource,
   type PixelGeometry,
-  type PixelGeometryContext,
+  type PixelGeometryQuerySource,
   type PixelGeometryRefusal,
   type RegionCapture,
   type RegionRead,
@@ -166,20 +162,20 @@ export type { AppObservableSplit, AppUnobservableRow } from "./app-unobservable.
 
 export { TEXT_QUALIFICATION_SPEC, TEXT_QUALIFICATION_SHAPES, textQualificationFixtures } from "./text-qualification.ts"
 
-export { CAPABILITY_STATUSES } from "./types.ts"
+export { PROBE_STATUSES } from "./types.ts"
 export type {
-  CapabilityStatus,
-  CapabilityAttempt,
-  CapabilityResult,
-  CheckResult,
-  ProbeCheckResult,
+  ProbeStatus,
+  ProbeAttempt,
+  ProbeResult,
+  ProbeTestResult,
+  ProbeTestInput,
   RunDraft,
   CurrentProbeRun,
   CaptureDecision,
   HistoricalInterpretation,
 } from "./types.ts"
-export { initializeRunDraft, finalizeCapabilityResult, sealRunDraft } from "./helpers.ts"
+export { initializeRunDraft, finalizeProbeResult, sealRunDraft } from "./helpers.ts"
 
-export { recordExecutedCapability, recordCollectionFailure } from "./helpers.ts"
+export { recordExecutedProbe, recordCollectionFailure } from "./helpers.ts"
 
 export { assessTextQualification, type TextQualificationAssessment } from "./text-qualification.ts"

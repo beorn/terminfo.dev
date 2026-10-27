@@ -6,7 +6,7 @@
  */
 import { expect, test } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
 const fixtures = [
   { id: "modes.alt-screen.exit", rows: 3, cols: 3, failedWrite: 2, restore: "\x1b[?1049l" },
@@ -27,12 +27,13 @@ function app(
   failWrite?: number,
   failQuery = false,
   cursorReplies: Array<{ row: number; col: number }> = [{ row: 5, col: 10 }],
-): TermContext {
+): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in mode fixture`)
   }
   let writes = 0
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -70,11 +71,10 @@ test("direct mode fixtures decline invalid geometry and classify only measured v
       const events: string[] = []
       const result = await definition.term(app(measuredRows, measuredCols, events))
       expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
-      expect(result.observation, id).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-      })
+      expect(result.observation, id).toBeUndefined()
+      expect(result.tests, id).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      ])
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
     const events: string[] = []
@@ -92,13 +92,13 @@ test("direct mode fixtures decline invalid geometry and classify only measured v
     if (id === "modes.altscreen-1048") {
       expect(events, id).toEqual(["\x1b[5;10H", "CPR", "\x1b[?1048h", "\x1b[15;20H", "CPR", "\x1b[?1048l", "CPR"])
       expect(result.pass, id).toBe(true)
-      expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     } else {
       expect(result.pass, id).toBe(false)
       expect(result.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
       })
     }
   }
@@ -149,11 +149,8 @@ test.each(stateFixtures)(
     const result = await definition.term(app(1, 1, validEvents))
     expect(validEvents).toEqual([enter, "CPR", restore])
     expect(result.pass).toBe(false)
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "consumed",
-    })
+    expect(result.observation).toBeUndefined()
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
     expect(result.assertions).toBeUndefined()
   },
 )

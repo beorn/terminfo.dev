@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from "vue"
 import { withBase } from "vitepress"
 import type { ObservationReason } from "@terminfo/probe-defs"
-import type { PublicCapabilityResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
+import type { PublicProbeResult, PublicVersion, TextQualificationDocument } from "../../data/public-results"
 import {
   describeTracePanes,
   REASON_EXPLANATIONS,
@@ -30,9 +30,9 @@ const props = withDefaults(
     featureId: string
     featureName: string
     probeGuidance?: string
-    targetName: string
+    subjectName: string
     version?: PublicVersion
-    cell?: PublicCapabilityResult
+    cell?: PublicProbeResult
     display?: "compact" | "text"
   }>(),
   { display: "compact" },
@@ -64,18 +64,14 @@ const dialogTitleId = `${id}-title`
 
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
-// Pages select current runs only ([id].paths.ts), so a row's status is always the sealed v3 status.
+// Pages select current runs only ([id].paths.ts), so a row's status is always the sealed status.
 // The historical table is not in the client payload; it had no reachable reader and is gone with it.
 // The rule itself is evidence-status.ts, where it is testable; only a stored TEST TODO on an
 // environment position becomes the manual-by-design words (@cto 98cd142b D1).
 const status = computed(() => evidenceStatus(props.featureId, currentResult.value?.status))
 const shortLabel = computed(() => status.value.text)
 const methodLabel = computed(() =>
-  props.cell?.evidence === "query"
-    ? "Terminal query"
-    : props.cell?.evidence === "none"
-      ? "Not measured"
-      : (props.cell?.evidence ?? ""),
+  props.cell?.assertionType === "query_reply" ? "Terminal query" : (props.cell?.assertionType ?? ""),
 )
 const selectionExplanation = computed(() => {
   if (!props.version) return "No reviewed current result is available for this context."
@@ -122,7 +118,7 @@ const tracePaneCopy = computed(() => {
   return describeTracePanes(cellTrace.value, {
     sequence: featureMeta?.sequence,
     probeGuidance: props.probeGuidance ?? featureMeta?.probe,
-    targetKind: props.version?.target.kind,
+    subjectKind: props.version?.subject.kind,
     hasReferenceImage: Boolean(referenceImageUrl.value || expectedIllustration.value),
   })
 })
@@ -211,7 +207,7 @@ const actionLabel = computed(() => {
 })
 const accessibleName = computed(
   () =>
-    `${props.featureName} in ${props.targetName}${props.version ? ` ${props.version.target.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
+    `${props.featureName} in ${props.subjectName}${props.version ? ` ${props.version.subject.version}` : ""}: ${status.value.text}. ${actionLabel.value}`,
 )
 const rawReplyDisplay = computed(() => (rawReply.value === undefined ? "" : JSON.stringify(rawReply.value)))
 const evidenceIdentity = computed(() => {
@@ -219,10 +215,10 @@ const evidenceIdentity = computed(() => {
     props.featureId,
     props.version?.runId,
     props.version?.sha256,
-    props.version?.target.version,
+    props.version?.subject.version,
     currentResult.value?.status,
     props.cell?.reason,
-    props.cell?.evidence,
+    props.cell?.assertionType,
     presentation.value,
     props.version?.trace,
   ])
@@ -401,7 +397,7 @@ async function loadEvidence(): Promise<void> {
     // Catalog guidance never substitutes for the question sent in a recorded run.
     const raw = document.record.rawReply
     let queries: Array<{ sequence: string; raw?: string }> = []
-    if (cell.evidence === "query" && typeof raw === "string" && /^\s*\{\s*"writes"\s*:/.test(raw)) {
+    if (cell.assertionType === "query_reply" && typeof raw === "string" && /^\s*\{\s*"writes"\s*:/.test(raw)) {
       const trace: unknown = JSON.parse(raw)
       if (
         !isRecord(trace) ||
@@ -600,8 +596,8 @@ onBeforeUnmount(() => {
         >
         <strong class="result-evidence__test-title">{{ featureName }}</strong>
         <span class="result-evidence__compact-context"
-          >{{ targetName
-          }}<template v-if="version"> · {{ version.target.version }} · {{ version.target.os }}</template></span
+          >{{ subjectName
+          }}<template v-if="version"> · {{ version.subject.version }} · {{ version.subject.os }}</template></span
         >
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
         <ResultSteps v-if="stepTable" :rows="stepTable.rows" />
@@ -723,9 +719,9 @@ onBeforeUnmount(() => {
             <p class="result-evidence__eyebrow">Result details</p>
             <h2 :id="dialogTitleId">{{ featureName }}</h2>
             <p class="result-evidence__context">
-              {{ targetName
+              {{ subjectName
               }}<template v-if="version">
-                · {{ version.target.version }} · {{ version.target.os || "OS not recorded" }}</template
+                · {{ version.subject.version }} · {{ version.subject.os || "OS not recorded" }}</template
               >
             </p>
           </div>
@@ -740,16 +736,17 @@ onBeforeUnmount(() => {
         <p v-if="plainResult" class="result-evidence__plain">{{ plainResult }}</p>
         <p
           v-if="
-            cell?.evidence === 'query' &&
+            cell?.assertionType === 'query_reply' &&
             (currentResult?.status === 'supported' || currentResult?.status === 'unsupported')
           "
         >
           This result is based on the query's recorded evidence, not every use of this feature.
         </p>
-        <p v-else-if="cell?.evidence === 'query'">This query did not establish a yes-or-no result for the feature.</p>
+        <p v-else-if="cell?.assertionType === 'query_reply'">
+          This query did not establish a yes-or-no result for the feature.
+        </p>
         <p v-if="cell?.reason">Reason: {{ readerSafeExplanation(cell.reason) }}</p>
         <p v-if="selectionExplanation">{{ selectionExplanation }}</p>
-        <p v-else-if="cell?.evidence === 'none'">This probe made no terminal measurement.</p>
         <p v-if="reasonExplanation">{{ readerSafeExplanation(reasonExplanation) }}</p>
 
         <h3>Evidence</h3>
@@ -830,7 +827,7 @@ onBeforeUnmount(() => {
               <figure class="result-evidence__image">
                 <img
                   :src="evidenceScreenshotUrl"
-                  :alt="`Original recorded image for ${featureName} in ${targetName}`"
+                  :alt="`Original recorded image for ${featureName} in ${subjectName}`"
                 />
                 <figcaption>Original recorded image · SHA-256 {{ evidenceScreenshot?.sha256 }}</figcaption>
               </figure>
@@ -848,11 +845,11 @@ onBeforeUnmount(() => {
               </template>
             </details>
 
-            <details v-if="cell.evidence === 'pixels' && probeGuidanceText">
+            <details v-if="cell.assertionType === 'pixels' && probeGuidanceText">
               <summary>Current probe guidance</summary>
               <p>{{ probeGuidanceText }}</p>
               <p>
-                Current catalog guidance, not a recorded assertion or proof. Parser checks do not establish visible
+                Current catalog guidance, not a recorded assertion or proof. Parser tests do not establish visible
                 styling.
               </p>
             </details>
@@ -864,23 +861,23 @@ onBeforeUnmount(() => {
           <dl class="result-evidence__metadata">
             <dt>Feature ID</dt>
             <dd>{{ featureId }}</dd>
-            <dt>Target</dt>
-            <dd>{{ version ? `${version.target.kind}:${version.target.id}` : "No reviewed current run" }}</dd>
+            <dt>Subject</dt>
+            <dd>{{ version ? `${version.subject.kind}:${version.subject.id}` : "No reviewed current run" }}</dd>
             <dt>Version</dt>
-            <dd>{{ version?.target.version ?? "Not recorded" }}</dd>
+            <dd>{{ version?.subject.version ?? "Not recorded" }}</dd>
             <dt>Operating system</dt>
             <dd>
-              {{ version?.target.os ?? "Not recorded"
-              }}<template v-if="version?.target.osVersion"> {{ version.target.osVersion }}</template>
+              {{ version?.subject.os ?? "Not recorded"
+              }}<template v-if="version?.subject.osVersion"> {{ version.subject.osVersion }}</template>
             </dd>
             <dt>Outer terminal</dt>
-            <dd>{{ version?.target.outerTerminal ?? "Not recorded" }}</dd>
+            <dd>{{ version?.subject.outerTerminal ?? "Not recorded" }}</dd>
             <dt>Multiplexer</dt>
-            <dd>{{ version?.target.mux ?? "Not recorded" }}</dd>
+            <dd>{{ version?.subject.mux ?? "Not recorded" }}</dd>
             <dt>Configuration</dt>
-            <dd>{{ version?.target.config ?? "Not recorded" }}</dd>
+            <dd>{{ version?.subject.config ?? "Not recorded" }}</dd>
             <dt>Permissions</dt>
-            <dd>{{ version?.target.permissions ?? "Not recorded" }}</dd>
+            <dd>{{ version?.subject.permissions ?? "Not recorded" }}</dd>
             <dt>Measured at</dt>
             <dd>{{ version?.measuredAt ?? "Not recorded" }}</dd>
             <dt>Run ID</dt>
@@ -888,7 +885,7 @@ onBeforeUnmount(() => {
             <dt>Run SHA-256</dt>
             <dd>{{ version?.sha256 ?? "Not recorded" }}</dd>
             <dt>Recorded method</dt>
-            <dd>{{ currentResult?.evidence ?? "Not recorded" }}</dd>
+            <dd>{{ currentResult?.assertionType ?? "Not recorded" }}</dd>
             <dt>Suite</dt>
             <dd>{{ version?.suiteId ?? "Not recorded" }} · {{ version?.suiteFreshness ?? "Not recorded" }}</dd>
             <dt>Source revision</dt>

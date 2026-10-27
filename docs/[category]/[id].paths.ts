@@ -48,7 +48,7 @@ export default {
           label: bmeta?.label ?? b.name,
           description: bmeta?.description ?? "",
           version: b.version,
-          type: b.type ?? "headless",
+          type: b.type ?? "lib",
           result,
           note,
         })
@@ -151,7 +151,7 @@ export default {
               name: b.name,
               label: data.meta[b.name]?.label ?? b.name,
               slug: terminalSlug(b.name, data.meta),
-              type: b.type ?? "headless",
+              type: b.type ?? "lib",
             })),
           ),
         },

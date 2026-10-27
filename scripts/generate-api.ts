@@ -2,7 +2,7 @@
  * Generate the terminfo.dev v3 JSON API.
  *
  * Outputs:
- *   api/v3/data.json              — sealed schema-3 results
+ *   api/v3/data.json              — current sealed results
  *   api/v3/evidence|runs|traces/  — exact-run documents and their artifacts
  *
  * `/api/v1` is frozen: its committed bytes under docs/public/api/v1/ are no
@@ -26,8 +26,8 @@ import {
 import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { compatibilityTargets, loadCurrentResults } from "../docs/data/current-results.ts"
-import { CAPABILITY_STATUSES } from "@terminfo/probe-defs"
+import { compatibilitySubjects, loadCurrentResults } from "../docs/data/current-results.ts"
+import { PROBE_STATUSES } from "@terminfo/probe-defs"
 import { parseJsonStrict } from "@terminfo/run-parser"
 import { loadFeatures } from "@terminfo/catalog"
 import { readVerifiedArtifact } from "../docs/data/selected-results.ts"
@@ -274,7 +274,7 @@ export function generateApi(
   const resultsDir = options.contentDir ?? contentDir
   const featuresJson = loadFeaturesJson()
   const { projection } = loadCurrentResults(resultsDir)
-  const published = publicResults(projection, compatibilityTargets(projection, resultsDir))
+  const published = publicResults(projection, compatibilitySubjects(projection, resultsDir))
   const runDocuments = new Map<string, Buffer>()
   const allFeatureIds = new Set(Object.keys(featuresJson))
 
@@ -294,7 +294,7 @@ export function generateApi(
     }
   }
 
-  // Only sealed schema-3 runs supply current results.
+  // Only current sealed runs supply current results.
   type CurrentVersion = (typeof published.projection.current)[string]
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
@@ -316,7 +316,7 @@ export function generateApi(
         .at(-1) ?? "",
     methodology: {
       revision: "2026-10-20-sealed-five-statuses",
-      statuses: CAPABILITY_STATUSES,
+      statuses: PROBE_STATUSES,
       score: "Supported / all frozen catalog positions; no exclusions.",
       completion:
         "A context is complete only with zero TEST TODO and TEST FAILURE. Absent required contexts remain incomplete.",
@@ -327,7 +327,7 @@ export function generateApi(
     catalogIds: [...allFeatureIds].sort(),
     currentRunCount: published.projection.currentRunCount,
     ...(published.projection.currentRunCount === 0 && {
-      message: "No current schema-3 runs; historical results remain available.",
+      message: "No current sealed runs; historical results remain available.",
     }),
     current: Object.fromEntries(
       Object.entries(published.projection.current).map(([key, run]) => [key, currentRef(run)]),

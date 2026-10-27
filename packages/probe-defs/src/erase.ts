@@ -1,4 +1,4 @@
-import type { ObservationFrame, ProbeDefinition, ProbeResult, TermContext } from "./types.ts"
+import type { ObservationFrame, ProbeDefinition, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 import { probe, parserStateResult, notTestedResult } from "./helpers.ts"
 
@@ -339,16 +339,17 @@ function frameDivergence(settled: ObservationFrame, bottom: ObservationFrame): s
  * prove history is observable, then grade whether ED3 removes it.
  * Never enable mouse tracking — that would steal the wheel into stdin.
  */
-async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
+async function scrollbackEraseApp(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
   if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
     return {
       pass: false,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-        note: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: "test-todo",
+          reason: `Erase fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+        },
+      ],
     }
   }
   const capture = ctx.capture
@@ -394,7 +395,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: restored.ref,
           note: `wheel-down did not return to the bottom frame: ${frameDivergence(restored, bottom)}`,
         },
@@ -419,12 +420,13 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
         response: JSON.stringify(observed),
         observation: {
           outcome: "unsupported",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: after.ref,
           frames,
         },
         assertions: [
           {
+            assertionType: "screenshot" as const,
             kind: "negative",
             expected: SCROLLBACK_ED3_EXPECTED,
             observed: JSON.stringify(observed),
@@ -439,12 +441,13 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
         response: JSON.stringify(observed),
         observation: {
           outcome: "supported",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: after.ref,
           frames,
         },
         assertions: [
           {
+            assertionType: "screenshot" as const,
             kind: "positive",
             expected: SCROLLBACK_ED3_EXPECTED,
             observed: JSON.stringify(observed),
@@ -459,7 +462,7 @@ async function scrollbackEraseApp(ctx: TermContext): Promise<ProbeResult> {
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "pixels",
+        assertionType: "screenshot",
         screenshotRef: after.ref,
         frames,
         note: "Post-ED3 wheel-up matched neither the history frame nor the post-ED3 bottom",

@@ -10,7 +10,7 @@
  */
 import { expect, test } from "vitest"
 import { modesProbes } from "./modes.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 type Rgb = { r: number; g: number; b: number }
 
@@ -210,7 +210,7 @@ function fakeScreen(options: ScreenOptions = {}) {
     },
     getMode: (mode: string) => (mode === "autoWrap" ? autoWrap : null),
     getScrollback: () => ({ viewportOffset: 0, totalLines: rows, screenLines: rows }),
-  } as unknown as TermlessContext
+  } as unknown as LibProbeSource
   return {
     context,
     feeds,
@@ -222,8 +222,8 @@ function fakeScreen(options: ScreenOptions = {}) {
 
 function headless(id: string) {
   const definition = modesProbes.find((item) => item.id === id)
-  if (!definition?.termless) throw new Error(`Missing headless callback for ${id}`)
-  return definition.termless
+  if (!definition?.lib) throw new Error(`Missing headless callback for ${id}`)
+  return definition.lib
 }
 
 const SGR = ["modes.xtpushsgr", "modes.xtpopsgr"] as const
@@ -235,7 +235,7 @@ test.each(ALL)("%s grades a working roundtrip supported from cells, never from D
   const screen = fakeScreen()
   const result = headless(id)(screen.context)
   expect(result.pass, id).toBe(true)
-  expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(result.assertions?.[0]?.kind, id).toBe("positive")
   expect(screen.feeds.join(""), id).not.toContain("\x1b[c")
   expect(screen.depth(), id).toBe(0)
@@ -254,7 +254,7 @@ test.each([
   const screen = fakeScreen(options)
   const result = headless(id)(screen.context)
   expect(result.pass, id).toBe(false)
-  expect(result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions?.[0]?.kind, id).toBe("negative")
   expect(screen.depth(), id).toBe(0)
   expect(screen.wrap(), id).toBe(true)
@@ -293,7 +293,7 @@ test.each([
   expect(result.observation, id).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
   expect(result.observation?.note, id).toContain(need)
   expect(result.assertions, id).toBeUndefined()
@@ -323,7 +323,7 @@ test.each([
   const screen = fakeScreen(options)
   const result = headless(MARGIN)(screen.context)
   expect(result.pass).toBe(outcome === "supported")
-  expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+  expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
   if (outcome === "unsupported") expect(result.observation?.note).toContain("shifted the whole row")
   expect(result.assertions?.[0]?.kind).toBe(outcome === "supported" ? "positive" : "negative")
   expect(JSON.parse(result.response ?? "{}")).toMatchObject({ seed: "ABCDEFGH", control: "AB CDEFG", target })

@@ -6,12 +6,13 @@
  */
 import { expect, test } from "vitest"
 import { textProbes } from "./text.ts"
-import type { ObservationFrame, TermContext } from "./types.ts"
+import type { ObservationFrame, TermProbeSource } from "./types.ts"
 
 function captureApp(rows = 24, cols = 80) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
-  const context: TermContext = {
+  const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -45,14 +46,14 @@ function find(id: string) {
 test("text.overwrite asks the terminal's pixel report before painting its overwrite fixture", async () => {
   const { context, writes, frames } = captureApp()
   const result = await find("text.overwrite")(context)
-  // The region verdict owns this row now: with no answer to CSI 16 t the cells cannot be mapped
-  // onto the owned window, so the probe refuses BY NAME and never paints the AB/AX fixture.
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "query",
-  })
-  expect(String(result.observation?.note)).toContain("CSI 16 t")
+  // Missing pixel-geometry replies are execution failures; the fixture still proves no paint/read.
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({
+      status: "test-failure",
+      reason: expect.stringContaining("CSI 16 t"),
+    }),
+  ])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])
@@ -62,5 +63,6 @@ test("text.cr never captures; it keeps the CR cursor-query decision", async () =
   const { context, frames } = captureApp()
   const result = await find("text.cr")(context)
   expect(frames).toEqual([])
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })

@@ -11,12 +11,12 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import { manifest } from "@termless/core"
 import { parseJsonStrict } from "@terminfo/run-parser"
-import { loadFeatures, loadTerminals, targetLabel, type FeatureCatalog } from "@terminfo/catalog"
-import { compatibilityTargets, loadCurrentResults } from "./current-results.ts"
+import { loadFeatures, loadTerminals, subjectLabel, type FeatureCatalog } from "@terminfo/catalog"
+import { compatibilitySubjects, loadCurrentResults } from "./current-results.ts"
 import { publicResults, type PublicProjection, type PublicCurrentResult } from "./public-results.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
 import { loadReleaseScope } from "./load-release-scope.ts"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import {
   aggregateCurrentResults,
   currentSupportedShare,
@@ -34,7 +34,7 @@ export interface BackendInfo {
   name: string
   version: string
   engine: string
-  type?: "app" | "headless" | "mux"
+  type?: "term" | "lib" | "mux"
   platforms?: string[]
 }
 
@@ -73,7 +73,7 @@ export interface ProbeData {
   /** category -> FeatureResult[] */
   categories: Record<string, FeatureResult[]>
   /** Current terminal id -> feature id -> exact sealed five-status value. */
-  results: Record<string, Record<string, CapabilityStatus>>
+  results: Record<string, Record<string, ProbeStatus>>
   /** backend name -> feature id -> published reason */
   notes: Record<string, Record<string, string>>
   /** Current scores use Supported/all positions, independently of completion. */
@@ -109,14 +109,14 @@ export interface ProbeData {
    * classification per cell, made once in the projection, so pages read the classified table rather
    * than walking the run's raw cells or holding a second classifier.
    */
-  releaseTable: Record<string, Readonly<Record<string, CapabilityStatus>>>
+  releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>>
   /** The two suite facts, and whether the live tree has moved past the release suite (one banner when it has). */
   suiteMove: { treeSuiteId: string; releaseSuiteId: string | null; treeMovedPastRelease: boolean }
 }
 
 interface CurrentStats {
   score: { supported: number; all: number }
-  counts: Record<CapabilityStatus, number>
+  counts: Record<ProbeStatus, number>
   complete: boolean
   pct: number | null
 }
@@ -124,7 +124,7 @@ interface CurrentStats {
 function loadFeatureDescriptions(): FeatureCatalog {
   // The feature catalog, through its one loader (@terminfo/catalog). The loader already refuses a
   // nameless entry and drops $-prefixed comment keys, so the old string-vs-object normalization and
-  // its per-field checks live in one place now.
+  // its per-field tests live in one place now.
   return loadFeatures(contentDir)
 }
 
@@ -185,8 +185,8 @@ export { data }
 export function loadFullProbes(): ProbeData {
   const categoryCatalog = loadCategories(contentDir)
   const { projection } = loadCurrentResults(contentDir)
-  const published = publicResults(projection, compatibilityTargets(projection, contentDir))
-  const byTarget = new Map(Object.entries(published.selectedByBackend))
+  const published = publicResults(projection, compatibilitySubjects(projection, contentDir))
+  const bySubject = new Map(Object.entries(published.selectedByBackend))
   const featureDescriptions = loadFeatureDescriptions()
   const features: FeatureResult[] = Object.entries(featureDescriptions)
     .filter(([id]) => !id.startsWith("$"))
@@ -202,10 +202,10 @@ export function loadFullProbes(): ProbeData {
   }
   // #30759 Slice A: the site renders the frozen suite only, so a historical-only target is
   // not a matrix row any more; it gets no metadata and no page.
-  for (const [key, { selected }] of byTarget) {
-    const id = selected.target.id
+  for (const [key, { selected }] of bySubject) {
+    const id = selected.subject.id
     if (key !== id) {
-      const label = targetLabel(catalog, id, selected.target.kind, meta[id]?.label)
+      const label = subjectLabel(catalog, id, selected.subject.kind, meta[id]?.label)
       meta[key] = { ...meta[id], label, slug: key }
     }
   }
@@ -214,13 +214,13 @@ export function loadFullProbes(): ProbeData {
   const results: ProbeData["results"] = {}
   const notes: ProbeData["notes"] = {}
   const stats: ProbeData["stats"] = {}
-  const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(byTarget)
-  for (const [key, { selected }] of byTarget) {
-    const { kind, os } = selected.target
+  const selectedByBackend: ProbeData["selectedByBackend"] = Object.fromEntries(bySubject)
+  for (const [key, { selected }] of bySubject) {
+    const { kind, os } = selected.subject
     if (results[key]) throw new Error(`Ambiguous published terminal ${key}: multiple selected targets`)
     backends.push({
       name: key,
-      version: selected.target.version,
+      version: selected.subject.version,
       engine: "",
       type: kind,
       ...(os && { platforms: [os] }),
@@ -253,7 +253,7 @@ export function loadFullProbes(): ProbeData {
   const releaseBars: Record<string, CurrentAggregate> = {}
   const releaseShares: Record<string, string> = {}
   const releaseStale: Record<string, string | null> = {}
-  for (const [key, entry] of byTarget) {
+  for (const [key, entry] of bySubject) {
     const { selected } = entry
     // The sealed run's complete frozen catalog is the current score basis.
     const original = projection.current[entry.contextKey]
@@ -263,7 +263,7 @@ export function loadFullProbes(): ProbeData {
     releaseShares[key] = currentSupportedShare(bar)
     releaseStale[key] = isStaleRelation(selected.suiteRelation) ? staleCaption(selected.measuredAt) : null
   }
-  const releaseTable: Record<string, Readonly<Record<string, CapabilityStatus>>> = {}
+  const releaseTable: Record<string, Readonly<Record<string, ProbeStatus>>> = {}
   for (const run of Object.values(published.projection.versions).flat()) {
     const rows = projection.table[run.runId]
     if (!rows) throw new Error(`The projection has no sealed status row for run ${run.runId}`)

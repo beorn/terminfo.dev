@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import { deviceProbes } from "./device.ts"
-import type { TermContext, TermlessContext, TerminalQueryOutcome } from "./types.ts"
+import { recordExecutedProbe } from "./helpers.ts"
+import type { TermProbeSource, LibProbeSource, TerminalQueryOutcome } from "./types.ts"
 
 const replies = [
   { id: "device.primary-da", query: "\x1b[c", valid: "\x1b[?62;52;c", partial: "\x1b[?62;52;" },
@@ -18,16 +19,16 @@ const replies = [
   { id: "device.xtversion", query: "\x1b[>0q", valid: "\x1bP>|kitty(0.49.1)\x1b\\", partial: "\x1bP>|kitty(0.49.1)" },
 ] as const
 
-function headless(raw: string): TermlessContext {
+function headless(raw: string): LibProbeSource {
   // Device query callbacks use only feedCapture; missing operations fail loudly if newly used.
-  return { feedCapture: () => raw } as unknown as TermlessContext
+  return { feedCapture: () => raw } as unknown as LibProbeSource
 }
 
 function terminal(
   raw: string,
   reason: TerminalQueryOutcome["reason"] = "reply",
   sentinel?: { atMs: number; graceMs: number },
-): TermContext {
+): TermProbeSource {
   const reply = (sequence: string, pattern: RegExp): Promise<TerminalQueryOutcome> => {
     const item = replies.find((candidate) => candidate.query === sequence)
     if (!item) throw new Error(`unexpected query ${JSON.stringify(sequence)}`)
@@ -45,13 +46,13 @@ function terminal(
   return {
     queryOutcome: reply,
     queryWithSentinelOutcome: reply,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
 }
 
 function callback(id: string) {
   const definition = deviceProbes.find((item) => item.id === id)
-  if (!definition?.termless || !definition.term) throw new Error(`missing device callback ${id}`)
-  return { headless: definition.termless, terminal: definition.term }
+  if (!definition?.lib || !definition.term) throw new Error(`missing device callback ${id}`)
+  return { headless: definition.lib, terminal: definition.term }
 }
 
 /**
@@ -68,17 +69,17 @@ test.each([false, true])("title push restores its checkpoint when CPR rejects=%s
       if (rejectQuery) throw new Error("injected title CPR failure")
       return { row: 1, col: 1 }
     },
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
 
   const result = callback("device.xtwinops-22").terminal(context)
   if (rejectQuery) {
     await expect(result).rejects.toThrow("injected title CPR failure")
   } else {
-    expect((await result).observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "consumed",
-    })
+    const callbackResult = await result
+    expect(callbackResult.observation).toBeUndefined()
+    expect(callbackResult.tests).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
   }
   expect(writes.filter((bytes) => bytes === "\x1b[22;0t")).toHaveLength(1)
   expect(writes.filter((bytes) => bytes === "\x1b[23;0t")).toHaveLength(1)
@@ -97,7 +98,7 @@ function terminalScript(
     string,
     { raw: string; reason: TerminalQueryOutcome["reason"]; sentinel?: { atMs: number; graceMs: number } }
   >,
-): { ctx: TermContext; queries: string[] } {
+): { ctx: TermProbeSource; queries: string[] } {
   const queries: string[] = []
   const ctx = {
     queryWithSentinelOutcome: (sequence: string, pattern: RegExp) => {
@@ -113,7 +114,7 @@ function terminalScript(
         ...(item.sentinel && { sentinel: item.sentinel }),
       })
     },
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { ctx, queries }
 }
 
@@ -128,7 +129,7 @@ describe("device query observations", () => {
     test(`${item.id}: complete frame supports; unrelated and partial replies do not`, async () => {
       const probe = callback(item.id)
       for (const result of [probe.headless(headless(item.valid)), await probe.terminal(terminal(item.valid))]) {
-        expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+        expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
         expect(result.response).toBe(item.valid)
         expect(result.assertions).toMatchObject([{ kind: "positive", observed: item.valid }])
       }
@@ -159,7 +160,7 @@ describe("device query observations", () => {
       expect(late.response, item.id).toBe(lateRaw)
       expect(late.observation, item.id).toMatchObject({
         outcome: "supported",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "reply after sentinel",
       })
       expect(late.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
@@ -167,7 +168,7 @@ describe("device query observations", () => {
       const earlyRaw = item.valid + da1
       const early = await callback(item.id).terminal(terminal(earlyRaw))
       expect(early.response, item.id).toBe(earlyRaw)
-      expect(early.observation, item.id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(early.observation, item.id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(early.observation?.note, item.id).toBeUndefined()
       expect(early.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
     }
@@ -180,7 +181,7 @@ describe("device query observations", () => {
       expect(result.response, item.id).toBe(da1)
       expect(result.observation, item.id).toMatchObject({
         outcome: "unsupported",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "negative by sentinel",
       })
       expect(result.assertions, item.id).toMatchObject([
@@ -214,7 +215,7 @@ describe("device query observations", () => {
       expect(result.observation, item.id).toStrictEqual({
         outcome: "inconclusive",
         reason: "no-response",
-        evidence: "query",
+        assertionType: "query_reply",
       })
       expect(result.assertions, item.id).toBeUndefined()
     }
@@ -226,7 +227,7 @@ describe("device query observations", () => {
       const raw = da1 + item.valid + da1
       const result = await callback(item.id).terminal(terminal(raw))
       expect(result.response, item.id).toBe(raw)
-      expect(result.observation, item.id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation, item.id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.observation?.note, item.id).toBeUndefined()
       expect(result.assertions, item.id).toMatchObject([{ kind: "positive", observed: item.valid }])
     }
@@ -245,7 +246,7 @@ describe("device query observations", () => {
       expect(late.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "Requested setting or name refused; other settings or names unmeasured; reply after sentinel",
       })
       expect(late.assertions, id).toBeUndefined()
@@ -259,7 +260,7 @@ describe("device query observations", () => {
       expect(early.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
       })
       expect(early.assertions, id).toBeUndefined()
     }
@@ -274,13 +275,13 @@ describe("device query observations", () => {
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
       })
       expect(result.assertions).toBeUndefined()
     }
     for (const result of [probe.headless(headless(valid + refusal)), await probe.terminal(terminal(valid + refusal))]) {
       expect(result.response).toBe(valid + refusal)
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: valid }])
     }
   })
@@ -288,11 +289,16 @@ describe("device query observations", () => {
   test("silence is inconclusive and a TTY deadline remains a timeout", async () => {
     for (const item of replies) {
       const probe = callback(item.id)
-      expect(probe.headless(headless("")).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
-      expect((await probe.terminal(terminal("", "timeout"))).observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "timeout",
-      })
+      const missing = probe.headless(headless(""))
+      expect(missing.observation).toBeUndefined()
+      expect(missing.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      ])
+      const timedOut = await probe.terminal(terminal("", "timeout"))
+      expect(timedOut.observation).toBeUndefined()
+      expect(timedOut.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      ])
     }
   })
 
@@ -310,8 +316,8 @@ describe("device query observations", () => {
       queryWithSentinelOutcome: () => {
         throw new Error("DA1 must not use a DA1 sentinel")
       },
-    } as unknown as TermContext)
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    } as unknown as TermProbeSource)
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.response).toBe(raw)
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: "\x1b[?1;2c" }])
   })
@@ -321,7 +327,7 @@ describe("device query observations", () => {
     expect(callback("device.decrqss").headless(headless(sgrRefusal)).observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
       note: "Requested setting or name refused; other settings or names unmeasured",
     })
     for (const [id, frame] of [
@@ -333,7 +339,7 @@ describe("device query observations", () => {
         expect(result.observation).toMatchObject({
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "query",
+          assertionType: "query_reply",
           note: "Requested setting or name refused; other settings or names unmeasured",
         })
         expect(result.assertions).toBeUndefined()
@@ -353,7 +359,7 @@ describe("device query observations", () => {
     })
     const result = await callback("device.decrqss").terminal(script.ctx)
     expect(script.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: DECRQSS_DECSTBM_VALID }])
   })
 
@@ -367,7 +373,7 @@ describe("device query observations", () => {
     expect(result.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(result.observation?.note).toMatch(/SGR/)
     expect(result.observation?.note).toMatch(/DECSTBM/)
@@ -388,10 +394,45 @@ describe("device query observations", () => {
     expect(result.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(result.observation?.note).not.toBe("negative by sentinel")
     expect(result.assertions).toBeUndefined()
+
+    // Unlike DA1-only, the empty second read retains no reply. The library collector keeps only
+    // this callback response, so the first SGR refusal cannot become a synthetic deciding reply.
+    const emptyScript = terminalScript({
+      [DECRQSS_SGR_QUERY]: { raw: DECRQSS_REFUSAL, reason: "reply" },
+      [DECRQSS_DECSTBM_QUERY]: { raw: "", reason: "timeout" },
+    })
+    const libraryQueries: string[] = []
+    const library = {
+      queryWithSentinelOutcome(sequence: string, pattern: RegExp): TerminalQueryOutcome {
+        libraryQueries.push(sequence)
+        const raw = sequence === DECRQSS_SGR_QUERY ? DECRQSS_REFUSAL : ""
+        return { match: pattern.exec(raw), reason: raw ? "reply" : "timeout", raw, rawBase64: btoa(raw) }
+      },
+    } as unknown as LibProbeSource
+    for (const empty of [
+      await callback("device.decrqss").terminal(emptyScript.ctx),
+      callback("device.decrqss").headless(library),
+    ]) {
+      expect(empty.response).toBe("")
+      expect(empty.observation).toBeUndefined()
+      expect(empty.assertions).toBeUndefined()
+      const recorded = recordExecutedProbe({
+        featureId: "device.decrqss",
+        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+        rawReplyRef: "device.decrqss",
+        assertions: [],
+        tests: empty.tests,
+      })
+      expect(recorded.status).toBe("test-failure")
+      expect(recorded.assertionType).toBeUndefined()
+      expect(recorded.reason).toBe("SGR refused; DECSTBM unanswered; DECRQSS facility still speaks")
+    }
+    expect(emptyScript.queries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
+    expect(libraryQueries).toEqual([DECRQSS_SGR_QUERY, DECRQSS_DECSTBM_QUERY])
   })
 
   test("SGR status 1 keeps today's grade and never asks DECSTBM", async () => {
@@ -400,7 +441,7 @@ describe("device query observations", () => {
     })
     const result = await callback("device.decrqss").terminal(script.ctx)
     expect(script.queries).toEqual([DECRQSS_SGR_QUERY])
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: DECRQSS_SGR_VALID }])
   })
 
@@ -416,7 +457,7 @@ describe("device query observations", () => {
     expect(script.queries).toEqual([DECRQSS_SGR_QUERY])
     expect(result.observation).toMatchObject({
       outcome: "unsupported",
-      evidence: "query",
+      assertionType: "query_reply",
       note: "negative by sentinel",
     })
   })
@@ -451,7 +492,15 @@ describe("device query observations", () => {
       const definition = deviceProbes.find((item) => item.id === "device.term-features")
       if (!definition?.term) throw new Error("missing TERM_FEATURES callback")
       const result = await definition.term(terminal(""))
-      expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+      expect(result.observation).toBeUndefined()
+      expect(
+        recordExecutedProbe({
+          featureId: definition.id,
+          attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+          assertions: [],
+          tests: result.tests,
+        }).status,
+      ).toBe("test-failure")
       expect(JSON.stringify(result)).not.toContain(process.env.TERM_FEATURES)
       expect(result.assertions).toBeUndefined()
     } finally {
@@ -478,9 +527,9 @@ describe("window-operation qualification", () => {
         raw: frame,
         rawBase64: Buffer.from(frame).toString("base64"),
       }),
-    } as unknown as TermContext
+    } as unknown as TermProbeSource
     for (const result of [probe.headless(headless(frame)), await probe.terminal(app)]) {
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
       expect(result.response).toBe(frame)
     }
@@ -492,9 +541,9 @@ describe("window-operation qualification", () => {
 
   test("device.xtwinops-20: a complete OSC L answer with the wrong payload is a measured negative", async () => {
     const icon = callback("device.xtwinops-20")
-    const headlessIcon = (frame: string): TermlessContext =>
-      ({ feed: () => undefined, feedCapture: () => frame }) as unknown as TermlessContext
-    const app = (frame: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermContext =>
+    const headlessIcon = (frame: string): LibProbeSource =>
+      ({ feed: () => undefined, feedCapture: () => frame }) as unknown as LibProbeSource
+    const app = (frame: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermProbeSource =>
       ({
         write: () => undefined,
         queryWithSentinelOutcome: (sequence: string, pattern: RegExp) =>
@@ -504,13 +553,13 @@ describe("window-operation qualification", () => {
             raw: frame,
             rawBase64: Buffer.from(frame).toString("base64"),
           }),
-      }) as unknown as TermContext
+      }) as unknown as TermProbeSource
     for (const frame of ["\x1b]L\x1b\\", "\x1b]Lother-icon\x07", "\x1b]Ltest-icon-plus\x1b\\"]) {
       const head = icon.headless(headlessIcon(frame))
-      expect(head.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(head.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
       expect(head.assertions).toMatchObject([{ kind: "negative", observed: frame }])
       const live = await icon.terminal(app(frame))
-      expect(live.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(live.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
       expect(live.assertions).toMatchObject([{ kind: "negative", observed: frame }])
     }
     // A frame with no terminator is still not a complete answer.
@@ -521,7 +570,7 @@ describe("window-operation qualification", () => {
     // The exact label stays a positive.
     expect(icon.headless(headlessIcon("\x1b]Ltest-icon\x1b\\")).observation).toMatchObject({
       outcome: "supported",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     // A complete OSC L frame after the DA1 sentinel is late output, not an answer.
     const late = "\x1b[?62;52;c\x1b]Lwrong\x1b\\"
@@ -551,7 +600,7 @@ describe("window-operation qualification", () => {
     const headlessIcon = {
       feed: () => undefined,
       feedCapture: () => "\x1b]Lother-icon\x07",
-    } as unknown as TermlessContext
+    } as unknown as LibProbeSource
     expect(icon.headless(headlessIcon).observation?.outcome).not.toBe("supported")
   })
 
@@ -571,9 +620,9 @@ describe("window-operation qualification", () => {
           if (title === undefined) throw new Error("Unexpected title read")
           return title
         },
-      } as unknown as TermlessContext
+      } as unknown as LibProbeSource
       const result = callback(id).headless(context)
-      expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+      expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
       expect(result.response).toBe(JSON.stringify({ original: titles[0], changed: titles[1], restored: titles[2] }))
       if (outcome === "inconclusive") {
         expect(result.observation?.reason).toBe("insufficient-evidence")
@@ -592,7 +641,7 @@ describe("window-operation qualification", () => {
  * @testonly none
  */
 describe("device contracts without prior coverage", () => {
-  const app = (raw: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermContext =>
+  const app = (raw: string, reason: TerminalQueryOutcome["reason"] = "reply"): TermProbeSource =>
     ({
       write: () => undefined,
       queryWithSentinelOutcome: async (_sequence: string, pattern: RegExp) =>
@@ -602,13 +651,13 @@ describe("device contracts without prior coverage", () => {
           raw,
           rawBase64: Buffer.from(raw).toString("base64"),
         }),
-    }) as unknown as TermContext
+    }) as unknown as TermProbeSource
 
   test("XTWINOPS 16 binds a complete cell-pixel frame in both collectors", async () => {
     const probe = callback("device.xtwinops-16")
     const frame = "\x1b[6;16;8t"
     for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
       expect(result.response).toBe(frame)
     }
@@ -627,7 +676,7 @@ describe("device contracts without prior coverage", () => {
     const probe = callback("device.xtreportcolors")
     const frame = "\x1b[0;1#Q"
     for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
     }
     expect(probe.headless(headless("\x1b[0;1#")).observation).toMatchObject({
@@ -644,14 +693,14 @@ describe("device contracts without prior coverage", () => {
     const probe = callback("device.xtgetxres")
     const frame = "\x1bP1+r7465726d4e616d65=787465726d\x1b\\"
     for (const result of [probe.headless(headless(frame)), await probe.terminal(app(frame))]) {
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
     }
     // The contract asks exactly one name, so a status-0 refusal is this probe's measured negative
     // (27914) — unlike the shared refusal branch, which stays inconclusive for multi-subject probes.
     const refusal = "\x1bP0+r7465726d4e616d65\x1b\\"
     for (const result of [probe.headless(headless(refusal)), await probe.terminal(app(refusal))]) {
-      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "negative", observed: refusal }])
     }
     // XTGETXRES encodes two hex digits per character: missing ST, empty and odd-length values are malformed.
@@ -685,11 +734,11 @@ describe("device contracts without prior coverage", () => {
           rawBase64: Buffer.from(frame).toString("base64"),
         }
       },
-    } as unknown as TermContext
+    } as unknown as TermProbeSource
     const result = await probe.terminal(context)
     // The probe owns its setup: it sets the title it then requires.
     expect(writes).toEqual(["\x1b]2;test-title\x07", "\x1b[21t"])
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
     const feeds: string[] = []
     const headlessResult = probe.headless({
@@ -697,15 +746,15 @@ describe("device contracts without prior coverage", () => {
         feeds.push(sequence)
       },
       feedCapture: () => frame,
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
     expect(feeds).toEqual(["\x1b]2;test-title\x07"])
-    expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(headlessResult.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     // A different title is malformed for this query rather than a measured negative:
     // XTWINOPS 21 has no contradiction rule, unlike XTWINOPS 20.
     const other = probe.headless({
       feed: () => undefined,
       feedCapture: () => "\x1b]lother-title\x07",
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
     expect(other.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
   })
 
@@ -730,11 +779,11 @@ describe("device contracts without prior coverage", () => {
             raw: frame,
             rawBase64: Buffer.from(frame).toString("base64"),
           }),
-      } as unknown as TermContext)
+      } as unknown as TermProbeSource)
     for (const frame of ["\x1b[?0;1#Q", "\x1b[0;0#Q"]) {
       for (const result of [probe.headless(headless(frame)), await app(frame)]) {
         expect(result.response, frame).toBe(frame)
-        expect(result.observation, frame).toMatchObject({ outcome: "supported", evidence: "query" })
+        expect(result.observation, frame).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
         expect(result.assertions, frame).toMatchObject([{ kind: "positive", observed: frame }])
       }
     }

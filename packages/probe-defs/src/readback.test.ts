@@ -9,9 +9,9 @@ import { cursorProbes } from "./cursor.ts"
 import { modesProbes } from "./modes.ts"
 import { resetProbes } from "./reset.ts"
 import { sgrProbes } from "./sgr.ts"
-import type { TermContext, TerminalQueryOutcome } from "./types.ts"
+import type { TermProbeSource, TerminalQueryOutcome } from "./types.ts"
 
-function termProbe(id: string): (ctx: TermContext) => Promise<import("./types.ts").ProbeResult> {
+function termProbe(id: string): (ctx: TermProbeSource) => Promise<import("./types.ts").ProbeCallbackResult> {
   const probe = [...sgrProbes, ...cursorProbes, ...modesProbes, ...resetProbes].find((value) => value.id === id)
   if (!probe?.term) throw new Error(`missing term callback for ${id}`)
   return probe.term
@@ -25,11 +25,12 @@ function timeout(): TerminalQueryOutcome {
  * A Kitty-shaped terminal: it maintains real SGR, DECTCEM and IRM state and answers DECRQSS
  * and DECRQM from that state. `answer: false` models a terminal that never replies.
  */
-function kittyContext(answer: boolean, resets = true, permanent = false): TermContext {
+function kittySource(answer: boolean, resets = true, permanent = false): TermProbeSource {
   let sgr: number[] = []
   let visible = true
   let irm = false
   return {
+    kind: "live",
     rows: 24,
     cols: 80,
     capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `frame-${role}` }),
@@ -85,9 +86,9 @@ test.each([
   ["cursor.hide", "set (Ps 1) -> reset (Ps 2)"],
   ["modes.insert-replace", "set (Ps 1) -> reset (Ps 2)"],
 ] as const)("%s is decided supported by its readback query on a responding terminal", async (id, observed) => {
-  const result = await termProbe(id)(kittyContext(true))
+  const result = await termProbe(id)(kittySource(true))
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
   if (id === "sgr.bold") expect(result.response).toContain(observed)
   else expect(result.assertions?.[0]?.observed).toBe(observed)
@@ -97,9 +98,9 @@ test.each([
 test.each(["cursor.hide", "modes.insert-replace"] as const)(
   "%s grades a permanently reset mode unsupported and stores the Ps",
   async (id) => {
-    const result = await termProbe(id)(kittyContext(true, true, true))
+    const result = await termProbe(id)(kittySource(true, true, true))
     expect(result.pass).toBe(false)
-    expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
     expect(result.assertions?.[0]).toMatchObject({
       kind: "negative",
       observed: "permanently reset (Ps 4) -> permanently reset (Ps 4)",
@@ -111,7 +112,7 @@ test.each(["cursor.hide", "modes.insert-replace"] as const)(
 test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
   "%s stays inconclusive and never negative when the readback reply is missing",
   async (id) => {
-    const result = await termProbe(id)(kittyContext(false))
+    const result = await termProbe(id)(kittySource(false))
     expect(result.pass).toBe(false)
     expect(result.observation?.outcome).toBe("inconclusive")
     expect(result.observation?.outcome).not.toBe("unsupported")
@@ -119,7 +120,7 @@ test.each(["sgr.bold", "cursor.hide", "modes.insert-replace"] as const)(
 )
 
 test("an incorrect SGR readback is a negative, not a pass", async () => {
-  const ctx = kittyContext(true)
+  const ctx = kittySource(true)
   const original = ctx.queryWithSentinelOutcome
   ctx.queryWithSentinelOutcome = async (sequence, pattern, timeoutMs) => {
     const outcome = await original.call(ctx, sequence, pattern, timeoutMs)
@@ -130,13 +131,13 @@ test("an incorrect SGR readback is a negative, not a pass", async () => {
   }
   const result = await termProbe("sgr.bold")(ctx)
   expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
 })
 
 // Kitty 0.49.2 answers DECRQSS with the full normalized SGR list, not just the set codes:
 // after CSI 0 m CSI 1 m it reported "0;22;1" (reset, normal intensity, bold).
 test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => {
-  const ctx = kittyContext(true)
+  const ctx = kittySource(true)
   ctx.queryWithSentinelOutcome = async (sequence) => {
     if (sequence.startsWith("\x1bP$qm")) {
       return { match: ["\x1bP1$r0;22;1m\x1b\\", "0;22;1"], reason: "reply", raw: "", rawBase64: "" }
@@ -145,7 +146,7 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
   }
   const result = await termProbe("sgr.bold")(ctx)
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.response).toContain("0;22;1")
 })
 
@@ -165,15 +166,15 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
  * (negative), and a silent terminal (inconclusive, never negative).
  */
 test("reset.sgr is decided supported when the terminal reports no styles after the reset", async () => {
-  const ctx = kittyContext(true)
+  const ctx = kittySource(true)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
 })
 
 test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
-  const ctx = kittyContext(true)
+  const ctx = kittySource(true)
   // What Kitty's normalized list reports after the reset: explicit negation codes, no 1/3/7.
   const payload = "0;22;23;24;27"
   const readState = ctx.queryWithSentinelOutcome
@@ -186,7 +187,7 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
   }
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.response).toContain(payload)
 })
 
@@ -202,34 +203,28 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
  * is the required code alone and is unchanged.
  */
 test("a forbid-only SGR claim names the forbidden codes in its expected text", async () => {
-  const ctx = kittyContext(true)
+  const ctx = kittySource(true)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.assertions?.[0]?.expected).toContain("reset.sgr: DECRQSS reports none of 1;3;7 after")
 })
 
 test("an SGR claim that requires a code keeps the required code as its expected text", async () => {
-  const ctx = kittyContext(true)
+  const ctx = kittySource(true)
   const result = await termProbe("sgr.selective-reset.italic")(ctx)
   expect(result.assertions?.[0]?.expected).toContain("DECRQSS reports 1 after")
 })
 
 test("reset.sgr is a negative when the terminal keeps reporting the styles after the reset", async () => {
-  const ctx = kittyContext(true, false)
+  const ctx = kittySource(true, false)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
 })
 
-test("reset.sgr stays inconclusive and never negative when the terminal never answers DECRQSS", async () => {
-  const result = await termProbe("reset.sgr")(kittyContext(false))
+test("reset.sgr records FAILURE and no observation when the terminal never answers DECRQSS", async () => {
+  const result = await termProbe("reset.sgr")(kittySource(false))
   expect(result.pass).toBe(false)
-  expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.outcome).not.toBe("unsupported")
-  // A full reset has no reference independent of itself, so the pixel oracle declines it BY NAME.
-  // This terminal's DECRQSS readback ran first and stayed silent, so the trace is NOT empty and the
-  // evidence is truthful "query" — never the zero-byte "none" shape a trace with no writes, queries
-  // or events reserves.
-  expect(result.observation).toMatchObject({ evidence: "query" })
-  expect(result.observation?.note ?? "").toContain("no independent reference exists for a multi-attribute reset")
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })

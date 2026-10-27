@@ -2,11 +2,11 @@
  * THE one run-selection rule (28792 item 1). Given the candidate runs the site currently selects for
  * one context, it chooses the run a bar row — or a compatibility key — stands on, or refuses.
  *
- * The site and this reader must not hold two copies of this: `compatibilityTargets` resolves a
+ * The site and this reader must not hold two copies of this: `compatibilitySubjects` resolves a
  * multi-context tie with the reviewed `default-contexts.json` row, and `decisive-share` printed the
  * choice of a private fallback chain beside it. One rule, two callers.
  */
-import type { CapabilityStatus, CapabilityResult } from "@terminfo/probe-defs"
+import type { ProbeStatus, ProbeResult } from "@terminfo/probe-defs"
 import { isStaleRelation, type CellState, type SuiteRelation } from "./release-scope.ts"
 import {
   parseProjectedContextKey,
@@ -41,12 +41,12 @@ export interface ContextCandidate {
   suiteFreshness: string
   suiteRelation: SuiteRelation
   cells?: ShareCells
-  results?: CapabilityResult[]
+  results?: ProbeResult[]
   /**
    * The run's states as the projection published them (28792 item 1). A reader cuts its bars over
    * this, never over the raw `cells`.
    */
-  states: Readonly<Record<string, CellState | CapabilityStatus>>
+  states: Readonly<Record<string, CellState | ProbeStatus>>
 }
 
 export interface HistoricalContextCandidate extends ContextCandidate {
@@ -56,9 +56,9 @@ export interface HistoricalContextCandidate extends ContextCandidate {
 }
 
 export interface CurrentContextCandidate extends ContextCandidate {
-  results: CapabilityResult[]
+  results: ProbeResult[]
   cells?: never
-  states: Readonly<Record<string, CapabilityStatus>>
+  states: Readonly<Record<string, ProbeStatus>>
 }
 
 /** The candidate for one context key, from the projection's own selected version. */
@@ -70,26 +70,26 @@ export function candidateFromSelected(
 export function candidateFromSelected(
   key: string,
   selected: CurrentSelectedVersion,
-  states: Readonly<Record<string, CapabilityStatus>>,
+  states: Readonly<Record<string, ProbeStatus>>,
 ): CurrentContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
-  states: Readonly<Record<string, CellState | CapabilityStatus>>,
+  states: Readonly<Record<string, CellState | ProbeStatus>>,
 ): ContextCandidate
 export function candidateFromSelected(
   key: string,
   selected: SelectedVersion | CurrentSelectedVersion,
-  states: Readonly<Record<string, CellState | CapabilityStatus>>,
+  states: Readonly<Record<string, CellState | ProbeStatus>>,
 ): ContextCandidate {
   return {
     key,
-    kind: selected.target.kind,
-    terminalId: selected.target.id,
-    os: selected.target.os ?? "",
-    permissions: selected.target.permissions ?? null,
+    kind: selected.subject.kind,
+    terminalId: selected.subject.id,
+    os: selected.subject.os ?? "",
+    permissions: selected.subject.permissions ?? null,
     runId: selected.runId,
-    version: selected.target.version ?? "",
+    version: selected.subject.version ?? "",
     measuredAt: selected.measuredAt,
     suiteId: selected.suiteId,
     suiteFreshness: selected.suiteFreshness,
@@ -168,7 +168,7 @@ function unreadableCandidate(candidate: ContextCandidate): { stale: string } {
  * terminal id, not by id+os, so a context can carry several current entries: kitty/linux has the
  * default and two clipboard-override profiles, and xterm/linux carries one entry per frozen-runner
  * store path. The site resolves such a tie by the reviewed `default-contexts.json` row
- * (`compatibilityTargets`), and so does this reader.
+ * (`compatibilitySubjects`), and so does this reader.
  *
  * The bar keys rows by terminal id + os while the review is keyed by terminal id alone, so a review
  * is a tie-break ONLY for the group whose context it names — `app:kitty` names the macOS context, and

@@ -7,7 +7,7 @@
 import { expect, test, vi } from "vitest"
 import { calibrateCaptureOrigin } from "./capture-calibration.ts"
 import type { CapturedFrame } from "./capture-core.ts"
-import type { TermContext, TerminalQueryOutcome } from "@terminfo/probe-defs"
+import type { TermProbeSource, TerminalQueryOutcome } from "@terminfo/probe-defs"
 
 const geometry = { cellWidth: 2, cellHeight: 2, textWidth: 8, textHeight: 8 }
 
@@ -36,7 +36,7 @@ test.each(["timeout", "query I/O", "diagnostic I/O"] as const)(
       queryOutcome: async () => {
         throw failure
       },
-    } as unknown as TermContext
+    } as unknown as TermProbeSource
     const result = calibrateCaptureOrigin({ ctx, timeoutMs: 100, captureRaw })
     if (fault !== "timeout") await expect(result).rejects.toBe(failure)
     else await expect(result).rejects.toThrow(/cursor visibility query timed out/)
@@ -69,7 +69,7 @@ test.each([
     queryMode: async () => "unknown",
     queryWithSentinelOutcome: async () => outcome,
     queryOutcome: async () => ({ reason: "timeout", match: null, raw: "", rawBase64: "" }),
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   await expect(
     calibrateCaptureOrigin({ ctx, pixelGeometry: geometry, timeoutMs: 100, captureRaw }),
   ).rejects.toMatchObject({
@@ -174,7 +174,7 @@ function calibration(
       write: (text: string) => writes.push(text),
       queryMode: async () => options.restoredVisibility ?? options.visibility ?? "reset",
       queryWithSentinelOutcome: async () => modeOutcome(options.visibility === "set" ? "1" : "2"),
-    } as unknown as TermContext,
+    } as unknown as TermProbeSource,
     pixelGeometry: options.geometry,
     timeoutMs: 100,
     captureRaw: async (label, deadline) => {
@@ -322,7 +322,7 @@ test("capture failure stays primary when starting-blank restoration cannot be pr
       write: (text: string) => writes.push(text),
       queryMode: async () => "reset",
       queryWithSentinelOutcome: async () => modeOutcome("2"),
-    } as unknown as TermContext,
+    } as unknown as TermProbeSource,
     timeoutMs: 100,
     captureRaw: async () => {
       throw failure
@@ -354,7 +354,7 @@ test("an initial partial write with unprovable restoration is a fatal run failur
         },
         queryMode: async () => "reset",
         queryWithSentinelOutcome: async () => modeOutcome("2"),
-      } as unknown as TermContext,
+      } as unknown as TermProbeSource,
       timeoutMs: 100,
       captureRaw: async () => {
         if (writes.length > 0) throw new Error("Restored surface capture unavailable")

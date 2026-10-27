@@ -7,7 +7,7 @@
  */
 import { expect, test } from "vitest"
 import { ALL_PROBES } from "./index.ts"
-import type { TermlessContext } from "./types.ts"
+import type { LibProbeSource } from "./types.ts"
 
 // The 7 scheduled headless features whose raw state is measurable but whose claim is not. The seven DECRQM
 // mode features left this list with #30543: their headless arm grades the engine's own DECRPM reply.
@@ -21,7 +21,7 @@ const notTestedFeatures = [
   "sgr.overline",
 ]
 
-const context = (): TermlessContext =>
+const context = (): LibProbeSource =>
   ({
     cols: 80,
     rows: 24,
@@ -34,14 +34,14 @@ const context = (): TermlessContext =>
     getCell: () => ({ char: "X" }),
     getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     reset: () => {},
-  }) as unknown as TermlessContext
+  }) as unknown as LibProbeSource
 
 test("the 7 headless not-tested features emit named coverage from measured state", () => {
   expect(notTestedFeatures).toHaveLength(7)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
-    if (!definition?.termless) throw new Error(`missing headless ${id}`)
-    const result = definition.termless(context())
+    if (!definition?.lib) throw new Error(`missing headless ${id}`)
+    const result = definition.lib(context())
     expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: expect.any(String) })
     expect((result.notTested?.noObservable ?? "").trim().length, id).toBeGreaterThan(0)
     expect((result.response ?? "").length, id).toBeGreaterThan(0)
@@ -68,7 +68,7 @@ test("the 11 headless C154 semantic-mark features emit named coverage only after
   expect(c154SemanticMarkFeatures).toHaveLength(11)
   for (const [id, sequence, noObservable] of c154SemanticMarkFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
-    if (!definition?.termless) throw new Error(`missing headless ${id}`)
+    if (!definition?.lib) throw new Error(`missing headless ${id}`)
     const fed: string[] = []
     const reads = [
       { x: 0, y: 0, visible: true, style: null },
@@ -76,7 +76,7 @@ test("the 11 headless C154 semantic-mark features emit named coverage only after
       { x: 0, y: 0, visible: true, style: null },
     ]
     let read = 0
-    const result = definition.termless({
+    const result = definition.lib({
       ...context(),
       feed: (text: string) => {
         fed.push(text)

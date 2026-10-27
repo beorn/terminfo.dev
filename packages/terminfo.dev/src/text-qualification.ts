@@ -1,29 +1,29 @@
 import { createHash } from "node:crypto"
 import {
   assessTextQualification,
-  finalizeCapabilityResult,
+  finalizeProbeResult,
   type CapturedRunDraft,
   type ProbeSuiteManifest,
-  type CapabilityAttempt,
+  type ProbeAttempt,
   beginCaptureLifecycle,
   endCaptureLifecycle,
   TEXT_QUALIFICATION_SPEC,
   TEXT_QUALIFICATION_SHAPES,
   textQualificationFixtures,
   type ObservationFrame,
-  type TermContext,
+  type TermProbeSource,
   type TextCellsObservationFrame,
   type TextQualification,
 } from "@terminfo/probe-defs"
 import type { TextFrameCheckpoint } from "./serve.ts"
 
-/** Measure mapping witnesses through the installed adapter before recording the execution check. */
+/** Measure mapping witnesses through the installed adapter before recording the execution test. */
 export async function collectTextQualification({
   ctx,
   capture,
   onAttempt,
 }: {
-  ctx: TermContext
+  ctx: TermProbeSource
   capture: (checkpoint: TextFrameCheckpoint) => Promise<ObservationFrame>
   onAttempt?: () => void
 }): Promise<TextQualification> {
@@ -111,19 +111,19 @@ export async function collectTextQualification({
 }
 
 /** Record the frozen text-oracle prerequisites before seal; current readers consume these facts. */
-export function recordTextQualificationChecks(
+export function recordTextQualificationTests(
   run: CapturedRunDraft,
   manifest: ProbeSuiteManifest,
   snapshots: ReadonlyMap<string, Uint8Array>,
-  attempt?: Exclude<CapabilityAttempt, { scope: "none" }>,
+  attempt?: Exclude<ProbeAttempt, { scope: "none" }>,
 ): void {
   const assessment = assessTextQualification({ ...run, textQualificationSpec: manifest.textQualification }, snapshots)
-  const qualificationAttempt: CapabilityAttempt = attempt ?? { scope: "none" }
+  const qualificationAttempt: ProbeAttempt = attempt ?? { scope: "none" }
   run.results = run.results.map((result) => {
-    if (result.evidence !== "text") return result
+    if (!result.frames?.some((frame) => frame.kind === "text-cells")) return result
     const admittedContext =
-      run.target.kind === "app" &&
-      run.target.os?.toLowerCase() === "macos" &&
+      run.subject.kind === "term" &&
+      run.subject.os?.toLowerCase() === "macos" &&
       result.host === undefined &&
       manifest.textClaims?.includes(result.featureId) === true
     const status = !admittedContext || !attempt ? "test-todo" : assessment.qualified ? "supported" : "test-failure"
@@ -132,10 +132,10 @@ export function recordTextQualificationChecks(
       : !attempt
         ? "Text qualification has not been attempted"
         : assessment.reason
-    return finalizeCapabilityResult({
+    return finalizeProbeResult({
       ...result,
-      checks: [
-        ...result.checks.filter((check) => check.id !== "text-qualification"),
+      tests: [
+        ...result.tests.filter((check) => check.id !== "text-qualification"),
         {
           id: "text-qualification",
           status,

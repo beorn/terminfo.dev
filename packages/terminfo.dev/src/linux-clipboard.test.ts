@@ -19,7 +19,7 @@ const directories: string[] = []
 
 // The direct-owner tests cannot witness mux attachment: both measured process shapes need
 // the same grant to reject detach, foreign sockets, changed identities and extra displays.
-test.runIf(process.platform === "linux")("mux clipboard grant checks the measured attachment before every read", () => {
+test.runIf(process.platform === "linux")("mux clipboard grant tests the measured attachment before every read", () => {
   const sourceRoot = dirname(fileURLToPath(import.meta.url))
   const child = String.raw`
 import assert from "node:assert/strict"
@@ -157,10 +157,10 @@ try {
     assert.equal(adapter.muxAttachmentProof.receiptSha256,hash(real.readFileSync(receiptPath)))
     // The batch's verifier must own every existing transaction check, not only its outer boundary.
     for (const [site, failAt] of [["start",1],["read",2],["write",3]]) {
-      let checks=0, callbacks=0
+      let tests=0, callbacks=0
       const refusal=new Error("transaction custody lost at "+site)
       const verify=async()=>{
-        if (++checks >= failAt) throw refusal
+        if (++tests >= failAt) throw refusal
         await adapter.assertOwned()
       }
       await assert.rejects(adapter.withClipboardFixture(async fixture=>{
@@ -169,7 +169,7 @@ try {
         return {pass:true}
       },()=>{},verify),new RegExp("transaction custody lost at "+site))
       assert.equal(callbacks,site==="write"?1:0)
-      assert.equal(checks,failAt+1,"restoration must use the same refused verifier")
+      assert.equal(tests,failAt+1,"restoration must use the same refused verifier")
     }
     // The same grant must notice detach before the next clipboard operation.
     variant="detached"
@@ -317,7 +317,7 @@ test.runIf(process.platform === "linux")(
   },
 )
 
-/** This child checks real Linux fds; Vitest workers replace stdin even when Vitest itself has a PTY. */
+/** This child tests real Linux fds; Vitest workers replace stdin even when Vitest itself has a PTY. */
 test.runIf(process.platform === "linux")("owned Linux output proof uses a real controlling PTY", () => {
   const sourceRoot = dirname(fileURLToPath(import.meta.url))
   const codeRoot = resolve(sourceRoot, "../../..")
@@ -489,7 +489,7 @@ try {
             if (!temporary) throw error
             assert.equal(error, refusal)
           }
-          return {observation:{outcome:"supported",evidence:"query"}}
+          return {observation:{outcome:"supported",assertionType:"query_reply"}}
         }
         try {
           await assert.rejects(withRawMode(() => runProbeBatch({ids:["reset.ris"], captureRunId:capture,
@@ -514,17 +514,21 @@ try {
     assert.equal(owned.ungradedDiagnostics["reset.ris"], undefined)
     const reset = owned.observations.find((item) => item.featureId === "reset.ris")
     assert.equal(reset.outcome, "supported")
-    assert.equal(reset.evidence, "query")
+    assert.equal(reset.assertionType, "query_reply")
     assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris.callbackResponse"]), {
       before: { row: 5, col: 5 }, after: { row: 1, col: 1 }
     })
     assert.deepEqual(JSON.parse(owned.rawReplies["reset.ris"]).queries.map(query => query.raw),
       ["\x1b[5;5R", "\x1b[1;1R"])
-    assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write").reason, "policy-refused")
+    assert.equal(owned.observations.find((item) => item.featureId === "extensions.osc52-write"), undefined)
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").status, "test-todo")
+    assert.equal(owned.results.find(item => item.featureId === "extensions.osc52-write").reason, "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent")
     assert.deepEqual(JSON.parse(owned.rawReplies["extensions.osc52-write"]).writes, [])
     for (const [run, out] of [["c".repeat(32), process.stdout], [capture, foreign], [capture, fake]]) {
       const refused = await runProbeBatch({ ids: ["reset.ris"], captureRunId: run, ownedTerminal: adapter, out })
-      assert.equal(refused.observations[0].reason, "policy-refused")
+      assert.deepEqual(refused.observations, [])
+      assert.equal(refused.results.find(item => item.featureId === "reset.ris").status, "test-todo")
+      assert.match(refused.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
       assert.deepEqual(JSON.parse(refused.rawReplies["reset.ris"]).writes, [])
     }
     const alias = openControllingTTY()
@@ -548,7 +552,9 @@ try {
     assert.equal(verifier.ownedTerminalVerifiedFor(adapter, capture, process.stdout), false)
     const disposed = await runProbeBatch({ ids: ["reset.ris"], captureRunId: capture,
       ownedTerminal: adapter, out: process.stdout })
-    assert.equal(disposed.observations[0].reason, "policy-refused")
+    assert.deepEqual(disposed.observations, [])
+    assert.equal(disposed.results.find(item => item.featureId === "reset.ris").status, "test-todo")
+    assert.match(disposed.results.find(item => item.featureId === "reset.ris").reason, /Required grant missing/)
     assert.deepEqual(JSON.parse(disposed.rawReplies["reset.ris"]).writes, [])
     await new Promise((resolve) => foreign.end(resolve))
   }
@@ -647,7 +653,7 @@ test("a nested transaction refuses and callback failure restores and verifies th
           transaction(
             async () => ({
               pass: true,
-              observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+              tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
             }),
             (event) => events.push(event),
             async () => {},
@@ -678,7 +684,7 @@ test("restoration failure overrides a supported callback result", async () => {
   })
   await expect(
     transaction(
-      async () => ({ pass: true, observation: { outcome: "supported", evidence: "behavior" } }),
+      async () => ({ pass: true, observation: { outcome: "supported", assertionType: "query_reply" } }),
       () => {},
       async () => {},
     ),

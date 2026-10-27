@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { ALL_PROBES, type ProbeDefinition, type TermContext } from "../index.ts"
+import { ALL_PROBES, type ProbeDefinition, type TermProbeSource } from "../index.ts"
 
 /**
  * The census @cto asked for on 28828 (2026-10-13): a BEHAVIOURAL check, so it drives every real
@@ -40,7 +40,7 @@ const APP_PROBES: ProbeDefinition[] = ALL_PROBES.filter((probe) => probe.term !=
  * 1 for an ASCII sample and 2 for anything else. Queries stay null or a timeout in BOTH, so neither
  * pass invents a terminal that answers a query.
  */
-function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: TermContext; handed: string[] } {
+function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: TermProbeSource; handed: string[] } {
   const handed: string[] = []
   const note = (text: string) => handed.push(text)
   let column = 0
@@ -48,7 +48,8 @@ function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: Ter
     note(sequence)
     return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
   }
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
+    kind: "live",
     write: note,
     queryCursorPosition: async () => (answers ? { row: 1, col: ++column } : null),
     measureRenderedWidth: async (text) => {

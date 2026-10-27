@@ -139,7 +139,7 @@ function runFixture(overrides: Record<string, unknown> = {}): string {
   for (const item of [...complete.observations, ...complete.notTested]) {
     if (object(item) && typeof item.featureId === "string") covered.add(item.featureId)
   }
-  for (const featureId of live.probes.app.filter((id) => !covered.has(id))) {
+  for (const featureId of live.probes.term.filter((id) => !covered.has(id))) {
     complete.rawReplies[featureId] = `fixture: the retained specimen predates ${featureId}`
     complete.notTested.push({
       featureId,
@@ -185,14 +185,16 @@ test("daemon-saved enriched run names the launcher cure without content placemen
   } = decoded.run
   const staged = saveDaemonProbeRun(
     {
+      source: { kind: "live" },
       ...metadata,
-      schemaVersion: 3,
-      intendedContext: { kind: metadata.target.kind, id: metadata.target.id },
+      assertions: [],
+      schemaVersion: 4,
+      intendedSubject: { kind: metadata.subject.kind, id: metadata.subject.id },
       results: snapshot.catalogIds.map((featureId) => ({
         featureId,
         status: "test-todo",
         attempt: { scope: "none" },
-        checks: [],
+        tests: [],
         reason: "Synthetic fresh TODO fixture; no old observation upgraded",
       })),
       rawReplies: { ...decoded.run.rawReplies, "collector.httpResponseSha256": decoded.sha256 },
@@ -299,7 +301,7 @@ test("planning refuses run/tree/frozen-suite disagreement before placement", () 
   // The specimen's own suite predates three probes this branch defined, so the fixture-only
   // not-tested rows added above sit outside it; keep exactly the specimen's own membership.
   const foreignPath = join(import.meta.dirname, "..", "content", "suites", `${foreignSuite}.json`)
-  const foreignIds = new Set(parseSuiteManifest(foreignPath, readFileSync(foreignPath, "utf8")).probes.app)
+  const foreignIds = new Set(parseSuiteManifest(foreignPath, readFileSync(foreignPath, "utf8")).probes.term)
   if (!Array.isArray(document.notTested)) throw new Error("Synthetic frozen-suite fixture lacks notTested")
   document.notTested = document.notTested.filter(
     (row) => object(row) && typeof row.featureId === "string" && foreignIds.has(row.featureId),
@@ -377,7 +379,7 @@ test("Windows admission requires its measured executable version to match exactl
   const receipt = {
     platform: "win32" as const,
     executablePath: String.raw`C:\runner\WindowsTerminal.exe`,
-    productVersion: run.target.version,
+    productVersion: run.subject.version,
     executableSha256: "c3".repeat(32),
     sourceArtifact: { kind: "portable-zip" as const, path: String.raw`C:\runner\wt.zip`, sha256: "d4".repeat(32) },
   }
@@ -400,7 +402,7 @@ test("Windows admission requires its measured executable version to match exactl
   for (const changed of [
     {
       ...measured,
-      target: { ...measured.target, version: "9.99.1" },
+      subject: { ...measured.subject, version: "9.99.1" },
       origin: { ...measured.origin, appLaunch: { ...receipt, productVersion: "9.99.1" } },
     },
     {
@@ -420,7 +422,7 @@ test("Windows admission requires its measured executable version to match exactl
     const rawReplies: Record<string, string> = { ...measured.rawReplies }
     const changed = {
       ...measured,
-      target: { ...measured.target, version: "9.99.1" },
+      subject: { ...measured.subject, version: "9.99.1" },
       origin: { ...measured.origin, appLaunch: { ...receipt, productVersion: "9.99.1" } },
       rawReplies,
     }
@@ -444,7 +446,7 @@ test("Windows admission requires its measured executable version to match exactl
       "platform",
       {
         bundlePath: "/Applications/Terminal.app",
-        cfBundleShortVersionString: run.target.version,
+        cfBundleShortVersionString: run.subject.version,
         cfBundleVersion: "1",
         executablePath: receipt.executablePath,
         executableSha256: receipt.executableSha256,
@@ -472,7 +474,7 @@ test("Windows admission requires its measured executable version to match exactl
       assessRunAdmission(
         {
           ...measured,
-          target: { ...measured.target, version: "unknown" },
+          subject: { ...measured.subject, version: "unknown" },
           origin: { ...measured.origin, appLaunch: unknownReceipt },
           rawReplies: { ...measured.rawReplies, "collector.disposableOwnership": unknownOwnership },
         },
@@ -487,7 +489,7 @@ test("Windows admission requires its measured executable version to match exactl
     .toMatchObject({ accepted: false, reason: "identity-replies-mismatch" })
   for (const version of [`${receipt.productVersion} `, "1.21.2361.0"]) {
     expect
-      .soft(assessRunAdmission({ ...measured, target: { ...measured.target, version } }, [], evidence))
+      .soft(assessRunAdmission({ ...measured, subject: { ...measured.subject, version } }, [], evidence))
       .toMatchObject({
         accepted: false,
         reason: "identity-replies-mismatch",
@@ -526,7 +528,7 @@ test("Windows admission requires its measured executable version to match exactl
   const alacrittyOwnership = ownershipBesideRun(join(alacrittyDir, "run.json"), alacrittyHost)
   const alacrittyMeasured = {
     ...run,
-    target: { ...run.target, id: "alacritty", version: "0.17.0", os: "windows" },
+    subject: { ...run.subject, id: "alacritty", version: "0.17.0", os: "windows" },
     origin: { ...run.origin, appLaunch: alacrittyReceipt },
     rawReplies: {
       ...run.rawReplies,
@@ -641,7 +643,7 @@ test("Windows admission requires its measured executable version to match exactl
       assessRunAdmission(
         {
           ...alacrittyMeasured,
-          target: { ...alacrittyMeasured.target, os: "linux" },
+          subject: { ...alacrittyMeasured.subject, os: "linux" },
         },
         [],
         alacrittyEvidence,
@@ -655,7 +657,7 @@ test("a run is named from its own target and run id", () => {
   const into = join(temp("terminfo-admit-dest-"), "out.json")
   const plan = planAdmission(runFixture(), into)
   expect(plan.destination).toBe(into)
-  expect(plan.target).toEqual({ kind: "app", id: "kitty", version: "0.49.2", os: "linux" })
+  expect(plan.subject).toEqual({ kind: "term", id: "kitty", version: "0.49.2", os: "linux" })
   const defaultPlan = planAdmission(runFixture())
   expect(defaultPlan.destination.endsWith("content/probes-apps/kitty-0.49.2-linux-run1.json")).toBe(true)
 })
@@ -667,7 +669,7 @@ test("a run with an unsafe filename component refuses", () => {
 })
 
 test("an unsupported run schema refuses", () => {
-  expect(() => planAdmission(runFixture({ schemaVersion: 1 }))).toThrow(/current schema 3 or historical schema 2/)
+  expect(() => planAdmission(runFixture({ schemaVersion: 1 }))).toThrow(/current schema 4 or historical schema 2\/3/)
 })
 
 /**
@@ -761,8 +763,8 @@ test("admission carries a run's text snapshots as text, and refuses a missing or
 
 // ---------------------------------------------------------------------------------------------
 // 27874: the four hand-typed receipts went through admission because it recorded a digest and
-// never opened the bytes. Admission now places the receipt beside the run and re-checks it.
-// What these checks prove is CONSISTENCY, not ORIGIN; origin is the apparatus handoff.
+// never opened the bytes. Admission now places the receipt beside the run and re-tests it.
+// What these tests prove is CONSISTENCY, not ORIGIN; origin is the apparatus handoff.
 // ---------------------------------------------------------------------------------------------
 
 const KITTY_TARGET = { kind: "app", id: "kitty", os: "linux" }
@@ -848,7 +850,7 @@ test("hosted admission permits same jobs and fresh jobs, including Mac image con
     const source = join(temp("terminfo-hosted-source-"), "run.json")
     const content = temp("terminfo-hosted-content-")
     const first = hostedReceipt(os, "1001")
-    const target = { kind: "app", id: "fixture", os }
+    const target = { kind: "term", id: "fixture", os }
     const citation = ownershipBesideRun(source, first)
     expect(placeOwnershipReceipt(source, citation, "first", target, content).placed).toBe("created")
     expect(placeOwnershipReceipt(source, citation, "first", target, content).placed).toBe("existing")
@@ -875,7 +877,7 @@ test("hosted admission refuses OS-specific non-reuse witnesses before placement,
         const source = join(temp("terminfo-hosted-source-"), "run.json")
         const content = temp("terminfo-hosted-content-")
         const first = hostedReceipt(os, "1001")
-        const target = { kind: "app", id: "fixture", os }
+        const target = { kind: "term", id: "fixture", os }
         placeOwnershipReceipt(source, ownershipBesideRun(source, first), "first", target, content)
         const repeat = hostedReceipt(os, "1002")
         if (differentRun) {
@@ -905,7 +907,7 @@ test("hosted admission refuses untrusted runner.os prototype properties by name"
         source,
         ownershipBesideRun(source, receipt),
         "untrusted-os",
-        { kind: "app", id: "fixture", os: maliciousOs },
+        { kind: "term", id: "fixture", os: maliciousOs },
         content,
       ),
     ).toThrow(new RegExp(`runner\\.os "${maliciousOs}" has no ratified identity source/scope table`))
@@ -924,7 +926,7 @@ test("hosted admission reads every prior receipt and names corrupt history inste
       source,
       ownershipBesideRun(source, hostedReceipt("macOS", "1001")),
       "new",
-      { kind: "app", id: "fixture", os: "macOS" },
+      { kind: "term", id: "fixture", os: "macOS" },
       content,
     ),
   ).toThrow(/corrupt.json/)
@@ -995,7 +997,7 @@ test("admission refuses a receipt bound to another target, placing nothing", () 
   const content = temp("terminfo-admit-content-")
   const citation = ownershipBesideRun(source, baseReceipt())
   expect(() =>
-    placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, { kind: "app", id: "wezterm", os: "linux" }, content),
+    placeOwnershipReceipt(source, citation, RECEIPT_RUN_ID, { kind: "term", id: "wezterm", os: "linux" }, content),
   ).toThrow(/receipt declares target .*kitty.* this run is .*wezterm/)
   expect(existsSync(join(content, "receipts", `${RECEIPT_RUN_ID}.json`))).toBe(false)
 })
@@ -1024,15 +1026,16 @@ test("existing admission command resumes typed capture review and refuses a mism
     encoding: "utf8",
   }).trim()
   const base = initializeRunDraft({
+    source: { kind: "live" },
     runId: "review-command",
     sourceRevision,
     manifest,
-    intendedContext: { kind: "app", id: "kitty", version: "1" },
+    intendedSubject: { kind: "term", id: "kitty", version: "1" },
   })
   const run: CapturedRunDraft = {
     ...base,
-    target: {
-      kind: "app",
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "1",
       os: "macos",
@@ -1046,7 +1049,7 @@ test("existing admission command resumes typed capture review and refuses a mism
     measuredAt: "2026-10-21T05:00:00.000Z",
     origin: { kind: "collector" },
   }
-  run.results[0]!.checks = [
+  run.results[0]!.tests = [
     { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required context review" },
   ]
   const capture = retainCaptureBinding(run, featureId)
@@ -1062,7 +1065,7 @@ test("existing admission command resumes typed capture review and refuses a mism
     reviewed: true,
     reviewer: "fixture-reviewer",
     reason: "This stream-only context cannot display the criterion's pixel target",
-    scope: { target: { kind: "app", id: "kitty" }, versions: ["1", "1"], suites: [run.probeHash, run.probeHash] },
+    scope: { subject: { kind: "term", id: "kitty" }, versions: ["1", "1"], suites: [run.probeHash, run.probeHash] },
     sources: [capture.rawReplyRef],
     supersedes: [],
   }
@@ -1119,8 +1122,14 @@ test("Linux review command composes final bytes with original host, container an
   )
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: import.meta.dirname, encoding: "utf8" }).trim()
   const run: CapturedRunDraft = {
-    ...initializeRunDraft({ runId: old.runId, sourceRevision: revision, manifest, intendedContext: old.target }),
-    target: old.target,
+    ...initializeRunDraft({
+      source: { kind: "live" },
+      runId: old.runId,
+      sourceRevision: revision,
+      manifest,
+      intendedSubject: old.subject,
+    }),
+    subject: old.subject,
     provenance: structuredClone(old.provenance),
     identity: old.identity,
     measuredAt: old.measuredAt,
@@ -1132,7 +1141,7 @@ test("Linux review command composes final bytes with original host, container an
   if (!run.provenance?.runtime || !run.provenance.executable) throw new Error("Fixture lacks Linux runtime/executable")
   run.provenance.runtime.sourceRevision = revision
   const featureId = run.results[0]!.featureId
-  run.results[0]!.checks = [
+  run.results[0]!.tests = [
     { id: "review", status: "test-todo", attempt: { scope: "none" }, reason: "Required review pending" },
   ]
   const digest = (bytes: string) => createHash("sha256").update(bytes).digest("hex")
@@ -1189,8 +1198,8 @@ test("Linux review command composes final bytes with original host, container an
       reviewer: "fixture-reviewer",
       reason: "This stream-only context cannot display the criterion's visual target",
       scope: {
-        target: { kind: "app", id: "kitty" },
-        versions: [old.target.version, old.target.version],
+        subject: { kind: "term", id: "kitty" },
+        versions: [old.subject.version, old.subject.version],
         suites: [run.probeHash, run.probeHash],
       },
       sources: [binding.rawReplyRef],
@@ -1216,7 +1225,7 @@ test("Linux review command composes final bytes with original host, container an
   )
   expect(result.status).toBe(1)
   expect(result.stderr).toMatch(/Refusing to overwrite a different admitted run/)
-  const final = join(directory, `kitty-${old.target.version}-linux-${run.runId}.json`)
+  const final = join(directory, `kitty-${old.subject.version}-linux-${run.runId}.json`)
   const finalBytes = readFileSync(final, "utf8")
   const parsed = parseRun(final, finalBytes, manifest.catalogIds!, new Map([[manifest.probeHash, manifest]]))
   expect(parsed.results?.[0]?.status).toBe("untestable")
@@ -1254,14 +1263,15 @@ test.each([
   )
   if (!old.sourceRevision) throw new Error("Fixture lacks collector source")
   const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: old.runId,
     sourceRevision: old.sourceRevision,
     manifest,
-    intendedContext: old.target,
+    intendedSubject: old.subject,
   })
   const capture = {
     ...draft,
-    target: old.target,
+    subject: old.subject,
     provenance: old.provenance,
     identity: old.identity,
     measuredAt: old.measuredAt,

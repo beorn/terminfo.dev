@@ -1,13 +1,12 @@
 /** The sole site/API mapping. Presentation decisions are not repository privacy controls. */
 import { createHash } from "node:crypto"
 import type {
-  CapabilityResult,
-  CapabilityStatus,
+  ProbeResult,
+  ProbeStatus,
   ConsoleBufferOwner,
   Observation,
   ObservationFrame,
   ProbeAssertion,
-  ProbeTarget,
   RunOrigin,
   TextQualification,
   TextCellsObservationFrame,
@@ -59,8 +58,8 @@ export {
 
 export interface HistoricalCellEvidence {
   featureId: string
-  observation: Pick<Observation, "featureId" | "outcome" | "reason" | "evidence" | "note">
-  record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
+  observation: Pick<Observation, "featureId" | "outcome" | "reason" | "assertionType" | "note">
+  record: PublicImages & { rawReply?: string; assertions: SelectedCell["record"]["assertions"] }
   review: PublicReview
   textQualification?: { url: string; sha256: string }
 }
@@ -183,12 +182,15 @@ function qualificationFor(
 }
 
 /** Keeps a run's trace document for generate-api and returns the receipt its run version carries. */
-function traceReceipt(documents: PublicDocuments, trace: ReturnType<typeof currentTrace>): { trace?: TraceReceipt } {
+function traceReceipt(
+  documents: PublicDocuments,
+  trace: ReturnType<typeof currentTrace>,
+  schemaVersion: 3 | 4,
+): { trace?: TraceReceipt } {
   if (!trace) return {}
   const prior = documents.get(trace.url)
   if (prior && prior.bytes !== trace.bytes) throw new Error(`Conflicting trace document ${trace.url}`)
   const actualSha256 = createHash("sha256").update(trace.bytes).digest("hex")
-  const schemaVersion = 3
   for (const featureId of Object.keys(trace.document.cells)) {
     const loaded = readCellTrace(trace.document, {
       schemaVersion,
@@ -229,9 +231,9 @@ function screenGeometry(receipt: string | undefined): { rows: number; cols: numb
 }
 
 /** Current public results retain sealed statuses; evidence remains separately publication-reviewed. */
-export interface PublicCapabilityResult extends Pick<
-  CapabilityResult,
-  "featureId" | "status" | "attempt" | "checks" | "evidence"
+export interface PublicProbeResult extends Pick<
+  ProbeResult,
+  "featureId" | "status" | "attempt" | "tests" | "assertionType"
 > {
   reason?: string
   /**
@@ -248,7 +250,7 @@ export interface PublicVersion extends Omit<
   CurrentSelectedVersion,
   "results" | "rawReplies" | "assertions" | "origin" | "presentations" | "textQualification" | "identity"
 > {
-  results: PublicCapabilityResult[]
+  results: PublicProbeResult[]
   /** The receipt of this run's trace document; only a run a page displays has one. */
   trace?: TraceReceipt
   /** The screen size this run measured for its own terminal; absent when its receipt recorded none. */
@@ -265,18 +267,19 @@ export interface PublicProjection {
 
 export interface PublicCurrentResult extends Omit<CurrentResult, "selected"> {
   selected: PublicVersion
-  states: Readonly<Record<string, CapabilityStatus>>
+  states: Readonly<Record<string, ProbeStatus>>
 }
 
 export interface CellEvidence {
   featureId: string
-  result: CapabilityResult
-  record: PublicImages & { rawReply?: string; assertions: ProbeAssertion[] }
+  result: ProbeResult
+  record: PublicImages & { rawReply?: string; assertions: SelectedCell["record"]["assertions"] }
   review: PublicReview
   textQualification?: { url: string; sha256: string }
 }
 
 export interface EvidenceDocument {
+  source?: { kind: "live" }
   version: 4
   runId: string
   runSha256: string
@@ -291,34 +294,34 @@ type PublicDocuments = Map<
   }
 >
 
-function publicAttempt(attempt: CapabilityResult["attempt"]): CapabilityResult["attempt"] {
+function publicAttempt(attempt: ProbeResult["attempt"]): ProbeResult["attempt"] {
   return attempt.scope === "none" ? { scope: "none" } : { scope: attempt.scope, startedAt: attempt.startedAt }
 }
 
 /** The API and the site consume the same current/history split; only current v3 runs are published. */
-export function publicResults(projection: SelectedProjection, targets: ReadonlyMap<string, CurrentResult>) {
-  const traced = new Set([...targets.values()].map((value) => value.selected.runId))
+export function publicResults(projection: SelectedProjection, subjects: ReadonlyMap<string, CurrentResult>) {
+  const traced = new Set([...subjects.values()].map((value) => value.selected.runId))
   const documents: PublicDocuments = new Map()
   const mapResult = (
-    result: CapabilityResult,
+    result: ProbeResult,
     version: CurrentSelectedVersion,
     evidenceCells: Record<string, CellEvidence>,
-  ): PublicCapabilityResult => {
+  ): PublicProbeResult => {
     const decision = version.presentations[result.featureId]
     const approved = decision?.presentsEvidence === true
-    const hold = result.checks.find((check) => check.id === "console-host")?.reason
-    const mapped: PublicCapabilityResult = {
+    const hold = result.tests.find((check) => check.id === "console-host")?.reason
+    const mapped: PublicProbeResult = {
       featureId: result.featureId,
       status: result.status,
       attempt: publicAttempt(result.attempt),
-      checks: result.checks.map((check) => ({
+      tests: result.tests.map((check) => ({
         id: check.id,
         status: check.status,
         attempt: publicAttempt(check.attempt),
         ...(approved && check.reason !== undefined && { reason: check.reason }),
         ...(check.assertionRefs && { assertionRefs: [...check.assertionRefs] }),
       })),
-      ...(result.evidence && { evidence: result.evidence }),
+      ...(result.assertionType && { assertionType: result.assertionType }),
       ...(approved && result.reason !== undefined && { reason: result.reason }),
       ...(hold !== undefined && { hold }),
       presentation: { state: "not-reviewed" },
@@ -353,7 +356,10 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
         },
       }),
     }
-    const textQualification = result.evidence === "text" ? qualificationFor(version, documents, 3) : undefined
+    const textQualification =
+      result.frames?.some((frame) => frame.kind === "text-cells") === true
+        ? qualificationFor(version, documents, 3)
+        : undefined
     evidenceCells[result.featureId] = {
       featureId: result.featureId,
       result: globalThis.structuredClone(result),
@@ -392,6 +398,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     const mappedResults = results.map((result) => mapResult(result, version, evidenceCells))
     if (Object.keys(evidenceCells).length > 0) {
       const document: EvidenceDocument = {
+        ...(version.schemaVersion === 4 && version.source && { source: { ...version.source } }),
         version: 4,
         runId: version.runId,
         runSha256: version.sha256,
@@ -419,7 +426,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     }
     const mapped: PublicVersion = {
       ...metadata,
-      ...(traced.has(version.runId) && traceReceipt(documents, currentTrace(version))),
+      ...(traced.has(version.runId) && traceReceipt(documents, currentTrace(version), version.schemaVersion)),
       ...(screen && { screen }),
       catalogIds: [...version.catalogIds],
       counts: { ...version.counts },
@@ -439,7 +446,7 @@ export function publicResults(projection: SelectedProjection, targets: ReadonlyM
     exclusions: projection.exclusions.map(({ runId, reason }) => ({ runId, reason })),
   }
   const selectedByBackend: Record<string, PublicCurrentResult> = Object.fromEntries(
-    [...targets].map(([key, value]) => [
+    [...subjects].map(([key, value]) => [
       key,
       {
         contextKey: value.contextKey,

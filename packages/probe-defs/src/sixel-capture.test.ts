@@ -10,7 +10,7 @@
 import { expect, test } from "vitest"
 import { SIXEL_CURSOR_ROW, SIXEL_REGION, sixelPayload, sixelReadback, sixelTileSize } from "./sixel-capture.ts"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
 const GEOMETRY = { cellWidth: 8, cellHeight: 17, textWidth: 8 * 80, textHeight: 17 * 24 }
 
@@ -83,11 +83,12 @@ test("a pixel arm that reports no geometry refuses by name before painting anyth
     queryCursorPosition: async () => null,
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
   const result = await definition.term(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
   expect(writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
 })
 
@@ -125,7 +126,7 @@ function calibratedPixelArm(geometry = GEOMETRY, captureKind: "pixels" | "text-c
     queryCursorPosition: async () => null,
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { context, writes }
 }
 
@@ -144,10 +145,7 @@ test("a text-cells arm is the named instrument limit before a byte, not a query 
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
   const result = await definition.term(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
-  })
+  expect(result.observation).toBeUndefined()
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
   expect(writes).toHaveLength(0)
 })

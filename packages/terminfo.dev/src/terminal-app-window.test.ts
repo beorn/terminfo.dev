@@ -299,7 +299,7 @@ describe("cli-process ownership", () => {
     }
   })
 
-  test("kitty's close now re-checks its instance-group marker before signalling", () => {
+  test("kitty's close now re-tests its instance-group marker before signalling", () => {
     vi.mocked(realpathSync).mockImplementation((path) => String(path))
     const kitty: OwnedTerminalWindow = {
       provider: "kitty",

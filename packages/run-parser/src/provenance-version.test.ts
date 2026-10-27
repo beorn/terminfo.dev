@@ -46,14 +46,16 @@ const provenance = (version: string) => ({
 
 describe("parseRunProvenance version token", () => {
   it("accepts a bare integer version and still requires exactly one token equal to target.version", () => {
-    expect(parseRunProvenance(provenance("XTerm(411)"), target, expected, "p")?.executable.version).toBe("XTerm(411)")
-    expect(() => parseRunProvenance(provenance("XTerm(412)"), target, expected, "p")).toThrow(
+    expect(
+      parseRunProvenance(provenance("XTerm(411)"), { ...target, kind: "term" }, expected, "p")?.executable.version,
+    ).toBe("XTerm(411)")
+    expect(() => parseRunProvenance(provenance("XTerm(412)"), { ...target, kind: "term" }, expected, "p")).toThrow(
       /differs from target.version/,
     )
     // A second bare integer (a build number) is still a refusal: the check never passes falsely.
-    expect(() => parseRunProvenance(provenance("XTerm(411) build 99887-2"), target, expected, "p")).toThrow(
-      /differs from target.version/,
-    )
+    expect(() =>
+      parseRunProvenance(provenance("XTerm(411) build 99887-2"), { ...target, kind: "term" }, expected, "p"),
+    ).toThrow(/differs from target.version/)
   })
 
   // The inner mux version differs from the independently measured outer app version. Existing
@@ -83,12 +85,18 @@ describe("parseRunProvenance version token", () => {
         {
           probeHash: expected.probeHash,
           adapterVersion: "test",
-          probes: { app: [], headless: [], mux: [] },
+          probes: { term: [], lib: [], mux: [] },
         },
       ],
     ])
     const parse = (value: unknown) => parseRun("mux.json", JSON.stringify(value), [], suites)
-    expect(parse(raw)).toMatchObject({ outerApp })
+    expect(parse(raw)).toMatchObject({
+      outerApp: {
+        subject: { ...target, kind: "term" },
+        rawReplies: outerApp.rawReplies,
+        provenance: outerApp.provenance,
+      },
+    })
     // The daemon save path rebuilds the public run; parsing alone cannot catch a dropped proof.
     const decoded = decodeHistoricalCollectorRun(
       "mux.json",
@@ -96,7 +104,11 @@ describe("parseRunProvenance version token", () => {
       suites.get(expected.probeHash)!,
       expected.sourceRevision,
     )
-    expect(decoded.run.outerApp).toEqual(outerApp)
+    expect(decoded.run.outerApp).toEqual({
+      subject: { ...target, kind: "term" },
+      rawReplies: outerApp.rawReplies,
+      provenance: outerApp.provenance,
+    })
     expect(parse({ ...raw, outerApp: undefined })).not.toHaveProperty("outerApp")
     for (const conflicting of [
       { ...raw, target },

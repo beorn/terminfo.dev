@@ -16,7 +16,7 @@ import {
   type CapturedRunDraft,
 } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
-import { probeSuiteSnapshot } from "../admin/versions.ts"
+import { derivedSuiteManifest, probeSuiteSnapshot } from "../admin/versions.ts"
 import { saveDaemonProbeRun } from "../terminfo.dev/src/capture-writer.ts"
 import { collectBatch, errorMessage } from "./headless-batch.ts"
 import { replyPathDecision } from "./proven-reply-paths.ts"
@@ -82,10 +82,10 @@ export interface HeadlessCollection {
  */
 function trustedSuite() {
   const suite = probeSuiteSnapshot()
-  const callbackIds = ALL_PROBES.filter((probe) => probe.termless !== null)
+  const callbackIds = ALL_PROBES.filter((probe) => probe.lib !== null)
     .map((probe) => probe.id)
     .sort()
-  if (callbackIds.join("\n") !== [...suite.probes.headless].sort().join("\n")) {
+  if (callbackIds.join("\n") !== [...suite.probes.lib].sort().join("\n")) {
     throw new Error(`Headless callback membership differs from the live suite ${suite.probeHash}`)
   }
   return suite
@@ -115,10 +115,11 @@ async function collectOne(name: string, directory: string): Promise<string> {
       .toString()
       .trim().length > 0
   const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: process.env.TERMINFO_CAPTURE_RUN_ID ?? randomUUID(),
     sourceRevision,
-    manifest: suite,
-    intendedContext: { kind: "headless", id: name, os: process.platform },
+    manifest: derivedSuiteManifest(suite),
+    intendedSubject: { kind: "lib", id: name, os: process.platform },
   })
   const draftPath = process.env.TERMINFO_DRAFT_PATH ?? join(directory, `${name}-${draft.runId}.draft.json`)
   const initialBytes = `${JSON.stringify(draft, null, 2)}\n`
@@ -150,7 +151,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     collectionStartedAt = new Date().toISOString()
     draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
       startedAt: collectionStartedAt,
-      ids: suite.probes.headless,
+      ids: suite.probes.lib,
     })
     checkpoint()
     const loaded = loadedBackend(await resolveBackend(), entry.package)
@@ -181,8 +182,8 @@ async function collectOne(name: string, directory: string): Promise<string> {
     )
     const run: CapturedRunDraft = {
       ...draft,
-      target: {
-        kind: "headless",
+      subject: {
+        kind: "lib",
         id: name,
         version: runtimeIdentity.engineVersion,
         os: process.platform,
@@ -213,7 +214,7 @@ async function collectOne(name: string, directory: string): Promise<string> {
     return path
   } catch (error) {
     const diagnostic = scrubRecordedFailure(errorMessage(error))
-    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, suite.probes.headless)
+    if (collectionStartedAt) recordCollectionFailure(draft, collectionStartedAt, diagnostic, suite.probes.lib)
     else {
       draft.rawReplies["collector.prerequisite"] = diagnostic
       for (const result of draft.results) if (result.status === "test-todo") result.reason = diagnostic
@@ -264,10 +265,11 @@ export async function collectHeadlessRuns(
     const delegated =
       handed?.draft ??
       initializeRunDraft({
+        source: { kind: "live" },
         runId: randomUUID(),
         sourceRevision,
-        manifest: suite,
-        intendedContext: { kind: "headless", id: name, os: process.platform },
+        manifest: derivedSuiteManifest(suite),
+        intendedSubject: { kind: "lib", id: name, os: process.platform },
       })
     const draftPath = handed?.path ?? join(directory, `${name}-${delegated.runId}.draft.json`)
     if (handed) {
@@ -287,7 +289,7 @@ export async function collectHeadlessRuns(
         throw new Error(`Worker ${name} changed delegated run identity`)
       }
       if (!retained.rawReplies["collector.prerequisite"]) {
-        recordCollectionFailure(retained, workerStartedAt, scrubbed, suite.probes.headless)
+        recordCollectionFailure(retained, workerStartedAt, scrubbed, suite.probes.lib)
       } else {
         retained.rawReplies["collector.prerequisite"] = scrubRecordedFailure(
           retained.rawReplies["collector.prerequisite"],
@@ -379,8 +381,8 @@ export async function collectHeadlessRuns(
         new Map([[suite.probeHash, suite]]),
         { mode: "capture" },
       )
-      if (parsed.target.kind !== "headless" || parsed.target.id !== name) {
-        throw new Error(`Worker wrote a run for ${parsed.target.id} instead of ${name}: ${path}`)
+      if (parsed.subject.kind !== "lib" || parsed.subject.id !== name) {
+        throw new Error(`Worker wrote a run for ${parsed.subject.id} instead of ${name}: ${path}`)
       }
       if (parsed.runId !== delegated.runId) throw new Error(`Worker ${name} changed runId during capture handoff`)
       const captured = JSON.parse(readFileSync(path, "utf8")) as CapturedRunDraft

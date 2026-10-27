@@ -127,7 +127,7 @@ it("retains historical HTTP bytes privately and refuses to treat them as the cur
     ) as ProbeSuiteManifest,
     collectorRevision: run.sourceRevision,
   }
-  await expect(handleServer("kitty", {})).rejects.toThrow(/schemaVersion 3 collector draft/)
+  await expect(handleServer("kitty", {})).rejects.toThrow(/schemaVersion 4 collector draft/)
   expect(saveDaemonProbeRun).not.toHaveBeenCalled()
   const digest = createHash("sha256").update(fixtures.raw).digest("hex")
   expect(readFileSync(join(fixtures.home!, ".terminfo-dev", "http-responses", digest), "utf8")).toBe(fixtures.raw)
@@ -150,22 +150,24 @@ it.each([
   ["here", true],
 ] as const)("prints %s coverage from its own environment catalogue: %s", async (command, environment) => {
   const manifest = {
+    schemaVersion: 4 as const,
     probeHash: "abcdef123456",
     sourceRevision: "a".repeat(40),
     generatedAt: "2026-10-25T00:00:00.000Z",
     adapterVersion: "test",
     catalogIds: ["sgr.bold", ...(environment ? ENVIRONMENT_GROUP_IDS : [])],
-    probes: { app: [], headless: [], mux: [] },
+    probes: { term: [], lib: [], mux: [] },
   } satisfies ProbeSuiteManifest
   const run: CapturedRunDraft = {
     ...initializeRunDraft({
+      source: { kind: "live" },
       runId: "1234567890abcdef1234567890abcdef",
       sourceRevision: manifest.sourceRevision,
       manifest,
-      intendedContext: { kind: "app", id: "kitty", version: "0.49.1" },
+      intendedSubject: { kind: "term", id: "kitty", version: "0.49.1" },
     }),
-    target: {
-      kind: "app",
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "0.49.1",
       os: "linux",

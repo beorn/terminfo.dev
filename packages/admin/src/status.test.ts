@@ -56,22 +56,24 @@ test("status separates reviewed current runs from newer legacy files and refuses
     writeFileSync(
       join(root, "content", "suites", `${snapshot.probeHash}.json`),
       JSON.stringify({
+        schemaVersion: 4 as const,
         probeHash: snapshot.probeHash,
         sourceRevision: "1".repeat(40),
         generatedAt: "2026-09-28T00:00:00.000Z",
         freeze: { release: "candidate2", at: "2026-09-28T00:00:00.000Z" },
         adapterVersion: snapshot.adapterVersion,
         catalogIds: fixtureFeatures,
-        probes: { app: ["extensions.query"], headless: ["extensions.query"], mux: ["extensions.query"] },
+        probes: { term: ["extensions.query"], lib: ["extensions.query"], mux: ["extensions.query"] },
       }),
     )
     const run = {
-      schemaVersion: 3,
+      source: { kind: "live" },
+      schemaVersion: 4,
       sealedAt: "2026-09-28T12:00:01.000Z",
-      intendedContext: { kind: "app", id: "kitty", version: "0.46.2" },
+      intendedSubject: { kind: "term", id: "kitty", version: "0.46.2" },
       runId: "reviewed-kitty",
-      target: {
-        kind: "app",
+      subject: {
+        kind: "term",
         id: "kitty",
         version: "0.46.2",
         os: "macos",
@@ -95,7 +97,7 @@ test("status separates reviewed current runs from newer legacy files and refuses
           featureId: "extensions.query",
           status: "test-failure",
           attempt: { scope: "probe", startedAt: "2026-09-28T12:00:00.000Z" },
-          checks: [
+          tests: [
             {
               id: "criterion",
               status: "test-failure",
@@ -109,7 +111,7 @@ test("status separates reviewed current runs from newer legacy files and refuses
           featureId: "cursor.position",
           status: "test-todo",
           attempt: { scope: "none" },
-          checks: [],
+          tests: [],
           reason: "Missing implementation",
         },
       ],
@@ -127,8 +129,8 @@ test("status separates reviewed current runs from newer legacy files and refuses
           reviewer: "reviewer",
           reason: "checked captured identity",
           scope: {
-            target: { kind: "app", id: "kitty" },
-            versions: [run.target.version, run.target.version],
+            subject: { kind: "term", id: "kitty" },
+            versions: [run.subject.version, run.subject.version],
             suites: [run.suiteId, run.suiteId],
           },
           sources: [runPath],
@@ -149,8 +151,8 @@ test("status separates reviewed current runs from newer legacy files and refuses
     )
 
     const projection = loadCurrentResults(join(root, "content")).projection
-    expect(projection.current["app:kitty"], JSON.stringify(projection.exclusions)).toBeDefined()
-    expect(projection.current["app:kitty"]?.counts).toEqual({
+    expect(projection.current["term:kitty"], JSON.stringify(projection.exclusions)).toBeDefined()
+    expect(projection.current["term:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
       untestable: 0,

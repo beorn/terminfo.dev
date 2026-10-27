@@ -614,7 +614,7 @@ export function parseMuxAttachmentProof(value: unknown): MuxAttachmentProof {
 }
 
 /**
- * The positional custody checks every mux arm shares (#30518 D4.1). The chain runs from the collector
+ * The positional custody tests every mux arm shares (#30518 D4.1). The chain runs from the collector
  * through the declared mux processes to the outer shell, then the outer terminal; the collector, the
  * shell and the attached client obey three PTY rules. `sameProcess` is the arm's process identity.
  */
@@ -868,7 +868,7 @@ function assertLinuxXvfbContainer(value: Record<string, unknown>): {
 }
 
 /** A GitHub-hosted runner is disposable only when GitHub says so AND the VM identity never recurs.
- * This accepts the two checks a receipt can carry (hosted environment; one machine for the whole
+ * This accepts the two tests a receipt can carry (hosted environment; one machine for the whole
  * job). Non-reuse across job identities is checked where all receipts are seen, not here. */
 function assertGithubHostedRunner(value: Record<string, unknown>): {
   declaredTarget?: ReceiptTarget
@@ -915,7 +915,7 @@ function assertGithubHostedRunner(value: Record<string, unknown>): {
   // measured is validated here, by the ONE parser, and returned for the collector to copy verbatim
   // into origin.appLaunch (28216). A malformed block is refused by the parser, by name.
   const appLaunch =
-    value.appLaunch === undefined ? undefined : parseAppLaunchReceipt(value.appLaunch, "collector", "app", where)
+    value.appLaunch === undefined ? undefined : parseAppLaunchReceipt(value.appLaunch, "collector", "term", where)
   return { ...(appLaunch && { appLaunch }) }
 }
 

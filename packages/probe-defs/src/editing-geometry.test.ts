@@ -6,13 +6,14 @@
  */
 import { expect, test } from "vitest"
 import { editingProbes, editingReadbackRows } from "./editing.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
-function app(rows: number, cols: number, events: string[]): TermContext {
+function app(rows: number, cols: number, events: string[]): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in editing geometry fixture`)
   }
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -33,8 +34,8 @@ function app(rows: number, cols: number, events: string[]): TermContext {
 
 /**
  * 28450 slice C: the thirteen converted rows are decided by the region verdict, so a run with no owned
- * capture can only answer "inconclusive". A fixture that can only answer that is deleted rather than
- * kept (@cto A2), so every one of them refuses BY NAME and writes nothing - on the smallest grid, on a
+ * capture has no deciding observable. The callback records a named execution-only TODO rather than
+ * retaining a typed observation, so every one of them writes nothing - on the smallest grid, on a
  * grid at the row's own derived need and on a large one alike. This replaces the old per-row
  * "declines incomplete extents before feature bytes or CPR" test for these ids, which had no meaning
  * once their cursor-only fallback was deleted.
@@ -51,12 +52,13 @@ test("every converted row refuses by name and writes nothing without an owned ca
     ] as const) {
       const events: string[] = []
       const result = await definition.term(app(rows, cols, events))
-      expect(result.observation, `${row.id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-      })
-      expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
+      expect(result.observation, `${row.id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result.tests, `${row.id} at ${rows}x${cols}`).toMatchObject([
+        expect.objectContaining({
+          status: "test-todo",
+          reason: expect.stringContaining("no owned capture adapter"),
+        }),
+      ])
       expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])
     }
   }
@@ -83,7 +85,7 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
       [24, Number.POSITIVE_INFINITY],
     ] as const) {
       const events: string[] = []
-      const context: TermContext = {
+      const context: TermProbeSource = {
         ...app(rows, cols, events),
         capture: async () => {
           throw new Error(`${id} reached capture on an undersized grid`)
@@ -91,15 +93,14 @@ test("a converted attribute row refuses an undersized grid before any byte or qu
       }
       const result = await definition.term(context)
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
-      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-      })
-      expect(String(result.observation?.note), `${id} at ${rows}x${cols}`).toContain("at least")
+      expect(result.observation, `${id} at ${rows}x${cols}`).toBeUndefined()
+      expect(result.tests, `${id} at ${rows}x${cols}`).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("at least") }),
+      ])
     }
     // The other side of the boundary: 5x8 is the floor, so the arm must reach its own work instead
     // of refusing. A capture that throws is the cheapest proof it got past the geometry gate.
-    const floor: TermContext = {
+    const floor: TermProbeSource = {
       ...app(row.sentinel.row, 8, []),
       // A calibrated geometry keeps the arm from needing an unanswerable pixel query, so the only
       // thing that can stop it before the capture is the geometry gate this test measures.

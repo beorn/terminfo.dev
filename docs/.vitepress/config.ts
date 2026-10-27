@@ -403,7 +403,7 @@ export default defineConfig({
     if (rel === "fundamentals/term-detection.md") {
       pageData.title = "Terminal Detection: $TERM, DA1, DECRPM, Runtime Probing"
       pageData.description =
-        "How applications discover terminal capabilities \u2014 $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
+        "How applications discover terminal features \u2014 $TERM (unreliable), $COLORTERM, DA1, DECRPM mode reports, XTVERSION, and runtime behavioral probing."
     }
     if (rel === "fundamentals/security.md") {
       pageData.title = "Terminal Security: Clipboard, Paste Injection, Escape Attacks"

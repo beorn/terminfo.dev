@@ -33,7 +33,7 @@ A required review is a decision over retained evidence, not another instrument. 
 
 ## "Corrected after review"
 
-Automated image checks can decide criteria with machine-readable comparisons. When a criterion requires independent visual review, only that result remains TEST TODO until the review is complete. The reviewer compares the frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.
+Automated image tests can decide criteria with machine-readable comparisons. When a criterion requires independent visual review, only that result remains TEST TODO until the review is complete. The reviewer compares the frames and, where the effect is there, changes it to "Supported: verified in screenshot", with a name and a reason. The notice means the shown grade differs from the recorded one, not that a mistake was found.
 
 ## Untestable, TEST TODO and TEST FAILURE
 
@@ -58,10 +58,10 @@ Automated image checks can decide criteria with machine-readable comparisons. Wh
 
 ## Review history
 
-A collapsible section at the bottom of the result details, next to the evidence:
+A collapsible section at the bottom of the result details, next to the assertionType:
 
 - **Review history** — the recorded result, who changed it and why, and the **Evidence publication check**: the approval to show this result's own screenshots or raw reply. Without it, the page shows no images and says so.
 - **Screenshots** — the two frames, each with capture time, SHA-256 and a link to the original.
 - **Technical details · raw trace** — the raw bytes.
-- **Current probe guidance** — what the probe checks today; a description, not evidence.
-- **Test environment** — terminal, version, OS, configuration, measurement time, run ID and the run file's SHA-256, which your browser checks when it loads the evidence.
+- **Current probe guidance** — what the probe tests today; a description, not evidence.
+- **Test environment** — terminal, version, OS, configuration, measurement time, run ID and the run file's SHA-256, which your browser tests when it loads the evidence.

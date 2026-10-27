@@ -65,7 +65,7 @@ export function frozenSuiteIdFor(contentDir: string, release: string): string {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const RUN_DIRS = ["probes-apps", "probes-libs", "probes-mux"] as const
-const KINDS = ["app", "headless", "mux"] as const
+const KINDS = ["term", "lib", "mux"] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -279,7 +279,7 @@ function applySuiteFreeze(
     at: freeze.at ?? new Date().toISOString(),
     ...(freeze.previous === undefined || freeze.previous.length === 0 ? {} : { previous: freeze.previous }),
   }
-  // The one writer of the freeze key checks the exact bytes it is about to write with the reader's own
+  // The one writer of the freeze key tests the exact bytes it is about to write with the reader's own
   // parser, so neither a freeze nor a move can land a record every reader refuses.
   const bytes = `${JSON.stringify(stored, null, 2)}\n`
   parseSuiteManifest(path, bytes)
@@ -458,7 +458,7 @@ export function citedSuiteHashes(cwd = ROOT): Map<string, string[]> {
       }
       if (!isRecord(parsed)) throw new Error(`Committed run ${path} is not an object`)
       // Legacy v1 runs predate the executable suite; historical v2 and current v3 both cite it.
-      if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3) continue
+      if (parsed.schemaVersion !== 2 && parsed.schemaVersion !== 3 && parsed.schemaVersion !== 4) continue
       if (typeof parsed.probeHash !== "string" || !/^[0-9a-f]{12}$/.test(parsed.probeHash)) {
         throw new Error(`Committed schema-${parsed.schemaVersion} run ${path} declares no valid probeHash`)
       }

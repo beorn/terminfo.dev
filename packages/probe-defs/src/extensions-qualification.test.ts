@@ -6,19 +6,19 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import { replayContext } from "./testing/group-harness.ts"
-import type { TermContext, TermlessContext } from "./types.ts"
+import { replayTermProbeSource } from "./testing/group-harness.ts"
+import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 function callback(id: string) {
   const definition = extensionsProbes.find((item) => item.id === id)
-  if (!definition?.termless || !definition.term) throw new Error(`missing extension callback ${id}`)
+  if (!definition?.lib || !definition.term) throw new Error(`missing extension callback ${id}`)
   return definition
 }
 
 test("OSC 10 needs a complete matching foreground-color reply in both collectors", async () => {
   const definition = callback("extensions.osc10-fg-color")
   const frame = "\x1b]10;rgb:ffff/0000/0000\x07"
-  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const headless = (raw: string) => definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   const app = (raw: string) =>
     definition.term!({
       queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
@@ -27,9 +27,9 @@ test("OSC 10 needs a complete matching foreground-color reply in both collectors
         raw,
         rawBase64: Buffer.from(raw).toString("base64"),
       }),
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
   for (const result of [headless(frame), await app(frame)]) {
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.response).toBe(frame)
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: frame }])
   }
@@ -41,12 +41,12 @@ test("OSC 10 needs a complete matching foreground-color reply in both collectors
 
 test("a truecolor declaration without two calibrated RGB cell samples is inconclusive", () => {
   const definition = callback("extensions.truecolor")
-  const result = definition.termless!({
+  const result = definition.lib!({
     capabilities: { truecolor: true },
     feed: () => undefined,
     getCell: () => ({ char: "X", fg: null, bg: null }),
-  } as unknown as TermlessContext)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  } as unknown as LibProbeSource)
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
   expect(result.assertions).toBeUndefined()
 })
 
@@ -55,19 +55,19 @@ test("a truecolor declaration without two calibrated RGB cell samples is inconcl
 test("extensions.truecolor grades unexposed RGB targets against the independent controls", () => {
   const definition = callback("extensions.truecolor")
   const run = (controls: readonly ({ r: number; g: number; b: number } | null)[]) =>
-    definition.termless!({
+    definition.lib!({
       feed: () => undefined,
       getCell: (_row: number, col: number) => ({
         char: ["C", "A", "B", "X", "Y"][col] ?? "",
         fg: [null, ...controls, null, null][col] ?? null,
         bg: null,
       }),
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
   const ignored = run([
     { r: 128, g: 0, b: 0 },
     { r: 0, g: 0, b: 128 },
   ])
-  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   const monochrome = run([null, null])
   expect(monochrome.observation).toBeUndefined()
   expect(monochrome.notTested?.noObservable).toContain("color controls")
@@ -77,24 +77,25 @@ test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle 
   const definition = callback("extensions.truecolor")
   const sgrQuery = "\x1bP$qm\x1b\\"
   const answering = (raw: string) =>
-    replayContext(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
+    replayTermProbeSource(new Map([[sgrQuery, { sequence: sgrQuery, match: null, reason: "reply", raw }]]))
   const supported = await definition.term!(answering("\x1bP1$r0;38;2;255;128;0m\x1b\\"))
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   // The cell-storage claim is exactly what sgr.fg.truecolor decides, so a report without the
   // requested direct colour is a measured negative, not a cursor-consumption verdict.
   const unsupported = await definition.term!(answering("\x1bP1$r0m\x1b\\"))
-  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
-  // A silent terminal never becomes a negative: the existing cursor evidence stands.
-  const silent = await definition.term!(replayContext(new Map()))
-  expect(silent.observation?.outcome).toBe("inconclusive")
+  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
+  // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
+  const silent = await definition.term!(replayTermProbeSource(new Map()))
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
 })
 
 test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
   const definition = callback("extensions.osc104-reset-palette")
-  const result = definition.termless!({
+  const result = definition.lib!({
     feed: () => undefined,
     feedCapture: () => "\x1b[?1;2c",
-  } as unknown as TermlessContext)
+  } as unknown as LibProbeSource)
   expect(result.observation?.outcome).toBe("inconclusive")
   expect(result.assertions).toBeUndefined()
 })
@@ -122,7 +123,7 @@ const directReplies = [
 test.each(directReplies)("%s only qualifies its complete, bound query frame", async (id, frame) => {
   const definition = callback(id)
   const run = async (raw: string) => {
-    const headless = definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+    const headless = definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
     const query = async (_sequence: string, pattern: RegExp) => ({
       match: pattern.exec(raw),
       reason: pattern.test(raw) ? ("reply" as const) : ("sentinel" as const),
@@ -132,11 +133,11 @@ test.each(directReplies)("%s only qualifies its complete, bound query frame", as
     const app = await definition.term!({
       queryWithSentinelOutcome: query,
       queryOutcome: query,
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
     return [headless, app]
   }
   for (const result of await run(frame)) {
-    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.response, id).toBe(frame)
     expect(result.assertions, id).toMatchObject([{ kind: "positive", observed: frame }])
   }
@@ -152,13 +153,13 @@ test.each(directReplies)("%s only qualifies its complete, bound query frame", as
         expect(result.observation, `${id}: ${raw}`).toMatchObject({
           outcome: "inconclusive",
           reason: "invalid-reply",
-          evidence: "query",
+          assertionType: "query_reply",
         })
         expect(result.assertions, `${id}: ${raw}`).toBeUndefined()
       }
     }
     for (const result of await run("\x1b]776;8;16;0\x07")) {
-      expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.response, id).toBe("\x1b]776;8;16;0\x07")
     }
   }
@@ -169,7 +170,7 @@ test.each(directReplies)("%s only qualifies its complete, bound query frame", as
       ["\x1b[?62;4;52;c", "supported"],
     ] as const) {
       for (const result of await run(raw)) {
-        expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
         expect(result.response).toBe(raw)
         expect(result.assertions).toMatchObject([
           { kind: outcome === "supported" ? "positive" : "negative", observed: raw },
@@ -203,28 +204,28 @@ test.each([
   const color = (value: string) => `\x1b]${code};rgb:${value}\x07`
   const run = (replies: string[]) => {
     const feed: string[] = []
-    const result = definition.termless!({
+    const result = definition.lib!({
       feed: (sequence: string) => {
         feed.push(sequence)
       },
       feedCapture: () => replies.shift() ?? "",
-    } as unknown as TermlessContext)
+    } as unknown as LibProbeSource)
     return { result, feed }
   }
   const original = color("00/00/00")
   const changed = color("aa/bb/cc")
   const restored = run([original, changed, original])
-  expect(restored.result.observation, id).toMatchObject({ outcome: "supported", evidence: "behavior" })
+  expect(restored.result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(restored.result.assertions, id).toMatchObject([{ kind: "positive" }])
   expect(restored.feed.length, id).toBe(2)
   const notRestored = run([original, changed, color("12/34/56")])
-  expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
+  expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
   // 27932 / Terminal.app 1225b26b: query replies, SET is ignored, original rgb comes back.
   const setIgnored = run([original, original, original])
   expect(setIgnored.result.observation, id).toMatchObject({
     outcome: "unsupported",
-    evidence: "behavior",
+    assertionType: "query_reply",
     note: "OSC set did not change the queried color",
   })
   expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
@@ -246,13 +247,12 @@ test.each(["extensions.osc710-font-normal", "extensions.osc2-title", "extensions
       queryCursorPosition: async () => {
         throw new Error("unmeasured CPR must not run")
       },
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
     expect(writes, id).toEqual([])
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-    })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
     expect(result.assertions, id).toBeUndefined()
   },
 )
@@ -293,22 +293,22 @@ test.each(appResetProbes)(
           writes.push(bytes)
         },
         queryWithSentinelOutcome: exchange,
-      } as unknown as TermContext)
+      } as unknown as TermProbeSource)
       return { result, writes }
     }
     const reset = `\x1b]${resetCode}${index === undefined ? "" : `;${index}`}\x07`
     const restored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("0000/0000/0000")])
-    expect(restored.result.observation, id).toMatchObject({ outcome: "supported", evidence: "behavior" })
+    expect(restored.result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(restored.result.assertions, id).toMatchObject([{ kind: "positive" }])
     expect(restored.writes, id).toEqual([`\x1b]${setCode};${indexPart}rgb:aa/bb/cc\x07`, reset])
     const notRestored = await run([rgb("0000/0000/0000"), rgb("aa/bb/cc"), rgb("12/34/56")])
-    expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", evidence: "behavior" })
+    expect(notRestored.result.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
     expect(notRestored.result.assertions, id).toMatchObject([{ kind: "negative" }])
     // 27932 specimen: Terminal.app answers OSC 13/14 queries and ignores SET (run 1225b26b).
     const setIgnored = await run([rgb("0000/0000/0000"), rgb("0000/0000/0000"), rgb("0000/0000/0000")])
     expect(setIgnored.result.observation, id).toMatchObject({
       outcome: "unsupported",
-      evidence: "behavior",
+      assertionType: "query_reply",
       note: "OSC set did not change the queried color",
     })
     expect(setIgnored.result.assertions, id).toMatchObject([{ kind: "negative" }])
@@ -317,8 +317,10 @@ test.each(appResetProbes)(
     expect(noControl.result.assertions, id).toBeUndefined()
     const noReply = await run([])
     expect(noReply.writes, id).toEqual([])
-    expect(noReply.result.observation, id).toMatchObject({ evidence: "query" })
-    expect(noReply.result.observation?.outcome, id).toBe("inconclusive")
+    expect(noReply.result.observation, id).toBeUndefined()
+    expect(noReply.result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+    ])
   },
 )
 
@@ -341,7 +343,7 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
     definition.term!({
       write: () => undefined,
       queryCursorPosition: async () => cursor,
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
 
   const answered = await run(position)
   expect(answered.pass, id).toBe(false)
@@ -349,18 +351,17 @@ test.each(appOnlyEffects)("%s cursor replies do not prove the advertised effect"
   expect(answered.observation, id).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(answered.assertions, id).toBeUndefined()
 
   const silent = await run(null)
   expect(silent.pass, id).toBe(false)
   expect(silent.response, id).toBeUndefined()
-  expect(silent.observation, id).toMatchObject({
-    outcome: "inconclusive",
-    reason: "no-response",
-    evidence: "query",
-  })
+  expect(silent.observation, id).toBeUndefined()
+  expect(silent.tests, id).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+  ])
   expect(silent.assertions, id).toBeUndefined()
 })
 
@@ -377,12 +378,12 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
         rawBase64: Buffer.from(raw).toString("base64"),
         ...(sentinel && { sentinel }),
       }),
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
 
   const silent = await app(da1, { atMs: 7, graceMs: 250 })
   expect(silent.observation).toMatchObject({
     outcome: "unsupported",
-    evidence: "query",
+    assertionType: "query_reply",
     note: "negative by sentinel",
   })
   expect(silent.assertions).toMatchObject([
@@ -392,7 +393,7 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
   const late = await app(da1 + frame, { atMs: 7, graceMs: 250 })
   expect(late.observation).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
     note: "reply after sentinel",
   })
   expect(late.assertions).toMatchObject([{ kind: "positive", observed: frame }])
@@ -403,7 +404,7 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
   expect(unmeasured.observation?.outcome).toBe("inconclusive")
   expect(unmeasured.assertions).toBeUndefined()
   const unmeasuredLate = await app(da1 + frame)
-  expect(unmeasuredLate.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(unmeasuredLate.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(unmeasuredLate.observation?.note).toBeUndefined()
 
   // A partial frame after DA1 is the terminal answering badly, not a silent terminal.
@@ -415,7 +416,7 @@ test("a DA1 sentinel with no OSC reply is a measured negative; a late reply grad
 test("the unanswered-query choke point grades a measured sentinel and never a timeout", async () => {
   const definition = callback("extensions.osc21-kitty-color")
   const context = (reply: Record<string, unknown>) =>
-    definition.term!({ queryWithSentinelOutcome: async () => reply } as unknown as TermContext)
+    definition.term!({ queryWithSentinelOutcome: async () => reply } as unknown as TermProbeSource)
 
   const silent = await context({
     match: null,
@@ -426,7 +427,7 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
   })
   expect(silent.observation).toMatchObject({
     outcome: "unsupported",
-    evidence: "query",
+    assertionType: "query_reply",
     note: "negative by sentinel",
   })
   expect(silent.assertions).toMatchObject([
@@ -435,7 +436,10 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 
   // A timeout never answered DA1 at all, so it cannot be a sentinel negative.
   const timedOut = await context({ match: null, reason: "timeout", raw: "", rawBase64: "" })
-  expect(timedOut.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+  expect(timedOut.observation).toBeUndefined()
+  expect(timedOut.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: "No OSC 21 reply; color rendering was not tested" }),
+  ])
   expect(timedOut.assertions).toBeUndefined()
 })
 
@@ -445,7 +449,7 @@ test("the unanswered-query choke point grades a measured sentinel and never a ti
 // Demanding a third parameter graded that failure as a malformed geometry.
 test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", async () => {
   const definition = callback("extensions.sixel-geometry-report")
-  const headless = (raw: string) => definition.termless!({ feedCapture: () => raw } as unknown as TermlessContext)
+  const headless = (raw: string) => definition.lib!({ feedCapture: () => raw } as unknown as LibProbeSource)
   const app = (raw: string) =>
     definition.term!({
       queryWithSentinelOutcome: async (_query: string, pattern: RegExp) => ({
@@ -454,7 +458,7 @@ test("XTSMGRAPHICS failure is a documented status, not a malformed geometry", as
         raw,
         rawBase64: Buffer.from(raw).toString("base64"),
       }),
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
   const failure = "\x1b[?2;3S"
   for (const result of [headless(failure), await app(failure)]) {
     expect(result.response).toBe(failure)
@@ -487,8 +491,7 @@ function kittyTransfer(id: string, allocation: (imageNumber: number) => string) 
     if (imageNumber !== undefined) return allocation(Number(imageNumber))
     return /a=p,i=2,/.test(sequence) ? "\x1b_Gi=2;OK\x1b\\" : ""
   }
-  const headless = () =>
-    definition.termless!({ feed: () => undefined, feedCapture: answer } as unknown as TermlessContext)
+  const headless = () => definition.lib!({ feed: () => undefined, feedCapture: answer } as unknown as LibProbeSource)
   const app = () =>
     definition.term!({
       queryWithSentinelOutcome: async (sequence: string, pattern: RegExp) => {
@@ -501,7 +504,7 @@ function kittyTransfer(id: string, allocation: (imageNumber: number) => string) 
         }
       },
       write: () => undefined,
-    } as unknown as TermContext)
+    } as unknown as TermProbeSource)
   return { app, headless }
 }
 
@@ -514,7 +517,7 @@ test.each([
     for (const id of ["extensions.kitty-graphics.transmit", "extensions.kitty-graphics.display"]) {
       const { app, headless } = kittyTransfer(id, reply)
       for (const result of [headless(), await app()]) {
-        expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+        expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
         expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
       }
     }
@@ -538,8 +541,8 @@ test("a placement that is never acknowledged is a decisive negative about the ac
       }
     },
     write: () => undefined,
-  } as unknown as TermContext)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  } as unknown as TermProbeSource)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(result.assertions).toMatchObject([{ kind: "negative", expected: expect.stringContaining("acknowledgement") }])
   expect(JSON.stringify(result)).not.toMatch(/does not display/u)
 })
@@ -556,8 +559,8 @@ test("a kitty allocation reply that echoes another image number does not qualify
 
 test("the kitty graphics query still qualifies its i=31;OK reply (27915 kept the single-key frame)", () => {
   const definition = callback("extensions.kitty-graphics")
-  const result = definition.termless!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as TermlessContext)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  const result = definition.lib!({ feedCapture: () => "\x1b_Gi=31;OK\x1b\\" } as unknown as LibProbeSource)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 /**
@@ -594,7 +597,7 @@ function highlightTerminal(setCode: number, resetCode: number, initial: string, 
     queryOutcome: async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" }),
     queryMode: async () => null,
     measureRenderedWidth: async () => null,
-  } as unknown as TermContext
+  } as unknown as TermProbeSource
   return { ctx, writes, queries, colour: () => colour }
 }
 
@@ -609,7 +612,7 @@ test.each([
   expect(definition.termNeedsDisposable).toBe(true)
   const honest = highlightTerminal(setCode, resetCode, "1111/2222/3333")
   const supported = await definition.term!(honest.ctx)
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   // The initial colour is asked for first, and the run leaves the slot as it found it.
   expect(honest.queries[0]).toBe(`\x1b]${setCode};?\x07`)
   expect(honest.colour()).toBe("1111/2222/3333")
@@ -617,31 +620,32 @@ test.each([
   // A terminal that consumes the reset without restoring the slot is a measured negative.
   const ignoring = highlightTerminal(setCode, resetCode, "1111/2222/3333", true)
   const unsupported = await definition.term!(ignoring.ctx)
-  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(unsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   // The honest terminal restores the slot with its own reset, which would hide a missing finally.
   // This one leaves the test colour behind unless the run restores what it found.
   expect(ignoring.colour()).toBe("1111/2222/3333")
 
   // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
-  const silent = await definition.term!(replayContext(new Map()))
-  expect(silent.observation?.outcome).toBe("inconclusive")
+  const silent = await definition.term!(replayTermProbeSource(new Map()))
+  expect(silent.observation).toBeUndefined()
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 
   // A terminal that starts on the default test colour still needs an observed change: a fixed set
   // colour would let both readings agree while the reset was ignored.
   const collisionIgnoring = highlightTerminal(setCode, resetCode, "3030/6060/9090", true)
   const collisionUnsupported = await definition.term!(collisionIgnoring.ctx)
-  expect(collisionUnsupported.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(collisionUnsupported.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(collisionIgnoring.colour()).toBe("3030/6060/9090")
 
   const collisionHonest = highlightTerminal(setCode, resetCode, "3030/6060/9090")
   const collisionSupported = await definition.term!(collisionHonest.ctx)
-  expect(collisionSupported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(collisionSupported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test.each([
-  ["extensions.osc117-reset-highlight-bg", "none"],
-  ["extensions.osc119-reset-highlight-fg", "none"],
-] as const)("%s declares its headless arm as a refusal before measurement (%s), never parser state", (id, evidence) => {
+  ["extensions.osc117-reset-highlight-bg", null],
+  ["extensions.osc119-reset-highlight-fg", null],
+] as const)("%s declares its headless arm without a typed observable (%s), never parser state", (id, assertionType) => {
   const definition = callback(id)
-  expect(definition.termlessObservationEvidence).toBe(evidence)
+  expect(definition.libAssertionType).toBe(assertionType)
 })

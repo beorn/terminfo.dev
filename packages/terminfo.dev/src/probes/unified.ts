@@ -1,15 +1,15 @@
 /**
- * CLI probe adapter — wraps unified probe-defs with TermContext from tty.ts.
+ * CLI probe adapter — wraps unified probe-defs with TermProbeSource from tty.ts.
  *
- * Imports ALL_PROBES from @terminfo/probe-defs, creates a TermContext using
+ * Imports ALL_PROBES from @terminfo/probe-defs, creates a TermProbeSource using
  * the tty.ts helpers (query, queryCursorPosition, measureRenderedWidth, queryMode),
  * and exports the same `Probe[]` interface the CLI expects.
  */
 
 import {
   ALL_PROBES as PROBE_DEFS,
-  recordExecutedCapability,
-  type CapabilityResult,
+  recordExecutedProbe,
+  type ProbeResult,
   type RunDraft,
   type CaptureCells,
   type CapturePixelGeometry,
@@ -20,8 +20,8 @@ import {
   type ObservationFrame,
   type ProbeAssertion,
   type ProbeDefinition,
-  type ProbeResult,
-  type TermContext,
+  type ProbeCallbackResult,
+  type TermProbeSource,
   type UngradedDiagnostic,
   type Utf8DecodingReading,
 } from "@terminfo/probe-defs"
@@ -47,12 +47,7 @@ import {
   type GeometryMeasurement,
   type OwnedTerminal,
 } from "../owned-terminal.ts"
-import {
-  bindReceiptToRun,
-  readDisposableReceipt,
-  type DisposableReceipt,
-  type ReceiptTarget,
-} from "../disposable-receipt.ts"
+import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
 
 /**
  * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
@@ -70,8 +65,8 @@ export interface Probe {
   name: string
 }
 
-/** Build a TermContext from the tty.ts helpers */
-function createTermContext({
+/** Build a TermProbeSource from the tty.ts helpers */
+function createTermProbeSource({
   out,
   events,
   probe,
@@ -85,7 +80,7 @@ function createTermContext({
   geometry?: Pick<Extract<GeometryMeasurement, { status: "measured" }>, "rows" | "cols">
   utf8Decoding: () => Promise<Utf8DecodingReading>
   captureGeometryRefusal?: string
-}): TermContext {
+}): TermProbeSource {
   const size = () => {
     if (probe.termNeedsGeometry !== true || !geometry) {
       const error = new Error(`App callback ${probe.id} accessed undeclared or unavailable terminal geometry`)
@@ -95,6 +90,7 @@ function createTermContext({
     return geometry
   }
   return {
+    kind: "live",
     write(text: string) {
       events?.push({ kind: "write", sequence: text })
       out.write(text)
@@ -129,7 +125,7 @@ export const ALL_PROBES: Probe[] = PROBE_DEFS.filter((p) => p.term !== null).map
 }))
 
 export interface ProbeBatch {
-  results: CapabilityResult[]
+  results: ProbeResult[]
   rawReplies: Record<string, string>
   observations: Observation[]
   assertions: ProbeAssertion[]
@@ -209,17 +205,16 @@ function capturedConsoleHost(trace: Record<string, unknown>): ConsoleBufferOwner
 }
 
 /**
- * Runtime totality guard. `ProbeResult` is a union that makes a measurement or a coverage
- * record mandatory, so a typed callback cannot reach here without one; an untyped caller
- * can, and that is reported rather than silently ungraded.
+ * Identify retained measurement claims separately from coverage and execution-only tests, so a
+ * callback cannot combine not-tested coverage with an observation or assertion.
  */
-function claimsMeasurement(result: ProbeResult): boolean {
+function claimsMeasurement(result: ProbeCallbackResult): boolean {
   const widened: { observation?: unknown; assertions?: readonly unknown[] } = result
   return widened.observation !== undefined || (widened.assertions?.length ?? 0) > 0
 }
 
 /** A refused claim keeps its own observation detail and assertion contents in the error text, never as a claim. */
-function refusedClaimEvidence(result: ProbeResult): string {
+function refusedClaimEvidence(result: ProbeCallbackResult): string {
   const parts: string[] = []
   const observation = result.observation
   if (observation) {
@@ -227,7 +222,7 @@ function refusedClaimEvidence(result: ProbeResult): string {
       `observation(${[
         `outcome=${observation.outcome}`,
         ...(observation.reason ? [`reason=${observation.reason}`] : []),
-        `evidence=${observation.evidence}`,
+        `assertionType=${observation.assertionType}`,
         ...(observation.note ? [`note=${JSON.stringify(observation.note)}`] : []),
       ].join(", ")})`,
     )
@@ -272,7 +267,7 @@ export async function runProbeBatch(
     captureKind?: "pixels" | "text-cells"
     /** Prepare owned capture calibration and verify restoration before the first callback. */
     prepareCapture?: (input: {
-      context: TermContext
+      source: TermProbeSource
       featureId: string
       recordCapture: (result: CapturedProbeFrame) => void
     }) => Promise<void>
@@ -292,7 +287,7 @@ export async function runProbeBatch(
     geometryCorroboration?: GeometryCorroboration
     /** The target this run is measuring, from the measured side (the launched app), never read out
      * of the receipt. A receipt naming another target is refused before the first write (27874). */
-    target?: ReceiptTarget
+    subject?: { kind: "term" | "lib" | "mux"; id: string; os: string }
     draft?: Pick<RunDraft, "results">
     onCheckpoint?: (batch: ProbeBatch) => void
   } = {},
@@ -306,7 +301,7 @@ export async function runProbeBatch(
         featureId: probe.id,
         status: "test-todo",
         attempt: { scope: "none" },
-        checks: [],
+        tests: [],
         reason: "Required callback has not started",
       })),
     rawReplies: {},
@@ -362,7 +357,23 @@ export async function runProbeBatch(
   const disposable = resolveDisposableReceipt()
   // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
-  if (disposable) bindReceiptToRun(disposable, options.target, "collector.disposableOwnership")
+  if (disposable) {
+    bindReceiptToRun(
+      disposable,
+      options.subject
+        ? {
+            ...options.subject,
+            kind:
+              options.subject.kind === "term"
+                ? "app"
+                : options.subject.kind === "lib"
+                  ? "headless"
+                  : options.subject.kind,
+          }
+        : undefined,
+      "collector.disposableOwnership",
+    )
+  }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
   if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(
@@ -410,7 +421,7 @@ export async function runProbeBatch(
   // Calibrate and prove restoration once before the first callback. The same measured geometry
   // reaches every later context; a query callback is not permission to paint an unowned terminal.
   let capturePrepared = false
-  let captureGeometry: TermContext["captureGeometry"]
+  let captureGeometry: TermProbeSource["captureGeometry"]
   let captureGeometryRefusal = options.captureGeometryRefusal
   const recordCapture = (
     featureId: string,
@@ -445,20 +456,12 @@ export async function runProbeBatch(
           ? "no verified disposable-ownership receipt was presented"
           : undefined
     if (refusedBecause) {
-      batch.observations.push({
-        featureId: probe.id,
-        outcome: "inconclusive",
-        reason: "policy-refused",
-        evidence: "none",
-        note: `Collector refused before sending bytes because ${refusedBecause}`,
-        rawReplyRef: probe.id,
-      })
       batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
       const pending = batch.results.find((result) => result.featureId === probe.id)
       if (!pending) throw new Error(`Native prerequisite ${probe.id} is outside initialized catalogue`)
       pending.reason = `Required grant missing: ${refusedBecause}`
       pending.rawReplyRef = probe.id
-      pending.checks = [
+      pending.tests = [
         {
           id: "prerequisite",
           status: "test-todo",
@@ -497,14 +500,7 @@ export async function runProbeBatch(
                 : undefined
       if (diagnostic) {
         geometryCheck.diagnostic = diagnostic
-        batch.observations.push({
-          featureId: probe.id,
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note: diagnostic,
-          rawReplyRef: probe.id,
-        })
+
         batch.rawReplies[probe.id] = JSON.stringify({ writes: [], queries, events })
         const pending = batch.results.find((result) => result.featureId === probe.id)
         if (!pending) throw new Error(`Native geometry ${probe.id} is outside initialized catalogue`)
@@ -515,14 +511,12 @@ export async function runProbeBatch(
         pending.attempt = attempt
         pending.reason = diagnostic
         pending.rawReplyRef = probe.id
-        pending.checks = [
-          { id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id },
-        ]
+        pending.tests = [{ id: "geometry", status: pending.status, attempt, reason: diagnostic, rawReplyRef: probe.id }]
         options.onCheckpoint?.(batch)
         continue
       }
     }
-    const context = createTermContext({
+    const probeSource = createTermProbeSource({
       out,
       events,
       probe,
@@ -530,15 +524,15 @@ export async function runProbeBatch(
       utf8Decoding: readUtf8Decoding,
       captureGeometryRefusal,
     })
-    if (captureGeometry) context.captureGeometry = captureGeometry
+    if (captureGeometry) probeSource.captureGeometry = captureGeometry
     if (clipboard && clipboard.profile !== "default" && verify) {
-      context.withClipboardFixture = (work) =>
+      probeSource.withClipboardFixture = (work) =>
         clipboard.withClipboardFixture(work, (event) => clipboardEvents.push(event), verify)
     }
     if (options.input) {
       const input = options.input
       const injectDrag = input.injectDrag?.bind(input)
-      context.input = {
+      probeSource.input = {
         injectKey: (keys) => withTTYOperation(() => input.injectKey(keys), out, verify),
         injectClick: (button) => withTTYOperation(() => input.injectClick(button), out, verify),
         ...(injectDrag && { injectDrag: (button: 1) => withTTYOperation(() => injectDrag(button), out, verify) }),
@@ -553,15 +547,15 @@ export async function runProbeBatch(
     const captureEligible = captureAdapterEligible(probe, options.captureKind, captureGeometryRefusal)
     if (capture && captureEligible) {
       if (textCells) {
-        context.captureKind = "text-cells"
-        context.cells = async (checkpoint) => {
+        probeSource.captureKind = "text-cells"
+        probeSource.cells = async (checkpoint) => {
           captureAttempted = true
           const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
           recordCapture(probe.id, captures, result, checkpoint.role)
           return result.frame
         }
       } else {
-        context.capture = async (checkpoint) => {
+        probeSource.capture = async (checkpoint) => {
           captureAttempted = true
           const result = await withTTYOperation(() => capture({ featureId: probe.id, ...checkpoint }), out, verify)
           recordCapture(probe.id, captures, result, checkpoint.role)
@@ -632,7 +626,7 @@ export async function runProbeBatch(
           }
           preparationGrid = { rows: current.rows, cols: current.cols }
         }
-        const preparationContext = createTermContext({
+        const preparationSource = createTermProbeSource({
           out,
           events: calibrationEvents,
           probe: { ...probe, termNeedsGeometry: true },
@@ -645,7 +639,7 @@ export async function runProbeBatch(
           () =>
             withTTYQueryTrace(calibrationQueries, calibrationEvents, () =>
               prepareCapture({
-                context: preparationContext,
+                source: preparationSource,
                 featureId: calibrationId,
                 recordCapture: (captured) => recordCapture(calibrationId, calibrationCaptures, captured),
               }),
@@ -653,8 +647,8 @@ export async function runProbeBatch(
           out,
           verify,
         )
-        captureGeometry = preparationContext.captureGeometry
-        captureGeometryRefusal = preparationContext.captureGeometryRefusal
+        captureGeometry = preparationSource.captureGeometry
+        captureGeometryRefusal = preparationSource.captureGeometryRefusal
       } catch (error) {
         if (!(error instanceof Error) || error.name !== "CaptureCalibrationRefused") throw error
         captureGeometryRefusal = error.message
@@ -672,9 +666,9 @@ export async function runProbeBatch(
         options.onCheckpoint?.(batch)
       }
       capturePrepared = true
-      if (captureGeometry) context.captureGeometry = captureGeometry
-      if (captureGeometryRefusal) context.captureGeometryRefusal = captureGeometryRefusal
-      if (captureGeometryRefusal) context.capture = undefined
+      if (captureGeometry) probeSource.captureGeometry = captureGeometry
+      if (captureGeometryRefusal) probeSource.captureGeometryRefusal = captureGeometryRefusal
+      if (captureGeometryRefusal) probeSource.capture = undefined
     }
     const attempt = { scope: "probe" as const, startedAt: new Date().toISOString() }
     const activeIndex = batch.results.findIndex((result) => result.featureId === probe.id)
@@ -686,7 +680,7 @@ export async function runProbeBatch(
       reason: "Callback attempt started; no result recorded yet",
     }
     options.onCheckpoint?.(batch)
-    let callbackChecks: ProbeResult["checks"]
+    let callbackTests: ProbeCallbackResult["tests"]
     let criterionBranch: string | undefined
     try {
       if (!probe.term) throw new Error(`No app callback for ${probe.id}`)
@@ -696,7 +690,7 @@ export async function runProbeBatch(
         result = await withTTYOperation(
           () =>
             withTTYQueryTrace(queries, events, async () => {
-              return callback(context)
+              return callback(probeSource)
             }),
           out,
           verify,
@@ -704,16 +698,8 @@ export async function runProbeBatch(
       } finally {
         if (geometryCheck) geometryCheck.post = await readGeometry()
       }
-      callbackChecks = result.checks
+      callbackTests = result.tests
       criterionBranch = result.criterionBranch
-      if (
-        captureGeometryRefusal &&
-        result.observation?.outcome === "inconclusive" &&
-        result.observation.evidence === "consumed"
-      ) {
-        const prior = result.observation.note
-        result.observation.note = `${prior ? `${prior}; ` : ""}Pixel capture unavailable: ${captureGeometryRefusal}`
-      }
       if (result.notTested) {
         const reason = result.notTested.reason
         const noObservable = result.notTested.noObservable
@@ -739,17 +725,14 @@ export async function runProbeBatch(
         if (result.response !== undefined) {
           batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
         }
-        const rawReplyRef =
-          queries.length || captureAttempted || clipboardEvents.length || result.observation.evidence === "none"
-            ? probe.id
-            : undefined
+        const rawReplyRef = queries.length || captureAttempted || clipboardEvents.length ? probe.id : undefined
         const post = geometryCheck?.post
         const resized =
           preGeometry?.status === "measured" &&
           (post?.status !== "measured" || post.rows !== preGeometry.rows || post.cols !== preGeometry.cols)
         if (resized) {
           batch.rawReplies[`${probe.id}.callbackObservation`] = JSON.stringify(result.observation)
-          callbackChecks = [
+          callbackTests = [
             {
               id: "geometry",
               status: "test-failure",
@@ -783,6 +766,16 @@ export async function runProbeBatch(
             ...(rawReplyRef ? { rawReplyRef } : {}),
           })
         }
+      } else if (
+        result.tests?.length &&
+        result.tests.every(
+          (test) =>
+            (test.status === "test-todo" || test.status === "test-failure") &&
+            typeof test.reason === "string" &&
+            test.reason.trim().length > 0,
+        )
+      ) {
+        if (result.response !== undefined) batch.rawReplies[`${probe.id}.callbackResponse`] = result.response
       } else {
         // The callback returned neither a measurement nor a coverage record. The type makes
         // that impossible for a typed callback; an untyped caller still gets a loud error.
@@ -798,20 +791,20 @@ export async function runProbeBatch(
       const message = error instanceof Error ? error.message : String(error)
       // FrameUnavailable joins UndeclaredTerminalGeometry: the probe could not run at all, so the
       // error is named in its own result and nothing about pixels is claimed (27875).
-      const errorEvidence =
+      const errorAssertionType =
         name === "UndeclaredTerminalGeometry" || name === "FrameUnavailable"
           ? undefined
           : captureAttempted
             ? options.captureKind === "text-cells"
-              ? "text"
-              : "pixels"
-            : probe.termObservationEvidence
-      if (errorEvidence) {
+              ? "buffer_state"
+              : "screenshot"
+            : undefined
+      if (errorAssertionType) {
         batch.observations.push({
           featureId: probe.id,
           outcome: "error",
           reason: "collector-error",
-          evidence: errorEvidence,
+          assertionType: errorAssertionType,
           note: message,
           ...(queries.length || captureAttempted || clipboardEvents.length ? { rawReplyRef: probe.id } : {}),
         })
@@ -840,14 +833,15 @@ export async function runProbeBatch(
       }
       const index = batch.results.findIndex((result) => result.featureId === probe.id)
       if (index < 0) throw new Error(`Native callback ${probe.id} is outside the initialized catalogue`)
-      batch.results[index] = recordExecutedCapability({
+      batch.results[index] = recordExecutedProbe({
         featureId: probe.id,
         attempt,
         observation,
         diagnostic: batch.ungradedDiagnostics[probe.id],
         coverage: batch.notTested.find((entry) => entry.featureId === probe.id),
         assertions: batch.assertions,
-        checks: callbackChecks,
+        tests: callbackTests,
+        rawReplyRef: probe.id,
         criterionBranch,
       })
       options.onCheckpoint?.(batch)

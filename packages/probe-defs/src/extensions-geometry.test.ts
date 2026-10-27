@@ -6,26 +6,27 @@
  */
 import { expect, test } from "vitest"
 import { extensionsProbes } from "./extensions.ts"
-import type { TermContext } from "./types.ts"
+import type { TermProbeSource } from "./types.ts"
 
 const fixtures = [
-  { id: "extensions.osc8", rows: 1, cols: 7, columns: [7], outcome: "inconclusive", evidence: "consumed" },
+  { id: "extensions.osc8", rows: 1, cols: 7, columns: [7], outcome: "inconclusive", assertionType: "query_reply" },
   {
     id: "extensions.osc66-text-sizing",
     rows: 1,
     cols: 5,
     columns: [1, 3, 5],
     outcome: "supported",
-    evidence: "behavior",
+    assertionType: "query_reply",
   },
 ] as const
 
-function app(rows: number, cols: number, events: string[], columns: readonly number[]): TermContext {
+function app(rows: number, cols: number, events: string[], columns: readonly number[]): TermProbeSource {
   const unexpected = (name: string): never => {
     throw new Error(`Unexpected ${name} in extension geometry fixture`)
   }
   let query = 0
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -47,7 +48,7 @@ function app(rows: number, cols: number, events: string[], columns: readonly num
 }
 
 test.each(fixtures)("$id declines invalid or undersized geometry before bytes or queries", async (fixture) => {
-  const { id, rows, cols, columns, outcome, evidence } = fixture
+  const { id, rows, cols, columns, outcome, assertionType } = fixture
   const definition = extensionsProbes.find((probe) => probe.id === id)
   if (!definition?.term) throw new Error(`Missing app callback for ${id}`)
   const invalidDimensions: ReadonlyArray<readonly [number, number]> = [
@@ -62,15 +63,24 @@ test.each(fixtures)("$id declines invalid or undersized geometry before bytes or
     const events: string[] = []
     const result = await definition.term(app(measuredRows, measuredCols, events, columns))
     expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-    })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+    ])
   }
   expect(definition.termNeedsGeometry, id).toBe(true)
   const events: string[] = []
   const result = await definition.term(app(rows, cols, events, columns))
   expect(events.at(-1), id).toBe("CPR")
-  expect(result.observation, id).toMatchObject({ outcome, evidence })
+  if (id === "extensions.osc8") {
+    expect(result.observation, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({
+        status: "test-todo",
+        reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+      }),
+    ])
+  } else {
+    expect(result.observation, id).toMatchObject({ outcome, assertionType })
+  }
 })

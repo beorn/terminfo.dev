@@ -64,7 +64,7 @@ export interface CollectionContext {
   /** The context id, as the published row is keyed by. */
   readonly id: string
   readonly os: string
-  readonly kind: "app" | "headless" | "mux"
+  readonly kind: "term" | "lib" | "mux"
   readonly route: CollectionRoute | null
   /** The entry point that measures this row — the same one the row was measured with. */
   readonly command: string | null
@@ -98,9 +98,9 @@ function linuxLiveArgs(kind: CollectionContext["kind"], id: string): string[] {
 const linuxAppRow = (id: string): CollectionContext => ({
   id,
   os: "linux",
-  kind: "app",
+  kind: "term",
   route: "linux-container",
-  command: `bash scripts/linux-container-run.sh ${linuxLiveArgs("app", id).join(" ")} <outdir>`,
+  command: `bash scripts/linux-container-run.sh ${linuxLiveArgs("term", id).join(" ")} <outdir>`,
   requires: null,
   sourceRun: null,
   uncollectable: null,
@@ -109,7 +109,7 @@ const linuxAppRow = (id: string): CollectionContext => ({
 const macRow = (id: string): CollectionContext => ({
   id,
   os: "macos",
-  kind: "app",
+  kind: "term",
   route: "hosted-workflow",
   // The workflow declares `on: workflow_dispatch:` with NO inputs, so a dispatch takes no -f:
   // the printed `-f cli_version=<ver>` named a flag the workflow does not accept (and the
@@ -127,7 +127,7 @@ const macRow = (id: string): CollectionContext => ({
 const engineRow = (id: string): CollectionContext => ({
   id,
   os: "unknown",
-  kind: "headless",
+  kind: "lib",
   route: "headless-termless",
   command: `bun packages/admin/src/index.ts probe termless ${id}`,
   requires: null,
@@ -163,7 +163,7 @@ const UNMEASURABLE_MAC_APPS: ReadonlyMap<string, { readonly runId: string; reado
 const localOwnedAppRow = (id: string): CollectionContext => ({
   id,
   os: "macos",
-  kind: "app",
+  kind: "term",
   route: "local-owned-app",
   command: `bun packages/admin/src/index.ts probe app ${id} --output <private-directory>`,
   requires: "an owned app window launched by the admin on this host (run-scoped instance group, recorded pid)",
@@ -191,7 +191,7 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
   const hosted = { macos: hostedAppIds("macos"), windows: hostedAppIds("windows") }
   const contexts: CollectionContext[] = []
   for (const { terminalId: id, os, kind } of expected) {
-    if (kind === "headless") continue
+    if (kind === "lib") continue
     if (kind === "mux" && os === "linux") {
       contexts.push({
         id,
@@ -220,7 +220,7 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
       contexts.push({
         id,
         os,
-        kind: "app",
+        kind: "term",
         route: null,
         command: null,
         requires: null,
@@ -233,7 +233,7 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
       contexts.push({
         id,
         os,
-        kind: "app",
+        kind: "term",
         route: "hosted-workflow",
         command:
           "gh workflow run windows-measurement.yml --repo beorn/terminfo.dev --ref <exact-source-ref>, then " +
@@ -246,7 +246,7 @@ function collectionRoutes(expected: readonly CensusContext[]): CollectionContext
       contexts.push({
         id,
         os,
-        kind: "app",
+        kind: "term",
         route: null,
         command: null,
         requires: null,
@@ -333,7 +333,7 @@ export function ownedAppCommand(
   transport: OwnedAppTransportOptions,
   sourceRevision: string,
 ): { argv: string[]; label: string } {
-  const probe = ["bun", "packages/admin/src/index.ts", "probe", "app", context.id]
+  const probe = ["bun", "packages/admin/src/index.ts", "probe", "term", context.id]
   if (transport.runner === "local") {
     return { argv: [...probe, "--output", output], label: `${labelOf(context)} owned-app collection` }
   }
@@ -488,13 +488,14 @@ export async function collectPass(
   const drafts = new Map<string, { draft: RunDraft; path: string }>()
   for (const context of census) {
     const draft = initializeRunDraft({
+      source: { kind: "live" },
       runId: randomBytes(16).toString("hex"),
       sourceRevision,
       manifest: derivedSuiteManifest(snapshot),
-      intendedContext: {
+      intendedSubject: {
         kind: context.kind,
         id: context.id,
-        os: context.kind === "headless" ? process.platform : context.os,
+        os: context.kind === "lib" ? process.platform : context.os,
       },
     })
     const path = join(directory, `${context.kind}-${context.id}-${context.os}.draft.json`)
@@ -507,10 +508,10 @@ export async function collectPass(
   try {
     const collected = await collectHeadlessRuns(
       [],
-      join(directory, "headless"),
+      join(directory, "lib"),
       new Map(
         census
-          .filter((context) => context.kind === "headless")
+          .filter((context) => context.kind === "lib")
           .map((context) => {
             const handed = drafts.get(coverageKey(context.kind, context.id, context.os))
             if (!handed) throw new Error(`Missing initialized headless context ${context.id}`)
@@ -526,9 +527,14 @@ export async function collectPass(
           throw new Error(`collector returned raw output outside this private pass: ${file}`)
         }
         // This header only routes the file to its context; canonical parseRun validates every byte below.
-        const header = JSON.parse(readFileSync(file, "utf8")) as { target?: { id?: unknown } }
-        const id = header?.target?.id
-        if (typeof id !== "string" || !census.some((row) => row.kind === "headless" && row.id === id)) {
+        const header = JSON.parse(readFileSync(file, "utf8")) as {
+          schemaVersion?: unknown
+          subject?: { id?: unknown }
+          target?: { id?: unknown }
+        }
+        // Preserve historical raw output custody before the current-contract refusal below.
+        const id = header.schemaVersion === 4 ? header.subject?.id : header.target?.id
+        if (typeof id !== "string" || !census.some((row) => row.kind === "lib" && row.id === id)) {
           throw new Error(`headless collector returned an unexpected target in ${file}`)
         }
         files.set(id, [...(files.get(id) ?? []), file])
@@ -625,7 +631,7 @@ export async function collectPass(
         if (artifact.error) throw new Error(artifact.error)
         if (!artifact.path) throw new Error(`hosted artifact has no raw run in ${artifact.directory}`)
         path = artifact.path
-      } else if (context.kind === "headless") {
+      } else if (context.kind === "lib") {
         const paths = files.get(context.id) ?? []
         if (failures.has(context.id)) throw new Error(failures.get(context.id))
         if (paths.length !== 1 || !paths[0]) {
@@ -644,23 +650,23 @@ export async function collectPass(
       row.rawRun = path
       const raw = readFileSync(path, "utf8")
       const header = JSON.parse(raw) as { schemaVersion?: unknown; sealedAt?: unknown }
-      if (header.schemaVersion === 3 && header.sealedAt === undefined) {
+      if (header.schemaVersion === 4 && header.sealedAt === undefined) {
         const decoded = decodeCollectorDraft(path, raw, derivedSuiteManifest(snapshot), sourceRevision)
         if (decoded.run.runId !== handed.draft.runId) {
           throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
         }
         if (
-          decoded.run.target?.kind !== context.kind ||
-          decoded.run.target.id !== context.id ||
-          (context.kind !== "headless" && decoded.run.target.os !== context.os)
+          decoded.run.subject?.kind !== context.kind ||
+          decoded.run.subject.id !== context.id ||
+          (context.kind !== "lib" && decoded.run.subject.os !== context.os)
         ) {
           throw new Error(
-            `raw draft does not identify the expected current schema-3 ${context.kind}:${context.id} context`,
+            `raw draft does not identify the expected current schema-4 ${context.kind}:${context.id} context`,
           )
         }
         if (
           decoded.run.results.some((result) =>
-            result.checks.some((check) => check.id === "review" && check.status === "test-todo"),
+            result.tests.some((check) => check.id === "review" && check.status === "test-todo"),
           ) &&
           Object.keys(decoded.run.rawReplies).some((key) => key.startsWith("collector.capture."))
         ) {
@@ -688,12 +694,12 @@ export async function collectPass(
       }
       const run = parseRun(path, readFileSync(path, "utf8"), catalogIds, suites)
       if (
-        run.schemaVersion !== 3 ||
-        run.target.kind !== context.kind ||
-        run.target.id !== context.id ||
-        (context.kind !== "headless" && run.target.os !== context.os)
+        run.schemaVersion !== 4 ||
+        run.subject.kind !== context.kind ||
+        run.subject.id !== context.id ||
+        (context.kind !== "lib" && run.subject.os !== context.os)
       ) {
-        throw new Error(`raw run does not identify the expected current schema-3 ${context.kind}:${context.id} context`)
+        throw new Error(`raw run does not identify the expected current schema-4 ${context.kind}:${context.id} context`)
       }
       if (run.runId !== handed.draft.runId) throw new Error(`Collector changed logical runId for ${labelOf(context)}`)
       if (!run.suiteComplete) throw new Error(`raw run is incomplete for current suite ${snapshot.probeHash}`)
@@ -741,7 +747,7 @@ export async function collectPass(
         return row.rawRun
       })
       admitProducedRuns(paths, freeze.id, freeze.release, (produced, destination) => {
-        const key = coverageKey(produced.target.kind, produced.target.id, produced.target.os)
+        const key = coverageKey(produced.subject.kind, produced.subject.id, produced.subject.os)
         const row = pass.contexts.find((row) => coverageKey(row.context.kind, row.context.id, row.context.os) === key)
         if (!row) throw new Error(`Admission returned an unexpected context ${key}`)
         row.status = "admitted"
@@ -985,7 +991,7 @@ function collectHostedArtifacts(
 /** Admission supplies the validated target; coverage needs no second raw-run parser. */
 export interface ProducedRun {
   readonly runId?: string
-  readonly target: Pick<AdmissionPlan["target"], "kind" | "id" | "os">
+  readonly subject: Pick<AdmissionPlan["subject"], "kind" | "id" | "os">
 }
 
 /** The owner completes admission before a produced input earns collection coverage. */
@@ -1004,7 +1010,7 @@ export function admitProducedRuns(
   const produced: ProducedRun[] = []
   for (const plan of plans) {
     admitRun(plan)
-    const run = { target: plan.target, runId: plan.runId }
+    const run = { subject: plan.subject, runId: plan.runId }
     produced.push(run)
     onAdmitted?.(run, plan.destination)
   }
@@ -1017,14 +1023,14 @@ export function admitProducedRuns(
  * so an id/os key matched no headless run and every engine row read uncovered (#27929 D7).
  */
 const coverageKey = (kind: unknown, id: unknown, os: unknown): string =>
-  kind === "headless" ? `headless:${String(id)}` : `${String(id)}/${String(os)}`
+  kind === "lib" ? `headless:${String(id)}` : `${String(id)}/${String(os)}`
 
 /** Contexts in the census that produced no run at all, each with its own named reason. */
 export function uncoveredContexts(
   census: readonly CollectionContext[],
   producedRuns: readonly ProducedRun[],
 ): readonly { readonly context: CollectionContext; readonly reason: string }[] {
-  const produced = new Set(producedRuns.map((run) => coverageKey(run.target?.kind, run.target?.id, run.target?.os)))
+  const produced = new Set(producedRuns.map((run) => coverageKey(run.subject?.kind, run.subject?.id, run.subject?.os)))
   return census
     .filter((entry) => !produced.has(coverageKey(entry.kind, entry.id, entry.os)))
     .map((entry) => ({
@@ -1046,7 +1052,7 @@ function planLines(census: readonly CollectionContext[]): string[] {
   const pending = census.filter((entry) => entry.requires !== null).length
   return [
     `Collection census — ${census.length} contexts` +
-      ` (${census.filter((entry) => entry.kind === "app").length} app, ${census.filter((entry) => entry.kind === "mux").length} mux, ${census.filter((entry) => entry.kind === "headless").length} headless)`,
+      ` (${census.filter((entry) => entry.kind === "term").length} app, ${census.filter((entry) => entry.kind === "mux").length} mux, ${census.filter((entry) => entry.kind === "lib").length} headless)`,
     `Scope: catalog app/mux platforms plus the Termless engine manifest; historical app/mux rows are excluded, and unsupported catalog kinds fail by name.`,
     `Routes are source recipes, not runtime qualification: ${uncollectable} have no qualified automatic route, ${pending} require a prerequisite.`,
     `Linux rows: the launcher flags are the live pass's own declared invocation, not a read-back from a committed run.`,
@@ -1055,7 +1061,7 @@ function planLines(census: readonly CollectionContext[]): string[] {
 }
 
 const labelOf = (entry: CollectionContext): string =>
-  entry.kind === "headless" ? `${entry.id} [headless]` : `${entry.id}/${entry.os}`
+  entry.kind === "lib" ? `${entry.id} [headless]` : `${entry.id}/${entry.os}`
 
 function runChild(
   argv: readonly string[],
@@ -1219,7 +1225,7 @@ if (import.meta.main) {
       const requiredSuiteId = frozenSuite ?? admitted[0]?.run.suiteId
       if (!requiredSuiteId) {
         throw new Error(
-          "No current schema-3 admitted executions; historical results cannot complete the current collection",
+          "No current schema-4 admitted executions; historical results cannot complete the current collection",
         )
       }
       const coverage = buildFullProjectRows({
@@ -1246,7 +1252,7 @@ if (import.meta.main) {
         sources.size === 1
       console.log(`Current source: ${[...sources].join(", ") || "none"}; suite ${requiredSuiteId}`)
       console.log(
-        `Current execution: ${coverage.collected}/33 contexts, ${coverage.recordedPositions}/9009 recorded positions; ${complete ? "complete: zero TEST TODO and TEST FAILURE" : "incomplete: fresh current execution or required checks remain"}`,
+        `Current execution: ${coverage.collected}/33 contexts, ${coverage.recordedPositions}/9009 recorded positions; ${complete ? "complete: zero TEST TODO and TEST FAILURE" : "incomplete: fresh current execution or required tests remain"}`,
       )
       if (!complete) process.exitCode = 1
     } catch (error) {

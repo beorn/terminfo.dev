@@ -1,5 +1,5 @@
 /**
- * @failure A Text capability is graded without a bound contract row, or a re-grade of a decided
+ * @failure A Text feature is graded without a bound contract row, or a re-grade of a decided
  *   observation moves it - so the Text group reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Text group (child 28021); the 28453 harness's third adopter.
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { textProbes } from "./text.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -21,7 +21,7 @@ import {
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
-/** The 20 Text capabilities of 28018's Text row; ids drawn from text.ts, claims are the contract. */
+/** The 20 Text features of 28018's Text row; ids drawn from text.ts, claims are the contract. */
 const TEXT_CONTRACT: GroupContract = [
   { id: "text.basic", expected: "decided", claim: "Hello appears after a measured empty control" },
   { id: "text.newline", expected: "decided", claim: "CRLF places B below A" },
@@ -64,7 +64,7 @@ const TEXT_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
-test("the Text contract covers every text capability and names none unknown", () => {
+test("the Text contract covers every text feature and names none unknown", () => {
   const gaps = contractGaps(textProbes, TEXT_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -85,14 +85,14 @@ test("the Text contract names its focused tests, and every named file exists", (
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the table below.
-test("the harness replays every text capability deterministically", async () => {
+test("the harness replays every text feature deterministically", async () => {
   for (const row of TEXT_CONTRACT) {
     const probe = textProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing text probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -109,7 +109,7 @@ test("every text contract row reads supported against a surface that implements 
     const probe = textProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing text probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, `${row.id} reads supported from a surface implementing its claim`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
@@ -125,7 +125,7 @@ test("a backspace that does not move reads unsupported", async () => {
   expect(probe, "the Text contract names a real text.backspace probe").toBeDefined()
   if (!row || !probe) return
   const graded = await regradeRow(probe, row, {
-    headless: headlessContext(createSemanticSurface({ mutations: ["bs-noop"] })),
+    headless: libProbeSource(createSemanticSurface({ mutations: ["bs-noop"] })),
   })
   expect(graded.after, "text.backspace detects an inert BS").toBe("unsupported")
 })

@@ -135,7 +135,7 @@ export interface AnalysisEntry {
   runSha256?: string
   measuredAt?: string
   score?: { supported: number; all: number }
-  counts?: Record<import("@terminfo/probe-defs").CapabilityStatus, number>
+  counts?: Record<import("@terminfo/probe-defs").ProbeStatus, number>
   complete?: boolean
 }
 

@@ -18,11 +18,12 @@ afterEach(() => {
 })
 const receipt = {
   manifest: {
+    schemaVersion: 4 as const,
     probeHash: "abcdef123456",
     sourceRevision: "c".repeat(40),
     generatedAt: "2026-09-28T00:00:00.000Z",
     adapterVersion: "3.3.1",
-    probes: { app: ["device.primary-da"], mux: ["device.primary-da"], headless: ["device.primary-da"] },
+    probes: { term: ["device.primary-da"], mux: ["device.primary-da"], lib: ["device.primary-da"] },
   } satisfies ProbeSuiteManifest,
   collectorRevision: "a".repeat(40),
   cliVersion: "3.3.1",

@@ -948,7 +948,7 @@ export async function createOwnedTerminal(options: {
       ...(hostedWindowsApp && {
         async readCells() {
           if (!verifiedTerminalOwners.has(owner)) throw new Error("Owned cell read has no live bound capture")
-          // The console is re-checked as the geometry read re-checks its device: a cell read on a
+          // The console is re-checked as the geometry read re-tests its device: a cell read on a
           // different console than this run bound to is not this run's frame.
           const identity = readWindowsConsoleIdentity(windowsKernel)
           const mismatch = consoleIdentityMismatch(identity, windowsConsoleIdentity)

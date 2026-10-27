@@ -1,5 +1,5 @@
 ---
-title: All 273 capabilities — development preview
+title: All 273 features — development preview
 outline: [2, 3]
 prev: false
 next: false
@@ -12,20 +12,20 @@ const collected = data.contexts.filter((row) => row.collected)
 function resultFor(row, id) { return data.evidenceVersions[row.context]?.results.find((result) => result.featureId === id) }
 </script>
 
-# All 273 capabilities across 33 contexts
+# All 273 features across 33 contexts
 
 ::: warning Development reading — private, unadmitted, not a result
-This page reads sealed schema-3 execution results on the required suite. A context without a current run is **NOT COLLECTED**, with its cause. Historical results remain available through the [historical API](/api#historical-v1-and-v2); they do not complete this cohort.
+This page reads current sealed execution results on the required suite. A context without a current run is **NOT COLLECTED**, with its cause. Historical results remain available through the [historical API](/api#historical-v1-and-v2); they do not complete this cohort.
 :::
 
 ## Scope
 
-- **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} graded capabilities** plus **{{ data.environmentGroups }} environment groups** (manual by design, ungraded).
+- **{{ data.catalogRows }} catalogue positions** across {{ data.contexts.length }} required contexts: **{{ data.gradedRows }} graded features** plus **{{ data.environmentGroups }} environment groups** (manual by design, ungraded).
 - Required suite: <code>{{ data.suiteId }}</code>.
-- **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit capability positions.
-- Score is **Supported / all {{ data.gradedRows }} graded capabilities**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.
-- Completion requires **zero TEST TODO and zero TEST FAILURE among the graded capabilities in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
-- No current schema-3 runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
+- **{{ data.collected }} contexts collected**, **{{ data.notCollected }} NOT COLLECTED**; {{ data.recordedPositions }} explicit feature positions.
+- Score is **Supported / all {{ data.gradedRows }} graded features**; the {{ data.environmentGroups }} environment groups are ungraded and never in the denominator. Unsupported and Untestable remain in the denominator.
+- Completion requires **zero TEST TODO and zero TEST FAILURE among the graded features in every required context**, on this one suite. Cohort: **{{ data.complete ? 'complete' : 'incomplete' }}**.
+- No current sealed runs means no current score. [Historical results remain available](/api#historical-v1-and-v2).
 
 ## The contexts
 
@@ -43,7 +43,7 @@ This page reads sealed schema-3 execution results on the required suite. A conte
   </tbody>
 </table>
 
-## Capability results
+## Probe results
 
 <div v-for="row in collected" :key="row.context">
   <h3>{{ row.context }} <small>{{ row.result.fraction }} Supported / all</small></h3>
@@ -53,13 +53,13 @@ This page reads sealed schema-3 execution results on the required suite. A conte
     <tbody><tr v-for="group in row.result.groups" :key="group.key"><td>{{ group.key }}</td><td>{{ group.fraction }} &middot; {{ group.pct }}%</td><td>{{ group.complete ? 'complete' : 'incomplete' }} &mdash; {{ currentCoverageSentence(group) }}</td></tr></tbody>
   </table>
   <details>
-    <summary>All {{ row.observations.length }} capabilities and their recorded evidence</summary>
+    <summary>All {{ row.observations.length }} features and their recorded evidence</summary>
     <table>
       <thead><tr><th>Capability</th><th>Result</th><th>Method</th><th>Recorded reason</th></tr></thead>
       <tbody><tr v-for="observation in row.observations" :key="observation.id">
         <td><code>{{ observation.id }}</code></td>
         <td><ResultEvidenceCell v-if="resultFor(row, observation.id)"
-          :feature-id="observation.id" :feature-name="observation.id" :target-name="row.context"
+          :feature-id="observation.id" :feature-name="observation.id" :subject-name="row.context"
           :version="data.evidenceVersions[row.context]" :cell="resultFor(row, observation.id)" display="text" />
           <template v-else>{{ observation.state }}</template></td>
         <td>{{ observation.method ?? '—' }}</td>

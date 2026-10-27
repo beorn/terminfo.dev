@@ -1,6 +1,8 @@
 /** Shared interpretation parsing, scope matching and supersession; no filesystem effects. */
-import type { Interpretation } from "@terminfo/probe-defs"
+import type { Interpretation, ProbeSubject } from "@terminfo/probe-defs"
 import { parseJsonStrict, parseCaptureDecision, validateObservationOutcome, type LoadedRun } from "@terminfo/run-parser"
+
+import { decodeHistoricalCorrection } from "../packages/run-parser/src/observations.ts"
 
 export const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -10,6 +12,28 @@ export function fail(path: string, message: string): never {
 }
 export const asString = (value: unknown, path: string, name: string): string =>
   nonempty(value) ? value : fail(path, `missing ${name}`)
+
+/** The scope's wire key discriminates historical corrections from current corrections. */
+function interpretationSubject(
+  scope: unknown,
+  path: string,
+): { historical: boolean; subject: Pick<ProbeSubject, "kind" | "id"> } {
+  if (!object(scope)) fail(path, "invalid interpretation scope")
+  const historical = Object.hasOwn(scope, "target")
+  if (historical && Object.hasOwn(scope, "subject")) fail(path, "mixed interpretation scope target and subject")
+  const value = scope[historical ? "target" : "subject"]
+  const kinds = historical ? ["app", "headless", "mux"] : ["term", "lib", "mux"]
+  if (!object(value) || !kinds.includes(String(value.kind)) || !nonempty(value.id)) {
+    fail(path, "invalid interpretation scope subject")
+  }
+  return {
+    historical,
+    subject: {
+      kind: (value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind) as ProbeSubject["kind"],
+      id: value.id,
+    },
+  }
+}
 
 export const hasPresentationDecision = (entry: object): boolean => Object.hasOwn(entry, "presentsEvidence")
 
@@ -37,11 +61,9 @@ export function validatePresentationShape(
   if (!Array.isArray(entry.sources) || entry.sources.length === 0 || !entry.sources.every(nonempty)) {
     fail(path, `presentation ${id} requires sources`)
   }
+  interpretationSubject(entry.scope, path)
   if (
     !object(entry.scope) ||
-    !object(entry.scope.target) ||
-    !["app", "headless", "mux"].includes(String(entry.scope.target.kind)) ||
-    !nonempty(entry.scope.target.id) ||
     !Array.isArray(entry.scope.versions) ||
     entry.scope.versions.length !== 2 ||
     !entry.scope.versions.every(nonempty) ||
@@ -78,6 +100,7 @@ export function validatePresentationSupersession(entries: readonly Interpretatio
 export function parseInterpretations(path: string, source: string, catalogIds: readonly string[]): Interpretation[] {
   const raw = parseJsonStrict(path, source)
   if (!Array.isArray(raw)) fail(path, "interpretations must be an array")
+  const normalized: Interpretation[] = []
   const ids = new Set<string>()
   const catalog = new Set(catalogIds)
   for (const entry of raw) {
@@ -87,14 +110,8 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
     ids.add(id)
     asString(entry.reviewer, path, `reviewer for ${id}`)
     asString(entry.reason, path, `reason for ${id}`)
-    if (
-      !object(entry.scope) ||
-      !object(entry.scope.target) ||
-      !["app", "headless", "mux"].includes(String(entry.scope.target.kind)) ||
-      !nonempty(entry.scope.target.id)
-    ) {
-      fail(path, `invalid scope target for ${id}`)
-    }
+    const decodedScope = interpretationSubject(entry.scope, `${path}: ${id}`)
+    if (!object(entry.scope)) fail(path, `invalid scope for ${id}`)
     if (
       !Array.isArray(entry.scope.versions) ||
       entry.scope.versions.length !== 2 ||
@@ -115,7 +132,7 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
       fail(path, `duplicate/self supersedes for ${id}`)
     }
     if (Object.hasOwn(entry, "captureSha256") || Object.hasOwn(entry, "decision")) {
-      parseCaptureDecision(entry, `${path}: capture ${id}`, catalog)
+      normalized.push(parseCaptureDecision(entry, `${path}: capture ${id}`, catalog, decodedScope.historical ? 3 : 4))
       continue
     }
     if (entry.runId !== undefined && !nonempty(entry.runId)) fail(path, `invalid runId for ${id}`)
@@ -146,17 +163,37 @@ export function parseInterpretations(path: string, source: string, catalogIds: r
       if (!nonempty(entry.featureId) || entry.observation.featureId !== entry.featureId) {
         fail(path, `observation feature mismatch in ${id}`)
       }
-      validateObservationOutcome(entry.observation, path, entry.featureId)
-      if (entry.observation.evidence === "pixels" && !nonempty(entry.observation.screenshotRef)) {
+      validateObservationOutcome(entry.observation, path, entry.featureId, decodedScope.historical ? 2 : 4)
+      if (
+        (decodedScope.historical
+          ? entry.observation.evidence === "pixels"
+          : entry.observation.assertionType === "screenshot") &&
+        !nonempty(entry.observation.screenshotRef)
+      ) {
         fail(path, `pixels correction ${id} requires screenshotRef`)
       }
-      if (entry.observation.evidence === "query" && !nonempty(entry.observation.rawReplyRef)) {
+      if (
+        (decodedScope.historical
+          ? entry.observation.evidence === "query"
+          : entry.observation.assertionType === "query_reply") &&
+        !nonempty(entry.observation.rawReplyRef)
+      ) {
         fail(path, `query correction ${id} requires rawReplyRef`)
       }
     }
+    const { target: _old, subject: _current, ...ranges } = entry.scope
+    normalized.push({
+      ...entry,
+      scope: { ...ranges, subject: decodedScope.subject },
+      ...(entry.observation !== undefined && {
+        observation: decodedScope.historical
+          ? decodeHistoricalCorrection(entry.observation, path, entry.featureId as string)
+          : entry.observation,
+      }),
+    } as unknown as Interpretation)
   }
-  validatePresentationSupersession(raw as Interpretation[], path)
-  return raw as Interpretation[]
+  validatePresentationSupersession(normalized, path)
+  return normalized
 }
 
 export function inRange(value: string, [low, high]: [string, string]): boolean {
@@ -168,11 +205,11 @@ export function inRange(value: string, [low, high]: [string, string]): boolean {
 
 export function applies(entry: Interpretation, run: LoadedRun): boolean {
   return (
-    entry.scope.target.kind === run.target.kind &&
-    entry.scope.target.id === run.target.id &&
+    entry.scope.subject.kind === run.subject.kind &&
+    entry.scope.subject.id === run.subject.id &&
     (!entry.runId || entry.runId === run.runId) &&
     (!entry.runSha256 || entry.runSha256 === run.sha256) &&
-    inRange(run.target.version, entry.scope.versions) &&
+    inRange(run.subject.version, entry.scope.versions) &&
     inRange(run.suiteId, entry.scope.suites)
   )
 }

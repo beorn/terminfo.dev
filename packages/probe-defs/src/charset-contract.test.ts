@@ -1,5 +1,5 @@
 /**
- * @failure A Character Sets capability is graded without a bound contract row, or a re-grade of a
+ * @failure A Character Sets feature is graded without a bound contract row, or a re-grade of a
  *   decided observation moves it - so the Character Sets group reinvents its own fixture and silently drifts.
  * @level l2
  * @consumer 28018 candidate-2 Character Sets group (child 28025); adopts the 28453 harness.
@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { charsetsProbes } from "./charsets.ts"
 import {
   contractGaps,
-  headlessContext,
+  libProbeSource,
   missingContractTests,
   regradeCommand,
   regradeRow,
@@ -21,7 +21,7 @@ import {
 } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
-/** The 4 Character Sets capabilities of 28018's Character Sets row; ids from charsets.ts, claims are the contract. */
+/** The 4 Character Sets features of 28018's Character Sets row; ids from charsets.ts, claims are the contract. */
 const CHARSET_CONTRACT: GroupContract = [
   {
     id: "charsets.dec-special",
@@ -56,7 +56,7 @@ const CHARSET_CONTRACT_SPEC: GroupContractSpec = {
   tests: ["packages/probe-defs/src/charset-contract.test.ts", "packages/probe-defs/src/charset-reset-geometry.test.ts"],
 }
 
-test("the Character Sets contract covers every charsets capability and names none unknown", () => {
+test("the Character Sets contract covers every charsets feature and names none unknown", () => {
   const gaps = contractGaps(charsetsProbes, CHARSET_CONTRACT)
   expect(gaps.uncovered).toEqual([])
   expect(gaps.unknown).toEqual([])
@@ -77,14 +77,14 @@ test("the Character Sets contract names its focused tests, and every named file 
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
 // without movement, NOT that a decided row is satisfied. The satisfaction binding is the table below.
-test("the harness replays every charsets capability deterministically", async () => {
+test("the harness replays every charsets feature deterministically", async () => {
   for (const row of CHARSET_CONTRACT) {
     const probe = charsetsProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing charsets probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
-    const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
-    const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    const first = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
+    const second = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
     expect(second.satisfies, `${row.id} satisfaction is not deterministic`).toBe(first.satisfies)
     expect(first.satisfies, `${row.id} must route through satisfiesContract`).toBe(satisfiesContract(row, first.after))
@@ -99,7 +99,7 @@ test("every charsets contract row reads supported against a surface that impleme
     const probe = charsetsProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing charsets probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    const graded = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
+    const graded = await regradeRow(probe, row, { headless: libProbeSource(createSemanticSurface()) })
     expect(graded.after, `${row.id} reads supported from a surface implementing its claim`).toBe("supported")
     expect(graded.satisfies, `${row.id} satisfies its contract row`).toBe(true)
   }
@@ -115,7 +115,7 @@ test("a surface whose designation is inert reads charsets.dec-special unsupporte
   expect(probe, "the Character Sets contract names a real charsets.dec-special probe").toBeDefined()
   if (!row || !probe) return
   const graded = await regradeRow(probe, row, {
-    headless: headlessContext(createSemanticSurface({ mutations: ["charset-noop"] })),
+    headless: libProbeSource(createSemanticSurface({ mutations: ["charset-noop"] })),
   })
   expect(graded.after, "charsets.dec-special detects an inert designation").toBe("unsupported")
 })

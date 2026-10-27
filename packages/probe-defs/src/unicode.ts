@@ -14,12 +14,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 4)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Need at least four columns for width controls",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least four columns for width controls" }],
           }
         }
         ctx.feed("\x1b[1;1H\x1b[2KAQ")
@@ -42,12 +37,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Fixture needs at least 3 columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Fixture needs at least 3 columns" }],
           }
         }
         // The row grades the rendered width of a plainly written ambiguous glyph, so it assumes
@@ -59,7 +49,7 @@ export const unicodeProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "Cannot measure width",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "behavior" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }],
           }
         }
         const pass = width === 1 || width === 2
@@ -67,14 +57,21 @@ export const unicodeProbes: ProbeDefinition[] = [
           pass,
           note: `width=${width} (ambiguous chars vary by terminal/locale)`,
           response: String(width),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
-          assertions: [{ kind: pass ? "positive" : "negative", expected: "width 1 or 2", observed: String(width) }],
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
+          assertions: [
+            {
+              assertionType: "query_reply" as const,
+              kind: pass ? "positive" : "negative",
+              expected: "width 1 or 2",
+              observed: String(width),
+            },
+          ],
         }
       },
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   {
@@ -84,12 +81,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Need at least three measured columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least three measured columns" }],
           }
         }
         const sample = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}"
@@ -119,12 +111,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 3)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Fixture needs at least 3 columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Fixture needs at least 3 columns" }],
           }
         }
         // The claim compares a plainly written ZWJ sequence, so it assumes the run decodes plain
@@ -136,22 +123,29 @@ export const unicodeProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "Cannot measure width",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "behavior" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }],
           }
         }
         return {
           pass: width === 2,
           note: width === 2 ? undefined : `width=${width}, expected 2`,
           response: String(width),
-          observation: { outcome: width === 2 ? "supported" : "unsupported", evidence: "behavior" },
-          assertions: [{ kind: width === 2 ? "positive" : "negative", expected: "2", observed: String(width) }],
+          observation: { outcome: width === 2 ? "supported" : "unsupported", assertionType: "query_reply" },
+          assertions: [
+            {
+              assertionType: "query_reply" as const,
+              kind: width === 2 ? "positive" : "negative",
+              expected: "2",
+              observed: String(width),
+            },
+          ],
         }
       },
-      "behavior",
+      "query_reply",
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   {
@@ -161,12 +155,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 2) || !validSize(ctx.getScrollback().screenLines, 2)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Need at least two columns and two screen rows",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least two columns and two screen rows" }],
           }
         }
         const expected = "Wide CJK character wraps from final column to row 2 while ASCII control is preserved"
@@ -193,12 +182,13 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.rows, 2) || !validSize(cols, 2)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Wide-wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Wide-wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
+              },
+            ],
           }
         }
         // The row grades the cursor advance of a plainly written CJK glyph, so it assumes the run
@@ -213,7 +203,7 @@ export const unicodeProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
           }
         }
         const pass = pos.row === 2
@@ -221,9 +211,10 @@ export const unicodeProbes: ProbeDefinition[] = [
           pass,
           response: JSON.stringify(pos),
           note: pass ? undefined : `cursor at row ${pos.row}, expected 2 (wide char should wrap)`,
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "cursor row 2 after wide wrap",
               observed: JSON.stringify(pos),
@@ -234,7 +225,7 @@ export const unicodeProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   {
@@ -244,12 +235,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 10)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Need at least ten measured columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Need at least ten measured columns" }],
           }
         }
         try {
@@ -292,12 +278,7 @@ export const unicodeProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 10)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Fixture needs at least 10 columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Fixture needs at least 10 columns" }],
           }
         }
         try {
@@ -308,7 +289,7 @@ export const unicodeProbes: ProbeDefinition[] = [
             return {
               pass: false,
               note: "No cursor response",
-              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
             }
           }
           const pass = pos.col === 10
@@ -316,9 +297,10 @@ export const unicodeProbes: ProbeDefinition[] = [
             pass,
             response: JSON.stringify(pos),
             note: pass ? undefined : `cursor at col ${pos.col}, expected 10 (A + tab to 9 + B)`,
-            observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+            observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
             assertions: [
               {
+                assertionType: "query_reply" as const,
                 kind: pass ? "positive" : "negative",
                 expected: "cursor column 10 after tab",
                 observed: JSON.stringify(pos),
@@ -334,6 +316,6 @@ export const unicodeProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 ]

@@ -10,7 +10,7 @@
  */
 import type { ContextCandidate } from "./run-selection.ts"
 import { pickContextRun } from "./run-selection.ts"
-import type { CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeStatus } from "@terminfo/probe-defs"
 import { reviewedContextFor } from "./current-results.ts"
 import { scopeAggregate, type ScopeResult } from "./full-scope.ts"
 import { environmentGroupIds, gradedFeatureIds } from "../../packages/probe-defs/src/environment-groups.ts"
@@ -19,7 +19,7 @@ import type { CensusContext, ContextKind } from "./full-census.ts"
 /** One catalog row of a collected context, with its state and the run's own method and words. */
 export interface ObservationRow {
   id: string
-  state: CapabilityStatus
+  state: ProbeStatus
   /** The observation method the run recorded (pixel, text cell, query/reply), when it names one. */
   method: string | null
   note: string | null
@@ -62,7 +62,7 @@ export interface FullProjectRows {
   requiredSuiteId: string
   /** Every recorded catalogue position, environment groups included. */
   catalogRows: number
-  /** The graded capabilities: `catalogRows` minus the environment groups (D132 B). */
+  /** The graded features: `catalogRows` minus the environment groups (D132 B). */
   gradedRows: number
   /** The environment groups the catalogue records: manual by design, never graded. */
   environmentGroups: number
@@ -115,12 +115,12 @@ function buildRow(
     (candidate) =>
       candidate.kind === context.kind &&
       candidate.terminalId === context.terminalId &&
-      (context.kind === "headless" || candidate.os === context.os),
+      (context.kind === "lib" || candidate.os === context.os),
   )
   if (matches.length === 0) {
     return { ...base, collected: false, cause: "no selected run for this context" }
   }
-  if (context.kind === "headless") {
+  if (context.kind === "lib") {
     // An engine's adapter is one context. Several current runs across operating systems are several
     // candidates for one row, so the row names them instead of choosing one and hiding the rest.
     const onSuite = matches.filter((candidate) => candidate.suiteId === args.requiredSuiteId)
@@ -155,7 +155,7 @@ function buildRow(
   }
   const results = picked.run.results
   if (!results) {
-    return { ...base, collected: false, cause: "selected run is historical; current schema-3 results required" }
+    return { ...base, collected: false, cause: "selected run is historical; current sealed results required" }
   }
   const byId = new Map(results.map((result) => [result.featureId, result]))
   return {
@@ -176,11 +176,11 @@ function buildRow(
     }),
     observations: args.catalogIds.map((id) => {
       const cell = byId.get(id)
-      if (!cell) throw new Error(`Current run ${picked.run.runId} lacks frozen capability ${id}`)
+      if (!cell) throw new Error(`Current run ${picked.run.runId} lacks frozen feature ${id}`)
       return {
         id,
         state: cell.status,
-        method: cell?.evidence ?? null,
+        method: cell?.assertionType ?? null,
         note: null,
         reason: cell?.reason ?? null,
       }

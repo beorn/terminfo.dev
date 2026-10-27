@@ -1,4 +1,4 @@
-import type { ObservationEvidence, ProbeDefinition, ProbeResult, TermContext, TermlessContext } from "./types.ts"
+import type { AssertionType, ProbeDefinition, ProbeCallbackResult, TermProbeSource, LibProbeSource } from "./types.ts"
 import { isBlank, parserStateResult, probe, utf8DecodingRefusal } from "./helpers.ts"
 import { regionReadbackProbes, type RegionReadbackRow } from "./region-readback-kind.ts"
 
@@ -89,16 +89,17 @@ function restoreDefaultTabs(write: (sequence: string) => void, cols: number): vo
   write(sequence + "\x1b[1;1H")
 }
 
-function tooSmall(ctx: TermContext, rows: number, cols: number): ProbeResult | undefined {
+function tooSmall(ctx: TermProbeSource, rows: number, cols: number): ProbeCallbackResult | undefined {
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
   return {
     pass: false,
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: `Text fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
-    },
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `Text fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
+      },
+    ],
   }
 }
 
@@ -123,10 +124,10 @@ function tabCombinedResult(
   comparison: CursorPosition | null,
   owned: CursorPosition | null,
   cols: number,
-): ProbeResult {
+): ProbeCallbackResult {
   const response = JSON.stringify({ cols, home, comparison, owned })
   if (!home) {
-    return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
   }
   if (home.row !== 1 || home.col !== 1) {
     return {
@@ -135,13 +136,13 @@ function tabCombinedResult(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
       },
     }
   }
   if (!comparison) {
-    return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
   }
   if (comparison.row !== 1 || comparison.col !== 9) {
     return {
@@ -150,21 +151,28 @@ function tabCombinedResult(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "Comparison stop at column 9 was not established; fixture setup not qualified",
       },
     }
   }
   if (!owned) {
-    return { pass: false, response, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+    return { pass: false, response, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
   }
   const expected = "combined HT/HTS fixture advances to the nearest owned stop at row 1, column 6"
   if (owned.row === 1 && owned.col === 6) {
     return {
       pass: true,
       response,
-      observation: { outcome: "supported", evidence: "query" },
-      assertions: [{ kind: "positive", expected, observed: JSON.stringify({ home, comparison, owned }) }],
+      observation: { outcome: "supported", assertionType: "query_reply" },
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "positive",
+          expected,
+          observed: JSON.stringify({ home, comparison, owned }),
+        },
+      ],
     }
   }
   if (owned.row === 1 && owned.col === 9) {
@@ -173,16 +181,23 @@ function tabCombinedResult(
       response,
       observation: {
         outcome: "unsupported",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "Owned stop at column 6 was ignored; tab fell through to the measured comparison stop (home 1;1 and comparison 1;9 were both qualified)",
       },
-      assertions: [{ kind: "negative", expected, observed: JSON.stringify({ home, comparison, owned }) }],
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "negative",
+          expected,
+          observed: JSON.stringify({ home, comparison, owned }),
+        },
+      ],
     }
   }
   return {
     pass: false,
     response,
-    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query" },
+    observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "query_reply" },
   }
 }
 
@@ -194,15 +209,15 @@ function tabClearResult(
     after: { row: number; col: number } | null
   },
   cols: number,
-  evidence: ObservationEvidence,
-): ProbeResult {
+  assertionType: AssertionType,
+): ProbeCallbackResult {
   const response = JSON.stringify({ cols, ...positions })
   const { oldFirst, oldSecond, oldThird, after } = positions
   if (!oldFirst || !oldSecond || !oldThird || !after) {
     return {
       pass: false,
       response,
-      observation: { outcome: "inconclusive", reason: "no-response", evidence },
+      tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
     }
   }
   if (
@@ -219,7 +234,7 @@ function tabClearResult(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence,
+        assertionType,
         note: "Could not establish owned tab stops at columns 9, 17 and 25",
       },
     }
@@ -232,12 +247,13 @@ function tabClearResult(
     observation: {
       outcome: pass ? "supported" : failedClear ? "unsupported" : "inconclusive",
       ...(pass || failedClear ? {} : { reason: "insufficient-evidence" as const }),
-      evidence,
+      assertionType,
     },
     ...(pass || failedClear
       ? {
           assertions: [
             {
+              assertionType: assertionType,
               kind: pass ? ("positive" as const) : ("negative" as const),
               expected: "After clearing old stops at columns 9, 17 and 25, tab reaches the right margin",
               observed: response,
@@ -251,13 +267,13 @@ function tabClearResult(
 function tabPositionResult(
   position: { row: number; col: number } | null,
   expectedCol: number,
-  evidence: ObservationEvidence,
-): ProbeResult {
+  assertionType: AssertionType,
+): ProbeCallbackResult {
   if (!position) {
     return {
       pass: false,
       note: "No cursor response",
-      observation: { outcome: "inconclusive", reason: "no-response", evidence },
+      tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
     }
   }
   const response = JSON.stringify(position)
@@ -265,8 +281,15 @@ function tabPositionResult(
   return {
     pass,
     response,
-    observation: { outcome: pass ? "supported" : "unsupported", evidence },
-    assertions: [{ kind: pass ? "positive" : "negative", expected: `row 1, col ${expectedCol}`, observed: response }],
+    observation: { outcome: pass ? "supported" : "unsupported", assertionType },
+    assertions: [
+      {
+        assertionType: assertionType,
+        kind: pass ? "positive" : "negative",
+        expected: `row 1, col ${expectedCol}`,
+        observed: response,
+      },
+    ],
   }
 }
 
@@ -294,7 +317,7 @@ function isLoneSurrogate(value: string): boolean {
  * being discarded as insufficient evidence, while constant/stale/wrapped/ambiguous readbacks stay
  * inconclusive. Width two is claimed only for the declared sample, never for a rendered glyph.
  */
-function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: DeclaredWidthSample): ProbeResult {
+function emojiWidthResult(ctx: LibProbeSource, { sample, maxColumns }: DeclaredWidthSample): ProbeCallbackResult {
   const expected = "Declared-width sample occupies two parser columns after qualified setup"
   const home = "\x1b[1;1H\x1b[2K"
   const marker = "X"
@@ -303,12 +326,13 @@ function emojiWidthResult(ctx: TermlessContext, { sample, maxColumns }: Declared
   if (!Number.isSafeInteger(ctx.cols) || ctx.cols < required) {
     return {
       pass: false,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-        note: `Emoji width fixture needs at least ${required} columns to place the sample and sentinel without wrapping; measured ${ctx.cols}`,
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: "test-todo",
+          reason: `Emoji width fixture needs at least ${required} columns to place the sample and sentinel without wrapping; measured ${ctx.cols}`,
+        },
+      ],
     }
   }
   try {
@@ -446,7 +470,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1b[1;1H\x1b[2K") // clear line, move to 1;1
         const before = await ctx.queryCursorPosition()
         if (!before) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (before.row !== 1 || before.col !== 1) {
           return {
@@ -455,7 +479,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
             },
           }
@@ -463,15 +487,16 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("Hello")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         const pass = pos.row === 1 && pos.col === 6
         return {
           pass,
           response: JSON.stringify({ before, pos }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "writing Hello advances the cursor five columns to row 1, column 6",
               observed: JSON.stringify({ before, pos }),
@@ -508,7 +533,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\n") // LF
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (before.row !== 3 || before.col !== 5) {
           return {
@@ -517,7 +542,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Could not establish starting cursor position",
             },
           }
@@ -530,13 +555,14 @@ export const textProbes: ProbeDefinition[] = [
           response: JSON.stringify({ before, pos }),
           observation: {
             outcome: pass ? "supported" : "unsupported",
-            evidence: "query",
+            assertionType: "query_reply",
             ...(pos.col !== 5 && {
               note: `Column changed from 5 to ${pos.col}; this probe does not distinguish terminal newline mode from TTY output processing`,
             }),
           },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "LF advances from row 3 to row 4",
               observed: JSON.stringify({ before, pos }),
@@ -555,7 +581,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 2) || !validSize(ctx.getScrollback().screenLines, 2)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
           }
         }
         ctx.feed("\x1b[2J\x1b[H")
@@ -576,12 +602,13 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.rows, 2) || !validSize(cols, 2)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Wrap fixture needs at least 2x2, measured ${ctx.rows}x${cols}`,
+              },
+            ],
           }
         }
         const decawm = await ctx.queryMode(DECAWM_MODE)
@@ -589,15 +616,27 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm }),
-            observation: {
-              outcome: "inconclusive",
-              reason: decawm === null ? "no-response" : "insufficient-evidence",
-              evidence: "query",
-              note:
-                decawm === null
-                  ? "DECAWM setup did not reply"
-                  : `DECAWM measured ${decawm}; right-margin wrap not qualified`,
-            },
+            ...(decawm === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "DECAWM setup did not reply",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: decawm === null ? "no-response" : "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note:
+                      decawm === null
+                        ? "DECAWM setup did not reply"
+                        : `DECAWM measured ${decawm}; right-margin wrap not qualified`,
+                  },
+                }),
           }
         }
         ctx.write("\x1b[1;1H")
@@ -606,7 +645,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm }),
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
           }
         }
         if (home.row !== 1 || home.col !== 1) {
@@ -616,7 +655,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Measured home position was not row 1, column 1; the cursor-query provider is not position-sensitive",
             },
           }
@@ -628,7 +667,7 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm, home }),
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
           }
         }
         if (control.row !== 1 || control.col !== cols) {
@@ -638,7 +677,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Control did not leave the cursor at the right margin; wrap not qualified",
             },
           }
@@ -650,16 +689,17 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ cols, decawm, home, control }),
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
           }
         }
         const pass = target.row === 2 && target.col === 2
         return {
           pass,
           response: JSON.stringify({ cols, decawm, home, control, target }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: `wrap after ${cols} columns lands the cursor at row 2, column 2`,
               observed: JSON.stringify({ home, control, target }),
@@ -678,7 +718,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 9)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
           }
         }
         try {
@@ -738,21 +778,34 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "ASCII width control or emoji width was unavailable",
-            },
+            ...(width === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "ASCII width control or emoji width was unavailable",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note: "ASCII width control or emoji width was unavailable",
+                  },
+                }),
           }
         }
         const pass = width === 2
         return {
           pass,
           response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "🎉 occupies two columns after ASCII calibration",
               observed: JSON.stringify({ ascii, width }),
@@ -792,21 +845,34 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "ASCII width control or CJK width was unavailable",
-            },
+            ...(width === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "ASCII width control or CJK width was unavailable",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note: "ASCII width control or CJK width was unavailable",
+                  },
+                }),
           }
         }
         const pass = width === 2
         return {
           pass,
           response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "中 occupies two columns after ASCII calibration",
               observed: JSON.stringify({ ascii, width }),
@@ -844,7 +910,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\r") // CR
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (before.row !== 1 || before.col !== 3) {
           return {
@@ -853,7 +919,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Could not establish cursor at 1;3 before CR",
             },
           }
@@ -862,9 +928,10 @@ export const textProbes: ProbeDefinition[] = [
         return {
           pass,
           response: JSON.stringify({ before, pos }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "CR moves cursor from 1;3 to 1;1",
               observed: JSON.stringify({ before, pos }),
@@ -901,7 +968,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\b") // BS
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (before.row !== 1 || before.col !== 5) {
           return {
@@ -910,7 +977,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Could not establish cursor at 1;5 before BS",
             },
           }
@@ -919,9 +986,10 @@ export const textProbes: ProbeDefinition[] = [
         return {
           pass,
           response: JSON.stringify({ before, pos }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "BS moves from 1;5 to 1;4",
               observed: JSON.stringify({ before, pos }),
@@ -957,7 +1025,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1bD") // IND
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (before.row !== 3 || before.col !== 5) {
           return {
@@ -966,7 +1034,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Could not establish starting cursor position",
             },
           }
@@ -975,9 +1043,10 @@ export const textProbes: ProbeDefinition[] = [
         return {
           pass,
           response: JSON.stringify({ before, pos }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "IND advances cursor from 3;5 to 4;5",
               observed: JSON.stringify({ before, pos }),
@@ -1013,7 +1082,7 @@ export const textProbes: ProbeDefinition[] = [
         ctx.write("\x1bE") // NEL
         const pos = await ctx.queryCursorPosition()
         if (!before || !pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (before.row !== 3 || before.col !== 5) {
           return {
@@ -1022,7 +1091,7 @@ export const textProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Could not establish starting cursor position",
             },
           }
@@ -1031,9 +1100,10 @@ export const textProbes: ProbeDefinition[] = [
         return {
           pass,
           response: JSON.stringify({ before, pos }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "NEL advances cursor from 3;5 to 4;1",
               observed: JSON.stringify({ before, pos }),
@@ -1076,21 +1146,34 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "ASCII width control or combining width was unavailable",
-            },
+            ...(width === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "ASCII width control or combining width was unavailable",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note: "ASCII width control or combining width was unavailable",
+                  },
+                }),
           }
         }
         const pass = width === 1
         return {
           pass,
           response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "e plus accent occupies one column after ASCII calibration",
               observed: JSON.stringify({ ascii, width }),
@@ -1147,12 +1230,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(cols, 34)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "parser-state",
-              note: "Tab fixture needs at least 34 columns",
-            },
+            tests: [{ id: "criterion", status: "test-failure", reason: "Tab fixture needs at least 34 columns" }],
           }
         }
         try {
@@ -1175,7 +1253,7 @@ export const textProbes: ProbeDefinition[] = [
               after: position(after),
             },
             cols,
-            "parser-state",
+            "buffer_state",
           )
         } finally {
           restoreDefaultTabs(ctx.feed, cols)
@@ -1185,12 +1263,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 34)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Tab fixture needs at least 34 columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 34 columns" }],
           }
         }
         try {
@@ -1204,16 +1277,16 @@ export const textProbes: ProbeDefinition[] = [
           const oldThird = await ctx.queryCursorPosition()
           ctx.write("\x1b[3g\x1b[1;1H\t")
           const after = await ctx.queryCursorPosition()
-          return tabClearResult({ oldFirst, oldSecond, oldThird, after }, ctx.cols, "behavior")
+          return tabClearResult({ oldFirst, oldSecond, oldThird, after }, ctx.cols, "query_reply")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
       },
-      "behavior",
+      "query_reply",
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // CHT — cursor horizontal forward tab
@@ -1225,12 +1298,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(cols, 21)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "parser-state",
-              note: "Tab fixture needs at least 21 columns",
-            },
+            tests: [{ id: "criterion", status: "test-failure", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1243,14 +1311,14 @@ export const textProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "parser-state",
+                assertionType: "buffer_state",
                 note: "CHT starting position was not row 1, column 1",
               },
             }
           }
           ctx.feed("\x1b[2I")
           const cursor = ctx.getCursor()
-          return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
+          return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "buffer_state")
         } finally {
           restoreDefaultTabs(ctx.feed, cols)
         }
@@ -1259,12 +1327,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 21)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Tab fixture needs at least 21 columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1274,25 +1337,45 @@ export const textProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: JSON.stringify({ start }),
-              observation: {
-                outcome: "inconclusive",
-                reason: start ? "insufficient-evidence" : "no-response",
-                evidence: "behavior",
-                note: "CHT starting position was not measured at row 1, column 1",
-              },
+              ...(start === null
+                ? {
+                    tests: [
+                      {
+                        id: "criterion",
+                        status: "test-failure",
+                        reason: "CHT starting position was not measured at row 1, column 1",
+                      },
+                    ] as [{ id: string; status: "test-failure"; reason: string }],
+                  }
+                : {
+                    observation: {
+                      outcome: "inconclusive",
+                      reason: start ? "insufficient-evidence" : "no-response",
+                      assertionType: "query_reply",
+                      note: "CHT starting position was not measured at row 1, column 1",
+                    },
+                  }),
             }
           }
           ctx.write("\x1b[2I")
-          return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
+          const position = await ctx.queryCursorPosition()
+          if (!position) {
+            return {
+              pass: false,
+              note: "No cursor response",
+              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
+            }
+          }
+          return tabPositionResult(position, 17, "query_reply")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
       },
-      "behavior",
+      "query_reply",
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // CBT — cursor backward tab
@@ -1304,12 +1387,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(cols, 21)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "parser-state",
-              note: "Tab fixture needs at least 21 columns",
-            },
+            tests: [{ id: "criterion", status: "test-failure", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1323,14 +1401,14 @@ export const textProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "parser-state",
+                assertionType: "buffer_state",
                 note: "CBT starting position was not row 1, column 21",
               },
             }
           }
           ctx.feed("\x1b[Z")
           const cursor = ctx.getCursor()
-          return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "parser-state")
+          return tabPositionResult({ row: cursor.y + 1, col: cursor.x + 1 }, 17, "buffer_state")
         } finally {
           restoreDefaultTabs(ctx.feed, cols)
         }
@@ -1339,12 +1417,7 @@ export const textProbes: ProbeDefinition[] = [
         if (!validSize(ctx.cols, 21)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Tab fixture needs at least 21 columns",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Tab fixture needs at least 21 columns" }],
           }
         }
         try {
@@ -1355,25 +1428,45 @@ export const textProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: JSON.stringify({ start }),
-              observation: {
-                outcome: "inconclusive",
-                reason: start ? "insufficient-evidence" : "no-response",
-                evidence: "behavior",
-                note: "CBT starting position was not measured at row 1, column 21",
-              },
+              ...(start === null
+                ? {
+                    tests: [
+                      {
+                        id: "criterion",
+                        status: "test-failure",
+                        reason: "CBT starting position was not measured at row 1, column 21",
+                      },
+                    ] as [{ id: string; status: "test-failure"; reason: string }],
+                  }
+                : {
+                    observation: {
+                      outcome: "inconclusive",
+                      reason: start ? "insufficient-evidence" : "no-response",
+                      assertionType: "query_reply",
+                      note: "CBT starting position was not measured at row 1, column 21",
+                    },
+                  }),
             }
           }
           ctx.write("\x1b[Z")
-          return tabPositionResult(await ctx.queryCursorPosition(), 17, "behavior")
+          const position = await ctx.queryCursorPosition()
+          if (!position) {
+            return {
+              pass: false,
+              note: "No cursor response",
+              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
+            }
+          }
+          return tabPositionResult(position, 17, "query_reply")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
       },
-      "behavior",
+      "query_reply",
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   {
@@ -1391,21 +1484,34 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "ASCII width control or flag width was unavailable",
-            },
+            ...(width === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "ASCII width control or flag width was unavailable",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note: "ASCII width control or flag width was unavailable",
+                  },
+                }),
           }
         }
         const pass = width === 2
         return {
           pass,
           response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "Flag sample occupies two columns after ASCII calibration",
               observed: JSON.stringify({ ascii, width }),
@@ -1432,21 +1538,34 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "ASCII width control or VS16 width was unavailable",
-            },
+            ...(width === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "ASCII width control or VS16 width was unavailable",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note: "ASCII width control or VS16 width was unavailable",
+                  },
+                }),
           }
         }
         const pass = width === 2
         return {
           pass,
           response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "VS16 sample occupies two columns after ASCII calibration",
               observed: JSON.stringify({ ascii, width }),
@@ -1473,21 +1592,34 @@ export const textProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ ascii, width }),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "query",
-              note: "ASCII width control or ZWJ width was unavailable",
-            },
+            ...(width === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "ASCII width control or ZWJ width was unavailable",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: "insufficient-evidence",
+                    assertionType: "query_reply",
+                    note: "ASCII width control or ZWJ width was unavailable",
+                  },
+                }),
           }
         }
         const pass = width === 2
         return {
           pass,
           response: JSON.stringify({ ascii, width }),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "ZWJ sample occupies two columns after ASCII calibration",
               observed: JSON.stringify({ ascii, width }),

@@ -69,8 +69,8 @@ if (import.meta.main) {
       console.log(`Retained reviewed capture ${source}; original draft unchanged`)
       if (source.endsWith(".draft.json")) throw new Error(`Required reviews remain pending in ${source}; no admission`)
       if (
-        (decoded.run.target.kind === "app" || decoded.run.target.kind === "mux") &&
-        decoded.run.target.os?.toLowerCase() === "linux"
+        (decoded.run.subject.kind === "term" || decoded.run.subject.kind === "mux") &&
+        decoded.run.subject.os?.toLowerCase() === "linux"
       ) {
         const directory = dirname(source)
         execFileSync(

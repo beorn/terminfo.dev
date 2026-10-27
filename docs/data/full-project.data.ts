@@ -11,7 +11,7 @@ import { join } from "node:path"
 import { loadFeatures } from "@terminfo/catalog"
 import { probeHash } from "../../packages/admin/versions.ts"
 import { loadCategories, orderedCategoryIds } from "./categories.ts"
-import { compatibilityTargets, loadCurrentResults, loadDefaultContextPolicy } from "./current-results.ts"
+import { compatibilitySubjects, loadCurrentResults, loadDefaultContextPolicy } from "./current-results.ts"
 import { publicResults, type PublicVersion } from "./public-results.ts"
 import { candidateFromSelected, type ContextCandidate } from "./run-selection.ts"
 import { statesFor } from "./selected-results.ts"
@@ -68,7 +68,7 @@ export function loadFullProjectData(): FullProjectData {
     candidateFromSelected(key, selected, statesFor(projection, selected.runId)),
   )
   const reviewed = loadDefaultContextPolicy(contentDir)
-  const published = publicResults(projection, compatibilityTargets(projection, contentDir)).projection
+  const published = publicResults(projection, compatibilitySubjects(projection, contentDir)).projection
   const rows = buildFullProjectRows({
     census: fullContextCensus(contentDir).contexts,
     catalogIds: catalogIdsInDisplayOrder(),

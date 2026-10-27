@@ -14,6 +14,6 @@ Add behavioral evidence for common keyboard, paste, mouse, clipboard and basic i
 
 ## R3 — Multiplexer compatibility
 
-Use controlled outer-terminal capability profiles to check what multiplexers preserve, translate or block, then verify a small set of real integrations. Each result distinguishes the mux contract from the behavior of the whole tested path.
+Use controlled outer-terminal feature profiles to check what multiplexers preserve, translate or block, then verify a small set of real integrations. Each result distinguishes the mux contract from the behavior of the whole tested path.
 
 Later work can cover more platforms and terminals, advanced protocols and scheduled refreshes. Each update needs its own reviewed evidence, scope and release notes. Rebuilding the site does not make an older measurement new.

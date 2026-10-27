@@ -20,7 +20,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, expect, test, vi } from "vitest"
-import { collectBatch, createTermlessContext } from "./headless-batch.ts"
+import { collectBatch, createLibProbeSource } from "./headless-batch.ts"
 
 async function backend() {
   return createXtermBackend()
@@ -57,7 +57,7 @@ test("null mode metadata classes A/B retain measured wrapping, unknown cleanup a
   )
   expect.soft(batch.observations.find((row) => row.featureId === "modes.auto-wrap")).toMatchObject({
     outcome: "supported",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
   expect.soft(writes).not.toContain("\x1b[?7l")
   expect.soft(writes).not.toContain("\x1b[?2031l")
@@ -89,7 +89,7 @@ test("OSC 5522 retains its headless reply through the production batch recorder"
   })
   const batch = await collectBatch(async () => value, "xtermjs", registryDefinitions([id]))
   expect(batch.rawReplies[id]).toBe(response)
-  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "query" }])
+  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", assertionType: "query_reply" }])
   expect(batch.assertions).toMatchObject([{ featureId: id, observed: "set (Ps 1)" }])
 })
 
@@ -138,7 +138,7 @@ test("requests review for headless OS-input criteria without fabricating app del
       rawReplyRef: result.featureId,
     })
     expect(result.criterionBranch, result.featureId).toBe("os-input-review")
-    expect(result.checks, result.featureId).toContainEqual(
+    expect(result.tests, result.featureId).toContainEqual(
       expect.objectContaining({
         id: "review",
         status: "test-todo",
@@ -196,7 +196,7 @@ test.each([
         noObservable: expect.stringMatching(/answered nothing/),
         rawReplyRef: result.featureId,
       })
-      expect(result.checks, result.featureId).toContainEqual(
+      expect(result.tests, result.featureId).toContainEqual(
         expect.objectContaining({ id: "review", status: "test-todo", rawReplyRef: result.featureId }),
       )
     }
@@ -207,7 +207,7 @@ test("keeps the measured grade when the engine answers its colour readback", asy
   const batch = await collectBatch(async () => createVtermBackend(), "vterm", registryDefinitions(COLOR_READBACK_IDS))
   expect(batch.observations).toEqual(
     COLOR_READBACK_IDS.map((featureId) =>
-      expect.objectContaining({ featureId, outcome: "supported", evidence: "behavior" }),
+      expect.objectContaining({ featureId, outcome: "supported", assertionType: "query_reply" }),
     ),
   )
   expect(batch.assertions).toEqual(
@@ -215,11 +215,11 @@ test("keeps the measured grade when the engine answers its colour readback", asy
   )
   for (const result of batch.results) {
     expect(result.criterionBranch, result.featureId).toBeUndefined()
-    expect(result.checks ?? [], result.featureId).not.toContainEqual(expect.objectContaining({ id: "review" }))
+    expect(result.tests ?? [], result.featureId).not.toContainEqual(expect.objectContaining({ id: "review" }))
   }
 })
 
-// Final-return checks miss hard death during the active callback; its checkpoint must already exist.
+// Final-return tests miss hard death during the active callback; its checkpoint must already exist.
 test("checkpoints a probe attempt before invoking the headless callback", async () => {
   let active: unknown
   let seen: unknown
@@ -246,10 +246,10 @@ test("checkpoints a probe attempt before invoking the headless callback", async 
 
 function definition(
   id: string,
-  termless: ProbeDefinition["termless"],
-  markers: Pick<ProbeDefinition, "termObservationEvidence" | "termlessObservationEvidence"> = {},
+  lib: ProbeDefinition["lib"],
+  markers: Pick<ProbeDefinition, "termAssertionType" | "libAssertionType"> = {},
 ): ProbeDefinition {
-  return { id, termless, term: null, ...markers }
+  return { id, lib, term: null, ...markers }
 }
 
 // AC3: independent feature results cannot depend on a previous probe's state.
@@ -268,7 +268,7 @@ for (const [name, create] of [
       const batch = await collectBatch(create, name, order)
       expect(batch.observations.find((item) => item.featureId === "sgr.inverse")).toMatchObject({
         outcome: "supported",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
       })
       expect(batch.observations.find((item) => item.featureId === "modes.reverse-video")).toBeUndefined()
       expect(batch.notTested.find((item) => item.featureId === "modes.reverse-video")).toMatchObject({
@@ -321,7 +321,7 @@ test("real vterm grades interior-region SU without moving the row above into his
   if (!probe) throw new Error(`Missing ${id} registry definition`)
   const value = createVtermBackend()
   const batch = await collectBatch(async () => value, "vterm", [probe])
-  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", evidence: "parser-state" }])
+  expect(batch.observations).toMatchObject([{ featureId: id, outcome: "supported", assertionType: "buffer_state" }])
   expect(batch.assertions).toMatchObject([{ featureId: id, kind: "positive" }])
   const raw = batch.rawReplies[id]
   if (!raw) throw new Error(`Missing ${id} raw measurement`)
@@ -383,27 +383,19 @@ test("attributes headless exceptions only to the headless marker and leaves lega
     throw new TypeError("Callback failed")
   }
   const batch = await collectBatch(backend, "xtermjs", [
-    definition("marked", throws, { termObservationEvidence: "query", termlessObservationEvidence: "parser-state" }),
-    definition("app-only", throws, { termObservationEvidence: "query" }),
+    definition("marked", throws, { termAssertionType: "query_reply", libAssertionType: "buffer_state" }),
+    definition("app-only", throws, { termAssertionType: "query_reply" }),
     definition("legacy", throws),
   ])
-  expect(batch.observations).toEqual([
-    {
-      featureId: "marked",
-      outcome: "error",
-      reason: "collector-error",
-      evidence: "parser-state",
-      note: "headless xtermjs probe marked: Callback failed",
-    },
-  ])
-  expect(batch.ungradedDiagnostics).toEqual({
-    "app-only": {
+  expect(batch.observations).toEqual([])
+  for (const id of ["marked", "app-only", "legacy"]) {
+    expect(batch.ungradedDiagnostics[id]).toEqual({
       kind: "collector-error",
       name: "TypeError",
-      message: "headless xtermjs probe app-only: Callback failed",
-    },
-    legacy: { kind: "collector-error", name: "TypeError", message: "headless xtermjs probe legacy: Callback failed" },
-  })
+      message: "headless xtermjs probe " + id + ": Callback failed",
+    })
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
+  }
   expect(batch.rawReplies).toEqual({})
   expect(batch.assertions).toEqual([])
 })
@@ -431,19 +423,14 @@ test("routes real registry constructor markers while multi-method callbacks rema
     throw new Error("Registry setup failed")
   })
   const batch = await collectBatch(async () => value, "xtermjs", definitions)
-  expect(
-    batch.observations.map(({ featureId, outcome, reason, evidence }) => ({ featureId, outcome, reason, evidence })),
-  ).toEqual([
-    { featureId: "sgr.bold", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-    { featureId: "cursor.move.absolute", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-    { featureId: "device.primary-da", outcome: "error", reason: "collector-error", evidence: "query" },
-    { featureId: "extensions.osc133-a", outcome: "error", reason: "collector-error", evidence: "consumed" },
-    { featureId: "sgr.reset", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-    { featureId: "cursor.save-restore", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-    { featureId: "cursor.cup-scroll-region", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-    { featureId: "extensions.truecolor", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-  ])
-  expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual(ids.slice(8).sort())
+  expect(batch.observations).toEqual([])
+  expect(Object.keys(batch.ungradedDiagnostics).sort()).toEqual([...ids].sort())
+  for (const id of ids) {
+    expect(batch.ungradedDiagnostics[id]).toMatchObject({
+      message: "headless xtermjs probe " + id + ": Registry setup failed",
+    })
+    expect(batch.results.find((result) => result.featureId === id)?.status).toBe("test-failure")
+  }
   expect(batch.assertions).toEqual([])
   expect(batch.rawReplies).toEqual({})
 })
@@ -464,24 +451,18 @@ test.each(["factory", "init"] as const)("attributes a %s failure before invoking
       return value
     },
     "xtermjs",
-    [definition("setup", callback, { termlessObservationEvidence: "parser-state" })],
+    [definition("setup", callback, { libAssertionType: "buffer_state" })],
   )
   expect(callback).not.toHaveBeenCalled()
   if (stage === "init") expect(destroy).toHaveBeenCalledOnce()
   expect(batch).toMatchObject({
-    observations: [
-      {
-        featureId: "setup",
-        outcome: "error",
-        reason: "collector-error",
-        evidence: "parser-state",
-        note: `headless xtermjs probe setup: ${stage} failed`,
-      },
-    ],
+    observations: [],
     assertions: [],
     notTested: [],
     rawReplies: {},
-    ungradedDiagnostics: {},
+    ungradedDiagnostics: {
+      setup: { kind: "collector-error", name: "Error", message: `headless xtermjs probe setup: ${stage} failed` },
+    },
   })
 })
 
@@ -502,7 +483,7 @@ test.each(["factory", "init"] as const)(
         return value
       },
       "xtermjs",
-      [definition("declines", callback, { termlessObservationEvidence: "none" })],
+      [definition("declines", callback, { libAssertionType: null })],
     )
     expect(callback).not.toHaveBeenCalled()
     // The canonical parser admits none only as an inconclusive refusal, so a collector failure on a
@@ -516,7 +497,7 @@ test.each(["factory", "init"] as const)(
 
 test("a real none-declaring probe keeps its setup failure ungraded", async () => {
   const ligatures = ALL_PROBES.find((probe) => probe.id === "extensions.font-ligatures")
-  expect(ligatures?.termlessObservationEvidence).toBe("none")
+  expect(ligatures?.libAssertionType).toBeNull()
   const batch = await collectBatch(
     async () => {
       throw new Error("engine unavailable")
@@ -563,26 +544,20 @@ test("attributes a context operation failure and restores the backend response l
       "query",
       (ctx) => {
         ctx.feedCapture("\x1b[c")
-        return fakeProbeResult("query")
+        return fakeProbeResult("query_reply")
       },
-      { termlessObservationEvidence: "query" },
+      { libAssertionType: "query_reply" },
     ),
   ])
   expect(value.onResponse).toBe(previous)
   expect(batch).toMatchObject({
-    observations: [
-      {
-        featureId: "query",
-        outcome: "error",
-        reason: "collector-error",
-        evidence: "query",
-        note: "headless xtermjs probe query: Feed failed",
-      },
-    ],
+    observations: [],
     assertions: [],
     notTested: [],
     rawReplies: {},
-    ungradedDiagnostics: {},
+    ungradedDiagnostics: {
+      query: { kind: "collector-error", name: "Error", message: "headless xtermjs probe query: Feed failed" },
+    },
   })
 })
 
@@ -596,15 +571,19 @@ test("attributes unavailable fixture grids to each probe without invoking callba
     return value
   }
   const batch = await collectBatch(factory, "xtermjs", [
-    definition("first", callback, { termlessObservationEvidence: "parser-state" }),
-    definition("second", callback, { termlessObservationEvidence: "query" }),
+    definition("first", callback, { libAssertionType: "buffer_state" }),
+    definition("second", callback, { libAssertionType: "query_reply" }),
   ])
-  expect(batch.observations).toMatchObject([
-    { featureId: "first", outcome: "error", reason: "collector-error", evidence: "parser-state" },
-    { featureId: "second", outcome: "error", reason: "collector-error", evidence: "query" },
+  expect(batch.results.filter((result) => ["first", "second"].includes(result.featureId))).toMatchObject([
+    { featureId: "first", status: "test-failure" },
+    { featureId: "second", status: "test-failure" },
   ])
-  expect(batch.observations[0]?.note).toContain("headless xtermjs probe first:")
-  expect(batch.observations[0]?.note).toContain("no initialized row 0 grid")
+  expect(batch.ungradedDiagnostics.first).toMatchObject({
+    message: expect.stringContaining("headless xtermjs probe first:"),
+  })
+  expect(batch.ungradedDiagnostics.first).toMatchObject({
+    message: expect.stringContaining("no initialized row 0 grid"),
+  })
   expect(callback).not.toHaveBeenCalled()
 })
 
@@ -614,25 +593,25 @@ test("rejects a returned method that disagrees with the marker and preserves mat
       "wrong",
       () => ({
         pass: false,
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        observation: { outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
     definition(
       "matching",
       () => ({
         pass: false,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state" },
+        observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
     definition(
       "refused",
       () => ({
         pass: false,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+        tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch).toMatchObject({
@@ -641,11 +620,15 @@ test("rejects a returned method that disagrees with the marker and preserves mat
         featureId: "wrong",
         outcome: "error",
         reason: "collector-error",
-        evidence: "query",
-        note: "Termless callback wrong declares parser-state evidence but returned query; refused observation(outcome=inconclusive, reason=no-response, evidence=query)",
+        assertionType: "query_reply",
+        note: "Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=inconclusive, reason=no-response, assertionType=query_reply)",
       },
-      { featureId: "matching", outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state" },
-      { featureId: "refused", outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+      {
+        featureId: "matching",
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        assertionType: "buffer_state",
+      },
     ],
     assertions: [],
     notTested: [],
@@ -657,13 +640,13 @@ test("rejects a returned method that disagrees with the marker and preserves mat
 test.each([
   [
     "supported",
-    'observation(outcome=supported, evidence=none) and assertion(kind=positive, expected="X", observed="X")',
+    'observation(outcome=supported, assertionType=none) and assertion(kind=positive, expected="X", observed="X")',
   ],
-  ["error", "observation(outcome=error, reason=insufficient-evidence, evidence=none)"],
-  ["raw", "observation(outcome=inconclusive, reason=insufficient-evidence, evidence=none)"],
+  ["error", "observation(outcome=error, reason=insufficient-evidence, assertionType=none)"],
+  ["raw", "observation(outcome=inconclusive, reason=insufficient-evidence, assertionType=none)"],
   [
     "assertion",
-    'observation(outcome=inconclusive, reason=insufficient-evidence, evidence=none) and assertion(kind=positive, expected="X", observed="X")',
+    'observation(outcome=inconclusive, reason=insufficient-evidence, assertionType=none) and assertion(kind=positive, expected="X", observed="X")',
   ],
 ] as const)(
   "rejects a marked none result with %s instead of an unmeasured inconclusive refusal",
@@ -671,7 +654,7 @@ test.each([
     const batch = await collectBatch(backend, "xtermjs", [
       definition(
         "invalid-none",
-        (ctx) => {
+        ((ctx: Parameters<NonNullable<ProbeDefinition["lib"]>>[0]) => {
           ctx.feed("X")
           const observed = ctx.getCell(0, 0).char
           return {
@@ -679,15 +662,15 @@ test.each([
             observation: {
               outcome: variant === "supported" ? "supported" : variant === "error" ? "error" : "inconclusive",
               evidence: "none",
-              ...(variant !== "supported" && { reason: "insufficient-evidence" as const }),
+              ...(variant !== "supported" && { reason: "insufficient-evidence" }),
             },
             ...((variant === "supported" || variant === "raw") && { response: observed }),
             ...((variant === "supported" || variant === "assertion") && {
               assertions: [{ kind: "positive" as const, expected: "X", observed }],
             }),
           }
-        },
-        { termlessObservationEvidence: "parser-state" },
+        }) as unknown as NonNullable<ProbeDefinition["lib"]>,
+        { libAssertionType: "buffer_state" },
       ),
     ])
     expect(batch).toMatchObject({
@@ -700,7 +683,7 @@ test.each([
         "invalid-none": {
           kind: "collector-error",
           name: "Error",
-          message: `Termless callback invalid-none declares parser-state evidence but returned none without an unmeasured refusal; refused ${refused}`,
+          message: expect.stringContaining("Callback for invalid-none returned no valid assertion type"),
         },
       },
     })
@@ -711,7 +694,7 @@ test.each([
 
 // 30581: a refused callback result keeps its response under its feature id and its refused observation and
 // assertions as text in the refusal, on every recorder branch, so the run file shows what the grader saw.
-test("an evidence kind that disagrees with the marker keeps the response and the refused claim", async () => {
+test("an assertion type that disagrees with the marker keeps the response and the refused claim", async () => {
   const response = "\x1b[?1;2c"
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
@@ -719,10 +702,10 @@ test("an evidence kind that disagrees with the marker keeps the response and the
       () => ({
         pass: false,
         response,
-        observation: { outcome: "unsupported", evidence: "query" },
-        assertions: [{ kind: "negative", expected: "no DA1 answer", observed: response }],
+        observation: { outcome: "unsupported", assertionType: "query_reply" },
+        assertions: [{ kind: "negative", assertionType: "query_reply", expected: "no DA1 answer", observed: response }],
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.observations).toStrictEqual([
@@ -730,8 +713,8 @@ test("an evidence kind that disagrees with the marker keeps the response and the
       featureId: "wrong",
       outcome: "error",
       reason: "collector-error",
-      evidence: "query",
-      note: `Termless callback wrong declares parser-state evidence but returned query; refused observation(outcome=unsupported, evidence=query) and assertion(kind=negative, expected="no DA1 answer", observed=${JSON.stringify(response)})`,
+      assertionType: "query_reply",
+      note: `Lib callback wrong declares buffer_state but returned query_reply; refused observation(outcome=unsupported, assertionType=query_reply) and assertion(kind=negative, expected="no DA1 answer", observed=${JSON.stringify(response)})`,
       rawReplyRef: "wrong",
     },
   ])
@@ -744,33 +727,33 @@ test.each([
   {
     name: "an assertion of the other kind",
     response: "X",
-    observation: { outcome: "supported", evidence: "parser-state" },
+    observation: { outcome: "supported", assertionType: "buffer_state" },
     assertions: [{ kind: "negative", expected: "X", observed: "X" }],
     refused:
-      'observation(outcome=supported, evidence=parser-state) and assertion(kind=negative, expected="X", observed="X")',
+      'observation(outcome=supported, assertionType=buffer_state) and assertion(kind=negative, expected="X", observed="X")',
   },
   {
     name: "no assertion",
     response: "X",
-    observation: { outcome: "supported", evidence: "parser-state" },
+    observation: { outcome: "supported", assertionType: "buffer_state" },
     assertions: [],
-    refused: "observation(outcome=supported, evidence=parser-state)",
+    refused: "observation(outcome=supported, assertionType=buffer_state)",
   },
   {
     name: "a parser-state assertion that observed other bytes",
     response: "X",
-    observation: { outcome: "unsupported", evidence: "parser-state" },
+    observation: { outcome: "unsupported", assertionType: "buffer_state" },
     assertions: [{ kind: "negative", expected: "Y", observed: "Z" }],
     refused:
-      'observation(outcome=unsupported, evidence=parser-state) and assertion(kind=negative, expected="Y", observed="Z")',
+      'observation(outcome=unsupported, assertionType=buffer_state) and assertion(kind=negative, expected="Y", observed="Z")',
   },
   {
     name: "no response",
     response: undefined,
-    observation: { outcome: "supported", evidence: "parser-state" },
+    observation: { outcome: "supported", assertionType: "buffer_state" },
     assertions: [{ kind: "positive", expected: "X", observed: "X" }],
     refused:
-      'observation(outcome=supported, evidence=parser-state) and assertion(kind=positive, expected="X", observed="X")',
+      'observation(outcome=supported, assertionType=buffer_state) and assertion(kind=positive, expected="X", observed="X")',
   },
 ] as const)("a conclusive result with $name keeps its response and refused claim", async (row) => {
   const batch = await collectBatch(backend, "xtermjs", [
@@ -781,8 +764,8 @@ test.each([
         ...(row.response !== undefined && { response: row.response }),
         observation: row.observation,
         assertions: row.assertions,
-      })) as unknown as ProbeDefinition["termless"],
-      { termlessObservationEvidence: "parser-state" },
+      })) as unknown as ProbeDefinition["lib"],
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.observations).toStrictEqual([
@@ -790,7 +773,7 @@ test.each([
       featureId: "unbound",
       outcome: "error",
       reason: "collector-error",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
       note: `Callback result lacks matching raw state and assertion; refused ${row.refused}`,
       ...(row.response !== undefined && { rawReplyRef: "unbound" }),
     },
@@ -807,9 +790,9 @@ test("an inconclusive result without a reason keeps its response and refused cla
       (() => ({
         pass: false,
         response: "X",
-        observation: { outcome: "inconclusive", evidence: "parser-state" },
-      })) as unknown as ProbeDefinition["termless"],
-      { termlessObservationEvidence: "parser-state" },
+        observation: { outcome: "inconclusive", assertionType: "buffer_state" },
+      })) as unknown as ProbeDefinition["lib"],
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.observations).toStrictEqual([
@@ -817,8 +800,8 @@ test("an inconclusive result without a reason keeps its response and refused cla
       featureId: "unreasoned",
       outcome: "error",
       reason: "collector-error",
-      evidence: "parser-state",
-      note: "Callback result lacks an inconclusive/error reason; refused observation(outcome=inconclusive, evidence=parser-state)",
+      assertionType: "buffer_state",
+      note: "Callback result lacks an inconclusive/error reason; refused observation(outcome=inconclusive, assertionType=buffer_state)",
       rawReplyRef: "unreasoned",
     },
   ])
@@ -832,9 +815,9 @@ test("a result with no observation keeps its response and refused assertions", a
     pass: true,
     response: "X",
     assertions: [{ kind: "positive", expected: "X", observed: "X" }],
-  })) as unknown as ProbeDefinition["termless"]
+  })) as unknown as ProbeDefinition["lib"]
   const batch = await collectBatch(backend, "xtermjs", [
-    definition("legacy", untyped, { termlessObservationEvidence: "parser-state" }),
+    definition("legacy", untyped, { libAssertionType: "buffer_state" }),
   ])
   expect(batch.observations).toStrictEqual([])
   expect(batch.assertions).toStrictEqual([])
@@ -855,12 +838,15 @@ test("admits an inconclusive no-response result with its named reason and no syn
   const batch = await collectBatch(backend, "xtermjs", [
     definition(
       "silent",
-      () => ({ pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }),
-      { termlessObservationEvidence: "query" },
+      () => ({
+        pass: false,
+        observation: { outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
+      }),
+      { libAssertionType: "query_reply" },
     ),
   ])
   expect(batch.observations).toStrictEqual([
-    { featureId: "silent", outcome: "inconclusive", reason: "no-response", evidence: "query" },
+    { featureId: "silent", outcome: "inconclusive", reason: "no-response", assertionType: "query_reply" },
   ])
   expect(batch.assertions).toStrictEqual([])
   expect(batch.rawReplies).toStrictEqual({})
@@ -873,9 +859,9 @@ test("admits an inconclusive no-response result with its named reason and no syn
 
 test("refuses a callback result that is neither a measurement nor a coverage record", async () => {
   // The union makes this unreachable from a typed callback; an untyped caller still gets a loud refusal.
-  const untyped = (() => ({ pass: true, note: "Legacy conclusion" })) as unknown as ProbeDefinition["termless"]
+  const untyped = (() => ({ pass: true, note: "Legacy conclusion" })) as unknown as ProbeDefinition["lib"]
   const batch = await collectBatch(backend, "xtermjs", [
-    definition("legacy", untyped, { termlessObservationEvidence: "parser-state" }),
+    definition("legacy", untyped, { libAssertionType: "buffer_state" }),
   ])
   expect(batch).toMatchObject({
     observations: [],
@@ -903,7 +889,7 @@ test("records named not-tested coverage without an observation and keeps its raw
         response: JSON.stringify({ mode: false }),
         notTested: { reason: "no-semantic-observable", noObservable: "input events" },
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.observations).toEqual([])
@@ -929,12 +915,12 @@ test("refuses named coverage with no retained raw capture", async () => {
         pass: false,
         notTested: { reason: "no-semantic-observable", noObservable: "input events" },
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.notTested).toEqual([])
-  expect(batch.observations).toMatchObject([
-    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error" },
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
   ])
 })
 
@@ -946,12 +932,12 @@ test("a failed probe never becomes named coverage", async () => {
       () => {
         throw new Error("backend read failed")
       },
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.notTested).toEqual([])
-  expect(batch.observations).toMatchObject([
-    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error" },
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
   ])
 })
 
@@ -968,11 +954,11 @@ test("refuses named coverage that arrives beside its returned error observation"
         observation: {
           outcome: "error",
           reason: "collector-error",
-          evidence: "parser-state",
+          assertionType: "buffer_state",
           note: "backend read failed",
         },
-      })) as unknown as ProbeDefinition["termless"],
-      { termlessObservationEvidence: "parser-state" },
+      })) as unknown as ProbeDefinition["lib"],
+      { libAssertionType: "buffer_state" },
     ),
     definition(
       "modes.focus-events",
@@ -981,7 +967,7 @@ test("refuses named coverage that arrives beside its returned error observation"
         response: JSON.stringify({ mode: false }),
         notTested: { reason: "no-semantic-observable", noObservable: "input events" },
       }),
-      { termlessObservationEvidence: "parser-state" },
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.notTested).toEqual([
@@ -992,15 +978,21 @@ test("refuses named coverage that arrives beside its returned error observation"
       rawReplyRef: "modes.focus-events",
     },
   ])
-  expect(batch.observations).toMatchObject([
-    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
   ])
-  expect(batch.observations[0]?.note).toContain(
-    "beside observation(outcome=error, reason=collector-error, evidence=parser-state",
-  )
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining(
+      "beside observation(outcome=error, reason=collector-error, assertionType=buffer_state",
+    ),
+  })
   expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: false }))
-  expect(batch.observations[0]?.rawReplyRef).toBe("modes.bracketed-paste")
-  expect(batch.observations[0]?.note).toContain('note="backend read failed"')
+  expect(batch.results.find((result) => result.featureId === "modes.bracketed-paste")?.rawReplyRef).toBe(
+    "modes.bracketed-paste",
+  )
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining('note="backend read failed"'),
+  })
 })
 
 test("refuses named coverage that arrives beside supported observation and assertions", async () => {
@@ -1011,21 +1003,27 @@ test("refuses named coverage that arrives beside supported observation and asser
         pass: true,
         response: JSON.stringify({ mode: true }),
         notTested: { reason: "no-semantic-observable", noObservable: "input events" },
-        observation: { outcome: "supported", evidence: "parser-state" },
+        observation: { outcome: "supported", assertionType: "buffer_state" },
         assertions: [{ kind: "positive", expected: "mode=true", observed: JSON.stringify({ mode: true }) }],
-      })) as unknown as ProbeDefinition["termless"],
-      { termlessObservationEvidence: "parser-state" },
+      })) as unknown as ProbeDefinition["lib"],
+      { libAssertionType: "buffer_state" },
     ),
   ])
   expect(batch.notTested).toEqual([])
   expect(batch.assertions).toEqual([])
-  expect(batch.observations).toMatchObject([
-    { featureId: "modes.bracketed-paste", outcome: "error", reason: "collector-error", evidence: "parser-state" },
+  expect(batch.results.filter((result) => ["modes.bracketed-paste"].includes(result.featureId))).toMatchObject([
+    { featureId: "modes.bracketed-paste", status: "test-failure" },
   ])
   expect(batch.rawReplies["modes.bracketed-paste"]).toBe(JSON.stringify({ mode: true }))
-  expect(batch.observations[0]?.note).toContain("assertion(kind=positive")
-  expect(batch.observations[0]?.note).toContain("expected=")
-  expect(batch.observations[0]?.note).toContain("observed=")
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining("assertion(kind=positive"),
+  })
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining("expected="),
+  })
+  expect(batch.ungradedDiagnostics["modes.bracketed-paste"]).toMatchObject({
+    message: expect.stringContaining("observed="),
+  })
 })
 
 // AC3: feature support cannot authorize metadata readback. Existing tests grade
@@ -1036,7 +1034,7 @@ test("OSC 8 feature without metadata extension omits the cell field", () => {
     value.capabilities.extensions.delete("hyperlinks")
     value.feed(new TextEncoder().encode("\x1b]8;;https://example.com/observed\x07L"))
     expect(value.capabilities.osc8Hyperlinks).toBe(true)
-    expect(createTermlessContext(value).getCell(0, 0)).not.toHaveProperty("hyperlink")
+    expect(createLibProbeSource(value).getCell(0, 0)).not.toHaveProperty("hyperlink")
   } finally {
     value.destroy()
   }
@@ -1049,7 +1047,7 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
   try {
     value.capabilities.extensions.add("hyperlinks")
     Object.assign(value, { getHyperlinkAt: readLink })
-    expect(() => createTermlessContext(value).getCell(0, 0)).toThrow(`${value.name} declares OSC 8 metadata`)
+    expect(() => createLibProbeSource(value).getCell(0, 0)).toThrow(`${value.name} declares OSC 8 metadata`)
   } finally {
     value.destroy()
   }
@@ -1060,14 +1058,16 @@ test.each([undefined, () => undefined, () => 5])("OSC 8 metadata declaration mis
 test("records a complete explicit catalogue and retains probe attempt failure", async () => {
   const { initializeRunDraft } = await import("@terminfo/probe-defs")
   const draft = initializeRunDraft({
+    source: { kind: "live" },
     runId: "headless-status-contract",
     sourceRevision: "a".repeat(40),
-    intendedContext: { kind: "headless", id: "xtermjs" },
+    intendedSubject: { kind: "lib", id: "xtermjs" },
     manifest: {
+      schemaVersion: 4 as const,
       probeHash: "runtime-suite",
       adapterVersion: "3",
       catalogIds: ["attempted", "unimplemented"],
-      probes: { app: [], mux: [], headless: ["attempted"] },
+      probes: { term: [], mux: [], lib: ["attempted"] },
     },
   })
   const batch = await collectBatch(
@@ -1079,7 +1079,7 @@ test("records a complete explicit catalogue and retains probe attempt failure", 
         () => {
           throw new Error("retained oracle failure")
         },
-        { termlessObservationEvidence: "parser-state" },
+        { libAssertionType: "buffer_state" },
       ),
     ],
     draft,
@@ -1091,4 +1091,34 @@ test("records a complete explicit catalogue and retains probe attempt failure", 
   expect(batch.results[0]?.attempt.scope).toBe("probe")
   expect(batch.results[0]?.reason).toContain("retained oracle failure")
   expect(batch.results[1]?.attempt).toEqual({ scope: "none" })
+})
+
+// Execution-only callbacks retain their real response and cannot borrow legacy pass as support.
+test("retains execution-only failure bytes despite pass true and rejects a typed claim declared null", async () => {
+  const result = await collectBatch(backend, "xtermjs", [
+    definition("execution-only", () => ({
+      pass: true,
+      response: "retained refusal",
+      tests: [{ id: "criterion", status: "test-failure", reason: "Timed out without a deciding observable" }],
+    })),
+    definition(
+      "declared-null",
+      () => ({
+        pass: true,
+        response: "retained state",
+        observation: { outcome: "supported", assertionType: "query_reply" },
+        assertions: [{ kind: "positive", assertionType: "query_reply", expected: "state", observed: "retained state" }],
+      }),
+      { libAssertionType: null },
+    ),
+  ])
+  expect(result.results.map((entry) => entry.status)).toEqual(["test-failure", "test-failure"])
+  expect(result.rawReplies).toMatchObject({ "execution-only": "retained refusal", "declared-null": "retained state" })
+  expect(result.results[0]).toMatchObject({
+    rawReplyRef: "execution-only",
+    tests: [expect.objectContaining({ status: "test-failure" })],
+  })
+  expect(result.observations).toMatchObject([
+    { featureId: "declared-null", outcome: "error", reason: "collector-error" },
+  ])
 })

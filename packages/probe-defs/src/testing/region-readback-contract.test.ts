@@ -8,23 +8,32 @@ import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
-import { ALL_PROBES, type CaptureRequest, type ObservationFrame, type ProbeResult, type TermContext } from "../index.ts"
+import {
+  ALL_PROBES,
+  recordExecutedProbe,
+  type CaptureRequest,
+  type ObservationFrame,
+  type ProbeCallbackResult,
+  type TermProbeSource,
+} from "../index.ts"
 
 const FEATURE = "editing.delete-chars"
 const SUITE = "452ac343b55d"
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
 const manifest: ProbeSuiteManifest = {
+  schemaVersion: 4,
   probeHash: SUITE,
   adapterVersion: "3.3.1",
   generatedAt: "2026-10-10T22:00:00.000Z",
-  probes: { app: [FEATURE], headless: [], mux: [] },
+  catalogIds: [FEATURE],
+  probes: { term: [FEATURE], lib: [], mux: [] },
 }
 /** The three capture behaviours the collector must survive, plus the geometry refusal and a run
  *  whose target equals the row's ignored-attribute frame. */
 type Mode = "deciding" | "stable" | "unstable" | "sentinel" | "ignored-attribute"
 
 interface Harness {
-  ctx: TermContext
+  ctx: TermProbeSource
   /** Exactly the adapter's trace shape: the bytes this run wrote, asked and saw. */
   trace: { writes: string[]; queries: unknown[]; events: unknown[] }
   /**
@@ -122,7 +131,8 @@ function harness(mode: Mode): Harness {
     return outcome
   }
 
-  const ctx: TermContext = {
+  const ctx: TermProbeSource = {
+    kind: "live",
     cols: 80,
     rows: 24,
     write(text) {
@@ -136,7 +146,7 @@ function harness(mode: Mode): Harness {
     queryWithSentinel: async () => null,
     queryOutcome: async () => ({ match: null, reason: "timeout", raw: "", rawBase64: "" }),
     queryWithSentinelOutcome: async (sequence) =>
-      (await timed(sequence)) as unknown as Awaited<ReturnType<TermContext["queryWithSentinelOutcome"]>>,
+      (await timed(sequence)) as unknown as Awaited<ReturnType<TermProbeSource["queryWithSentinelOutcome"]>>,
     queryMode: async () => null,
     capture,
   }
@@ -144,21 +154,34 @@ function harness(mode: Mode): Harness {
 }
 
 /**
- * Assemble the run document the collector's own emission would seal, including the two things the
- * adapter adds at collection time and the probe cannot know: every observation and assertion
- * carries its own rawReplyRef, and the run lists every frame ref it captured.
+ * Assemble the schema-4 run the collector would seal, including global evidence references and the
+ * execution result derived from the callback's observation or tests.
  */
-function assemble(result: ProbeResult, trace: Harness["trace"], frames: ObservationFrame[], feature = FEATURE) {
-  const observation = {
+function assemble(result: ProbeCallbackResult, trace: Harness["trace"], frames: ObservationFrame[], feature = FEATURE) {
+  const assertions = (result.assertions ?? []).map((entry) => ({
+    ...entry,
     featureId: feature,
-    ...result.observation,
     rawReplyRef: feature,
-  }
+  }))
+  const recorded = recordExecutedProbe({
+    featureId: feature,
+    attempt: { scope: "probe", startedAt: "2026-10-10T22:10:00.000Z" },
+    rawReplyRef: feature,
+    ...(result.observation && { observation: { ...result.observation, featureId: feature, rawReplyRef: feature } }),
+    assertions,
+    tests: result.tests,
+    criterionBranch: result.criterionBranch,
+  })
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
+    source: { kind: "live" },
     runId: `region-readback-contract-${feature}`,
-    target: {
-      kind: "app",
+    suiteId: SUITE,
+    probeHash: SUITE,
+    sourceRevision: "4".repeat(40),
+    intendedSubject: { kind: "term", id: "kitty" },
+    subject: {
+      kind: "term",
       id: "kitty",
       version: "0.49.2",
       os: "linux",
@@ -169,20 +192,13 @@ function assemble(result: ProbeResult, trace: Harness["trace"], frames: Observat
       permissions: null,
     },
     identity: "unverified",
-    suiteId: SUITE,
-    probeHash: SUITE,
-    suiteComplete: true,
-    sourceRevision: "4".repeat(40),
     measuredAt: "2026-10-10T22:10:00.000Z",
     origin: { kind: "collector" },
+    sealedAt: "2026-10-10T22:11:00.000Z",
     rawReplies: { [feature]: JSON.stringify(trace) },
-    assertions: (result.assertions ?? []).map((entry) => ({
-      ...entry,
-      featureId: feature,
-      rawReplyRef: feature,
-    })),
+    assertions,
     screenshotRefs: [...new Set(frames.map((frame) => frame.ref))],
-    observations: [observation],
+    results: [recorded],
   }
 }
 
@@ -197,7 +213,8 @@ const drive = async (mode: Mode, feature = FEATURE) => {
 const parse = (run: unknown, feature = FEATURE) => {
   const featureManifest: ProbeSuiteManifest = {
     ...manifest,
-    probes: { app: [feature], headless: [], mux: [] },
+    catalogIds: [feature],
+    probes: { term: [feature], lib: [], mux: [] },
   }
   return parseRun(
     `${feature}.json`,
@@ -210,17 +227,17 @@ const parse = (run: unknown, feature = FEATURE) => {
 test("a deciding capture readback seals a pixels verdict the raw-run contract admits", async () => {
   const { result, run } = await drive("deciding")
   expect(result.observation?.outcome).toBe("supported")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run)).not.toThrow()
   const loaded = parse(run)
-  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+  expect(loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
 
 test("a byte-stable capture that decides nothing still seals an observation the contract admits", async () => {
   const { result, run } = await drive("stable")
   expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.screenshotRef).toBeDefined()
   expect(() => parse(run)).not.toThrow()
 })
@@ -246,7 +263,7 @@ test("28584 shape C: a byte-unstable capture's pixels refusal still carries what
   const stabilityFrames = frames.filter((frame) => frame.label.includes("capture stability"))
   const stabilityRefs = stabilityFrames.map((frame) => frame.ref)
   expect(stabilityRefs.length).toBeGreaterThan(0)
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(stabilityRefs).toContain(result.observation?.screenshotRef)
   expect(result.observation?.frames ?? []).toHaveLength(0)
   // The ONE stability shape (@cto round-3c B3): both reads travel in the response, the citation is
@@ -269,7 +286,7 @@ test("28584 shape C: a byte-unstable capture's pixels refusal still carries what
  */
 test("28584 shape B: a sentinel geometry refusal reports query, not none", async () => {
   const { result, run, trace } = await drive("sentinel")
-  expect(result.observation?.evidence).toBe("query")
+  expect(result.observation?.assertionType).toBe("query_reply")
   expect(trace.queries.length).toBeGreaterThan(0)
   expect(() => parse(run)).not.toThrow()
 })
@@ -282,11 +299,11 @@ test("erase.character deciding capture readback seals a pixels verdict the raw-r
   const feature = "erase.character"
   const { result, run } = await drive("deciding", feature)
   expect(result.observation?.outcome).toBe("supported")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run, feature)).not.toThrow()
   const loaded = parse(run, feature)
-  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+  expect(loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
 
 /**
@@ -296,11 +313,11 @@ test("charsets.dec-special deciding capture readback seals a pixels verdict the 
   const feature = "charsets.dec-special"
   const { result, run } = await drive("deciding", feature)
   expect(result.observation?.outcome).toBe("supported")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run, feature)).not.toThrow()
   const loaded = parse(run, feature)
-  expect(loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
+  expect(loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined)).toBe(true)
 })
 
 /**
@@ -312,7 +329,7 @@ for (const feature of ["erase.selective", "erase.el-with-attrs"] as const) {
   test(`${feature}: a target that drops the row's discriminating attribute seals unsupported`, async () => {
     const { result, run } = await drive("ignored-attribute", feature)
     expect(result.observation?.outcome, feature).toBe("unsupported")
-    expect(result.observation?.evidence, feature).toBe("pixels")
+    expect(result.observation?.assertionType, feature).toBe("screenshot")
     expect(result.assertions?.[0]?.kind, feature).toBe("negative")
     expect(() => parse(run, feature), feature).not.toThrow()
   })
@@ -365,12 +382,12 @@ for (const feature of SLICE_C_READBACK_IDS) {
   test(`${feature}: a deciding capture readback seals a pixels verdict the raw-run contract admits`, async () => {
     const { result, run } = await drive("deciding", feature)
     expect(result.observation?.outcome, feature).toBe("supported")
-    expect(result.observation?.evidence, feature).toBe("pixels")
+    expect(result.observation?.assertionType, feature).toBe("screenshot")
     expect(result.observation?.frames?.length ?? 0, feature).toBeGreaterThanOrEqual(2)
     expect(() => parse(run, feature), feature).not.toThrow()
     const loaded = parse(run, feature)
     expect(
-      loaded.observations[0]?.frames?.some((frame) => frame.regionDigest !== undefined),
+      loaded.results?.[0]?.frames?.some((frame) => frame.regionDigest !== undefined),
       feature,
     ).toBe(true)
   })

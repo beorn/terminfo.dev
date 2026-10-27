@@ -47,9 +47,9 @@ export async function handleStatus(): Promise<void> {
   }
   const projection = loadCurrentResults(join(ROOT, "content")).projection
   const current = Object.entries(projection.current).sort(([left], [right]) => left.localeCompare(right))
-  const headless = current.filter(([, run]) => run.target.kind === "headless")
-  const apps = current.filter(([, run]) => run.target.kind === "app")
-  const muxes = current.filter(([, run]) => run.target.kind === "mux")
+  const headless = current.filter(([, run]) => run.subject.kind === "lib")
+  const apps = current.filter(([, run]) => run.subject.kind === "term")
+  const muxes = current.filter(([, run]) => run.subject.kind === "mux")
   const headlessFeatures = new Set(headless.flatMap(([, run]) => run.catalogIds))
 
   console.log("\nterminfo.dev status\n")
@@ -69,10 +69,10 @@ export async function handleStatus(): Promise<void> {
   console.log(`    Headless observed feature IDs: ${headlessFeatures.size}`)
   for (const [key, run] of current) {
     console.log(
-      `    ${key} ${run.target.version} (${run.runId}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
+      `    ${key} ${run.subject.version} (${run.runId}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
     )
   }
-  if (current.length === 0) console.log("    No current schema-3 runs; historical results remain available.")
+  if (current.length === 0) console.log("    No current sealed runs; historical results remain available.")
   console.log(`    Excluded archived runs: ${projection.exclusions.length}`)
 
   console.log("\n  Saved archive files:")

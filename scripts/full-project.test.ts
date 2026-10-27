@@ -10,16 +10,16 @@
  */
 import { describe, expect, it } from "vitest"
 import { buildFullProjectRows } from "../docs/data/full-project.ts"
-import type { CapabilityResult, CapabilityStatus } from "@terminfo/probe-defs"
+import type { ProbeResult, ProbeStatus } from "@terminfo/probe-defs"
 import type { ContextCandidate } from "../docs/data/run-selection.ts"
 import type { CensusContext } from "../docs/data/full-census.ts"
 
-const recorded = (ids: readonly string[], status: CapabilityStatus = "test-todo"): CapabilityResult[] =>
+const recorded = (ids: readonly string[], status: ProbeStatus = "test-todo"): ProbeResult[] =>
   ids.map((featureId) => ({
     featureId,
     status,
     attempt: status === "test-todo" ? { scope: "none" } : { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-    checks: [],
+    tests: [],
   }))
 
 const suite = "suite-current"
@@ -43,9 +43,9 @@ function candidate(
   }
 }
 
-const app: CensusContext = { context: "kitty/linux", terminalId: "kitty", os: "linux", kind: "app" }
-const other: CensusContext = { context: "xterm/linux", terminalId: "xterm", os: "linux", kind: "app" }
-const engine: CensusContext = { context: "libvterm/headless", terminalId: "libvterm", os: "headless", kind: "headless" }
+const app: CensusContext = { context: "kitty/linux", terminalId: "kitty", os: "linux", kind: "term" }
+const other: CensusContext = { context: "xterm/linux", terminalId: "xterm", os: "linux", kind: "term" }
+const engine: CensusContext = { context: "libvterm/headless", terminalId: "libvterm", os: "headless", kind: "lib" }
 
 describe("full-scope rows", () => {
   it("scores a collected context over the whole catalog", () => {
@@ -54,7 +54,7 @@ describe("full-scope rows", () => {
       catalogIds,
       candidates: [
         candidate({
-          kind: "app",
+          kind: "term",
           terminalId: "kitty",
           os: "linux",
           results: [...recorded(["a.one"], "supported"), ...recorded(["a.two"], "unsupported"), ...recorded(["b.one"])],
@@ -80,7 +80,7 @@ describe("full-scope rows", () => {
     const rows = buildFullProjectRows({
       census: [app],
       catalogIds,
-      candidates: [candidate({ kind: "app", terminalId: "kitty", os: "linux", suiteId: "an-older-suite" })],
+      candidates: [candidate({ kind: "term", terminalId: "kitty", os: "linux", suiteId: "an-older-suite" })],
       requiredSuiteId: suite,
     })
     const [row] = rows.contexts
@@ -88,7 +88,7 @@ describe("full-scope rows", () => {
       context: "kitty/linux",
       terminalId: "kitty",
       os: "linux",
-      kind: "app",
+      kind: "term",
       collected: false,
       cause: "selected run is on suite an-older-suite; required suite-current",
     })
@@ -109,8 +109,8 @@ describe("full-scope rows", () => {
       census: [engine],
       catalogIds,
       candidates: [
-        candidate({ kind: "headless", terminalId: "libvterm", os: "linux" }),
-        candidate({ kind: "headless", terminalId: "libvterm", os: "macos" }),
+        candidate({ kind: "lib", terminalId: "libvterm", os: "linux" }),
+        candidate({ kind: "lib", terminalId: "libvterm", os: "macos" }),
       ],
       requiredSuiteId: suite,
     })
@@ -125,7 +125,7 @@ describe("full-scope rows", () => {
       census: [app],
       catalogIds,
       candidates: [
-        candidate({ kind: "app", terminalId: "kitty", os: "linux", results: recorded(catalogIds, "untestable") }),
+        candidate({ kind: "term", terminalId: "kitty", os: "linux", results: recorded(catalogIds, "untestable") }),
       ],
       requiredSuiteId: suite,
     })
@@ -143,12 +143,17 @@ describe("full-scope rows", () => {
       catalogIds,
       candidates: [
         candidate({
-          kind: "app",
+          kind: "term",
           terminalId: "kitty",
           os: "linux",
           results: recorded(catalogIds).map((result) =>
             result.featureId === "a.one"
-              ? { ...result, status: "test-failure", evidence: "text", reason: "terminal never answered; timeout" }
+              ? {
+                  ...result,
+                  status: "test-failure",
+                  assertionType: "buffer_state",
+                  reason: "terminal never answered; timeout",
+                }
               : result,
           ),
         }),
@@ -160,7 +165,7 @@ describe("full-scope rows", () => {
     expect(row.observations[0]).toEqual({
       id: "a.one",
       state: "test-failure",
-      method: "text",
+      method: "buffer_state",
       note: null,
       reason: "terminal never answered; timeout",
     })
@@ -174,7 +179,7 @@ describe("full-scope rows", () => {
       context: `terminal-${index}/linux`,
       terminalId: `terminal-${index}`,
       os: "linux",
-      kind: "app",
+      kind: "term",
     }))
     const candidates = census.map((context) =>
       candidate({
