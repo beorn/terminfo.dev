@@ -5,57 +5,63 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { initializeRunDraft, sealRunDraft, recordExecutedProbe } from "@terminfo/probe-defs"
+import { initializeRunDraft, sealRunDraft, recordExecutedProbe, finalizeProbeResult } from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
-const setup = (observed?: string) => {
+const setup = (observed?: string, sourceNegative?: { runId: string; startedAt: string }) => {
+  const featureId = sourceNegative ? "sgr.faint" : "sgr.bold"
+  const subject = sourceNegative
+    ? { kind: "lib" as const, id: "vt100", version: "0.8.0", permissions: null }
+    : { kind: "term" as const, id: "kitty", version: "0.46.2", permissions: "pixels" }
   const draft = initializeRunDraft({
-    runId: "review-capture",
+    runId: sourceNegative?.runId ?? "review-capture",
     sourceRevision: "1".repeat(40),
     source: { kind: "live" },
     manifest: {
       schemaVersion: 4,
       probeHash: "capture-suite",
       adapterVersion: "3",
-      catalogIds: ["sgr.bold"],
-      probes: { term: ["sgr.bold"], lib: [], mux: [] },
+      catalogIds: [featureId],
+      probes: { term: sourceNegative ? [] : [featureId], lib: sourceNegative ? [featureId] : [], mux: [] },
     },
-    intendedSubject: { kind: "term", id: "kitty", version: "0.46.2", permissions: "pixels" },
+    intendedSubject: subject,
   })
   draft.subject = {
-    kind: "term",
-    id: "kitty",
-    version: "0.46.2",
-    os: "macos",
+    kind: subject.kind,
+    id: subject.id,
+    version: subject.version,
+    os: sourceNegative ? "linux" : "macos",
     osVersion: null,
     outerTerminal: null,
     mux: null,
     config: null,
-    permissions: "pixels",
+    permissions: subject.permissions,
   }
   draft.identity = "verified"
   draft.measuredAt = "2026-10-21T05:00:00.000Z"
   draft.origin = { kind: "collector" }
-  draft.rawReplies["sgr.bold"] = "captured trace"
-  draft.results[0]!.rawReplyRef = "sgr.bold"
+  draft.rawReplies[featureId] = "captured trace"
+  draft.results[0]!.rawReplyRef = featureId
   draft.results[0]!.tests = [
     {
       id: "review",
-      status: "test-todo",
+      status: sourceNegative ? "test-failure" : "test-todo",
       attempt: { scope: "none" },
-      reason: "Required context-impossibility review pending",
+      reason: sourceNegative
+        ? "Required source-negative review pending"
+        : "Required context-impossibility review pending",
     },
   ]
   if (observed !== undefined) {
-    draft.rawReplies["sgr.bold"] = observed
-    draft.results[0]!.assertionType = "query_reply"
+    draft.rawReplies[featureId] = observed
+    draft.results[0]!.assertionType = sourceNegative ? "buffer_state" : "query_reply"
     draft.assertions = [
       {
-        featureId: "sgr.bold",
+        featureId,
         kind: "positive",
-        assertionType: "query_reply",
-        expected: "ACK",
+        assertionType: sourceNegative ? "buffer_state" : "query_reply",
+        expected: sourceNegative ? "changed faint=true; restored faint=false" : "ACK",
         observed,
-        rawReplyRef: "sgr.bold",
+        rawReplyRef: featureId,
       },
     ]
     draft.results[0]!.tests.unshift({
@@ -65,19 +71,43 @@ const setup = (observed?: string) => {
       assertionRefs: [0],
     })
   }
-  const artifact = retainCaptureBinding(draft, "sgr.bold")
+  if (sourceNegative) {
+    draft.results[0]!.criterionBranch = "source-negative-review"
+    draft.rawReplies["collector.collectionAttempt"] = JSON.stringify({
+      startedAt: sourceNegative.startedAt,
+      ids: [featureId],
+    })
+    // These are explicit collector-input fixtures, not an engine execution or identity proof.
+    draft.runtimeIdentity = {
+      kind: "js",
+      runtimeFormat: "js",
+      engineVersion: "0.8.0",
+      adapterVersion: "0.10.2",
+      termlessRevision: "2".repeat(40),
+      resolvedPath: "/fixtures/vt100/index.ts",
+      integrity: {
+        kind: "source",
+        repository: "vterm",
+        revision: "3".repeat(40),
+        treeOid: "4".repeat(40),
+        cleanTree: true,
+      },
+    }
+    draft.results[0] = finalizeProbeResult(draft.results[0]!)
+  }
+  const artifact = retainCaptureBinding(draft, featureId)
   const decision = {
     id: "review-bold",
     runId: draft.runId,
-    featureId: "sgr.bold",
+    featureId,
     captureSha256: artifact.sha256,
     decision: "untestable",
     reviewed: true,
     reviewer: "reviewer",
     reason: "This context has no pixel plane; the configured plain stream cannot display glyphs",
     scope: {
-      subject: { kind: "term", id: "kitty" },
-      versions: ["0.46.2", "0.46.2"],
+      subject: { kind: subject.kind, id: subject.id },
+      versions: [subject.version, subject.version],
       suites: ["capture-suite", "capture-suite"],
     },
     sources: [artifact.rawReplyRef],
@@ -88,6 +118,35 @@ const setup = (observed?: string) => {
 // Existing final-run SHA review tests cannot catch a circular pre-seal binding or status changes
 // authorized by a different capture. This exercises the actual execution helper and exact bytes.
 describe("immutable pre-seal capture binding", () => {
+  // FINAL B1/B2/B4: existing cases intentionally reject a different run and never attempt to
+  // reuse a source-negative decision. Exercise the real applier with retained state, not a new seam.
+  it("reuses a source-negative review across cohorts without changing its origin run or capture evidence", () => {
+    const observed = JSON.stringify({
+      original: { faint: false },
+      changed: { faint: false },
+      restored: { faint: false },
+    })
+    const origin = setup(observed, { runId: "source-origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup(observed, { runId: "source-current", startedAt: "2026-10-27T11:01:00.000Z" })
+    origin.decision.decision = "unsupported"
+    origin.decision.reason = "Reviewed source and retained state establish the negative"
+    origin.decision.sources = ["vterm@d7f69fe916ed44d1e01d24b9a079f6b96ba86cb5:packages/vt100/src/screen.ts:444-498"]
+    const decisionBytes = JSON.stringify(origin.decision)
+    const originalCapture = origin.artifact.source
+    expect(current.draft.results[0]!.status).toBe("test-failure")
+    applyCaptureDecision(current.draft, decisionBytes, "2026-10-27T11:02:00.000Z")
+    expect(current.draft.results[0]!.status).toBe("unsupported")
+    expect(current.draft.rawReplies["collector.review.review-bold"]).toBe(decisionBytes)
+    expect(current.draft.assertions.at(-1)).toMatchObject({
+      kind: "negative",
+      assertionType: "buffer_state",
+      expected: "changed faint=true; restored faint=false",
+      observed,
+    })
+    expect(origin.decision.runId).toBe("source-origin")
+    expect(origin.artifact.source).toBe(originalCapture)
+    expect(JSON.stringify(origin.decision)).toBe(decisionBytes)
+  })
   it("keeps valid pending review unsealed, records the exact typed decision, then seals the same run", () => {
     const { draft, artifact, decision } = setup()
     expect(() => sealRunDraft(draft)).toThrow(/review pending/)
