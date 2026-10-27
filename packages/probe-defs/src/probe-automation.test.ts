@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
+import { REPLY_AFTER_SENTINEL_NOTE } from "./helpers.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -506,11 +507,13 @@ describe("Kitty protocol detection", () => {
   // Q16: retained bytes outside the matching reply window must never become a detector negative.
   // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
   test.each([
-    ["malformed", "\x1b[?5522;9$y", false],
-    ["unmatched", "\x1b[?5523;4$y", false],
-    ["partial", "\x1b[?5522;4$", false],
-    ["late", "\x1b[?1;2c\x1b[?5522;4$y", true],
-  ] as const)("OSC 5522 %s evidence stays nonnegative on both arms", async (_name, raw, late) => {
+    ["malformed", "\x1b[?5522;9$y"],
+    ["unmatched", "\x1b[?5523;4$y"],
+    ["partial", "\x1b[?5522;4$"],
+    ["unordered late Ps0", "\x1b[?1;2c\x1b[?5522;0$y"],
+    ["unordered late Ps1", "\x1b[?1;2c\x1b[?5522;1$y"],
+    ["unordered late Ps4", "\x1b[?1;2c\x1b[?5522;4$y"],
+  ] as const)("OSC 5522 %s evidence stays nonnegative on both arms", async (_name, raw) => {
     const p = probe("extensions.osc5522-clipboard")
     if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
     const outcome = (pattern: RegExp) => ({
@@ -518,7 +521,6 @@ describe("Kitty protocol detection", () => {
       reason: "reply" as const,
       raw,
       rawBase64: btoa(raw),
-      ...(late ? { sentinel: { atMs: 1, graceMs: 20 } } : {}),
     })
     const headless = p.lib(
       context({
@@ -531,38 +533,56 @@ describe("Kitty protocol detection", () => {
         queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern),
       }),
     )
-    for (const result of [headless, term]) {
-      expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.assertions ?? []).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ kind: "negative" })]),
-      )
+    const plainCapture = p.lib(context({ feedCapture: () => raw }))
+    for (const result of [headless, plainCapture, term]) {
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
     }
     expect(headless.response).toBe(raw)
   })
 
-  // A complete positive after DA1 but inside the captured grace window is still positive evidence.
-  // Q16 withholds late negatives; it must not narrow the existing positive-reply contract.
-  test("OSC 5522 retains a complete positive received within the sentinel grace window", async () => {
-    const p = probe("extensions.osc5522-clipboard")
-    if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
-    const raw = "\x1b[?1;2c\x1b[?5522;1$y"
-    const outcome = (pattern: RegExp) => ({
-      match: raw.match(pattern),
-      reason: "reply" as const,
-      raw,
-      rawBase64: btoa(raw),
-      sentinel: { atMs: 1, graceMs: 20 },
-    })
-    const headless = p.lib(context({ queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern) }))
-    const term = await p.term(
-      terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
-    )
-    for (const result of [headless, term]) {
-      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-      expect(result.assertions).toMatchObject([{ kind: "positive", observed: "set (Ps 1)" }])
-    }
-    expect(headless.response).toBe(raw)
-  })
+  // Amended Q16: measured ordering admits a complete frame by the shared DECRPM criterion.
+  // The earlier positive-only case missed the distinct Ps0 inconclusive and Ps4 negative branches.
+  test.each([
+    [0, "inconclusive", null],
+    [1, "supported", "positive"],
+    [2, "supported", "positive"],
+    [3, "supported", "positive"],
+    [4, "unsupported", "negative"],
+  ] as const)(
+    "OSC 5522 measured-late Ps%s grades its content with the ordering note",
+    async (ps, outcomeName, kind) => {
+      const p = probe("extensions.osc5522-clipboard")
+      if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
+      const raw = `\x1b[?1;2c\x1b[?5522;${ps}$y`
+      const outcome = (pattern: RegExp) => ({
+        match: raw.match(pattern),
+        reason: "reply" as const,
+        raw,
+        rawBase64: btoa(raw),
+        sentinel: { atMs: 1, graceMs: 20 },
+      })
+      const headless = p.lib(context({ queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern) }))
+      const term = await p.term(
+        terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
+      )
+      for (const result of [headless, term]) {
+        expect(result.observation).toMatchObject({
+          outcome: outcomeName,
+          assertionType: "query_reply",
+          note: REPLY_AFTER_SENTINEL_NOTE,
+        })
+        expect(result.pass).toBe(kind === "positive")
+        if (kind === null) {
+          expect(result.observation?.reason).toBe("insufficient-evidence")
+          expect(result.assertions).toBeUndefined()
+        } else {
+          expect(result.assertions).toMatchObject([{ kind }])
+        }
+      }
+      expect(headless.response).toBe(raw)
+    },
+  )
 
   // OSC 52 previously passed on any substring or on unrelated CPR, and left live clipboard writes behind.
   // No existing protocol test covers these three callbacks or the collector's no-clipboard policy.

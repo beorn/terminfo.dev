@@ -50,15 +50,15 @@ function queryOnly(definition: ProbeDefinition): ProbeDefinition {
 function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentinel = false): ProbeCallbackResult {
   const window = readSentinelReply(raw, decrpmReplyPattern(5522))
   const ps = replyMatched ? decrpmPs(window.match?.[1]) : null
-  const late = afterSentinel || window.kind === "answered" || window.kind === "unmatched"
-  if (ps === null || ((ps === 0 || ps === 4) && late)) {
+  const unorderedLate = !afterSentinel && (window.kind === "answered" || window.kind === "unmatched")
+  if (ps === null || unorderedLate) {
     const note = "OSC5522 detection has no complete matching reply in the deciding window"
     return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
   }
-  // Keep the shared mode-behavior criterion unchanged; only this detector makes Ps0 negative.
-  if (ps !== 0) {
+  // Only an on-time detector reply makes Ps0 negative; measured-late replies use the shared criterion.
+  if (ps !== 0 || afterSentinel) {
     const result = decrpmResult(ps, 5522)
-    return late && result.observation
+    return afterSentinel && result.observation
       ? { ...result, observation: { ...result.observation, note: REPLY_AFTER_SENTINEL_NOTE } }
       : result
   }
