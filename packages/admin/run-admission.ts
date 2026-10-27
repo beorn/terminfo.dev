@@ -92,7 +92,6 @@ export type AdmissionExclusionCode =
   | "native-provenance-dirty"
   | "outer-app-proof-missing"
   | "outer-app-identity-mismatch"
-  | "mux-platform-unqualified"
   | "mux-attachment-missing"
   | "mux-attachment-invalid"
   | "source-uncommitted"
@@ -287,8 +286,7 @@ function identityDecision(
 /** Historical custody joins retained bytes only; it never inspects today's processes or files. */
 function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMuxAttachmentProof>): boolean {
   // Darwin joins against its own owner launch record (§D4.6); Linux against the clipboard fixture.
-  // An arm with no join fails closed. The mux platform gate still refuses Darwin rows before this
-  // point (mux-platform-unqualified, CTO 41878c53) until the arm is qualified.
+  // An arm with no join fails closed.
   if (attachment.platform === "darwin") {
     // The app run measures the owner launch record (app.ts writes it into that run's rawReplies);
     // the mux run is the row being admitted, so it reads the app's reply, as Linux reads
@@ -369,8 +367,6 @@ function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
     case "term":
       return isLinux(run.subject.os) && !run.provenance ? "native-provenance-missing" : null
     case "mux": {
-      // CTO 41878c53: the Linux arm may land alone; Darwin awaits its measured owner.
-      if (!isLinux(run.subject.os)) return "mux-platform-unqualified"
       const outer = run.outerApp
       if (!outer) return "outer-app-proof-missing"
       if (!protocolIdentityMatch(outer)) return "outer-app-identity-mismatch"
