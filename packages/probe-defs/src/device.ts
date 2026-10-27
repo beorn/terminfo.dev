@@ -136,8 +136,8 @@ function answerPattern(spec: DeviceReply): RegExp {
 
 /**
  * Live's grading of one query outcome. A library probe source on a proven reply path offers the same
- * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here; a headless
- * context without that member keeps its capture-only reading.
+ * outcome through `queryWithSentinelOutcome` (#30554), so both arms grade through here; a library
+ * probe source without that member keeps its capture-only reading.
  */
 function deviceOutcomeResult(spec: DeviceReply, outcome: TerminalQueryOutcome): ProbeCallbackResult {
   return deviceReplyResult(spec, outcome.raw, replyFrame(outcome), outcome.reason, outcome.sentinel)
