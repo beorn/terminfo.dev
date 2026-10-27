@@ -95,7 +95,7 @@ async function consumedSgr(
       return {
         pass: false,
         note: "No cursor response",
-        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+        tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
       }
     }
     return {
@@ -106,7 +106,7 @@ async function consumedSgr(
         {
           id: "criterion",
           status: pos.row === 1 && pos.col === 2 ? "test-todo" : "test-failure",
-          reason: "Cursor advance does not verify SGR styling",
+          reason: `Cursor advance does not verify SGR styling${pos.row === 1 && pos.col === 2 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
     }
@@ -154,7 +154,7 @@ async function consumedSgrReset(
       return {
         pass: false,
         note: "No cursor response",
-        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+        tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
       }
     }
     return {
@@ -165,7 +165,7 @@ async function consumedSgrReset(
         {
           id: "criterion",
           status: pos.row === 1 && pos.col === 3 ? "test-todo" : "test-failure",
-          reason: "Cursor advance does not verify the reset rendered",
+          reason: `Cursor advance does not verify the reset rendered${pos.row === 1 && pos.col === 3 && ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
         },
       ],
     }
@@ -337,7 +337,9 @@ async function consumedResetSgr(
         {
           id: "criterion",
           status: advanced ? "test-todo" : "test-failure",
-          reason: advanced ? "Cursor advance does not verify SGR reset" : "Cursor did not reach the expected position",
+          reason: advanced
+            ? `Cursor advance does not verify SGR reset${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`
+            : "Cursor did not reach the expected position",
         },
       ],
     }

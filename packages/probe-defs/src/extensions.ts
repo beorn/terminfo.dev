@@ -92,12 +92,18 @@ function oscOutcomeResult(reply: TerminalQueryOutcome, expected: string, prefix:
   return oscReplyResult(reply.raw, replyFrame(reply), expected, prefix, reply.sentinel)
 }
 
-function unverifiedEffect(note: string, response?: string): ProbeCallbackResult {
+function unverifiedEffect(ctx: TermProbeSource, note: string, response?: string): ProbeCallbackResult {
   return {
     pass: false,
     ...(response !== undefined && { response }),
     note,
-    tests: [{ id: "criterion", status: "test-todo", reason: note }],
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `${note}${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+      },
+    ],
   }
 }
 
@@ -115,8 +121,9 @@ const sixelDa1Reply = /\x1b\[\?([0-9]+(?:;[0-9]+)*);?c/
 function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult {
   const match = frame ? sixelDa1Reply.exec(frame) : null
   if (!match) {
-    if (raw.length === 0)
+    if (raw.length === 0) {
       return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+    }
     return {
       pass: false,
       response: raw,
@@ -175,8 +182,9 @@ function sixelGeometryResult(
       const silent = sentinelNegativeResult(raw, sentinel, "Complete Sixel geometry response for item 2")
       if (silent) return silent
     }
-    if (raw.length === 0)
+    if (raw.length === 0) {
       return { pass: false, response: raw, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+    }
     return {
       pass: false,
       response: raw,
@@ -704,7 +712,21 @@ async function promptMarkAppResult(
     target.col === 2 &&
     control.row === 1 &&
     control.col === 1
-  if (!qualified) return promptConsumptionResult(consumed)
+  if (!qualified) {
+    const result = promptConsumptionResult(consumed)
+    // Only this native nonnull fallback previously carried the consumed observation. Its lib
+    // sibling and missing-CPR failure never acquired the native capture diagnostic.
+    return {
+      ...result,
+      tests: [
+        {
+          id: "criterion",
+          status: "test-todo",
+          reason: `${result.note}${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+        },
+      ],
+    }
+  }
   return notTestedResult(noObservable, { home, target, control })
 }
 
@@ -1049,13 +1071,14 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallba
   // never answered DA1 at all, so it stays inconclusive.
   const silent = sentinelNegativeResult(reply.raw, reply.sentinel, note)
   if (silent) return silent
-  if (reply.raw.length === 0)
+  if (reply.raw.length === 0) {
     return {
       pass: false,
       response: reply.raw,
       note,
       tests: [{ id: "criterion", status: "test-failure", reason: note }],
     }
+  }
   return {
     pass: false,
     response: reply.raw,
@@ -1442,8 +1465,9 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
       : reason === "insufficient-evidence"
         ? "OSC 52 c replied with data other than the written nonce"
         : "No OSC 52 c query response from the isolated backend"
-  if (response.length === 0)
+  if (response.length === 0) {
     return { pass: false, response, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+  }
   return {
     pass: false,
     response,
@@ -1467,8 +1491,9 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
   const frame = osc52Reply.exec(outcome.raw)
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
-    if (outcome.raw.length === 0)
+    if (outcome.raw.length === 0) {
       return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No complete OSC 52 c reply" }] }
+    }
     return {
       pass: false,
       observation: {
@@ -1783,8 +1808,9 @@ export const extensionsProbes: ProbeDefinition[] = [
           ctx.write("\x1b[1;1H\x1b[2K")
           ctx.write("\x1b[38;2;255;0;128mX\x1b[0m")
           const pos = await ctx.queryCursorPosition()
-          if (!pos) return unverifiedEffect("No cursor response; RGB color was not measured")
+          if (!pos) return unverifiedEffect(ctx, "No cursor response; RGB color was not measured")
           return unverifiedEffect(
+            ctx,
             pos.col === 2
               ? "SGR was consumed; RGB cell color was not measured"
               : `Cursor at col ${pos.col}; RGB color was not measured`,
@@ -2054,7 +2080,15 @@ export const extensionsProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "No cursor response",
-            tests: [{ id: "criterion", status: "test-todo", reason: "no-response" }],
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: ctx.captureGeometryRefusal
+                  ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}`
+                  : "No cursor response",
+              },
+            ],
           }
         }
         return {
@@ -2064,7 +2098,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             {
               id: "criterion",
               status: "test-todo",
-              reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+              reason: `Cursor movement cannot verify OSC 8 link metadata or click behavior${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
         }
@@ -2818,6 +2852,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       ctx.write("\x1b]720\x07")
       const pos = await ctx.queryCursorPosition()
       return unverifiedEffect(
+        ctx,
         pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
       )
     }),

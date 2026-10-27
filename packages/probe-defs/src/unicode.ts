@@ -49,7 +49,7 @@ export const unicodeProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "Cannot measure width",
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            tests: [{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }],
           }
         }
         const pass = width === 1 || width === 2
@@ -123,7 +123,7 @@ export const unicodeProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "Cannot measure width",
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            tests: [{ id: "criterion", status: "test-failure", reason: "Cannot measure width" }],
           }
         }
         return {
@@ -203,7 +203,7 @@ export const unicodeProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "No cursor response",
-            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+            tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
           }
         }
         const pass = pos.row === 2
@@ -289,7 +289,7 @@ export const unicodeProbes: ProbeDefinition[] = [
             return {
               pass: false,
               note: "No cursor response",
-              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
             }
           }
           const pass = pos.col === 10

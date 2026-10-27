@@ -352,10 +352,11 @@ export const deviceProbes: ProbeDefinition[] = [
     () => {
       // Inherited process environment does not authenticate the current terminal.
       const advertised = typeof process !== "undefined" && !!process.env.TERM_FEATURES
+      const note = advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised"
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
-        note: advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised",
-        tests: [{ id: "criterion", status: "test-failure", reason: "insufficient-evidence" }],
+        note,
+        tests: [{ id: "criterion", status: "test-failure", reason: note }],
       })
     },
     null,
@@ -592,12 +593,19 @@ export const deviceProbes: ProbeDefinition[] = [
         try {
           ctx.write("\x1b]2;new-title\x07") // overwrite
           const pos = await ctx.queryCursorPosition()
+          const note = pos
+            ? "Cursor answered after title push; title stack was not measured"
+            : "No DSR response after title push"
           return {
             pass: false,
-            note: pos
-              ? "Cursor answered after title push; title stack was not measured"
-              : "No DSR response after title push",
-            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+            note,
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
+              },
+            ],
           }
         } finally {
           ctx.write("\x1b[23;0t")
@@ -634,12 +642,19 @@ export const deviceProbes: ProbeDefinition[] = [
         ctx.write("\x1b[22;0t") // push first so we have something to pop
         ctx.write("\x1b[23;0t")
         const pos = await ctx.queryCursorPosition()
+        const note = pos
+          ? "Cursor answered after title pop; restored title was not measured"
+          : "No DSR response after title pop"
         return {
           pass: false,
-          note: pos
-            ? "Cursor answered after title pop; restored title was not measured"
-            : "No DSR response after title pop",
-          tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
+          note,
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: ctx.captureGeometryRefusal ? `Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : note,
+            },
+          ],
         }
       },
     ),

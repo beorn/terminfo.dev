@@ -144,7 +144,11 @@ export const resetProbes: ProbeDefinition[] = [
           pass: false,
           response: JSON.stringify(pos),
           tests: [
-            { id: "criterion", status: "test-todo", reason: "Cursor advance does not measure SGR styling after reset" },
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: `Cursor advance does not measure SGR styling after reset${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+            },
           ],
         }
       },

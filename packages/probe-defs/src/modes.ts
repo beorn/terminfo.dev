@@ -1877,13 +1877,14 @@ export const modesProbes: ProbeDefinition[] = [
               : ps === 4
                 ? "DECRPM 2031 permanently reset (Ps 4); the terminal cannot set it"
                 : `DECRPM 2031 recognized (${decrpmReading(ps)}); update events were not tested`
-        if (ps === null)
+        if (ps === null) {
           return {
             pass: recognized,
             note,
             response: undefined,
             tests: [{ id: "criterion", status: "test-failure", reason: note }],
           }
+        }
         return {
           pass: recognized,
           note,
@@ -1934,7 +1935,7 @@ export const modesProbes: ProbeDefinition[] = [
               {
                 id: "criterion",
                 status: "test-todo",
-                reason: "Cursor responsiveness does not measure saved/restored state",
+                reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
               },
             ],
           }
@@ -1967,7 +1968,7 @@ export const modesProbes: ProbeDefinition[] = [
             {
               id: "criterion",
               status: "test-todo",
-              reason: "Cursor responsiveness does not measure saved/restored state",
+              reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
         }
@@ -1996,7 +1997,7 @@ export const modesProbes: ProbeDefinition[] = [
               {
                 id: "criterion",
                 status: "test-todo",
-                reason: "Cursor responsiveness does not measure saved/restored state",
+                reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
               },
             ],
           }
@@ -2028,7 +2029,7 @@ export const modesProbes: ProbeDefinition[] = [
             {
               id: "criterion",
               status: "test-todo",
-              reason: "Cursor responsiveness does not measure saved/restored state",
+              reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
         }
@@ -2057,7 +2058,7 @@ export const modesProbes: ProbeDefinition[] = [
               {
                 id: "criterion",
                 status: "test-todo",
-                reason: "Cursor responsiveness does not measure saved/restored state",
+                reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
               },
             ],
           }
@@ -2089,7 +2090,7 @@ export const modesProbes: ProbeDefinition[] = [
             {
               id: "criterion",
               status: "test-todo",
-              reason: "Cursor responsiveness does not measure saved/restored state",
+              reason: `Cursor responsiveness does not measure saved/restored state${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
             },
           ],
         }

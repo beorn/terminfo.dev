@@ -944,7 +944,7 @@ const editingProbeDefinitions: ProbeDefinition[] = [
                     {
                       id: "criterion",
                       status: "test-failure",
-                      reason: reply.reason === "timeout" ? "timeout" : "no-response",
+                      reason: "No complete checksum reply before the DA1 sentinel",
                     },
                   ] as [{ id: string; status: "test-failure"; reason: string }],
                 }

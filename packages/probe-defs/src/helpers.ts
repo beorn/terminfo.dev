@@ -648,7 +648,7 @@ export function sgrProbe(
         return {
           pass: false,
           note: "No cursor response",
-          tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+          tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
         }
       }
       // Cursor should be at col 2 (wrote 1 char "X")
@@ -656,7 +656,13 @@ export function sgrProbe(
         pass: pos.col === 2,
         note: pos.col === 2 ? undefined : `cursor at col ${pos.col}, expected 2`,
         response: `${pos.row};${pos.col}`,
-        tests: [{ id: "criterion", status: "test-todo", reason: "Cursor advance does not verify SGR styling" }],
+        tests: [
+          {
+            id: "criterion",
+            status: "test-todo",
+            reason: `Cursor advance does not verify SGR styling${ctx.captureGeometryRefusal ? `; Pixel capture unavailable: ${ctx.captureGeometryRefusal}` : ""}`,
+          },
+        ],
       }
     },
 
@@ -768,8 +774,9 @@ export function cursorProbe(
       }
       if (setup) ctx.write(setup)
       const setupPosition = setup ? await ctx.queryCursorPosition() : origin
-      if (!setupPosition)
+      if (!setupPosition) {
         return inconclusive(origin, null, null, "query_reply", "no-response", "No cursor reply after setup")
+      }
       if (setup && !setupExpected) {
         return inconclusive(
           origin,
@@ -1108,8 +1115,9 @@ export function initializeRunDraft(input: {
   source: RunDraft["source"]
   intendedSubject: RunDraft["intendedSubject"]
 }): RunDraft {
-  if (input.manifest.schemaVersion !== 4)
+  if (input.manifest.schemaVersion !== 4) {
     throw new Error("Current run writer requires a schemaVersion 4 suite manifest")
+  }
   assertLiveSource(input.source)
   const ids = input.manifest.catalogIds
   if (!ids || ids.length === 0 || new Set(ids).size !== ids.length) {

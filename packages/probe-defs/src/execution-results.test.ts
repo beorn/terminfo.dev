@@ -12,10 +12,18 @@ import {
   initializeRunDraft,
   sealRunDraft,
   utf8DecodingRefusal,
+  sgrProbe,
 } from "./helpers.ts"
 import { extensionsProbes } from "./extensions.ts"
+import { deviceProbes } from "./device.ts"
+import { modesProbes } from "./modes.ts"
+import { resetProbes } from "./reset.ts"
+import { sgrProbes } from "./sgr.ts"
+import { unicodeProbes } from "./unicode.ts"
+import { editingProbes } from "./editing.ts"
+import { textProbes } from "./text.ts"
 import { cropPositionRefusal } from "./region-readback.ts"
-import type { ObservationFrame, ProbeCallbackResult, TermProbeSource } from "./types.ts"
+import type { LibProbeSource, ObservationFrame, ProbeCallbackResult, TermProbeSource } from "./types.ts"
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
 // Full-catalog drafts previously let a failed subset dispatch mark unscheduled capabilities failed.
 it("records collection failure only for delegated unfinished IDs", () => {
@@ -82,6 +90,198 @@ const record = (callback: ProbeCallbackResult) =>
       rawReplyRef: "sgr.bold",
     })),
   })
+
+// Existing callback tests checked statuses, but did not pass these native fallbacks through the
+// recorder. Removing their consumed observations must preserve the old persisted reason exactly.
+it("preserves producer-specific native geometry refusal reasons without appending to query failures", async () => {
+  const rows = [
+    sgrProbe("fixture.sgr", "\x1b[1m", () => true),
+    ...sgrProbes,
+    ...extensionsProbes,
+    ...deviceProbes,
+    ...modesProbes,
+    ...resetProbes,
+  ]
+  const cases = [
+    ["fixture.sgr", "Cursor advance does not verify SGR styling", 2],
+    ["sgr.underline-color-indexed", "Cursor advance does not verify SGR styling", 2],
+    ["sgr.underline-color-reset", "Cursor advance does not verify the reset rendered", 3],
+    ["sgr.selective-reset.bold", "Cursor advance does not verify SGR reset", 3],
+    ["extensions.truecolor", "SGR was consumed; RGB cell color was not measured", 2],
+    ["extensions.osc720-scroll-up", "Cursor answered; scrollback viewport was not measured", 2],
+    ["extensions.osc8", "Cursor movement cannot verify OSC 8 link metadata or click behavior", 2],
+    ...["xtpushsgr", "xtpopsgr", "xtsave", "xtrestore", "xtpushcolors", "xtpopcolors"].map(
+      (name) => [`modes.${name}`, "Cursor responsiveness does not measure saved/restored state", 2] as const,
+    ),
+    ["reset.sgr", "Cursor advance does not measure SGR styling after reset", 2],
+  ] as const
+  for (const [id, priorNote, col] of cases) {
+    const term = rows.find((row) => row.id === id)?.term
+    if (!term) throw new Error(`Missing native callback ${id}`)
+    for (const refusal of [undefined, "", "calibration G"]) {
+      const callback = await term({
+        rows: 24,
+        cols: 80,
+        write() {},
+        captureGeometryRefusal: refusal,
+        queryCursorPosition: async () => ({ row: 1, col }),
+        queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+      } as unknown as TermProbeSource)
+      expect(record(callback).reason, `${id}: ${String(refusal)}`).toBe(
+        `${priorNote}${refusal ? `; Pixel capture unavailable: ${refusal}` : ""}`,
+      )
+      expect(record(callback).status, id).toBe("test-todo")
+      expect(callback.observation, id).toBeUndefined()
+    }
+  }
+  const term = sgrProbes.find((row) => row.id === "sgr.underline-color-indexed")!.term!
+  const wrong = await term({
+    rows: 24,
+    cols: 80,
+    write() {},
+    captureGeometryRefusal: "calibration G",
+    queryCursorPosition: async () => ({ row: 1, col: 9 }),
+    queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+  } as unknown as TermProbeSource)
+  expect(record(wrong)).toMatchObject({ status: "test-failure", reason: "Cursor advance does not verify SGR styling" })
+  for (const [id, col, reason] of [
+    ["sgr.underline-color-reset", 9, "Cursor advance does not verify the reset rendered"],
+    ["sgr.selective-reset.bold", 9, "Cursor did not reach the expected position"],
+    ["fixture.sgr", null, "No cursor response"],
+    ["sgr.underline-color-indexed", null, "No cursor response"],
+    ["sgr.underline-color-reset", null, "No cursor response"],
+    ["sgr.selective-reset.bold", null, "no-response"],
+    ["modes.xtpushsgr", null, "no-response"],
+    ["reset.sgr", null, "no-response"],
+  ] as const) {
+    const callback = await rows.find((row) => row.id === id)!.term!({
+      rows: 24,
+      cols: 80,
+      write() {},
+      captureGeometryRefusal: "calibration G",
+      queryCursorPosition: async () => (col === null ? null : { row: 1, col }),
+      queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+    } as unknown as TermProbeSource)
+    expect(record(callback), id).toMatchObject({ status: "test-failure", reason })
+  }
+  const helperWrong = await rows[0]!.term!({
+    rows: 24,
+    cols: 80,
+    write() {},
+    captureGeometryRefusal: "calibration G",
+    queryCursorPosition: async () => ({ row: 1, col: 9 }),
+  } as unknown as TermProbeSource)
+  expect(helperWrong.pass).toBe(false)
+  expect(record(helperWrong)).toMatchObject({
+    status: "test-todo",
+    reason: "Cursor advance does not verify SGR styling; Pixel capture unavailable: calibration G",
+  })
+})
+
+it("keeps native missing-observation note overrides and prompt consumption branches exact", async () => {
+  for (const id of ["extensions.osc8", "device.xtwinops-22", "device.xtwinops-23"]) {
+    const term = [...extensionsProbes, ...deviceProbes].find((row) => row.id === id)?.term
+    if (!term) throw new Error(`Missing native callback ${id}`)
+    for (const pos of [null, { row: 1, col: 2 }]) {
+      // OSC8 has its own observation note when CPR is present; the title-stack callbacks never did.
+      if (id === "extensions.osc8" && pos) continue
+      for (const refusal of [undefined, "calibration G"]) {
+        const callback = await term({
+          rows: 24,
+          cols: 80,
+          write() {},
+          captureGeometryRefusal: refusal,
+          queryCursorPosition: async () => pos,
+        } as unknown as TermProbeSource)
+        expect(record(callback)).toMatchObject({
+          status: "test-todo",
+          reason: refusal ? `Pixel capture unavailable: ${refusal}` : callback.note,
+        })
+      }
+    }
+  }
+  const prompt = extensionsProbes.find((row) => row.id === "extensions.osc133-a")!.term!
+  for (const pos of [null, { row: 1, col: 1 }]) {
+    const callback = await prompt({
+      write() {},
+      captureGeometryRefusal: "calibration G",
+      queryCursorPosition: async () => pos,
+    } as unknown as TermProbeSource)
+    expect(record(callback)).toMatchObject(
+      pos
+        ? {
+            status: "test-todo",
+            reason:
+              "Marker consumption was not confirmed; shell prompt integration was not observed; Pixel capture unavailable: calibration G",
+          }
+        : { status: "test-failure", reason: "No cursor reply after semantic prompt marker" },
+    )
+  }
+  const libPrompt = extensionsProbes.find((row) => row.id === "extensions.osc133-a")!.lib!
+  const libCallback = await libPrompt({
+    feed() {},
+    getCursor: () => ({ x: 0, y: 0 }),
+    getCell: () => ({ char: "X" }),
+    captureGeometryRefusal: "calibration G",
+  } as unknown as LibProbeSource)
+  expect(record(libCallback)).toMatchObject({
+    status: "test-todo",
+    reason: "Marker was consumed; shell prompt integration was not observed",
+  })
+})
+
+it("preserves native callback note fallback for unmeasured widths and TERM_FEATURES", async () => {
+  for (const row of unicodeProbes) {
+    if (!["unicode.east-asian-ambiguous", "unicode.grapheme-cursor"].includes(row.id)) continue
+    if (!row.term) continue
+    const callback = await row.term({ cols: 80, measureRenderedWidth: async () => null } as unknown as TermProbeSource)
+    expect(record(callback)).toMatchObject({ status: "test-failure", reason: "Cannot measure width" })
+  }
+  const callback = await deviceProbes.find((row) => row.id === "device.term-features")!.term!({} as TermProbeSource)
+  expect(record(callback)).toMatchObject({ status: "test-failure", reason: callback.note })
+  for (const id of ["unicode.wrap-boundary", "unicode.tab-stops"]) {
+    const term = unicodeProbes.find((row) => row.id === id)?.term
+    if (!term) throw new Error(`Missing native callback ${id}`)
+    const missing = await term({
+      rows: 24,
+      cols: 80,
+      write() {},
+      queryCursorPosition: async () => null,
+    } as unknown as TermProbeSource)
+    expect(record(missing)).toMatchObject({ status: "test-failure", reason: "No cursor response" })
+  }
+})
+
+// These helpers serve both source kinds. Native used callback.note as the missing observation
+// note, while lib did not; changing the shared helper would silently alter headless reasons.
+it("preserves native note fallback at shared tab and checksum call sites without changing lib reasons", async () => {
+  for (const [id, startCol] of [
+    ["text.cht", 1],
+    ["text.cbt", 21],
+  ] as const) {
+    const term = textProbes.find((row) => row.id === id)?.term
+    if (!term) throw new Error(`Missing native callback ${id}`)
+    let reads = 0
+    const callback = await term({
+      cols: 80,
+      write() {},
+      queryCursorPosition: async () => (++reads === 1 ? { row: 1, col: startCol } : null),
+    } as unknown as TermProbeSource)
+    expect(reads).toBe(2)
+    expect(record(callback)).toMatchObject({ status: "test-failure", reason: "No cursor response" })
+  }
+  const checksum = editingProbes.find((row) => row.id === "editing.decrqcra")!
+  const native = await checksum.term!({
+    write() {},
+    queryWithSentinelOutcome: async () => ({ reason: "timeout", raw: "", match: null }),
+  } as unknown as TermProbeSource)
+  expect(record(native)).toMatchObject({
+    status: "test-failure",
+    reason: "No complete checksum reply before the DA1 sentinel",
+  })
+  const lib = await checksum.lib!({ feed() {}, feedCapture: () => "" } as unknown as LibProbeSource)
+  expect(record(lib)).toMatchObject({ status: "test-failure", reason: "no-response" })
+})
 // Prior tests only inspected the retained frames/inconclusive observation. These exercise both real
 // callback branches through the production result recorder and seal boundary, where the bug lived.
 it("records the actual unequal-crop comparison as TEST FAILURE despite two retained frames", () => {

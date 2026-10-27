@@ -622,10 +622,7 @@ export const textProbes: ProbeDefinition[] = [
                     {
                       id: "criterion",
                       status: "test-failure",
-                      reason:
-                        decawm === null
-                          ? "DECAWM setup did not reply"
-                          : `DECAWM measured ${decawm}; right-margin wrap not qualified`,
+                      reason: "DECAWM setup did not reply",
                     },
                   ] as [{ id: string; status: "test-failure"; reason: string }],
                 }
@@ -1361,7 +1358,15 @@ export const textProbes: ProbeDefinition[] = [
             }
           }
           ctx.write("\x1b[2I")
-          return tabPositionResult(await ctx.queryCursorPosition(), 17, "query_reply")
+          const position = await ctx.queryCursorPosition()
+          if (!position) {
+            return {
+              pass: false,
+              note: "No cursor response",
+              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
+            }
+          }
+          return tabPositionResult(position, 17, "query_reply")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
@@ -1444,7 +1449,15 @@ export const textProbes: ProbeDefinition[] = [
             }
           }
           ctx.write("\x1b[Z")
-          return tabPositionResult(await ctx.queryCursorPosition(), 17, "query_reply")
+          const position = await ctx.queryCursorPosition()
+          if (!position) {
+            return {
+              pass: false,
+              note: "No cursor response",
+              tests: [{ id: "criterion", status: "test-failure", reason: "No cursor response" }],
+            }
+          }
+          return tabPositionResult(position, 17, "query_reply")
         } finally {
           restoreDefaultTabs(ctx.write, ctx.cols)
         }
