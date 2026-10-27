@@ -145,6 +145,8 @@ describe("#30917 environment groups are named, never TEST TODO", () => {
     const terminal = source("docs/terminals/[id].md")
     expect(terminal).toContain("currentCoverageSentence(measuredBar, selectedRun.catalogIds)")
     expect(terminal).toContain("aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds)")
+    expect(terminal).toContain("selectedRun.value?.schemaVersion === 3 || selectedRun.value?.schemaVersion === 4")
+    expect(terminal).toContain("run.schemaVersion === 3 || run.schemaVersion === 4")
   })
 
   it("gives the evidence cell the manual-by-design words only for a stored TEST TODO", () => {

@@ -20,7 +20,7 @@ const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
 const recordedRuns = runs
 const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => recordedRuns.find(run => run.sha256 === runSha.value))
-const measuredBar = computed(() => selectedRun.value?.schemaVersion === 3 ? aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds) : undefined)
+const measuredBar = computed(() => (selectedRun.value?.schemaVersion === 3 || selectedRun.value?.schemaVersion === 4) ? aggregateCurrentResults(selectedRun.value.results, selectedRun.value.catalogIds) : undefined)
 const measuredShare = computed(() => measuredBar.value ? currentSupportedShare(measuredBar.value) : '')
 function featureNote(id) {
   const result = publicResultFor(selectedRun.value, id)
@@ -174,7 +174,7 @@ const breadcrumbParent = (() => {
   <div v-if="recordedRuns.length > 1" class="run-picker">
     <label for="reviewed-run">Version and configuration</label>
     <select id="reviewed-run" v-model="runSha">
-      <option v-for="run in recordedRuns" :key="run.sha256" :value="run.sha256">{{ run.schemaVersion === 3 ? 'Current' : 'Historical' }} · {{ runLabel(run) }}</option>
+      <option v-for="run in recordedRuns" :key="run.sha256" :value="run.sha256">{{ (run.schemaVersion === 3 || run.schemaVersion === 4) ? 'Current' : 'Historical' }} · {{ runLabel(run) }}</option>
     </select>
     <p>Choosing another record replaces the counts and evidence below. Choices include current configurations and older measurements; the matrix uses the default context.</p>
   </div>

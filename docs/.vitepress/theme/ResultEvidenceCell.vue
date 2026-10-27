@@ -64,7 +64,7 @@ const dialogTitleId = `${id}-title`
 
 const reasonExplanations: Record<ObservationReason, string> = REASON_EXPLANATIONS
 
-// Pages select current runs only ([id].paths.ts), so a row's status is always the sealed v3 status.
+// Pages select current runs only ([id].paths.ts), so a row's status is always the sealed status.
 // The historical table is not in the client payload; it had no reachable reader and is gone with it.
 // The rule itself is evidence-status.ts, where it is testable; only a stored TEST TODO on an
 // environment position becomes the manual-by-design words (@cto 98cd142b D1).
@@ -502,10 +502,7 @@ function closePreview(): void {
 }
 
 function outsidePreview(event: PointerEvent): void {
-  if (
-    event.subject instanceof Node &&
-    (preview.value?.contains(event.subject) || trigger.value?.contains(event.subject))
-  )
+  if (event.target instanceof Node && (preview.value?.contains(event.target) || trigger.value?.contains(event.target)))
     return
   hidePreview()
 }
