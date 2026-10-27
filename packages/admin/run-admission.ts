@@ -360,7 +360,7 @@ function muxFixtureMatches(run: LoadedRun, attachment: ReturnType<typeof parseMu
   }
 }
 
-/** All target kinds pass through this one provenance decision. */
+/** All subject kinds pass through this one provenance decision. */
 function provenanceDecision(run: LoadedRun): AdmissionExclusionCode | null {
   if (run.provenance && !run.provenance.runtime.cleanTree) return "native-provenance-dirty"
   switch (run.subject.kind) {
@@ -508,19 +508,19 @@ export function planAdmission(
     throw new Error(`Run to admit requires current schema 4 or historical schema 2/3: ${source}`)
   }
   // Historical run wire names are decoded strictly by parseRun below, without changing source bytes.
-  const target = parsed.schemaVersion === 4 ? parsed.subject : parsed.target
-  if (!isRecord(target) || !(parsed.schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]).includes(String(target.kind))) {
-    throw new Error(`Run to admit has no app|headless|mux target kind: ${source}`)
+  const subject = parsed.schemaVersion === 4 ? parsed.subject : parsed.target
+  if (!isRecord(subject) || !(parsed.schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]).includes(String(subject.kind))) {
+    throw new Error(`Run to admit has no ${parsed.schemaVersion === 4 ? "term|lib|mux subject" : "app|headless|mux target"} kind: ${source}`)
   }
-  const kind = (target.kind === "app" ? "term" : target.kind === "headless" ? "lib" : target.kind) as ProbeSubject["kind"]
-  const id = String(target.id)
-  const version = String(target.version)
-  const os = typeof target.os === "string" && target.os.length > 0 ? target.os : "unknown"
+  const kind = (subject.kind === "app" ? "term" : subject.kind === "headless" ? "lib" : subject.kind) as ProbeSubject["kind"]
+  const id = String(subject.id)
+  const version = String(subject.version)
+  const os = typeof subject.os === "string" && subject.os.length > 0 ? subject.os : "unknown"
   const runId = String(parsed.runId)
   for (const [label, value] of [
-    ["target.id", id],
-    ["target.version", version],
-    ["target.os", os],
+    [parsed.schemaVersion === 4 ? "subject.id" : "target.id", id],
+    [parsed.schemaVersion === 4 ? "subject.version" : "target.version", version],
+    [parsed.schemaVersion === 4 ? "subject.os" : "target.os", os],
     ["runId", runId],
   ] as const) {
     if (!SAFE_COMPONENT.test(value)) throw new Error(`Run to admit has an unsafe ${label}: ${value}`)

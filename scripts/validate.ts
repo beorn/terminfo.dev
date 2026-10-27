@@ -734,7 +734,7 @@ heading("Info (summary)")
     `Probe status: ${summary.counts.automated} automated, ${summary.counts.partial} partial, ${summary.counts.manual} manual, ${summary.counts.unprobed} unprobed, ${summary.counts.undeclared} undeclared`,
   )
   info(
-    `Probe status undeclared: ${summary.undeclared.length} rows — the definition declares no evidence kind on every arm that runs; 28450 declares it in the kind and 28801 deletes the value at zero`,
+    `Probe status undeclared: ${summary.undeclared.length} rows — the definition declares no assertion type on every arm that runs; 28450 declares it and 28801 deletes the value at zero`,
   )
   if (summary.gated.length > 0) {
     info(

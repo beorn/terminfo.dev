@@ -21,7 +21,7 @@ outline: [2, 3]
 | `methodology`            | Status, score, completion and historical endpoint explanations                |
 | `message`                | Explicit no-current explanation when `currentRunCount` is zero                |
 
-A run reference includes its target/context, source revision, suite, run ID/hash, frozen catalog IDs, `sealedAt`, counts, score, completion, and a verified run-document URL/hash.
+A run reference includes its subject, source revision, suite, run ID/hash, frozen catalog IDs, `sealedAt`, counts, score, completion, and a verified run-document URL/hash.
 
 ## Five recorded statuses
 

@@ -6,7 +6,7 @@
  * non-measuring evidence (consumed / legacy / none), because then the probe establishes consumption or
  * acceptance, not the feature's effect.
  *
- * What they cannot settle reads `undeclared`, the honest word for "this row's evidence kind is not
+ * What they cannot settle reads `undeclared`, the honest word for "this row's assertion type is not
  * declared yet". It is a temporary value: 28450 declares the evidence in each family's kind, and
  * 28801 deletes the value and its badge when the count reaches zero. Nothing derives `automated` by
  * default, and no badge claims more than the evidence behind it.

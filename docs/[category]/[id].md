@@ -63,9 +63,9 @@ function termTooltip(r) {
   <span v-else-if="p.probeStatus === 'partial'" class="probe-badge probe-partial" title="Probe definition covers only part of this feature">partial</span>
   <span v-else-if="p.probeStatus === 'manual'" class="probe-badge probe-manual" title="Not automated — support data is from manual testing or documentation">manual</span>
   <span v-else-if="p.probeStatus === 'unprobed'" class="probe-badge probe-unprobed" title="Tracked but no verification yet — manual verification required">unprobed</span>
-  <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's evidence kind is declared when its family converts to an observation kind.">evidence undeclared</span>
+  <span v-else-if="p.probeStatus === 'undeclared'" class="probe-badge probe-undeclared" title="This probe's assertion type is not declared yet.">assertion type undeclared</span>
   <br><span v-html="p.probeMethod"></span>
-  <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that target and method.</p>
+  <p class="probe-note">The probe definition describes the intended check. Open a reviewed result to see what was recorded for that subject and method.</p>
 </div>
 
 <div v-if="p.analysis" class="analysis">
@@ -78,7 +78,7 @@ function termTooltip(r) {
 </div>
 
 <p v-if="Number(p.totalCount) > 0" class="feature-score">
-  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current targets in this catalog ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
+  Supported by <strong>{{ p.yesCount }}</strong> of <strong>{{ p.totalCount }}</strong> current subjects in this catalog ({{ Math.round(p.yesCount / p.totalCount * 100) }}%)
 </p>
 <p v-else class="feature-score">No current schema-3 results for this feature.</p>
 

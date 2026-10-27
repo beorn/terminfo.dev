@@ -861,7 +861,7 @@ onBeforeUnmount(() => {
           <dl class="result-evidence__metadata">
             <dt>Feature ID</dt>
             <dd>{{ featureId }}</dd>
-            <dt>Target</dt>
+            <dt>Subject</dt>
             <dd>{{ version ? `${version.subject.kind}:${version.subject.id}` : "No reviewed current run" }}</dd>
             <dt>Version</dt>
             <dd>{{ version?.subject.version ?? "Not recorded" }}</dd>

@@ -966,7 +966,7 @@ export async function captureRegionReadbackDecision(
       // rendering difference; one measured specimen of the latter is #28829 on xterm/linux (a
       // single anti-aliased edge pixel, 255,255,255 vs 239,239,239), but it is an example, never
       // the definition of the branch. Exact-digest equality stays: no tolerance, no similarity.
-      // The axis space is named from THIS run's evidence kind: a pixel digest moves under any of
+      // The axis space is named from THIS run's assertion type: a pixel digest moves under any of
       // three rendering axes, a text digest moves under characters or under the attributes the arm
       // reports, and an attribute the arm does not report leaves no trace in the digest at all.
       // Naming the axes is not naming a cause — which axis differed is exactly what this oracle

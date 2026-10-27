@@ -87,7 +87,7 @@ export interface ProbeResult {
   assertionType?: AssertionType
 }
 
-/** A private in-flight run; intended context is never measured identity/provenance. */
+/** A private in-flight run; intended subject is never measured identity/provenance. */
 export interface RunDraft {
   schemaVersion: 4
   source: { kind: ProbeSourceKind }

@@ -182,7 +182,7 @@ const breadcrumbParent = (() => {
   <dl>
     <dt>Run</dt><dd><a href="/api/v3/data.json">{{ selectedRun.sha256 }}</a></dd>
     <dt>Suite</dt><dd>{{ selectedRun.suiteId }} · {{ selectedRun.suiteFreshness }}</dd>
-    <dt>Target</dt><dd>{{ selectedRun.subject.kind }} · {{ selectedRun.subject.id }} {{ selectedRun.subject.version }}</dd>
+    <dt>Subject</dt><dd>{{ selectedRun.subject.kind }} · {{ selectedRun.subject.id }} {{ selectedRun.subject.version }}</dd>
     <dt>OS</dt><dd>{{ selectedRun.subject.os || 'Not recorded' }} {{ selectedRun.subject.osVersion || '' }}</dd>
     <dt>Permissions</dt><dd>{{ selectedRun.subject.permissions || 'No explicit override recorded' }}</dd>
     <dt>Configuration</dt><dd><code>{{ selectedRun.subject.config || 'Not recorded' }}</code></dd>
