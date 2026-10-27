@@ -227,7 +227,7 @@ const EXTENSIONS_CONTRACT: GroupContract = [
     claim: "Font + window size (OSC 7777): ESC ] 7777 ; font ; size BEL",
   },
   { id: "extensions.osc701-locale", expected: "decided", claim: "Locale query/set (OSC 701): ESC ] 701 ; locale BEL" },
-  { id: "extensions.osc702-version", expected: "decided", claim: "Version query (OSC 702): ESC ] 702 BEL" },
+  { id: "extensions.osc702-version", expected: "decided", claim: "Version query (OSC 702): ESC ] 702 ; ? BEL" },
   {
     id: "extensions.osc710-font-normal",
     expected: "inconclusive",
@@ -416,7 +416,7 @@ const DIRECT_QUERY_REPLIES: Record<string, string> = {
   "extensions.osc7770-font-size": "\x1b]7770;14\x07",
   "extensions.osc7777-font-window-size": "\x1b]7777;14\x07",
   "extensions.osc701-locale": "\x1b]701;en_US.UTF-8\x07",
-  "extensions.osc702-version": "\x1b]702;rxvt-1\x07",
+  "extensions.osc702-version": "\x1b]702;rxvt-unicode;rxvt;9;31\x07",
   "extensions.osc776-cell-size": "\x1b]776;8;16;2\x07",
   "extensions.sixel-da1": "\x1b[?1;4c",
   "extensions.sixel-geometry-report": "\x1b[?2;0;800;528S",

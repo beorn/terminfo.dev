@@ -152,6 +152,8 @@ const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.m
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
 // draft and refuses admission, and the last pending decision seals through the same writer in-process.
+// #31072: 38 required 250ms sentinel grace waits measured 9.6s of a 9.9s collection span.
+// Keep those late-reply checks; allow this real-worker round trip the root suite's 30s budget.
 it.runIf(OWNED_LAYOUT)(
   "reviews a draft the real headless collector wrote through admit-run --review",
   async () => {
@@ -295,7 +297,6 @@ it.runIf(OWNED_LAYOUT)(
     for (const featureId of pending) {
       expect(sealed.results?.find((entry) => entry.featureId === featureId)?.status, featureId).toBe("untestable")
     }
-    // Child-process startup is readiness, not a five-second performance contract under fleet load.
   },
   30_000,
 )

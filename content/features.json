@@ -1838,7 +1838,7 @@
     "tags": ["vt510"],
     "baseline": "rich",
     "body": "DECRQSS (DCS $ q Pt ST) queries the current value of a terminal setting. For example, querying SGR returns the current rendition parameters. Useful for terminals that want to verify their configuration programmatically.\n\nDECRQSS lets software ask the terminal for the current value of a setting instead of guessing. It is framed as a DCS string rather than a simple CSI reply, which makes parser support more demanding. Applications use it sparingly, but high-fidelity emulators need it for compatibility with tools that verify DEC private state.",
-    "probe": "Query DECRQSS for SGR with DCS $ q m ST. A complete status-1 SGR reply supports this request. Status-0 refuses SGR, so the probe then asks DECSTBM with DCS $ q r ST: a complete status-1 Pt;Pb r frame supports the facility; a second refusal leaves the facility unverified; an unanswered DECSTBM request after an attempt is TEST FAILURE. A terminal that does not answer SGR at all keeps today's F1 sentinel negative.",
+    "probe": "Query DECRQSS for SGR with DCS $ q m ST. A complete status-1 SGR reply supports the facility. After an SGR refusal, query DECSTBM with DCS $ q r ST; a complete status-1 Pt;Pb r frame also supports it. If both selectors refuse, query DECSCL with DCS $ q \"p ST: a complete status-1 conformance reply ending \"p supports the facility, retaining both earlier refusals as detail. Three refusals leave the facility unverified; an unanswered later selector after an attempt is TEST FAILURE. A terminal that does not answer SGR at all keeps today's F1 sentinel negative.",
     "url": "https://vt100.net/docs/vt510-rm/DECRQSS.html",
     "sequence": "ESC P $ q setting ESC \\\\"
   },
@@ -2094,9 +2094,9 @@
     "slug": "osc1337-capabilities",
     "tags": ["osc", "iterm2"],
     "baseline": "rich",
-    "body": "OSC 1337 ; RequestCapabilities queries the terminal to report all its supported capabilities at once. The response is OSC 1337 ; Capabilities=... ST with a structured list of supported features. This provides a single-query alternative to probing individual features, though adoption is currently limited to iTerm2.",
-    "probe": "Send <code>OSC 1337 ; ReportCellSize BEL</code> and check for a response indicating iTerm2 protocol support.",
-    "url": "https://iterm2.com/documentation-escape-codes.html"
+    "body": "OSC 1337 ; Capabilities asks the terminal to report its supported features. The response is OSC 1337 ; Capabilities=... ST with the vendor-defined feature string. This reports the capability-query facility; it does not exercise every advertised feature.",
+    "probe": "Send <code>OSC 1337 ; Capabilities BEL</code> and check for a complete <code>OSC 1337 ; Capabilities=... ST</code> reply.",
+    "url": "https://iterm2.com/feature-reporting/#publication"
   },
   "extensions.sixel-da1": {
     "tier1": "included",
@@ -2674,10 +2674,10 @@
     "slug": "osc-702-version",
     "url": "http://cvs.schmorp.de/rxvt-unicode/doc/rxvt.7.html",
     "tags": ["osc"],
-    "body": "OSC 702 returns the terminal's version string. The sequence is <code>ESC ] 702 BEL</code> and the terminal responds with its name and version (e.g., <code>rxvt-unicode 9.30</code>). This is a <a href=\"http://cvs.schmorp.de/rxvt-unicode/\" class=\"hover-link\">rxvt-unicode</a>-only extension, predating modern terminal version-detection mechanisms like XTVERSION (CSI > q) and DA1/DA2/DA3 fingerprinting. Modern applications use XTVERSION instead, which is supported across xterm, foot, Kitty, Ghostty, WezTerm, and many others. OSC 702 is essentially urxvt archaeology.",
-    "probe": "Send <code>OSC 702 BEL</code> and verify the terminal responds with a version string or silently consumes the query.",
+    "body": "OSC 702 queries rxvt-unicode version information when its parameter is <code>?</code>. Send <code>ESC ] 702 ; ? BEL</code>. The reply is <code>OSC 702 ; rxvt-unicode ; resource-name ; major ; minor ST</code>. The request and reply are separate from XTVERSION and device-attribute queries.",
+    "probe": "Send <code>OSC 702 ; ? BEL</code> and check for a complete version reply. Missing or malformed replies remain inconclusive.",
     "baseline": "legacy",
-    "sequence": "ESC ] 702 BEL"
+    "sequence": "ESC ] 702 ; ? BEL"
   },
   "extensions.osc710-font-normal": {
     "name": "Set normal font (OSC 710)",

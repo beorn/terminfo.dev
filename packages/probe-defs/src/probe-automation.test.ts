@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import { ALL_PROBES, type LibProbeSource, type TermProbeSource } from "./index.ts"
+import { REPLY_AFTER_SENTINEL_NOTE } from "./helpers.ts"
 
 const OSC_SEMANTIC_MARK_CASES = [
   ["extensions.osc133-a", "\x1b]133;A\x07"],
@@ -517,11 +518,13 @@ describe("Kitty protocol detection", () => {
   // Q16: retained bytes outside the matching reply window must never become a detector negative.
   // Happy-path Ps fixtures do not distinguish a valid target negative from a late frame in raw evidence.
   test.each([
-    ["malformed", "\x1b[?5522;9$y", false],
-    ["unmatched", "\x1b[?5523;4$y", false],
-    ["partial", "\x1b[?5522;4$", false],
-    ["late", "\x1b[?1;2c\x1b[?5522;4$y", true],
-  ] as const)("OSC 5522 %s evidence stays nonnegative on both arms", async (_name, raw, late) => {
+    ["malformed", "\x1b[?5522;9$y"],
+    ["unmatched", "\x1b[?5523;4$y"],
+    ["partial", "\x1b[?5522;4$"],
+    ["unordered late Ps0", "\x1b[?1;2c\x1b[?5522;0$y"],
+    ["unordered late Ps1", "\x1b[?1;2c\x1b[?5522;1$y"],
+    ["unordered late Ps4", "\x1b[?1;2c\x1b[?5522;4$y"],
+  ] as const)("OSC 5522 %s evidence stays nonnegative on both arms", async (_name, raw) => {
     const p = probe("extensions.osc5522-clipboard")
     if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
     const outcome = (pattern: RegExp) => ({
@@ -529,7 +532,6 @@ describe("Kitty protocol detection", () => {
       reason: "reply" as const,
       raw,
       rawBase64: btoa(raw),
-      ...(late ? { sentinel: { atMs: 1, graceMs: 20 } } : {}),
     })
     const headless = p.lib(
       context({
@@ -542,38 +544,56 @@ describe("Kitty protocol detection", () => {
         queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern),
       }),
     )
-    for (const result of [headless, term]) {
-      expect(result.observation?.outcome).not.toBe("unsupported")
-      expect(result.assertions ?? []).not.toEqual(
-        expect.arrayContaining([expect.objectContaining({ kind: "negative" })]),
-      )
+    const plainCapture = p.lib(context({ feedCapture: () => raw }))
+    for (const result of [headless, plainCapture, term]) {
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
     }
     expect(headless.response).toBe(raw)
   })
 
-  // A complete positive after DA1 but inside the captured grace window is still positive evidence.
-  // Q16 withholds late negatives; it must not narrow the existing positive-reply contract.
-  test("OSC 5522 retains a complete positive received within the sentinel grace window", async () => {
-    const p = probe("extensions.osc5522-clipboard")
-    if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
-    const raw = "\x1b[?1;2c\x1b[?5522;1$y"
-    const outcome = (pattern: RegExp) => ({
-      match: raw.match(pattern),
-      reason: "reply" as const,
-      raw,
-      rawBase64: btoa(raw),
-      sentinel: { atMs: 1, graceMs: 20 },
-    })
-    const headless = p.lib(context({ queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern) }))
-    const term = await p.term(
-      terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
-    )
-    for (const result of [headless, term]) {
-      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
-      expect(result.assertions).toMatchObject([{ kind: "positive", observed: "set (Ps 1)" }])
-    }
-    expect(headless.response).toBe(raw)
-  })
+  // Amended Q16: measured ordering admits a complete frame by the shared DECRPM criterion.
+  // The earlier positive-only case missed the distinct Ps0 inconclusive and Ps4 negative branches.
+  test.each([
+    [0, "inconclusive", null],
+    [1, "supported", "positive"],
+    [2, "supported", "positive"],
+    [3, "supported", "positive"],
+    [4, "unsupported", "negative"],
+  ] as const)(
+    "OSC 5522 measured-late Ps%s grades its content with the ordering note",
+    async (ps, outcomeName, kind) => {
+      const p = probe("extensions.osc5522-clipboard")
+      if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
+      const raw = `\x1b[?1;2c\x1b[?5522;${ps}$y`
+      const outcome = (pattern: RegExp) => ({
+        match: raw.match(pattern),
+        reason: "reply" as const,
+        raw,
+        rawBase64: btoa(raw),
+        sentinel: { atMs: 1, graceMs: 20 },
+      })
+      const headless = p.lib(context({ queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern) }))
+      const term = await p.term(
+        terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
+      )
+      for (const result of [headless, term]) {
+        expect(result.observation).toMatchObject({
+          outcome: outcomeName,
+          assertionType: "query_reply",
+          note: REPLY_AFTER_SENTINEL_NOTE,
+        })
+        expect(result.pass).toBe(kind === "positive")
+        if (kind === null) {
+          expect(result.observation?.reason).toBe("insufficient-evidence")
+          expect(result.assertions).toBeUndefined()
+        } else {
+          expect(result.assertions).toMatchObject([{ kind }])
+        }
+      }
+      expect(headless.response).toBe(raw)
+    },
+  )
 
   // OSC 52 previously passed on any substring or on unrelated CPR, and left live clipboard writes behind.
   // No existing protocol test covers these three callbacks or the collector's no-clipboard policy.
@@ -620,6 +640,71 @@ describe("Kitty protocol detection", () => {
           expect(result.observation?.outcome, `${id}: ${JSON.stringify(reply)}`).toBe("inconclusive")
         }
         expect(result.pass).toBe(false)
+      }
+
+      // Only the read claim may consume a proven reply path's measured silence.
+      const da1 = "\x1b[?1;2c"
+      const sentinel = { atMs: 9, graceMs: 250 }
+      const measuredSilence = p.lib(
+        context({
+          queryWithSentinelOutcome(sequence) {
+            expect(sequence).toBe("\x1b]52;c;?\x07")
+            return { reason: "sentinel", match: null, raw: da1, rawBase64: btoa(da1), sentinel }
+          },
+        }),
+      )
+      if (id === "extensions.osc52-read") {
+        expect(measuredSilence.observation).toMatchObject({ outcome: "unsupported", note: "negative by sentinel" })
+        expect(measuredSilence.assertions).toMatchObject([{ kind: "negative" }])
+        expect(measuredSilence.response).toBe(da1)
+
+        const seeded: string[] = []
+        const positive = p.lib(
+          context({
+            feed: (text) => seeded.push(text),
+            feedCapture() {
+              throw new Error("A qualified query outcome must not be replaced by another capture")
+            },
+            queryWithSentinelOutcome(sequence, pattern) {
+              expect(sequence).toBe("\x1b]52;c;?\x07")
+              const encoded = /\x1b\]52;c;([A-Za-z0-9+/=]+)\x07/.exec(seeded.join(""))?.[1]
+              if (!encoded) throw new Error("Read probe never seeded its isolated clipboard")
+              const raw = `\x1b]52;c;${encoded}\x1b\\`
+              return { reason: "reply", match: pattern.exec(raw), raw, rawBase64: btoa(raw) }
+            },
+          }),
+        )
+        expect(positive.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+
+        for (const [raw, reason, facts] of [
+          [da1, "timeout", sentinel], // A DA1-shaped capture alone is not a measured sentinel.
+          [da1, "sentinel", undefined],
+          [`x${da1}`, "sentinel", sentinel],
+          [`${da1}\x1b]52;c;`, "sentinel", sentinel],
+          ["\x1b]52;c;d3Jvbmc=\x07", "reply", undefined],
+          ["\x1b]52;p;d3Jvbmc=\x07", "sentinel", sentinel],
+          ["\x1b]52;c;not-base64!\x07", "sentinel", sentinel],
+          ["\x1b]52;c;Zh==\x07", "reply", undefined], // Decodes, but is not canonical base64.
+          ["\x1b]52;c;d3Jvbmc=\x1b", "sentinel", sentinel],
+          ["", "timeout", undefined],
+        ] as const) {
+          const result = p.lib(
+            context({
+              feedCapture() {
+                throw new Error("Do not rescue an unqualified query outcome with a second capture")
+              },
+              queryWithSentinelOutcome: () => ({ reason, match: null, raw, rawBase64: btoa(raw), sentinel: facts }),
+            }),
+          )
+          expect(result.response).toBe(raw)
+          expect(result.observation?.outcome).not.toBe("unsupported")
+          expect(result.pass).toBe(false)
+          if (raw === "") expect(result.tests).toMatchObject([{ status: "test-failure" }])
+          else expect(result.observation?.outcome).toBe("inconclusive")
+        }
+      } else {
+        expect(measuredSilence.observation).toBeUndefined()
+        expect(measuredSilence.tests).toMatchObject([{ status: "test-failure" }])
       }
 
       const liveWrites: string[] = []
@@ -2127,7 +2212,7 @@ describe("partial probe automation candidates", () => {
       ["extensions.osc7770-font-size", "\x1b]7770;?\x07", "\x1b]7770;12\x1b\\"],
       ["extensions.osc7777-font-window-size", "\x1b]7777;?\x07", "\x1b]7777;12\x1b\\"],
       ["extensions.osc701-locale", "\x1b]701;?\x07", "\x1b]701;en_US.UTF-8\x1b\\"],
-      ["extensions.osc702-version", "\x1b]702\x07", "\x1b]702;vterm.js;vterm;0;2\x1b\\"],
+      ["extensions.osc702-version", "\x1b]702;?\x07", "\x1b]702;vterm.js;vterm;0;2\x1b\\"],
       ["extensions.osc776-cell-size", "\x1b]776\x07", "\x1b]776;8;17;14\x1b\\"],
     ] as const
 

@@ -50,15 +50,15 @@ function queryOnly(definition: ProbeDefinition): ProbeDefinition {
 function osc5522DetectionResult(raw: string, replyMatched: boolean, afterSentinel = false): ProbeCallbackResult {
   const window = readSentinelReply(raw, decrpmReplyPattern(5522))
   const ps = replyMatched ? decrpmPs(window.match?.[1]) : null
-  const late = afterSentinel || window.kind === "answered" || window.kind === "unmatched"
-  if (ps === null || ((ps === 0 || ps === 4) && late)) {
+  const unorderedLate = !afterSentinel && (window.kind === "answered" || window.kind === "unmatched")
+  if (ps === null || unorderedLate) {
     const note = "OSC5522 detection has no complete matching reply in the deciding window"
     return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
   }
-  // Keep the shared mode-behavior criterion unchanged; only this detector makes Ps0 negative.
-  if (ps !== 0) {
+  // Only an on-time detector reply makes Ps0 negative; measured-late replies use the shared criterion.
+  if (ps !== 0 || afterSentinel) {
     const result = decrpmResult(ps, 5522)
-    return late && result.observation
+    return afterSentinel && result.observation
       ? { ...result, observation: { ...result.observation, note: REPLY_AFTER_SENTINEL_NOTE } }
       : result
   }
@@ -1454,7 +1454,24 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
   const nonce = `terminfo-osc52-${randomUUID()}`
   const encoded = btoa(nonce)
   ctx.feed(`\x1b]52;c;${encoded}\x07`)
-  const response = ctx.feedCapture("\x1b]52;c;?\x07")
+  return headlessClipboardResult(ctx.feedCapture("\x1b]52;c;?\x07"), nonce)
+}
+
+/** Read silence is conclusive only on a collector-qualified, ordered reply path. */
+function headlessClipboardRead(ctx: LibProbeSource): ProbeCallbackResult {
+  const nonce = `terminfo-osc52-${randomUUID()}`
+  ctx.feed(`\x1b]52;c;${btoa(nonce)}\x07`)
+  if (ctx.queryWithSentinelOutcome) {
+    const outcome = ctx.queryWithSentinelOutcome("\x1b]52;c;?\x07", osc52Reply)
+    return (
+      sentinelSilenceResult(outcome, "OSC 52 c query returns the exact written nonce") ??
+      headlessClipboardResult(outcome.raw, nonce)
+    )
+  }
+  return headlessClipboardResult(ctx.feedCapture("\x1b]52;c;?\x07"), nonce)
+}
+
+function headlessClipboardResult(response: string, nonce: string): ProbeCallbackResult {
   const frames = response.matchAll(/\x1b\]52;c;([^\x07\x1b]*)(?:\x07|\x1b\\)/g)
   let sawCompleteFrame = false
   let sawInvalidFrame = false
@@ -2251,12 +2268,7 @@ export const extensionsProbes: ProbeDefinition[] = [
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
   {
-    ...probe(
-      "extensions.osc52-read",
-      headlessClipboardRoundtrip,
-      (ctx) => liveClipboardProbe(ctx, "read"),
-      "query_reply",
-    ),
+    ...probe("extensions.osc52-read", headlessClipboardRead, (ctx) => liveClipboardProbe(ctx, "read"), "query_reply"),
     libAssertionType: "query_reply",
   },
 
@@ -2495,10 +2507,10 @@ export const extensionsProbes: ProbeDefinition[] = [
     "Complete OSC 1337 ReportCellSize reply with two positive dimensions and an optional scale",
   ),
 
-  // OSC 1337 RequestCapabilities — query terminal capabilities
+  // OSC 1337 Capabilities — query terminal capabilities
   oscSimpleQueryProbe(
     "extensions.osc1337-capabilities",
-    "\x1b]1337;RequestCapabilities\x07",
+    "\x1b]1337;Capabilities\x07",
     /\x1b\]1337;Capabilities=[^\x07\x1b]*(?:\x07|\x1b\\)/,
     /\x1b\]1337;Capabilities=/,
     "Complete OSC 1337 Capabilities reply",
@@ -2883,8 +2895,8 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 702 — rxvt-unicode version query
   oscSimpleQueryProbe(
     "extensions.osc702-version",
-    "\x1b]702\x07",
-    /\x1b\]702;[^\x07\x1b]+(?:\x07|\x1b\\)/,
+    "\x1b]702;?\x07",
+    /\x1b\]702;[A-Za-z0-9_.-]+;[A-Za-z0-9_.-]+;[0-9]+;[0-9]+(?:\x07|\x1b\\)/,
     /\x1b\]702;/,
     "Complete OSC 702 version reply",
   ),

@@ -185,12 +185,27 @@ const DECRQSS_DECSTBM: DeviceReply = {
   expected: "complete DECRQSS status 1 DECSTBM margins ending r and ST",
 }
 
+const DECRQSS_DECSCL: DeviceReply = {
+  id: "device.decrqss",
+  query: '\x1bP$q"p\x1b\\',
+  valid: /\x1bP1\$r[0-9]+;[0-9]+"p\x1b\\/,
+  refusal: /\x1bP0\$r\x1b\\/,
+  malformed: /\x1bP[01]\$r/,
+  expected: 'complete DECRQSS status 1 DECSCL conformance parameters ending "p and ST',
+}
+
 function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
   return Boolean(matchedFrame && spec.refusal?.exec(matchedFrame)?.[0])
 }
 
-/** Status-0 to SGR already shows the terminal speaks DECRQSS, so a silent second setting is not F1. */
-function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResult {
+/** An earlier selector refusal proves DECRQSS speaks; later silence is never a facility-wide F1 negative. */
+function decrqssAfterRefusal(
+  spec: DeviceReply,
+  second: TerminalQueryOutcome,
+  refused: string,
+  retainedRefusals = "",
+): ProbeCallbackResult {
+  const setting = spec === DECRQSS_DECSTBM ? "DECSTBM" : "DECSCL"
   if (second.raw.length === 0) {
     return {
       pass: false,
@@ -199,19 +214,28 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResu
         {
           id: "criterion",
           status: "test-failure",
-          reason: "SGR refused; DECSTBM unanswered; DECRQSS facility still speaks",
+          reason: `${refused}; ${setting} unanswered; DECRQSS facility still speaks`,
         },
       ],
     }
   }
   const secondFrame = replyFrame(second)
-  const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
-  if (graded.observation?.outcome === "supported") return graded
-  if (refusedFrame(DECRQSS_DECSTBM, secondFrame)) {
+  const graded = deviceReplyResult(spec, second.raw, secondFrame, second.reason, second.sentinel)
+  if (graded.observation?.outcome === "supported") {
+    const note = [refused, graded.observation.note].filter(Boolean).join("; ")
+    return {
+      pass: true,
+      response: retainedRefusals + second.raw,
+      note,
+      observation: { ...graded.observation, note },
+      assertions: graded.assertions,
+    }
+  }
+  if (refusedFrame(spec, secondFrame)) {
     const da1At = sentinelAnswer(second.raw)?.start ?? -1
     const late =
       Boolean(second.sentinel) && secondFrame !== null && da1At !== -1 && second.raw.indexOf(secondFrame) > da1At
-    const note = ["SGR refused; DECSTBM refused", late ? REPLY_AFTER_SENTINEL_NOTE : undefined]
+    const note = [`${refused}; ${setting} refused`, late ? REPLY_AFTER_SENTINEL_NOTE : undefined]
       .filter((part): part is string => part !== undefined)
       .join("; ")
     return {
@@ -225,10 +249,9 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResu
       },
     }
   }
-  const hasCompleteUnmatchedFrame =
-    DECRQSS_DECSTBM.valid.test(second.raw) || DECRQSS_DECSTBM.refusal?.test(second.raw) === true
+  const hasCompleteUnmatchedFrame = spec.valid.test(second.raw) || spec.refusal?.test(second.raw) === true
   const reason =
-    !hasCompleteUnmatchedFrame && DECRQSS_DECSTBM.malformed.test(second.raw)
+    !hasCompleteUnmatchedFrame && spec.malformed.test(second.raw)
       ? "invalid-reply"
       : second.reason === "timeout"
         ? "timeout"
@@ -240,7 +263,7 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResu
       outcome: "inconclusive",
       reason,
       assertionType: "query_reply",
-      note: "SGR refused; DECSTBM unanswered; DECRQSS facility still speaks",
+      note: `${refused}; ${setting} unanswered; DECRQSS facility still speaks`,
     },
   }
 }
@@ -248,14 +271,24 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResu
 function decrqssFacilityProbe(): ProbeDefinition {
   const sgrPattern = answerPattern(DECRQSS_SGR)
   const decstbmPattern = answerPattern(DECRQSS_DECSTBM)
+  const decsclPattern = answerPattern(DECRQSS_DECSCL)
   const definition = probe(
     "device.decrqss",
     (ctx) => {
-      // A proven headless path takes live's two steps: SGR, then DECSTBM only after an SGR refusal.
+      // Sample the facility in order, advancing only after a complete selector refusal.
       if (ctx.queryWithSentinelOutcome) {
         const sgr = ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
         if (!refusedFrame(DECRQSS_SGR, replyFrame(sgr))) return deviceOutcomeResult(DECRQSS_SGR, sgr)
-        return decrqssAfterSgrRefusal(ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern))
+        const second = ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
+        if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
+          return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
+        }
+        return decrqssAfterRefusal(
+          DECRQSS_DECSCL,
+          ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern),
+          "SGR refused; DECSTBM refused",
+          sgr.raw + second.raw,
+        )
       }
       const raw = ctx.feedCapture(DECRQSS_SGR.query)
       return deviceReplyResult(DECRQSS_SGR, raw, sgrPattern.exec(raw)?.[0] ?? null, "sentinel")
@@ -264,7 +297,15 @@ function decrqssFacilityProbe(): ProbeDefinition {
       const sgr = await ctx.queryWithSentinelOutcome(DECRQSS_SGR.query, sgrPattern)
       if (!refusedFrame(DECRQSS_SGR, replyFrame(sgr))) return deviceOutcomeResult(DECRQSS_SGR, sgr)
       const second = await ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
-      return decrqssAfterSgrRefusal(second)
+      if (!refusedFrame(DECRQSS_DECSTBM, replyFrame(second))) {
+        return decrqssAfterRefusal(DECRQSS_DECSTBM, second, "SGR refused")
+      }
+      return decrqssAfterRefusal(
+        DECRQSS_DECSCL,
+        await ctx.queryWithSentinelOutcome(DECRQSS_DECSCL.query, decsclPattern),
+        "SGR refused; DECSTBM refused",
+        sgr.raw + second.raw,
+      )
     },
     "query_reply",
   )
