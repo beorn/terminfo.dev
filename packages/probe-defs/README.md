@@ -83,7 +83,9 @@ That order matters: a failed test wins over a pending one. Timeout or lack of an
 
 Feature-specific criteria keep those distinctions local. OSC 5522 tests protocol detection only:
 a complete matching DECRPM 5522 Ps 0 or 4 is negative, and Ps 1/2/3 is positive.
-Absent, malformed, unmatched, partial or late evidence is never a negative. The generic mode-behavior grader is unchanged.
+Absent, malformed, unmatched, partial or late evidence is never a negative. A complete positive received within the
+sentinel grace window remains positive, with its ordering note; later bytes outside the capture still fail at the collector.
+The generic mode-behavior grader is unchanged.
 
 Headless DECCOLM reads ordered CSI 18t geometry before the mode change, while changed, and after restoration.
 It enables the ?40 policy gate before switching 80→132→80, or reverses the order from an initial 132 columns.

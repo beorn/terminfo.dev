@@ -540,6 +540,30 @@ describe("Kitty protocol detection", () => {
     expect(headless.response).toBe(raw)
   })
 
+  // A complete positive after DA1 but inside the captured grace window is still positive evidence.
+  // Q16 withholds late negatives; it must not narrow the existing positive-reply contract.
+  test("OSC 5522 retains a complete positive received within the sentinel grace window", async () => {
+    const p = probe("extensions.osc5522-clipboard")
+    if (!p.lib || !p.term) throw new Error("OSC 5522 needs both probe methods")
+    const raw = "\x1b[?1;2c\x1b[?5522;1$y"
+    const outcome = (pattern: RegExp) => ({
+      match: raw.match(pattern),
+      reason: "reply" as const,
+      raw,
+      rawBase64: btoa(raw),
+      sentinel: { atMs: 1, graceMs: 20 },
+    })
+    const headless = p.lib(context({ queryWithSentinelOutcome: (_sequence, pattern) => outcome(pattern) }))
+    const term = await p.term(
+      terminalSource({ queryWithSentinelOutcome: async (_sequence, pattern) => outcome(pattern) }),
+    )
+    for (const result of [headless, term]) {
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+      expect(result.assertions).toMatchObject([{ kind: "positive", observed: "set (Ps 1)" }])
+    }
+    expect(headless.response).toBe(raw)
+  })
+
   // OSC 52 previously passed on any substring or on unrelated CPR, and left live clipboard writes behind.
   // No existing protocol test covers these three callbacks or the collector's no-clipboard policy.
   test("OSC 52 requires a complete nonce roundtrip in headless mode and never touches a live clipboard", async () => {
