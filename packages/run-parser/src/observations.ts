@@ -835,7 +835,8 @@ export function validateCurrentAssertions(
         try {
           trace = JSON.parse(raw)
         } catch {
-          /* A query may itself return non-JSON text beginning with {. */
+          // Non-JSON terminal bytes remain the retained query payload, not a trace envelope.
+          trace = raw
         }
       }
       if (
