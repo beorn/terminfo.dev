@@ -150,144 +150,150 @@ const OWNED_LAYOUT = existsSync(fileURLToPath(new URL("../../../vterm", import.m
 // this one runs the real xtermjs worker and the real admit-run --review. Admission itself writes the suite
 // manifest and receipts into content/, so one review stays pending here: admit-run retains the reviewed
 // draft and refuses admission, and the last pending decision seals through the same writer in-process.
-it.runIf(OWNED_LAYOUT)("reviews a draft the real headless collector wrote through admit-run --review", async () => {
-  const root = fileURLToPath(new URL("../../", import.meta.url))
-  const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
-    cwd: root,
-    encoding: "utf8",
-  }).trim()
-  if (dirtySources) {
-    throw new Error(
-      `admit-run binds HEAD to the draft's sourceRevision; commit the dirty suite sources first:\n${dirtySources}`,
-    )
-  }
-  const dir = directory()
-  const collection = await collectHeadlessRuns(["xtermjs"], dir)
-  expect(collection.failures).toEqual([])
-  const draftPath = collection.runs[0]!
-  expect(draftPath).toMatch(/\.draft\.json$/)
-  const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
-  const draftBytes = readFileSync(draftPath, "utf8")
-  const pending = draft.results
-    .filter((row) => row.tests.some((check) => check.id === "review" && check.status === "test-todo"))
-    .map((row) => row.featureId)
-    .sort()
-  // #30699: the proven reply path makes these silent colour queries measured negatives.
-  const colourReadback = [
-    "extensions.osc104-reset-palette",
-    "extensions.osc110-reset-fg",
-    "extensions.osc111-reset-bg",
-    "extensions.osc112-reset-cursor",
-    "extensions.osc113-reset-pointer-fg",
-    "extensions.osc114-reset-pointer-bg",
-    "extensions.osc30001-color-stack-push",
-    "extensions.osc30101-color-stack-pop",
-  ]
-  for (const featureId of colourReadback) {
-    expect(
-      draft.results.find((row) => row.featureId === featureId),
-      featureId,
-    ).toMatchObject({
-      status: "unsupported",
-      reason: "negative by sentinel",
-      tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
+// #31072: 38 required 250ms sentinel grace waits measured 9.6s of a 9.9s collection span.
+// Keep those late-reply checks; allow this real-worker round trip the root suite's 30s budget.
+it.runIf(OWNED_LAYOUT)(
+  "reviews a draft the real headless collector wrote through admit-run --review",
+  async () => {
+    const root = fileURLToPath(new URL("../../", import.meta.url))
+    const dirtySources = execFileSync("git", ["status", "--porcelain", "--", ...probeSuiteSnapshot().sourcePaths], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim()
+    if (dirtySources) {
+      throw new Error(
+        `admit-run binds HEAD to the draft's sourceRevision; commit the dirty suite sources first:\n${dirtySources}`,
+      )
+    }
+    const dir = directory()
+    const collection = await collectHeadlessRuns(["xtermjs"], dir)
+    expect(collection.failures).toEqual([])
+    const draftPath = collection.runs[0]!
+    expect(draftPath).toMatch(/\.draft\.json$/)
+    const draft = JSON.parse(readFileSync(draftPath, "utf8")) as CapturedRunDraft
+    const draftBytes = readFileSync(draftPath, "utf8")
+    const pending = draft.results
+      .filter((row) => row.tests.some((check) => check.id === "review" && check.status === "test-todo"))
+      .map((row) => row.featureId)
+      .sort()
+    // #30699: the proven reply path makes these silent colour queries measured negatives.
+    const colourReadback = [
+      "extensions.osc104-reset-palette",
+      "extensions.osc110-reset-fg",
+      "extensions.osc111-reset-bg",
+      "extensions.osc112-reset-cursor",
+      "extensions.osc113-reset-pointer-fg",
+      "extensions.osc114-reset-pointer-bg",
+      "extensions.osc30001-color-stack-push",
+      "extensions.osc30101-color-stack-pop",
+    ]
+    for (const featureId of colourReadback) {
+      expect(
+        draft.results.find((row) => row.featureId === featureId),
+        featureId,
+      ).toMatchObject({
+        status: "unsupported",
+        reason: "negative by sentinel",
+        tests: [expect.objectContaining({ id: "criterion", status: "unsupported" })],
+      })
+    }
+    expect(pending).toEqual([
+      "extensions.clipboard-paste",
+      "input.button-event-mouse",
+      "input.kitty-click-events",
+      "input.modify-other-keys",
+      "input.modify-other-keys-3",
+      "input.pixel-mouse",
+      "input.urxvt-mouse",
+      "input.x10-mouse",
+      "input.xtest-click",
+      "input.xtest-key",
+      "input.xtest-wheel",
+      "modes.alt-scroll-1007",
+      "modes.application-keypad",
+    ])
+    const decision = (featureId: string, reason: string) =>
+      JSON.stringify({
+        id: `round-trip-${featureId}`,
+        runId: draft.runId,
+        featureId,
+        captureSha256: createHash("sha256").update(draft.rawReplies[`collector.capture.${featureId}`]!).digest("hex"),
+        decision: "untestable",
+        reviewed: true,
+        reviewer: "collect-headless round-trip test",
+        reason,
+        scope: {
+          subject: { kind: "lib", id: "xtermjs" },
+          versions: [draft.subject.version, draft.subject.version],
+          suites: [draft.probeHash, draft.probeHash],
+        },
+        sources: [`collector.capture.${featureId}`],
+        supersedes: [],
+      })
+    const reason = (featureId: string) =>
+      `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
+    const reviewed = pending.slice(0, -1)
+    const sealing = pending[pending.length - 1]!
+    const reviewPaths = reviewed.map((featureId, index) => {
+      const path = join(dir, `review-${index}.json`)
+      writeFileSync(path, decision(featureId, reason(featureId)))
+      return path
     })
-  }
-  expect(pending).toEqual([
-    "extensions.clipboard-paste",
-    "input.button-event-mouse",
-    "input.kitty-click-events",
-    "input.modify-other-keys",
-    "input.modify-other-keys-3",
-    "input.pixel-mouse",
-    "input.urxvt-mouse",
-    "input.x10-mouse",
-    "input.xtest-click",
-    "input.xtest-key",
-    "input.xtest-wheel",
-    "modes.alt-scroll-1007",
-    "modes.application-keypad",
-  ])
-  const decision = (featureId: string, reason: string) =>
-    JSON.stringify({
-      id: `round-trip-${featureId}`,
-      runId: draft.runId,
-      featureId,
-      captureSha256: createHash("sha256").update(draft.rawReplies[`collector.capture.${featureId}`]!).digest("hex"),
-      decision: "untestable",
-      reviewed: true,
-      reviewer: "collect-headless round-trip test",
-      reason,
-      scope: {
-        subject: { kind: "lib", id: "xtermjs" },
-        versions: [draft.subject.version, draft.subject.version],
-        suites: [draft.probeHash, draft.probeHash],
-      },
-      sources: [`collector.capture.${featureId}`],
-      supersedes: [],
-    })
-  const reason = (featureId: string) =>
-    `Embedded xterm.js injects no OS-level input, so ${featureId} has no path to the engine`
-  const reviewed = pending.slice(0, -1)
-  const sealing = pending[pending.length - 1]!
-  const reviewPaths = reviewed.map((featureId, index) => {
-    const path = join(dir, `review-${index}.json`)
-    writeFileSync(path, decision(featureId, reason(featureId)))
-    return path
-  })
-  const startedAt = new Date().toISOString()
-  const result = Bun.spawnSync(
-    [
-      "bun",
-      "scripts/admit-run.ts",
-      "--for",
-      draftPath,
-      ...reviewPaths.flatMap((path) => ["--review", path]),
-      "--review-started-at",
-      startedAt,
-    ],
-    { cwd: root, stdout: "pipe", stderr: "pipe" },
-  )
-  const stdout = new TextDecoder().decode(result.stdout)
-  const stderr = new TextDecoder().decode(result.stderr)
-  expect(stderr, stdout).not.toContain("requires unverified measured identity")
-  const retainedPath = /Retained reviewed capture (.+); original draft unchanged/.exec(stdout)?.[1]
-  expect(retainedPath, `${stdout}\n${stderr}`).toBeTruthy()
-  expect(stderr).toContain("Required reviews remain pending")
-  expect(result.exitCode).toBe(1)
-  expect(readFileSync(draftPath, "utf8")).toBe(draftBytes)
-  const suite = probeSuiteSnapshot()
-  const suites = new Map([[suite.probeHash, suite]])
-  const retained = parseRun(retainedPath!, readFileSync(retainedPath!, "utf8"), suite.catalogIds!, suites, {
-    mode: "capture",
-  })
-  for (const featureId of reviewed) {
-    const row = retained.results?.find((entry) => entry.featureId === featureId)
-    expect(row?.status, featureId).toBe("untestable")
-    const check = row?.tests?.find((entry) => entry.id === "review")
-    expect(check?.status, featureId).toBe("untestable")
-    expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
-  }
-  expect(retained.results?.find((entry) => entry.featureId === sealing)?.status).toBe("test-todo")
-  const sealedPath = saveDaemonProbeRun(
-    JSON.parse(readFileSync(retainedPath!, "utf8")) as CapturedRunDraft,
-    dir,
-    undefined,
-    [
-      {
-        source: decision(sealing, reason(sealing)),
-
+    const startedAt = new Date().toISOString()
+    const result = Bun.spawnSync(
+      [
+        "bun",
+        "scripts/admit-run.ts",
+        "--for",
+        draftPath,
+        ...reviewPaths.flatMap((path) => ["--review", path]),
+        "--review-started-at",
         startedAt,
-      },
-    ],
-  )
-  expect(sealedPath).not.toMatch(/\.draft\.json$/)
-  const sealed = parseRun(sealedPath, readFileSync(sealedPath, "utf8"), suite.catalogIds!, suites)
-  expect(sealed.sealedAt).toBeTruthy()
-  for (const featureId of pending) {
-    expect(sealed.results?.find((entry) => entry.featureId === featureId)?.status, featureId).toBe("untestable")
-  }
-})
+      ],
+      { cwd: root, stdout: "pipe", stderr: "pipe" },
+    )
+    const stdout = new TextDecoder().decode(result.stdout)
+    const stderr = new TextDecoder().decode(result.stderr)
+    expect(stderr, stdout).not.toContain("requires unverified measured identity")
+    const retainedPath = /Retained reviewed capture (.+); original draft unchanged/.exec(stdout)?.[1]
+    expect(retainedPath, `${stdout}\n${stderr}`).toBeTruthy()
+    expect(stderr).toContain("Required reviews remain pending")
+    expect(result.exitCode).toBe(1)
+    expect(readFileSync(draftPath, "utf8")).toBe(draftBytes)
+    const suite = probeSuiteSnapshot()
+    const suites = new Map([[suite.probeHash, suite]])
+    const retained = parseRun(retainedPath!, readFileSync(retainedPath!, "utf8"), suite.catalogIds!, suites, {
+      mode: "capture",
+    })
+    for (const featureId of reviewed) {
+      const row = retained.results?.find((entry) => entry.featureId === featureId)
+      expect(row?.status, featureId).toBe("untestable")
+      const check = row?.tests?.find((entry) => entry.id === "review")
+      expect(check?.status, featureId).toBe("untestable")
+      expect(check?.reviewRef, featureId).toBe(`collector.review.round-trip-${featureId}`)
+    }
+    expect(retained.results?.find((entry) => entry.featureId === sealing)?.status).toBe("test-todo")
+    const sealedPath = saveDaemonProbeRun(
+      JSON.parse(readFileSync(retainedPath!, "utf8")) as CapturedRunDraft,
+      dir,
+      undefined,
+      [
+        {
+          source: decision(sealing, reason(sealing)),
+
+          startedAt,
+        },
+      ],
+    )
+    expect(sealedPath).not.toMatch(/\.draft\.json$/)
+    const sealed = parseRun(sealedPath, readFileSync(sealedPath, "utf8"), suite.catalogIds!, suites)
+    expect(sealed.sealedAt).toBeTruthy()
+    for (const featureId of pending) {
+      expect(sealed.results?.find((entry) => entry.featureId === featureId)?.status, featureId).toBe("untestable")
+    }
+  },
+  30_000,
+)
 
 // Batch callback tests do not exercise worker creation/timeouts: these invoke the real coordinator
 // with only its process actuator replaced, so no engine or terminal is launched.
