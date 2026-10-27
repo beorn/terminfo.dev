@@ -581,7 +581,7 @@ test("qualifies each initialized callback instance and forwards the measured run
       vi.spyOn(value, "init").mockImplementation((options) => {
         init(options)
         if (index === 2) value.capabilities.extensions.delete("reply-delivery")
-        if (index === 3) Object.assign(value, { replyDelivery: undefined })
+        if (index === 3) Object.defineProperty(value, "replyDelivery", { value: undefined })
       })
       return value
     },

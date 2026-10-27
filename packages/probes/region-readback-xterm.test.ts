@@ -177,13 +177,20 @@ const XTERM_ABSENT = [
   "editing.decrara",
 ]
 
+// Parser-readback fixtures are deliberately unqualified in both workspace and published installs.
+function createUnqualifiedXtermBackend() {
+  const backend = createXtermBackend()
+  backend.capabilities.extensions.delete("reply-delivery")
+  return backend
+}
+
 async function collectOrigin(origin: probeDefs.ProbeDefinition) {
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
-    const batch = await collectBatch(async () => createXtermBackend(), "xtermjs", [origin])
+    const batch = await collectBatch(async () => createUnqualifiedXtermBackend(), "xtermjs", [origin])
     expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual([
       "headless xtermjs probe modes.origin\n",
-      "headless xtermjs has no measured runtime identity for reply delivery\n",
+      "headless xtermjs declares no reply delivery\n",
     ])
     return batch
   } finally {
@@ -241,20 +248,20 @@ test.each([
 })
 
 test("every region-readback kind row grades its real xterm.js outcome", async () => {
-  // These parser fixtures supply no runtime identity, so reply qualification is withheld loudly.
+  // These parser fixtures declare no reply delivery, so qualification is withheld loudly.
   // Consume only the expected progress and qualification diagnostics;
   // any other output remains a failure rather than disappearing into a blanket mock.
   const progress = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
   try {
     const batch = await collectBatch(
-      async () => createXtermBackend(),
+      async () => createUnqualifiedXtermBackend(),
       "xtermjs",
       probeDefs.regionReadbackProbes(KIND_ROWS),
     )
     expect(progress.mock.calls.map(([chunk]) => String(chunk))).toEqual(
       KIND_ROWS.flatMap((row, index) => [
         `headless xtermjs probe ${row.id}\n`,
-        ...(index === 0 ? ["headless xtermjs has no measured runtime identity for reply delivery\n"] : []),
+        ...(index === 0 ? ["headless xtermjs declares no reply delivery\n"] : []),
       ]),
     )
     const outcome = (id: string) => batch.observations.find((item) => item.featureId === id)?.outcome ?? `missing:${id}`
