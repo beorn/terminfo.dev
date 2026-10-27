@@ -83,7 +83,7 @@ describe("parseRunProvenance version token", () => {
         {
           probeHash: expected.probeHash,
           adapterVersion: "test",
-          probes: { app: [], headless: [], mux: [] },
+          probes: { term: [], lib: [], mux: [] },
         },
       ],
     ])

@@ -89,7 +89,7 @@ export function parseAppLaunchReceipt(
   path: string,
 ): AppLaunchReceipt | undefined {
   if (value === undefined) return undefined
-  if (originKind !== "collector" || targetKind !== "app" || !object(value)) {
+  if (originKind !== "collector" || targetKind !== "term" || !object(value)) {
     fail(path, "appLaunch requires an app collector run")
   }
   if (Object.hasOwn(value, "platform") && value.platform !== "win32") {

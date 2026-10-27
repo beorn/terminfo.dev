@@ -42,7 +42,7 @@ const manifest: ProbeSuiteManifest = {
   probeHash: SUITE,
   adapterVersion: "3.3.1",
   generatedAt: "2026-10-10T22:00:00.000Z",
-  probes: { app: [FEATURE], headless: [], mux: [] },
+  probes: { term: [FEATURE], lib: [], mux: [] },
 }
 const suites = new Map([[SUITE, manifest]])
 const catalog = [FEATURE]
@@ -269,7 +269,7 @@ function parseCallback(id: string, result: ProbeCallbackResult, fixture: ReturnT
     ],
     textSnapshotRefs: frames.filter((frame) => frame.kind === "text-cells").map((frame) => frame.ref),
   })
-  const callbackManifest: ProbeSuiteManifest = { ...manifest, probes: { app: [id], headless: [], mux: [] } }
+  const callbackManifest: ProbeSuiteManifest = { ...manifest, probes: { term: [id], lib: [], mux: [] } }
   return parseRun(`${id}.json`, JSON.stringify(run), [id], new Map([[SUITE, callbackManifest]]))
 }
 

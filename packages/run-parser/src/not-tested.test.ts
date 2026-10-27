@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
-import { parseRun } from "./index.ts"
+import { parseRun, parseSuiteManifest } from "./index.ts"
 
 const catalog = ["alpha", "beta", "gamma"]
 const suite: ProbeSuiteManifest = {
@@ -15,7 +15,7 @@ const suite: ProbeSuiteManifest = {
   sourceRevision: "2".repeat(40),
   generatedAt: "2026-10-05T00:00:00.000Z",
   adapterVersion: "3.3.2",
-  probes: { app: catalog, headless: catalog, mux: catalog },
+  probes: { term: catalog, lib: catalog, mux: catalog },
 }
 const suites = new Map([[suite.probeHash, suite]])
 
@@ -125,14 +125,15 @@ describe("execution-owned five statuses", () => {
     const draft = initializeRunDraft({
       runId: "runtime-initialization",
       sourceRevision: "2".repeat(40),
-      manifest: { ...suite, catalogIds: ids },
-      intendedContext: { kind: "headless", id: "xtermjs" },
+      manifest: { ...suite, schemaVersion: 4, catalogIds: ids },
+      source: { kind: "live" },
+      intendedSubject: { kind: "lib", id: "xtermjs" },
     })
-    expect(draft.schemaVersion).toBe(3)
+    expect(draft.schemaVersion).toBe(4)
     expect(draft.results.map((result) => result.featureId)).toEqual(ids)
     expect(draft.results.every((result) => result.status === "test-todo")).toBe(true)
-    expect(draft.results.every((result) => result.attempt.scope === "none" && result.checks.length === 0)).toBe(true)
-    expect(draft).not.toHaveProperty("target")
+    expect(draft.results.every((result) => result.attempt.scope === "none" && result.tests.length === 0)).toBe(true)
+    expect(draft).not.toHaveProperty("subject")
     expect(draft).not.toHaveProperty("provenance")
     expect(draft).not.toHaveProperty("sealedAt")
   })
@@ -157,10 +158,10 @@ describe("execution-owned five statuses", () => {
     const result = finalizeProbeResult({
       featureId: "sgr.bold",
       attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-      checks,
+      tests: checks,
     })
     expect(result.status).toBe(expected)
-    expect(result.checks).toEqual(checks)
+    expect(result.tests).toEqual(checks)
   })
 })
 
@@ -200,7 +201,7 @@ describe("sealed current runs", () => {
       "current-v4.json",
       JSON.stringify(raw),
       catalog,
-      new Map([[suite.probeHash, currentSuite]]),
+      new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]),
     )
     expect(loaded).toMatchObject({
       schemaVersion: 4,
@@ -213,6 +214,44 @@ describe("sealed current runs", () => {
     expect(loaded).not.toHaveProperty("intendedContext")
     for (const result of loaded.results!) expect(result).not.toHaveProperty("checks")
   })
+  // The old reader accepted arbitrary extra keys; the new wire must have one spelling per fact.
+  it("requires a live source and refuses displaced or unknown schema-4 keys by name", () => {
+    const { target, intendedContext, results, ...metadata } = current()
+    const raw = { ...metadata, schemaVersion: 4, source: { kind: "live" }, subject: { ...target, kind: "term" }, intendedSubject: { ...intendedContext, kind: "term" }, results: results.map(({ checks, ...result }) => ({ ...result, tests: checks })) }
+    const parseV4 = (value: unknown) => parseRun("v4.json", JSON.stringify(value), catalog, new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]))
+    expect(() => parseV4({ ...raw, source: undefined })).toThrow(/source/)
+    expect(() => parseV4({ ...raw, source: { kind: "trace" } })).toThrow(/trace probe source has no implementation/)
+    expect(() => parseV4({ ...raw, target })).toThrow(/target/)
+    expect(() => parseV4({ ...raw, mystery: true })).toThrow(/mystery/)
+    expect(() => parseV4({ ...raw, results: raw.results.map(result => ({ ...result, checks: [] })) })).toThrow(/checks/)
+    expect(() => parseV4({ ...raw, results: raw.results.map(result => ({ ...result, mystery: true })) })).toThrow(/mystery/)
+  })
+
+  it("validates each current assertion's retained payload independently of the primary result type", () => {
+    const { target, intendedContext, results, ...metadata } = current()
+    const attempt = { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" }
+    const raw = { ...metadata, schemaVersion: 4, source: { kind: "live" }, subject: { ...target, kind: "term" }, intendedSubject: { ...intendedContext, kind: "term" }, rawReplies: { alpha: "ACK" },
+      assertions: [{ featureId: "alpha", kind: "positive", assertionType: "input_bytes", rawReplyRef: "alpha", expected: "ACK", observed: JSON.stringify({ control: "before", report: "ACK" }) }],
+      results: results.map(({ checks, ...result }, index) => index === 0 ? { ...result, status: "supported", reason: undefined, assertionType: "query_reply", rawReplyRef: "alpha", attempt, tests: [{ id: "criterion", status: "supported", attempt, assertionRefs: [0] }] } : { ...result, tests: checks }),
+    }
+    const parseV4 = (value: unknown) => parseRun("assertions-v4.json", JSON.stringify(value), catalog, new Map([[suite.probeHash, { ...currentSuite, schemaVersion: 4 }]]))
+    expect(() => parseV4(raw)).toThrow(/performed action/)
+    const query = { ...raw, assertions: [{ ...raw.assertions[0], assertionType: "query_reply", observed: "ACK" }] }
+    expect(parseV4(query).results?.[0]?.status).toBe("supported")
+    expect(() => parseV4({ ...query, rawReplies: { alpha: JSON.stringify({ events: [], queries: [], writes: ["query"] }) } })).toThrow(/returned query bytes/)
+  })
+
+  it("decodes suite wire versions without rewriting historical marker absence", () => {
+    const { probes: _normalized, ...metadata } = suite
+    const oldWire = { ...metadata, probes: { app: catalog, headless: catalog, mux: catalog } }
+    const normalized = parseSuiteManifest("old-suite.json", JSON.stringify(oldWire))
+    expect(normalized.probes).toEqual({ term: catalog, lib: catalog, mux: catalog })
+    expect(normalized).not.toHaveProperty("schemaVersion")
+    expect(parseSuiteManifest("new-suite.json", JSON.stringify({ ...normalized, schemaVersion: 4 })).schemaVersion).toBe(4)
+    expect(() => parseSuiteManifest("mixed-suite.json", JSON.stringify({ ...oldWire, schemaVersion: 4 }))).toThrow(/probe kinds/)
+    expect(() => parseSuiteManifest("unknown-suite.json", JSON.stringify({ ...oldWire, schemaVersion: 5 }))).toThrow(/schemaVersion 5/)
+  })
+
   it("reads recorded TODO without deriving status from today's catalogue or callback schedule", () => {
     const raw = current()
     const loaded = parseRun(
@@ -222,7 +261,7 @@ describe("sealed current runs", () => {
       new Map([[suite.probeHash, currentSuite]]),
     )
     expect(loaded.schemaVersion).toBe(3)
-    expect(loaded.results).toEqual(raw.results)
+    expect(loaded.results).toEqual(raw.results.map(({ checks, ...result }) => ({ ...result, tests: checks })))
     expect(loaded.catalogIds).toEqual(catalog)
   })
   it("rejects missing/duplicate frozen results and an unsealed draft", () => {

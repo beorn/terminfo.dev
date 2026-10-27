@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest"
 import { parseRun } from "@terminfo/run-parser"
 import type { ProbeResult, ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { ENVIRONMENT_GROUP_IDS } from "@terminfo/probe-defs"
-import { projectResults } from "../docs/data/selected-results.ts"
+import { projectResults, maskRunnerStorePath } from "../docs/data/selected-results.ts"
 import { currentCoverageSentence } from "../docs/data/release-scope.ts"
 
 const ids = Array.from({ length: 273 }, (_, index) => `capability.${index}`)
@@ -18,7 +18,7 @@ const suite: ProbeSuiteManifest = {
   generatedAt: "2026-10-21T05:00:00.000Z",
   adapterVersion: "3.3.2",
   catalogIds: ids,
-  probes: { app: [], headless: [], mux: [] },
+  probes: { term: [], lib: [], mux: [] },
 }
 const attempt = { scope: "probe" as const, startedAt: "2026-10-21T05:00:00.000Z" }
 const raw = (results: ProbeResult[]) => ({
@@ -70,7 +70,7 @@ describe("current execution projection", () => {
       { currentProbeHash: suite.probeHash },
       [],
     )
-    const selected = projection.current["app:kitty"]
+    const selected = projection.current["term:kitty"]
     expect(selected?.results).toEqual(run.results)
     expect(selected?.score).toEqual({ supported: 0, all: 273 })
     expect(selected?.counts["test-todo"]).toBe(273)
@@ -87,14 +87,14 @@ describe("current execution projection", () => {
       reason: "callback threw",
     }
     const projection = projectResults([parse(raw(results))], [], ids, { currentProbeHash: suite.probeHash }, [])
-    expect(projection.current["app:kitty"]?.counts).toEqual({
+    expect(projection.current["term:kitty"]?.counts).toEqual({
       supported: 0,
       unsupported: 0,
       untestable: 0,
       "test-todo": 272,
       "test-failure": 1,
     })
-    expect(projection.current["app:kitty"]?.complete).toBe(false)
+    expect(projection.current["term:kitty"]?.complete).toBe(false)
   })
   it("can finish all unsupported at zero supported out of 273, without excluding capabilities", () => {
     const value = raw(
@@ -122,9 +122,9 @@ describe("current execution projection", () => {
       { currentProbeHash: suite.probeHash },
       [],
     )
-    expect(projection.current["app:kitty"]?.score).toEqual({ supported: 0, all: 273 })
-    expect(projection.current["app:kitty"]?.counts.unsupported).toBe(273)
-    expect(projection.current["app:kitty"]?.complete).toBe(true)
+    expect(projection.current["term:kitty"]?.score).toEqual({ supported: 0, all: 273 })
+    expect(projection.current["term:kitty"]?.counts.unsupported).toBe(273)
+    expect(projection.current["term:kitty"]?.complete).toBe(true)
   })
   it("leaves a corpus of only legacy runs with no current row and no invented current score", () => {
     const { results: _results, sealedAt: _sealedAt, ...metadata } = raw([])
@@ -163,7 +163,7 @@ describe("current execution projection", () => {
     }
     const run = parseRun("fixture.json", JSON.stringify(value), splitIds, new Map([[splitSuite.probeHash, splitSuite]]))
     const projection = projectResults([run], [], splitIds, { currentProbeHash: suite.probeHash }, [])
-    const selected = projection.current["app:kitty"]
+    const selected = projection.current["term:kitty"]
     // The supported-looking environment row stays recorded, and never graded: numerator and
     // denominator both cover the same 264 ids (CTO condition, verdict 427f2da3).
     expect(selected?.results.find((result) => result.featureId === supportedGroup)?.status).toBe("supported")
@@ -178,4 +178,11 @@ describe("current execution projection", () => {
     })
     expect(selected?.complete).toBe(false)
   })
+})
+
+// An unchanged reviewed default key must still identify its canonical subject after the rename.
+it("normalizes historical reviewed context keys without rewriting arbitrary configuration text", () => {
+  expect(maskRunnerStorePath('app:kitty@["app","kitty","macos",null,null,null,null,null]')).toBe('term:kitty@["term","kitty","macos",null,null,null,null,null]')
+  expect(maskRunnerStorePath('headless:xtermjs@["headless","xtermjs","linux",null,null,null,null,null]')).toBe('lib:xtermjs@["lib","xtermjs","linux",null,null,null,null,null]')
+  expect(maskRunnerStorePath('app:keep-this-config')).toBe('app:keep-this-config')
 })

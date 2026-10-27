@@ -9,6 +9,8 @@
 import { createHash } from "node:crypto"
 import { describe, expect, it } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
+import { canConcludeObservation, validateCorrectedObservation } from "./observations.ts"
+import { parseInterpretations } from "../../../scripts/interpretations.ts"
 import { decodeHistoricalCollectorRun, parseRun, parseSuiteManifest } from "./index.ts"
 
 const digest = (seed: string) => `sha256:${createHash("sha256").update(seed).digest("hex")}`
@@ -32,7 +34,7 @@ const suites = new Map<string, ProbeSuiteManifest>([
       probeHash: SUITE,
       adapterVersion: "3.3.1",
       generatedAt: "2026-10-10T22:00:00.000Z",
-      probes: { app: [FEATURE], headless: [], mux: [] },
+      probes: { term: [FEATURE], lib: [], mux: [] },
     },
   ],
 ])
@@ -92,7 +94,7 @@ const parse = (run: Record<string, unknown>) => parseRun("text-frames.json", JSO
 describe("text frames — admitted only as what they are", () => {
   it("admits a text verdict that cites its frame's cell digest, recomputable from the run alone", () => {
     const loaded = parse(textRun())
-    expect(loaded.observations[0]).toMatchObject({ outcome: "supported", evidence: "text" })
+    expect(loaded.observations[0]).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(loaded.textSnapshotRefs).toEqual([SNAPSHOT])
   })
 
@@ -358,7 +360,7 @@ describe("run-owned text qualification ingestion", () => {
     ).toEqual(qualification)
     expect(parse(textRun())).not.toHaveProperty("textQualification")
     expect(parse(textRun())).not.toHaveProperty("textClaims")
-    expect(parseSuiteManifest("old.json", JSON.stringify(manifest))).toEqual(manifest)
+    expect(parseSuiteManifest("old.json", JSON.stringify(manifest))).toEqual({ ...manifest, probes: { term: [FEATURE], lib: [], mux: [] } })
   })
 
   it("retains a future version and recipe so the selector can name their mismatch", () => {
@@ -409,4 +411,31 @@ describe("run-owned text qualification ingestion", () => {
   ])("refuses malformed trusted suite declarations", (metadata, reason) => {
     expect(() => parseSuiteManifest("suite.json", JSON.stringify({ ...manifest, ...metadata }))).toThrow(reason)
   })
+})
+
+// The immutable corpus has no successfully qualified text run and no corrections. This exercises
+// selection's full qualified path and proves a replacement gets its own historical interpretation.
+it("qualifies retained historical text and recomputes eligibility for its reviewed correction", () => {
+  const raw = textRun({ target: { ...TARGET, os: "macos" } })
+  const manifest = { ...suites.get(SUITE)!, textClaims: [FEATURE] }
+  const run = parseRun("qualified-text.json", JSON.stringify(raw), [FEATURE], new Map([[SUITE, manifest]]))
+  const observation = run.observations[0]!
+  expect(canConcludeObservation(run, observation, { qualified: true })).toBe(true)
+  expect(canConcludeObservation(run, observation, { qualified: false, reason: "mapping failed" })).toBe(false)
+  expect(canConcludeObservation({ ...run, textClaims: [] }, observation, { qualified: true })).toBe(false)
+  expect(canConcludeObservation({ ...run, subject: { ...run.subject, os: "windows" } }, observation, { qualified: true })).toBe(false)
+  const host = { image: "conhost.exe", executablePath: "C:\\Windows\\conhost.exe", executableSha256: digest("host") }
+  const hosted = parseRun("hosted-text.json", JSON.stringify({ ...raw, observations: [{ ...raw.observations[0], host }] }), [FEATURE], new Map([[SUITE, manifest]]))
+  expect(canConcludeObservation(hosted, hosted.observations[0]!, { qualified: true })).toBe(false)
+  const [entry] = parseInterpretations("corrections.json", JSON.stringify([{
+    id: "reviewed-query-criterion", reviewer: "reviewer", reason: "The retained criterion describes a historical behavior observation", sources: ["review"], supersedes: [],
+    runId: run.runId, runSha256: run.sha256, featureId: FEATURE,
+    scope: { target: { kind: "app", id: TARGET.id }, versions: [TARGET.version, TARGET.version], suites: [SUITE, SUITE] },
+    observation: { featureId: FEATURE, outcome: "supported", evidence: "behavior", rawReplyRef: FEATURE },
+  }]), [FEATURE])
+  const corrected = validateCorrectedObservation(run, entry!)
+  expect(corrected.assertionType).toBeUndefined()
+  expect(canConcludeObservation(run, corrected, { qualified: false, reason: "mapping failed" })).toBe(true)
+  expect(JSON.stringify({ run, entry, corrected })).not.toMatch(/nonMeasuring|requiresTextQualification|"evidence"/)
+  expect(() => validateCorrectedObservation({ ...run, rawReplies: {} }, entry!)).toThrow(/missing raw reply/)
 })

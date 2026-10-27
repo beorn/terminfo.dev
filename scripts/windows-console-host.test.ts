@@ -18,7 +18,7 @@ const suite: ProbeSuiteManifest = {
   generatedAt: "2026-10-22T05:00:00.000Z",
   adapterVersion: "3.3.2",
   catalogIds: ids,
-  probes: { app: ids, headless: [], mux: [] },
+  probes: { term: ids, lib: [], mux: [] },
 }
 const attempt = { scope: "probe" as const, startedAt: "2026-10-22T05:00:00.000Z" }
 const HOST_DA1 = "\u001b[?61;6;7;14;21;22;23;24;28;32;42c"
@@ -143,7 +143,7 @@ describe("Windows console-host rule", () => {
     const run = current("windows")
     const projection = projectResults([run], [], ids, { currentProbeHash: suite.probeHash }, [])
     // History holds every valid run before admission, which needs a Windows ownership receipt this rule ignores.
-    const selected = projection.history["app:windows-terminal"]![0]!
+    const selected = projection.history["term:windows-terminal"]![0]!
     const byId = new Map(selected.results.map((result) => [result.featureId, result]))
     expect([0, 1, 2, 3, 4, 5].map((index) => byId.get(ids[index]!)?.status)).toEqual([
       "test-todo",
