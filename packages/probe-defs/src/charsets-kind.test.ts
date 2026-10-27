@@ -64,8 +64,8 @@ test("every kind row decides from its own cells, through the shared kind", async
     expect(kindRow, `${row.id} has a kind-table row`).toBeDefined()
     if (!probe || !kindRow) continue
     expect(probe.termNeedsGeometry, row.id).toBe(true)
-    expect(probe.termlessObservationEvidence, row.id).toBe("parser-state")
-    const measured = probe.termless!(headlessContext(createSemanticSurface()))
+    expect(probe.libAssertionType, row.id).toBe("buffer_state")
+    const measured = probe.lib!(headlessContext(createSemanticSurface()))
     const state = JSON.parse(measured.response ?? "null") as { before: string[][]; after: string[][] }
     // One entry per compared COLUMN, so a wide follower is a cell the array names, not a join that
     // silently drops it; one row per compared ROW, so a multi-row grid can no longer be read as a
@@ -142,7 +142,7 @@ test("a backend that reports the wide follower as a space still reads charsets.u
       return cell.char === "" ? { ...cell, char: " " } : cell
     },
   }
-  const result = probe.termless!(spaced)
+  const result = probe.lib!(spaced)
   expect(result.observation?.outcome).toBe("supported")
   expect(result.pass).toBe(true)
 })

@@ -20,12 +20,10 @@ const features = [
   { id: "modes.utf8-mouse-1005", number: 1005, mode: null },
 ] as const
 
-function headless(
-  id: string,
-): NonNullable<LibProbeSource extends infer _ ? (ctx: LibProbeSource) => unknown : never> {
+function headless(id: string): NonNullable<LibProbeSource extends infer _ ? (ctx: LibProbeSource) => unknown : never> {
   const definition = modesProbes.find((probe) => probe.id === id)
-  if (!definition?.termless) throw new Error(`Missing headless callback for ${id}`)
-  return definition.termless
+  if (!definition?.lib) throw new Error(`Missing headless callback for ${id}`)
+  return definition.lib
 }
 
 function context(reply: string, mode: boolean, fed: string[], captured: string[]): LibProbeSource {
@@ -63,12 +61,12 @@ test.each(features)("$id grades the engine's DECRPM reply exactly as the app arm
     const captured: string[] = []
     const reply = `\x1b[?${number};${ps}$y`
     const result = arm(context(reply, true, fed, captured)) as ReturnType<
-      NonNullable<(typeof modesProbes)[number]["termless"]>
+      NonNullable<(typeof modesProbes)[number]["lib"]>
     >
     expect(captured, `${id}: Ps ${ps}`).toEqual([`\x1b[?${number}$p`])
     expect(fed, `${id}: Ps ${ps}`).toEqual([`\x1b[?${number}h`, `\x1b[?${number}l`])
     expect(result.pass, `${id}: Ps ${ps}`).toBe(true)
-    expect(result.observation, `${id}: Ps ${ps}`).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation, `${id}: Ps ${ps}`).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.assertions, `${id}: Ps ${ps}`).toMatchObject([{ kind: "positive", observed: state }])
     expect(result.criterionBranch, `${id}: Ps ${ps}`).toBeUndefined()
     expect(result.notTested, `${id}: Ps ${ps}`).toBeUndefined()
@@ -76,23 +74,21 @@ test.each(features)("$id grades the engine's DECRPM reply exactly as the app arm
   }
   // Ps 0 answers the query but not the mode: inconclusive, no assertion, the app arm's own reading.
   const zero = arm(context(`\x1b[?${number};0$y`, false, [], [])) as ReturnType<
-    NonNullable<(typeof modesProbes)[number]["termless"]>
+    NonNullable<(typeof modesProbes)[number]["lib"]>
   >
   expect(zero.pass, id).toBe(false)
   expect(zero.observation, id).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(zero.assertions, id).toBeUndefined()
   expect(zero.criterionBranch, id).toBeUndefined()
   // Ps 4: the terminal knows the mode and says it cannot be set. Unsupported, never a folded "reset" (#30557).
   const fourReply = `\x1b[?${number};4$y`
-  const four = arm(context(fourReply, true, [], [])) as ReturnType<
-    NonNullable<(typeof modesProbes)[number]["termless"]>
-  >
+  const four = arm(context(fourReply, true, [], [])) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
   expect(four.pass, id).toBe(false)
-  expect(four.observation, id).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(four.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(four.assertions, id).toMatchObject([
     { kind: "negative", expected: `DECRPM mode ${number} can be set`, observed: "permanently reset (Ps 4)" },
   ])
@@ -106,16 +102,14 @@ test.each(features)(
   ({ id, number, mode }) => {
     const arm = headless(id)
     for (const reply of ["", "\x1b[?25;1$y\x1b[?6c", `\x1b[?${number === 1 ? 2004 : 1};1$y`]) {
-      const result = arm(context(reply, true, [], [])) as ReturnType<
-        NonNullable<(typeof modesProbes)[number]["termless"]>
-      >
+      const result = arm(context(reply, true, [], [])) as ReturnType<NonNullable<(typeof modesProbes)[number]["lib"]>>
       const label = `${id}: ${JSON.stringify(reply)}`
       expect(result.criterionBranch, label).toBe("os-input-review")
       expect(result.notTested, label).toEqual({
         reason: "no-semantic-observable",
         noObservable: expect.stringContaining(`CSI ? ${number} $ p`),
       })
-      expect(result.checks, label).toMatchObject([
+      expect(result.tests, label).toMatchObject([
         { id: "review", status: "test-todo", reason: expect.stringMatching(/no DECRPM reply/) },
       ])
       expect(result.observation, label).toBeUndefined()

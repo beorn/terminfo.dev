@@ -10,10 +10,12 @@ import { unicodeProbes } from "./unicode.ts"
 import { regionReadbackProbe } from "./region-readback-kind.ts"
 import { headlessContext } from "./testing/group-harness.ts"
 import { createSemanticSurface } from "./testing/semantic-surface.ts"
+import { recordExecutedProbe } from "./helpers.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 function app(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => null,
@@ -30,6 +32,7 @@ function app(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture: () => "",
@@ -71,8 +74,8 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
 
 function byId(id: string) {
   const probe = [...textProbes, ...unicodeProbes].find((item) => item.id === id)
-  if (!probe?.term || !probe.termless) throw new Error(`missing ${id} callbacks`)
-  return { term: probe.term, termless: probe.termless }
+  if (!probe?.term || !probe.lib) throw new Error(`missing ${id} callbacks`)
+  return { term: probe.term, lib: probe.lib }
 }
 
 /** Sequential CPR fixture: each call returns the next scripted reply, null once exhausted. */
@@ -101,7 +104,7 @@ test("text width claims require an ASCII control and the named sample", async ()
     )
     expect(samples[0], id).toBe("AA")
     expect(samples[1], id).not.toBe("AA")
-    expect(measured.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(measured.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
     const invalid = await probe.term(app({ measureRenderedWidth: async (sample) => (sample === "AA" ? 1 : 2) }))
     expect(invalid.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -137,7 +140,7 @@ test("a measured 8-bit decoding context names the cause instead of grading a pla
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(String(result.observation?.note), id).toContain("decodes plain-written UTF-8 as ISO-8859-1")
     expect(widthCalls, id).toBe(0)
@@ -165,7 +168,7 @@ test("a measured 8-bit decoding context names the cause for the wide-wrap cursor
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(result.observation?.note)).toContain("decodes plain-written UTF-8 as ISO-8859-1")
   expect(cursorQueries).toBe(0)
@@ -176,7 +179,7 @@ test("a measured 8-bit decoding context names the cause for the wide-wrap cursor
 test("a measured utf8 decoding context leaves the wide rows to their own width oracle", async () => {
   const probe = byId("text.wide.emoji")
   const result = await probe.term(app({ utf8Decoding: async () => "utf8", measureRenderedWidth: async () => 2 }))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test("headless wide sample needs ASCII cell control before a support assertion", () => {
@@ -195,10 +198,10 @@ test("headless wide sample needs ASCII cell control before a support assertion",
       wide: phase === "sample" && col === 0,
     }),
   })
-  const supported = probe.termless(context)
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const supported = probe.lib(context)
+  expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(supported.assertions).toMatchObject([{ kind: "positive" }])
-  const missing = probe.termless(headless({ getCell: () => ({ ...blank, char: "🎉", wide: true }) }))
+  const missing = probe.lib(headless({ getCell: () => ({ ...blank, char: "🎉", wide: true }) }))
   expect(missing.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(missing.assertions).toBeUndefined()
 })
@@ -214,14 +217,14 @@ test("app cursor motion needs a measured start while cell-only text stays ungrad
       { row, col },
     ]
     const newline = await byId("text.newline").term(app({ queryCursorPosition: async () => replies.shift() ?? null }))
-    expect(newline.observation, `LF final ${row};${col}`).toMatchObject({ outcome, evidence: "query" })
+    expect(newline.observation, `LF final ${row};${col}`).toMatchObject({ outcome, assertionType: "query_reply" })
     expect(newline.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
     expect(JSON.parse(newline.response ?? "")).toMatchObject({ before: { row: 3, col: 5 }, pos: { row, col } })
   }
   const uncalibrated = await byId("text.newline").term(app({ queryCursorPosition: async () => ({ row: 4, col: 5 }) }))
   expect(uncalibrated.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   const basic = await byId("text.basic").term(app({ queryCursorPosition: async () => ({ row: 1, col: 6 }) }))
-  expect(basic.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(basic.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(basic.assertions).toBeUndefined()
 })
 
@@ -276,7 +279,7 @@ test("TBC measures old stops removed and HT reaching the right margin", async ()
     )
     expect(appResult.observation).toMatchObject({
       outcome: ignoredClear ? "unsupported" : "supported",
-      evidence: "behavior",
+      assertionType: "query_reply",
     })
     expect(JSON.parse(appResult.response ?? "")).toMatchObject({
       oldFirst: { col: 9 },
@@ -289,7 +292,7 @@ test("TBC measures old stops removed and HT reaching the right margin", async ()
     expect(terminal.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
 
     const parser = tabTerminal(ignoredClear)
-    const headlessResult = probe.termless(
+    const headlessResult = probe.lib(
       headless({
         cols: 80,
         feed: parser.write,
@@ -298,7 +301,7 @@ test("TBC measures old stops removed and HT reaching the right margin", async ()
     )
     expect(headlessResult.observation).toMatchObject({
       outcome: ignoredClear ? "unsupported" : "supported",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
     })
     expect(JSON.parse(headlessResult.response ?? "")).toMatchObject({
       oldFirst: { col: 9 },
@@ -310,25 +313,52 @@ test("TBC measures old stops removed and HT reaching the right margin", async ()
   }
 
   const stationary = tabTerminal(false, true)
-  const noStopResult = probe.termless(
+  const noStopResult = probe.lib(
     headless({
       feed: stationary.write,
       getCursor: () => ({ x: stationary.col - 1, y: 0, visible: true, style: null }),
     }),
   )
-  expect(noStopResult.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(noStopResult.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(JSON.parse(noStopResult.response ?? "")).toMatchObject({ after: { col: 1 } })
   expect(noStopResult.assertions).toMatchObject([{ kind: "negative" }])
 })
 
 test("TBC leaves failed setup, narrow geometry and absent or malformed cursor evidence inconclusive", async () => {
   const probe = byId("text.tbc")
-  expect(probe.termless(headless({ cols: 30 })).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-  })
+  // The undersized library branches retained no state read. Their previous parser-state label
+  // defaulted to FAILURE; canonicalization must neither fabricate buffer_state nor change it to TODO.
+  for (const [id, cols] of [
+    ["text.tbc", 30],
+    ["text.cht", 20],
+    ["text.cbt", 20],
+  ] as const) {
+    const writes: string[] = []
+    const declined = byId(id).lib(
+      headless({
+        cols,
+        feed: (bytes) => writes.push(bytes),
+        getCursor: () => {
+          throw new Error("Undersized tab fixture must not read cursor state")
+        },
+      }),
+    )
+    expect(declined.pass).toBe(false)
+    expect(declined.response).toBeUndefined()
+    expect(declined.observation).toBeUndefined()
+    expect(writes).toEqual([])
+    const recorded = recordExecutedProbe({
+      featureId: id,
+      attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+      assertions: [],
+      tests: declined.tests,
+    })
+    expect(recorded.status).toBe("test-failure")
+    expect(recorded.assertionType).toBeUndefined()
+    expect(recorded.reason).toBe(`Tab fixture needs at least ${id === "text.tbc" ? 34 : 21} columns`)
+  }
   const malformed = tabTerminal()
-  const result = probe.termless(
+  const result = probe.lib(
     headless({ feed: malformed.write, getCursor: () => ({ x: 0, y: 1, visible: true, style: null }) }),
   )
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -343,7 +373,8 @@ test("TBC leaves failed setup, narrow geometry and absent or malformed cursor ev
       queryCursorPosition: async () => (++queries === 4 ? null : { row: 1, col: missing.col }),
     }),
   )
-  expect(appResult.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+  expect(appResult.observation).toBeUndefined()
+  expect(appResult.tests).toMatchObject([{ id: "criterion", status: "test-failure", reason: "no-response" }])
   expect(missing.writes.at(-1)).toContain("\x1b[1;73H\x1bH")
 })
 
@@ -360,7 +391,7 @@ test.each([
       ? probe.term(
           app({ write: terminal.write, queryCursorPosition: async () => ({ row: 1, col: constant ?? terminal.col }) }),
         )
-      : probe.termless(
+      : probe.lib(
           headless({
             feed: terminal.write,
             getCursor: () => ({ x: (constant ?? terminal.col) - 1, y: 0, visible: true, style: null }),
@@ -381,7 +412,7 @@ test.each([
     const result = await run(terminal)
     expect(result.observation).toMatchObject({
       outcome: ignored ? "unsupported" : "supported",
-      evidence: mode === "app" ? "behavior" : "parser-state",
+      assertionType: mode === "app" ? "behavior" : "buffer_state",
     })
     expect(result.assertions).toMatchObject([{ kind: ignored ? "negative" : "positive" }])
     expect(terminal.writes.join("")).toContain(target)
@@ -404,7 +435,7 @@ test.each([
 test("headless HTS restores tab stops within the initialized grid width", () => {
   const feeds: string[] = []
   let cursorX = 5
-  const result = byId("text.hts").termless(
+  const result = byId("text.hts").lib(
     headless({
       cols: 80,
       feed(sequence) {
@@ -423,14 +454,14 @@ test("headless HTS restores tab stops within the initialized grid width", () => 
 test("grapheme ID measures the ZWJ sample width, including headless cell state", async () => {
   const probe = byId("unicode.grapheme-cursor")
   const result = await probe.term(app({ measureRenderedWidth: async () => 2 }))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions).toMatchObject([{ kind: "positive", expected: "2", observed: "2" }])
   expect((await probe.term(app())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
   const sample = "👨‍👩‍👧"
   const blank = headless().getCell(0, 0)
   let phase = "empty"
-  const headlessResult = probe.termless(
+  const headlessResult = probe.lib(
     headless({
       feed(sequence) {
         if (sequence.endsWith("AB")) phase = "seed"
@@ -446,14 +477,14 @@ test("grapheme ID measures the ZWJ sample width, including headless cell state",
       getCursor: () => ({ x: phase === "sample" ? 2 : 0, y: 0, visible: true, style: null }),
     }),
   )
-  expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(headlessResult.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(headlessResult.assertions).toMatchObject([{ kind: "positive", observed: headlessResult.response }])
 })
 
 test("Unicode width and tab callbacks retain measured state and query evidence", async () => {
   const blank = headless().getCell(0, 0)
   let ambiguousPhase = "empty"
-  const ambiguous = byId("unicode.east-asian-ambiguous").termless(
+  const ambiguous = byId("unicode.east-asian-ambiguous").lib(
     headless({
       cols: 4,
       feed(sequence) {
@@ -471,11 +502,11 @@ test("Unicode width and tab callbacks retain measured state and query evidence",
       getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     }),
   )
-  expect(ambiguous.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(ambiguous.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(JSON.parse(ambiguous.response ?? "")).toMatchObject({ before: ["A", "Q"], after: ["●", "X", "", ""] })
 
   let tabPhase = "empty"
-  const tab = byId("unicode.tab-stops").termless(
+  const tab = byId("unicode.tab-stops").lib(
     headless({
       cols: 10,
       feed(sequence) {
@@ -491,17 +522,17 @@ test("Unicode width and tab callbacks retain measured state and query evidence",
       getCursor: () => ({ x: 0, y: 0, visible: true, style: null }),
     }),
   )
-  expect(tab.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(tab.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(JSON.parse(tab.response ?? "")).toMatchObject({ before: ["A", "B"], after: { 8: "B" } })
 
   const appTab = await byId("unicode.tab-stops").term(app({ queryCursorPosition: async () => ({ row: 1, col: 10 }) }))
-  expect(appTab.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+  expect(appTab.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(appTab.response).toBe(JSON.stringify({ row: 1, col: 10 }))
 
   const appWrap = await byId("unicode.wrap-boundary").term(
     app({ rows: 2, cols: 4, queryCursorPosition: async () => ({ row: 2, col: 2 }) }),
   )
-  expect(appWrap.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+  expect(appWrap.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(appWrap.response).toBe(JSON.stringify({ row: 2, col: 2 }))
 })
 
@@ -523,15 +554,14 @@ test("text.wrap qualifies DECAWM then writes control then target before grading"
       queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }, { row: 2, col: 2 }),
     }),
   )
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(supported.assertions).toMatchObject([{ kind: "positive" }])
   expect(writes).toEqual(["\x1b[1;1H", "\x1b[1;1H\x1b[2K", "W".repeat(60), "\x1b[1;1H\x1b[2K", "W".repeat(61) + "X"])
   const narrowWrites: string[] = []
   const result = await byId("text.wrap").term(app({ cols: 61, rows: 1, write: (s) => narrowWrites.push(s) }))
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(result).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(narrowWrites).toEqual([])
 })
@@ -549,7 +579,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
     expect(result.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(result.assertions).toBeUndefined()
   }
@@ -561,13 +591,17 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
       queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }, { row: 1, col: 61 }),
     }),
   )
-  expect(wrongTarget.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(wrongTarget.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(wrongTarget.assertions).toMatchObject([{ kind: "negative" }])
 
   const missingHome = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue(null) }),
   )
-  expect(missingHome.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(missingHome.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "no-response",
+    assertionType: "query_reply",
+  })
 
   const missingControl = await byId("text.wrap").term(
     app({ cols: 61, queryMode: async () => "set", queryCursorPosition: cursorQueue({ row: 1, col: 1 }, null) }),
@@ -575,7 +609,7 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
   expect(missingControl.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "no-response",
-    evidence: "query",
+    assertionType: "query_reply",
   })
 
   const missingTarget = await byId("text.wrap").term(
@@ -585,7 +619,11 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
       queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 61 }),
     }),
   )
-  expect(missingTarget.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(missingTarget.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "no-response",
+    assertionType: "query_reply",
+  })
 
   for (const [mode, reason] of [
     ["reset", "insufficient-evidence"],
@@ -603,7 +641,11 @@ test("text.wrap negative controls: unqualified control, spoofing, wrong target, 
         },
       }),
     )
-    expect(result.observation, String(mode)).toMatchObject({ outcome: "inconclusive", reason, evidence: "query" })
+    expect(result.observation, String(mode)).toMatchObject({
+      outcome: "inconclusive",
+      reason,
+      assertionType: "query_reply",
+    })
     expect(writes, String(mode)).toEqual([])
   }
 })
@@ -619,7 +661,7 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
         queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 9 }, { row: 1, col: 6 }),
       }),
     )
-    expect(supported.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(supported.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(supported.assertions?.[0], id).toMatchObject({ kind: "positive" })
     expect(supported.assertions?.[0]?.expected, id).toContain("combined HT/HTS fixture")
     expect(writes[0], id).toBe("\x1b[3g\x1b[1;1H")
@@ -634,7 +676,7 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
     expect(spoofed.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(spoofed.assertions, id).toBeUndefined()
 
@@ -642,18 +684,22 @@ test("text.tab and text.hts grade the combined HT/HTS fixture from qualified seq
     const ignored = await byId(id).term(
       app({ cols: 80, queryCursorPosition: cursorQueue({ row: 1, col: 1 }, { row: 1, col: 9 }, { row: 1, col: 9 }) }),
     )
-    expect(ignored.observation, id).toMatchObject({ outcome: "unsupported", evidence: "query" })
+    expect(ignored.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
     expect(ignored.assertions, id).toMatchObject([{ kind: "negative" }])
 
     const unqualified = await byId(id).term(app({ cols: 80, queryCursorPosition: async () => ({ row: 1, col: 6 }) }))
     expect(unqualified.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
 
     const missing = await byId(id).term(app({ cols: 80, queryCursorPosition: cursorQueue(null) }))
-    expect(missing.observation, id).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+    expect(missing.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+      assertionType: "query_reply",
+    })
   }
 })
 
@@ -671,10 +717,9 @@ test("tab combined fixture declines too-small geometry before any write or query
           },
         }),
       )
-      expect(result.observation, `${id} cols=${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result, `${id} cols=${cols}`).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
       expect(writes, `${id} cols=${cols}`).toEqual([])
     }
@@ -690,10 +735,9 @@ test("HTS restores stops only inside the measured 61-column fixture", async () =
   expect(writes.at(-1)).not.toContain("\x1b[1;65H\x1bH")
   const small: string[] = []
   const result = await byId("text.hts").term(app({ cols: 5, write: (s) => small.push(s) }))
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(result).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(small).toEqual([])
 })
@@ -710,10 +754,9 @@ test("tab and Unicode size refusals record no feature measurement or writes", as
   ]) {
     const writes: string[] = []
     const result = await byId(id).term(app({ cols: 1, rows: 1, write: (sequence) => writes.push(sequence) }))
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes, id).toEqual([])
   }
@@ -754,10 +797,9 @@ test("remaining text fixtures decline a 1x1 grid before any write or width query
         },
       }),
     )
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes, id).toEqual([])
   }
@@ -765,12 +807,12 @@ test("remaining text fixtures decline a 1x1 grid before any write or width query
 
 test("headless wrap uses initialized 61 columns and declines a one-row grid", () => {
   const textWrites: string[] = []
-  byId("text.wrap").termless(headless({ cols: 61, feed: (sequence) => textWrites.push(sequence) }))
+  byId("text.wrap").lib(headless({ cols: 61, feed: (sequence) => textWrites.push(sequence) }))
   expect(textWrites).toEqual(["\x1b[2J\x1b[H", "X".repeat(62)])
   const unicodeWrites: string[] = []
   let phase = "empty"
   const blank = headless().getCell(0, 0)
-  const unicodeResult = byId("unicode.wrap-boundary").termless(
+  const unicodeResult = byId("unicode.wrap-boundary").lib(
     headless({
       cols: 61,
       feed(sequence) {
@@ -789,12 +831,12 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
       getCursor: () => ({ x: phase === "setup" ? 60 : 0, y: 0, visible: true, style: null }),
     }),
   )
-  expect(unicodeResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(unicodeResult.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(unicodeWrites).toContainEqual("A".repeat(61))
   expect(unicodeWrites).toContainEqual("\x1b[1;61H")
   expect(unicodeWrites).toContainEqual("中")
   const tooShort: string[] = []
-  const result = byId("text.wrap").termless(
+  const result = byId("text.wrap").lib(
     headless({
       cols: 61,
       getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
@@ -804,17 +846,16 @@ test("headless wrap uses initialized 61 columns and declines a one-row grid", ()
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(tooShort).toEqual([])
   const unicodeTooShort: string[] = []
-  const unicodeShortResult = byId("unicode.wrap-boundary").termless(
+  const unicodeShortResult = byId("unicode.wrap-boundary").lib(
     headless({
       cols: 61,
       getScrollback: () => ({ viewportOffset: 0, totalLines: 1, screenLines: 1 }),
       feed: (s) => unicodeTooShort.push(s),
     }),
   )
-  expect(unicodeShortResult.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(unicodeShortResult).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(unicodeTooShort).toEqual([])
 })
@@ -863,7 +904,7 @@ test("headless tab and reverse-index fixtures restore after parser inspection th
   for (const id of ["text.tab", "unicode.tab-stops", "text.reverse-index-scroll"]) {
     const feeds: string[] = []
     expect(() =>
-      byId(id).termless(
+      byId(id).lib(
         headless({
           cols: 61,
           feed: (sequence) => feeds.push(sequence),
@@ -891,7 +932,7 @@ test("text.reverse-index-scroll leaves default margins so a later probe does not
   if (!row) return
   expect(row.reset, "the row restores the full-screen region").toBe("\x1b[r")
   const ctx = headlessContext(createSemanticSurface({ rows: 24, cols: 80 }))
-  expect(regionReadbackProbe(row).termless!(ctx).observation?.outcome).toBe("supported")
+  expect(regionReadbackProbe(row).lib!(ctx).observation?.outcome).toBe("supported")
   // The row left "KEEPS!" on screen row 1. With default margins a screen-top RI scrolls it away; while
   // margins 3-10 stand, row 1 sits ABOVE the region and cannot move.
   expect(ctx.getCell(0, 0).char, "the control row is exposed to a screen scroll").toBe("K")
@@ -920,11 +961,10 @@ test("invalid headless geometry never feeds wrap or tab fixtures", () => {
   for (const id of ["text.wrap", "text.tab", "unicode.wrap-boundary", "unicode.tab-stops"]) {
     for (const cols of [Number.NaN, Number.POSITIVE_INFINITY, 61.5]) {
       const feeds: string[] = []
-      const result = byId(id).termless(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
-      expect(result.observation, `${id} cols=${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      const result = byId(id).lib(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
+      expect(result, `${id} cols=${cols}`).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
       expect(feeds).toEqual([])
     }
@@ -1030,8 +1070,8 @@ function emojiTerminal(
 
 test("headless emoji width measures the declared sample at two columns from real writes", () => {
   for (const id of Object.keys(EMOJI_WIDTH_SAMPLES) as EmojiWidthId[]) {
-    const result = byId(id).termless(emojiTerminal(id, 2))
-    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    const result = byId(id).lib(emojiTerminal(id, 2))
+    expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(result.assertions, id).toMatchObject([{ kind: "positive" }])
     expect(JSON.parse(result.response ?? ""), id).toMatchObject({ width: 2, markerColumns: [2] })
   }
@@ -1039,23 +1079,23 @@ test("headless emoji width measures the declared sample at two columns from real
 
 test("headless emoji width concludes unsupported for a genuinely different measured width", () => {
   for (const width of [1, 4]) {
-    const result = byId("text.wide.emoji-flags").termless(emojiTerminal("text.wide.emoji-flags", width))
+    const result = byId("text.wide.emoji-flags").lib(emojiTerminal("text.wide.emoji-flags", width))
     expect(result.observation, `flags width ${width}`).toMatchObject({
       outcome: "unsupported",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
     })
     expect(result.assertions, `flags width ${width}`).toMatchObject([{ kind: "negative" }])
     expect(JSON.parse(result.response ?? ""), `flags width ${width}`).toMatchObject({ width })
   }
-  const six = byId("text.wide.emoji-zwj").termless(emojiTerminal("text.wide.emoji-zwj", 6))
-  expect(six.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const six = byId("text.wide.emoji-zwj").lib(emojiTerminal("text.wide.emoji-zwj", 6))
+  expect(six.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(JSON.parse(six.response ?? "")).toMatchObject({ width: 6, markerColumns: [6] })
 })
 
 test("headless emoji width keeps unqualified or ambiguous readbacks inconclusive", () => {
   const id: EmojiWidthId = "text.wide.emoji-flags"
   const inconclusive = (ctx: LibProbeSource, why: string) => {
-    const result = byId(id).termless(ctx)
+    const result = byId(id).lib(ctx)
     expect(result.observation, why).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(result.assertions, why).toBeUndefined()
     return result
@@ -1080,11 +1120,10 @@ test("headless emoji width refuses narrow geometry before any write", () => {
     ["text.wide.emoji-zwj", 7],
   ] as const) {
     const feeds: string[] = []
-    const result = byId(id).termless(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    const result = byId(id).lib(headless({ cols, feed: (sequence) => feeds.push(sequence) }))
+    expect(result, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(feeds, id).toEqual([])
   }
@@ -1092,12 +1131,12 @@ test("headless emoji width refuses narrow geometry before any write", () => {
 
 test("headless emoji width restores the owned row and propagates unexpected failures", () => {
   const feeds: string[] = []
-  byId("text.wide.emoji-flags").termless(emojiTerminal("text.wide.emoji-flags", 2, { feeds }))
+  byId("text.wide.emoji-flags").lib(emojiTerminal("text.wide.emoji-flags", 2, { feeds }))
   expect(feeds.at(-1)).toBe(EMOJI_HOME)
   expect(feeds.length).toBeGreaterThan(1)
 
   expect(() =>
-    byId("text.wide.emoji-flags").termless(
+    byId("text.wide.emoji-flags").lib(
       headless({
         cols: 80,
         getCell: () => {

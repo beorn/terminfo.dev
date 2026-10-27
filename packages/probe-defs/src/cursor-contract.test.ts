@@ -337,7 +337,7 @@ test("the harness replays every Cursor capability deterministically (satisfactio
     const probe = cursorProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Cursor probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless: headlessContext(interpretingCursor()) })
     const second = await regradeRow(probe, row, { headless: headlessContext(interpretingCursor()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
@@ -369,11 +369,11 @@ test("cursor.shape is inconclusive when style readback is omitted, bound when pr
   const omitted = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
   expect(omitted.after).toBe("inconclusive")
   expect(omitted.satisfies).toBe(false)
-  const result = probe.termless?.(headlessContext(inertModel()))
+  const result = probe.lib?.(headlessContext(inertModel()))
   expect(result?.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
 })
 

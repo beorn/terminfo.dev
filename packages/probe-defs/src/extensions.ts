@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto"
-import type { ProbeDefinition, ProbeCallbackResult, LibProbeSource, TermProbeSource, TerminalQueryOutcome } from "./types.ts"
+import type {
+  ProbeDefinition,
+  ProbeCallbackResult,
+  LibProbeSource,
+  TermProbeSource,
+  TerminalQueryOutcome,
+} from "./types.ts"
 import {
   REPLY_AFTER_SENTINEL_NOTE,
   decrpmPs,
@@ -56,21 +62,24 @@ function oscReplyResult(
       response: raw,
       observation: {
         outcome: "supported",
-        evidence: "query",
+        assertionType: "query_reply",
         ...(sentinel && { note: REPLY_AFTER_SENTINEL_NOTE }),
       },
-      assertions: [{ kind: "positive", expected, observed: frame }],
+      assertions: [{ assertionType: "query_reply" as const, kind: "positive", expected, observed: frame }],
     }
   }
   const silent = sentinelNegativeResult(raw, sentinel, expected)
   if (silent) return silent
+  if (raw.length === 0) {
+    return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
+  }
   return {
     pass: false,
     response: raw,
     observation: {
       outcome: "inconclusive",
       reason: prefix.test(raw) ? "invalid-reply" : "no-response",
-      evidence: "query",
+      assertionType: "query_reply",
     },
   }
 }
@@ -88,7 +97,7 @@ function unverifiedEffect(note: string, response?: string): ProbeCallbackResult 
     pass: false,
     ...(response !== undefined && { response }),
     note,
-    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed", note },
+    tests: [{ id: "criterion", status: "test-todo", reason: note }],
   }
 }
 
@@ -97,7 +106,7 @@ function unmeasuredStateEffect(feature: string): ProbeCallbackResult {
   return {
     pass: false,
     note,
-    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+    tests: [{ id: "criterion", status: "test-todo", reason: note }],
   }
 }
 
@@ -106,13 +115,15 @@ const sixelDa1Reply = /\x1b\[\?([0-9]+(?:;[0-9]+)*);?c/
 function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult {
   const match = frame ? sixelDa1Reply.exec(frame) : null
   if (!match) {
+    if (raw.length === 0)
+      return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
     return {
       pass: false,
       response: raw,
       observation: {
         outcome: "inconclusive",
         reason: raw.includes("\x1b[?") ? "invalid-reply" : "no-response",
-        evidence: "query",
+        assertionType: "query_reply",
       },
     }
   }
@@ -120,9 +131,10 @@ function sixelDa1Result(raw: string, frame: string | null): ProbeCallbackResult 
   return {
     pass: advertised,
     response: raw,
-    observation: { outcome: advertised ? "supported" : "unsupported", evidence: "query" },
+    observation: { outcome: advertised ? "supported" : "unsupported", assertionType: "query_reply" },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: advertised ? "positive" : "negative",
         expected: "Complete DA1 advertises Sixel attribute 4",
         observed: match[0],
@@ -163,13 +175,15 @@ function sixelGeometryResult(
       const silent = sentinelNegativeResult(raw, sentinel, "Complete Sixel geometry response for item 2")
       if (silent) return silent
     }
+    if (raw.length === 0)
+      return { pass: false, response: raw, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
     return {
       pass: false,
       response: raw,
       note,
       observation: {
         outcome: "inconclusive",
-        evidence: "query",
+        assertionType: "query_reply",
         reason: malformed ? "invalid-reply" : missingReason,
         note,
       },
@@ -189,7 +203,7 @@ function sixelGeometryResult(
       note,
       observation: {
         outcome: "inconclusive",
-        evidence: "query",
+        assertionType: "query_reply",
         reason: validFailure ? "insufficient-evidence" : "invalid-reply",
         note,
       },
@@ -209,7 +223,7 @@ function sixelGeometryResult(
       pass: false,
       response: raw,
       note,
-      observation: { outcome: "inconclusive", evidence: "query", reason: "invalid-reply", note },
+      observation: { outcome: "inconclusive", assertionType: "query_reply", reason: "invalid-reply", note },
     }
   }
   if (width === 0 || height === 0) {
@@ -218,7 +232,7 @@ function sixelGeometryResult(
       pass: false,
       response: raw,
       note,
-      observation: { outcome: "inconclusive", evidence: "query", reason: "insufficient-evidence", note },
+      observation: { outcome: "inconclusive", assertionType: "query_reply", reason: "insufficient-evidence", note },
     }
   }
   const note = `Current Sixel geometry reported as ${width}×${height} pixels`
@@ -226,9 +240,10 @@ function sixelGeometryResult(
     pass: true,
     response: raw,
     note,
-    observation: { outcome: "supported", evidence: "query", note },
+    observation: { outcome: "supported", assertionType: "query_reply", note },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: "positive",
         expected: "XTSMGRAPHICS item 2 read returns status 0 and two positive pixel dimensions",
         observed: reply[0],
@@ -263,10 +278,10 @@ function oscColorQueryProbe(id: string, oscCode: number): ProbeDefinition {
             `Complete OSC ${oscCode} color reply`,
             prefix,
           ),
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   }
 }
 
@@ -301,7 +316,9 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
   }
   const inconclusive = (note: string): ProbeCallbackResult => ({
     pass: false,
-    observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+    tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
+      { id: string; status: "test-failure"; reason: string },
+    ],
   })
   return {
     ...probe(
@@ -345,9 +362,10 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
           return {
             pass: ok,
             response: JSON.stringify({ initial: initial.raw, set: applied.raw, afterReset: afterReset.raw }),
-            observation: { outcome: ok ? "supported" : "unsupported", evidence: "query" },
+            observation: { outcome: ok ? "supported" : "unsupported", assertionType: "query_reply" },
             assertions: [
               {
+                assertionType: "query_reply" as const,
                 kind: (ok ? "positive" : "negative") as "positive" | "negative",
                 expected: `${id}: OSC ${setCode} reports the initial ${initial.rgb} after OSC ${resetCode}`,
                 observed: afterReset.raw,
@@ -359,12 +377,12 @@ function highlightResetProbe(id: string, setCode: number, resetCode: number): Pr
           ctx.write(`\x1b]${setCode};rgb:${initial.rgb}\x07`)
         }
       },
-      "query",
+      "query_reply",
     ),
     // The callback mutates the highlight slot, so the collector must hold a disposable receipt:
     // the same classification the OSC 10-14 reset probes carry.
     termNeedsDisposable: true,
-    termlessObservationEvidence: "none",
+    libAssertionType: null,
   }
 }
 
@@ -387,14 +405,14 @@ function oscSimpleQueryProbe(
           return oscReplyResult(raw, pattern.exec(raw)?.[0] ?? null, expected, prefix)
         },
         async (ctx) => oscOutcomeResult(await ctx.queryWithSentinelOutcome(query, pattern), expected, prefix),
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   }
 }
 
-function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["termless"] {
+function colorResetProbe(setCode: number, resetCode: number, index?: number): ProbeDefinition["lib"] {
   const indexPart = index === undefined ? "" : `${index};`
   const query = `\x1b]${setCode};${indexPart}?\x07`
   const replyPattern = new RegExp(
@@ -439,7 +457,7 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Color mutation or readback control was not established",
           },
         }
@@ -451,9 +469,10 @@ function colorResetProbe(setCode: number, resetCode: number, index?: number): Pr
       return {
         pass,
         response,
-        observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+        observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
         assertions: [
           {
+            assertionType: "query_reply" as const,
             kind: pass ? "positive" : "negative",
             expected: `OSC ${resetCode} restores the prior OSC ${setCode} color after a verified change`,
             observed: response,
@@ -481,11 +500,12 @@ function colorSetIgnoredResult(response: string, setCode: number): ProbeCallback
     response,
     observation: {
       outcome: "unsupported",
-      evidence: "behavior",
+      assertionType: "query_reply",
       note: "OSC set did not change the queried color",
     },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: "negative",
         expected: `OSC ${setCode} changes the queried color`,
         observed: response,
@@ -558,7 +578,7 @@ async function colorResetAppProbe(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note: "Color mutation or readback control was not established",
       },
     }
@@ -570,9 +590,10 @@ async function colorResetAppProbe(
   return {
     pass,
     response,
-    observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior" },
+    observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
         expected: `OSC ${spec.resetCode} restores the prior OSC ${spec.setCode} color after a verified change`,
         observed: response,
@@ -588,7 +609,7 @@ function resetProbe(id: string, setCode: number, resetCode: number, index?: numb
       id,
       colorResetProbe(setCode, resetCode, index),
       (ctx) => colorResetAppProbe(ctx, { setCode, resetCode, index }),
-      "behavior",
+      "query_reply",
     ),
     termNeedsDisposable: true,
   }
@@ -606,9 +627,10 @@ function colorStackResult(before: string, requested: string, changed: string, re
     pass,
     response,
     note,
-    observation: { outcome: pass ? "supported" : "unsupported", evidence: "behavior", note },
+    observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
         expected: "Changed foreground and restored original after color-stack pop",
         observed: response,
@@ -627,12 +649,7 @@ function promptConsumptionResult(consumed: boolean | null): ProbeCallbackResult 
   return {
     pass: false,
     note,
-    observation: {
-      outcome: "inconclusive",
-      evidence: consumed === null ? "query" : "consumed",
-      reason: consumed === null ? "no-response" : "insufficient-evidence",
-      note,
-    },
+    tests: [{ id: "criterion", status: consumed === null ? "test-failure" : "test-todo", reason: note }],
   }
 }
 
@@ -666,7 +683,11 @@ function promptMarkResult(ctx: LibProbeSource, sequence: string, noObservable: s
  * `rawReplyRef` to — no not-tested coverage is claimed from CPR alone. A null read, or a mark that never
  * advanced, stays a real consumption observation, never not-tested.
  */
-async function promptMarkAppResult(ctx: TermProbeSource, sequence: string, noObservable: string): Promise<ProbeCallbackResult> {
+async function promptMarkAppResult(
+  ctx: TermProbeSource,
+  sequence: string,
+  noObservable: string,
+): Promise<ProbeCallbackResult> {
   ctx.write("\x1b[1;1H\x1b[2K")
   const home = await ctx.queryCursorPosition()
   ctx.write(sequence + "X")
@@ -687,13 +708,13 @@ async function promptMarkAppResult(ctx: TermProbeSource, sequence: string, noObs
   return notTestedResult(noObservable, { home, target, control })
 }
 
-function colorStackError(evidence: "query" | "behavior", action: string, error: unknown): ProbeCallbackResult {
+function colorStackError(actionKind: "query" | "behavior", action: string, error: unknown): ProbeCallbackResult {
   if (!(error instanceof Error)) throw error
-  const note = `${action} (${evidence}) failed: ${error.name}: ${error.message}`
-  return { pass: false, note, observation: { outcome: "error", reason: "collector-error", evidence, note } }
+  const note = `${action} (${actionKind}) failed: ${error.name}: ${error.message}`
+  return { pass: false, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
 }
 
-function colorStackProbe(): ProbeDefinition["termless"] {
+function colorStackProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
     if (ctx.queryWithSentinelOutcome) {
       const silence = sentinelSilenceResult(
@@ -738,7 +759,7 @@ function colorStackProbe(): ProbeDefinition["termless"] {
         pass: false,
         response: JSON.stringify({ query: foregroundQuery, originalRaw }),
         note: "No original OSC 10 foreground reply",
-        observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
       }
     }
     let pushed = false
@@ -768,7 +789,7 @@ function colorStackProbe(): ProbeDefinition["termless"] {
           ? {
               pass: false,
               note: "No OSC 10 reply after changing or popping color",
-              observation: { outcome: "inconclusive", evidence: "query", reason: "no-response" },
+              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
             }
           : colorStackResult(before, requested, changed, restored)
       return result
@@ -799,14 +820,16 @@ function colorStackProbe(): ProbeDefinition["termless"] {
           .join("; ")
         const primaryNote = unexpectedlyFailed
           ? `Color-stack callback threw unexpectedly: ${primaryError instanceof Error ? `${primaryError.name}: ${primaryError.message}` : String(primaryError)}`
-          : result?.observation?.outcome === "error"
+          : result?.tests?.some((test) => test.status === "test-failure")
             ? result.note
             : undefined
         const note = primaryNote ? `${primaryNote}; ${cleanupNote}` : cleanupNote
         if (unexpectedlyFailed || cleanupFailures.some(({ error }) => !(error instanceof Error))) {
           throw new AggregateError(
             [
-              ...(unexpectedlyFailed || result?.observation?.outcome === "error" ? [primaryError] : []),
+              ...(unexpectedlyFailed || result?.tests?.some((test) => test.status === "test-failure")
+                ? [primaryError]
+                : []),
               ...cleanupFailures.map(({ error }) => error),
             ],
             note,
@@ -814,10 +837,10 @@ function colorStackProbe(): ProbeDefinition["termless"] {
           )
         }
         if (result) {
-          const evidence = result.observation?.outcome === "error" ? result.observation.evidence : "behavior"
           result.pass = false
           result.note = note
-          result.observation = { outcome: "error", reason: "collector-error", evidence, note }
+          result.tests = [{ id: "criterion", status: "test-failure", reason: note }]
+          delete result.observation
           delete result.response
           delete result.assertions
         }
@@ -826,7 +849,9 @@ function colorStackProbe(): ProbeDefinition["termless"] {
   }
 }
 
-async function colorStackTermProbe(ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0]): Promise<ProbeCallbackResult> {
+async function colorStackTermProbe(
+  ctx: Parameters<NonNullable<ProbeDefinition["term"]>>[0],
+): Promise<ProbeCallbackResult> {
   const originalReply = await ctx.queryWithSentinelOutcome(foregroundQuery, foregroundReply)
   const before = foregroundValue(originalReply.match?.[0] ?? "")
   if (!before) return unansweredQuery(originalReply, "No original OSC 10 foreground reply; color stack was not changed")
@@ -854,7 +879,7 @@ async function colorStackTermProbe(ctx: Parameters<NonNullable<ProbeDefinition["
   }
 }
 
-function osc720ScrollProbe(): ProbeDefinition["termless"] {
+function osc720ScrollProbe(): ProbeDefinition["lib"] {
   return (ctx) => {
     for (let i = 0; i < 30; i++) ctx.feed(`scroll-${i}\r\n`)
     const before = ctx.getScrollback()
@@ -926,9 +951,10 @@ function kittyProtocolAbsent(response: string): ProbeCallbackResult {
     pass: false,
     response,
     note,
-    observation: { outcome: "unsupported", evidence: "query", note },
+    observation: { outcome: "unsupported", assertionType: "query_reply", note },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: "negative",
         expected: "A complete Kitty keyboard flags reply answers before the DA1 reply",
         observed: response,
@@ -950,7 +976,13 @@ function kittyInconclusive(
     pass: false,
     response,
     note,
-    observation: { outcome: "inconclusive", evidence: "query", reason, note },
+    ...(response.length === 0
+      ? {
+          tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
+            { id: string; status: "test-failure"; reason: string },
+          ],
+        }
+      : { observation: { outcome: "inconclusive", assertionType: "query_reply", reason, note } }),
   }
 }
 
@@ -1009,7 +1041,7 @@ export function kittyKeyboardFlagProbe(id: string, pushValue: number, flagBit: n
       }
     },
   )
-  return { ...definition, termObservationEvidence: "query", termlessObservationEvidence: "query" }
+  return { ...definition, termAssertionType: "query_reply", libAssertionType: "query_reply" }
 }
 
 function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallbackResult {
@@ -1017,13 +1049,20 @@ function unansweredQuery(reply: TerminalQueryOutcome, note: string): ProbeCallba
   // never answered DA1 at all, so it stays inconclusive.
   const silent = sentinelNegativeResult(reply.raw, reply.sentinel, note)
   if (silent) return silent
+  if (reply.raw.length === 0)
+    return {
+      pass: false,
+      response: reply.raw,
+      note,
+      tests: [{ id: "criterion", status: "test-failure", reason: note }],
+    }
   return {
     pass: false,
     response: reply.raw,
     note,
     observation: {
       outcome: "inconclusive",
-      evidence: "query",
+      assertionType: "query_reply",
       reason: reply.reason === "timeout" ? "timeout" : "no-response",
       note,
     },
@@ -1060,9 +1099,10 @@ function keyboardFlagsResult(response: string, flagBits: number): ProbeCallbackR
     pass,
     response,
     note,
-    observation: { outcome: pass ? "supported" : "unsupported", evidence: "query", note },
+    observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", note },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: pass ? "positive" : "negative",
         expected: `Acknowledged flags include mask ${flagBits}`,
         observed: `flags=${flags}`,
@@ -1091,12 +1131,19 @@ function graphicsQueryResult(
     note,
     observation: {
       outcome: pass ? "supported" : "inconclusive",
-      evidence: "query",
+      assertionType: "query_reply",
       ...(!pass && { reason: "invalid-reply" as const }),
       note,
     },
     ...(pass && {
-      assertions: [{ kind: "positive" as const, expected: `Graphics reply i=${imageId};OK`, observed: match[0] }],
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "positive" as const,
+          expected: `Graphics reply i=${imageId};OK`,
+          observed: match[0],
+        },
+      ],
     }),
   }
 }
@@ -1132,7 +1179,10 @@ function imageTransferRequest(imageNumber: number): string {
   return `\x1b_Ga=t,f=24,s=1,v=1,t=d,I=${imageNumber};/wAA\x1b\\`
 }
 
-function allocatedImageResult(response: string, imageNumber: number): { imageId: number | null; result: ProbeCallbackResult } {
+function allocatedImageResult(
+  response: string,
+  imageNumber: number,
+): { imageId: number | null; result: ProbeCallbackResult } {
   const match = allocationReply(imageNumber).exec(response)
   const imageId = match ? Number(kittyControlValue(match[1] ?? "", "i")) : 0
   if (!match || imageId < 1 || imageId > 0xffffffff) {
@@ -1156,13 +1206,14 @@ function allocatedImageResult(response: string, imageNumber: number): { imageId:
       note,
       observation: {
         outcome: pass ? "supported" : "inconclusive",
-        evidence: "query",
+        assertionType: "query_reply",
         ...(!pass && { reason: "invalid-reply" as const }),
         note,
       },
       ...(pass && {
         assertions: [
           {
+            assertionType: "query_reply" as const,
             kind: "positive" as const,
             expected: `A fresh image ID and I=${imageNumber};OK acknowledge the transmitted RGB pixel`,
             observed: match[0],
@@ -1265,9 +1316,9 @@ function kittyImageTransferProbe(id: string, display: boolean): ProbeDefinition 
           if (imageId) ctx.write(`\x1b_Ga=d,d=I,i=${imageId},q=2\x1b\\`)
         }
       },
-      "query",
+      "query_reply",
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   }
 }
 
@@ -1300,10 +1351,11 @@ function kittyForegroundResult(response: string): ProbeCallbackResult {
     pass,
     response,
     note,
-    observation: { outcome: pass ? "supported" : "inconclusive", evidence: "query", note },
+    observation: { outcome: pass ? "supported" : "inconclusive", assertionType: "query_reply", note },
     ...(pass && {
       assertions: [
         {
+          assertionType: "query_reply" as const,
           kind: "positive" as const,
           expected: "OSC 21 foreground query returns RGB or an explicitly undefined value",
           observed: match[0],
@@ -1317,7 +1369,7 @@ function textSizingResult(
   before: { row: number; col: number },
   width: { row: number; col: number },
   scale: { row: number; col: number },
-  evidence: "behavior" | "parser-state",
+  assertionType: "query_reply" | "buffer_state",
 ): ProbeCallbackResult {
   const widthWorks = width.row === before.row && width.col === before.col + 2
   const scaleWorks = scale.row === width.row && scale.col === width.col + 2
@@ -1328,9 +1380,10 @@ function textSizingResult(
     pass,
     note,
     response,
-    observation: { outcome: pass ? "supported" : "unsupported", evidence, note },
+    observation: { outcome: pass ? "supported" : "unsupported", assertionType, note },
     assertions: [
       {
+        assertionType: assertionType,
         kind: pass ? "positive" : "negative",
         expected: "Each OSC 66 width/scale sequence advances two columns without changing row",
         observed: response,
@@ -1362,9 +1415,14 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
           pass: true,
           response,
           note,
-          observation: { outcome: "supported", evidence: "query", note },
+          observation: { outcome: "supported", assertionType: "query_reply", note },
           assertions: [
-            { kind: "positive", expected: "OSC 52 c query returns the exact written nonce", observed: frame[0] },
+            {
+              assertionType: "query_reply" as const,
+              kind: "positive",
+              expected: "OSC 52 c query returns the exact written nonce",
+              observed: frame[0],
+            },
           ],
         }
       }
@@ -1384,11 +1442,13 @@ function headlessClipboardRoundtrip(ctx: LibProbeSource): ProbeCallbackResult {
       : reason === "insufficient-evidence"
         ? "OSC 52 c replied with data other than the written nonce"
         : "No OSC 52 c query response from the isolated backend"
+  if (response.length === 0)
+    return { pass: false, response, note, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
   return {
     pass: false,
     response,
     note,
-    observation: { outcome: "inconclusive", reason, evidence: "query", note },
+    observation: { outcome: "inconclusive", reason, assertionType: "query_reply", note },
   }
 }
 
@@ -1397,7 +1457,7 @@ function liveClipboardNotTested(): ProbeCallbackResult {
   return {
     pass: false,
     note,
-    observation: { outcome: "inconclusive", reason: "policy-refused", evidence: "none", note },
+    tests: [{ id: "criterion", status: "test-todo", reason: note }],
   }
 }
 
@@ -1407,9 +1467,16 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
   const frame = osc52Reply.exec(outcome.raw)
   if (!frame || outcome.reason !== "reply" || !outcome.match) {
     const reason = outcome.raw ? "invalid-reply" : "no-response"
+    if (outcome.raw.length === 0)
+      return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "No complete OSC 52 c reply" }] }
     return {
       pass: false,
-      observation: { outcome: "inconclusive", reason, evidence: "query", note: "No complete OSC 52 c reply" },
+      observation: {
+        outcome: "inconclusive",
+        reason,
+        assertionType: "query_reply",
+        note: "No complete OSC 52 c reply",
+      },
     }
   }
   const encoded = frame[1] ?? ""
@@ -1418,7 +1485,10 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
     decoded = atob(encoded)
     if (btoa(decoded) !== encoded) throw new Error("Noncanonical base64")
   } catch {
-    return { pass: false, observation: { outcome: "inconclusive", reason: "invalid-reply", evidence: "query" } }
+    return {
+      pass: false,
+      observation: { outcome: "inconclusive", reason: "invalid-reply", assertionType: "query_reply" },
+    }
   }
   const pass = decoded === expected
   return {
@@ -1427,17 +1497,25 @@ function clipboardQueryResult(outcome: TerminalQueryOutcome, expected: string): 
     observation: {
       outcome: pass ? "supported" : "inconclusive",
       ...(!pass && { reason: "insufficient-evidence" as const }),
-      evidence: "query",
+      assertionType: "query_reply",
     },
     ...(pass && {
       assertions: [
-        { kind: "positive" as const, expected: "OSC 52 c returns the independently written nonce", observed: frame[0] },
+        {
+          assertionType: "query_reply" as const,
+          kind: "positive" as const,
+          expected: "OSC 52 c returns the independently written nonce",
+          observed: frame[0],
+        },
       ],
     }),
   }
 }
 
-async function liveClipboardProbe(ctx: TermProbeSource, kind: "write" | "read" | "roundtrip"): Promise<ProbeCallbackResult> {
+async function liveClipboardProbe(
+  ctx: TermProbeSource,
+  kind: "write" | "read" | "roundtrip",
+): Promise<ProbeCallbackResult> {
   if (!ctx.withClipboardFixture) return liveClipboardNotTested()
   return ctx.withClipboardFixture(async (fixture) => {
     if (kind !== "read") {
@@ -1449,12 +1527,13 @@ async function liveClipboardProbe(ctx: TermProbeSource, kind: "write" | "read" |
       if (!cursor) {
         return {
           pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "no-response",
-            evidence: "behavior",
-            note: "No cursor reply after OSC 52 write; clipboard contents were not measured",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-failure",
+              reason: "No cursor reply after OSC 52 write; clipboard contents were not measured",
+            },
+          ],
         }
       }
       const measured = await fixture.readText()
@@ -1464,7 +1543,7 @@ async function liveClipboardProbe(ctx: TermProbeSource, kind: "write" | "read" |
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "behavior",
+            assertionType: "clipboard",
             note: "Independent clipboard read did not equal the OSC 52 write nonce",
           },
         }
@@ -1472,9 +1551,14 @@ async function liveClipboardProbe(ctx: TermProbeSource, kind: "write" | "read" |
       if (kind === "write") {
         return {
           pass: true,
-          observation: { outcome: "supported", evidence: "behavior" },
+          observation: { outcome: "supported", assertionType: "clipboard" },
           assertions: [
-            { kind: "positive", expected: "Independent clipboard text equals OSC 52 write nonce", observed: measured },
+            {
+              assertionType: "clipboard" as const,
+              kind: "positive",
+              expected: "Independent clipboard text equals OSC 52 write nonce",
+              observed: measured,
+            },
           ],
         }
       }
@@ -1483,13 +1567,17 @@ async function liveClipboardProbe(ctx: TermProbeSource, kind: "write" | "read" |
     await fixture.writeText(nonce)
     const outcome = await ctx.queryOutcome("\x1b]52;c;?\x07", osc52Reply)
     const result = clipboardQueryResult(outcome, nonce)
-    if (!outcome.raw && ctx.capture && result.observation) {
+    if (!outcome.raw && ctx.capture) {
       const frame = await ctx.capture({ role: "target", label: "Clipboard query after no response" })
       return {
-        ...result,
+        pass: result.pass,
+        tests: result.tests,
         observation: {
-          ...result.observation,
+          outcome: "inconclusive",
+          reason: "no-response",
+          assertionType: "screenshot",
           screenshotRef: frame.ref,
+          frames: [frame],
           note: "No OSC 52 reply; retained the visible window for prompt/no-prompt review without automatic interaction",
         },
       }
@@ -1529,9 +1617,10 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
         return {
           pass: true,
           response: JSON.stringify(observed),
-          observation: { outcome: "supported" as const, evidence: "interaction" as const },
+          observation: { outcome: "supported" as const, assertionType: "input_bytes" as const },
           assertions: [
             {
+              assertionType: "input_bytes" as const,
               kind: "positive" as const,
               expected,
               observed: JSON.stringify(observed),
@@ -1543,9 +1632,10 @@ async function clipboardPaste(ctx: TermProbeSource): Promise<ProbeCallbackResult
       return {
         pass: false,
         response: JSON.stringify(observed),
-        observation: { outcome: "unsupported" as const, evidence: "interaction" as const },
+        observation: { outcome: "unsupported" as const, assertionType: "input_bytes" as const },
         assertions: [
           {
+            assertionType: "input_bytes" as const,
             kind: "negative" as const,
             expected,
             observed: JSON.stringify(observed),
@@ -1583,7 +1673,20 @@ function osc0IconTitleResult(
       pass: false,
       response,
       note,
-      observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+      ...(raw.icon.length === 0 && raw.title.length === 0
+        ? {
+            tests: [{ id: "criterion", status: "test-failure", reason: note }] as [
+              { id: string; status: "test-failure"; reason: string },
+            ],
+          }
+        : {
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
+          }),
     }
   }
   const iconMatches = iconLabel === OSC0_PAYLOAD
@@ -1594,14 +1697,16 @@ function osc0IconTitleResult(
     pass,
     response,
     ...(note && { note }),
-    observation: { outcome: pass ? "supported" : "unsupported", evidence: "query", ...(note && { note }) },
+    observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply", ...(note && { note }) },
     assertions: [
       {
+        assertionType: "query_reply" as const,
         kind: iconMatches ? "positive" : "negative",
         expected: `CSI 20 t returns ${OSC0_PAYLOAD}`,
         observed: iconLabel,
       },
       {
+        assertionType: "query_reply" as const,
         kind: titleMatches ? "positive" : "negative",
         expected: `CSI 21 t returns ${OSC0_PAYLOAD}`,
         observed: windowTitle,
@@ -1686,10 +1791,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           )
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // Font ligatures — a renderer glyph-shaping decision with no protocol query. The app callback
@@ -1725,10 +1830,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           ctx.write("\x1b[0m\x1b[2J\x1b[H")
         }
       },
-      "pixels",
+      "screenshot",
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "none",
+    libAssertionType: null,
   },
 
   // Kitty keyboard protocol
@@ -1755,10 +1860,10 @@ export const extensionsProbes: ProbeDefinition[] = [
             : graphicsQueryResult(ctx.feedCapture(GRAPHICS_QUERY), 31),
         async (ctx) =>
           graphicsQueryOutcomeResult(await ctx.queryWithSentinelOutcome(GRAPHICS_QUERY, GRAPHICS_QUERY_REPLY)),
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // Transmission and placement acknowledgements are separate from rendered pixels.
@@ -1776,7 +1881,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -1792,7 +1897,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -1815,7 +1920,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+            tests: [{ id: "criterion", status: "test-todo", reason: note }],
           }
         }
         const refusal = sgrCaptureTooSmall(ctx, "extensions.sixel")
@@ -1834,7 +1939,12 @@ export const extensionsProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
           }
         }
         const read = collectorRegionRead(ctx)
@@ -1852,7 +1962,12 @@ export const extensionsProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "query", note },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
           }
         } finally {
           // SGR 0 alone does not remove a drawn sixel graphic; clear the owned disposable surface.
@@ -1895,7 +2010,7 @@ export const extensionsProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "parser-state",
+              assertionType: "buffer_state",
               note: !reported ? "Backend did not report OSC 8 link metadata" : "Linked text was not observable",
             },
           }
@@ -1911,22 +2026,25 @@ export const extensionsProbes: ProbeDefinition[] = [
           response,
           observation: {
             outcome: pass ? "supported" : "unsupported",
-            evidence: "parser-state",
+            assertionType: "buffer_state",
             ...(!pass && { note: "OSC 8 cell URI differs from the exact requested link or leaked past close" }),
           },
-          assertions: [{ kind: pass ? "positive" : "negative", expected, observed }],
+          assertions: [
+            { assertionType: "buffer_state" as const, kind: pass ? "positive" : "negative", expected, observed },
+          ],
         }
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 7) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `OSC 8 fixture needs at least 1x7, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `OSC 8 fixture needs at least 1x7, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         ctx.write("\x1b[1;1H\x1b[2K")
@@ -1936,25 +2054,26 @@ export const extensionsProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note: "No cursor response",
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "consumed" },
+            tests: [{ id: "criterion", status: "test-todo", reason: "no-response" }],
           }
         }
         return {
           pass: false,
           response: `${pos.row};${pos.col}`,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior",
+            },
+          ],
         }
       },
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // Current wrapping and a declared backend capability do not measure reflow after resize.
@@ -1969,7 +2088,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -1986,7 +2105,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -2002,7 +2121,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       },
       () => Promise.resolve(unmeasuredStateEffect("OSC 2 window title")),
     ),
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // OSC 0 — icon name and title
@@ -2026,9 +2145,9 @@ export const extensionsProbes: ProbeDefinition[] = [
           title: title.raw,
         })
       },
-      "query",
+      "query_reply",
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // OSC 52 — clipboard
@@ -2037,9 +2156,9 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc52-clipboard",
       headlessClipboardRoundtrip,
       (ctx) => liveClipboardProbe(ctx, "roundtrip"),
-      "behavior",
+      "query_reply",
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // OSC 52 write — set clipboard (most terminals support this)
@@ -2048,22 +2167,27 @@ export const extensionsProbes: ProbeDefinition[] = [
       "extensions.osc52-write",
       headlessClipboardRoundtrip,
       (ctx) => liveClipboardProbe(ctx, "write"),
-      "behavior",
+      "query_reply",
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // OSC 52 read — query clipboard back (fewer terminals support this)
   {
-    ...probe("extensions.osc52-read", headlessClipboardRoundtrip, (ctx) => liveClipboardProbe(ctx, "read"), "query"),
-    termlessObservationEvidence: "query",
+    ...probe(
+      "extensions.osc52-read",
+      headlessClipboardRoundtrip,
+      (ctx) => liveClipboardProbe(ctx, "read"),
+      "query_reply",
+    ),
+    libAssertionType: "query_reply",
   },
 
   probe(
     "extensions.clipboard-paste",
     () => osInputReviewResult("OS-level XTEST paste injection", { input: false }),
     clipboardPaste,
-    "interaction",
+    "input_bytes",
   ),
 
   // OSC 10 — foreground color query
@@ -2084,7 +2208,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -2101,7 +2225,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -2117,7 +2241,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;A\x07", "OSC 133;A prompt-start mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 133;B — command start (FTCS_COMMAND_START)
@@ -2127,7 +2251,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;B\x07", "OSC 133;B command-start mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 133;C — command executed (FTCS_COMMAND_EXECUTED)
@@ -2137,7 +2261,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;C\x07", "OSC 133;C command-executed mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 133;D — command finished with exit code (FTCS_COMMAND_FINISHED)
@@ -2147,7 +2271,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;D;0\x07", "OSC 133;D command-finished mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 133;P — properties (Cwd, CmdLine, etc.)
@@ -2157,7 +2281,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]133;P;Cwd=/tmp\x07", "OSC 133;P properties mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 633 sub-commands — VS Code shell integration markers
@@ -2170,7 +2294,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;A\x07", "OSC 633;A prompt-start mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 633;B — prompt end (mirrors 133;B)
@@ -2180,7 +2304,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;B\x07", "OSC 633;B prompt-end mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 633;C — pre-execution (mirrors 133;C)
@@ -2190,7 +2314,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;C\x07", "OSC 633;C pre-execution mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 633;D — command finished with exit code (mirrors 133;D)
@@ -2200,7 +2324,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;D;0\x07", "OSC 633;D command-finished mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 633;E — set commandline with verification nonce (unique to OSC 633)
@@ -2216,7 +2340,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           "OSC 633;E commandline-with-nonce mark registration",
         ),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 633;P — VS Code-specific properties (Cwd, IsWindows, git status)
@@ -2226,7 +2350,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       (ctx) => promptMarkResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
       (ctx) => promptMarkAppResult(ctx, "\x1b]633;P;Cwd=/tmp\x07", "OSC 633;P properties mark registration"),
     ),
-    termlessObservationEvidence: "consumed",
+    libAssertionType: null,
   },
 
   // OSC 9 — desktop notifications
@@ -2241,7 +2365,7 @@ export const extensionsProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note,
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+        tests: [{ id: "criterion", status: "test-todo", reason: note }],
       })
     },
   ),
@@ -2276,7 +2400,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         return {
           pass: false,
           note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
         }
       },
     ),
@@ -2324,7 +2448,12 @@ export const extensionsProbes: ProbeDefinition[] = [
             pass: false,
             response: JSON.stringify({ row: before.y, col: before.x }),
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "parser-state", note },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "buffer_state",
+              note,
+            },
           }
         }
         ctx.feed("\x1b]66;w=2; \x07")
@@ -2335,19 +2464,20 @@ export const extensionsProbes: ProbeDefinition[] = [
           { row: before.y, col: before.x },
           { row: width.y, col: width.x },
           { row: scale.y, col: scale.x },
-          "parser-state",
+          "buffer_state",
         )
       },
       async (ctx) => {
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `OSC 66 fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `OSC 66 fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         // The protocol defines detection by cursor movement, not an OSC query.
@@ -2356,12 +2486,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         if (!before) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              evidence: "behavior",
-              reason: "no-response",
-              note: "No baseline cursor response",
-            },
+            tests: [{ id: "criterion", status: "test-failure", reason: "No baseline cursor response" }],
           }
         }
         if (before.row !== 1 || before.col !== 1) {
@@ -2370,7 +2495,12 @@ export const extensionsProbes: ProbeDefinition[] = [
             pass: false,
             response: JSON.stringify(before),
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "behavior", note },
+            observation: {
+              outcome: "inconclusive",
+              reason: "insufficient-evidence",
+              assertionType: "query_reply",
+              note,
+            },
           }
         }
         ctx.write("\x1b]66;w=2; \x07")
@@ -2380,21 +2510,16 @@ export const extensionsProbes: ProbeDefinition[] = [
         if (!width || !scale) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              evidence: "behavior",
-              reason: "no-response",
-              note: "Missing cursor response for text sizing",
-            },
+            tests: [{ id: "criterion", status: "test-failure", reason: "Missing cursor response for text sizing" }],
           }
         }
-        return textSizingResult(before, width, scale, "behavior")
+        return textSizingResult(before, width, scale, "query_reply")
       },
-      "behavior",
+      "query_reply",
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // OSC 5522 — advanced clipboard (Kitty protocol, MIME-aware paste events)
@@ -2410,10 +2535,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           return { ...decrpmResult(decrpmPs(pattern.exec(reply)?.[1]), 5522), response: reply }
         },
         async (ctx) => decrpmResult(await queryDecrpm(ctx, 5522), 5522),
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // OSC 1 — icon name
@@ -2431,11 +2556,11 @@ export const extensionsProbes: ProbeDefinition[] = [
         return Promise.resolve<ProbeCallbackResult>({
           pass: false,
           note,
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
         })
       },
     ),
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // OSC 4 — color palette query for index 0.
@@ -2484,7 +2609,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   oscColorQueryProbe("extensions.osc19-highlight-fg", 19),
 
   // OSC 22 — pointer shape
-  // Kitty defines shape/status queries, but this callback only checks CPR.
+  // Kitty defines shape/status queries, but this callback only tests CPR.
   // Visible pointer appearance also needs observation outside the cell grid.
   probe(
     "extensions.osc22-pointer",
@@ -2522,13 +2647,14 @@ export const extensionsProbes: ProbeDefinition[] = [
           note,
           observation: {
             outcome: pass ? "supported" : "inconclusive",
-            evidence: "query",
+            assertionType: "query_reply",
             ...(!pass && { reason: "invalid-reply" as const }),
             note,
           },
           ...(pass && {
             assertions: [
               {
+                assertionType: "query_reply" as const,
                 kind: "positive" as const,
                 expected: `OSC 99 echoes i=${id}, p=? and advertises p=title`,
                 observed: reply.match[0] ?? "",
@@ -2537,7 +2663,7 @@ export const extensionsProbes: ProbeDefinition[] = [
           }),
         }
       },
-      "query",
+      "query_reply",
     ),
   ),
 
@@ -2594,17 +2720,17 @@ export const extensionsProbes: ProbeDefinition[] = [
             : kittyForegroundResult(ctx.feedCapture(OSC21_FOREGROUND_QUERY)),
         async (ctx) =>
           kittyForegroundOutcomeResult(await ctx.queryWithSentinelOutcome(OSC21_FOREGROUND_QUERY, OSC21_REPLY)),
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // OSC 30001 — Kitty color stack push
-  probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "behavior"),
+  probe("extensions.osc30001-color-stack-push", colorStackProbe(), colorStackTermProbe, "query_reply"),
 
   // OSC 30101 — Kitty color stack pop
-  probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "behavior"),
+  probe("extensions.osc30101-color-stack-pop", colorStackProbe(), colorStackTermProbe, "query_reply"),
 
   // OSC 176 — foot Wayland app-id
   probe(
@@ -2695,7 +2821,7 @@ export const extensionsProbes: ProbeDefinition[] = [
         pos ? "Cursor answered; scrollback viewport was not measured" : "No cursor response after OSC 720",
       )
     }),
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // OSC 776 — rxvt-unicode cell size report
@@ -2720,10 +2846,10 @@ export const extensionsProbes: ProbeDefinition[] = [
           const reply = await ctx.queryOutcome("\x1b[c", sixelDa1Reply)
           return sixelDa1Result(reply.raw, reply.reason === "reply" ? (reply.match?.[0] ?? null) : null)
         },
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // XTSMGRAPHICS item 2 reads current Sixel geometry in pixels; item 1 is only color registers.
@@ -2743,9 +2869,9 @@ export const extensionsProbes: ProbeDefinition[] = [
           sixelGeometryOutcomeResult(
             await ctx.queryWithSentinelOutcome(SIXEL_GEOMETRY_QUERY, SIXEL_GEOMETRY_REPLY, 1000),
           ),
-        "query",
+        "query_reply",
       ),
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 ]

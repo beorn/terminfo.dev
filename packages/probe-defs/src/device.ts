@@ -50,8 +50,10 @@ function deviceReplyResult(
       pass: true,
       response: raw,
       ...(composed && { note: composed }),
-      observation: { outcome: "supported", evidence: "query", ...(composed && { note: composed }) },
-      assertions: [{ kind: "positive", expected: spec.expected, observed: valid[0] }],
+      observation: { outcome: "supported", assertionType: "query_reply", ...(composed && { note: composed }) },
+      assertions: [
+        { assertionType: "query_reply" as const, kind: "positive", expected: spec.expected, observed: valid[0] },
+      ],
     }
   }
   const refusal = matchedFrame ? spec.refusal?.exec(matchedFrame) : null
@@ -64,8 +66,10 @@ function deviceReplyResult(
         pass: false,
         response: raw,
         note: decisiveNote,
-        observation: { outcome: "unsupported", evidence: "query", note: decisiveNote },
-        assertions: [{ kind: "negative", expected: spec.expected, observed: refusal[0] }],
+        observation: { outcome: "unsupported", assertionType: "query_reply", note: decisiveNote },
+        assertions: [
+          { assertionType: "query_reply" as const, kind: "negative", expected: spec.expected, observed: refusal[0] },
+        ],
       }
     }
     const refusalNote = ["Requested setting or name refused; other settings or names unmeasured", ordered.note]
@@ -77,7 +81,7 @@ function deviceReplyResult(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note: refusalNote,
       },
     }
@@ -90,8 +94,15 @@ function deviceReplyResult(
       pass: false,
       response: raw,
       ...(ordered.note && { note: ordered.note }),
-      observation: { outcome: "unsupported", evidence: "query", ...ordered },
-      assertions: [{ kind: "negative", expected: spec.expected, observed: contradiction[0] }],
+      observation: { outcome: "unsupported", assertionType: "query_reply", ...ordered },
+      assertions: [
+        {
+          assertionType: "query_reply" as const,
+          kind: "negative",
+          expected: spec.expected,
+          observed: contradiction[0],
+        },
+      ],
     }
   }
   const silent = sentinelNegativeResult(raw, sentinel, spec.expected)
@@ -105,10 +116,13 @@ function deviceReplyResult(
       : reason === "timeout"
         ? "timeout"
         : "no-response"
+  if (raw.length === 0) {
+    return { pass: false, response: raw, tests: [{ id: "criterion", status: "test-failure", reason: missingReason }] }
+  }
   return {
     pass: false,
     response: raw,
-    observation: { outcome: "inconclusive", reason: missingReason, evidence: "query" },
+    observation: { outcome: "inconclusive", reason: missingReason, assertionType: "query_reply" },
   }
 }
 
@@ -148,9 +162,9 @@ function deviceQuery(spec: DeviceReply): ProbeDefinition {
         : await ctx.queryWithSentinelOutcome(spec.query, responsePattern)
       return deviceOutcomeResult(spec, outcome)
     },
-    "query",
+    "query_reply",
   )
-  return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
+  return { ...definition, termWrites: "query", libAssertionType: "query_reply" }
 }
 
 const DECRQSS_SGR: DeviceReply = {
@@ -177,6 +191,19 @@ function refusedFrame(spec: DeviceReply, matchedFrame: string | null): boolean {
 
 /** Status-0 to SGR already shows the terminal speaks DECRQSS, so a silent second setting is not F1. */
 function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResult {
+  if (second.raw.length === 0) {
+    return {
+      pass: false,
+      response: second.raw,
+      tests: [
+        {
+          id: "criterion",
+          status: "test-failure",
+          reason: "SGR refused; DECSTBM unanswered; DECRQSS facility still speaks",
+        },
+      ],
+    }
+  }
   const secondFrame = replyFrame(second)
   const graded = deviceReplyResult(DECRQSS_DECSTBM, second.raw, secondFrame, second.reason, second.sentinel)
   if (graded.observation?.outcome === "supported") return graded
@@ -193,7 +220,7 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResu
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
         note,
       },
     }
@@ -212,7 +239,7 @@ function decrqssAfterSgrRefusal(second: TerminalQueryOutcome): ProbeCallbackResu
     observation: {
       outcome: "inconclusive",
       reason,
-      evidence: "query",
+      assertionType: "query_reply",
       note: "SGR refused; DECSTBM unanswered; DECRQSS facility still speaks",
     },
   }
@@ -239,9 +266,9 @@ function decrqssFacilityProbe(): ProbeDefinition {
       const second = await ctx.queryWithSentinelOutcome(DECRQSS_DECSTBM.query, decstbmPattern)
       return decrqssAfterSgrRefusal(second)
     },
-    "query",
+    "query_reply",
   )
-  return { ...definition, termWrites: "query", termlessObservationEvidence: "query" }
+  return { ...definition, termWrites: "query", libAssertionType: "query_reply" }
 }
 
 const iconLabelReply: DeviceReply = {
@@ -328,10 +355,10 @@ export const deviceProbes: ProbeDefinition[] = [
       return Promise.resolve<ProbeCallbackResult>({
         pass: false,
         note: advertised ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised",
-        observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "legacy" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "insufficient-evidence" }],
       })
     },
-    "legacy",
+    null,
   ),
 
   // DSR ?996 — color-scheme query: CSI ? 996 n → CSI ? 997 ; Ps n
@@ -353,11 +380,23 @@ export const deviceProbes: ProbeDefinition[] = [
             pass: false,
             note: "No valid DSR ?997 color-scheme response",
             response,
-            observation: {
-              outcome: "inconclusive",
-              evidence: "query",
-              reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
-            },
+            ...(response.length === 0
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    assertionType: "query_reply",
+                    reason: response.includes("\x1b[?997;") ? "invalid-reply" : "no-response",
+                  },
+                }),
           }
         }
         return {
@@ -366,11 +405,16 @@ export const deviceProbes: ProbeDefinition[] = [
           response,
           observation: {
             outcome: "supported",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Current scheme queried; unsolicited change events were not tested",
           },
           assertions: [
-            { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
+            {
+              assertionType: "query_reply" as const,
+              kind: "positive",
+              expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n",
+              observed: match[0],
+            },
           ],
         }
       },
@@ -388,15 +432,31 @@ export const deviceProbes: ProbeDefinition[] = [
             pass: false,
             note: "No valid DSR ?997 color-scheme response",
             response: reply.raw,
-            observation: {
-              outcome: "inconclusive",
-              evidence: "query",
-              reason: reply.raw.includes("\x1b[?997;")
-                ? "invalid-reply"
-                : reply.reason === "timeout"
-                  ? "timeout"
-                  : "no-response",
-            },
+            ...(reply.raw.length === 0
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: reply.raw.includes("\x1b[?997;")
+                        ? "invalid-reply"
+                        : reply.reason === "timeout"
+                          ? "timeout"
+                          : "no-response",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    assertionType: "query_reply",
+                    reason: reply.raw.includes("\x1b[?997;")
+                      ? "invalid-reply"
+                      : reply.reason === "timeout"
+                        ? "timeout"
+                        : "no-response",
+                  },
+                }),
           }
         }
         return {
@@ -405,19 +465,24 @@ export const deviceProbes: ProbeDefinition[] = [
           response: match[0],
           observation: {
             outcome: "supported",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Current scheme queried; unsolicited change events were not tested",
           },
           assertions: [
-            { kind: "positive", expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n", observed: match[0] },
+            {
+              assertionType: "query_reply" as const,
+              kind: "positive",
+              expected: "DSR ?996 yields complete DSR ?997;1n or ?997;2n",
+              observed: match[0],
+            },
           ],
         }
       },
-      "query",
+      "query_reply",
     ),
     termWrites: "query",
 
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // XTWINOPS 14 — report window size in pixels: CSI 14 t → CSI 4 ; H ; W t
@@ -469,7 +534,7 @@ export const deviceProbes: ProbeDefinition[] = [
         return deviceOutcomeResult(iconLabelReply, reply)
       },
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // XTWINOPS 21 — report window title: CSI 21 t → OSC l title ST
@@ -494,7 +559,7 @@ export const deviceProbes: ProbeDefinition[] = [
         return deviceOutcomeResult(windowTitleReply, reply)
       },
     ),
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // XTWINOPS 22 — push title/icon stack: CSI 22 ; 0 t
@@ -532,14 +597,14 @@ export const deviceProbes: ProbeDefinition[] = [
             note: pos
               ? "Cursor answered after title push; title stack was not measured"
               : "No DSR response after title push",
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed" },
+            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
           }
         } finally {
           ctx.write("\x1b[23;0t")
         }
       },
     ),
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // XTWINOPS 23 — pop title/icon stack: CSI 23 ; 0 t (no response, partial)
@@ -574,11 +639,11 @@ export const deviceProbes: ProbeDefinition[] = [
           note: pos
             ? "Cursor answered after title pop; restored title was not measured"
             : "No DSR response after title pop",
-          observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "consumed" },
+          tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
         }
       },
     ),
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // XTREPORTCOLORS — report color/graphics capabilities: CSI # R → CSI Pm # Q

@@ -4,8 +4,8 @@
  *
  * @fakes @terminfo/probe-defs
  */
-import type { ObservationEvidence, ProbeCallbackResult } from "../types.ts"
+import type { AssertionType, ProbeCallbackResult } from "../types.ts"
 
-export function fakeProbeResult(evidence: ObservationEvidence = "parser-state"): ProbeCallbackResult {
-  return { pass: false, observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence } }
+export function fakeProbeResult(assertionType: AssertionType = "buffer_state"): ProbeCallbackResult {
+  return { pass: false, observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType } }
 }

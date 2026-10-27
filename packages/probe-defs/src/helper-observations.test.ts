@@ -28,6 +28,7 @@ const baseCell = {
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -69,6 +70,7 @@ function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
 
 function terminal(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => null,
@@ -92,7 +94,10 @@ test("app reset observations require a measured effect and leave unmeasurable re
   const sgr = await find("reset.sgr")(
     terminal({ rows: 24, cols: 80, queryCursorPosition: async () => ({ row: 1, col: 2 }) }),
   )
-  expect(sgr.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
+  expect(sgr).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  })
   expect(sgr.assertions ?? []).toEqual([])
 
   const risPositions = [
@@ -102,7 +107,7 @@ test("app reset observations require a measured effect and leave unmeasurable re
   const ris = await find("reset.ris")(
     terminal({ rows: 24, cols: 80, queryCursorPosition: async () => risPositions.shift() ?? null }),
   )
-  expect(ris.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(ris.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(ris.assertions).toMatchObject([{ kind: "positive", expected: "RIS homes cursor from 5;5" }])
 
   const writes: string[] = []
@@ -119,7 +124,7 @@ test("app reset observations require a measured effect and leave unmeasurable re
       },
     }),
   )
-  expect(soft.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(soft.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(soft.assertions).toMatchObject([{ kind: "positive" }])
   expect(soft.response).toBe(JSON.stringify({ before: "reset (Ps 2)", enabled: "set (Ps 1)", after: "reset (Ps 2)" }))
   expect(writes.at(-1)).toBe("\x1b[?1l")
@@ -137,7 +142,7 @@ test("app reset observations require a measured effect and leave unmeasurable re
   expect(permanent.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
     note: expect.stringContaining("permanently reset (Ps 4)"),
   })
   expect(permanent.response).toBe(
@@ -151,7 +156,10 @@ test("app reset observations require a measured effect and leave unmeasurable re
 
   const methodWrites: string[] = []
   const method = await find("reset.method")(terminal({ write: (sequence) => methodWrites.push(sequence) }))
-  expect(method.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(method).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  })
   expect(methodWrites).toEqual([])
 })
 
@@ -161,8 +169,8 @@ test("app reset observations require a measured effect and leave unmeasurable re
 test("headless reset.sgr grades the measured styles and reset.soft needs an exposed mode", () => {
   const find = (id: string) => {
     const definition = resetProbes.find((entry) => entry.id === id)
-    if (!definition?.termless) throw new Error(`Missing ${id} headless callback`)
-    return definition.termless
+    if (!definition?.lib) throw new Error(`Missing ${id} headless callback`)
+    return definition.lib
   }
   const sgr = (before: Partial<typeof baseCell>, after: Partial<typeof baseCell> = {}) =>
     find("reset.sgr")(
@@ -178,7 +186,7 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
     )
   expect(sgr({ bold: true, inverse: true }).observation).toMatchObject({
     outcome: "supported",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
     note: expect.stringContaining("italic"),
   })
   expect(sgr({ bold: true, inverse: true }, { inverse: true }).observation).toMatchObject({ outcome: "unsupported" })
@@ -194,27 +202,26 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
 
 test("SGR consumption stays inconclusive while headless cell state supports an assertion", async () => {
   const probe = sgrProbe("sgr.bold", "\x1b[1m", (cell) => cell.bold)
-  if (!probe.term || !probe.termless) throw new Error("SGR needs both callbacks")
+  if (!probe.term || !probe.lib) throw new Error("SGR needs both callbacks")
 
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
   expect(consumed.pass).toBe(true)
-  expect(consumed.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "consumed",
+  expect(consumed).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(consumed.assertions).toBeUndefined()
 
   const silent = await probe.term(terminal())
   expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
-  const supported = probe.termless(headless({ getCell: () => ({ ...baseCell, bold: true }) }))
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const supported = probe.lib(headless({ getCell: () => ({ ...baseCell, bold: true }) }))
+  expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(JSON.parse(supported.response ?? "")).toMatchObject({ char: "X", bold: true })
   expect(supported.assertions).toMatchObject([{ kind: "positive", observed: supported.response }])
 
-  const unmeasured = probe.termless(headless())
-  expect(unmeasured.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  const unmeasured = probe.lib(headless())
+  expect(unmeasured.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
   expect(JSON.parse(unmeasured.response ?? "")).toMatchObject({ char: "X", bold: false })
   expect(unmeasured.assertions).toBeUndefined()
 })
@@ -251,10 +258,9 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
         }),
       }),
     )
-    expect(result.observation, `${geometry.rows}x${geometry.cols}`).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, `${geometry.rows}x${geometry.cols}`).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(result.response).toBeUndefined()
     expect(result.assertions).toBeUndefined()
@@ -273,7 +279,10 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
       queryCursorPosition: async () => ({ row: 1, col: 2 }),
     }),
   )
-  expect(plain.observation).toMatchObject({ outcome: "inconclusive", evidence: "consumed" })
+  expect(plain).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  })
   expect(plainWrites.length).toBeGreaterThan(0)
 
   const captureWrites: string[] = []
@@ -289,7 +298,7 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
       },
     }),
   )
-  expect(captured.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(captured.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
   expect(JSON.parse(captured.response ?? "")).toMatchObject({
     sample: "AaBb 0123456789 - terminal text",
     startRow: 3,
@@ -301,7 +310,7 @@ test("SGR app fixtures refuse undersized grids before writes and retain valid br
   expect(captured.observation?.frames).toHaveLength(2)
   expect(captured.pass).toBe(false)
   expect(captured.criterionBranch).toBe("visual-review")
-  expect(captured.checks).toEqual([
+  expect(captured.tests).toEqual([
     { id: "capture", status: "supported", assertionRefs: [0] },
     { id: "review", status: "test-todo", reason: expect.any(String) },
   ])
@@ -350,10 +359,9 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
         },
       }),
     )
-    expect(small.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(small, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(smallWrites, id).toEqual([])
     expect(smallCaptures, id).toBe(0)
@@ -374,7 +382,7 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
     // A 3-row grid passes the SGR guard but cannot map the 4-row region fixture. The trace is not
     // empty (the silent DECRQSS baseline wrote neutralization and queried), so the evidence is "query"
     // and no capture is ever requested.
-    expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+    expect(ok.observation, id).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
     expect(ok.assertions, id).toBeUndefined()
     expect(roles, id).toEqual([])
     expect(ok.observation?.frames, id).toBeUndefined()
@@ -386,8 +394,8 @@ test("SGR reset capture fixtures share the 3x34 guard and need a fourth row for 
 test("unexposed overline and default conceal flags cannot establish negative support", () => {
   for (const id of ["sgr.overline", "sgr.hidden"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing headless ${id} probe`)
-    const result = probe.termless(headless())
+    if (!probe?.lib) throw new Error(`missing headless ${id} probe`)
+    const result = probe.lib(headless())
     expect(result.pass, id).toBe(false)
     if (id === "sgr.overline") {
       expect(result.observation, id).toBeUndefined()
@@ -399,13 +407,13 @@ test("unexposed overline and default conceal flags cannot establish negative sup
       expect(result.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
       })
     }
     expect(JSON.parse(result.response ?? ""), id).toMatchObject({ char: "X" })
     expect(result.assertions, id).toBeUndefined()
-    const measured = probe.termless(headless({ getCell: () => ({ ...baseCell, hidden: true, overline: true }) }))
-    expect(measured.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    const measured = probe.lib(headless({ getCell: () => ({ ...baseCell, hidden: true, overline: true }) }))
+    expect(measured.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
   }
 })
@@ -413,9 +421,9 @@ test("unexposed overline and default conceal flags cannot establish negative sup
 test("underline color needs an observed color, not only an underline or a consumed sequence", async () => {
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless || !probe.term) throw new Error(`missing ${id} callback`)
+    if (!probe?.lib || !probe.term) throw new Error(`missing ${id} callback`)
 
-    const unexposed = probe.termless(
+    const unexposed = probe.lib(
       headless({
         getCell: (_row, col) => ({
           ...baseCell,
@@ -433,7 +441,7 @@ test("underline color needs an observed color, not only an underline or a consum
     })
     expect(unexposed.assertions, id).toBeUndefined()
 
-    const colored = probe.termless(
+    const colored = probe.lib(
       headless({
         getCell: (_row, col) => ({
           ...baseCell,
@@ -449,14 +457,13 @@ test("underline color needs an observed color, not only an underline or a consum
         }),
       }),
     )
-    expect(colored.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(colored.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(colored.assertions, id).toMatchObject([{ kind: "positive", observed: colored.response }])
 
     const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
-    expect(consumed.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "consumed",
+    expect(consumed, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(consumed.assertions, id).toBeUndefined()
   }
@@ -464,8 +471,8 @@ test("underline color needs an observed color, not only an underline or a consum
 
 test("indexed underline color follows two distinct measured palette controls", async () => {
   const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-indexed")
-  if (!probe?.termless || !probe.term) throw new Error("missing indexed underline color callback")
-  const measure = probe.termless
+  if (!probe?.lib || !probe.term) throw new Error("missing indexed underline color callback")
+  const measure = probe.lib
   const index4 = { r: 10, g: 20, b: 30 }
   const index5 = { r: 40, g: 50, b: 60 }
   const run = (
@@ -496,7 +503,7 @@ test("indexed underline color follows two distinct measured palette controls", a
   expect(unexposed.assertions).toBeUndefined()
 
   const matched = run(index5, index4)
-  expect(matched.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(matched.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(matched.assertions).toMatchObject([{ kind: "positive", observed: matched.response }])
   expect(JSON.parse(matched.response ?? "")).toMatchObject({
     default4: { fg: index4, underlineColor: null },
@@ -507,36 +514,35 @@ test("indexed underline color follows two distinct measured palette controls", a
 
   const ignoredColor = { r: 0, g: 0, b: 0 }
   const ignored = run(ignoredColor, ignoredColor, index5, index4, index5)
-  expect(ignored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(ignored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(ignored.assertions).toMatchObject([{ kind: "negative", observed: ignored.response }])
 
   const indistinguishable = run(index4, index4, index4)
   expect(indistinguishable.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
 
   const consumed = await probe.term(terminal({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
-  expect(consumed.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "consumed",
+  expect(consumed).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
 })
 
 test("underline color reset needs both an observed colored before cell and default after cell", () => {
   const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-reset")
-  if (!probe?.termless) throw new Error("missing underline color reset callback")
+  if (!probe?.lib) throw new Error("missing underline color reset callback")
   const color = { r: 255, g: 0, b: 128 }
   const baseline = { ...baseCell, char: "C", underline: true }
   const withCells = (before: ReturnType<LibProbeSource["getCell"]>, after: ReturnType<LibProbeSource["getCell"]>) =>
     headless({ getCell: (_row, col) => [baseline, before, after][col] ?? baseCell })
 
-  const missingBefore = probe.termless(
+  const missingBefore = probe.lib(
     withCells({ ...baseCell, underline: true, underlineColor: undefined }, { ...baseCell, char: "Y", underline: true }),
   )
   expect(missingBefore.observation).toBeUndefined()
   expect(missingBefore.notTested?.noObservable).toContain("cell.underlineColor")
   expect(missingBefore.assertions).toBeUndefined()
 
-  const missingAfter = probe.termless(
+  const missingAfter = probe.lib(
     withCells(
       { ...baseCell, underline: true, underlineColor: color },
       { ...baseCell, char: "Y", underline: true, underlineColor: undefined },
@@ -544,31 +550,31 @@ test("underline color reset needs both an observed colored before cell and defau
   )
   expect(missingAfter.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
 
-  const reset = probe.termless(
+  const reset = probe.lib(
     withCells({ ...baseCell, underline: true, underlineColor: color }, { ...baseCell, char: "Y", underline: true }),
   )
-  expect(reset.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(reset.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(reset.assertions).toMatchObject([{ kind: "positive", observed: reset.response }])
 
-  const stillColored = probe.termless(
+  const stillColored = probe.lib(
     withCells(
       { ...baseCell, underline: true, underlineColor: color },
       { ...baseCell, char: "Y", underline: true, underlineColor: color },
     ),
   )
-  expect(stillColored.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(stillColored.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(stillColored.assertions).toMatchObject([{ kind: "negative", observed: stillColored.response }])
 })
 
 test("a null underline color from an adapter with no color readback is TEST TODO, not unsupported", () => {
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb", "sgr.underline-color-indexed"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    if (!probe?.lib) throw new Error(`missing ${id} callback`)
     const indexed = id === "sgr.underline-color-indexed"
     const chars = indexed ? ["A", "X", "B", "Y"] : ["A", "B", "X"]
     const firstFg = { r: 0, g: 0, b: 128 }
     const secondFg = { r: 128, g: 0, b: 128 }
-    const result = probe.termless(
+    const result = probe.lib(
       headless({
         getCell: (_row, col) => ({
           ...baseCell,
@@ -590,7 +596,7 @@ test("a null underline color from an adapter with no color readback is TEST TODO
 
 test("SGR 59 accepts the backend's measured non-null reset default", () => {
   const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-reset")
-  if (!probe?.termless) throw new Error("missing SGR 59 callback")
+  if (!probe?.lib) throw new Error("missing SGR 59 callback")
   const pink = { r: 255, g: 0, b: 128 }
   const white = { r: 255, g: 255, b: 255 }
   const cells = [
@@ -598,14 +604,14 @@ test("SGR 59 accepts the backend's measured non-null reset default", () => {
     { ...baseCell, char: "X", underline: true, underlineColor: pink },
     { ...baseCell, char: "Y", underline: true, underlineColor: white },
   ]
-  const result = probe.termless(headless({ getCell: (_row, col) => cells[col] ?? baseCell }))
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const result = probe.lib(headless({ getCell: (_row, col) => cells[col] ?? baseCell }))
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
 })
 
 test("indexed SGR 58 rejects a default underline that merely follows the foreground", () => {
   const probe = sgrProbes.find((item) => item.id === "sgr.underline-color-indexed")
-  if (!probe?.termless) throw new Error("missing indexed underline callback")
+  if (!probe?.lib) throw new Error("missing indexed underline callback")
   const blue = { r: 0, g: 0, b: 128 }
   const magenta = { r: 128, g: 0, b: 128 }
   const cells = [
@@ -614,8 +620,8 @@ test("indexed SGR 58 rejects a default underline that merely follows the foregro
     { ...baseCell, char: "B", underline: true, fg: magenta, underlineColor: magenta },
     { ...baseCell, char: "Y", underline: true, fg: magenta, underlineColor: magenta },
   ]
-  const result = probe.termless(headless({ getCell: (_row, col) => cells[col] ?? baseCell }))
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const result = probe.lib(headless({ getCell: (_row, col) => cells[col] ?? baseCell }))
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "negative", observed: result.response }])
 })
 
@@ -654,16 +660,16 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
   ] as const
   for (const { id, before, after, erasedSentinel } of cases) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
-    const termless = probe.termless
+    if (!probe?.lib) throw new Error(`missing ${id} callback`)
+    const lib = probe.lib
     const read = (style: Partial<typeof baseCell>) =>
-      termless(
+      lib(
         headless({
           getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "", ...[{}, before, style][col] }),
         }),
       )
     const supported = read(after)
-    expect(supported.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(supported.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(supported.assertions, id).toMatchObject([{ kind: "positive", observed: supported.response }])
     expect(JSON.parse(supported.response ?? ""), id).toMatchObject({
       baseline: { char: "C" },
@@ -671,9 +677,9 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
       after: { char: "Y" },
     })
     const ignored = read(before)
-    expect(ignored.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored.assertions, id).toMatchObject([{ kind: "negative", observed: ignored.response }])
-    const unobservedSetup = probe.termless(
+    const unobservedSetup = probe.lib(
       headless({ getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "" }) }),
     )
     // #30701: a styled setup that shows none of the attributes has no observable (TEST TODO).
@@ -682,7 +688,7 @@ test("SGR reset results require an observed setup and preserve unrelated attribu
     expect(unobservedSetup.assertions, id).toBeUndefined()
     if (erasedSentinel) {
       const lost = read(erasedSentinel)
-      expect(lost.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+      expect(lost.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     }
   }
 })
@@ -701,8 +707,8 @@ test.each([
   ["sgr.selective-reset.bold", { bold: true, italic: true }, { bold: true, italic: true }, "unsupported", "dim"],
 ] as const)("%s grades setup %o reset to %o on the measured attributes: %s", (id, before, after, outcome, unshown) => {
   const probe = sgrProbes.find((item) => item.id === id)
-  if (!probe?.termless) throw new Error(`missing ${id} callback`)
-  const result = probe.termless(
+  if (!probe?.lib) throw new Error(`missing ${id} callback`)
+  const result = probe.lib(
     headless({
       getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "Y"][col] ?? "", ...[{}, before, after][col] }),
     }),
@@ -714,7 +720,7 @@ test.each([
       noObservable: expect.stringContaining(unshown),
     })
   } else {
-    expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+    expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
     expect(result.observation?.note).toContain(unshown)
   }
 })
@@ -724,7 +730,7 @@ test("named ANSI color probes require distinct exposed selection, without theme 
   const lowBlue = { r: 1, g: 2, b: 4 }
   for (const id of ["sgr.fg.standard", "sgr.bg.standard", "sgr.fg.bright", "sgr.bg.bright"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    if (!probe?.lib) throw new Error(`missing ${id} callback`)
     const channel = id.includes(".fg.") ? "fg" : "bg"
     const fed: string[] = []
     const run = (
@@ -733,7 +739,7 @@ test("named ANSI color probes require distinct exposed selection, without theme 
       chars = ["C", "X", "Y"],
       baseline: typeof lowRed | null = null,
     ) =>
-      probe.termless?.(
+      probe.lib?.(
         headless({
           feed: (sequence) => fed.push(sequence),
           getCell: (_row, col) => ({
@@ -751,7 +757,7 @@ test("named ANSI color probes require distinct exposed selection, without theme 
       "sgr.bg.bright": [101, 104],
     }
     for (const code of codes[id] ?? []) expect(fed[0], id).toContain(`\x1b[${code}m`)
-    expect(distinct?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(distinct?.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(distinct?.assertions, id).toMatchObject([{ kind: "positive", observed: distinct?.response }])
     expect(JSON.parse(distinct?.response ?? ""), id).toMatchObject({
       baseline: { char: "C" },
@@ -762,7 +768,7 @@ test("named ANSI color probes require distinct exposed selection, without theme 
     // neutral and two targets all reading no color show nothing about the color field (coverage
     // record); a default reported as absent (undefined) still differs from two exposed colors.
     const ignored = run(lowRed, lowRed, ["C", "X", "Y"], lowRed)
-    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
     const unshown = run(null, null)
     expect(unshown?.observation, id).toBeUndefined()
@@ -771,7 +777,7 @@ test("named ANSI color probes require distinct exposed selection, without theme 
       reason: "no-semantic-observable",
       noObservable: expect.stringContaining(`the ${channel} color field`),
     })
-    const absentDefault = probe.termless(
+    const absentDefault = probe.lib(
       headless({
         getCell: (_row, col) => ({
           ...baseCell,
@@ -780,7 +786,7 @@ test("named ANSI color probes require distinct exposed selection, without theme 
         }),
       }),
     )
-    expect(absentDefault.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(absentDefault.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     for (const uncertain of [
       run(lowRed, lowRed),
       run(lowRed, lowBlue, ["C", "?", "Y"]),
@@ -797,11 +803,11 @@ test("indexed cube colors require two exact direct-RGB reference controls", () =
   const second = { r: 215, g: 135, b: 95 }
   for (const id of ["sgr.fg.256", "sgr.bg.256"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    if (!probe?.lib) throw new Error(`missing ${id} callback`)
     const channel = id.includes(".fg.") ? "fg" : "bg"
     const fed: string[] = []
     const run = (indexed: readonly (typeof first | null)[], direct: readonly (typeof first | null)[]) =>
-      probe.termless?.(
+      probe.lib?.(
         headless({
           feed: (sequence) => fed.push(sequence),
           getCell: (_row, col) => ({
@@ -821,7 +827,7 @@ test("indexed cube colors require two exact direct-RGB reference controls", () =
     ]) {
       expect(fed[0], id).toContain(`\x1b[${code}m`)
     }
-    expect(matched?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(matched?.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(matched?.assertions, id).toMatchObject([{ kind: "positive", observed: matched?.response }])
     expect(JSON.parse(matched?.response ?? ""), id).toMatchObject({
       directFirst: { char: "A" },
@@ -852,12 +858,12 @@ test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB",
   const blue = { r: 2, g: 1, b: 7 }
   for (const id of ["sgr.fg.truecolor", "sgr.bg.truecolor"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    if (!probe?.lib) throw new Error(`missing ${id} callback`)
     const channel = id.includes(".fg.") ? "fg" : "bg"
     const first = channel === "fg" ? firstFg : firstBg
     const fed: string[] = []
     const run = (targets: readonly (typeof first | null)[], controls: readonly (typeof red | null)[] = [red, blue]) =>
-      probe.termless?.(
+      probe.lib?.(
         headless({
           feed: (sequence) => fed.push(sequence),
           getCell: (_row, col) => ({
@@ -871,10 +877,10 @@ test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB",
     const selector = channel === "fg" ? 38 : 48
     expect(fed[0], id).toContain(`\x1b[${selector};2;${first.r};${first.g};${first.b}m`)
     expect(fed[0], id).toContain(`\x1b[${selector};2;17;97;201m`)
-    expect(exact?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(exact?.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(exact?.assertions, id).toMatchObject([{ kind: "positive", observed: exact?.response }])
     const wrong = run([red, blue])
-    expect(wrong?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(wrong?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(wrong?.assertions, id).toMatchObject([{ kind: "negative", observed: wrong?.response }])
     for (const uncertain of [run([red, blue], [red, red]), run([first, second], [red, first])]) {
       expect(uncertain?.observation, id).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -883,7 +889,7 @@ test("truecolor probes distinguish exact sampled RGB from calibrated wrong RGB",
     // #30701 (@cto ruling C): targets that read no color are a measured ignore while the controls are
     // calibrated, and have no observable when the controls show no color either (TEST TODO).
     const ignored = run([null, null])
-    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
     const uncalibrated = run([null, null], [null, null])
     expect(uncalibrated?.observation, id).toBeUndefined()
@@ -896,11 +902,11 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
   const colored = { r: 90, g: 20, b: 10 }
   for (const id of ["sgr.fg.default", "sgr.bg.default"]) {
     const probe = sgrProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`missing ${id} callback`)
+    if (!probe?.lib) throw new Error(`missing ${id} callback`)
     const channel = id.includes(".fg.") ? "fg" : "bg"
     const fed: string[] = []
     const run = (colors: readonly (typeof baseline | null)[]) =>
-      probe.termless?.(
+      probe.lib?.(
         headless({
           feed: (sequence) => fed.push(sequence),
           getCell: (_row, col) => ({ ...baseCell, char: ["C", "X", "R"][col] ?? "", [channel]: colors[col] ?? null }),
@@ -909,10 +915,10 @@ test("SGR 39 and 49 restore the measured default, including concrete RGB default
     const restored = run([baseline, colored, baseline])
     expect(fed[0], id).toContain(channel === "fg" ? "\x1b[31m" : "\x1b[42m")
     expect(fed[0], id).toContain(channel === "fg" ? "\x1b[39m" : "\x1b[49m")
-    expect(restored?.observation, id).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    expect(restored?.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(restored?.assertions, id).toMatchObject([{ kind: "positive", observed: restored?.response }])
     const ignored = run([baseline, colored, colored])
-    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+    expect(ignored?.observation, id).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
     expect(ignored?.assertions, id).toMatchObject([{ kind: "negative", observed: ignored?.response }])
     // #30701 (@cto ruling C): a setup that reads back as the default leaves the reset no reference.
     const uncalibrated = run([baseline, baseline, baseline])
@@ -997,7 +1003,7 @@ test("SGR reset cursor replies remain inconclusive and style cleanup runs on que
 
 test("cursor movement binds measured positions and parser state, never a missing reply", async () => {
   const cursor = cursorProbe("cursor.move.absolute", "", "\x1b[5;10H", { row: 4, col: 9 })
-  if (!cursor.term || !cursor.termless) throw new Error("missing cursor callback")
+  if (!cursor.term || !cursor.lib) throw new Error("missing cursor callback")
 
   let terminalPosition = { row: 8, col: 7 }
   const terminalCursor = await cursor.term(
@@ -1009,14 +1015,14 @@ test("cursor movement binds measured positions and parser state, never a missing
       queryCursorPosition: async () => terminalPosition,
     }),
   )
-  expect(terminalCursor.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(terminalCursor.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(terminalCursor.assertions).toMatchObject([
     { kind: "positive", expected: expect.any(String), observed: expect.any(String) },
   ])
   expect((await cursor.term(terminal())).observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
 
   let headlessPosition = { x: 7, y: 8, visible: true, style: null }
-  const parserCursor = cursor.termless(
+  const parserCursor = cursor.lib(
     headless({
       feed(sequence) {
         if (sequence === "\x1b[1;1H") headlessPosition = { ...headlessPosition, x: 0, y: 0 }
@@ -1025,7 +1031,7 @@ test("cursor movement binds measured positions and parser state, never a missing
       getCursor: () => headlessPosition,
     }),
   )
-  expect(parserCursor.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(parserCursor.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(JSON.parse(parserCursor.response ?? "")).toMatchObject({ final: { x: 9, y: 4 } })
   expect(parserCursor.assertions).toMatchObject([{ kind: "positive", observed: parserCursor.response }])
 })
@@ -1053,7 +1059,7 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
     [3, "permanently set (Ps 3)"],
   ] as const) {
     const result = await decrpm.term(makeContext(ps))
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.response).toBe(reading)
     expect(result.assertions).toMatchObject([{ kind: "positive", observed: reading }])
   }
@@ -1061,7 +1067,7 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   const four = await decrpm.term(makeContext(4))
   expect(four.pass).toBe(false)
   expect(four.response).toBe("permanently reset (Ps 4)")
-  expect(four.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(four.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(four.assertions).toMatchObject([
     { kind: "negative", expected: "DECRPM mode 42 can be set", observed: "permanently reset (Ps 4)" },
   ])
@@ -1069,7 +1075,7 @@ test("DECRPM recognizes explicit set/reset/unknown without changing an existing 
   expect(unknown.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(unknown.response).toBe("not recognized (Ps 0)")
   expect(unknown.assertions).toBeUndefined()

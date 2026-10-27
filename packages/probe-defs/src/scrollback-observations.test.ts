@@ -13,6 +13,7 @@ import { createSemanticSurface } from "./testing/semantic-surface.ts"
 
 function headless(overrides: Partial<LibProbeSource> = {}): LibProbeSource {
   return {
+    kind: "live",
     cols: 61,
     feed() {},
     feedCapture: () => "",
@@ -101,7 +102,7 @@ test.each([
   "%s inserts a blank measured row only when the operation moves every marker",
   (id, operation, before, after) => {
     const probe = scrollbackProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+    if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
     const row = readbackRow(id)
     // The blank row the operation inserts must come from the operation, never from losing a marker: a
     // marker lost inside the compared grid is a different screen, which reads unsupported, not support.
@@ -112,8 +113,8 @@ test.each([
       ["lost-marker", { [row.seed]: before, [operation]: lostMarker }, "unsupported"],
       ["missing-seed", { [row.seed]: before.map((cells) => cells.map(() => "?")) }, "inconclusive"],
     ] as const) {
-      const result = probe.termless(declaredScreen(screens, 5))
-      expect(result.observation, effect).toMatchObject({ outcome, evidence: "parser-state" })
+      const result = probe.lib(declaredScreen(screens, 5))
+      expect(result.observation, effect).toMatchObject({ outcome, assertionType: "buffer_state" })
       if (outcome === "inconclusive") expect(result.assertions, effect).toBeUndefined()
       else {
         expect(result.assertions, effect).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
@@ -129,6 +130,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
   const writes: string[] = []
   const queries: string[] = []
   const context: TermProbeSource = {
+    kind: "live",
     rows: 37,
     cols: 61,
     write: (s) => writes.push(s),
@@ -151,6 +153,7 @@ test("accumulate uses measured rows and does not infer 24 after CSI silence", as
 function silentAppContext(rows: number, cols: number): { context: TermProbeSource; writes: string[] } {
   const writes: string[] = []
   const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -174,7 +177,7 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(result.assertions ?? [], id).toEqual([])
     expect(result.response, id).toBeTruthy()
@@ -202,10 +205,9 @@ test("cursor replies do not qualify app scrollback contents or region behavior",
         return { row: 5, col: 5 }
       },
     })
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(String(result.observation?.note), id).toContain("no owned capture adapter")
     expect(result.assertions ?? [], id).toEqual([])
@@ -226,10 +228,9 @@ test("DECSTBM reset declines a grid below its measured minimum before writing", 
   ]) {
     const app = captureApp(geometry.rows, geometry.cols)
     const result = await probe.term(app.context)
-    expect(result.observation, `${geometry.rows}x${geometry.cols}`).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, `${geometry.rows}x${geometry.cols}`).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(app.writes, `${geometry.rows}x${geometry.cols}`).toEqual([])
   }
@@ -240,7 +241,7 @@ test("DECSTBM reset declines a grid below its measured minimum before writing", 
   expect(tallResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(tallResult.observation?.note), "1200 rows").toContain("cell size in pixels")
   expect(tall.writes, "1200 rows").toEqual([])
@@ -260,6 +261,7 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
     if (!probe?.term) throw new Error(`Missing ${id} app callback`)
     const writes: string[] = []
     const context: TermProbeSource = {
+      kind: "live",
       rows: 1,
       cols: 1,
       write: (sequence) => writes.push(sequence),
@@ -275,10 +277,9 @@ test("remaining scrollback fixtures decline too-small geometry before writing", 
     }
     expect(probe.termNeedsGeometry, id).toBe(true)
     const result = await probe.term(context)
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes, id).toEqual([])
   }
@@ -291,9 +292,9 @@ test("headless scrollback uses initialized screenLines rather than a 24-row assu
     ["scrollback.total-lines", screenLines + 10],
   ] as const) {
     const probe = scrollbackProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+    if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
     const feeds: string[] = []
-    probe.termless(
+    probe.lib(
       headless({
         feed: (sequence) => feeds.push(sequence),
         getScrollback: () => ({ viewportOffset: 0, totalLines: 47, screenLines }),
@@ -305,8 +306,8 @@ test("headless scrollback uses initialized screenLines rather than a 24-row assu
     ).toHaveLength(expectedFeeds)
   }
   const reset = scrollbackProbes.find((item) => item.id === "scrollback.decstbm-reset")
-  if (!reset?.termless) throw new Error("Missing decstbm-reset headless callback")
-  const result = reset.termless(
+  if (!reset?.lib) throw new Error("Missing decstbm-reset headless callback")
+  const result = reset.lib(
     headless({
       feed() {},
       getScrollback: () => ({ viewportOffset: 0, totalLines: 30, screenLines }),
@@ -366,19 +367,18 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   // not a measured grid, so they refuse without feeding a byte.
   for (const id of ["scrollback.accumulate", "scrollback.total-lines"]) {
     const probe = scrollbackProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+    if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
     for (const screenLines of [Number.NaN, Number.POSITIVE_INFINITY, 37.5]) {
       const feeds: string[] = []
-      const result = probe.termless(
+      const result = probe.lib(
         headless({
           feed: (sequence) => feeds.push(sequence),
           getScrollback: () => ({ viewportOffset: 0, totalLines: 0, screenLines }),
         }),
       )
-      expect(result.observation, `${id} rows=${screenLines}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result, `${id} rows=${screenLines}`).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
       expect(feeds).toEqual([])
     }
@@ -387,16 +387,16 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   // directly, so a grid narrower than the row's own cells cannot carry the fixture at all.
   for (const id of ["scrollback.scroll-up", "scrollback.scroll-down", "scrollback.decstbm-reset"]) {
     const probe = scrollbackProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
+    if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
     const columns = readbackRow(id).before[0]?.length ?? 0
     const feeds: string[] = []
-    const result = probe.termless(headless({ cols: columns - 1, feed: (sequence) => feeds.push(sequence) }))
+    const result = probe.lib(headless({ cols: columns - 1, feed: (sequence) => feeds.push(sequence) }))
     expect(result.observation, `${id} cols=${columns - 1}`).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
       // The parser arm reports the geometry it measured, so its refusal is a parser-state reading and
       // not the zero-byte `none` shape the capture arm answers with.
-      evidence: "parser-state",
+      assertionType: "buffer_state",
     })
     expect(feeds, `${id} cols=${columns - 1}`).toEqual([])
   }
@@ -404,7 +404,10 @@ test("invalid headless rows and narrow DECSTBM geometry refuse before writes", a
   if (!decstbm?.term) throw new Error("Missing scrollback.decstbm app callback")
   const { context, writes } = silentAppContext(12, 1)
   const result = await decstbm.term(context)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(result).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  })
   expect(writes).toEqual([])
 })
 
@@ -423,19 +426,19 @@ test.each([
   "interior-region SU grades measured movement, a no-op, and invalid controls (%s)",
   (effect, after, outcome) => {
     const probe = scrollbackProbes.find((item) => item.id === "scrollback.scroll-up")
-    if (!probe?.termless) throw new Error("missing scroll-up callback")
+    if (!probe?.lib) throw new Error("missing scroll-up callback")
     const row = readbackRow("scrollback.scroll-up")
     const before = [["A"], ["B"], ["C"], ["D"], ["E"]]
     const feeds: string[] = []
     const surface = declaredScreen({ [row.seed]: effect === "missing-seed" ? after : before, "\x1b[S": after }, 4)
-    const result = probe.termless({
+    const result = probe.lib({
       ...surface,
       feed: (sequence) => {
         feeds.push(sequence)
         surface.feed(sequence)
       },
     })
-    expect(result.observation, effect).toMatchObject({ outcome, evidence: "parser-state" })
+    expect(result.observation, effect).toMatchObject({ outcome, assertionType: "buffer_state" })
     // The fixture never scrolls by writing a line feed: the screen the row compares is the sequence's own.
     expect(
       feeds.some((sequence) => sequence.includes("\n")),
@@ -449,58 +452,58 @@ test.each([
 
 test("interior-region SU reads the compared cells, never the scrollback model", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.scroll-up")
-  if (!probe?.termless) throw new Error("missing scroll-up callback")
+  if (!probe?.lib) throw new Error("missing scroll-up callback")
   const row = readbackRow("scrollback.scroll-up")
   const after = [["A"], ["C"], ["D"], [""], ["E"]]
-  const result = probe.termless({
+  const result = probe.lib({
     ...declaredScreen({ [row.seed]: [["A"], ["B"], ["C"], ["D"], ["E"]], "\x1b[S": after }, 4),
     // A surface with history already behind the viewport still scrolls the screen the row compares.
     getScrollback: () => ({ viewportOffset: 3, totalLines: 999, screenLines: 5 }),
   })
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
 })
 
 test("DECSTBM needs an inner-row movement control, not just a surviving top row", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
-  if (!probe?.termless) throw new Error("missing decstbm callback")
-  const result = probe.termless(
+  if (!probe?.lib) throw new Error("missing decstbm callback")
+  const result = probe.lib(
     headless({
       getCell: (row) => ({ char: row === 0 ? "F" : "I" }) as ReturnType<LibProbeSource["getCell"]>,
     }),
   )
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
   expect(result.assertions).toBeUndefined()
 })
 
 test("DECSTBM retains support only when the region's inner rows actually move", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm")
-  if (!probe?.termless) throw new Error("missing decstbm callback")
+  if (!probe?.lib) throw new Error("missing decstbm callback")
   const row = readbackRow("scrollback.decstbm")
   const before = [["F"], [""], ["A"], ["B"], ["C"]]
   const after = [["F"], [""], ["B"], ["C"], [""]]
   // FIXED on row 1 is the row's control and survives either way, so a row that graded the control
   // alone would read supported on a surface that scrolled nothing. The inner rows are the claim.
-  const still = probe.termless(declaredScreen({ [row.seed]: before }))
-  expect(still.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const still = probe.lib(declaredScreen({ [row.seed]: before }))
+  expect(still.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(still.assertions).toMatchObject([{ kind: "negative" }])
-  const moved = probe.termless(declaredScreen({ [row.seed]: before, "\n": after }))
-  expect(moved.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const moved = probe.lib(declaredScreen({ [row.seed]: before, "\n": after }))
+  expect(moved.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(moved.assertions).toMatchObject([{ kind: "positive", observed: moved.response }])
 })
 
 test("DECSTBM reset is graded from the region readback, never from scrollback growth", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.decstbm-reset")
-  if (!probe?.termless) throw new Error("missing decstbm-reset callback")
+  if (!probe?.lib) throw new Error("missing decstbm-reset callback")
   const row = readbackRow("scrollback.decstbm-reset")
   // History count is not readable from the screen, so no growth figure can decide this row: a surface
   // that leaves the compared rows where they were is a measured negative, however much history it
   // claims to have grown.
   const surface = declaredScreen({ [row.seed]: [["A"], [""]] })
-  const result = probe.termless({
+  const result = probe.lib({
     ...surface,
     getScrollback: () => ({ viewportOffset: 0, screenLines: 12, totalLines: 999 }),
   })
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "negative" }])
 })
 
@@ -508,6 +511,7 @@ function captureApp(rows: number, cols: number) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -541,10 +545,9 @@ const findScrollback = (id: string) => {
 test("scrollback capture fixtures record control and target frames with honest, bounded claims", async () => {
   const accumulate = findScrollback("scrollback.accumulate")
   const small = captureApp(2, 61)
-  expect((await accumulate.term!(small.context)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await accumulate.term!(small.context)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(small.writes).toEqual([])
   const accumulated = captureApp(3, 61)
@@ -568,7 +571,7 @@ test("scrollback capture fixtures record control and target frames with honest, 
   expect(altResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(altResult.observation?.note)).toContain("cell size in pixels")
   expect(alts.frames).toEqual([])
@@ -581,7 +584,7 @@ test("scrollback capture fixtures record control and target frames with honest, 
   expect(decstbmResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(decstbmResult.observation?.note)).toContain("cell size in pixels")
   expect(decstbms.frames).toEqual([])
@@ -591,7 +594,10 @@ test("scrollback capture fixtures record control and target frames with honest, 
   // 7-row grid cannot carry the row-2 witness on row 6 and the run refuses BY NAME before a byte.
   const short = captureApp(7, 61)
   const shortResult = await reset.term!(short.context)
-  expect(shortResult.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(shortResult).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  })
   expect(String(shortResult.observation?.note)).toContain("at least 8x3")
   expect(short.writes).toEqual([])
   const resets = captureApp(12, 61)
@@ -600,7 +606,7 @@ test("scrollback capture fixtures record control and target frames with honest, 
   expect(resetResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(resetResult.observation?.note)).toContain("cell size in pixels")
   expect(resets.frames).toEqual([])
@@ -610,7 +616,10 @@ test("scrollback capture fixtures record control and target frames with honest, 
   // the family's two-column margin), so a 1-column grid is refused before a byte.
   const setSmall = captureApp(12, 1)
   const setSmallResult = await setRegion.term!(setSmall.context)
-  expect(setSmallResult.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+  expect(setSmallResult).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+  })
   expect(String(setSmallResult.observation?.note)).toContain("at least 12x3")
   expect(setSmall.writes).toEqual([])
 })
@@ -626,8 +635,8 @@ test.each(["scrollback.set-region", "scrollback.alt-screen", "scrollback.decstbm
   "%s decides supported against a surface that really implements its claim",
   (id) => {
     const probe = scrollbackProbes.find((item) => item.id === id)
-    if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
-    const result = probe.termless(headlessContext(createSemanticSurface()))
+    if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
+    const result = probe.lib(headlessContext(createSemanticSurface()))
     expect(result.observation?.outcome, id).toBe("supported")
     // A decided row carries its assertion, never a bare outcome.
     expect(result.assertions ?? [], id).not.toEqual([])
@@ -640,8 +649,8 @@ test.each([
   ["scrollback.alt-screen", "altscreen-noop"],
 ] as const)("%s reads unsupported when the surface ignores exactly that operation", (id, mutation) => {
   const probe = scrollbackProbes.find((item) => item.id === id)
-  if (!probe?.termless) throw new Error(`Missing ${id} headless callback`)
-  const result = probe.termless(headlessContext(createSemanticSurface({ mutations: [mutation] })))
+  if (!probe?.lib) throw new Error(`Missing ${id} headless callback`)
+  const result = probe.lib(headlessContext(createSemanticSurface({ mutations: [mutation] })))
   expect(result.observation?.outcome, `${id} under ${mutation}`).toBe("unsupported")
 })
 
@@ -674,6 +683,7 @@ function regionReadbackApp(
     return JSON.stringify(lines)
   }
   const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (bytes) => {
@@ -756,7 +766,7 @@ test("scrollback.alt-screen reads the entry AND the restore from the region read
  */
 test("scrollback.alt-screen refuses a surface that clears the main grid on 1049l", () => {
   const probe = scrollbackProbes.find((item) => item.id === "scrollback.alt-screen")
-  if (!probe?.termless) throw new Error("Missing scrollback.alt-screen headless callback")
+  if (!probe?.lib) throw new Error("Missing scrollback.alt-screen headless callback")
   const row = readbackRow("scrollback.alt-screen")
   const mainRow = ["M", "A", "I", "N", "_", "S", "C", "R", "E", "E", "N", "_", "M", "A", "R", "K", "E", "R"]
   const blankRow = mainRow.map(() => "")
@@ -775,9 +785,9 @@ test("scrollback.alt-screen refuses a surface that clears the main grid on 1049l
     [leaveAlt]: [mainAfterExit, blankRow],
     [writeOk]: [mainAfterExit, okRow],
   })
-  const restored = probe.termless(declaredScreen(screens(mainRow)))
+  const restored = probe.lib(declaredScreen(screens(mainRow)))
   expect(restored.observation?.outcome).toBe("supported")
-  const cleared = probe.termless(declaredScreen(screens(blankRow)))
+  const cleared = probe.lib(declaredScreen(screens(blankRow)))
   expect(cleared.observation?.outcome).toBe("unsupported")
   expect(cleared.pass).toBe(false)
 })

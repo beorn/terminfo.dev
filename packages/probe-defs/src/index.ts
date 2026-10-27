@@ -1,6 +1,9 @@
 export type {
   ProbeDefinition,
   ProbeCallbackResult,
+  MeasuredProbeCallbackResult,
+  ExecutionOnlyProbeCallbackResult,
+  ProbeSourceKind,
   NoSemanticObservable,
   LibProbeSource,
   TermProbeSource,
@@ -14,18 +17,11 @@ export type {
   CaptureRectangle,
   CaptureRequest,
 } from "./types.ts"
-export {
-  OBSERVATION_OUTCOMES,
-  OBSERVATION_REASONS,
-  OBSERVATION_EVIDENCE,
-  NON_MEASURING_EVIDENCE,
-  frameDigests,
-  isNonMeasuringEvidence,
-} from "./types.ts"
+export { OBSERVATION_OUTCOMES, OBSERVATION_REASONS, ASSERTION_TYPES, frameDigests } from "./types.ts"
 export type {
   ObservationOutcome,
   ObservationReason,
-  ObservationEvidence,
+  AssertionType,
   Observation,
   ConsoleBufferOwner,
   ObservationFrame,

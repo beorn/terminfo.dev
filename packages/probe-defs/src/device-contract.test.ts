@@ -207,7 +207,7 @@ test("the harness replays every Device capability deterministically through the 
     const probe = deviceProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Device probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, deviceContexts(echoingDevice()))
     const second = await regradeRow(probe, row, deviceContexts(echoingDevice()))
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)

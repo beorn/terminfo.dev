@@ -24,6 +24,7 @@ function probe(id: string) {
 
 function context(overrides: Partial<LibProbeSource>): LibProbeSource {
   return {
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -79,6 +80,7 @@ function context(overrides: Partial<LibProbeSource>): LibProbeSource {
 
 function terminalContext(overrides: Partial<TermProbeSource>): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => ({ row: 1, col: 1 }),
     measureRenderedWidth: async () => null,
@@ -102,8 +104,8 @@ function terminalContext(overrides: Partial<TermProbeSource>): TermProbeSource {
 describe("Sixel geometry item-2 report", () => {
   const query = "\x1b[?2;1;0S"
   const geometry = probe("extensions.sixel-geometry-report")
-  if (!geometry.termless || !geometry.term) throw new Error("Sixel geometry requires both callbacks")
-  const headless = geometry.termless
+  if (!geometry.lib || !geometry.term) throw new Error("Sixel geometry requires both callbacks")
+  const headless = geometry.lib
   const terminal = geometry.term
 
   function fromHeadless(raw: string) {
@@ -136,7 +138,7 @@ describe("Sixel geometry item-2 report", () => {
     const raw = "\x1b[?2;0;640;480S"
     for (const result of [fromHeadless(raw), await fromTerminal(raw)]) {
       expect(result).toMatchObject({ pass: true, response: raw })
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: raw })
     }
     expect(geometry.termWrites).toBe("query")
@@ -146,7 +148,11 @@ describe("Sixel geometry item-2 report", () => {
     const raw = "\x1b[?62;52;c\x1b[?2;0;640;480S"
     const result = await fromTerminal(raw, true)
     expect(result).toMatchObject({ pass: false, response: raw })
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+    expect(result.observation).toMatchObject({
+      outcome: "inconclusive",
+      reason: "no-response",
+      assertionType: "query_reply",
+    })
     expect(result.assertions).toBeUndefined()
   })
 
@@ -155,7 +161,7 @@ describe("Sixel geometry item-2 report", () => {
     const raw = `${frame}\x1b[?62;52;c`
     const result = await fromTerminal(raw)
     expect(result).toMatchObject({ pass: true, response: raw })
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: frame })
   })
 
@@ -169,7 +175,7 @@ describe("Sixel geometry item-2 report", () => {
     ] as const) {
       for (const result of [fromHeadless(raw), await fromTerminal(raw)]) {
         expect(result).toMatchObject({ pass: false, response: raw })
-        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, evidence: "query" })
+        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, assertionType: "query_reply" })
         expect(result.assertions).toBeUndefined()
       }
     }
@@ -210,9 +216,9 @@ describe("OSC 8 link metadata observation", () => {
 
   test("four exact URI cells bracketed by unlinked controls establish support", () => {
     const p = probe("extensions.osc8")
-    if (!p.termless) throw new Error("OSC 8 needs headless callback")
-    const result = p.termless(linkedContext(positions))
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+    if (!p.lib) throw new Error("OSC 8 needs headless callback")
+    const result = p.lib(linkedContext(positions))
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
     // The headless batch admits parser-state conclusions only when the exact
     // assertion observation is the immutable raw response for this feature.
@@ -221,13 +227,13 @@ describe("OSC 8 link metadata observation", () => {
 
   test("wrong URI or link leaking past close is unsupported with measured mismatch", () => {
     const p = probe("extensions.osc8")
-    if (!p.termless) throw new Error("OSC 8 needs headless callback")
+    if (!p.lib) throw new Error("OSC 8 needs headless callback")
     for (const links of [
       [null, uri, "https://wrong.example", uri, uri, null],
       [null, uri, uri, uri, uri, uri],
     ]) {
-      const result = p.termless(linkedContext(links))
-      expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+      const result = p.lib(linkedContext(links))
+      expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
       expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
       expect(result.assertions?.[0]?.observed).toBe(result.response)
     }
@@ -235,17 +241,17 @@ describe("OSC 8 link metadata observation", () => {
 
   test("missing link metadata is inconclusive, but a true declaration with absent field is an error", () => {
     const p = probe("extensions.osc8")
-    if (!p.termless) throw new Error("OSC 8 needs headless callback")
-    const unreported = p.termless(linkedContext(Array(6).fill(undefined), false))
+    if (!p.lib) throw new Error("OSC 8 needs headless callback")
+    const unreported = p.lib(linkedContext(Array(6).fill(undefined), false))
     expect(unreported.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
-    expect(() => p.termless?.(linkedContext(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
+    expect(() => p.lib?.(linkedContext(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
   })
 
   // AC3: the published feature flag does not declare metadata exposure.
   test("a true feature flag with no metadata extension stays unreported", () => {
     const p = probe("extensions.osc8")
-    if (!p.termless) throw new Error("OSC 8 needs headless callback")
-    const result = p.termless(linkedContext(Array(6).fill(null), false))
+    if (!p.lib) throw new Error("OSC 8 needs headless callback")
+    const result = p.lib(linkedContext(Array(6).fill(null), false))
     expect(result.observation).toMatchObject({ outcome: "inconclusive" })
     expect(JSON.parse(result.response ?? "")).toMatchObject({ links: Array(6).fill({ reported: false }) })
   })
@@ -254,10 +260,9 @@ describe("OSC 8 link metadata observation", () => {
     const p = probe("extensions.osc8")
     if (!p.term) throw new Error("OSC 8 needs application callback")
     const result = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 7 }) }))
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "consumed",
+    expect(result).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
   })
 })
@@ -271,10 +276,10 @@ describe("OSC 8 link metadata observation", () => {
 describe("Kitty protocol detection", () => {
   test("reflow declaration does not claim resize-time behavior without a controlled resize", async () => {
     const p = probe("extensions.reflow")
-    if (!p.term || !p.termless) throw new Error("Reflow needs both callbacks")
+    if (!p.term || !p.lib) throw new Error("Reflow needs both callbacks")
     for (const declared of [true, false]) {
       const writes: string[] = []
-      const headless = p.termless(
+      const headless = p.lib(
         context({
           capabilities: { ...context({}).capabilities, reflow: declared },
           feed(sequence) {
@@ -304,10 +309,9 @@ describe("Kitty protocol detection", () => {
       expect(headless.notTested).toMatchObject({ reason: "no-semantic-observable" })
       expect(headless.note).toMatch(/controlled resize|readback/i)
       expect(terminal.pass).toBe(false)
-      expect(terminal.observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(terminal).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
       expect(terminal.note).toMatch(/controlled resize|readback/i)
       expect(headless.response).toContain(String(declared))
@@ -316,7 +320,7 @@ describe("Kitty protocol detection", () => {
 
   test("OSC 66 measures width and scale rather than treating consumption as support", async () => {
     const p = probe("extensions.osc66-text-sizing")
-    if (!p.term || !p.termless) throw new Error("OSC 66 needs both probe methods")
+    if (!p.term || !p.lib) throw new Error("OSC 66 needs both probe methods")
     // CPR 1→3→5 captured from Kitty 0.46.2; ignored OSC leaves all three at 1.
     for (const [positions, expected] of [
       [[1, 1, 1], false],
@@ -334,11 +338,14 @@ describe("Kitty protocol detection", () => {
         }),
       )
       expect(term.pass).toBe(expected)
-      expect(term.observation).toMatchObject({ outcome: expected ? "supported" : "unsupported", evidence: "behavior" })
+      expect(term.observation).toMatchObject({
+        outcome: expected ? "supported" : "unsupported",
+        assertionType: "query_reply",
+      })
       expect(written).toContain("\x1b]66;w=2; \x07")
       expect(written).toContain("\x1b]66;s=2; \x07")
       index = 0
-      const headless = p.termless(
+      const headless = p.lib(
         context({
           getCursor() {
             return { x: (positions[index++] ?? 1) - 1, y: 0, visible: true, style: "block" }
@@ -348,7 +355,7 @@ describe("Kitty protocol detection", () => {
       expect(headless.pass).toBe(expected)
       expect(headless.observation).toMatchObject({
         outcome: expected ? "supported" : "unsupported",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
       })
     }
     const missingWrites: string[] = []
@@ -374,7 +381,7 @@ describe("Kitty protocol detection", () => {
 
   test("OSC 66 requires a measured home cursor before either protocol write", async () => {
     const p = probe("extensions.osc66-text-sizing")
-    if (!p.term || !p.termless) throw new Error("OSC 66 needs both callbacks")
+    if (!p.term || !p.lib) throw new Error("OSC 66 needs both callbacks")
     for (const baseline of [
       { row: 1, col: 2 },
       { row: 2, col: 1 },
@@ -398,7 +405,7 @@ describe("Kitty protocol detection", () => {
       expect(terminal.response).toContain(JSON.stringify(baseline))
       expect(terminal.assertions ?? []).toEqual([])
       const fed: string[] = []
-      const headless = p.termless(
+      const headless = p.lib(
         context({
           feed(sequence) {
             fed.push(sequence)
@@ -426,11 +433,11 @@ describe("Kitty protocol detection", () => {
     "OSC 5522 Ps %s uses the shared DECRPM reading on both arms",
     async (ps, pass, outcome, reason, reading) => {
       const p = probe("extensions.osc5522-clipboard")
-      if (!p.term || !p.termless) throw new Error("OSC 5522 needs both probe methods")
+      if (!p.term || !p.lib) throw new Error("OSC 5522 needs both probe methods")
       const response = ps === null ? "" : `\x1b[?5522;${ps}$y`
       const sentinel = "\x1b[?1;2c"
       const queries: string[] = []
-      const headless = p.termless(
+      const headless = p.lib(
         context({
           feedCapture() {
             throw new Error("The installed headless outcome owns its full reply window")
@@ -469,7 +476,7 @@ describe("Kitty protocol detection", () => {
       expect(queries).toEqual(["\x1b[?5522$p", "\x1b[?5522$p"])
       for (const result of [headless, term]) {
         expect(result.pass).toBe(pass)
-        expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
         expect(result.observation?.reason).toBe(reason)
         expect(result.response).toBe(result === headless ? response + sentinel : reading)
         expect(result.assertions?.[0]?.observed).toBe(pass || ps === 4 ? reading : undefined)
@@ -482,10 +489,10 @@ describe("Kitty protocol detection", () => {
   test("OSC 52 requires a complete nonce roundtrip in headless mode and never touches a live clipboard", async () => {
     for (const id of ["extensions.osc52-clipboard", "extensions.osc52-write", "extensions.osc52-read"]) {
       const p = probe(id)
-      if (!p.termless || !p.term) throw new Error(`${id} needs both callbacks`)
+      if (!p.lib || !p.term) throw new Error(`${id} needs both callbacks`)
 
       const sent: string[] = []
-      const headless = p.termless(
+      const headless = p.lib(
         context({
           feed(text) {
             sent.push(text)
@@ -498,7 +505,7 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(headless.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(headless.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 
       for (const reply of [
         "\x1b[1;1R", // Unrelated CPR cannot prove a clipboard write.
@@ -508,7 +515,7 @@ describe("Kitty protocol detection", () => {
         "\x1b]52;c;d3Jvbmc=\x1b", // ESC alone is not a complete ST.
         "",
       ]) {
-        const result = p.termless(context({ feedCapture: () => reply }))
+        const result = p.lib(context({ feedCapture: () => reply }))
         expect(result.observation?.outcome, `${id}: ${JSON.stringify(reply)}`).toBe("inconclusive")
         expect(result.pass).toBe(false)
       }
@@ -537,7 +544,7 @@ describe("Kitty protocol detection", () => {
   })
 
   // An owned fixture measures write and read independently; an echoed OSC frame alone cannot prove a write.
-  test("owned live OSC 52 checks independent clipboard state and complete canonical query replies", async () => {
+  test("owned live OSC 52 tests independent clipboard state and complete canonical query replies", async () => {
     const written: string[] = []
     let clipboard = "baseline"
     const fixture = {
@@ -575,7 +582,7 @@ describe("Kitty protocol detection", () => {
       )
       expect(result.observation, id).toMatchObject({
         outcome: "supported",
-        evidence: id === "extensions.osc52-write" ? "behavior" : "query",
+        assertionType: id === "extensions.osc52-write" ? "behavior" : "query",
       })
       expect(clipboard, id).not.toBe("baseline")
       expect(
@@ -695,14 +702,14 @@ describe("Kitty protocol detection", () => {
 
   test("Kitty probes pop only a push they actually wrote", async () => {
     const p = probe("extensions.kitty-keyboard")
-    if (!p.term || !p.termless) throw new Error("missing keyboard callbacks")
-    const termless = p.termless
+    if (!p.term || !p.lib) throw new Error("missing keyboard callbacks")
+    const lib = p.lib
 
     // Termless: the push feed throws before it is written -> no pop.
     {
       const feeds: string[] = []
       expect(() =>
-        termless(
+        lib(
           context({
             feedCapture: () => "\x1b[?1u",
             feed(sequence) {
@@ -720,7 +727,7 @@ describe("Kitty protocol detection", () => {
       const feeds: string[] = []
       let captureCall = 0
       expect(() =>
-        termless(
+        lib(
           context({
             feed(sequence) {
               feeds.push(sequence)
@@ -768,7 +775,7 @@ describe("Kitty protocol detection", () => {
 
   test("Kitty protocol detection reads flags, DA1-only negatives, and transport controls without a push", async () => {
     const p = probe("extensions.kitty-keyboard.report-text")
-    if (!p.termless || !p.term) throw new Error("missing keyboard callbacks")
+    if (!p.lib || !p.term) throw new Error("missing keyboard callbacks")
 
     const detections = [
       ["\x1b[?25u\x1b[?62;4c", "supported"], // flags + DA1
@@ -790,7 +797,7 @@ describe("Kitty protocol detection", () => {
     for (const [raw, outcome] of detections) {
       const captures: string[] = []
       const feeds: string[] = []
-      const result = p.termless(
+      const result = p.lib(
         context({
           feed(sequence) {
             feeds.push(sequence)
@@ -866,7 +873,7 @@ describe("Kitty protocol detection", () => {
       )
       const push = writes.find((sequence) => sequence.startsWith("\x1b[>"))
       expect(Number(/\x1b\[>(\d+)u/.exec(push ?? "")?.[1]) & 24).toBe(24) // Associated text requires all-keys mode too.
-      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
       expect(result.assertions?.[0]?.observed).toContain(String(flags))
     }
     const timeout = await p.term(terminalContext({}))
@@ -875,7 +882,7 @@ describe("Kitty protocol detection", () => {
 
   test("CSI-u recognition requires acknowledged flags, not a responsive cursor", async () => {
     const p = probe("input.csi-u")
-    if (!p.term || !p.termless) throw new Error("CSI-u needs both callbacks")
+    if (!p.term || !p.lib) throw new Error("CSI-u needs both callbacks")
     for (const [raw, outcome] of [
       ["\x1b[?1u", "supported"],
       ["\x1b[?0u", "unsupported"],
@@ -891,12 +898,12 @@ describe("Kitty protocol detection", () => {
           }),
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
-      expect(p.termless(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(p.lib(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
     }
   })
 
-  test("notification detection checks the echoed query identifier and advertised title payload", async () => {
+  test("notification detection tests the echoed query identifier and advertised title payload", async () => {
     const p = probe("extensions.osc99-kitty-notify")
     if (!p.term) throw new Error("missing notification callback")
     for (const [replyKind, outcome] of [
@@ -921,14 +928,14 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
       if (outcome === "supported") expect(result.assertions?.[0]?.observed).toContain("title,body")
     }
   })
 
   test("OSC 21 validates the requested foreground reply and never falls back to cursor consumption", async () => {
     const p = probe("extensions.osc21-kitty-color")
-    if (!p.term || !p.termless) throw new Error("OSC 21 needs both callbacks")
+    if (!p.term || !p.lib) throw new Error("OSC 21 needs both callbacks")
     // The protocol explicitly permits an empty value for a dynamic/undefined color.
     for (const [body, outcome] of [
       ["foreground=rgb:ff/00/00", "supported"],
@@ -948,15 +955,15 @@ describe("Kitty protocol detection", () => {
           }),
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
-      expect(p.termless(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      expect(p.lib(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
     }
   })
 
   test("graphics upload and placement require their own acknowledgements and clean up only the allocated image", async () => {
     for (const kind of ["transmit", "display"]) {
       const p = probe(`extensions.kitty-graphics.${kind}`)
-      if (!p.term || !p.termless) throw new Error("missing graphics callback")
+      if (!p.term || !p.lib) throw new Error("missing graphics callback")
       const silent = await p.term(terminalContext({}))
       expect(silent.pass).toBe(false) // A normal CPR must not turn an ignored APC into support.
       expect(silent.observation?.outcome).toBe("inconclusive")
@@ -984,11 +991,11 @@ describe("Kitty protocol detection", () => {
         )
         expect(result.observation).toMatchObject({
           outcome: outcome === "accepted" ? "supported" : "inconclusive",
-          evidence: "query",
+          assertionType: "query_reply",
         })
         if (outcome === "accepted") expect(writes.join("")).toContain("a=d,d=I,i=745")
         else expect(writes).toEqual([]) // No acknowledged ownership; never delete an unrelated image.
-        expect(p.termless(context({ feedCapture: responseTo })).observation?.outcome).toBe(result.observation?.outcome)
+        expect(p.lib(context({ feedCapture: responseTo })).observation?.outcome).toBe(result.observation?.outcome)
       }
     }
     const display = probe("extensions.kitty-graphics.display")
@@ -1027,7 +1034,7 @@ describe("Kitty protocol detection", () => {
         },
       }),
     )
-    expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     const silent = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 9, col: 9 }) }))
     expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
   })
@@ -1075,7 +1082,7 @@ describe("extensions without a complete behavior oracle", () => {
         extensions: new Set(declared ? ["osc7", "osc9", "iterm2Images"] : []),
       }
       for (const id of declaredIds) {
-        const callback = probe(id).termless
+        const callback = probe(id).lib
         if (!callback) throw new Error(`${id} needs a headless callback`)
         const result = callback(context({ capabilities }))
         expect(result.pass, id).toBe(false)
@@ -1094,7 +1101,7 @@ describe("extensions without a complete behavior oracle", () => {
 
   test("a title change cannot establish icon-name support", () => {
     for (const id of ["extensions.osc1-icon"]) {
-      const callback = probe(id).termless
+      const callback = probe(id).lib
       if (!callback) throw new Error(`${id} needs a headless callback`)
       for (const after of ["original", "test-icon My Title"]) {
         let fed = false
@@ -1137,10 +1144,9 @@ describe("extensions without a complete behavior oracle", () => {
       )
       expect(writes, id).toEqual([])
       expect(result.pass, id).toBe(false)
-      expect(result.observation, id).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result, id).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
       expect(result.assertions ?? [], id).toEqual([])
     }
@@ -1203,7 +1209,7 @@ describe("headless charset cell evidence", () => {
 
   test("valid controls bind exact glyph support and ignored-target negatives to raw cells", () => {
     for (const item of cases) {
-      const callback = probe(item.id).termless
+      const callback = probe(item.id).lib
       if (!callback) throw new Error(`${item.id} needs a headless callback`)
       for (const [after, outcome] of [
         [item.after, "supported"],
@@ -1234,7 +1240,7 @@ describe("headless charset cell evidence", () => {
             },
           }),
         )
-        expect(result.observation, item.id).toMatchObject({ outcome, evidence: "parser-state" })
+        expect(result.observation, item.id).toMatchObject({ outcome, assertionType: "buffer_state" })
         expect(JSON.parse(result.response ?? "null"), item.id).toMatchObject({
           // The kind reads a GRID: one string[] per compared row, one entry per compared column.
           before: [item.before],
@@ -1257,7 +1263,7 @@ describe("headless charset cell evidence", () => {
 
   test("bad seed or broken ASCII control is inconclusive, and narrow geometry writes nothing", () => {
     for (const item of cases) {
-      const callback = probe(item.id).termless
+      const callback = probe(item.id).lib
       if (!callback) throw new Error(`${item.id} needs a headless callback`)
       for (const badPhase of ["before", "after"] as const) {
         let applied = false
@@ -1284,7 +1290,7 @@ describe("headless charset cell evidence", () => {
         expect(result.observation, `${item.id} ${badPhase}`).toMatchObject({
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "parser-state",
+          assertionType: "buffer_state",
         })
         expect(result.assertions ?? [], item.id).toEqual([])
       }
@@ -1301,11 +1307,11 @@ describe("headless charset cell evidence", () => {
       expect(narrow.observation, item.id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
       })
       expect(JSON.parse(narrow.response ?? "null"), item.id).toMatchObject({ cols: item.minCols - 1 })
     }
-    const switching = probe("charsets.g0-g1-switching").termless
+    const switching = probe("charsets.g0-g1-switching").lib
     if (!switching) throw new Error("G0/G1 needs a headless callback")
     const writes: string[] = []
     const base = context({})
@@ -1332,7 +1338,7 @@ describe("headless charset cell evidence", () => {
 
   test("ignored target CUP stops before charset bytes instead of blaming the charset", () => {
     for (const item of cases) {
-      const callback = probe(item.id).termless
+      const callback = probe(item.id).lib
       if (!callback) throw new Error(`${item.id} needs a headless callback`)
       const writes: string[] = []
       const base = context({})
@@ -1353,14 +1359,14 @@ describe("headless charset cell evidence", () => {
       expect(result.observation, item.id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
       })
       expect(JSON.parse(result.response ?? "null"), item.id).toMatchObject({ setup: [{ x: wrongX, y: 0 }] })
       expect(result.assertions ?? [], item.id).toEqual([])
       expect(writes.join(""), item.id).not.toContain(item.trigger)
     }
 
-    const utf8 = probe("charsets.utf8").termless
+    const utf8 = probe("charsets.utf8").lib
     if (!utf8) throw new Error("UTF-8 needs a headless callback")
     const writes: string[] = []
     const base = context({})
@@ -1396,10 +1402,10 @@ describe("headless charset cell evidence", () => {
 describe("partial probe automation candidates", () => {
   test("modes.decsclm keeps DECRPM recognition distinct from measured scroll timing", () => {
     const p = probe("modes.decsclm")
-    expect(p.termless).toBeTypeOf("function")
+    expect(p.lib).toBeTypeOf("function")
 
     const seen: string[] = []
-    const result = p.termless!(
+    const result = p.lib!(
       context({
         feed(text) {
           seen.push(text)
@@ -1415,7 +1421,7 @@ describe("partial probe automation candidates", () => {
     expect(result.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
     })
     expect(JSON.parse(result.response ?? "null")).toEqual({ response: "\x1b[?4;1$y" })
     expect(result.assertions).toBeUndefined()
@@ -1424,9 +1430,9 @@ describe("partial probe automation candidates", () => {
 
   test("device.dsr-996-color-scheme verifies the color-scheme response", () => {
     const p = probe("device.dsr-996-color-scheme")
-    expect(p.termless).toBeTypeOf("function")
+    expect(p.lib).toBeTypeOf("function")
 
-    const result = p.termless!(
+    const result = p.lib!(
       context({
         feedCapture(text) {
           expect(text).toBe("\x1b[?996n")
@@ -1461,11 +1467,11 @@ describe("partial probe automation candidates", () => {
 
     for (const c of cases) {
       const p = probe(c.id)
-      expect(p.termless).toBeTypeOf("function")
+      expect(p.lib).toBeTypeOf("function")
       const feed: string[] = []
       const capture: string[] = []
       const replies = [c.original, c.changed, c.original]
-      const result = p.termless!(
+      const result = p.lib!(
         context({
           feed(text) {
             feed.push(text)
@@ -1477,7 +1483,7 @@ describe("partial probe automation candidates", () => {
         }),
       )
       expect(result.pass).toBe(true)
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(result.assertions).toMatchObject([{ kind: "positive" }])
       expect(capture).toEqual([c.expected, c.expected, c.expected])
       expect(feed).toEqual([`\x1b]${c.set};rgb:aa/bb/cc\x07`, c.reset])
@@ -1526,11 +1532,11 @@ describe("partial probe automation candidates", () => {
   test("OSC 30001/30101 probes verify color stack restore behavior", () => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
       const p = probe(id)
-      expect(p.termless).toBeTypeOf("function")
+      expect(p.lib).toBeTypeOf("function")
       const fixture = colorStackFixture()
-      const result = p.termless!(fixture.ctx)
+      const result = p.lib!(fixture.ctx)
       expect(result.pass).toBe(true)
-      expect(result.observation).toMatchObject({ outcome: "supported", evidence: "behavior" })
+      expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(fixture.foreground()).toBe(fixture.original)
       expect(fixture.stackDepth()).toBe(0)
     }
@@ -1543,14 +1549,14 @@ describe("partial probe automation candidates", () => {
    * @testonly none
    */
   test.each([
-    { action: "initial query", failedQuery: 1, evidence: "query" },
-    { action: "foreground mutation", failedFeed: "mutation", evidence: "behavior" },
-    { action: "query after mutation", failedQuery: 2, evidence: "query" },
-    { action: "stack pop", failedFeed: "pop", evidence: "behavior" },
-    { action: "query after pop", failedQuery: 3, evidence: "query" },
-    { action: "cleanup restore", failedFeed: "restore", evidence: "behavior" },
-    { action: "query and cleanup restore", failedQuery: 2, failedFeed: "restore", evidence: "query" },
-    { action: "query and cleanup pop", failedQuery: 2, failedFeed: "pop", evidence: "query" },
+    { action: "initial query", failedQuery: 1, assertionType: "query_reply" },
+    { action: "foreground mutation", failedFeed: "mutation", assertionType: "query_reply" },
+    { action: "query after mutation", failedQuery: 2, assertionType: "query_reply" },
+    { action: "stack pop", failedFeed: "pop", assertionType: "query_reply" },
+    { action: "query after pop", failedQuery: 3, assertionType: "query_reply" },
+    { action: "cleanup restore", failedFeed: "restore", assertionType: "query_reply" },
+    { action: "query and cleanup restore", failedQuery: 2, failedFeed: "restore", assertionType: "query_reply" },
+    { action: "query and cleanup pop", failedQuery: 2, failedFeed: "pop", assertionType: "query_reply" },
   ] as const)("color-stack $action failures retain their method and named diagnostics", (row) => {
     for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
       const fixture = colorStackFixture(
@@ -1558,11 +1564,11 @@ describe("partial probe automation candidates", () => {
         "failedFeed" in row ? row.failedFeed : undefined,
       )
       const definition = probe(id)
-      expect(definition.termlessObservationEvidence).toBeUndefined()
-      const result = definition.termless!(fixture.ctx)
+      expect(definition.libAssertionType).toBeUndefined()
+      const result = definition.lib!(fixture.ctx)
       expect(result).toMatchObject({
         pass: false,
-        observation: { outcome: "error", reason: "collector-error", evidence: row.evidence },
+        observation: { outcome: "error", reason: "collector-error", assertionType: row.assertionType },
       })
       expect(result.note).toContain("Error:")
       expect(result.response).toBeUndefined()
@@ -1594,7 +1600,7 @@ describe("partial probe automation candidates", () => {
       const fixture = colorStackFixture(2, "restore", primary)
       let caught: unknown
       try {
-        probe(id).termless!(fixture.ctx)
+        probe(id).lib!(fixture.ctx)
       } catch (error) {
         caught = error
       }
@@ -1700,7 +1706,7 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, evidence: "query" })
+      expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, assertionType: "query_reply" })
       if (ps === 4) {
         expect(result.assertions, "Ps 4").toMatchObject([
           { kind: "negative", expected: "DECRPM mode 2031 can be set", observed: "permanently reset (Ps 4)" },
@@ -1725,7 +1731,7 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
     }
   })
 
@@ -1734,10 +1740,9 @@ describe("partial probe automation candidates", () => {
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
       expect(result.notTested).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        evidence: "consumed",
-        reason: "insufficient-evidence",
+      expect(result).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
@@ -1745,7 +1750,7 @@ describe("partial probe automation candidates", () => {
       expect(result.notTested).toBeUndefined()
       expect(result.observation).toMatchObject({
         outcome: "inconclusive",
-        evidence: "query",
+        assertionType: "query_reply",
         reason: "no-response",
       })
     }
@@ -1753,11 +1758,14 @@ describe("partial probe automation candidates", () => {
       // Constant 1;1 CPR: target never advances from home, so consumption is false and no coverage is claimed.
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 1 }) }))
       expect(result.notTested).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        evidence: "consumed",
-        reason: "insufficient-evidence",
-        note: "Marker consumption was not confirmed; shell prompt integration was not observed",
+      expect(result).toMatchObject({
+        observation: undefined,
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+          }),
+        ],
       })
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
@@ -1771,17 +1779,22 @@ describe("partial probe automation candidates", () => {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => reads[read++] ?? null }))
       expect(read).toBe(3)
       expect(result.notTested).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        evidence: "consumed",
-        reason: "insufficient-evidence",
-        note: "Marker was consumed; shell prompt integration was not observed",
+      expect(result).toMatchObject({
+        observation: undefined,
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason: "Marker was consumed; shell prompt integration was not observed",
+          }),
+        ],
       })
     }
     expect(
-      (await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })))
-        .observation,
-    ).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" })
+      await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })),
+    ).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    })
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Qualified cursor movement (0,0 -> 1,0 -> 0,0) with empty or non-X cell: consumed && keeps this inconclusive.
       for (const char of ["", "-"]) {
@@ -1792,7 +1805,7 @@ describe("partial probe automation candidates", () => {
         ]
         let read = 0
         const base = context({})
-        const result = probe(id).termless!(
+        const result = probe(id).lib!(
           context({
             getCursor: () => reads[read++] ?? reads[2]!,
             getCell(row, col) {
@@ -1802,23 +1815,29 @@ describe("partial probe automation candidates", () => {
         )
         expect(read, `${id} char=${JSON.stringify(char)}`).toBe(3)
         expect(result.notTested, `${id} char=${JSON.stringify(char)}`).toBeUndefined()
-        expect(result.observation, `${id} char=${JSON.stringify(char)}`).toMatchObject({
-          outcome: "inconclusive",
-          evidence: "consumed",
-          reason: "insufficient-evidence",
-          note: "Marker consumption was not confirmed; shell prompt integration was not observed",
+        expect(result, `${id} char=${JSON.stringify(char)}`).toMatchObject({
+          observation: undefined,
+          tests: [
+            expect.objectContaining({
+              status: "test-todo",
+              reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+            }),
+          ],
         })
       }
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Constant cursor (0,0) with cell.char === "X": consumed is true, but cursor motion is unqualified.
-      const result = probe(id).termless!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
+      const result = probe(id).lib!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
       expect(result.notTested).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        evidence: "consumed",
-        reason: "insufficient-evidence",
-        note: "Marker was consumed; shell prompt integration was not observed",
+      expect(result).toMatchObject({
+        observation: undefined,
+        tests: [
+          expect.objectContaining({
+            status: "test-todo",
+            reason: "Marker was consumed; shell prompt integration was not observed",
+          }),
+        ],
       })
     }
   })
@@ -1868,8 +1887,8 @@ describe("partial probe automation candidates", () => {
 
     for (const [id, expected, response] of cases) {
       const p = probe(id)
-      expect(p.termless).toBeTypeOf("function")
-      const result = p.termless!(
+      expect(p.lib).toBeTypeOf("function")
+      const result = p.lib!(
         context({
           feedCapture(text) {
             expect(text).toBe(expected)
@@ -1883,11 +1902,11 @@ describe("partial probe automation candidates", () => {
 
   test("OSC 720 verifies scrollback viewport movement", () => {
     const p = probe("extensions.osc720-scroll-up")
-    expect(p.termless).toBeTypeOf("function")
+    expect(p.lib).toBeTypeOf("function")
 
     let scrollReads = 0
     const fed: string[] = []
-    const result = p.termless!(
+    const result = p.lib!(
       context({
         feed(text) {
           fed.push(text)

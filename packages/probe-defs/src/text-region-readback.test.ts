@@ -58,6 +58,7 @@ function textFrame(
 }
 
 const textContext = (): TermProbeSource => ({
+  kind: "live",
   rows: 24,
   cols: 80,
   captureKind: "text-cells",
@@ -83,7 +84,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
       return { ...frame, ref: whole, frameDigest: whole }
     }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
-    expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
+    expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(JSON.parse(String(result?.response))).toMatchObject({
       stability: {
         regionDigest: [digest("stable:measured"), digest("stable:measured")],
@@ -95,7 +96,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
 
   it("decides a supported row without ever demanding a pixel report", async () => {
     const result = await captureRegionVerdict(textContext(), "erase.el", spec)
-    expect(result?.observation).toMatchObject({ outcome: "supported", evidence: "text" })
+    expect(result?.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     // No image to point at, and a text digest in screenshotRef would be refused at admission.
     expect(result?.observation?.screenshotRef).toBeUndefined()
     expect(result?.observation?.frames?.every((frame) => frame.kind === "text-cells")).toBe(true)
@@ -108,7 +109,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     const ctx: TermProbeSource = { ...textContext(), captureKind: "pixels", captureGeometry: undefined }
     const result = await captureRegionVerdict(ctx, "erase.el", spec)
     // The same run, now declaring pixels, must refuse for the missing pixel report by name.
-    expect(result?.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+    expect(result?.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   })
 
   // 29577 option A: a text arm holds one exact cell digest, so it can name only the axes that
@@ -124,7 +125,7 @@ describe("a text arm decides its rows from cells it read, never from pixels", ()
     expect(result?.observation).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "text",
+      assertionType: "buffer_state",
     })
     expect(result?.observation?.note).toContain("a third distinct frame")
     expect(result?.observation?.note).toContain("the characters")

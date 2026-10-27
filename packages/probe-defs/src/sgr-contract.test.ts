@@ -248,7 +248,7 @@ test("the harness replays every SGR capability deterministically (satisfaction i
     const probe = sgrProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing SGR probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
     const second = await regradeRow(probe, row, { headless: headlessContext(inertModel()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
@@ -295,7 +295,7 @@ test("a row reading an OPTIONAL cell field is notTested when the field is omitte
   const omitted = await regradeRow(probe, row, { headless: omittedContext })
   expect(omitted.after).toBeUndefined()
   expect(omitted.satisfies).toBe(false)
-  expect(probe.termless?.(omittedContext).notTested).toEqual({
+  expect(probe.lib?.(omittedContext).notTested).toEqual({
     reason: "no-semantic-observable",
     noObservable: "cell.overline field not exposed",
   })

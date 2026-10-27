@@ -497,6 +497,7 @@ function colourTerminal(mode: Mode, palette: Palette, geometry = { rows: ROWS, c
     }
   }
   const ctx: TermProbeSource = {
+    kind: "live",
     rows: geometry.rows,
     cols: geometry.cols,
     captureKind: "pixels",
@@ -540,7 +541,7 @@ for (const id of COLOUR_IDS) {
       const note = result.observation?.note ?? ""
       expect(note).not.toContain("visual interpretation requires review")
       expect(result.observation?.outcome).toBe("supported")
-      expect(result.observation?.evidence).toBe("pixels")
+      expect(result.observation?.assertionType).toBe("screenshot")
       expect(result.pass).toBe(true)
       expect(result.observation?.frames?.length ?? 0).toBeGreaterThanOrEqual(2)
       expect(note).toContain("neutral sample")
@@ -563,7 +564,7 @@ for (const id of COLOUR_IDS) {
       colourTerminal("deferred-paint", PALETTES[0] as Palette).ctx,
       id,
       spec,
-      "query",
+      true,
     )
     // The fixture must actually reach the negative branch, or the routing below proves nothing.
     expect(oracle?.observation?.outcome).toBe("unsupported")
@@ -584,7 +585,10 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
   for (const id of ["sgr.underline.color", "sgr.underline-color-rgb"] as const) {
     const captured = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
     const onCapture = await run(id, captured.ctx)
-    expect(onCapture.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    expect(onCapture).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    })
     // The generic 1x2 floor is checked first on both arms, exactly as it was before these rows moved
     // onto the capture row; the 3x34 capture guard is the stricter floor behind it.
     expect(onCapture.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
@@ -592,7 +596,10 @@ test("the rgb-underline rows refuse a terminal below 1x2 before any byte", async
 
     const plain = colourTerminal("render", PALETTES[0] as Palette, { rows: 1, cols: 1 })
     const onTerm = await run(id, { ...plain.ctx, capture: undefined, captureKind: undefined })
-    expect(onTerm.observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    expect(onTerm).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    })
     expect(onTerm.observation?.note ?? "").toContain("SGR fixture needs at least 1x2, measured 1x1")
     expect(plain.writes).toEqual([])
   }
@@ -609,11 +616,18 @@ test("the colour verdict drops the oracle's negative assertion and keeps the fra
     response: "seed=1 after=1 expected=2",
     observation: {
       outcome: "unsupported",
-      evidence: "pixels",
+      assertionType: "screenshot",
       screenshotRef: "sha256:abc",
       frames,
     },
-    assertions: [{ kind: "negative", expected: "sgr.fg.standard: equals the expected frame", observed: "1" }],
+    assertions: [
+      {
+        assertionType: "screenshot",
+        kind: "negative",
+        expected: "sgr.fg.standard: equals the expected frame",
+        observed: "1",
+      },
+    ],
   })
   expect(downgraded.observation?.outcome).toBe("inconclusive")
   expect(downgraded.observation?.reason).toBe("insufficient-evidence")
@@ -687,7 +701,7 @@ for (const id of REVIEW_IDS) {
   })
 }
 
-/** The fixture is the whole test's evidence: prove it separates the pairs it claims to, and that
+/** The fixture is the whole test's assertionType: prove it separates the pairs it claims to, and that
  * each negative mode collapses exactly the pair its row's sibling is meant to exclude. */
 test("the modelled 256-to-16 quantiser keeps entries 0-15 and sends others to their nearest entry", () => {
   // The fixture stands in for a real 16-colour terminal, so the quantiser is asserted on ENTRIES, not

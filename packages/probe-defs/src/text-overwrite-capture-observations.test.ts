@@ -12,6 +12,7 @@ function captureApp(rows = 24, cols = 80) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (bytes) => writes.push(bytes),
@@ -50,7 +51,7 @@ test("text.overwrite asks the terminal's pixel report before painting its overwr
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(result.assertions).toBeUndefined()
@@ -62,5 +63,9 @@ test("text.cr never captures; it keeps the CR cursor-query decision", async () =
   const { context, frames } = captureApp()
   const result = await find("text.cr")(context)
   expect(frames).toEqual([])
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response", evidence: "query" })
+  expect(result.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "no-response",
+    assertionType: "query_reply",
+  })
 })

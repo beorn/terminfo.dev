@@ -22,19 +22,21 @@ it("records collection failure only for delegated unfinished IDs", () => {
   const draft = initializeRunDraft({
     runId: "subset",
     sourceRevision: "1".repeat(40),
-    intendedContext: { kind: "app", id: "kitty" },
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
     manifest: {
+      schemaVersion: 4,
       probeHash: "subset-suite",
       adapterVersion: "3",
       catalogIds: ["selected", "unscheduled", "unimplemented", "decided"],
-      probes: { app: ["selected", "unscheduled", "decided"], headless: [], mux: [] },
+      probes: { term: ["selected", "unscheduled", "decided"], lib: [], mux: [] },
     },
   })
   const decided = {
     ...draft.results[3]!,
     status: "supported" as const,
     attempt,
-    checks: [{ id: "criterion", status: "supported" as const, attempt }],
+    tests: [{ id: "criterion", status: "supported" as const, attempt }],
   }
   draft.results[3] = decided
   recordCollectionFailure(draft, attempt.startedAt, "transport broke", ["selected", "decided"])
@@ -68,10 +70,11 @@ const record = (callback: ProbeCallbackResult) =>
   recordExecutedProbe({
     featureId: "sgr.bold",
     attempt,
+    rawReplyRef: "sgr.bold",
     ...(callback.observation && {
       observation: { ...callback.observation, featureId: "sgr.bold", rawReplyRef: "sgr.bold" },
     }),
-    checks: callback.checks,
+    tests: callback.tests,
     criterionBranch: callback.criterionBranch,
     assertions: (callback.assertions ?? []).map((assertion) => ({
       ...assertion,
@@ -93,7 +96,7 @@ it("records the actual unequal-crop comparison as TEST FAILURE despite two retai
   const result = record(callback)
   expect(result.status).toBe("test-failure")
   expect(result.frames).toEqual(frames)
-  expect(result.checks).toContainEqual(expect.objectContaining({ id: "comparison", status: "test-failure", attempt }))
+  expect(result.tests).toContainEqual(expect.objectContaining({ id: "comparison", status: "test-failure", attempt }))
 })
 it("keeps an explicit unattempted visual review TODO and the capture unsealed", async () => {
   let next = 0
@@ -106,25 +109,27 @@ it("keeps an explicit unattempted visual review TODO and the capture unsealed", 
     undefined,
     "normal control",
   )
-  expect(callback.checks).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
+  expect(callback.tests).toContainEqual(expect.objectContaining({ id: "review", status: "test-todo" }))
   const result = record(callback)
   expect(result.status).toBe("test-todo")
-  expect(result.checks.find((check) => check.id === "review")?.attempt).toEqual({ scope: "none" })
+  expect(result.tests.find((check) => check.id === "review")?.attempt).toEqual({ scope: "none" })
   expect(callback.assertions?.[0]?.expected).toContain("bold target")
   expect(callback.assertions?.[0]?.observed).toContain(frames[1]!.ref)
   const draft = initializeRunDraft({
     runId: "pending-review",
     sourceRevision: "1".repeat(40),
     manifest: {
+      schemaVersion: 4,
       probeHash: "explicit-check-suite",
       adapterVersion: "3",
       catalogIds: ["sgr.bold"],
-      probes: { app: ["sgr.bold"], headless: [], mux: [] },
+      probes: { term: ["sgr.bold"], lib: [], mux: [] },
     },
-    intendedContext: { kind: "app", id: "kitty" },
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
   })
-  draft.target = {
-    kind: "app",
+  draft.subject = {
+    kind: "term",
     id: "kitty",
     version: "1",
     os: "macos",
@@ -151,10 +156,10 @@ it("keeps measured 8-bit decoding as unmet UTF-8 prerequisite TODO without inven
   const result = record(callback)
   expect(result.status).toBe("test-todo")
   expect(result.criterionBranch).toBe("utf8-prerequisite")
-  expect(result.checks).toEqual([
+  expect(result.tests).toEqual([
     expect.objectContaining({ id: "utf8-context", status: "test-todo", attempt: { scope: "none" } }),
   ])
-  expect(result.checks.some((check) => check.id === "review")).toBe(false)
+  expect(result.tests.some((check) => check.id === "review")).toBe(false)
 })
 
 it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with rawReplyRef and no unreviewed Untestable", async () => {
@@ -164,13 +169,14 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
     recordExecutedProbe({
       featureId: osc133a.id,
       attempt,
+      rawReplyRef: osc133a.id,
       ...(callback.observation && {
         observation: { ...callback.observation, featureId: osc133a.id, rawReplyRef: osc133a.id },
       }),
       ...(callback.notTested && {
         coverage: { featureId: osc133a.id, ...callback.notTested, rawReplyRef: osc133a.id },
       }),
-      checks: callback.checks,
+      tests: callback.tests,
       criterionBranch: callback.criterionBranch,
       assertions: [],
     })
@@ -188,9 +194,9 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   } as unknown as TermProbeSource)
   const unqualifiedRecorded = recordC154(unqualifiedCallback)
   expect(unqualifiedRecorded.status).toBe("test-todo")
-  expect(unqualifiedRecorded.evidence).toBe("consumed")
+  expect(unqualifiedRecorded.assertionType).toBeUndefined()
   expect(unqualifiedRecorded.rawReplyRef).toBe("extensions.osc133-a")
-  expect(unqualifiedRecorded.checks).toEqual([
+  expect(unqualifiedRecorded.tests).toEqual([
     expect.objectContaining({
       id: "criterion",
       status: "test-todo",
@@ -206,10 +212,10 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   } as unknown as TermProbeSource)
   const nullRecorded = recordC154(nullCallback)
   expect(nullRecorded.status).toBe("test-failure")
-  expect(nullRecorded.evidence).toBe("query")
+  expect(nullRecorded.assertionType).toBeUndefined()
   expect(nullRecorded.rawReplyRef).toBe("extensions.osc133-a")
   expect(nullRecorded.reason).toBe("No cursor reply after semantic prompt marker")
-  expect(nullRecorded.checks).toEqual([
+  expect(nullRecorded.tests).toEqual([
     expect.objectContaining({
       id: "criterion",
       status: "test-failure",
@@ -239,7 +245,7 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
   expect(qualifiedRecorded.status).toBe("test-todo")
   expect(qualifiedRecorded.rawReplyRef).toBe("extensions.osc133-a")
   expect(qualifiedRecorded.reason).toBe("OSC 133;A prompt-start mark registration")
-  expect(qualifiedRecorded.checks).toEqual([
+  expect(qualifiedRecorded.tests).toEqual([
     expect.objectContaining({
       id: "criterion",
       status: "test-todo",
@@ -248,4 +254,61 @@ it("records adapted C154 semantic-mark callback outcomes as TODO or FAILURE with
       reason: "OSC 133;A prompt-start mark registration",
     }),
   ])
+})
+
+// Existing tests all supplied an observation or coverage. Execution-only callbacks must preserve
+// their criterion facts without manufacturing either, and diagnostic pass never grades those facts.
+it("records execution-only TODO and FAILURE tests, ignoring legacy pass even when true", () => {
+  for (const status of ["test-todo", "test-failure"] as const) {
+    const callback = {
+      pass: true,
+      response: "retained callback state",
+      tests: [{ id: "criterion", status, reason: "No deciding observable was retained" }],
+    } satisfies ProbeCallbackResult
+    const result = recordExecutedProbe({
+      featureId: "sgr.bold",
+      attempt,
+      rawReplyRef: "sgr.bold",
+      assertions: [],
+      tests: callback.tests,
+    })
+    expect(result.status).toBe(status)
+    expect(result.tests).toEqual([
+      {
+        id: "criterion",
+        status,
+        reason: "No deciding observable was retained",
+        attempt: status === "test-todo" ? { scope: "none" } : attempt,
+        assertionRefs: [],
+        rawReplyRef: "sgr.bold",
+      },
+    ])
+    expect(result).not.toHaveProperty("assertionType")
+  }
+})
+
+// Source identity was previously absent. The writer must name it rather than infer live or
+// accept trace before the recorder/replay implementation owned by #30932 exists.
+it("starts schema 4 drafts with explicit live source and rejects unimplemented trace", () => {
+  const input = {
+    runId: "source-boundary",
+    sourceRevision: "1".repeat(40),
+    source: { kind: "live" as const },
+    intendedSubject: { kind: "term" as const, id: "kitty" },
+    manifest: {
+      schemaVersion: 4 as const,
+      probeHash: "source-suite",
+      adapterVersion: "4",
+      catalogIds: ["sgr.bold"],
+      probes: { term: ["sgr.bold"], lib: [], mux: [] },
+    },
+  }
+  expect(initializeRunDraft(input)).toMatchObject({
+    schemaVersion: 4,
+    source: { kind: "live" },
+    intendedSubject: { kind: "term", id: "kitty" },
+  })
+  expect(() => initializeRunDraft({ ...input, source: { kind: "trace" } } as never)).toThrow(
+    /trace.*no implementation/i,
+  )
 })

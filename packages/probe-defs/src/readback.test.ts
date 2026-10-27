@@ -30,6 +30,7 @@ function kittyContext(answer: boolean, resets = true, permanent = false): TermPr
   let visible = true
   let irm = false
   return {
+    kind: "live",
     rows: 24,
     cols: 80,
     capture: async ({ role, label }) => ({ role, label, capturedAt: 1, ref: `frame-${role}` }),
@@ -87,7 +88,7 @@ test.each([
 ] as const)("%s is decided supported by its readback query on a responding terminal", async (id, observed) => {
   const result = await termProbe(id)(kittyContext(true))
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
   if (id === "sgr.bold") expect(result.response).toContain(observed)
   else expect(result.assertions?.[0]?.observed).toBe(observed)
@@ -99,7 +100,7 @@ test.each(["cursor.hide", "modes.insert-replace"] as const)(
   async (id) => {
     const result = await termProbe(id)(kittyContext(true, true, true))
     expect(result.pass).toBe(false)
-    expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+    expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
     expect(result.assertions?.[0]).toMatchObject({
       kind: "negative",
       observed: "permanently reset (Ps 4) -> permanently reset (Ps 4)",
@@ -130,7 +131,7 @@ test("an incorrect SGR readback is a negative, not a pass", async () => {
   }
   const result = await termProbe("sgr.bold")(ctx)
   expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
 })
 
 // Kitty 0.49.2 answers DECRQSS with the full normalized SGR list, not just the set codes:
@@ -145,7 +146,7 @@ test("the exact Kitty 0.49.2 DECRQSS reply still decides sgr.bold", async () => 
   }
   const result = await termProbe("sgr.bold")(ctx)
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.response).toContain("0;22;1")
 })
 
@@ -168,7 +169,7 @@ test("reset.sgr is decided supported when the terminal reports no styles after t
   const ctx = kittyContext(true)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive" })
 })
 
@@ -186,7 +187,7 @@ test("the normalized Kitty DECRQSS list still decides reset.sgr", async () => {
   }
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(true)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.response).toContain(payload)
 })
 
@@ -217,7 +218,7 @@ test("reset.sgr is a negative when the terminal keeps reporting the styles after
   const ctx = kittyContext(true, false)
   const result = await termProbe("reset.sgr")(ctx)
   expect(result.pass).toBe(false)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
 })
 
@@ -230,6 +231,6 @@ test("reset.sgr stays inconclusive and never negative when the terminal never an
   // This terminal's DECRQSS readback ran first and stayed silent, so the trace is NOT empty and the
   // evidence is truthful "query" — never the zero-byte "none" shape a trace with no writes, queries
   // or events reserves.
-  expect(result.observation).toMatchObject({ evidence: "query" })
+  expect(result.observation).toMatchObject({ assertionType: "query_reply" })
   expect(result.observation?.note ?? "").toContain("no independent reference exists for a multi-attribute reset")
 })

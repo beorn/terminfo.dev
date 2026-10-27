@@ -50,12 +50,12 @@ export function sgrTermReadback(
     // "none" shape run-parser demands. A caller that wrote nothing still passes "none".
     const region = RESET_FAMILY_CAPTURE[id]
     if (region) {
-      const verdict = await captureRegionVerdict(ctx, id, region, "query")
+      const verdict = await captureRegionVerdict(ctx, id, region, true)
       if (verdict) return verdict
     }
     const colour = COLOUR_CAPTURE[id]
     if (colour) {
-      const verdict = await captureRegionVerdict(ctx, id, colour, "query")
+      const verdict = await captureRegionVerdict(ctx, id, colour, true)
       if (verdict) return colourCaptureVerdict(id, verdict)
     }
     return fallback(ctx)
@@ -95,19 +95,20 @@ async function consumedSgr(
       return {
         pass: false,
         note: "No cursor response",
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
       }
     }
     return {
       pass: false,
       note: "Cursor advance does not verify SGR styling",
       response: `${pos.row};${pos.col}`,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: pos.row === 1 && pos.col === 2 ? "consumed" : "query",
-        note: "Cursor advance does not verify SGR styling",
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: pos.row === 1 && pos.col === 2 ? "test-todo" : "test-failure",
+          reason: "Cursor advance does not verify SGR styling",
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[0m")
@@ -153,19 +154,20 @@ async function consumedSgrReset(
       return {
         pass: false,
         note: "No cursor response",
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
       }
     }
     return {
       pass: false,
       note: "Cursor advance does not verify the reset rendered",
       response: `${pos.row};${pos.col}`,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: pos.row === 1 && pos.col === 3 ? "consumed" : "query",
-        note: "Cursor advance does not verify the reset rendered",
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: pos.row === 1 && pos.col === 3 ? "test-todo" : "test-failure",
+          reason: "Cursor advance does not verify the reset rendered",
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[0m")
@@ -227,10 +229,10 @@ function rgbUnderlineProbe(id: string): ProbeDefinition {
       },
       // Unchanged from the sgrProbe this replaced: an exception in this arm is recorded as query
       // evidence, because the arm asks DECRQSS before any capture falls back.
-      "query",
+      "query_reply",
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -293,7 +295,12 @@ function measuredReset(
   )
 }
 
-async function consumedResetSgr(ctx: TermProbeSource, id: string, setup: string, reset: string): Promise<ProbeCallbackResult> {
+async function consumedResetSgr(
+  ctx: TermProbeSource,
+  id: string,
+  setup: string,
+  reset: string,
+): Promise<ProbeCallbackResult> {
   if (ctx.capture) {
     const refusal = sgrCaptureTooSmall(ctx, id)
     if (refusal) return refusal
@@ -319,19 +326,20 @@ async function consumedResetSgr(ctx: TermProbeSource, id: string, setup: string,
     if (!pos) {
       return {
         pass: false,
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
       }
     }
     const advanced = pos.row === 1 && pos.col === 3
     return {
       pass: false,
       response: `${pos.row};${pos.col}`,
-      observation: {
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: advanced ? "consumed" : "query",
-        note: advanced ? "Cursor advance does not verify SGR reset" : "Cursor did not reach the expected position",
-      },
+      tests: [
+        {
+          id: "criterion",
+          status: advanced ? "test-todo" : "test-failure",
+          reason: advanced ? "Cursor advance does not verify SGR reset" : "Cursor did not reach the expected position",
+        },
+      ],
     }
   } finally {
     ctx.write("\x1b[0m")
@@ -363,10 +371,10 @@ function resetProbe(
           readback: { require: [...set, ...preserve].map((attribute) => RESET_ATTRIBUTE_CODE[attribute]) },
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -423,10 +431,10 @@ function namedColorProbe(id: string, channel: ColorChannel, firstCode: number, s
         )
       },
       sgrTermReadback(id, first, { require: [firstCode] }, (ctx) => consumedSgr(ctx, id, first)),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -481,10 +489,10 @@ function indexedColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
       sgrTermReadback(id, `\x1b[${sgr};5;67m`, { require: [sgr], requireTokens: [`${sgr}:5:67`] }, (ctx) =>
         consumedSgr(ctx, id, `\x1b[${sgr};5;67m`),
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -549,10 +557,10 @@ function truecolorProbe(id: string, channel: ColorChannel): ProbeDefinition {
         { require: [sgr], requireTokens: [`${sgr}:2:${first.r}:${first.g}:${first.b}`] },
         (ctx) => consumedSgr(ctx, id, `\x1b[${sgr};2;${first.r};${first.g};${first.b}m`),
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -603,10 +611,10 @@ function defaultColorProbe(id: string, channel: ColorChannel): ProbeDefinition {
           readback: { require: [setup] },
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   }
 }
 
@@ -721,10 +729,10 @@ export const sgrProbes: ProbeDefinition[] = [
         { require: [4, 58], requireTokens: ["58:5:5"] },
         (ctx) => consumedSgr(ctx, "sgr.underline-color-indexed", "\x1b[4m\x1b[58;5;5m"),
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   rgbUnderlineProbe("sgr.underline-color-rgb"),
@@ -784,10 +792,10 @@ export const sgrProbes: ProbeDefinition[] = [
           readback: { require: [4, 58], requireTokens: ["58:2:255:0:128"] },
         },
       ),
-      "consumed",
+      null,
     ),
     termNeedsGeometry: true,
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // ── Colors ──

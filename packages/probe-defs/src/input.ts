@@ -3,25 +3,25 @@ import { notTestedResult, osInputReviewResult, probe } from "./helpers.ts"
 import { kittyKeyboardFlagProbe } from "./extensions.ts"
 
 export const inputProbes: ProbeDefinition[] = [
-  probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "interaction"),
+  probe("input.modify-other-keys", () => headlessXtestReview("key injection"), modifyOtherKeys2, "input_bytes"),
 
   // Negotiation only; actual key encoding requires an input-event observation.
   kittyKeyboardFlagProbe("input.csi-u", 1, 1),
 
-  probe("input.pixel-mouse", () => headlessXtestReview("click injection"), pixelMouse, "interaction"),
-  probe("input.urxvt-mouse", () => headlessXtestReview("click injection"), urxvtMouse, "interaction"),
-  probe("input.x10-mouse", () => headlessXtestReview("click injection"), x10Mouse, "interaction"),
+  probe("input.pixel-mouse", () => headlessXtestReview("click injection"), pixelMouse, "input_bytes"),
+  probe("input.urxvt-mouse", () => headlessXtestReview("click injection"), urxvtMouse, "input_bytes"),
+  probe("input.x10-mouse", () => headlessXtestReview("click injection"), x10Mouse, "input_bytes"),
 
-  probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "interaction"),
+  probe("input.modify-other-keys-3", () => headlessXtestReview("key injection"), modifyOtherKeys3, "input_bytes"),
 
-  probe("input.button-event-mouse", () => headlessXtestReview("click injection"), buttonEventMouse, "interaction"),
+  probe("input.button-event-mouse", () => headlessXtestReview("click injection"), buttonEventMouse, "input_bytes"),
 
-  probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "interaction"),
-  probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "interaction"),
-  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "interaction"),
+  probe("input.xtest-key", () => headlessXtestReview("key injection"), xtestKey, "input_bytes"),
+  probe("input.xtest-click", () => headlessXtestReview("click injection"), xtestClick, "input_bytes"),
+  probe("input.xtest-wheel", () => headlessXtestReview("wheel injection"), xtestWheel, "input_bytes"),
   {
-    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "interaction"),
-    termlessObservationEvidence: "none",
+    ...probe("input.kitty-click-events", () => headlessXtestReview("click injection"), kittyClickEvents, "input_bytes"),
+    libAssertionType: null,
   },
 ]
 
@@ -87,17 +87,25 @@ function interactionResult(action: string, expected: string, observed: Record<st
   return {
     pass: true,
     response: JSON.stringify(observed),
-    observation: { outcome: "supported", evidence: "interaction" },
-    assertions: [{ kind: "positive", expected, observed: JSON.stringify(observed), action }],
+    observation: { outcome: "supported", assertionType: "input_bytes" },
+    assertions: [
+      { assertionType: "input_bytes" as const, kind: "positive", expected, observed: JSON.stringify(observed), action },
+    ],
   }
 }
 
-function unsupportedInteraction(action: string, expected: string, observed: Record<string, unknown>): ProbeCallbackResult {
+function unsupportedInteraction(
+  action: string,
+  expected: string,
+  observed: Record<string, unknown>,
+): ProbeCallbackResult {
   return {
     pass: false,
     response: JSON.stringify(observed),
-    observation: { outcome: "unsupported", evidence: "interaction" },
-    assertions: [{ kind: "negative", expected, observed: JSON.stringify(observed), action }],
+    observation: { outcome: "unsupported", assertionType: "input_bytes" },
+    assertions: [
+      { assertionType: "input_bytes" as const, kind: "negative", expected, observed: JSON.stringify(observed), action },
+    ],
   }
 }
 
@@ -488,7 +496,7 @@ async function kittyClickEvents(ctx: TermProbeSource): Promise<ProbeCallbackResu
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "interaction",
+          assertionType: "input_bytes",
           note: "A click report arrived but did not correlate with the control click's button and cell",
         },
       }

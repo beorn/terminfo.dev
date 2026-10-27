@@ -517,7 +517,7 @@ test("the harness replays every extension capability deterministically", async (
     const probe = extensionsProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing extension probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless, term })
     const second = await regradeRow(probe, row, { headless, term })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)
@@ -587,8 +587,8 @@ test("semantic observables omitted in headless mode return notTested without fai
   for (const id of omittedProbes) {
     const probe = extensionsProbes.find((p) => p.id === id)
     expect(probe).toBeDefined()
-    if (!probe?.termless) continue
-    const result = probe.termless(headless)
+    if (!probe?.lib) continue
+    const result = probe.lib(headless)
     expect(result.notTested).toBeDefined()
     expect(result.notTested?.reason).toBe("no-semantic-observable")
   }
@@ -600,10 +600,14 @@ test("a non-empty unparsed colour-stack readback stays inconclusive and retains 
   const unparsed = "\x1b]10;not-a-colour\x07"
   for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
     const probe = extensionsProbes.find((p) => p.id === id)
-    if (!probe?.termless) throw new Error(`Missing ${id} headless arm`)
-    const result = probe.termless(headlessContext({ ...inertModel(), feedCapture: () => unparsed }))
+    if (!probe?.lib) throw new Error(`Missing ${id} headless arm`)
+    const result = probe.lib(headlessContext({ ...inertModel(), feedCapture: () => unparsed }))
     expect(result.criterionBranch, id).toBeUndefined()
-    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "query", reason: "no-response" })
+    expect(result.observation, id).toMatchObject({
+      outcome: "inconclusive",
+      assertionType: "query_reply",
+      reason: "no-response",
+    })
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
   }
 })

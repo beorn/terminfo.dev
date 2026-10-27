@@ -289,7 +289,7 @@ test("the harness replays every input capability deterministically", async () =>
     const probe = inputProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing input probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const context = inputSatisfactionContext(row.id)
     const first = await regradeRow(probe, row, context)
     const second = await regradeRow(probe, row, context)

@@ -45,6 +45,7 @@ function poisonedContext(): { ctx: TermProbeSource; writes: string[]; requests: 
   if (firstRow === undefined) throw new Error("the fixture screen has no row 1")
   firstRow[0] = "\ufffd"
   const ctx: TermProbeSource = {
+    kind: "live",
     rows: 24,
     cols: 80,
     captureKind: "text-cells",

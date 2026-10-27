@@ -3,7 +3,7 @@
  *
  * One fixture, one expected-cells table, one re-grade invocation, so each of #28018's eight group
  * steps is "contract + focused test" with no per-group reinvention. Precedent: #28001's 41
- * fixture/control checks and scripts/decrqss-regrade.test.ts (the working re-grade model).
+ * fixture/control tests and scripts/decrqss-regrade.test.ts (the working re-grade model).
  *
  * @fakes @terminfo/probe-defs
  */
@@ -263,6 +263,7 @@ export function headlessContext(model: HeadlessModel): LibProbeSource {
     return lines.join("\n")
   }
   return {
+    kind: "live",
     getHyperlinkAt: () => null,
     feedCapture: (text) => {
       model.feed(text)
@@ -318,6 +319,7 @@ export function replayContext(
     }
   }
   return {
+    kind: "live",
     write: () => {},
     queryCursorPosition: async () => null,
     measureRenderedWidth: async () => null,
@@ -347,7 +349,7 @@ export async function regradeRow(
   contexts: { readonly headless?: LibProbeSource; readonly term?: TermProbeSource },
 ): Promise<RegradeResult> {
   let result: ProbeCallbackResult | undefined
-  if (probe.termless && contexts.headless !== undefined) result = probe.termless(contexts.headless)
+  if (probe.lib && contexts.headless !== undefined) result = probe.lib(contexts.headless)
   else if (probe.term && contexts.term !== undefined) result = await probe.term(contexts.term)
   const after = result?.observation?.outcome
   return {

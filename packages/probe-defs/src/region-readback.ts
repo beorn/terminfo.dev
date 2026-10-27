@@ -25,6 +25,7 @@
  */
 import type {
   CaptureCells,
+  AssertionType,
   CapturePixelGeometry,
   CaptureRectangle,
   ObservationFrame,
@@ -179,7 +180,7 @@ function inconclusive(
   id: string,
   note: string,
   reason: "timeout" | "insufficient-evidence",
-  evidence: "pixels" | "text" | "none" | "query" = "pixels",
+  assertionType: AssertionType = "screenshot",
   citation?: { screenshotRef?: string; frames?: ObservationFrame[] },
 ): ProbeCallbackResult {
   return {
@@ -187,7 +188,7 @@ function inconclusive(
     observation: {
       outcome: "inconclusive",
       reason,
-      evidence,
+      assertionType,
       note,
       ...(citation?.screenshotRef === undefined ? {} : { screenshotRef: citation.screenshotRef }),
       ...(citation?.frames === undefined ? {} : { frames: citation.frames }),
@@ -201,7 +202,7 @@ function inconclusive(
  * shape — it reports evidence "query" instead (see captureRegionVerdict).
  */
 function refused(id: string, note: string): ProbeCallbackResult {
-  return inconclusive(id, note, "insufficient-evidence", "none")
+  return { pass: false, tests: [{ id: "criterion", status: "test-todo", reason: note }] }
 }
 
 /**
@@ -210,18 +211,19 @@ function refused(id: string, note: string): ProbeCallbackResult {
  * into the same observation with truthful query evidence and say why in the note. Pixel verdicts and
  * every non-"none" refusal pass through untouched.
  */
-function afterCallerBytes(result: ProbeCallbackResult, callerEvidence: "none" | "query"): ProbeCallbackResult
-function afterCallerBytes(result: ProbeCallbackResult | null, callerEvidence: "none" | "query"): ProbeCallbackResult | null
-function afterCallerBytes(result: ProbeCallbackResult | null, callerEvidence: "none" | "query"): ProbeCallbackResult | null {
-  const observation = result?.observation
-  if (callerEvidence === "none" || !observation || observation.evidence !== "none") return result
+function afterCallerBytes(result: ProbeCallbackResult, callerHasQuery: boolean): ProbeCallbackResult
+function afterCallerBytes(result: ProbeCallbackResult | null, callerHasQuery: boolean): ProbeCallbackResult | null
+function afterCallerBytes(result: ProbeCallbackResult | null, callerHasQuery: boolean): ProbeCallbackResult | null {
+  if (!callerHasQuery || !result || result.observation || result.notTested) return result
   return {
     ...result,
-    observation: {
-      ...observation,
-      evidence: "query",
-      note: `${observation.note ?? "refused"} — the caller wrote before this refusal, so this is not a zero-byte trace`,
-    },
+    tests: [
+      {
+        id: "criterion",
+        status: "test-failure",
+        reason: `${result.tests[0].reason} — the caller wrote before this refusal, so this is not a zero-byte trace`,
+      },
+    ],
   }
 }
 
@@ -332,10 +334,10 @@ async function awaitPaintWitness(options: {
   timeoutMs: number
   pollMs: number
   /** How this run sees its frames: the timeout branch names it rather than claiming pixels. */
-  evidence?: "pixels" | "text"
+  assertionType?: "screenshot" | "buffer_state"
 }): Promise<{ witness: RegionCapture } | ProbeCallbackResult> {
   const { read, id, label, witnessCell, pixelGeometry, geometrySource, baseline, timeoutMs, pollMs } = options
-  const evidence = options.evidence ?? "pixels"
+  const assertionType = options.assertionType ?? "screenshot"
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const painted = await read({
@@ -353,10 +355,10 @@ async function awaitPaintWitness(options: {
           ? `${id}: paint witnessed outside the sentinel region after ${label} within ${timeoutMs} ms; the frame moved while witness cell ${witnessCell.top},${witnessCell.left} stood still, so the cells-to-pixels geometry is wrong for this context (cell geometry ${geometrySource ?? "unknown"})`
           : `${id}: no paint witness within ${timeoutMs} ms after ${label}; the terminal left the witness cell unpainted, so this run cannot separate a painted frame from a stale one (cell geometry ${geometrySource ?? "unknown"})`,
         "timeout",
-        evidence,
+        assertionType,
         // A text timeout cites no frame: a lone frame is not the pair a verdict needs, and the row
         // is inconclusive about the paint, not about a snapshot it could point a reader at.
-        evidence === "pixels" ? { screenshotRef: painted.frame.ref } : {},
+        assertionType === "screenshot" ? { screenshotRef: painted.frame.ref } : {},
       )
     }
     await new Promise<void>((resolve) => {
@@ -407,7 +409,7 @@ export function cropPositionRefusal(input: {
     pass: false,
     response,
     criterionBranch: "same-crop-comparison",
-    checks: [
+    tests: [
       {
         id: "comparison",
         status: "test-failure",
@@ -417,7 +419,7 @@ export function cropPositionRefusal(input: {
     observation: {
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "pixels",
+      assertionType: frames.some((frame) => frame.kind === "text-cells") ? "buffer_state" : "screenshot",
       screenshotRef,
       ...(frames.length > 0 ? { frames } : {}),
       note: `${id}: the compared frames were cropped from different screen positions, so their region digests were not taken over the same cells: ${named}`,
@@ -574,12 +576,12 @@ export async function captureRegionGeometry(
   ctx: TermProbeSource,
   id: string,
   spec: RegionGeometrySpec,
-  refusalEvidence: "none" | "query" = "none",
+  callerHasQuery = false,
 ): Promise<{ geometry: PixelGeometry | undefined; source: PixelGeometrySource } | ProbeCallbackResult> {
   // Geometry first: an undersized terminal is refused before a single query byte.
   const textMode = ctx.captureKind === "text-cells"
   const bounds = regionRefusal(id, { ...spec, pixelGeometry: PENDING_GEOMETRY }, ctx.rows, ctx.cols, textMode)
-  if (bounds) return afterCallerBytes(bounds, refusalEvidence)
+  if (bounds) return afterCallerBytes(bounds, callerHasQuery)
   // True on both text arms: Windows reads the console host's buffer and macOS reads the app's
   // own snapshot, so a label claiming "the terminal's own text" is false on Windows. The host
   // itself has one home, the per-read bufferOwner in the frame trace (30033 ruling f1f3c64b).
@@ -591,23 +593,31 @@ export async function captureRegionGeometry(
       calibrated.textHeight !== calibrated.cellHeight * ctx.rows)
   ) {
     return afterCallerBytes(
-      inconclusive(
+      refused(
         id,
         `${id}: calibrated pixel footprint ${calibrated.textWidth}x${calibrated.textHeight} no longer matches current grid ${ctx.rows}x${ctx.cols} at ${calibrated.cellWidth}x${calibrated.cellHeight} pixels per cell`,
-        "insufficient-evidence",
-        "none",
       ),
-      refusalEvidence,
+      callerHasQuery,
     )
   }
-  const reported = ctx.captureGeometry ?? (await queryPixelGeometry(ctx))
+  // Keep the existing query sequence and answers. Only a retained answer can justify query_reply;
+  // having sent geometry queries is not itself an observable.
+  let retainedReply = false
+  const reported =
+    ctx.captureGeometry ??
+    (await queryPixelGeometry({
+      async queryWithSentinelOutcome(...args) {
+        const outcome = await ctx.queryWithSentinelOutcome(...args)
+        retainedReply ||= outcome.raw.length > 0
+        return outcome
+      },
+    }))
   if ("missing" in reported) {
-    return inconclusive(
-      id,
-      `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`,
-      "insufficient-evidence",
-      "query",
-    )
+    const note = `${id}: ${reported.missing}, so this run cannot map cells onto the captured window`
+    if (!retainedReply) {
+      return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: note }] }
+    }
+    return inconclusive(id, note, "insufficient-evidence", "query_reply")
   }
   return reported
 }
@@ -628,7 +638,7 @@ export async function captureRegionVerdict(
   ctx: TermProbeSource,
   id: string,
   spec: Omit<RegionReadback, "pixelGeometry">,
-  refusalEvidence: "none" | "query" = "none",
+  callerHasQuery = false,
 ): Promise<ProbeCallbackResult | null> {
   const read = collectorRegionRead(ctx)
   if (!read) return null
@@ -638,9 +648,9 @@ export async function captureRegionVerdict(
   // A caller that already wrote and queried says so: evidence "none" promises run-parser a
   // zero-byte trace, and that promise is false after a silent DECRQSS attempt.
   if (spec.noIndependentReference) {
-    return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), refusalEvidence)
+    return afterCallerBytes(refused(id, `${id}: ${spec.noIndependentReference}`), callerHasQuery)
   }
-  const reported = await captureRegionGeometry(ctx, id, spec, refusalEvidence)
+  const reported = await captureRegionGeometry(ctx, id, spec, callerHasQuery)
   if ("pass" in reported) return reported
   return afterCallerBytes(
     await captureRegionReadbackDecision(
@@ -649,7 +659,7 @@ export async function captureRegionVerdict(
       { ...spec, pixelGeometry: reported.geometry, geometrySource: reported.source },
       read,
     ),
-    refusalEvidence,
+    callerHasQuery,
   )
 }
 
@@ -699,7 +709,7 @@ export interface StabilityCapture {
  */
 export async function captureStabilityPair<T extends StabilityCapture>(
   id: string,
-  evidence: "pixels" | "text",
+  assertionType: "screenshot" | "buffer_state",
   first: () => Promise<T>,
   second: () => Promise<T>,
 ): Promise<{
@@ -726,7 +736,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   }
   const response = JSON.stringify({ stability })
   const knownCrops = stableA.frame.regionRectangle !== undefined && stableB.frame.regionRectangle !== undefined
-  if (evidence === "pixels") {
+  if (assertionType === "screenshot") {
     const movedCrop = cropPositionRefusal({
       id,
       compared: [
@@ -741,7 +751,7 @@ export async function captureStabilityPair<T extends StabilityCapture>(
   }
   if (
     stableA.regionDigest === stableB.regionDigest &&
-    (evidence === "text" || knownCrops || stableA.pixelsDigest === stableB.pixelsDigest)
+    (assertionType === "buffer_state" || knownCrops || stableA.pixelsDigest === stableB.pixelsDigest)
   ) {
     return { refusal: null, second: stableB, stability }
   }
@@ -749,10 +759,10 @@ export async function captureStabilityPair<T extends StabilityCapture>(
     id,
     `${id}: two captures of one static frame were not byte-stable (${stableA.regionDigest}/${stableA.pixelsDigest} then ${stableB.regionDigest}/${stableB.pixelsDigest})`,
     "insufficient-evidence",
-    evidence,
+    assertionType,
     // No target frame exists on this path and none is fabricated: the citation is the stability
     // capture actually taken. On a text arm there is no image to cite.
-    evidence === "pixels" ? { screenshotRef: stableB.frame.ref } : {},
+    assertionType === "screenshot" ? { screenshotRef: stableB.frame.ref } : {},
   )
   // The decisive evidence is the PAIR of reads, so both digests travel in the response even though
   // the observation carries no frames.
@@ -779,10 +789,10 @@ export async function captureRegionReadbackDecision(
 ): Promise<ProbeCallbackResult | null> {
   // How this decision was seen: the terminal's own cells on a text arm, pixels everywhere else.
   // Every branch below names it, so a published claim never says pixels it did not see.
-  const evidence = ctx.captureKind === "text-cells" ? ("text" as const) : ("pixels" as const)
+  const assertionType = ctx.captureKind === "text-cells" ? ("buffer_state" as const) : ("screenshot" as const)
   /** A pixel verdict cites the frame the reader should look at; a text one has no image to point at. */
   const cite = (ref: string | undefined, frames: ObservationFrame[]) => ({
-    ...(evidence === "pixels" && ref !== undefined ? { screenshotRef: ref } : {}),
+    ...(assertionType === "screenshot" && ref !== undefined ? { screenshotRef: ref } : {}),
     frames,
   })
   if (!read) return null
@@ -823,7 +833,7 @@ export async function captureRegionReadbackDecision(
     // The rule itself lives in captureStabilityPair, the one home both pixel arms call.
     const { refusal: instability, stability } = await captureStabilityPair(
       id,
-      evidence,
+      assertionType,
       () =>
         read({
           role: "control",
@@ -861,7 +871,7 @@ export async function captureRegionReadbackDecision(
         baseline,
         timeoutMs,
         pollMs,
-        evidence,
+        assertionType,
       })
       if (!witnessed(result)) return result
       frames.push(result.witness.frame)
@@ -911,7 +921,7 @@ export async function captureRegionReadbackDecision(
       ],
       response: observed,
       frames,
-      ...(evidence === "pixels" ? { screenshotRef: frames[3]?.ref } : {}),
+      ...(assertionType === "screenshot" ? { screenshotRef: frames[3]?.ref } : {}),
     })
     if (cropRefusal) return cropRefusal
     if (seed === expected) {
@@ -919,7 +929,7 @@ export async function captureRegionReadbackDecision(
         id,
         `${id}: the seed frame and the expected frame read the same cells, so this run cannot separate them`,
         "insufficient-evidence",
-        evidence,
+        assertionType,
         cite(frames[3]?.ref, frames),
       )
     }
@@ -928,7 +938,7 @@ export async function captureRegionReadbackDecision(
         id,
         `${id}: the ignored-attribute frame and the expected frame read the same cells, so this run cannot separate them`,
         "insufficient-evidence",
-        evidence,
+        assertionType,
         cite(frames[3]?.ref, frames),
       )
     }
@@ -962,7 +972,7 @@ export async function captureRegionReadbackDecision(
       // Naming the axes is not naming a cause — which axis differed is exactly what this oracle
       // cannot decide — so the verdict and its reason stay as they are.
       const axes =
-        evidence === "pixels"
+        assertionType === "screenshot"
           ? "this exact pixel-region digest cannot say which rendering axis differed — glyph edges, background attributes, and layout all change it — so it cannot tell an incorrect effect from a rendering difference"
           : "this exact cell digest covers the characters and, only where this arm reports them, the attributes — so it cannot say which of the two differed, and an attribute-only difference this arm does not report is invisible to it"
       const note = `${id}: a third distinct frame: the sequence changed the screen (after != seed) but not into the expected frame; ${axes} (compared frames: ${ignored === undefined ? "seed" : "seed, ignored-attribute"}, expected)`
@@ -972,7 +982,7 @@ export async function captureRegionReadbackDecision(
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence,
+          assertionType,
           ...cite(frames[3]?.ref, frames),
           note,
         },
@@ -983,11 +993,12 @@ export async function captureRegionReadbackDecision(
       response: observed,
       observation: {
         outcome: supported ? "supported" : "unsupported",
-        evidence,
+        assertionType,
         ...cite(frames[3]?.ref, frames),
       },
       assertions: [
         {
+          assertionType: assertionType,
           kind: supported ? "positive" : "negative",
           expected: `${id}: cell-aligned region ${JSON.stringify(spec.region)} equals the same-run expected frame after ${JSON.stringify(spec.edit)}, behind a paint witness in cell ${spec.sentinel.row},${spec.sentinel.col}`,
           observed: after,

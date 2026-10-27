@@ -94,8 +94,8 @@ test("the Editing contract names its focused tests, and every named file exists"
  */
 test("editing.decsace declares the measuring evidence kind of both its arms", () => {
   const probe = editingProbes.find((entry) => entry.id === "editing.decsace")
-  expect(probe?.termObservationEvidence).toBe("pixels")
-  expect(probe?.termlessObservationEvidence).toBe("parser-state")
+  expect(probe?.termAssertionType).toBe("screenshot")
+  expect(probe?.libAssertionType).toBe("buffer_state")
 })
 
 // Determinism only: the surface is fed the same fixture twice, so this proves the harness replays
@@ -105,7 +105,7 @@ test("the harness replays every editing capability deterministically", async () 
     const probe = editingProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing editing probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
     const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)

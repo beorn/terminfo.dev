@@ -104,12 +104,7 @@ export const resetProbes: ProbeDefinition[] = [
           // is graded against expected and ignored frames painted in this same run.
           const regionReadback = RESET_FAMILY_CAPTURE["reset.sgr"]
           if (regionReadback) {
-            const verdict = await captureRegionVerdict(
-              ctx,
-              "reset.sgr",
-              regionReadback,
-              readbackAttempted ? "query" : "none",
-            )
+            const verdict = await captureRegionVerdict(ctx, "reset.sgr", regionReadback, readbackAttempted)
             if (verdict) return verdict
           }
           try {
@@ -128,12 +123,13 @@ export const resetProbes: ProbeDefinition[] = [
         if (!measuredRoom) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Reset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Reset fixture needs at least 1x2, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         ctx.write("\x1b[1;1H\x1b[2K")
@@ -142,17 +138,14 @@ export const resetProbes: ProbeDefinition[] = [
         ctx.write("X")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
           response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor advance does not measure SGR styling after reset",
-          },
+          tests: [
+            { id: "criterion", status: "test-todo", reason: "Cursor advance does not measure SGR styling after reset" },
+          ],
         }
       },
     ),
@@ -180,23 +173,24 @@ export const resetProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Reset fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Reset fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         ctx.write("\x1b[5;5H") // Move somewhere away from 1;1
         const before = await ctx.queryCursorPosition()
         if (!before) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         ctx.write("\x1bc") // RIS — full reset
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         const measured = { before, after: pos }
         const setup = before.row === 5 && before.col === 5
@@ -207,12 +201,13 @@ export const resetProbes: ProbeDefinition[] = [
           observation: {
             outcome: setup ? (home ? "supported" : "unsupported") : "inconclusive",
             ...(setup ? {} : { reason: "insufficient-evidence" as const }),
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Measured RIS cursor reset; other reset effects were not inspected",
           },
           ...(setup && {
             assertions: [
               {
+                assertionType: "query_reply" as const,
                 kind: home ? ("positive" as const) : ("negative" as const),
                 expected: "RIS homes cursor from 5;5",
                 observed: JSON.stringify(measured),
@@ -253,24 +248,26 @@ export const resetProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 5 || ctx.cols < 5) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Reset fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Reset fixture needs at least 5x5, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         const before = await queryDecrpm(ctx, 1)
         if (before === null || before === 0) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "no-response",
-              evidence: "query",
-              note: "Cannot restore prior application-cursor mode without its readback",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-failure",
+                reason: "Cannot restore prior application-cursor mode without its readback",
+              },
+            ],
           }
         }
         ctx.write("\x1b[?1h")
@@ -288,7 +285,7 @@ export const resetProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "query",
+                assertionType: "query_reply",
                 note:
                   enabled === 4
                     ? "DECCKM is permanently reset (Ps 4); the terminal cannot enable it, so DECSTR's reset of it is unmeasured"
@@ -300,9 +297,10 @@ export const resetProbes: ProbeDefinition[] = [
           return {
             pass,
             response: JSON.stringify(measured),
-            observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+            observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
             assertions: [
               {
+                assertionType: "query_reply" as const,
                 kind: pass ? "positive" : "negative",
                 expected: "DECSTR resets previously enabled DECCKM mode 1",
                 observed: JSON.stringify(measured),
@@ -342,7 +340,7 @@ export const resetProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+            tests: [{ id: "criterion", status: "test-todo", reason: note }],
           }
         }
         const seed = "AB".repeat(Math.ceil(cols / 2)).slice(0, cols)
@@ -385,13 +383,14 @@ export const resetProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "pixels",
+              assertionType: "screenshot",
               screenshotRef: target.ref,
               frames: [control, target, delayedTarget, cursorOnlyControl, redrawControl],
               note: `${postAlignmentCursor === null ? "No post-DECALN CPR response; processing barrier unconfirmed. " : ""}Known non-E grid, initial and delayed DECALN targets, cursor-only control and ordinary-glyph redraw control captured; repeated E glyphs across measured rows and columns require independent review. CPR at the already-homed cursor records responsiveness, not DECALN recognition or render completion`,
             },
             assertions: [
               {
+                assertionType: "screenshot" as const,
                 kind: "positive",
                 expected: `Control shows alternating A/B across ${rows} rows and ${cols} columns; DECALN target shows repeated E across that same measured grid`,
                 observed,
@@ -431,12 +430,7 @@ export const resetProbes: ProbeDefinition[] = [
         return Promise.resolve({
           pass: false,
           note,
-          observation: {
-            outcome: "inconclusive" as const,
-            reason: "insufficient-evidence" as const,
-            evidence: "none" as const,
-            note,
-          },
+          tests: [{ id: "criterion", status: "test-todo", reason: note }],
         })
       },
     ),

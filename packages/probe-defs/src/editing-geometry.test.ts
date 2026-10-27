@@ -13,6 +13,7 @@ function app(rows: number, cols: number, events: string[]): TermProbeSource {
     throw new Error(`Unexpected ${name} in editing geometry fixture`)
   }
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -51,10 +52,9 @@ test("every converted row refuses by name and writes nothing without an owned ca
     ] as const) {
       const events: string[] = []
       const result = await definition.term(app(rows, cols, events))
-      expect(result.observation, `${row.id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result, `${row.id} at ${rows}x${cols}`).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
       expect(String(result.observation?.note), `${row.id} at ${rows}x${cols}`).toContain("no owned capture adapter")
       expect(events, `${row.id} at ${rows}x${cols}`).toEqual([])

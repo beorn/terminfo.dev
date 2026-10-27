@@ -8,7 +8,13 @@ import { createHash } from "node:crypto"
 import { expect, test } from "vitest"
 import type { ProbeSuiteManifest } from "@terminfo/probe-defs"
 import { parseRun } from "@terminfo/run-parser"
-import { ALL_PROBES, type CaptureRequest, type ObservationFrame, type ProbeCallbackResult, type TermProbeSource } from "../index.ts"
+import {
+  ALL_PROBES,
+  type CaptureRequest,
+  type ObservationFrame,
+  type ProbeCallbackResult,
+  type TermProbeSource,
+} from "../index.ts"
 
 const FEATURE = "editing.delete-chars"
 const SUITE = "452ac343b55d"
@@ -17,7 +23,7 @@ const manifest: ProbeSuiteManifest = {
   probeHash: SUITE,
   adapterVersion: "3.3.1",
   generatedAt: "2026-10-10T22:00:00.000Z",
-  probes: { app: [FEATURE], headless: [], mux: [] },
+  probes: { term: [FEATURE], lib: [], mux: [] },
 }
 /** The three capture behaviours the collector must survive, plus the geometry refusal and a run
  *  whose target equals the row's ignored-attribute frame. */
@@ -123,6 +129,7 @@ function harness(mode: Mode): Harness {
   }
 
   const ctx: TermProbeSource = {
+    kind: "live",
     cols: 80,
     rows: 24,
     write(text) {
@@ -197,7 +204,7 @@ const drive = async (mode: Mode, feature = FEATURE) => {
 const parse = (run: unknown, feature = FEATURE) => {
   const featureManifest: ProbeSuiteManifest = {
     ...manifest,
-    probes: { app: [feature], headless: [], mux: [] },
+    probes: { term: [feature], lib: [], mux: [] },
   }
   return parseRun(
     `${feature}.json`,
@@ -210,7 +217,7 @@ const parse = (run: unknown, feature = FEATURE) => {
 test("a deciding capture readback seals a pixels verdict the raw-run contract admits", async () => {
   const { result, run } = await drive("deciding")
   expect(result.observation?.outcome).toBe("supported")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run)).not.toThrow()
   const loaded = parse(run)
@@ -220,7 +227,7 @@ test("a deciding capture readback seals a pixels verdict the raw-run contract ad
 test("a byte-stable capture that decides nothing still seals an observation the contract admits", async () => {
   const { result, run } = await drive("stable")
   expect(result.observation?.outcome).toBe("inconclusive")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.screenshotRef).toBeDefined()
   expect(() => parse(run)).not.toThrow()
 })
@@ -246,7 +253,7 @@ test("28584 shape C: a byte-unstable capture's pixels refusal still carries what
   const stabilityFrames = frames.filter((frame) => frame.label.includes("capture stability"))
   const stabilityRefs = stabilityFrames.map((frame) => frame.ref)
   expect(stabilityRefs.length).toBeGreaterThan(0)
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(stabilityRefs).toContain(result.observation?.screenshotRef)
   expect(result.observation?.frames ?? []).toHaveLength(0)
   // The ONE stability shape (@cto round-3c B3): both reads travel in the response, the citation is
@@ -269,7 +276,7 @@ test("28584 shape C: a byte-unstable capture's pixels refusal still carries what
  */
 test("28584 shape B: a sentinel geometry refusal reports query, not none", async () => {
   const { result, run, trace } = await drive("sentinel")
-  expect(result.observation?.evidence).toBe("query")
+  expect(result.observation?.assertionType).toBe("query_reply")
   expect(trace.queries.length).toBeGreaterThan(0)
   expect(() => parse(run)).not.toThrow()
 })
@@ -282,7 +289,7 @@ test("erase.character deciding capture readback seals a pixels verdict the raw-r
   const feature = "erase.character"
   const { result, run } = await drive("deciding", feature)
   expect(result.observation?.outcome).toBe("supported")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run, feature)).not.toThrow()
   const loaded = parse(run, feature)
@@ -296,7 +303,7 @@ test("charsets.dec-special deciding capture readback seals a pixels verdict the 
   const feature = "charsets.dec-special"
   const { result, run } = await drive("deciding", feature)
   expect(result.observation?.outcome).toBe("supported")
-  expect(result.observation?.evidence).toBe("pixels")
+  expect(result.observation?.assertionType).toBe("screenshot")
   expect(result.observation?.frames?.length).toBeGreaterThanOrEqual(2)
   expect(() => parse(run, feature)).not.toThrow()
   const loaded = parse(run, feature)
@@ -312,7 +319,7 @@ for (const feature of ["erase.selective", "erase.el-with-attrs"] as const) {
   test(`${feature}: a target that drops the row's discriminating attribute seals unsupported`, async () => {
     const { result, run } = await drive("ignored-attribute", feature)
     expect(result.observation?.outcome, feature).toBe("unsupported")
-    expect(result.observation?.evidence, feature).toBe("pixels")
+    expect(result.observation?.assertionType, feature).toBe("screenshot")
     expect(result.assertions?.[0]?.kind, feature).toBe("negative")
     expect(() => parse(run, feature), feature).not.toThrow()
   })
@@ -365,7 +372,7 @@ for (const feature of SLICE_C_READBACK_IDS) {
   test(`${feature}: a deciding capture readback seals a pixels verdict the raw-run contract admits`, async () => {
     const { result, run } = await drive("deciding", feature)
     expect(result.observation?.outcome, feature).toBe("supported")
-    expect(result.observation?.evidence, feature).toBe("pixels")
+    expect(result.observation?.assertionType, feature).toBe("screenshot")
     expect(result.observation?.frames?.length ?? 0, feature).toBeGreaterThanOrEqual(2)
     expect(() => parse(run, feature), feature).not.toThrow()
     const loaded = parse(run, feature)

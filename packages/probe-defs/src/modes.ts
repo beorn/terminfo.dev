@@ -79,19 +79,25 @@ export const modesReadbackRows: readonly RegionReadbackRow[] = [
 ]
 
 /** Refuse a modes capture fixture before any bytes when the measured geometry is too small. */
-function captureRefusal(ctx: TermProbeSource, minRows: number, minCols: number, feature: string): ProbeCallbackResult | undefined {
+function captureRefusal(
+  ctx: TermProbeSource,
+  minRows: number,
+  minCols: number,
+  feature: string,
+): ProbeCallbackResult | undefined {
   if (!ctx.capture) return undefined
   if (Number.isSafeInteger(ctx.rows) && Number.isSafeInteger(ctx.cols) && ctx.rows >= minRows && ctx.cols >= minCols) {
     return undefined
   }
   return {
     pass: false,
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: `${feature} capture needs at least ${minRows}x${minCols}, measured ${ctx.rows}x${ctx.cols}`,
-    },
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `${feature} capture needs at least ${minRows}x${minCols}, measured ${ctx.rows}x${ctx.cols}`,
+      },
+    ],
   }
 }
 
@@ -128,7 +134,7 @@ async function xtSgrStackCapture(ctx: TermProbeSource, id: string, label: string
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "pixels",
+        assertionType: "screenshot",
         screenshotRef: target.ref,
         frames: [control, target],
         note: "Control shows Y plain; the target pushes bold, resets attributes, styles X italic, then pops, so Y must be bold and NOT italic if the SGR stack round-tripped. An ignored push/pop leaves Y italic-only and not bold. Requires independent pixel review of both attributes",
@@ -168,7 +174,7 @@ async function xtModeSaveCapture(ctx: TermProbeSource, id: string): Promise<Prob
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "pixels",
+        assertionType: "screenshot",
         screenshotRef: target.ref,
         frames: [control, target],
         note: "Control keeps the overflow on row 1 with wrap off; the target saves wrap on, disables it, then restores it, so the overflow should wrap to row 2. Whether the restore re-enabled wrap requires independent pixel review",
@@ -216,7 +222,7 @@ async function xtColorStackCapture(ctx: TermProbeSource, id: string): Promise<Pr
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "pixels",
+        assertionType: "screenshot",
         screenshotRef: target.ref,
         frames: [control, target],
         note: "Control shows X and Y in the blue baseline index 1; the target pushes the palette, redefines index 1 green, prints X, pops before Y. Grade the roundtrip by Y alone: Y must match the blue baseline control, so a green Y means the pop did not restore the saved palette. Do not grade on X -- it is drawn through palette index 1, so a correct pop may recolor it blue and its color is not evidence either way. A palette-setup failure (control not measured blue) stays inconclusive. Requires independent pixel review",
@@ -236,7 +242,7 @@ function stackOutputResult(output: string): ProbeCallbackResult {
     observation: {
       outcome: "inconclusive",
       reason: "invalid-reply",
-      evidence: "query",
+      assertionType: "query_reply",
       note: "Unexpected output during stack operation",
     },
   }
@@ -1017,7 +1023,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: target.screenshotRef,
           frames,
           note,
@@ -1034,7 +1040,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: target.screenshotRef,
           frames,
           note,
@@ -1049,7 +1055,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         observation: {
           outcome: "inconclusive",
           reason: "insufficient-evidence",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: target.screenshotRef,
           frames,
           note,
@@ -1063,12 +1069,12 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         response,
         observation: {
           outcome: "unsupported",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: target.screenshotRef,
           frames,
           note,
         },
-        assertions: [{ kind: "negative", expected: note, observed: response }],
+        assertions: [{ assertionType: "screenshot" as const, kind: "negative", expected: note, observed: response }],
       }
     }
     if (target.band[1] && target.changed) {
@@ -1078,12 +1084,12 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
         response,
         observation: {
           outcome: "supported",
-          evidence: "pixels",
+          assertionType: "screenshot",
           screenshotRef: target.screenshotRef,
           frames,
           note,
         },
-        assertions: [{ kind: "positive", expected: note, observed: response }],
+        assertions: [{ assertionType: "screenshot" as const, kind: "positive", expected: note, observed: response }],
       }
     }
     const note = target.band[1]
@@ -1095,7 +1101,7 @@ async function decsscls(ctx: TermProbeSource): Promise<ProbeCallbackResult> {
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "pixels",
+        assertionType: "screenshot",
         screenshotRef: target.screenshotRef,
         frames,
         note,
@@ -1132,12 +1138,13 @@ export const modesProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 3) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Alt-screen exit fixture needs at least 3x3, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Alt-screen exit fixture needs at least 3x3, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         const refusal = captureRefusal(ctx, 3, 8, "Alt-screen exit")
@@ -1174,7 +1181,7 @@ export const modesProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: restored.ref,
                 frames: [control, alternate, restored],
                 note: "Control shows PRIMARY; the alternate frame shows ALTONLY; the restored frame must show PRIMARY again with ALTONLY gone. Whether the primary buffer came back requires independent pixel review, because CPR after exit proves nothing about buffer contents",
@@ -1192,7 +1199,7 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
@@ -1200,7 +1207,7 @@ export const modesProbes: ProbeDefinition[] = [
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Cursor responsiveness after exit does not measure the restored buffer",
           },
         }
@@ -1314,12 +1321,13 @@ export const modesProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 1 || ctx.cols < 5) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Insert-replace fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Insert-replace fixture needs at least 1x5, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         const refusal = captureRefusal(ctx, 1, 6, "Insert/replace")
@@ -1342,10 +1350,11 @@ export const modesProbes: ProbeDefinition[] = [
               pass: ok,
               response: JSON.stringify({ on: decrpmReading(on), off: decrpmReading(off) }),
               observation: ok
-                ? { outcome: "supported", evidence: "query" }
-                : { outcome: "unsupported", evidence: "query" },
+                ? { outcome: "supported", assertionType: "query_reply" }
+                : { outcome: "unsupported", assertionType: "query_reply" },
               assertions: [
                 {
+                  assertionType: "query_reply" as const,
                   kind: ok ? "positive" : "negative",
                   expected: "DECRQM mode 4 reports set after CSI 4 h and reset after CSI 4 l",
                   observed: `${decrpmReading(on)} -> ${decrpmReading(off)}`,
@@ -1380,7 +1389,7 @@ export const modesProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
                 note: "Control replaces A with X (XBCD); the IRM target inserts X and shifts the run (XABCD). Whether the shift actually happened requires independent pixel review",
@@ -1401,7 +1410,7 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
@@ -1409,7 +1418,7 @@ export const modesProbes: ProbeDefinition[] = [
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Cursor advance does not measure whether X displaced the existing cells",
           },
         }
@@ -1439,7 +1448,7 @@ export const modesProbes: ProbeDefinition[] = [
       return osInputReviewResult("keypad input", { on, off })
     },
     applicationKeypad,
-    "interaction",
+    "input_bytes",
   ),
 
   // Left/right margin mode
@@ -1475,7 +1484,7 @@ export const modesProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
                 note: "Control keeps ABCDE on row 1; with DECLRMM margins 3-6 the fifth glyph wraps at column 6 onto row 2. Whether the wrap respected the margin requires independent pixel review",
@@ -1487,12 +1496,13 @@ export const modesProbes: ProbeDefinition[] = [
         }
         return {
           pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "Margin mode left unchanged; this probe does not measure left/right margin behavior",
+            },
+          ],
         }
       },
     ),
@@ -1537,7 +1547,7 @@ export const modesProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: restored.ref,
                 frames: [control, alternate, restored],
                 note: "Control shows MAIN47; the alternate frame shows ALT47; the restored frame must show MAIN47 again with ALT47 gone. Whether ?47 actually swapped buffers requires independent pixel review",
@@ -1549,12 +1559,13 @@ export const modesProbes: ProbeDefinition[] = [
         }
         return {
           pass: false,
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "none",
-            note: "Alternate buffer left unchanged; this probe does not measure its visible contents",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "Alternate buffer left unchanged; this probe does not measure its visible contents",
+            },
+          ],
         }
       },
     ),
@@ -1600,7 +1611,7 @@ export const modesProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: restored.ref,
                 frames: [control, alternate, restored],
                 note: "Control shows MAIN47; the alternate frame shows ALT1047; the restored frame must show MAIN47 again with ALT1047 gone. Whether ?1047 actually swapped and cleared buffers requires independent pixel review",
@@ -1616,18 +1627,33 @@ export const modesProbes: ProbeDefinition[] = [
         return {
           pass: false,
           ...(ps !== null && { response: decrpmReading(ps) }),
-          observation: {
-            outcome: "inconclusive",
-            reason: ps === null ? "no-response" : "insufficient-evidence",
-            evidence: "query",
-            note:
-              ps === null
-                ? "No DECRPM reply; alternate-buffer clearing was not measured"
-                : "DECRPM status does not measure alternate-buffer clearing",
-          },
+          ...(ps === null
+            ? {
+                tests: [
+                  {
+                    id: "criterion",
+                    status: "test-failure",
+                    reason:
+                      ps === null
+                        ? "No DECRPM reply; alternate-buffer clearing was not measured"
+                        : "DECRPM status does not measure alternate-buffer clearing",
+                  },
+                ] as [{ id: string; status: "test-failure"; reason: string }],
+              }
+            : {
+                observation: {
+                  outcome: "inconclusive",
+                  reason: ps === null ? "no-response" : "insufficient-evidence",
+                  assertionType: "query_reply",
+                  note:
+                    ps === null
+                      ? "No DECRPM reply; alternate-buffer clearing was not measured"
+                      : "DECRPM status does not measure alternate-buffer clearing",
+                },
+              }),
         }
       },
-      "query",
+      "query_reply",
     ),
     termNeedsGeometry: true,
   },
@@ -1679,12 +1705,13 @@ export const modesProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 15 || ctx.cols < 20) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `Cursor-save fixture needs at least 15x20, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `Cursor-save fixture needs at least 15x20, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         ctx.write("\x1b[5;10H") // row 5, col 10
@@ -1692,12 +1719,24 @@ export const modesProbes: ProbeDefinition[] = [
         if (!before || before.row !== 5 || before.col !== 10) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: before ? "insufficient-evidence" : "no-response",
-              evidence: "query",
-              note: "Cursor-save fixture did not establish its start position",
-            },
+            ...(before === null
+              ? {
+                  tests: [
+                    {
+                      id: "criterion",
+                      status: "test-failure",
+                      reason: "Cursor-save fixture did not establish its start position",
+                    },
+                  ] as [{ id: string; status: "test-failure"; reason: string }],
+                }
+              : {
+                  observation: {
+                    outcome: "inconclusive",
+                    reason: before ? "insufficient-evidence" : "no-response",
+                    assertionType: "query_reply",
+                    note: "Cursor-save fixture did not establish its start position",
+                  },
+                }),
           }
         }
         ctx.write("\x1b[?1048h") // save
@@ -1708,12 +1747,24 @@ export const modesProbes: ProbeDefinition[] = [
           if (!displaced || displaced.row !== 15 || displaced.col !== 20) {
             return {
               pass: false,
-              observation: {
-                outcome: "inconclusive",
-                reason: displaced ? "insufficient-evidence" : "no-response",
-                evidence: "query",
-                note: "Cursor-save fixture did not measure displacement",
-              },
+              ...(displaced === null
+                ? {
+                    tests: [
+                      {
+                        id: "criterion",
+                        status: "test-failure",
+                        reason: "Cursor-save fixture did not measure displacement",
+                      },
+                    ] as [{ id: string; status: "test-failure"; reason: string }],
+                  }
+                : {
+                    observation: {
+                      outcome: "inconclusive",
+                      reason: displaced ? "insufficient-evidence" : "no-response",
+                      assertionType: "query_reply",
+                      note: "Cursor-save fixture did not measure displacement",
+                    },
+                  }),
             }
           }
         } finally {
@@ -1721,16 +1772,17 @@ export const modesProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         const measured = { before, displaced, after: pos }
         const pass = pos.row === 5 && pos.col === 10
         return {
           pass,
           response: JSON.stringify(measured),
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "?1048 restores cursor from 15;20 to 5;10",
               observed: JSON.stringify(measured),
@@ -1747,7 +1799,7 @@ export const modesProbes: ProbeDefinition[] = [
     "modes.alt-scroll-1007",
     () => osInputReviewResult("OS-level XTEST wheel injection", { input: false }),
     altScroll1007,
-    "interaction",
+    "input_bytes",
   ),
 
   // ?1005 — UTF-8 mouse encoding (legacy)
@@ -1825,19 +1877,27 @@ export const modesProbes: ProbeDefinition[] = [
               : ps === 4
                 ? "DECRPM 2031 permanently reset (Ps 4); the terminal cannot set it"
                 : `DECRPM 2031 recognized (${decrpmReading(ps)}); update events were not tested`
+        if (ps === null)
+          return {
+            pass: recognized,
+            note,
+            response: undefined,
+            tests: [{ id: "criterion", status: "test-failure", reason: note }],
+          }
         return {
           pass: recognized,
           note,
           response: ps === null ? undefined : decrpmReading(ps),
           observation: {
             outcome: ps === null ? "inconclusive" : recognized ? "supported" : "unsupported",
-            evidence: "query",
+            assertionType: "query_reply",
             ...(ps === null && { reason: "no-response" as const }),
             note,
           },
           ...(ps !== null && {
             assertions: [
               {
+                assertionType: "query_reply" as const,
                 kind: recognized ? ("positive" as const) : ("negative" as const),
                 // Ps 4 is recognized and cannot be set: the assertion names that, as decrpmResult does (@dev/2 72304b0e).
                 expected:
@@ -1848,7 +1908,7 @@ export const modesProbes: ProbeDefinition[] = [
           }),
         }
       },
-      "query",
+      "query_reply",
     ),
     termWrites: "query",
   },
@@ -1865,17 +1925,18 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+            return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
           }
           return {
             pass: false,
             response: JSON.stringify(pos),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "consumed",
-              note: "Cursor responsiveness does not measure saved/restored state",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "Cursor responsiveness does not measure saved/restored state",
+              },
+            ],
           }
         } finally {
           ctx.write("\x1b[#}") // pop to clean up
@@ -1897,17 +1958,18 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.write("\x1b[#}")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
           response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "Cursor responsiveness does not measure saved/restored state",
+            },
+          ],
         }
       },
     ),
@@ -1925,17 +1987,18 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+            return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
           }
           return {
             pass: false,
             response: JSON.stringify(pos),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "consumed",
-              note: "Cursor responsiveness does not measure saved/restored state",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "Cursor responsiveness does not measure saved/restored state",
+              },
+            ],
           }
         } finally {
           ctx.write("\x1b[?7r") // restore to clean up
@@ -1956,17 +2019,18 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.write("\x1b[?7r")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
           response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "Cursor responsiveness does not measure saved/restored state",
+            },
+          ],
         }
       },
     ),
@@ -1984,17 +2048,18 @@ export const modesProbes: ProbeDefinition[] = [
         try {
           const pos = await ctx.queryCursorPosition()
           if (!pos) {
-            return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+            return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
           }
           return {
             pass: false,
             response: JSON.stringify(pos),
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "consumed",
-              note: "Cursor responsiveness does not measure saved/restored state",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "Cursor responsiveness does not measure saved/restored state",
+              },
+            ],
           }
         } finally {
           ctx.write("\x1b[#Q") // pop to clean up
@@ -2015,17 +2080,18 @@ export const modesProbes: ProbeDefinition[] = [
         ctx.write("\x1b[#Q")
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
           response: JSON.stringify(pos),
-          observation: {
-            outcome: "inconclusive",
-            reason: "insufficient-evidence",
-            evidence: "consumed",
-            note: "Cursor responsiveness does not measure saved/restored state",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "Cursor responsiveness does not measure saved/restored state",
+            },
+          ],
         }
       },
     ),
@@ -2046,8 +2112,8 @@ export const modesProbes: ProbeDefinition[] = [
     // The terminal arm captures timed frames and reports evidence "pixels"; the headless arm paints
     // no frames and refuses before it measures, so its method is none — the canonical declaration
     // for a refusal before measurement, the same rule input.kitty-click-events follows.
-    termObservationEvidence: "pixels",
-    termlessObservationEvidence: "none",
+    termAssertionType: "screenshot",
+    libAssertionType: null,
     termNeedsGeometry: true,
   },
 ]

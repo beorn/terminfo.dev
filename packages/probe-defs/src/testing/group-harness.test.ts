@@ -92,12 +92,12 @@ test("a stored observation is read by featureId, and a required missing id is lo
   const { root, cleanup } = fixture()
   try {
     writeRun(root, "probes-apps", "obs.json", {
-      observations: [{ featureId: "sgr.bold", outcome: "supported", note: "parser-state" }],
+      observations: [{ featureId: "sgr.bold", outcome: "supported", note: "buffer_state" }],
     })
     const [row] = loadGroupRows(root, [{ dir: "probes-apps" }]).rows
     expect(row, "the run loaded").toBeDefined()
     if (!row) return
-    expect(storedObservation(row, "sgr.bold")).toEqual({ outcome: "supported", note: "parser-state" })
+    expect(storedObservation(row, "sgr.bold")).toEqual({ outcome: "supported", note: "buffer_state" })
     expect(storedObservation(row, "sgr.faint")).toBeUndefined()
     expect(() => requireStoredObservation(row, "sgr.faint")).toThrow(/sgr\.faint/u)
     expect(() => requireStoredObservation(row, "sgr.faint")).toThrow(/obs\.json/u)

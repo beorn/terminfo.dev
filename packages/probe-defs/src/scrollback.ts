@@ -183,12 +183,13 @@ function tooSmall(ctx: TermProbeSource, rows: number, cols: number): ProbeCallba
   if (validSize(ctx.rows, rows) && validSize(ctx.cols, cols)) return undefined
   return {
     pass: false,
-    observation: {
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
-      note: `Scrollback fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
-    },
+    tests: [
+      {
+        id: "criterion",
+        status: "test-todo",
+        reason: `Scrollback fixture needs at least ${rows}x${cols}; measured ${ctx.rows}x${ctx.cols}`,
+      },
+    ],
   }
 }
 
@@ -206,7 +207,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (!validSize(rows, 1) || !validSize(ctx.cols, `line ${rows + 9}`.length)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
           }
         }
         for (let i = 0; i < rows + 10; i++) ctx.feed(`line ${i}\r\n`)
@@ -250,7 +251,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
                 note: "A line numbering beyond the TOP control shows the viewport scrolled past one screen; whether the terminal retained those lines as scrollback history, and how many, is not readable from the screen",
@@ -270,7 +271,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         }
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
@@ -278,7 +279,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Cursor position does not measure scrollback history",
           },
         }
@@ -296,7 +297,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         if (!validSize(rows, 1) || !validSize(ctx.cols, `line ${rows + 9}`.length)) {
           return {
             pass: false,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none" },
+            tests: [{ id: "criterion", status: "test-todo", reason: "insufficient-evidence" }],
           }
         }
         const lineCount = rows + 10
@@ -340,7 +341,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
                 note: "The TOP control leaving the top of the screen after more lines than a screen can hold shows the viewport scrolled past its height; retained-history existence and count are not readable from the screen",
@@ -357,7 +358,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
         ctx.write("\x1b[5;1H") // move to row 5
         const pos = await ctx.queryCursorPosition()
         if (!pos) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         return {
           pass: false,
@@ -365,7 +366,7 @@ export const scrollbackProbes: ProbeDefinition[] = [
           observation: {
             outcome: "inconclusive",
             reason: "insufficient-evidence",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "Cursor position does not measure total scrollback lines",
           },
         }

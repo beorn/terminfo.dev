@@ -55,7 +55,7 @@ function headlessSavedCursor(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
         note: "Save fixture initial CUP was not measured at its target",
       },
     }
@@ -71,7 +71,7 @@ function headlessSavedCursor(
       observation: {
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "parser-state",
+        assertionType: "buffer_state",
         note: "Save fixture displacement was not measured at its target",
       },
     }
@@ -98,12 +98,24 @@ async function appSavedCursor(
     return {
       pass: false,
       response: JSON.stringify({ setup }),
-      observation: {
-        outcome: "inconclusive",
-        reason: setup ? "insufficient-evidence" : "no-response",
-        evidence: "query",
-        note: "Save fixture initial CUP was not measured at its target",
-      },
+      ...(setup === null
+        ? {
+            tests: [
+              {
+                id: "criterion",
+                status: "test-failure",
+                reason: "Save fixture initial CUP was not measured at its target",
+              },
+            ] as [{ id: string; status: "test-failure"; reason: string }],
+          }
+        : {
+            observation: {
+              outcome: "inconclusive",
+              reason: setup ? "insufficient-evidence" : "no-response",
+              assertionType: "query_reply",
+              note: "Save fixture initial CUP was not measured at its target",
+            },
+          }),
     }
   }
   ctx.write(save)
@@ -115,12 +127,24 @@ async function appSavedCursor(
       return {
         pass: false,
         response: JSON.stringify({ setup, displaced: displacedPosition }),
-        observation: {
-          outcome: "inconclusive",
-          reason: displacedPosition ? "insufficient-evidence" : "no-response",
-          evidence: "query",
-          note: "Save fixture displacement was not measured at its target",
-        },
+        ...(displacedPosition === null
+          ? {
+              tests: [
+                {
+                  id: "criterion",
+                  status: "test-failure",
+                  reason: "Save fixture displacement was not measured at its target",
+                },
+              ] as [{ id: string; status: "test-failure"; reason: string }],
+            }
+          : {
+              observation: {
+                outcome: "inconclusive",
+                reason: displacedPosition ? "insufficient-evidence" : "no-response",
+                assertionType: "query_reply",
+                note: "Save fixture displacement was not measured at its target",
+              },
+            }),
       }
     }
     ctx.write(restore)
@@ -131,16 +155,17 @@ async function appSavedCursor(
       return {
         pass: false,
         response,
-        observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+        tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
       }
     }
     const pass = final.row === initial.row && final.col === initial.col
     return {
       pass,
       response,
-      observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+      observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
       assertions: [
         {
+          assertionType: "query_reply" as const,
           kind: pass ? "positive" : "negative",
           expected: `saved cursor returns to ${initial.row};${initial.col} after measured displacement`,
           observed: response,
@@ -213,7 +238,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "insufficient-evidence", evidence: "none", note },
+            tests: [{ id: "criterion", status: "test-todo", reason: note }],
           }
         }
         // The pixel arm is the strongest witness: when this run has a measured raster, hide the
@@ -269,12 +294,12 @@ export const cursorProbes: ProbeDefinition[] = [
                 observation: {
                   outcome: "inconclusive",
                   reason: "insufficient-evidence",
-                  evidence: "pixels",
+                  assertionType: "screenshot",
                   screenshotRef: hidden.ref,
                   frames,
                   note,
                 },
-                assertions: [{ kind: "positive", expected: note, observed }],
+                assertions: [{ assertionType: "screenshot" as const, kind: "positive", expected: note, observed }],
               }
             }
             const cropRefusal = cropPositionRefusal({
@@ -299,13 +324,14 @@ export const cursorProbes: ProbeDefinition[] = [
                 response: observed,
                 observation: {
                   outcome: "supported",
-                  evidence: "pixels",
+                  assertionType: "screenshot",
                   screenshotRef: hidden.ref,
                   frames,
                   note: "The cursor cell's raw-pixel digest changed while hidden and matched the shown control after restore",
                 },
                 assertions: [
                   {
+                    assertionType: "screenshot" as const,
                     kind: "positive",
                     expected:
                       "The cursor cell at row 2 column 3 has one pixel digest while the cursor is shown, a different digest while DECTCEM hides it, and the shown digest again after restore",
@@ -323,12 +349,12 @@ export const cursorProbes: ProbeDefinition[] = [
                 observation: {
                   outcome: "inconclusive",
                   reason: "insufficient-evidence",
-                  evidence: "pixels",
+                  assertionType: "screenshot",
                   screenshotRef: hidden.ref,
                   frames,
                   note,
                 },
-                assertions: [{ kind: "positive", expected: note, observed }],
+                assertions: [{ assertionType: "screenshot" as const, kind: "positive", expected: note, observed }],
               }
             }
             const note =
@@ -339,12 +365,12 @@ export const cursorProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: hidden.ref,
                 frames,
                 note,
               },
-              assertions: [{ kind: "positive", expected: note, observed }],
+              assertions: [{ assertionType: "screenshot" as const, kind: "positive", expected: note, observed }],
             }
           } finally {
             // Return this owned window to its configured default, without claiming prior-style restoration.
@@ -369,10 +395,11 @@ export const cursorProbes: ProbeDefinition[] = [
               pass: ok,
               response: JSON.stringify({ shown: decrpmReading(shown), hidden: decrpmReading(hidden) }),
               observation: ok
-                ? { outcome: "supported", evidence: "query" }
-                : { outcome: "unsupported", evidence: "query" },
+                ? { outcome: "supported", assertionType: "query_reply" }
+                : { outcome: "unsupported", assertionType: "query_reply" },
               assertions: [
                 {
+                  assertionType: "query_reply" as const,
                   kind: ok ? "positive" : "negative",
                   expected: "DECRQM mode 25 reports set after CSI ? 25 h and reset after CSI ? 25 l",
                   observed: `${decrpmReading(shown)} -> ${decrpmReading(hidden)}`,
@@ -397,7 +424,7 @@ export const cursorProbes: ProbeDefinition[] = [
               pass: false,
               response: observed,
               criterionBranch: "cursor-visibility-visual-review",
-              checks: [
+              tests: [
                 { id: "capture", status: "supported", assertionRefs: [0] },
                 {
                   id: "review",
@@ -408,13 +435,14 @@ export const cursorProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
                 note: "No measured raster, so the same cell cannot be compared by raw-pixel digest; the pair needs independent review and blink phase cannot establish a negative",
               },
               assertions: [
                 {
+                  assertionType: "screenshot" as const,
                   kind: "positive",
                   expected:
                     "Control visibly shows a cursor at row 2 column 3 between L and R; target removes that cursor while other seeded content is unchanged",
@@ -432,18 +460,19 @@ export const cursorProbes: ProbeDefinition[] = [
           pass: false,
           response: "",
           note: "Cursor visibility is not observable: DECRQM mode 25 is silent or unusable, no measured raster, and no capture adapter",
-          observation: {
-            outcome: "inconclusive",
-            reason: "no-response",
-            evidence: "none",
-            note: "DECRQM mode 25 is silent or unusable, no measured raster, and no capture adapter",
-          },
+          tests: [
+            {
+              id: "criterion",
+              status: "test-todo",
+              reason: "DECRQM mode 25 is silent or unusable, no measured raster, and no capture adapter",
+            },
+          ],
         }
       },
     ),
     termNeedsGeometry: true,
-    termObservationEvidence: "pixels",
-    termlessObservationEvidence: "parser-state",
+    termAssertionType: "screenshot",
+    libAssertionType: "buffer_state",
   },
 
   // DECSCUSR — cursor shape
@@ -474,7 +503,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             note,
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query", note },
+            tests: [{ id: "criterion", status: "test-failure", reason: note }],
           }
         }
         const control = await ctx.capture({ role: "control", label: "Default cursor shape" })
@@ -494,7 +523,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "pixels",
+              assertionType: "screenshot",
               screenshotRef: target.ref,
               frames: [control, target],
               note: "DECRQSS cursor-style report unanswered; cursor pixels captured, shape difference requires review",
@@ -522,7 +551,7 @@ export const cursorProbes: ProbeDefinition[] = [
         ctx.feed("\x1b[3;5H")
         const response = ctx.feedCapture("\x1b[6n")
         if (!response) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         const match = response.startsWith("\x1b[") ? /^([1-9]\d*);([1-9]\d*)R$/.exec(response.slice(2)) : null
         const row = Number(match?.[1])
@@ -531,7 +560,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response,
-            observation: { outcome: "inconclusive", reason: "invalid-reply", evidence: "query" },
+            observation: { outcome: "inconclusive", reason: "invalid-reply", assertionType: "query_reply" },
           }
         }
         const setup = ctx.getCursor()
@@ -543,7 +572,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "DSR setup CUP was not independently measured at 3;5",
             },
           }
@@ -552,9 +581,10 @@ export const cursorProbes: ProbeDefinition[] = [
         return {
           pass,
           response: measured,
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: "ESC[3;5R after independently measured CUP 3;5",
               observed: measured,
@@ -566,12 +596,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 3 || ctx.cols < 6) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "cursor.position-report fixture needs at least 3x6 measured cells",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "cursor.position-report fixture needs at least 3x6 measured cells",
+              },
+            ],
           }
         }
         // Establish the position with text writes (a real cursor advance) rather than the CUP
@@ -588,7 +619,7 @@ export const cursorProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: JSON.stringify({ measured }),
-              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
             }
           }
           measured.push({ expected: step.row + ";" + step.col, report: pos })
@@ -599,7 +630,7 @@ export const cursorProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "query",
+                assertionType: "query_reply",
                 note: "Text-induced cursor advance was not reported at " + step.row + ";" + step.col,
               },
             }
@@ -609,9 +640,10 @@ export const cursorProbes: ProbeDefinition[] = [
         return {
           pass: true,
           response,
-          observation: { outcome: "supported", evidence: "query" },
+          observation: { outcome: "supported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: "positive",
               expected: "CPR tracks text-induced cursor advances at two distinct rows",
               observed: response,
@@ -622,7 +654,7 @@ export const cursorProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "query",
+    libAssertionType: "query_reply",
   },
 
   // CSI s / CSI u — ANSI save/restore cursor (distinct from DECSC/DECRC)
@@ -634,12 +666,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 15) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "cursor.ansi-save fixture needs at least 10x15 measured cells",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "cursor.ansi-save fixture needs at least 10x15 measured cells",
+              },
+            ],
           }
         }
         return appSavedCursor(ctx, { row: 3, col: 5 }, { row: 10, col: 15 }, "\x1b[s", "\x1b[u")
@@ -647,7 +680,7 @@ export const cursorProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   {
@@ -658,12 +691,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 12 || ctx.cols < 18) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "cursor.ansi-restore fixture needs at least 12x18 measured cells",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "cursor.ansi-restore fixture needs at least 12x18 measured cells",
+              },
+            ],
           }
         }
         return appSavedCursor(ctx, { row: 4, col: 6 }, { row: 12, col: 18 }, "\x1b[s", "\x1b[u")
@@ -671,7 +705,7 @@ export const cursorProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // DECSC/DECRC — cursor save/restore
@@ -683,12 +717,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 10 || ctx.cols < 10) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "cursor.save-restore fixture needs at least 10x10 measured cells",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "cursor.save-restore fixture needs at least 10x10 measured cells",
+              },
+            ],
           }
         }
         return appSavedCursor(ctx, { row: 3, col: 5 }, { row: 10, col: 10 }, "\x1b7", "\x1b8")
@@ -696,7 +731,7 @@ export const cursorProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // DECSET 45 — reverse wrap mode
@@ -748,12 +783,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 2) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "reverse-wrap fixture needs two measured rows and at least two columns",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "reverse-wrap fixture needs two measured rows and at least two columns",
+              },
+            ],
           }
         }
         const cols = ctx.cols
@@ -763,15 +799,22 @@ export const cursorProbes: ProbeDefinition[] = [
           measured.push({ step, report: pos })
           return pos
         }
-        const inconclusive = (note?: string) => ({
-          pass: false,
-          response: JSON.stringify({ measured }),
-          observation: {
-            outcome: "inconclusive" as const,
-            ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
-            evidence: "query" as const,
-          },
-        })
+        const inconclusive = (note?: string): ProbeCallbackResult =>
+          !note
+            ? {
+                pass: false,
+                response: JSON.stringify({ measured }),
+                tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+              }
+            : {
+                pass: false,
+                response: JSON.stringify({ measured }),
+                observation: {
+                  outcome: "inconclusive" as const,
+                  ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+                  assertionType: "query_reply" as const,
+                },
+              }
         ctx.write("\x1b[?45h") // enable reverse wrap
         try {
           ctx.write("\x1b[?7h") // reverse wrap is only observable with auto-wrap on
@@ -793,8 +836,8 @@ export const cursorProbes: ProbeDefinition[] = [
             return {
               pass: true,
               response,
-              observation: { outcome: "supported", evidence: "query" },
-              assertions: [{ kind: "positive", expected, observed: response }],
+              observation: { outcome: "supported", assertionType: "query_reply" },
+              assertions: [{ assertionType: "query_reply" as const, kind: "positive", expected, observed: response }],
             }
           }
           return {
@@ -802,10 +845,10 @@ export const cursorProbes: ProbeDefinition[] = [
             response,
             observation: {
               outcome: "unsupported",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "Measured wrap was not reversed to row 1 column " + cols,
             },
-            assertions: [{ kind: "negative", expected, observed: response }],
+            assertions: [{ assertionType: "query_reply" as const, kind: "negative", expected, observed: response }],
           }
         } finally {
           ctx.write("\x1b[?45l") // disable reverse wrap after the query, including errors
@@ -825,12 +868,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `CUP edge fixture needs an initialized grid of at least 2x2, measured ${rows}x${cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `CUP edge fixture needs an initialized grid of at least 2x2, measured ${rows}x${cols}`,
+              },
+            ],
           }
         }
         ctx.feed("\x1b[1;1H")
@@ -843,7 +887,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "parser-state",
+              assertionType: "buffer_state",
               note: "CUP home control did not reach 0;0",
             },
           }
@@ -858,7 +902,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "parser-state",
+              assertionType: "buffer_state",
               note: `CUP edge control did not reach ${rows - 1};${cols - 1}`,
             },
           }
@@ -873,7 +917,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "parser-state",
+              assertionType: "buffer_state",
               note: "CUP reset control did not reach 0;0",
             },
           }
@@ -890,7 +934,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "parser-state",
+              assertionType: "buffer_state",
               note: "CUP target cursor readback is invalid",
             },
           }
@@ -899,9 +943,10 @@ export const cursorProbes: ProbeDefinition[] = [
         return {
           pass,
           response,
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "parser-state" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "buffer_state" },
           assertions: [
             {
+              assertionType: "buffer_state" as const,
               kind: pass ? "positive" : "negative",
               expected: `CUP ${targetRow};${targetCol} clamps to measured ${rows - 1};${cols - 1} after qualified edge`,
               observed: response,
@@ -914,18 +959,19 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(rows) || !Number.isSafeInteger(cols) || rows < 2 || cols < 2) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `CUP edge fixture needs at least 2x2, measured ${rows}x${cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `CUP edge fixture needs at least 2x2, measured ${rows}x${cols}`,
+              },
+            ],
           }
         }
         ctx.write("\x1b[1;1H")
         const origin = await ctx.queryCursorPosition()
         if (!origin) {
-          return { pass: false, observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" } }
+          return { pass: false, tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }] }
         }
         if (origin.row !== 1 || origin.col !== 1) {
           return {
@@ -934,7 +980,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "CUP home control did not reach 1;1",
             },
           }
@@ -945,7 +991,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ origin, edge }),
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
           }
         }
         if (edge.row !== rows || edge.col !== cols) {
@@ -955,7 +1001,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: `CUP edge control did not reach ${rows};${cols}`,
             },
           }
@@ -966,7 +1012,7 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response: JSON.stringify({ origin, edge, beforeTarget }),
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
           }
         }
         if (beforeTarget.row !== 1 || beforeTarget.col !== 1) {
@@ -976,7 +1022,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note: "CUP reset control did not reach 1;1",
             },
           }
@@ -990,16 +1036,17 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: false,
             response,
-            observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+            tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
           }
         }
         const pass = final.row === rows && final.col === cols
         return {
           pass,
           response,
-          observation: { outcome: pass ? "supported" : "unsupported", evidence: "query" },
+          observation: { outcome: pass ? "supported" : "unsupported", assertionType: "query_reply" },
           assertions: [
             {
+              assertionType: "query_reply" as const,
               kind: pass ? "positive" : "negative",
               expected: `CUP ${targetRow};${targetCol} clamps to measured ${rows};${cols} after qualified edge`,
               observed: response,
@@ -1010,7 +1057,7 @@ export const cursorProbes: ProbeDefinition[] = [
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // CUU past top of screen — cursor should stop at row 0
@@ -1025,12 +1072,7 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(rows) || rows < 1) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "Initialized screen row count is unavailable",
-            },
+            tests: [{ id: "criterion", status: "test-todo", reason: "Initialized screen row count is unavailable" }],
           }
         }
         ctx.feed("\x1b[1;1H") // position at row 0
@@ -1042,7 +1084,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "parser-state",
+              assertionType: "buffer_state",
               note: "CUD home control did not reach 0;0",
             },
           }
@@ -1062,12 +1104,13 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 2 || ctx.cols < 1) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "cursor.cud-past-bottom fixture needs at least 2x1 measured cells",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "cursor.cud-past-bottom fixture needs at least 2x1 measured cells",
+              },
+            ],
           }
         }
         const rows = ctx.rows
@@ -1078,15 +1121,22 @@ export const cursorProbes: ProbeDefinition[] = [
           measured.push({ step, report: pos })
           return pos
         }
-        const inconclusive = (note?: string) => ({
-          pass: false,
-          response: JSON.stringify({ rows, measured }),
-          observation: {
-            outcome: "inconclusive" as const,
-            ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
-            evidence: "query" as const,
-          },
-        })
+        const inconclusive = (note?: string): ProbeCallbackResult =>
+          !note
+            ? {
+                pass: false,
+                response: JSON.stringify({ rows, measured }),
+                tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
+              }
+            : {
+                pass: false,
+                response: JSON.stringify({ rows, measured }),
+                observation: {
+                  outcome: "inconclusive" as const,
+                  ...(note ? { reason: "insufficient-evidence" as const, note } : { reason: "no-response" as const }),
+                  assertionType: "query_reply" as const,
+                },
+              }
         ctx.write("\x1b[1;1H") // position at row 1
         const origin = await ask("origin")
         if (!origin) return inconclusive()
@@ -1114,8 +1164,8 @@ export const cursorProbes: ProbeDefinition[] = [
           return {
             pass: true,
             response,
-            observation: { outcome: "supported", evidence: "query" },
-            assertions: [{ kind: "positive", expected, observed: response }],
+            observation: { outcome: "supported", assertionType: "query_reply" },
+            assertions: [{ assertionType: "query_reply" as const, kind: "positive", expected, observed: response }],
           }
         }
         return {
@@ -1123,16 +1173,16 @@ export const cursorProbes: ProbeDefinition[] = [
           response,
           observation: {
             outcome: "unsupported",
-            evidence: "query",
+            assertionType: "query_reply",
             note: "CUD " + target + " did not clamp at row " + rows,
           },
-          assertions: [{ kind: "negative", expected, observed: response }],
+          assertions: [{ assertionType: "query_reply" as const, kind: "negative", expected, observed: response }],
         }
       },
     ),
     termNeedsGeometry: true,
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 
   // VPA — vertical position absolute
@@ -1167,24 +1217,26 @@ export const cursorProbes: ProbeDefinition[] = [
         if (!Number.isSafeInteger(ctx.rows) || !Number.isSafeInteger(ctx.cols) || ctx.rows < 15 || ctx.cols < 1) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: "cursor.cup-scroll-region fixture needs at least 15x1 measured cells",
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: "cursor.cup-scroll-region fixture needs at least 15x1 measured cells",
+              },
+            ],
           }
         }
         const adapter = ctx.capture ?? ctx.cells
         if (adapter && (!Number.isSafeInteger(ctx.cols) || ctx.cols < 6)) {
           return {
             pass: false,
-            observation: {
-              outcome: "inconclusive",
-              reason: "insufficient-evidence",
-              evidence: "none",
-              note: `cursor.cup-scroll-region capture needs at least 15x6, measured ${ctx.rows}x${ctx.cols}`,
-            },
+            tests: [
+              {
+                id: "criterion",
+                status: "test-todo",
+                reason: `cursor.cup-scroll-region capture needs at least 15x6, measured ${ctx.rows}x${ctx.cols}`,
+              },
+            ],
           }
         }
         if (adapter) {
@@ -1229,7 +1281,7 @@ export const cursorProbes: ProbeDefinition[] = [
               observation: {
                 outcome: "inconclusive",
                 reason: "insufficient-evidence",
-                evidence: "pixels",
+                assertionType: "screenshot",
                 screenshotRef: target.ref,
                 frames: [control, target],
                 note: "Control marks physical rows 1, 5 and 15; the target places a marker at DECOM region-relative rows 1 and 11. Whether those markers land on physical rows 5 and 15 requires independent pixel review, and CPR stays region-relative so it cannot prove the physical row",
@@ -1262,7 +1314,7 @@ export const cursorProbes: ProbeDefinition[] = [
             return {
               pass: false,
               response: JSON.stringify({ rows, measured }),
-              observation: { outcome: "inconclusive", reason: "no-response", evidence: "query" },
+              tests: [{ id: "criterion", status: "test-failure", reason: "no-response" }],
             }
           }
           const relative = [top, second, bottom].map((sample) => sample.row + ";" + sample.col).join(", ")
@@ -1272,7 +1324,7 @@ export const cursorProbes: ProbeDefinition[] = [
             observation: {
               outcome: "inconclusive",
               reason: "insufficient-evidence",
-              evidence: "query",
+              assertionType: "query_reply",
               note:
                 "DECOM makes CPR region-relative (VT100: region top is 1, bottom is 11); measured " +
                 relative +
@@ -1292,6 +1344,6 @@ export const cursorProbes: ProbeDefinition[] = [
     cellReadback: true,
     textClaim: "characters",
 
-    termlessObservationEvidence: "parser-state",
+    libAssertionType: "buffer_state",
   },
 ]

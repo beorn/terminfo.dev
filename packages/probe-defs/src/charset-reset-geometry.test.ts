@@ -29,6 +29,7 @@ function app(
     throw new Error(`Unexpected ${name} in charset/reset geometry fixture`)
   }
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -73,10 +74,9 @@ test("fixed charset and reset fixtures require valid measured room before any by
       const events: string[] = []
       const result = await definition.term(app(rows, cols, events))
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
-      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result, `${id} at ${rows}x${cols}`).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
@@ -88,7 +88,7 @@ test("fixed charset and reset fixtures require valid measured room before any by
           { row: 1, col: 1 },
         ]),
       )
-      expect(valid.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(valid.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
       expect(valid.response, id).toBe(JSON.stringify({ before: { row: 5, col: 5 }, after: { row: 1, col: 1 } }))
       expect(events).toEqual(["\x1b[5;5H", "CPR", "\x1bc", "CPR"])
     } else {
@@ -99,7 +99,7 @@ test("fixed charset and reset fixtures require valid measured room before any by
       expect(valid.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "no-response",
-        evidence: "query",
+        assertionType: "query_reply",
       })
       expect(events.at(-1), id).toBe(id === "reset.soft" ? "mode" : "CPR")
     }
@@ -125,11 +125,11 @@ test("a charset row with no owned capture refuses by name and writes nothing", a
       const result = await definition.term(app(rows, cols, events))
       expect(events, `${id} at ${rows}x${cols}`).toEqual([])
       expect(result.pass, id).toBe(false)
-      expect(result.observation, `${id} at ${rows}x${cols}`).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
-        note: expect.stringContaining("no owned capture adapter"),
+      expect(result, `${id} at ${rows}x${cols}`).toMatchObject({
+        observation: undefined,
+        tests: [
+          expect.objectContaining({ status: "test-todo", reason: expect.stringContaining("no owned capture adapter") }),
+        ],
       })
     }
   }
@@ -213,10 +213,9 @@ test("DEC special capture requires safe measured 3x5 before writes or captures",
     const result = await definition.term(context)
     expect(events, `${rows}x${cols}`).toEqual([])
     expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(result.observation?.note).toContain(`3x5`)
     expect(result.observation?.note).toContain(`measured ${rows}x${cols}`)
@@ -234,7 +233,7 @@ test("DEC special capture names a silent CSI 16 t as query, not ungraded pixels"
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(result.observation?.frames ?? []).toHaveLength(0)
@@ -295,7 +294,7 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
     note: expect.stringContaining("no independent reference exists for a multi-attribute reset"),
   })
 })
@@ -321,10 +320,9 @@ test("reset.sgr capture refuses an undersized terminal before any bytes or frame
     const result = await definition.term(context)
     expect(events, `${rows}x${cols}`).toEqual([])
     expect(capture, `${rows}x${cols}`).not.toHaveBeenCalled()
-    expect(result.observation, `${rows}x${cols}`).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, `${rows}x${cols}`).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(result.observation?.note, `${rows}x${cols}`).toContain("3x34")
   }
@@ -359,7 +357,7 @@ test.each([{ row: 1, col: 1 }, null])(
     expect(checkpointTimes[2]! - checkpointTimes[1]!).toBe(5000)
     expect(checkpoints[3]).toBe(`${checkpoints[2]}\x1b[H`)
     expect(checkpoints[4]).toBe(`${checkpoints[3]}X`)
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
     if (cursor === null) expect(result.observation?.note).toContain("processing barrier unconfirmed")
     expect(result.observation?.frames?.map(({ role }) => role)).toEqual([
       "control",
@@ -415,12 +413,15 @@ test("DECALN refuses invalid geometry and absent capture without writes", async 
     context.capture = async () => {
       throw new Error("invalid fixture must not capture")
     }
-    expect((await decaln().term!(context)).observation).toMatchObject({ outcome: "inconclusive", evidence: "none" })
+    expect(await decaln().term!(context)).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
+    })
     expect(events).toEqual([])
   }
   expect(decaln().termNeedsGeometry).toBe(true)
   const events: string[] = []
-  expect((await decaln().term!(app(3, 6, events))).observation?.evidence).toBe("none")
+  expect((await decaln().term!(app(3, 6, events))).observation?.assertionType).toBe("none")
   expect(events).toEqual([])
 })
 
@@ -441,7 +442,7 @@ test("charsets.utf8 asks the terminal's pixel report before painting its two-cel
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(frames).toEqual([])
@@ -476,7 +477,7 @@ test("every plain-written charset row names an 8-bit decoding context before it 
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(String(result.observation?.note), id).toContain("decodes plain-written UTF-8 as ISO-8859-1")
     expect(captured, id).toBe(false)

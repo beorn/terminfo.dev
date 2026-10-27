@@ -106,7 +106,7 @@ function frame(row: ColourRow, paint: string): string {
 /**
  * The eleven colour rows, keyed by the probe id that owns each claim. The target and the expected
  * frames paint the sequence under test; the ignored frame paints the sibling. The two degenerate
- * checks the oracle performs on those frames — expected differs from seed, expected differs from
+ * tests the oracle performs on those frames — expected differs from seed, expected differs from
  * ignored — are the whole claim: the colour value itself is never interpreted.
  */
 export const COLOUR_CAPTURE: Record<string, Omit<RegionReadback, "pixelGeometry">> = Object.fromEntries(

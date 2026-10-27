@@ -120,7 +120,7 @@ test("every sgr probe decides from the terminal's own DECRQSS report", async () 
     expect(queries, `${id} must query DECRQSS`).toContain("\x1bP$qm\x1b\\")
     expect(result.observation, `${id} with reply ${JSON.stringify(reply)}`).toMatchObject({
       outcome: "supported",
-      evidence: "query",
+      assertionType: "query_reply",
     })
   }
 })
@@ -141,7 +141,7 @@ test.each([
 ] as const)("%s cannot qualify a reset from constant final-state reply %s", async (id, reply) => {
   const { ctx } = sgrReadbackContext(reply)
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(result.pass).toBe(false)
   expect(result.assertions ?? []).toHaveLength(0)
   expect(result.response).toContain(reply)
@@ -150,11 +150,11 @@ test.each([
     attempt: { scope: "probe", startedAt: "2026-10-21T11:15:00.000Z" },
     observation: { ...result.observation!, featureId: id, rawReplyRef: id },
     assertions: [],
-    checks: result.checks,
+    tests: result.tests,
     criterionBranch: result.criterionBranch,
   })
   expect(recorded.status).toBe("test-failure")
-  expect(recorded.checks).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
+  expect(recorded.tests).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
 })
 
 test.each([
@@ -167,7 +167,7 @@ test.each([
 ] as const)("%s is unsupported when DECRQSS reports %s", async (id, reply) => {
   const { ctx } = qualifiedSgrReadbackContext(id, reply)
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
 })
 
 // The reset/default probes are falsified by the SETUP code still being active, which is a positive
@@ -181,7 +181,7 @@ test.each([
 ] as const)("%s is unsupported when DECRQSS still reports the setup it should have cleared (%s)", async (id, reply) => {
   const { ctx } = qualifiedSgrReadbackContext(id, reply)
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
 })
 
 // Measured in-tree replies that a per-code match would misgrade.
@@ -192,7 +192,7 @@ test.each([
 ] as const)("%s is supported on the measured %s reply", async (id, reply) => {
   const { ctx } = qualifiedSgrReadbackContext(id, reply)
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test.each(DECIDED.map(([id]) => id))("%s stays inconclusive, never negative, when DECRQSS is silent", async (id) => {
@@ -241,7 +241,7 @@ test.each([
 ] as const)("%s with DECRQSS %s is %s", async (id, reply, outcome) => {
   const { ctx } = qualifiedSgrReadbackContext(id, reply)
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome, evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
   expect(result.pass).toBe(outcome === "supported")
   expect(result.response).toBe(
     JSON.stringify({ sgr: reply, ...(RESET_SETUP[id] && { baseline: "0", setup: RESET_SETUP[id] }) }),
@@ -255,11 +255,11 @@ test.each([
       attempt: { scope: "probe", startedAt: "2026-10-21T10:50:00.000Z" },
       observation: { ...result.observation!, featureId: id, rawReplyRef: id },
       assertions: [],
-      checks: result.checks,
+      tests: result.tests,
       criterionBranch: result.criterionBranch,
     })
     expect(recorded.status).toBe("test-failure")
-    expect(recorded.checks).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
+    expect(recorded.tests).toContainEqual(expect.objectContaining({ status: "test-failure", rawReplyRef: id }))
   }
 })
 
@@ -277,7 +277,7 @@ test("a reset reads baseline and setup before sending the reset, and retains eve
 test("an explicit no-underline report qualifies a neutral baseline and a cleared reset", async () => {
   const { ctx } = sgrReadbackContext(["0;4:0", "1;4", "1;4:0"])
   const result = await sgrTerm("sgr.selective-reset.underline")(ctx)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(JSON.parse(result.response!)).toEqual({ baseline: "0;4:0", setup: "1;4", sgr: "1;4:0" })
 })
 
@@ -297,7 +297,7 @@ test.each([
     throw new Error("An observed invalid prerequisite must not enter capture fallback")
   }
   const result = await sgrTerm(id)(ctx)
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(result.assertions ?? []).toHaveLength(0)
   expect(result.observation?.note).toContain(`${phase} prerequisite`)
   const phaseIndex = phase === "baseline" ? 0 : 1

@@ -1,12 +1,11 @@
 /**
- * @failure A probe writes a query then claims evidence "none", so run-parser's zero-byte rule refuses the run.
+ * @failure A silent callback fabricates a typed deciding observation from writes or an unanswered query.
  * @level l0
  * @consumer App probe observations admitted by run-parser
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { validateObservation } from "@terminfo/run-parser"
-import { ALL_PROBES, type Observation, type ProbeAssertion, type ProbeCallbackResult, type TermProbeSource } from "../index.ts"
+import { ALL_PROBES, type TermProbeSource } from "../index.ts"
 
 const GEOMETRIES = [
   { rows: 1, cols: 1 },
@@ -17,6 +16,7 @@ function silentTerm(rows: number, cols: number): { ctx: TermProbeSource; writes:
   const writes: string[] = []
   const timeout = async () => ({ match: null, reason: "timeout" as const, raw: "", rawBase64: "" })
   const ctx: TermProbeSource = {
+    kind: "live",
     write(text) {
       writes.push(text)
     },
@@ -33,13 +33,9 @@ function silentTerm(rows: number, cols: number): { ctx: TermProbeSource; writes:
   return { ctx, writes }
 }
 
-function measuredObservation(
-  result: ProbeCallbackResult,
-): result is Extract<ProbeCallbackResult, { observation: NonNullable<ProbeCallbackResult["observation"]> }> {
-  return "observation" in result && result.observation !== undefined
-}
-
-test("ALL_PROBES silent no-capture none evidence implies zero writes at 1x1 and 24x80", async () => {
+// Execution-only TODO can follow real writes. The per-row geometry tests retain the zero-byte
+// refusal checks; this census proves unanswered I/O is never promoted to a deciding observation.
+test("ALL_PROBES silent no-capture callbacks retain execution tests without inventing observations", async () => {
   const appProbes = ALL_PROBES.filter((probe) => probe.term !== null)
   expect(appProbes.length).toBeGreaterThan(0)
 
@@ -49,27 +45,15 @@ test("ALL_PROBES silent no-capture none evidence implies zero writes at 1x1 and 
       const result = await probe.term!(ctx)
       const label = `${probe.id} at ${geometry.rows}x${geometry.cols}`
 
-      if (!measuredObservation(result)) continue
-
-      if (result.observation.evidence === "none") {
-        expect(writes, `${label} claimed evidence none after writes`).toEqual([])
+      expect.soft(result.observation, `${label}; writes=${JSON.stringify(writes)}`).toBeUndefined()
+      if (result.observation) continue
+      expect(result.assertions, label).toBeUndefined()
+      if (result.notTested) continue
+      expect(result.tests?.length, label).toBeGreaterThan(0)
+      for (const execution of result.tests ?? []) {
+        expect(["test-todo", "test-failure"], label).toContain(execution.status)
+        expect(execution.reason?.trim().length, label).toBeGreaterThan(0)
       }
-
-      const observation: Observation = {
-        featureId: probe.id,
-        ...result.observation,
-      }
-      const rawReplies: Record<string, string> = {}
-      const assertions: ProbeAssertion[] = (result.assertions ?? []).map((entry) => ({
-        ...entry,
-        featureId: probe.id,
-        rawReplyRef: probe.id,
-      }))
-      if (observation.evidence === "none") {
-        observation.rawReplyRef = probe.id
-        rawReplies[probe.id] = JSON.stringify({ writes, queries: [], events: [] })
-      }
-      validateObservation(observation, label, rawReplies, assertions)
     }
   }
 })

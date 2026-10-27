@@ -11,12 +11,13 @@ import type { TermProbeSource, LibProbeSource } from "./types.ts"
 
 function byId(id: string) {
   const probe = cursorProbes.find((value) => value.id === id)
-  if (!probe?.termless || !probe.term) throw new Error(`missing cursor callbacks for ${id}`)
+  if (!probe?.lib || !probe.term) throw new Error(`missing cursor callbacks for ${id}`)
   return probe
 }
 
 function app(position: { row: number; col: number } | null): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => position,
     measureRenderedWidth: async () => null,
@@ -151,6 +152,7 @@ function appGoto(rows: number, cols: number, opts: { noClamp?: boolean; ignoreCu
 
 function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
   return {
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture: () => reply,
@@ -190,11 +192,11 @@ function headless(x: number, y: number, rows = 24, reply = ""): LibProbeSource {
 }
 
 test("cursor shape without style readback and reverse-wrap CPR remain ungraded", async () => {
-  const shape = byId("cursor.shape").termless!(headless(0, 0))
+  const shape = byId("cursor.shape").lib!(headless(0, 0))
   expect(shape.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
   expect(shape.assertions).toBeUndefined()
 
@@ -202,12 +204,12 @@ test("cursor shape without style readback and reverse-wrap CPR remain ungraded",
   expect(appShape.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "no-response",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(appShape.assertions).toBeUndefined()
 
   const reverse = await byId("cursor.reverse-wrap").term!(app({ row: 1, col: 80 }))
-  expect(reverse.observation).toMatchObject({ outcome: "inconclusive", evidence: "query" })
+  expect(reverse.observation).toMatchObject({ outcome: "inconclusive", assertionType: "query_reply" })
   expect(reverse.assertions).toBeUndefined()
 })
 
@@ -232,7 +234,7 @@ test("cursor.shape capture names measured geometry and roles without inventing a
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    assertionType: "screenshot",
   })
   expect(result.observation?.frames).toHaveLength(2)
   expect(result.assertions).toBeUndefined()
@@ -241,7 +243,7 @@ test("cursor.shape capture names measured geometry and roles without inventing a
 test("reverse-wrap grades a measured backward wrap, not a bare CPR", async () => {
   const probe = byId("cursor.reverse-wrap")
   const ok = await probe.term!(appWrapper(4))
-  expect(ok.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(ok.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(ok.assertions).toMatchObject([{ kind: "positive" }])
   // A constant or stale reply cannot establish the backward wrap.
   const constant = await probe.term!(app({ row: 2, col: 2 }))
@@ -255,12 +257,12 @@ test("reverse-wrap needs two rows and a measured wrap before backspace", () => {
   context.feed = (sequence) => {
     writes.push(sequence)
   }
-  expect(probe.termless!(context).observation).toMatchObject({ outcome: "inconclusive" })
+  expect(probe.lib!(context).observation).toMatchObject({ outcome: "inconclusive" })
   expect(writes).toEqual([])
 
   const twoRows = { ...headless(3, 0, 2), cols: 4 }
   twoRows.getCursor = () => ({ x: 3, y: 0, visible: true, style: null })
-  expect(probe.termless!(twoRows).observation).toMatchObject({ outcome: "inconclusive", evidence: "parser-state" })
+  expect(probe.lib!(twoRows).observation).toMatchObject({ outcome: "inconclusive", assertionType: "buffer_state" })
 })
 
 test("reverse-wrap retains support after a measured second-row displacement", () => {
@@ -273,8 +275,8 @@ test("reverse-wrap retains support after a measured second-row displacement", ()
     if (sequence === "\x08\x08") position = { x: 3, y: 0 }
   }
   context.getCursor = () => ({ ...position, visible: true, style: null })
-  const result = probe.termless!(context)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const result = probe.lib!(context)
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(result.assertions).toMatchObject([{ kind: "positive", observed: result.response }])
 })
 
@@ -298,8 +300,8 @@ test.each([
     if (sequence === "\x1b[?25l" && fault !== "ignore-hide") visible = fault === "missing-target" ? null : false
   }
   context.getCursor = () => ({ x: 0, y: 0, visible, style: null })
-  const result = byId("cursor.hide").termless!(context)
-  expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+  const result = byId("cursor.hide").lib!(context)
+  expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
   if (outcome === "inconclusive") {
     expect(result.observation?.reason).toBe("insufficient-evidence")
     expect(result.assertions).toBeUndefined()
@@ -325,7 +327,7 @@ test("cursor visibility restores its measured initial state when the hide write 
     writes.push(sequence)
     if (sequence === "\x1b[?25l") throw new Error("hide write failed")
   }
-  expect(() => byId("cursor.hide").termless!(context)).toThrow("hide write failed")
+  expect(() => byId("cursor.hide").lib!(context)).toThrow("hide write failed")
   expect(writes.at(-1)).toBe("\x1b[?25h")
 })
 
@@ -341,8 +343,8 @@ test("cursor save/restore records the mismatched position and a missing app repl
     if (sequence === "\x1b[u") position = { ...saved }
   }
   headlessContext.getCursor = () => ({ ...position, visible: true, style: null })
-  const headlessResult = probe.termless!(headlessContext)
-  expect(headlessResult.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  const headlessResult = probe.lib!(headlessContext)
+  expect(headlessResult.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(headlessResult.assertions).toMatchObject([{ kind: "positive", observed: headlessResult.response }])
 
   let appPosition = { row: 1, col: 1 }
@@ -353,7 +355,7 @@ test("cursor save/restore records the mismatched position and a missing app repl
   }
   wrongContext.queryCursorPosition = async () => appPosition
   const wrong = await probe.term!(wrongContext)
-  expect(wrong.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(wrong.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(wrong.assertions).toMatchObject([{ kind: "negative", observed: wrong.response }])
   expect(JSON.parse(wrong.response ?? "")).toMatchObject({
     setup: { row: 3, col: 5 },
@@ -373,10 +375,10 @@ test("bottom-row cursor result uses measured headless height and does not guess 
       if (sequence === "\x1b[999B") position = { x: 0, y: targetY }
     }
     context.getCursor = () => ({ ...position, visible: true, style: null })
-    const result = probe.termless!(context)
+    const result = probe.lib!(context)
     expect(result.observation).toMatchObject({
       outcome: targetY === 29 ? "supported" : "unsupported",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
     })
     expect(result.observation?.note).toBeUndefined()
     expect(result.assertions).toMatchObject([
@@ -389,11 +391,11 @@ test("bottom-row cursor result uses measured headless height and does not guess 
     if (sequence === "\x1b[999B") invalidPosition = { x: 0, y: Number.NaN }
   }
   invalid.getCursor = () => ({ ...invalidPosition, visible: true, style: null })
-  const invalidResult = probe.termless!(invalid)
+  const invalidResult = probe.lib!(invalid)
   expect(invalidResult.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
     note: "CUD target cursor readback is invalid",
   })
   expect(invalidResult.assertions).toBeUndefined()
@@ -405,23 +407,27 @@ test("bottom-row cursor result uses measured headless height and does not guess 
 
 test("DSR position report distinguishes a valid wrong coordinate from malformed input", () => {
   const probe = byId("cursor.position-report")
-  const misleading = probe.termless!(headless(0, 0, 24, "noise3;5R"))
-  expect(misleading.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply", evidence: "query" })
+  const misleading = probe.lib!(headless(0, 0, 24, "noise3;5R"))
+  expect(misleading.observation).toMatchObject({
+    outcome: "inconclusive",
+    reason: "invalid-reply",
+    assertionType: "query_reply",
+  })
   expect(misleading.assertions).toBeUndefined()
-  const wrong = probe.termless!(headless(0, 0, 24, "\x1b[3;6R"))
+  const wrong = probe.lib!(headless(0, 0, 24, "\x1b[3;6R"))
   expect(wrong.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   const qualified = headless(4, 2, 24, "\x1b[3;6R")
-  expect(probe.termless!(qualified).observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(probe.lib!(qualified).observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   qualified.feedCapture = () => "\x1b[3;5R"
-  expect(probe.termless!(qualified).observation).toMatchObject({
+  expect(probe.lib!(qualified).observation).toMatchObject({
     outcome: "supported",
-    evidence: "query",
+    assertionType: "query_reply",
   })
-  expect(probe.termless!(headless(0, 0)).observation).toMatchObject({
+  expect(probe.lib!(headless(0, 0)).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "no-response",
   })
@@ -451,13 +457,13 @@ test("cup-scroll-region records the DECOM relative samples and never grades plac
 
 test("DECOM reports relative CPR but only absolute headless state proves the physical row", async () => {
   const probe = byId("cursor.cup-scroll-region")
-  expect(probe.termless!(headless(0, 4)).observation).toMatchObject({
+  expect(probe.lib!(headless(0, 4)).observation).toMatchObject({
     outcome: "supported",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
-  expect(probe.termless!(headless(0, 0)).observation).toMatchObject({
+  expect(probe.lib!(headless(0, 0)).observation).toMatchObject({
     outcome: "unsupported",
-    evidence: "parser-state",
+    assertionType: "buffer_state",
   })
 
   // DEC VT510 DECOM and CPR: https://vt100.net/mirror/mds-199909/cd3/term/vt510rmb.pdf
@@ -468,13 +474,13 @@ test("DECOM reports relative CPR but only absolute headless state proves the phy
   expect((await probe.term!(context)).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(writes.slice(-2)).toEqual(["\x1b[?6l", "\x1b[r"])
   expect((await probe.term!(app({ row: 5, col: 1 }))).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
 
   const failing = app(null)
@@ -526,7 +532,7 @@ test("relative cursor probes establish their own origin after earlier moves", as
   for (const id of ["cursor.move.forward", "cursor.move.back", "cursor.move.down", "cursor.move.up"]) {
     const before = writes.length
     const result = await byId(id).term!(context)
-    expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+    expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     expect(writes.slice(before)[0], id).toBe("\x1b[1;1H")
   }
 })
@@ -557,7 +563,7 @@ test("cursor movement qualifies setup before grading an ignored target", async (
 
   ignore = "\x1b[2D"
   const failedMove = await back.term!(ctx)
-  expect(failedMove.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(failedMove.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(JSON.parse(failedMove.response ?? "")).toMatchObject({
     origin: { row: 1, col: 1 },
     setup: { row: 1, col: 4 },
@@ -614,12 +620,12 @@ test("headless cursor movement rejects ignored origin and setup, then measures a
   }
   ctx.getCursor = () => ({ x, y, visible: true, style: null })
   const back = byId("cursor.move.back")
-  expect(back.termless!(ctx).observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(back.lib!(ctx).observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   ignore = "ABC"
-  expect(back.termless!(ctx).observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+  expect(back.lib!(ctx).observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   ignore = "\x1b[2D"
-  const result = back.termless!(ctx)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "parser-state" })
+  const result = back.lib!(ctx)
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
   expect(JSON.parse(result.response ?? "")).toMatchObject({
     origin: { x: 0, y: 0 },
     setup: { x: 3, y: 0 },
@@ -660,7 +666,10 @@ test("CUP qualifies the measured 24x61 edge, then distinguishes clamp from ignor
     context.queryCursorPosition = async () => position
     const result = await probe.term!(context)
     expect(writes).toEqual(["\x1b[1;1H", "\x1b[24;61H", "\x1b[1;1H", "\x1b[999;999H"])
-    expect(result.observation).toMatchObject({ outcome: ignoreTarget ? "unsupported" : "supported", evidence: "query" })
+    expect(result.observation).toMatchObject({
+      outcome: ignoreTarget ? "unsupported" : "supported",
+      assertionType: "query_reply",
+    })
     expect(JSON.parse(result.response ?? "")).toMatchObject({
       origin: { row: 1, col: 1 },
       edge: { row: 24, col: 61 },
@@ -687,7 +696,7 @@ test("CUP chooses a target outside a grid larger than 999 cells", async () => {
   context.queryCursorPosition = async () => position
   const result = await byId("cursor.cup-boundaries").term!(context)
   expect(writes.at(-1)).toBe("\x1b[1001;1002H")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 })
 
 test("CUP declines a too-small grid or an unqualified edge", async () => {
@@ -697,10 +706,9 @@ test("CUP declines a too-small grid or an unqualified edge", async () => {
   small.rows = 1
   small.cols = 1
   small.write = (sequence) => writes.push(sequence)
-  expect((await probe.term!(small)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await probe.term!(small)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(writes).toEqual([])
   const ignoredEdge = app({ row: 1, col: 1 })
@@ -718,10 +726,9 @@ test("cursor factory declines an undersized setup before the origin write", asyn
   context.cols = 9
   context.write = (sequence) => writes.push(sequence)
   const result = await byId("cursor.move.absolute").term!(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(result).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(writes).toEqual([])
 })
@@ -739,11 +746,11 @@ test("headless CUP qualifies a nonstandard grid before grading an out-of-bounds 
       if (sequence === "\x1b[999;999H" && !ignoredTarget) position = { x: 60, y: 36 }
     }
     context.getCursor = () => ({ ...position, visible: true, style: null })
-    const result = probe.termless!(context)
+    const result = probe.lib!(context)
     expect(feeds).toEqual(["\x1b[1;1H", "\x1b[37;61H", "\x1b[1;1H", "\x1b[999;999H"])
     expect(result.observation).toMatchObject({
       outcome: ignoredTarget ? "unsupported" : "supported",
-      evidence: "parser-state",
+      assertionType: "buffer_state",
     })
     expect(JSON.parse(result.response ?? "")).toMatchObject({
       rows: 37,
@@ -764,14 +771,14 @@ test("headless CUP does not grade missing geometry or an ignored edge control", 
   const missing = headless(0, 0, 0)
   const feeds: string[] = []
   missing.feed = (sequence) => feeds.push(sequence)
-  expect(probe.termless!(missing).observation).toMatchObject({
+  expect(probe.lib!(missing).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
   })
   expect(feeds).toEqual([])
   const ignored = { ...headless(0, 0, 37), cols: 61 }
   ignored.feed = (sequence) => feeds.push(sequence)
-  expect(probe.termless!(ignored).observation).toMatchObject({
+  expect(probe.lib!(ignored).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
   })
@@ -780,7 +787,7 @@ test("headless CUP does not grade missing geometry or an ignored edge control", 
 
 test("position report grades a text-induced cursor advance, not just a CUP echo", async () => {
   const result = await byId("cursor.position-report").term!(appReporter())
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(result.assertions).toMatchObject([{ kind: "positive" }])
   const constant = await byId("cursor.position-report").term!(app({ row: 3, col: 6 }))
   expect(constant.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -794,10 +801,9 @@ test("position report grades a text-induced cursor advance, not just a CUP echo"
   narrow.cols = 5
   const writes: string[] = []
   narrow.write = (sequence) => writes.push(sequence)
-  expect((await byId("cursor.position-report").term!(narrow)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await byId("cursor.position-report").term!(narrow)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(writes).toEqual([])
 })
@@ -825,10 +831,9 @@ test("remaining app cursor fixtures refuse undersized geometry without writing",
     context.write = (sequence) => writes.push(sequence)
     const definition = byId(id)
     expect(definition.termNeedsGeometry, id).toBe(true)
-    expect((await definition.term!(context)).observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(await definition.term!(context), id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes, id).toEqual([])
   }
@@ -880,9 +885,9 @@ test("headless CUD qualifies home and targets beyond an initialized grid over 99
     if (sequence === "\x1b[1002B") position = { x: 0, y: 1000 }
   }
   context.getCursor = () => ({ ...position, visible: true, style: null })
-  const result = byId("cursor.cud-past-bottom").termless!(context)
+  const result = byId("cursor.cud-past-bottom").lib!(context)
   expect(feeds).toEqual(["\x1b[1;1H", "\x1b[1002B"])
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "parser-state" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
   expect(JSON.parse(result.response ?? "")).toMatchObject({ origin: { x: 0, y: 0 }, final: { x: 0, y: 1000 } })
 })
 
@@ -902,7 +907,7 @@ test("app CUD grades against a newline-measured bottom and refuses an unqualifie
   context.queryCursorPosition = async () => replies.shift() ?? null
   const result = await probe.term!(context)
   expect(writes).toEqual(["\x1b[1;1H", "\r\n".repeat(1000), "\x1b[1;1H", "\x1b[1002B"])
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
 
   const unqualified = await probe.term!(app({ row: 4, col: 1 }))
   expect(unqualified.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
@@ -923,13 +928,13 @@ test("app CUD grades against a newline-measured bottom and refuses an unqualifie
 test("app CUD positive and clamp controls", async () => {
   const probe = byId("cursor.cud-past-bottom")
   const ok = await probe.term!(appGoto(24, 80))
-  expect(ok.observation).toMatchObject({ outcome: "supported", evidence: "query" })
+  expect(ok.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
   expect(ok.assertions).toMatchObject([{ kind: "positive" }])
   const noClamp = await probe.term!(appGoto(24, 80, { noClamp: true }))
-  expect(noClamp.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(noClamp.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(noClamp.assertions).toMatchObject([{ kind: "negative" }])
   const inert = await probe.term!(appGoto(24, 80, { ignoreCud: true }))
-  expect(inert.observation).toMatchObject({ outcome: "unsupported", evidence: "query" })
+  expect(inert.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
   expect(inert.assertions).toMatchObject([{ kind: "negative" }])
 })
 
@@ -941,10 +946,9 @@ test("app CUP refuses nonfinite geometry before a feature write", async () => {
     context.rows = rows
     context.write = (sequence) => writes.push(sequence)
     const result = await probe.term!(context)
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes).toEqual([])
   }
@@ -967,7 +971,7 @@ test("app cursor hide seeds a shown steady fixed-cell control and records geomet
   expect(checkpoints[0]).toContain("CURSOR")
   expect(checkpoints[0]).toContain("\x1b[2;1HL  R")
   expect(checkpoints[1]).toContain("\x1b[?25l")
-  expect(result.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
   expect(JSON.parse(result.response ?? "")).toMatchObject({ rows: 24, cols: 80, cursor: { row: 2, col: 3 } })
   expect(result.assertions).toMatchObject([{ kind: "positive", note: expect.stringContaining("capture-only") }])
   expect(writes.at(-1)).toContain("\x1b[2J")
@@ -1017,15 +1021,15 @@ test("app cursor hide grades the cursor cell's raw-pixel digests across shown, h
     return await byId("cursor.hide").term!(context)
   }
   const supported = await captureFrames(["sha256:shown", "sha256:hidden", "sha256:shown"])
-  expect(supported.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(supported.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
   expect(supported.assertions).toMatchObject([{ kind: "positive", expected: expect.stringContaining("pixel digest") }])
   const unchanged = await captureFrames(["sha256:same", "sha256:same", "sha256:same"])
-  expect(unchanged.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(unchanged.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
   expect(unchanged.assertions).toMatchObject([
     { kind: "positive", expected: expect.stringContaining("visible-cursor control") },
   ])
   const unstable = await captureFrames(["sha256:a", "sha256:b", "sha256:c"])
-  expect(unstable.observation).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+  expect(unstable.observation).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
   // Coordinate equality ignores object-key order; caller metadata rules stay stricter than the shared pixel check.
   for (const [metadata, outcome] of [
     ["same", "supported"],
@@ -1039,7 +1043,11 @@ test("app cursor hide grades the cursor cell's raw-pixel digests across shown, h
     ["missing-digest", "inconclusive"],
   ] as const) {
     const result = await captureFrames(["sha256:shown", "sha256:hidden", "sha256:shown"], metadata)
-    expect(result.observation, metadata).toMatchObject({ outcome, evidence: "pixels", screenshotRef: "frame-2" })
+    expect(result.observation, metadata).toMatchObject({
+      outcome,
+      assertionType: "screenshot",
+      screenshotRef: "frame-2",
+    })
     if (metadata === "moved") expect(result.observation?.note).toContain("cropped from different screen positions")
   }
 })
@@ -1075,9 +1083,9 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
     context.capture = async () => {
       throw new Error("invalid fixture must not capture")
     }
-    expect((await byId("cursor.hide").term!(context)).observation).toMatchObject({
-      evidence: "none",
-      outcome: "inconclusive",
+    expect(await byId("cursor.hide").term!(context)).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes).toEqual([])
   }
@@ -1086,7 +1094,7 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
   context.write = () => {
     throw new Error("absent capture must not write")
   }
-  expect((await byId("cursor.hide").term!(context)).observation?.evidence).toBe("none")
+  expect((await byId("cursor.hide").term!(context)).observation?.assertionType).toBe("none")
 })
 
 test("cup-scroll-region capture refuses before painting when the grid or the pixel report cannot decide", async () => {
@@ -1106,10 +1114,9 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
       ref: "never",
     }),
   } as TermProbeSource
-  expect((await probe.term!(tiny)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await probe.term!(tiny)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(short).toEqual([])
   // At the floor with a capture adapter but no pixel report the verdict has already queried and
@@ -1131,7 +1138,7 @@ test("cup-scroll-region capture refuses before painting when the grid or the pix
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(unpainted).toEqual([])
@@ -1152,10 +1159,9 @@ test("cup-scroll-region capture refuses a narrow terminal before any bytes", asy
       ref: "never",
     }),
   } as TermProbeSource
-  expect((await probe.term!(context)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await probe.term!(context)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(writes).toEqual([])
 })

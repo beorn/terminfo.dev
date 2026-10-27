@@ -144,10 +144,9 @@ test("a text-cells arm is the named instrument limit before a byte, not a query 
   const definition = extensionsProbes.find((probe) => probe.id === "extensions.sixel")
   if (!definition?.term) throw new Error("missing app extension callback for extensions.sixel")
   const result = await definition.term(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(result).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(writes).toHaveLength(0)
 })

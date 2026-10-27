@@ -597,9 +597,9 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
     termNeedsGeometry: true,
     cellReadback: true,
     ...(row.textClaim === undefined ? {} : { textClaim: row.textClaim }),
-    termObservationEvidence: "pixels",
-    termlessObservationEvidence: "parser-state",
-    termless(ctx) {
+    termAssertionType: "screenshot",
+    libAssertionType: "buffer_state",
+    lib(ctx) {
       // The termless context reports its width and nothing else: the parser arms address cells by
       // row directly, so the only geometry they can be refused on is the compared region's width.
       if (!Number.isSafeInteger(ctx.cols) || ctx.cols < geometry.right) {
@@ -724,15 +724,16 @@ export function regionReadbackProbe(row: RegionReadbackRow): ProbeDefinition {
       // (28785 must 1).
       return {
         pass: false,
-        observation: {
-          outcome: "inconclusive",
-          reason: "insufficient-evidence",
-          evidence: "none",
-          note:
-            ctx.captureGeometryRefusal === undefined
-              ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`
-              : `${row.id}: this run installs no capture adapter because the run's cell-to-pixel geometry was refused — ${ctx.captureGeometryRefusal}`,
-        },
+        tests: [
+          {
+            id: "criterion",
+            status: "test-todo",
+            reason:
+              ctx.captureGeometryRefusal === undefined
+                ? `${row.id}: no owned capture adapter is installed in this run, so the region fixture cannot be read back`
+                : `${row.id}: this run installs no capture adapter because the run's cell-to-pixel geometry was refused — ${ctx.captureGeometryRefusal}`,
+          },
+        ],
       }
     },
   }

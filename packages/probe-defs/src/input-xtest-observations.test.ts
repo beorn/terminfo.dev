@@ -13,18 +13,19 @@ const xtestIds = ["input.xtest-key", "input.xtest-click", "input.xtest-wheel"] a
 
 function probe(id: string) {
   const definition = inputProbes.find((candidate) => candidate.id === id)
-  if (!definition?.term || !definition.termless) throw new Error(`Missing input callbacks for ${id}`)
+  if (!definition?.term || !definition.lib) throw new Error(`Missing input callbacks for ${id}`)
   return definition
 }
 
 function modeProbe(id: string) {
   const definition = modesProbes.find((candidate) => candidate.id === id)
-  if (!definition?.term || !definition.termless) throw new Error(`Missing modes callbacks for ${id}`)
+  if (!definition?.term || !definition.lib) throw new Error(`Missing modes callbacks for ${id}`)
   return definition
 }
 
 function term(overrides: Partial<TermProbeSource> = {}): TermProbeSource {
   return {
+    kind: "live",
     write() {},
     queryCursorPosition: async () => {
       throw new Error("Unexpected queryCursorPosition in XTEST observation")
@@ -113,7 +114,8 @@ function inputAndRead(
 test.each(xtestIds)("%s is not tested without an OS XTEST adapter", async (id) => {
   const definition = probe(id)
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -168,7 +170,7 @@ test("input.xtest-key records interaction after plain-a control then ctrl+a", as
   const { ctx, keys } = inputAndRead({ keys: { a: "a", "ctrl+a": "\x01" } }, writes)
   const result = (await probe("input.xtest-key").term!(ctx)) as ProbeCallbackResult
   expect(keys).toEqual(["a", "ctrl+a"])
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-key:ctrl+a" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ control: "a", report: "\x01" })
@@ -183,7 +185,7 @@ test("input.xtest-click records interaction under 1000+1006 after a same-run con
   expect(writes.join("")).toContain("\x1b[?1006h")
   expect(writes.join("")).toContain("\x1b[?1000l")
   expect(writes.join("")).toContain("\x1b[?1006l")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-click:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1000+1006", control: "\x1b[<0;1;1M", report: "\x1b[<0;1;1M" })
@@ -200,7 +202,7 @@ test("input.xtest-wheel records interaction under 1000+1006 after a control clic
   const { ctx, clicks } = inputAndRead({ clicks: { 1: "\x1b[<0;10;10M", 4: "\x1b[<64;10;10M" } }, writes)
   const result = await probe("input.xtest-wheel").term!(ctx)
   expect(clicks).toEqual([1, 4])
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "xtest-wheel:4" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1000+1006", control: "\x1b[<0;10;10M", report: "\x1b[<64;10;10M" })
@@ -209,7 +211,8 @@ test("input.xtest-wheel records interaction under 1000+1006 after a control clic
 test("input.modify-other-keys is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.modify-other-keys")
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -272,7 +275,7 @@ test.each([
   expect(keys).toEqual(["a", "ctrl+i"])
   expect(writes.join("")).toContain("\x1b[>4;2m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "modify-other-keys:ctrl+i" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed, label).toMatchObject({ mode: "modifyOtherKeys-2", control: "a", report })
@@ -285,7 +288,7 @@ test("input.modify-other-keys records unsupported interaction when ctrl+i still 
   expect(keys).toEqual(["a", "ctrl+i"])
   expect(writes.join("")).toContain("\x1b[>4;2m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "modify-other-keys:ctrl+i" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "modifyOtherKeys-2", control: "a", report: "\t" })
@@ -303,7 +306,8 @@ test("input.modify-other-keys throws when ctrl+i is silent after delivery contro
 test("input.modify-other-keys-3 is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.modify-other-keys-3")
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -367,7 +371,7 @@ test.each([
   expect(writes.join("")).toContain("\x1b[>4;3m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
   expect(writes.join("")).not.toContain("\x1b[>4;2m")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "modify-other-keys-3:i" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed, label).toMatchObject({ mode: "modifyOtherKeys-3", control: "a", report })
@@ -380,7 +384,7 @@ test("input.modify-other-keys-3 records unsupported interaction when unmodified 
   expect(keys).toEqual(["a", "i"])
   expect(writes.join("")).toContain("\x1b[>4;3m")
   expect(writes.join("")).toContain("\x1b[>4;0m")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "modify-other-keys-3:i" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "modifyOtherKeys-3", control: "a", report: "i" })
@@ -423,7 +427,7 @@ test("modes.application-keypad records supported interaction for KP_5 as SS3 u",
   expect(keys).toEqual(["a", "KP_5"])
   expect(writes.join("")).toContain("\x1b=")
   expect(writes.join("")).toContain("\x1b>")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "application-keypad:KP_5" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "\x1bOu" })
@@ -436,7 +440,7 @@ test("modes.application-keypad records unsupported interaction when KP_5 still r
   expect(keys).toEqual(["a", "KP_5"])
   expect(writes.join("")).toContain("\x1b=")
   expect(writes.join("")).toContain("\x1b>")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "application-keypad:KP_5" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "application-keypad", control: "a", report: "5" })
@@ -485,7 +489,7 @@ test("modes.alt-scroll-1007 records supported interaction when wheel under 1007 
   expect(writes.join("")).toContain("\x1b[?1007h")
   expect(writes.join("")).toContain("\x1b[?1007l")
   expect(writes.join("")).toContain("\x1b[?1049l")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "alt-scroll-1007:4" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1007", control, report })
@@ -500,7 +504,7 @@ test("modes.alt-scroll-1007 records unsupported interaction when wheel under 100
   expect(clicks).toEqual([1, 4])
   expect(writes.join("")).toContain("\x1b[?1007h")
   expect(writes.join("")).toContain("\x1b[?1007l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "alt-scroll-1007:4" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1007", control, report })
@@ -519,7 +523,8 @@ test("modes.alt-scroll-1007 throws when the 1007 wheel is silent after delivery 
 test("input.pixel-mouse is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.pixel-mouse")
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -583,7 +588,7 @@ test("input.pixel-mouse records supported interaction when 1016 reports pixel co
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1016h")
   expect(writes.join("")).toContain("\x1b[?1016l")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "pixel-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1016", control, report })
@@ -597,7 +602,7 @@ test("input.pixel-mouse records unsupported interaction when 1016 still reports 
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1016h")
   expect(writes.join("")).toContain("\x1b[?1016l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "pixel-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1016", control: cell, report: cell })
@@ -615,7 +620,8 @@ test("input.pixel-mouse throws when the 1016 click is silent after delivery cont
 test("input.urxvt-mouse is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.urxvt-mouse")
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -679,7 +685,7 @@ test("input.urxvt-mouse records supported interaction when 1015 reports CSI btn;
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1015h")
   expect(writes.join("")).toContain("\x1b[?1015l")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "urxvt-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1015", control, report })
@@ -693,7 +699,7 @@ test("input.urxvt-mouse records unsupported interaction when 1015 still reports 
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?1015h")
   expect(writes.join("")).toContain("\x1b[?1015l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "urxvt-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1015", control: sgr, report: sgr })
@@ -711,7 +717,8 @@ test("input.urxvt-mouse throws when the 1015 click is silent after delivery cont
 test("input.x10-mouse is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.x10-mouse")
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -775,7 +782,7 @@ test("input.x10-mouse records supported interaction when mode 9 reports CSI M pl
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "x10-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "9", control, report })
@@ -789,7 +796,7 @@ test("input.x10-mouse records unsupported interaction when mode 9 still reports 
   expect(clicks).toEqual([1, 1])
   expect(writes.join("")).toContain("\x1b[?9h")
   expect(writes.join("")).toContain("\x1b[?9l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "x10-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "9", control: sgr, report: sgr })
@@ -807,7 +814,8 @@ test("input.x10-mouse throws when the mode 9 click is silent after delivery cont
 test("input.button-event-mouse is not tested without an OS XTEST adapter", async () => {
   const definition = probe("input.button-event-mouse")
   const writes: string[] = []
-  const headless = definition.termless!({
+  const headless = definition.lib!({
+    kind: "live",
     cols: 80,
     feed() {},
     feedCapture() {
@@ -892,7 +900,7 @@ test("input.button-event-mouse records supported interaction when 1002 reports S
   expect(drags).toEqual([1])
   expect(writes.join("")).toContain("\x1b[?1002h")
   expect(writes.join("")).toContain("\x1b[?1002l")
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "positive", action: "button-event-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1002", control, report })
@@ -907,7 +915,7 @@ test("input.button-event-mouse records unsupported interaction when 1002 still r
   expect(drags).toEqual([1])
   expect(writes.join("")).toContain("\x1b[?1002h")
   expect(writes.join("")).toContain("\x1b[?1002l")
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "button-event-mouse:1" })
   const observed = JSON.parse(result.assertions?.[0]?.observed ?? "null") as Record<string, unknown>
   expect(observed).toMatchObject({ mode: "1002", control: sgr, report: sgr })
@@ -927,7 +935,7 @@ test("input.kitty-click-events supports a prompt click report while mouse modes 
   const writes: string[] = []
   const { ctx, clicks } = inputAndRead({ clickReports: ["\x1b[<0;10;5M", "\x1b[<0;10;5M"] }, writes)
   const result = await probe("input.kitty-click-events").term!(ctx)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "input_bytes" })
   expect(result.assertions).toEqual([expect.objectContaining({ kind: "positive", action: "kitty-click-events:1" })])
   expect(clicks).toEqual([1, 1])
   const marker = writes.find((write) => write.includes("\x1b]133;A;click_events=1"))
@@ -939,7 +947,7 @@ test("input.kitty-click-events supports a prompt click report while mouse modes 
 test("input.kitty-click-events reports unsupported when a delivered click leaves the marked prompt silent", async () => {
   const { ctx } = inputAndRead({ clickReports: ["\x1b[<0;10;5M"] }, [])
   const result = await probe("input.kitty-click-events").term!(ctx)
-  expect(result.observation).toMatchObject({ outcome: "unsupported", evidence: "interaction" })
+  expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "input_bytes" })
   expect(result.assertions?.[0]).toMatchObject({ kind: "negative", action: "kitty-click-events:1" })
 })
 
@@ -956,7 +964,7 @@ test("input.kitty-click-events stays inconclusive when the report does not match
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "interaction",
+    assertionType: "input_bytes",
   })
   expect(result.assertions).toBeUndefined()
 })

@@ -82,7 +82,7 @@ test("the harness replays every charsets capability deterministically", async ()
     const probe = charsetsProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing charsets probe ${row.id}`).toBeDefined()
     if (!probe) continue
-    expect(probe.termless !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
+    expect(probe.lib !== null || probe.term !== null, `${row.id} has no callback`).toBe(true)
     const first = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
     const second = await regradeRow(probe, row, { headless: headlessContext(createSemanticSurface()) })
     expect(second.after, `${row.id} is not deterministic`).toBe(first.after)

@@ -49,6 +49,7 @@ function recordingTerm(decoding: "utf8" | "8-bit", answers: boolean): { ctx: Ter
     return { match: null, reason: "timeout" as const, raw: "", rawBase64: "" }
   }
   const ctx: TermProbeSource = {
+    kind: "live",
     write: note,
     queryCursorPosition: async () => (answers ? { row: 1, col: ++column } : null),
     measureRenderedWidth: async (text) => {

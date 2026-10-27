@@ -40,8 +40,8 @@ test("the 7 headless not-tested features emit named coverage from measured state
   expect(notTestedFeatures).toHaveLength(7)
   for (const id of notTestedFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
-    if (!definition?.termless) throw new Error(`missing headless ${id}`)
-    const result = definition.termless(context())
+    if (!definition?.lib) throw new Error(`missing headless ${id}`)
+    const result = definition.lib(context())
     expect(result.notTested, id).toEqual({ reason: "no-semantic-observable", noObservable: expect.any(String) })
     expect((result.notTested?.noObservable ?? "").trim().length, id).toBeGreaterThan(0)
     expect((result.response ?? "").length, id).toBeGreaterThan(0)
@@ -68,7 +68,7 @@ test("the 11 headless C154 semantic-mark features emit named coverage only after
   expect(c154SemanticMarkFeatures).toHaveLength(11)
   for (const [id, sequence, noObservable] of c154SemanticMarkFeatures) {
     const definition = ALL_PROBES.find((probe) => probe.id === id)
-    if (!definition?.termless) throw new Error(`missing headless ${id}`)
+    if (!definition?.lib) throw new Error(`missing headless ${id}`)
     const fed: string[] = []
     const reads = [
       { x: 0, y: 0, visible: true, style: null },
@@ -76,7 +76,7 @@ test("the 11 headless C154 semantic-mark features emit named coverage only after
       { x: 0, y: 0, visible: true, style: null },
     ]
     let read = 0
-    const result = definition.termless({
+    const result = definition.lib({
       ...context(),
       feed: (text: string) => {
         fed.push(text)

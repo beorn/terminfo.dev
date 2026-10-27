@@ -40,6 +40,7 @@ function captureContext(rows: number, cols: number, withCapture = true) {
   const writes: string[] = []
   const frames: ObservationFrame[] = []
   const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -86,7 +87,7 @@ test("every editing capture row asks the terminal's pixel report before painting
     expect(result.observation, id).toMatchObject({
       outcome: "inconclusive",
       reason: "insufficient-evidence",
-      evidence: "query",
+      assertionType: "query_reply",
     })
     expect(String(result.observation?.note), id).toContain("CSI 16 t")
     expect(frames, id).toEqual([])
@@ -108,6 +109,7 @@ function readbackCaptureContext(rows: number, cols: number, witness = { row: 3, 
   const key = (region: { top: number; left: number; bottom: number; right: number }) =>
     `${region.top},${region.left},${region.bottom},${region.right}`
   const context: TermProbeSource = {
+    kind: "live",
     rows,
     cols,
     write: (sequence) => writes.push(sequence),
@@ -175,7 +177,7 @@ test("the readback-governed row refuses by name when the terminal cannot report 
     reason: "insufficient-evidence",
     // Shape B of 28582: the pixel-report queries were already written, so this is not the
     // zero-byte "none" refusal — it is a query that came back unusable.
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(String(result.observation?.note)).toContain("CSI 16 t")
   expect(frames).toEqual([])
@@ -185,10 +187,9 @@ test("an undersized terminal refuses an editing capture before writing", async (
   for (const id of CAPTURE_IDS) {
     const { context, writes, frames } = captureContext(1, 1)
     const result = await find(id).term!(context)
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "none",
+    expect(result, id).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(writes, id).toEqual([])
     expect(frames, id).toEqual([])
@@ -199,27 +200,24 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   // insert-chars compares one nine-column row with its witness on row 3, so the kind DERIVES a floor of
   // 3 rows by 9 + the family's two-column margin = 11 columns.
   const tight = captureContext(1, 8)
-  expect((await find("editing.insert-chars").term!(tight.context)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await find("editing.insert-chars").term!(tight.context)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(tight.writes).toEqual([])
   const margins = captureContext(2, 11)
   const refused = await find("editing.insert-chars").term!(margins.context)
-  expect(refused.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(refused).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(margins.writes).toEqual([])
   expect(margins.frames).toEqual([])
   // One column short of the derived floor still refuses: the margin is what stops the seed wrapping.
   const narrow = captureContext(3, 10)
-  expect((await find("editing.insert-chars").term!(narrow.context)).observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(await find("editing.insert-chars").term!(narrow.context)).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(narrow.writes).toEqual([])
   expect(narrow.frames).toEqual([])
@@ -228,7 +226,7 @@ test("a seed at the very edge refuses so it cannot wrap or scroll the captured r
   expect((await find("editing.insert-chars").term!(fit.context)).observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "query",
+    assertionType: "query_reply",
   })
   expect(fit.frames).toEqual([])
 })
@@ -249,10 +247,9 @@ test("the capture set covers the cell-edit probes and leaves non-cell probes unt
 test("without a capture adapter a converted row refuses by name and writes nothing", async () => {
   const { context, writes, frames } = captureContext(24, 80, false)
   const result = await find("editing.insert-chars").term!(context)
-  expect(result.observation).toMatchObject({
-    outcome: "inconclusive",
-    reason: "insufficient-evidence",
-    evidence: "none",
+  expect(result).toMatchObject({
+    observation: undefined,
+    tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
   })
   expect(String(result.observation?.note)).toContain("no owned capture adapter")
   expect(writes).toEqual([])
@@ -305,6 +302,7 @@ function decsaceCaptureContext() {
   }
 
   const context: TermProbeSource = {
+    kind: "live",
     rows: 24,
     cols: 80,
     captureGeometry: DECSACE_GEOMETRY,
@@ -349,7 +347,7 @@ function decsaceCaptureContext() {
 test("editing.decsace grades the frames its own writes produced", async () => {
   const { context, frameWrites, writes, seed, cara } = decsaceCaptureContext()
   const result = await find("editing.decsace").term!(context)
-  expect(result.observation).toMatchObject({ outcome: "supported", evidence: "pixels" })
+  expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "screenshot" })
   // The bytes each capture was taken after, in order: the seed paint, the pair's two reads of that
   // SEEDED screen, then DECSACE 2 + DECCARA, then DECSACE 0 + DECCARA. The seed frame is the pair's
   // second read, so a pair taken before the paint changes this.
@@ -404,15 +402,15 @@ test("editing.decsace parser arm refuses a grid below its 2x8 fixture", () => {
   const definition = find("editing.decsace")
   // A semantic surface already supplies every field the parser arm reads, and the shared headless
   // harness fills the inert remainder, so this test carries no hand-built context.
-  const termless = (rows: number, cols: number) => headlessContext(createSemanticSurface({ rows, cols }))
-  const refused = definition.termless!(termless(1, 8))
+  const lib = (rows: number, cols: number) => headlessContext(createSemanticSurface({ rows, cols }))
+  const refused = definition.lib!(lib(1, 8))
   expect(refused.observation).toMatchObject({ outcome: "inconclusive" })
   expect(String(refused.observation?.note)).toContain("Need a measured 2x8 fixture")
   // The floor has two halves: the row needs two rows AND eight columns.
-  const narrow = definition.termless!(termless(2, 7))
+  const narrow = definition.lib!(lib(2, 7))
   expect(narrow.observation).toMatchObject({ outcome: "inconclusive" })
   expect(String(narrow.observation?.note)).toContain("Need a measured 2x8 fixture")
-  const exact = definition.termless!(termless(2, 8))
+  const exact = definition.lib!(lib(2, 8))
   expect(exact.observation?.outcome).toBe("supported")
   expect(String(exact.assertions?.[0]?.observed)).toContain("##")
 })
@@ -446,8 +444,8 @@ test.each([
   ["both frames on the stream pattern", "unsupported", DECSACE_STREAM, DECSACE_STREAM, "DECSACE 2 was ignored"],
   ["both frames on the rectangle pattern", "unsupported", DECSACE_RECT, DECSACE_RECT, "DECSACE 0 was ignored"],
 ] as const)("editing.decsace grades %s %s from the recorded frames", (_label, outcome, rect, stream, note) => {
-  const result = find("editing.decsace").termless!(decsacePairContext(rect, stream))
-  expect(result.observation).toMatchObject({ outcome, evidence: "parser-state" })
+  const result = find("editing.decsace").lib!(decsacePairContext(rect, stream))
+  expect(result.observation).toMatchObject({ outcome, assertionType: "buffer_state" })
   if (note) expect(String(result.observation?.note)).toContain(note)
   expect(result.assertions).toMatchObject([{ kind: outcome === "supported" ? "positive" : "negative" }])
   expect(JSON.parse(result.response ?? "{}")).toEqual({ rect, stream })
@@ -455,7 +453,7 @@ test.each([
 
 test("editing.decsace with no inverse cell in either frame records the extent as unobservable (TEST TODO)", () => {
   const none = "........|........"
-  const result = find("editing.decsace").termless!(decsacePairContext(none, none))
+  const result = find("editing.decsace").lib!(decsacePairContext(none, none))
   expect(result.pass).toBe(false)
   expect(result.observation).toBeUndefined()
   expect(result.notTested).toEqual({
@@ -467,7 +465,7 @@ test("editing.decsace with no inverse cell in either frame records the extent as
 
 test("editing.decsace keeps any other agreeing pair inconclusive by name, never a pass", () => {
   const corner = ".#......|........"
-  const result = find("editing.decsace").termless!(decsacePairContext(corner, corner))
+  const result = find("editing.decsace").lib!(decsacePairContext(corner, corner))
   expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
   expect(String(result.observation?.note)).toContain("neither the rectangle nor the stream extent")
   expect(result.assertions).toBeUndefined()
@@ -479,7 +477,7 @@ test("editing.decsace keeps a differing pair that is not the two extents inconcl
     [DECSACE_RECT, ".#......|........"],
   ] as const) {
     const label = `rect ${rect} stream ${stream}`
-    const result = find("editing.decsace").termless!(decsacePairContext(rect, stream))
+    const result = find("editing.decsace").lib!(decsacePairContext(rect, stream))
     expect(result.observation, label).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
     expect(String(result.observation?.note), label).toContain("differ but are not the rectangle and stream extents")
     expect(result.assertions, label).toBeUndefined()
@@ -556,7 +554,7 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
     if (observation === undefined) throw new Error(`${name}: the DECSACE arm returned no observation`)
     expect(observation.outcome, name).toBe(outcome)
     expect(String(observation.note), name).toContain(note)
-    expect(observation.evidence, name).toBe("pixels")
+    expect(observation.assertionType, name).toBe("screenshot")
     const frames = (observation.frames ?? []) as ObservationFrame[]
     if (name === "no measured digest") {
       const measured = frames.find((frame) => frame.kind !== "text-cells" && frame.pixelsDigest !== undefined)
@@ -569,7 +567,7 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
       ] as const) {
         const { stability } = await captureStabilityPair(
           "editing.decsace",
-          "pixels",
+          "screenshot",
           async () => ({ frame: first }),
           async () => ({ frame: second }),
         )
@@ -581,7 +579,8 @@ test("every DECSACE pixel return carries target frames with a valid screenshot c
     // The parser is the witness, not this test: a dropped citation and a citation of a control
     // frame both fail its own rules, so each red names the rule the arm has to satisfy.
     expect(
-      () => parseObservationFrames(frames, "test", "editing.decsace", refs, [], observation.screenshotRef, "pixels"),
+      () =>
+        parseObservationFrames(frames, "test", "editing.decsace", refs, [], observation.screenshotRef, "screenshot"),
       name,
     ).not.toThrow()
     expect(observation.screenshotRef, name).toBeDefined()
@@ -611,7 +610,7 @@ test("editing.decsace reads equal extents inconclusive by name, never supported"
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    assertionType: "screenshot",
   })
   expect(String(result.observation?.note)).toContain("Both DECSACE extent modes left the same frame")
   expect(result.assertions).toBeUndefined()
@@ -648,7 +647,7 @@ test("editing.decsace compares measured digests, not retained artifact refs", as
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    assertionType: "screenshot",
   })
   expect(String(result.observation?.note)).toContain("same frame")
   expect(result.assertions).toBeUndefined()
@@ -758,7 +757,7 @@ test("editing.decsace refuses a seed that changes between the pair's two reads",
   expect(result.observation).toMatchObject({
     outcome: "inconclusive",
     reason: "insufficient-evidence",
-    evidence: "pixels",
+    assertionType: "screenshot",
   })
   expect(String(result.observation?.note)).toContain("not byte-stable")
   expect(result.assertions).toBeUndefined()
@@ -811,7 +810,7 @@ test("an attribute row on a text-only adapter is inconclusive by name", async ()
     if (!row?.sentinel) throw new Error(`missing sentinel for ${id}`)
     const { context } = readbackCaptureContext(24, 80, { row: row.sentinel.row, col: row.sentinel.col ?? 1 })
     const result = await find(id).term!(context)
-    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", evidence: "pixels" })
+    expect(result.observation, id).toMatchObject({ outcome: "inconclusive", assertionType: "screenshot" })
     expect(String(result.observation?.note), id).toContain("seed frame and the expected frame read the same cells")
     expect(result.assertions, id).toBeUndefined()
   }

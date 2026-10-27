@@ -33,6 +33,7 @@ function app(
   }
   let writes = 0
   return {
+    kind: "live",
     rows,
     cols,
     write(bytes): void {
@@ -70,10 +71,9 @@ test("direct mode fixtures decline invalid geometry and classify only measured v
       const events: string[] = []
       const result = await definition.term(app(measuredRows, measuredCols, events))
       expect(events, `${id} at ${measuredRows}x${measuredCols}`).toEqual([])
-      expect(result.observation, id).toMatchObject({
-        outcome: "inconclusive",
-        reason: "insufficient-evidence",
-        evidence: "none",
+      expect(result, id).toMatchObject({
+        observation: undefined,
+        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
       })
     }
     expect(definition.termNeedsGeometry, id).toBe(true)
@@ -92,13 +92,13 @@ test("direct mode fixtures decline invalid geometry and classify only measured v
     if (id === "modes.altscreen-1048") {
       expect(events, id).toEqual(["\x1b[5;10H", "CPR", "\x1b[?1048h", "\x1b[15;20H", "CPR", "\x1b[?1048l", "CPR"])
       expect(result.pass, id).toBe(true)
-      expect(result.observation, id).toMatchObject({ outcome: "supported", evidence: "query" })
+      expect(result.observation, id).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     } else {
       expect(result.pass, id).toBe(false)
       expect(result.observation, id).toMatchObject({
         outcome: "inconclusive",
         reason: "insufficient-evidence",
-        evidence: "query",
+        assertionType: "query_reply",
       })
     }
   }
@@ -149,10 +149,9 @@ test.each(stateFixtures)(
     const result = await definition.term(app(1, 1, validEvents))
     expect(validEvents).toEqual([enter, "CPR", restore])
     expect(result.pass).toBe(false)
-    expect(result.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "insufficient-evidence",
-      evidence: "consumed",
+    expect(result).toMatchObject({
+      observation: undefined,
+      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
     })
     expect(result.assertions).toBeUndefined()
   },
