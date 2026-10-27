@@ -304,6 +304,60 @@ describe("consumer selection", () => {
           results: { "sgr.bold": true },
         }),
       )
+      // A nonempty selected lib run exposes an inventory join that still compares old headless kinds.
+      const libSubject = {
+        kind: "lib" as const,
+        id: "xtermjs",
+        version: "6.0.0",
+        os: "linux",
+        osVersion: null,
+        outerTerminal: null,
+        mux: null,
+        config: null,
+        permissions: null,
+      }
+      const libMeasuredAt = new Date().toISOString()
+      const libAttempt = { scope: "probe", startedAt: libMeasuredAt }
+      const libFixture = JSON.parse(
+        readFileSync(
+          join(source, "test-fixtures", "probes-libs", "xtermjs-6.0.0-linux-c19905bf-2d90-474c-9e1a-13805bb3c0c4.json"),
+          "utf8",
+        ),
+      )
+      const libBytes = JSON.stringify({
+        schemaVersion: 4,
+        source: { kind: "live" },
+        runId: "freshness-library-run",
+        suiteId: "deadbeefcafe",
+        probeHash: "deadbeefcafe",
+        sourceRevision: "a".repeat(40),
+        intendedSubject: libSubject,
+        subject: libSubject,
+        identity: "verified",
+        runtimeIdentity: libFixture.runtimeIdentity,
+        measuredAt: libMeasuredAt,
+        sealedAt: libMeasuredAt,
+        origin: { kind: "collector" },
+        rawReplies: { "sgr.bold": "retained fixture failure" },
+        assertions: [],
+        screenshotRefs: [],
+        results: [
+          {
+            featureId: "sgr.bold",
+            status: "test-failure",
+            reason: "Fixture oracle failed",
+            attempt: libAttempt,
+            rawReplyRef: "sgr.bold",
+            tests: [{ id: "criterion", status: "test-failure", attempt: libAttempt, reason: "Fixture oracle failed" }],
+          },
+        ],
+      })
+      writeFileSync(join(root, "content", "probes-libs", "xtermjs-current.json"), libBytes)
+      const suitePath = join(root, "content", "suites", "deadbeefcafe.json")
+      const libSuite = JSON.parse(readFileSync(suitePath, "utf8"))
+      libSuite.catalogIds = ["sgr.bold"]
+      libSuite.probes.lib = ["sgr.bold"]
+      writeFileSync(suitePath, JSON.stringify(libSuite))
       const lock = join(root, "scripts", "sitefile.lock.json")
       const before = '{"unchanged":"a check does not regenerate inventory"}\n'
       writeFileSync(lock, before)
@@ -317,7 +371,15 @@ describe("consumer selection", () => {
       expect(generate.status).toBe(0)
       const inventory = JSON.parse(readFileSync(lock, "utf8")) as {
         sources: Array<{ lastChecked: string | null }>
-        terminals: Array<{ terminalId: string; kind: string; lastProbedVersion: string | null; lastProbedDate: string }>
+        terminals: Array<{
+          terminalId: string
+          kind: string
+          contextKey: string | null
+          runId: string | null
+          runSha256: string | null
+          lastProbedVersion: string | null
+          lastProbedDate: string
+        }>
       }
       expect(inventory.sources.every((entry) => entry.lastChecked === null)).toBe(true)
       expect(inventory.terminals.find((entry) => entry.terminalId === "kitty")).toMatchObject({
@@ -325,6 +387,14 @@ describe("consumer selection", () => {
         lastProbedDate: "never",
       })
       expect(inventory.terminals.find((entry) => entry.terminalId === "alacritty")).toMatchObject({ kind: "lib" })
+      expect(inventory.terminals.find((entry) => entry.terminalId === "xtermjs")).toMatchObject({
+        kind: "lib",
+        contextKey: projectedContextKey(libSubject, 1),
+        runId: "freshness-library-run",
+        runSha256: createHash("sha256").update(libBytes).digest("hex"),
+        lastProbedVersion: "6.0.0",
+        lastProbedDate: libMeasuredAt,
+      })
       // The refresh command must preserve its child check's failure status.
       copyFileSync(join(source, "scripts", "update.ts"), join(root, "scripts", "update.ts"))
       writeFileSync(join(root, "scripts", "radar.ts"), 'console.log("radar fixture completed")\n')
