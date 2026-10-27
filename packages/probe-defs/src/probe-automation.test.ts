@@ -165,7 +165,7 @@ describe("Sixel geometry item-2 report", () => {
     expect(result.assertions?.[0]).toMatchObject({ kind: "positive", observed: frame })
   })
 
-  test("protocol failure, color count, malformed dimensions, zero geometry, and silence stay inconclusive", async () => {
+  test("invalid Sixel replies retain query observations while silence records a named execution failure", async () => {
     for (const [raw, reason] of [
       ["\x1b[?2;3;0S", "insufficient-evidence"],
       ["\x1b[?1;0;256S", "no-response"],
@@ -175,7 +175,14 @@ describe("Sixel geometry item-2 report", () => {
     ] as const) {
       for (const result of [fromHeadless(raw), await fromTerminal(raw)]) {
         expect(result).toMatchObject({ pass: false, response: raw })
-        expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, assertionType: "query_reply" })
+        if (raw === "") {
+          expect(result.observation).toBeUndefined()
+          expect(result.tests).toMatchObject([
+            expect.objectContaining({ status: "test-failure", reason: "No Sixel geometry response for item 2" }),
+          ])
+        } else {
+          expect(result.observation).toMatchObject({ outcome: "inconclusive", reason, assertionType: "query_reply" })
+        }
         expect(result.assertions).toBeUndefined()
       }
     }
@@ -260,10 +267,11 @@ describe("OSC 8 link metadata observation", () => {
     const p = probe("extensions.osc8")
     if (!p.term) throw new Error("OSC 8 needs application callback")
     const result = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 7 }) }))
-    expect(result).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    expect(result.observation).toBeUndefined()
+    expect(result.assertions).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior" }),
+    ])
   })
 })
 
@@ -309,10 +317,11 @@ describe("Kitty protocol detection", () => {
       expect(headless.notTested).toMatchObject({ reason: "no-semantic-observable" })
       expect(headless.note).toMatch(/controlled resize|readback/i)
       expect(terminal.pass).toBe(false)
-      expect(terminal).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-      })
+      expect(terminal.observation).toBeUndefined()
+      expect(terminal.assertions).toBeUndefined()
+      expect(terminal.tests).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      ])
       expect(terminal.note).toMatch(/controlled resize|readback/i)
       expect(headless.response).toContain(String(declared))
     }
@@ -373,10 +382,11 @@ describe("Kitty protocol detection", () => {
     )
     expect(missingWrites).toEqual(["\x1b[1;1H\x1b[2K\r"])
     expect(missingQueries).toBe(1)
-    expect(missing.observation).toMatchObject({
-      outcome: "inconclusive",
-      reason: "no-response",
-    })
+    expect(missing.observation).toBeUndefined()
+    expect(missing.assertions).toBeUndefined()
+    expect(missing.tests).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: "No baseline cursor response" }),
+    ])
   })
 
   test("OSC 66 requires a measured home cursor before either protocol write", async () => {
@@ -476,8 +486,16 @@ describe("Kitty protocol detection", () => {
       expect(queries).toEqual(["\x1b[?5522$p", "\x1b[?5522$p"])
       for (const result of [headless, term]) {
         expect(result.pass).toBe(pass)
-        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
-        expect(result.observation?.reason).toBe(reason)
+        if (ps === null) {
+          expect(result.observation).toBeUndefined()
+          expect(result.assertions).toBeUndefined()
+          expect(result.tests).toMatchObject([
+            expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+          ])
+        } else {
+          expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+          expect(result.observation?.reason).toBe(reason)
+        }
         expect(result.response).toBe(result === headless ? response + sentinel : reading)
         expect(result.assertions?.[0]?.observed).toBe(pass || ps === 4 ? reading : undefined)
       }
@@ -516,7 +534,15 @@ describe("Kitty protocol detection", () => {
         "",
       ]) {
         const result = p.lib(context({ feedCapture: () => reply }))
-        expect(result.observation?.outcome, `${id}: ${JSON.stringify(reply)}`).toBe("inconclusive")
+        if (reply === "") {
+          expect(result.observation, `${id}: ${JSON.stringify(reply)}`).toBeUndefined()
+          expect(result.assertions).toBeUndefined()
+          expect(result.tests).toMatchObject([
+            expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No OSC 52 c query response") }),
+          ])
+        } else {
+          expect(result.observation?.outcome, `${id}: ${JSON.stringify(reply)}`).toBe("inconclusive")
+        }
         expect(result.pass).toBe(false)
       }
 
@@ -538,7 +564,11 @@ describe("Kitty protocol detection", () => {
         }),
       )
       expect(liveWrites, id).toEqual([])
-      expect(live.observation).toMatchObject({ outcome: "inconclusive", reason: "policy-refused" })
+      expect(live.observation).toBeUndefined()
+      expect(live.assertions).toBeUndefined()
+      expect(live.tests).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: "Collector policy: no owned disposable clipboard with verified restoration; OSC 52 was not sent" }),
+      ])
       expect(live.note).toMatch(/collector|owned clipboard/i)
     }
   })
@@ -582,7 +612,7 @@ describe("Kitty protocol detection", () => {
       )
       expect(result.observation, id).toMatchObject({
         outcome: "supported",
-        assertionType: id === "extensions.osc52-write" ? "behavior" : "query",
+        assertionType: id === "extensions.osc52-write" ? "clipboard" : "query_reply",
       })
       expect(clipboard, id).not.toBe("baseline")
       expect(
@@ -604,7 +634,15 @@ describe("Kitty protocol detection", () => {
           }),
         }),
       )
-      expect(result.observation?.outcome, JSON.stringify(raw)).toBe("inconclusive")
+      if (raw === "") {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: "No complete OSC 52 c reply" }),
+        ])
+      } else {
+        expect(result.observation?.outcome, JSON.stringify(raw)).toBe("inconclusive")
+      }
     }
     const uncorrelated = await read.term(
       terminalContext({
@@ -615,7 +653,9 @@ describe("Kitty protocol detection", () => {
         },
       }),
     )
-    expect(uncorrelated.observation).toMatchObject({ outcome: "inconclusive", reason: "invalid-reply" })
+    expect(uncorrelated.observation).toEqual({ outcome: "inconclusive", assertionType: "query_reply", reason: "invalid-reply", note: "No complete OSC 52 c reply" })
+    expect(uncorrelated.assertions).toBeUndefined()
+    expect(uncorrelated.tests).toBeUndefined()
     let captured = false
     const prompt = await read.term(
       terminalContext({
@@ -808,7 +848,15 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(result.observation?.outcome, `termless ${JSON.stringify(raw)}`).toBe(outcome)
+      if (raw === "") {
+        expect(result.observation, `termless ${JSON.stringify(raw)}`).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No answer to the Kitty keyboard flags query") }),
+        ])
+      } else {
+        expect(result.observation?.outcome, `termless ${JSON.stringify(raw)}`).toBe(outcome)
+      }
       expect(captures[0], `termless ${JSON.stringify(raw)}`).toBe("\x1b[?u\x1b[c")
       if (outcome !== "supported") {
         expect(captures, `termless ${JSON.stringify(raw)} query count`).toHaveLength(1)
@@ -839,7 +887,12 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(result.observation?.outcome, `term ${JSON.stringify(raw)}`).toBe(outcome)
+      if (raw === "") {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.response).toBe("")
+        expect(result.tests).toEqual([{ id: "criterion", status: "test-failure", reason: "No answer to the Kitty keyboard flags query or the DA1 follow-up; no support conclusion" }])
+      } else expect(result.observation, `term ${JSON.stringify(raw)}`).toMatchObject({ outcome, assertionType: "query_reply" })
       expect(writes[0], `term ${JSON.stringify(raw)}`).toBe("\x1b[?u")
       if (outcome !== "supported") {
         expect(writes, `term ${JSON.stringify(raw)} push/pop`).toEqual(["\x1b[?u"])
@@ -877,7 +930,11 @@ describe("Kitty protocol detection", () => {
       expect(result.assertions?.[0]?.observed).toContain(String(flags))
     }
     const timeout = await p.term(terminalContext({}))
-    expect(timeout.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+    expect(timeout.observation).toBeUndefined()
+    expect(timeout.assertions).toBeUndefined()
+    expect(timeout.tests).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No answer to the Kitty keyboard flags query") }),
+    ])
   })
 
   test("CSI-u recognition requires acknowledged flags, not a responsive cursor", async () => {
@@ -898,8 +955,16 @@ describe("Kitty protocol detection", () => {
           }),
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
-      expect(p.lib(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+      if (raw === "") {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("No answer to the Kitty keyboard flags query") }),
+        ])
+      } else {
+        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+        expect(p.lib(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+      }
     }
   })
 
@@ -928,7 +993,15 @@ describe("Kitty protocol detection", () => {
           },
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      if (replyKind === "silence") {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: "No matching notification query reply; OS display was not tested" }),
+        ])
+      } else {
+        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+      }
       if (outcome === "supported") expect(result.assertions?.[0]?.observed).toContain("title,body")
     }
   })
@@ -955,8 +1028,16 @@ describe("Kitty protocol detection", () => {
           }),
         }),
       )
-      expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
-      expect(p.lib(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+      if (body === null) {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: "No OSC 21 reply; color rendering was not tested" }),
+        ])
+      } else {
+        expect(result.observation).toMatchObject({ outcome, assertionType: "query_reply" })
+        expect(p.lib(context({ feedCapture: () => raw })).observation?.outcome).toBe(outcome)
+      }
     }
   })
 
@@ -966,7 +1047,11 @@ describe("Kitty protocol detection", () => {
       if (!p.term || !p.lib) throw new Error("missing graphics callback")
       const silent = await p.term(terminalContext({}))
       expect(silent.pass).toBe(false) // A normal CPR must not turn an ignored APC into support.
-      expect(silent.observation?.outcome).toBe("inconclusive")
+      expect(silent.observation).toBeUndefined()
+      expect(silent.assertions).toBeUndefined()
+      expect(silent.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
+      ])
       for (const outcome of ["accepted", "rejected", "wrong-id"] as const) {
         const writes: string[] = []
         const responseTo = (sequence: string): string => {
@@ -1036,7 +1121,11 @@ describe("Kitty protocol detection", () => {
     )
     expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
     const silent = await p.term(terminalContext({ queryCursorPosition: async () => ({ row: 9, col: 9 }) }))
-    expect(silent.observation).toMatchObject({ outcome: "inconclusive", reason: "timeout" })
+    expect(silent.observation).toBeUndefined()
+    expect(silent.assertions).toBeUndefined()
+    expect(silent.tests).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: "No matching graphics query reply; image rendering was not tested" }),
+    ])
   })
 })
 
@@ -1144,10 +1233,11 @@ describe("extensions without a complete behavior oracle", () => {
       )
       expect(writes, id).toEqual([])
       expect(result.pass, id).toBe(false)
-      expect(result, id).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-      })
+      expect(result.observation, id).toBeUndefined()
+      expect(result.assertions, id).toBeUndefined()
+      expect(result.tests, id).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+      ])
       expect(result.assertions ?? [], id).toEqual([])
     }
   })
@@ -1566,10 +1656,12 @@ describe("partial probe automation candidates", () => {
       const definition = probe(id)
       expect(definition.libAssertionType).toBeUndefined()
       const result = definition.lib!(fixture.ctx)
-      expect(result).toMatchObject({
-        pass: false,
-        observation: { outcome: "error", reason: "collector-error", assertionType: row.assertionType },
-      })
+      expect(result.pass).toBe(false)
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("failed: Error:") }),
+      ])
       expect(result.note).toContain("Error:")
       expect(result.response).toBeUndefined()
       expect(result.assertions).toBeUndefined()
@@ -1680,7 +1772,10 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(noReply.observation?.outcome).toBe("inconclusive")
+      expect(noReply.observation).toEqual({ outcome: "inconclusive", assertionType: "query_reply", reason: "timeout", note: "No original OSC 10 foreground reply; color stack was not changed" })
+      expect(noReply.response).toBe("\x1b]10;rgb:1010/2020/3030\x1b\\")
+      expect(noReply.assertions).toBeUndefined()
+      expect(noReply.tests).toBeUndefined()
       expect(noReplyWrites).toEqual([])
     }
   })
@@ -1706,7 +1801,15 @@ describe("partial probe automation candidates", () => {
           },
         }),
       )
-      expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, assertionType: "query_reply" })
+      if (ps === null) {
+        expect(result.observation).toBeUndefined()
+        expect(result.assertions).toBeUndefined()
+        expect(result.tests).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: "No DECRPM 2031 reply; update events were not tested" }),
+        ])
+      } else {
+        expect(result.observation, `Ps ${ps}`).toMatchObject({ outcome, assertionType: "query_reply" })
+      }
       if (ps === 4) {
         expect(result.assertions, "Ps 4").toMatchObject([
           { kind: "negative", expected: "DECRPM mode 2031 can be set", observed: "permanently reset (Ps 4)" },
@@ -1740,33 +1843,33 @@ describe("partial probe automation candidates", () => {
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 2 }) }))
       expect(result.notTested).toBeUndefined()
-      expect(result).toMatchObject({
-        observation: undefined,
-        tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-      })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" }),
+      ])
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => null }))
       expect(result.notTested).toBeUndefined()
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        assertionType: "query_reply",
-        reason: "no-response",
-      })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: "No cursor reply after semantic prompt marker" }),
+      ])
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Constant 1;1 CPR: target never advances from home, so consumption is false and no coverage is claimed.
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => ({ row: 1, col: 1 }) }))
       expect(result.notTested).toBeUndefined()
-      expect(result).toMatchObject({
-        observation: undefined,
-        tests: [
-          expect.objectContaining({
-            status: "test-todo",
-            reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
-          }),
-        ],
-      })
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        expect.objectContaining({
+          status: "test-todo",
+          reason: "Marker consumption was not confirmed; shell prompt integration was not observed",
+        }),
+      ])
     }
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Consumed-but-unqualified: home 1;1 -> target 1;2 advances, but control stays 1;2 instead of returning to 1;1.
@@ -1779,8 +1882,8 @@ describe("partial probe automation candidates", () => {
       const result = await probe(id).term!(terminalContext({ queryCursorPosition: async () => reads[read++] ?? null }))
       expect(read).toBe(3)
       expect(result.notTested).toBeUndefined()
+      expect(result.observation).toBeUndefined()
       expect(result).toMatchObject({
-        observation: undefined,
         tests: [
           expect.objectContaining({
             status: "test-todo",
@@ -1789,12 +1892,9 @@ describe("partial probe automation candidates", () => {
         ],
       })
     }
-    expect(
-      await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null })),
-    ).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
+    const noPromptMetadata = await probe("extensions.semantic-prompts").term!(terminalContext({ queryCursorPosition: async () => null }))
+    expect(noPromptMetadata.observation).toBeUndefined()
+    expect(noPromptMetadata.tests).toEqual([{ id: "criterion", status: "test-todo", reason: "No shell prompt integration metadata or behavior readback for OSC 133" }])
     for (const id of OSC_SEMANTIC_MARK_IDS) {
       // Qualified cursor movement (0,0 -> 1,0 -> 0,0) with empty or non-X cell: consumed && keeps this inconclusive.
       for (const char of ["", "-"]) {
@@ -1815,8 +1915,8 @@ describe("partial probe automation candidates", () => {
         )
         expect(read, `${id} char=${JSON.stringify(char)}`).toBe(3)
         expect(result.notTested, `${id} char=${JSON.stringify(char)}`).toBeUndefined()
+        expect(result.observation, `${id} char=${JSON.stringify(char)}`).toBeUndefined()
         expect(result, `${id} char=${JSON.stringify(char)}`).toMatchObject({
-          observation: undefined,
           tests: [
             expect.objectContaining({
               status: "test-todo",
@@ -1830,8 +1930,8 @@ describe("partial probe automation candidates", () => {
       // Constant cursor (0,0) with cell.char === "X": consumed is true, but cursor motion is unqualified.
       const result = probe(id).lib!(context({ getCell: () => ({ ...context({}).getCell(0, 0), char: "X" }) }))
       expect(result.notTested).toBeUndefined()
+      expect(result.observation).toBeUndefined()
       expect(result).toMatchObject({
-        observation: undefined,
         tests: [
           expect.objectContaining({
             status: "test-todo",

@@ -216,14 +216,28 @@ test("the harness replays every Device capability deterministically through the 
   }
 })
 
-test("every Device contract row is satisfied by the echoing fixture its claim requires", async () => {
+test("every measurable Device contract row is satisfied by the echoing fixture its claim requires", async () => {
   for (const row of DEVICE_CONTRACT) {
     const probe = deviceProbes.find((entry) => entry.id === row.id)
     expect(probe, `missing Device probe ${row.id}`).toBeDefined()
     if (!probe) continue
+    if (row.id === "device.term-features") continue
     const graded = await regradeRow(probe, row, deviceContexts(echoingDevice()))
     expect(graded.satisfies, `${row.id} satisfies its contract row (after=${graded.after})`).toBe(true)
   }
+})
+
+test("TERM_FEATURES fails with its unverified-source reason and no terminal observation", async () => {
+  const probe = deviceProbes.find((entry) => entry.id === "device.term-features")
+  expect(probe?.term, "the TERM_FEATURES application callback exists").toBeDefined()
+  if (!probe?.term) return
+  const result = await probe.term(deviceContexts(echoingDevice()).term)
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  const reason = process.env.TERM_FEATURES ? "TERM_FEATURES advertised; source unverified" : "TERM_FEATURES not advertised"
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason }),
+  ])
 })
 
 test("a decided Device row is unsatisfied when the query reply is silent", async () => {

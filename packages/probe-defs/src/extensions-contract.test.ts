@@ -271,6 +271,47 @@ const EXTENSIONS_CONTRACT_SPEC: GroupContractSpec = {
   ],
 }
 
+const EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS: Readonly<Record<string, { status: "test-todo" | "test-failure"; reason: string }>> = {
+  "extensions.truecolor": { status: "test-todo", reason: "No cursor response; RGB color was not measured" },
+  "extensions.kitty-graphics.animation": {
+    status: "test-todo",
+    reason: "No timed frame playback or pixel readback for Kitty animation",
+  },
+  "extensions.kitty-graphics.unicode-placeholders": {
+    status: "test-todo",
+    reason: "No pixel and placeholder-cell readback for Kitty Unicode placeholders",
+  },
+  "extensions.sixel": {
+    status: "test-failure",
+    reason:
+      "extensions.sixel: the terminal answered CSI 16 t (cell size in pixels) with timeout and CSI 14 t (text area in pixels) with timeout, so no cell size can be mapped, so this run cannot map cells onto the captured window",
+  },
+  "extensions.osc8": { status: "test-todo", reason: "Cursor movement cannot verify OSC 8 link metadata or click behavior" },
+  "extensions.reflow": { status: "test-todo", reason: "No controlled resize and cell-content readback to measure reflow" },
+  "extensions.semantic-prompts": { status: "test-todo", reason: "No shell prompt integration metadata or behavior readback for OSC 133" },
+  "extensions.osc2-title": { status: "test-todo", reason: "OSC 2 window title was not attempted; this probe has no effect readback or prior-state restoration" },
+  "extensions.osc7-cwd": { status: "test-todo", reason: "No working-directory metadata readback for OSC 7" },
+  "extensions.osc-633-vscode": { status: "test-todo", reason: "No VS Code shell integration metadata or behavior readback for OSC 633" },
+  "extensions.osc133-a": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc133-b": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc133-c": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc133-d": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc133-p": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc633-a": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc633-b": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc633-c": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc633-d": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc633-e": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.osc633-p": { status: "test-todo", reason: "Marker consumption was not confirmed; shell prompt integration was not observed" },
+  "extensions.notifications": { status: "test-todo", reason: "No desktop notification delivery readback for OSC 9" },
+  "extensions.osc9-progress": { status: "test-todo", reason: "OSC 9;4 progress display was not attempted; this probe has no effect readback or prior-state restoration" },
+  "extensions.osc1-icon": { status: "test-todo", reason: "No icon-name readback for OSC 1" },
+  "extensions.osc117-reset-highlight-bg": { status: "test-failure", reason: "extensions.osc117-reset-highlight-bg: OSC 17 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it" },
+  "extensions.osc119-reset-highlight-fg": { status: "test-failure", reason: "extensions.osc119-reset-highlight-fg: OSC 19 did not report a colour, so the initial highlight colour is unknown and a reset cannot be compared with it" },
+  "extensions.osc710-font-normal": { status: "test-todo", reason: "OSC 710 font selection was not attempted; this probe has no effect readback or prior-state restoration" },
+  "extensions.osc720-scroll-up": { status: "test-todo", reason: "Cursor answered; scrollback viewport was not measured" },
+}
+
 function inertModel(): HeadlessModel {
   return {
     cols: 80,
@@ -556,10 +597,24 @@ test("every inconclusive extension contract row evaluates to inconclusive under 
     const probe = extensionsProbes.find((p) => p.id === row.id)
     expect(probe, `missing probe for ${row.id}`).toBeDefined()
     if (!probe) continue
-    const context = probe.term ? { term } : { headless }
-    const graded = await regradeRow(probe, row, context)
-    expect(graded.after, `${row.id} outcome must be inconclusive`).toBe("inconclusive")
-    expect(graded.satisfies, `${row.id} must satisfy inconclusive contract expectation`).toBe(true)
+    const rowTerm = row.id === "extensions.truecolor" ? replayContext(new Map()) : term
+    const callbackResult = probe.term ? await probe.term(rowTerm) : probe.lib?.(headless)
+    expect(callbackResult, `${row.id} has the selected callback`).toBeDefined()
+    if (callbackResult && callbackResult.observation === undefined) {
+      expect(callbackResult.observation, row.id).toBeUndefined()
+      const disposition = EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS[row.id]
+      expect(disposition, `${row.id} has an explicit execution-only contract`).toBeDefined()
+      expect(callbackResult.assertions, row.id).toBeUndefined()
+      expect(callbackResult.tests, row.id).toMatchObject([
+        expect.objectContaining({ status: disposition?.status, reason: disposition?.reason }),
+      ])
+      continue
+    }
+    expect(EXECUTION_ONLY_INCONCLUSIVE_DISPOSITIONS[row.id], `${row.id} keeps its measured observation`).toBeUndefined()
+    expect(callbackResult?.observation, `${row.id} outcome must be inconclusive`).toMatchObject({
+      outcome: "inconclusive",
+      assertionType: row.id === "extensions.iterm2-images" ? "screenshot" : "query_reply",
+    })
   }
 })
 
@@ -568,12 +623,18 @@ test("a decided extension row reads unsatisfied when silent or unacknowledged", 
   const row = EXTENSIONS_CONTRACT.find((r) => r.id === "extensions.osc10-fg-color")
   expect(probe).toBeDefined()
   expect(row).toBeDefined()
-  if (!probe || !row) return
+  if (!probe?.lib || !row) throw new Error("Expected the OSC 10 lib callback and its contract row")
 
   const silentContext = headlessContext(inertModel())
   const silent = await regradeRow(probe, row, { headless: silentContext })
-  expect(silent.after).toBe("inconclusive")
+  expect(silent.after).toBeUndefined()
   expect(silent.satisfies).toBe(false)
+  const result = probe.lib(silentContext)
+  expect(result.observation).toBeUndefined()
+  expect(result.assertions).toBeUndefined()
+  expect(result.tests).toMatchObject([
+    expect.objectContaining({ status: "test-failure", reason: "no-response" }),
+  ])
 })
 
 test("semantic observables omitted in headless mode return notTested without failing determinism", async () => {
@@ -594,20 +655,19 @@ test("semantic observables omitted in headless mode return notTested without fai
   }
 })
 
-// #30547: only a silent first readback selects review. A non-empty reply the parser cannot read keeps the colour-stack
-// rows' inconclusive no-response grade, and its raw reply is now retained (those rows carried callbackRaw null).
-test("a non-empty unparsed colour-stack readback stays inconclusive and retains its raw reply", () => {
+// A non-empty reply the parser cannot read retains the raw reply and blocks the criterion.
+test("a non-empty unparsed colour-stack readback fails with its raw reply retained", () => {
   const unparsed = "\x1b]10;not-a-colour\x07"
   for (const id of ["extensions.osc30001-color-stack-push", "extensions.osc30101-color-stack-pop"]) {
     const probe = extensionsProbes.find((p) => p.id === id)
     if (!probe?.lib) throw new Error(`Missing ${id} headless arm`)
     const result = probe.lib(headlessContext({ ...inertModel(), feedCapture: () => unparsed }))
     expect(result.criterionBranch, id).toBeUndefined()
-    expect(result.observation, id).toMatchObject({
-      outcome: "inconclusive",
-      assertionType: "query_reply",
-      reason: "no-response",
-    })
+    expect(result.observation, id).toBeUndefined()
+    expect(result.assertions, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: "no-response" }),
+    ])
     expect(JSON.parse(result.response ?? "null"), id).toEqual({ query: "\x1b]10;?\x07", originalRaw: unparsed })
   }
 })

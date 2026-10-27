@@ -74,7 +74,7 @@ describe("live OSC 52 write ordering", () => {
       }),
     )
     expect(events).toEqual(["osc-write", "cpr", "independent-read", "restore"])
-    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "query_reply" })
+    expect(result.observation).toMatchObject({ outcome: "supported", assertionType: "clipboard" })
     expect(result.assertions?.[0]?.observed).toBe(queued)
     expect(clipboard).toBe("baseline")
   })
@@ -138,8 +138,11 @@ describe("live OSC 52 write ordering", () => {
       }),
     )
     expect(events).toEqual(["osc-write", "cpr-missing", "restore"])
-    expect(result.observation).toMatchObject({ outcome: "inconclusive", reason: "no-response" })
+    expect(result.observation).toBeUndefined()
     expect(result.assertions).toBeUndefined()
+    expect(result.tests).toMatchObject([
+      expect.objectContaining({ status: "test-failure", reason: "No cursor reply after OSC 52 write; clipboard contents were not measured" }),
+    ])
     expect(clipboard).toBe("baseline")
   })
 })

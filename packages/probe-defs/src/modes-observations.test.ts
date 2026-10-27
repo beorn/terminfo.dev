@@ -165,13 +165,29 @@ test("unmeasured app modes leave prior state untouched instead of toggling it fo
         },
       } as unknown as TermProbeSource
       const result = await definition.term(context)
-      // #30557 r2: the 1047 DECRPM fallback grades a permanently reset mode unsupported; every other Ps stays inconclusive.
+      // The app arms without a behavior oracle are execution-only TODOs. The 1047 DECRPM
+      // fallback still grades its retained protocol reply.
       const permanent = id === "modes.altscreen-1047" && ps === 4
-      expect(result.observation, `${id}:${ps}`).toMatchObject({
-        outcome: permanent ? "unsupported" : "inconclusive",
-        assertionType: id === "modes.altscreen-1047" ? "query" : "none",
-      })
-      if (permanent) {
+      if (id !== "modes.altscreen-1047") {
+        expect(result.observation, `${id}:${ps}`).toBeUndefined()
+        expect(result.assertions, `${id}:${ps}`).toBeUndefined()
+        expect(result.tests, `${id}:${ps}`).toMatchObject([
+          expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
+        ])
+      } else if (ps === null) {
+        expect(result.observation, `${id}:${ps}`).toBeUndefined()
+        expect(result.tests, `${id}:${ps}`).toMatchObject([
+          expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("DECRPM") }),
+        ])
+      } else if (ps === 0) {
+        expect(result.observation, `${id}:${ps}`).toMatchObject({
+          outcome: "inconclusive",
+          reason: "insufficient-evidence",
+          assertionType: "query_reply",
+        })
+        expect(result.assertions ?? [], `${id}:${ps}`).toEqual([])
+      } else if (permanent) {
+        expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "query_reply" })
         expect(result.response).toBe("permanently reset (Ps 4)")
         expect(result.assertions, id).toMatchObject([{ kind: "negative", observed: "permanently reset (Ps 4)" }])
       } else {
@@ -245,13 +261,11 @@ test.each(modes)("$id uses one DECRPM query without changing the terminal", asyn
     expect(queried, `${id}: Ps ${ps}`).toEqual([`\x1b[?${number}$p`])
     if (ps === null) {
       expect(result.pass).toBe(false)
-      expect(result.observation).toMatchObject({
-        outcome: "inconclusive",
-        reason: "no-response",
-        assertionType: "query_reply",
-      })
-      expect(result.observation?.note, `${id}: note must survive projection`).toBe("No DECRPM response")
-      expect(result.assertions ?? []).toEqual([])
+      expect(result.observation).toBeUndefined()
+      expect(result.assertions).toBeUndefined()
+      expect(result.tests).toMatchObject([
+        expect.objectContaining({ status: "test-failure", reason: expect.stringContaining("DECRPM") }),
+      ])
     } else if (ps === 0) {
       expect(result.pass).toBe(false)
       expect(result.response).toBe("not recognized (Ps 0)")
@@ -706,11 +720,11 @@ test("modes capture refuses undersized geometry before any bytes or frames", asy
     const result = await definition.term(captureContext(rows, cols, writes, frames))
     expect(writes, id).toEqual([])
     expect(frames, id).toEqual([])
-    expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
-    expect(result.observation?.note, id).toContain(need)
+      expect(result.observation, id).toBeUndefined()
+      expect(result.assertions, id).toBeUndefined()
+      expect(result.tests, id).toMatchObject([
+        expect.objectContaining({ status: "test-todo", reason: expect.stringContaining(need) }),
+      ])
   }
 })
 
@@ -780,11 +794,11 @@ test("xt stack capture refuses undersized geometry before any bytes or frames", 
     const result = await definition.term(captureContext(rows, cols, writes, frames))
     expect(writes, id).toEqual([])
     expect(frames, id).toEqual([])
-    expect(result, id).toMatchObject({
-      observation: undefined,
-      tests: [expect.objectContaining({ status: "test-todo", reason: expect.any(String) })],
-    })
-    expect(result.observation?.note, id).toContain(need)
+    expect(result.observation, id).toBeUndefined()
+    expect(result.assertions, id).toBeUndefined()
+    expect(result.tests, id).toMatchObject([
+      expect.objectContaining({ status: "test-todo", reason: expect.stringContaining(need) }),
+    ])
   }
 })
 
