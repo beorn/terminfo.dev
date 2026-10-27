@@ -453,7 +453,7 @@ it("keeps the retained corpus consistent across unmocked site, API and analysis 
       result.stderr
         .split("\n")
         .filter(Boolean)
-        .every((line) => /^Warning: Terminal '.+' has no sealed current schema-3 runs$/.test(line)),
+        .every((line) => /^Warning: Terminal '.+' has no current sealed runs$/.test(line)),
     ).toBe(true)
     const receipt = JSON.parse(result.stdout) as {
       exactContexts: number
@@ -1026,7 +1026,7 @@ describe("selected-run consumer parity", () => {
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })
@@ -1058,7 +1058,7 @@ describe("selected-run consumer parity", () => {
       const analysis = generateAnalysis()["modes/decsclm-smooth-scroll"]?.analysis
       expect(analysis).toContain("Legacy")
       expect(analysis).not.toContain("Unicode")
-      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Reflect.deleteProperty(cells, featureId)
@@ -1268,7 +1268,7 @@ describe("selected-run consumer parity", () => {
       const reviewed = generateAnalysis()["extensions/sixel-graphics"]?.analysis
       expect(reviewed).not.toContain(unscoped)
       expect(reviewed).not.toContain("Reviewed Kitty sixel observation note")
-      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       Object.assign(cell, original)
