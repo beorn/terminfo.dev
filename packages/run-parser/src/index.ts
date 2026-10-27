@@ -1563,7 +1563,7 @@ export function decodeHistoricalCollectorRun(
   return { run, raw, sha256: measured.sha256 }
 }
 
-/** Canonical live collector transport is an unsealed schema-3 capture; final writer seals later. */
+/** Canonical live collector transport is an unsealed schema-4 capture; final writer seals later. */
 export function decodeCollectorDraft(
   path: string,
   raw: string,

@@ -179,7 +179,7 @@ export interface SelectedProjection {
   versions: Record<string, CurrentSelectedVersion[]>
   history: Record<string, CurrentSelectedVersion[]>
   table: Readonly<Record<string, Readonly<Record<string, ProbeStatus>>>>
-  /** Archived assessment refusals followed by the schema-3 refusals this reading assessed. */
+  /** Archived assessment refusals followed by the current-run refusals this reading assessed. */
   exclusions: SelectedExclusion[]
   releaseSuiteId: string | null
   treeSuiteId: string
@@ -237,7 +237,7 @@ export type { TextQualificationAssessment } from "@terminfo/probe-defs"
  */
 /** A current run's sealed results as this reader counts them: unchanged but for the console-host rule. */
 export function consoleHostHeldResults(run: LoadedRun): ProbeResult[] {
-  if (!run.results) throw new Error(`Run ${run.runId} has no current schema-3 results`)
+  if (!run.results) throw new Error(`Run ${run.runId} has no current sealed results`)
   return run.results.map((result) => {
     const hold = consoleHostHold(run, result, result.status)
     if (hold === undefined) return result
@@ -323,7 +323,7 @@ export function classifyDevelopmentRun(run: LoadedRun): {
 } {
   if ((run.schemaVersion !== 3 && run.schemaVersion !== 4) || !run.results) {
     throw new Error(
-      `Development run ${run.runId} requires current schema-3 recorded results; use the historical reader for old runs`,
+      `Development run ${run.runId} requires current sealed recorded results; use the historical reader for old runs`,
     )
   }
   return {
@@ -367,7 +367,7 @@ const contextKey = (t: ProbeSubject): string =>
 
 /**
  * Distinct contexts per `<kind>:<id>` across the given runs: the group size `projectedContextKey` keys by.
- * Count over EVERY run the corpus holds for the target, legacy and schema 3, and pass the one result to
+ * Count over EVERY run the corpus holds for the target, legacy and current, and pass the one result to
  * both projections; a projection counting its own runs keys one context two ways (30661).
  */
 export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<string>> {
@@ -384,7 +384,7 @@ export function countContexts(runs: readonly LoadedRun[]): Map<string, Set<strin
 /**
  * The key one run's context carries in the projection: the bare `<kind>:<id>` while its group has ONE
  * context, and `<kind>:<id>@<context>` once the group carries more, so a multi-context tie never hides
- * behind an id-level key. The group spans every run of the target, legacy and schema 3, so one context
+ * behind an id-level key. The group spans every run of the target, legacy and current, so one context
  * carries one key in `current` and in `historical.current` and a reviewed default-context row names it once (30661). `run-selection.ts` reads this shape back to tell a stale reviewed row from a
  * review that names another os; tests build fixtures through THIS function, never a hand-copied shape.
  */
@@ -445,7 +445,7 @@ const versionCompare = (a: string, b: string): number => a.localeCompare(b, unde
 /**
  * Read current execution results without applying later feature interpretations or grading.
  * `archivedExclusions` are the frozen refusals of legacy runs (#30759 AC3); they lead the published
- * list, and refusals this reading assesses for schema-3 runs are appended after them.
+ * list, and refusals this reading assesses for schema-3 or schema-4 runs are appended after them.
  */
 export function projectResults(
   runs: readonly LoadedRun[],

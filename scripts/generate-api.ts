@@ -2,7 +2,7 @@
  * Generate the terminfo.dev v3 JSON API.
  *
  * Outputs:
- *   api/v3/data.json              — sealed schema-3 results
+ *   api/v3/data.json              — current sealed results
  *   api/v3/evidence|runs|traces/  — exact-run documents and their artifacts
  *
  * `/api/v1` is frozen: its committed bytes under docs/public/api/v1/ are no
@@ -294,7 +294,7 @@ export function generateApi(
     }
   }
 
-  // Only sealed schema-3 runs supply current results.
+  // Only current sealed runs supply current results.
   type CurrentVersion = (typeof published.projection.current)[string]
   const currentRef = (version: CurrentVersion) => {
     const url = `/api/v3/runs/${version.sha256}.json`
@@ -327,7 +327,7 @@ export function generateApi(
     catalogIds: [...allFeatureIds].sort(),
     currentRunCount: published.projection.currentRunCount,
     ...(published.projection.currentRunCount === 0 && {
-      message: "No current schema-3 runs; historical results remain available.",
+      message: "No current sealed runs; historical results remain available.",
     }),
     current: Object.fromEntries(
       Object.entries(published.projection.current).map(([key, run]) => [key, currentRef(run)]),

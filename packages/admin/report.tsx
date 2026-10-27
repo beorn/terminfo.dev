@@ -135,7 +135,7 @@ export function CensusReport({
         terminfo report — {featureIds.length} catalog features
       </Text>
       <Text bold>Current selected contexts: {columns.length}</Text>
-      {columns.length === 0 && <Text color="$muted">No current schema-3 runs.</Text>}
+      {columns.length === 0 && <Text color="$muted">No current sealed runs.</Text>}
       {columns.map((column) => (
         <CurrentSummary key={column.contextKey} column={column} />
       ))}

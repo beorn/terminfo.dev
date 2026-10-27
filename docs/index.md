@@ -169,7 +169,7 @@ function segmentWidth(name, segment) {
 }
 
 function scoreLabel(backendName) {
-  return data.releaseShares[backendName] ?? 'No current schema-3 score'
+  return data.releaseShares[backendName] ?? 'No current sealed score'
 }
 
 function coverageLabel(backendName) {

@@ -481,16 +481,16 @@ describe("consumer selection", () => {
         expect(site.results.kitty).toBeUndefined()
         expect(site.stats.kitty).toBeUndefined()
         expect(Object.keys(api.current).filter((key) => key.startsWith("term:kitty"))).toEqual([])
-        expect(analysis["terminals/kitty"]?.analysis).toContain("No current schema-3")
+        expect(analysis["terminals/kitty"]?.analysis).toContain("No current sealed")
       }
       if (api.currentRunCount === 0) {
-        expect(analysis["baseline/core"]?.analysis).toContain("No current schema-3")
+        expect(analysis["baseline/core"]?.analysis).toContain("No current sealed")
       }
       expect(terminalPaths.paths().some((page) => page.params.id === "kitty")).toBe(true)
       expect(warnings.some((message) => message.includes("historical analysis snapshot is not current evidence"))).toBe(
         false,
       )
-      expect(warnings.every((message) => message.includes("no sealed current schema-3 runs"))).toBe(true)
+      expect(warnings.every((message) => message.includes("no current sealed runs"))).toBe(true)
     } finally {
       warning.mockRestore()
       rmSync(out, { recursive: true, force: true })

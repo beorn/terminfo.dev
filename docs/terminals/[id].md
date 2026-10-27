@@ -16,7 +16,7 @@ const categories = p.categories ? JSON.parse(p.categories) : []
 const versions = p.versions ? JSON.parse(p.versions) : []
 const defaultRun = data.selectedByBackend[p.backendId]?.selected
 const runs = [defaultRun, ...JSON.parse(p.otherRuns || '[]')].filter(Boolean)
-// #30759: the page renders current schema-3 runs only, so every recorded run here is current.
+// #30759: the page renders current sealed runs only, so every recorded run here is current.
 const recordedRuns = runs
 const runSha = ref(defaultRun?.sha256 || '')
 const selectedRun = computed(() => recordedRuns.find(run => run.sha256 === runSha.value))
@@ -149,7 +149,7 @@ const breadcrumbParent = (() => {
   &mdash; this terminal uses the same underlying engine and is not probed separately.
 </p>
 
-<p v-if="!defaultRun && !isHistorical">No current schema-3 run. Historical results remain available below.</p>
+<p v-if="!defaultRun && !isHistorical">No current sealed run. Historical results remain available below.</p>
 
 <div v-if="measuredBar" class="score-card">
   <h2 class="results-heading">Feature support</h2>

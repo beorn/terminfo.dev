@@ -341,7 +341,7 @@ function formatTraceIdentity(identity: LoadedCellTrace["identity"]): string {
 
 /**
  * Validate a parsed per-run evidence document (`version: 2` for historical runs, `version: 4` for
- * schema-3 runs) and extract the cell record for `expectation.featureId`.
+ * schema-3 or schema-4 runs) and extract the cell record for `expectation.featureId`.
  */
 export function readCellEvidence(parsed: unknown, expectation: CellEvidenceExpectation): LoadedCellEvidence {
   const expectedDocumentVersion = expectation.schemaVersion === 3 || expectation.schemaVersion === 4 ? 4 : 2

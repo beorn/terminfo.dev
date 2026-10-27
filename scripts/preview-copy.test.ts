@@ -30,7 +30,7 @@ describe("preview copy (30753)", () => {
   it("renders no build-state sentence and no No score placeholder", () => {
     const offenders = pageTemplates.filter((path) => {
       const text = readFileSync(join(repoRoot, path), "utf8")
-      return /'No score'|>No score</.test(text) || text.includes("No current schema-3 runs")
+      return /'No score'|>No score</.test(text) || text.includes("No current sealed runs")
     })
     expect(offenders).toEqual([])
   })

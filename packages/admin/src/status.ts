@@ -72,7 +72,7 @@ export async function handleStatus(): Promise<void> {
       `    ${key} ${run.subject.version} (${run.runId}): ${run.score.supported}/${run.score.all} Supported / all · ${currentCoverageSentence(run, run.catalogIds)} · ${run.complete ? "complete" : "incomplete"}`,
     )
   }
-  if (current.length === 0) console.log("    No current schema-3 runs; historical results remain available.")
+  if (current.length === 0) console.log("    No current sealed runs; historical results remain available.")
   console.log(`    Excluded archived runs: ${projection.exclusions.length}`)
 
   console.log("\n  Saved archive files:")

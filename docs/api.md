@@ -6,7 +6,7 @@ outline: [2, 3]
 
 ## Current results
 
-**`GET /api/v3/data.json`** returns the current five-status contract. Only sealed schema-3 runs appear as current results.
+**`GET /api/v3/data.json`** returns the current five-status contract. Only sealed schema-3 or schema-4 runs appear as current results.
 
 [View current data](/api/v3/data.json) · [Frozen v1](/api/v1/data.json)
 
@@ -17,7 +17,7 @@ outline: [2, 3]
 | `features`, `catalogIds` | Catalog metadata; each run also records its own exact frozen `catalogIds`     |
 | `currentRunCount`        | Number of selected current contexts                                           |
 | `current`                | Exact context keys mapped to current run references                           |
-| `versions`, `history`    | Retained sealed schema-3 run references                                       |
+| `versions`, `history`    | Retained sealed schema-3 or schema-4 run references                           |
 | `methodology`            | Status, score, completion and historical endpoint explanations                |
 | `message`                | Explicit no-current explanation when `currentRunCount` is zero                |
 
@@ -46,11 +46,11 @@ features are both zero. Completion does not imply full support.
 
 Publication still requires every required context on the approved source/suite. An absent current context cannot count as complete.
 
-## No current schema-3 runs
+## No current sealed runs
 
 An all-history corpus is a valid migration state. The v3 response contains catalog metadata, `currentRunCount: 0`, `current: {}`, and an explicit message:
 
-> No current schema-3 runs; historical results remain available.
+> No current sealed runs; historical results remain available.
 
 It does not invent a current score or a completed cohort. Historical results remain readable through the frozen v1 endpoint.
 

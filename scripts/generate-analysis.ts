@@ -241,7 +241,7 @@ function crossValidate(
   for (const [termId, meta] of Object.entries(terminals)) {
     if (meta.historical) continue
     if (![...resultMap.values()].some((data) => data.sourceId === termId && data.type === meta.kind)) {
-      console.warn(`Warning: Terminal '${termId}' has no sealed current schema-3 runs`)
+      console.warn(`Warning: Terminal '${termId}' has no current sealed runs`)
     }
   }
 
@@ -690,8 +690,7 @@ function generateFeatureAnalysis(
   }
   if (total === 0) {
     return {
-      analysis:
-        "<p>Analysis awaiting verified measurements for this feature. No sealed current schema-3 result covers it.</p>",
+      analysis: "<p>Analysis awaiting verified measurements for this feature. No current sealed result covers it.</p>",
       date: "",
       changes: null,
     }
@@ -1328,7 +1327,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
     if (meta.historical || slugSeen.has(meta.slug)) continue
     output[`terminals/${meta.slug}`] = {
       analysis:
-        "<p>Analysis awaiting verified measurements. No current schema-3 runs; historical results remain available.</p>",
+        "<p>Analysis awaiting verified measurements. No current sealed runs; historical results remain available.</p>",
       date: "",
       changes: null,
     }
@@ -1339,7 +1338,7 @@ export function generateAnalysis(): Record<string, AnalysisEntry> {
       if (key.startsWith("terminals/")) continue // specific unmeasured message above
       output[key] = {
         analysis:
-          "<p>Analysis awaiting verified measurements. No current schema-3 runs; historical results remain available.</p>",
+          "<p>Analysis awaiting verified measurements. No current sealed runs; historical results remain available.</p>",
         date: "",
         changes: null,
       }

@@ -19,7 +19,7 @@ compose_receipt() {
     [[ -r "$final_run" ]] || { echo "Missing final run bytes: $final_run" >&2; return 2; }
     final_run_json=$(jq -e --arg sha "$(sha256sum "$final_run" | cut -d ' ' -f 1)" --arg path "$(basename "$final_run")" '
       if .schemaVersion == 4 and (.sealedAt | type == "string") then {path:$path,runId:.runId,sha256:$sha}
-      else error("final completion receipt requires a sealed schema-3 run") end' "$final_run") || return 2
+      else error("final completion receipt requires a sealed schema-4 run") end' "$final_run") || return 2
   fi
   host_sha=$(sha256sum "$host" | cut -d ' ' -f 1)
   container_sha=$(sha256sum "$container" | cut -d ' ' -f 1)
@@ -42,7 +42,7 @@ compose_receipt() {
          $c.collector.buildReceiptSha256 != $h.runnerArtifact.buildReceiptSha256 then
       error("container collector bytes disagree with host runner receipt")
     elif ($c.probeRun.runId | type) != "string" or ($c.probeRun.sha256 | type) != "string" then
-      error("container schema-3 capture identity is missing")
+      error("container schema-4 capture identity is missing")
     elif $finalRun != null and $finalRun.runId != $c.probeRun.runId then
       error("final runId differs from original captured runId")
     elif ($h.selectedIDs // null) != ($c.selectedIDs // null) then
@@ -1186,7 +1186,7 @@ jq -e --arg run "$run_id" '.runId == $run' "$raw/observed.json" >/dev/null || {
 probe_sha=$(sha256sum "$raw/v3-capture.json" | cut -d ' ' -f 1)
 jq -e --arg run "$(jq -er .probeRunId "$raw/observed.json")" --arg sha "$probe_sha" \
   '.probeRun.runId == $run and .probeRun.sha256 == $sha' "$raw/container-receipt.json" >/dev/null || {
-  echo "Raw schema-3 capture differs from container receipt" >&2; exit 2;
+  echo "Raw schema-4 capture differs from container receipt" >&2; exit 2;
 }
 jq -e --slurpfile run "$raw/v3-capture.json" \
   '($run[0] | if .subject.kind == "mux" then .outerApp.provenance.executable
@@ -1194,7 +1194,7 @@ jq -e --slurpfile run "$raw/v3-capture.json" \
    .executable.path == $executable.path and
    .executable.sha256 == $executable.sha256' \
   "$raw/container-receipt.json" >/dev/null || {
-  echo "Retained schema-3 capture executable differs from measured container ELF" >&2; exit 2;
+  echo "Retained schema-4 capture executable differs from measured container ELF" >&2; exit 2;
 }
 source_sha=$(jq -er .sourceArtifact.sha256 "$raw/container-receipt.json")
 source_sri=$(nix hash convert --hash-algo sha256 --to sri "$source_sha")
@@ -1221,7 +1221,7 @@ TERMINFO_CAPTURE_RAW="$raw/v3-capture.json" TERMINFO_CAPTURE_OUTPUT="$raw" bun -
   const run=finalizeCollectedDraft(retained.run);
   const path=join(directory,run.sealedAt===undefined?"v3-run.draft.json":"v3-run.json");
   writeFileSync(path,JSON.stringify(run,null,2)+"\n",{flag:"wx",mode:0o600});
-  console.error(run.sealedAt===undefined?"Valid capture; required review pending (TEST TODO)":"Sealed current schema-3 run");
+  console.error(run.sealedAt===undefined?"Valid capture; required review pending (TEST TODO)":"Sealed current schema-4 run");
 '
 if [[ -f "$raw/v3-run.json" ]]; then
   compose_receipt "$raw/host-measured.json" "$raw/container-receipt.json" "$raw/run-receipt.json" "$raw/v3-run.json"
