@@ -289,9 +289,7 @@ test("reset.sgr capture declines by name after a silent DECRQSS instead of gradi
   expect(events.some((event) => event.includes("\x1b[1;3;7mX"))).toBe(false)
   expect(result.pass).toBe(false)
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-  ])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })
 
 test("reset.sgr capture refuses an undersized terminal before any bytes or frames", async () => {
@@ -409,18 +407,14 @@ test("DECALN refuses invalid geometry and absent capture without writes", async 
     }
     const result = await decaln().term!(context)
     expect(result.observation).toBeUndefined()
-    expect(result.tests).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-    ])
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
     expect(events).toEqual([])
   }
   expect(decaln().termNeedsGeometry).toBe(true)
   const events: string[] = []
   const refused = await decaln().term!(app(3, 6, events))
   expect(refused.observation).toBeUndefined()
-  expect(refused.tests).toMatchObject([
-    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-  ])
+  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
   expect(events).toEqual([])
 })
 

@@ -226,7 +226,5 @@ test("reset.sgr records FAILURE and no observation when the terminal never answe
   const result = await termProbe("reset.sgr")(kittyContext(false))
   expect(result.pass).toBe(false)
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-  ])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })

@@ -85,9 +85,7 @@ test.each(capturedIds)("%s refuses an undersized capture terminal before any byt
   const { context, writes, frames } = captureApp(2, 8)
   const result = await find(id).term!(context)
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-  ])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])
@@ -99,9 +97,7 @@ test("each image target writes its own payload rather than a generic consumption
   // cannot be sized from the run is not a measurement, and a guessed size would be.
   const refused = await find("extensions.sixel").term!(sixel.context)
   expect(refused.observation).toBeUndefined()
-  expect(refused.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-  ])
+  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
   expect(sixel.writes.some((write) => write.includes("\x1bP0;1;0q"))).toBe(false)
   const iterm = captureApp(24, 80)
   await find("extensions.iterm2-images").term!(iterm.context)
@@ -166,9 +162,7 @@ test("extensions.font-ligatures refuses an undersized capture terminal before an
   const { context, writes, frames } = captureApp(2, 8)
   const result = await find("extensions.font-ligatures").term!(context)
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-  ])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
   expect(result.assertions).toBeUndefined()
   expect(frames).toEqual([])
   expect(writes).toEqual([])

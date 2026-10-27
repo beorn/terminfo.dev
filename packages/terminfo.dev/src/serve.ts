@@ -218,8 +218,9 @@ function assertLoadedAppSuite(
   probeHash: string,
   location: string,
 ): asserts manifest is ProbeSuiteManifest & { schemaVersion: 4 } {
-  if (manifest.schemaVersion !== 4)
+  if (manifest.schemaVersion !== 4) {
     throw new Error(`Current collection requires schema-4 suite declaration: ${location}`)
+  }
   const actual = ALL_PROBES.map((probe) => probe.id).sort()
   if (manifest.probeHash !== probeHash || JSON.stringify(manifest.probes.term) !== JSON.stringify(actual)) {
     throw new Error(`Loaded app probes disagree with suite declaration ${location}`)

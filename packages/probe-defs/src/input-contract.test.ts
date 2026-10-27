@@ -318,9 +318,7 @@ test("input.csi-u reads unsatisfied when protocol query is unacknowledged", asyn
   if (!row || !probe) return
   const silent = probe.lib!(headlessContext(inputModel(false)))
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-  ])
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })
 
 test("input.xtest-key reads unsatisfied when delivery control fails", async () => {

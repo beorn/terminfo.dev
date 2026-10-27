@@ -24,8 +24,9 @@ export function finalizeCollectedDraft(
   if (run.schemaVersion !== 4 || !Array.isArray(run.results)) {
     throw new Error("Final writer requires the current schema-4 draft; historical runs are read-only")
   }
-  if (run.source?.kind !== "live")
+  if (run.source?.kind !== "live") {
     throw new Error(`Probe source ${String(run.source?.kind)} has no implementation at this source`)
+  }
   if ("sealedAt" in run) {
     throw new Error(`Run ${run.runId} is already sealed; enrichment cannot change immutable results`)
   }

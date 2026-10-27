@@ -47,12 +47,7 @@ import {
   type GeometryMeasurement,
   type OwnedTerminal,
 } from "../owned-terminal.ts"
-import {
-  bindReceiptToRun,
-  readDisposableReceipt,
-  type DisposableReceipt,
-  type ReceiptTarget,
-} from "../disposable-receipt.ts"
+import { bindReceiptToRun, readDisposableReceipt, type DisposableReceipt } from "../disposable-receipt.ts"
 
 /**
  * Resolve the disposable-ownership receipt once per batch (27832 amendment 1). No receipt is
@@ -363,7 +358,7 @@ export async function runProbeBatch(
   const disposable = resolveDisposableReceipt()
   // Bind BEFORE the first write: a receipt for another target must not authorize this terminal, and
   // checking it afterwards would mean the wrong terminal was already written to. (27874)
-  if (disposable)
+  if (disposable) {
     bindReceiptToRun(
       disposable,
       options.subject
@@ -379,6 +374,7 @@ export async function runProbeBatch(
         : undefined,
       "collector.disposableOwnership",
     )
+  }
   const authorizedToWrite = ownsTerminal || Boolean(disposable)
   if (disposable?.appLaunch) batch.appLaunch = disposable.appLaunch
   batch.rawReplies["collector.disposableOwnership"] = JSON.stringify(

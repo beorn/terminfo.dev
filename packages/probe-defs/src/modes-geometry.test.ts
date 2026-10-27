@@ -150,9 +150,7 @@ test.each(stateFixtures)(
     expect(validEvents).toEqual([enter, "CPR", restore])
     expect(result.pass).toBe(false)
     expect(result.observation).toBeUndefined()
-    expect(result.tests).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-    ])
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
     expect(result.assertions).toBeUndefined()
   },
 )

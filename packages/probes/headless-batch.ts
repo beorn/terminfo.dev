@@ -258,8 +258,9 @@ function recordResult(batch: Batch, probe: ProbeDefinition, result: ProbeCallbac
         test.reason.trim().length > 0,
     ) &&
     !result.assertions?.length
-  )
+  ) {
     return
+  }
   if (!explicit) {
     batch.ungradedDiagnostics[id] = {
       kind: "collector-error",

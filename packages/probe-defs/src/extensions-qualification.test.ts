@@ -87,9 +87,7 @@ test("extensions.truecolor decides from the DECRQSS SGR report, the same oracle 
   // This callback's legacy consumed response maps to TODO when its owned CPR is unavailable.
   const silent = await definition.term!(replayContext(new Map()))
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([
-    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-  ])
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
 })
 
 test("a later DA1 reply does not establish an OSC 104 palette reset", () => {
@@ -630,9 +628,7 @@ test.each([
   // No initial reading means nothing to compare a reset against: inconclusive, never a verdict.
   const silent = await definition.term!(replayContext(new Map()))
   expect(silent.observation).toBeUndefined()
-  expect(silent.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-  ])
+  expect(silent.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 
   // A terminal that starts on the default test colour still needs an observed change: a fixed set
   // colour would let both readings agree while the reset was ignored.
@@ -649,10 +645,7 @@ test.each([
 test.each([
   ["extensions.osc117-reset-highlight-bg", null],
   ["extensions.osc119-reset-highlight-fg", null],
-] as const)(
-  "%s declares its headless arm without a typed observable (%s), never parser state",
-  (id, assertionType) => {
-    const definition = callback(id)
-    expect(definition.libAssertionType).toBe(assertionType)
-  },
-)
+] as const)("%s declares its headless arm without a typed observable (%s), never parser state", (id, assertionType) => {
+  const definition = callback(id)
+  expect(definition.libAssertionType).toBe(assertionType)
+})

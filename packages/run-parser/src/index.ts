@@ -112,13 +112,14 @@ function rejectUnknownFields(
 
 export function parseSubject(value: unknown, path: string, schemaVersion: 2 | 3 | 4 = 4): ProbeSubject {
   if (!object(value)) fail(path, "missing subject")
-  if (schemaVersion === 4)
+  if (schemaVersion === 4) {
     rejectUnknownFields(
       value,
       ["kind", "id", "version", "os", "osVersion", "outerTerminal", "mux", "config", "permissions"],
       path,
       "subject",
     )
+  }
   const kinds = schemaVersion === 4 ? ["term", "lib", "mux"] : ["app", "headless", "mux"]
   if (!kinds.includes(String(value.kind))) fail(path, `invalid ${schemaVersion === 4 ? "subject" : "target"}.kind`)
   const kind = value.kind === "app" ? "term" : value.kind === "headless" ? "lib" : value.kind
@@ -398,8 +399,9 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
     sourceRevision = value.sourceRevision
     generatedAt = value.generatedAt
   }
-  if (value.schemaVersion !== undefined && value.schemaVersion !== 4)
+  if (value.schemaVersion !== undefined && value.schemaVersion !== 4) {
     fail(path, `unsupported suite schemaVersion ${String(value.schemaVersion)}`)
+  }
   const suiteKinds =
     value.schemaVersion === 4 ? (["term", "lib", "mux"] as const) : (["app", "headless", "mux"] as const)
   if (!object(value.probes) || Object.keys(value.probes).sort().join(",") !== [...suiteKinds].sort().join(",")) {
@@ -408,8 +410,9 @@ export function parseSuiteManifest(path: string, source: string): ParsedSuiteMan
   const probes: ProbeSuiteManifest["probes"] = { term: [], lib: [], mux: [] }
   for (const kind of suiteKinds) {
     const ids = value.probes[kind]
-    if (!Array.isArray(ids) || !ids.every(nonempty) || new Set(ids).size !== ids.length)
+    if (!Array.isArray(ids) || !ids.every(nonempty) || new Set(ids).size !== ids.length) {
       fail(path, `invalid ${kind} suite membership`)
+    }
     probes[kind === "app" ? "term" : kind === "headless" ? "lib" : kind] = ids
   }
   let catalogIds: string[] | undefined
@@ -986,8 +989,9 @@ export function parseProbeResults(
     }
     const testKey = schemaVersion === 4 ? "tests" : "checks"
     const displaced = schemaVersion === 4 ? ["checks", "evidence"] : ["tests", "assertionType"]
-    for (const key of displaced)
+    for (const key of displaced) {
       if (Object.hasOwn(item, key)) fail(path, `${featureId} schema ${schemaVersion} cannot carry ${key}`)
+    }
     if (schemaVersion === 4) {
       rejectUnknownFields(
         item,
@@ -1008,8 +1012,9 @@ export function parseProbeResults(
         path,
         `${featureId} result`,
       )
-      if (item.assertionType !== undefined && !ASSERTION_TYPES.includes(item.assertionType as AssertionType))
+      if (item.assertionType !== undefined && !ASSERTION_TYPES.includes(item.assertionType as AssertionType)) {
         fail(path, `invalid assertionType for ${featureId}`)
+      }
     }
     if (!Array.isArray(item[testKey])) fail(path, `${featureId} requires its explicit check set`)
     const checkIds = new Set<string>()
@@ -1017,13 +1022,14 @@ export function parseProbeResults(
       if (!object(entry) || !nonempty(entry.id) || checkIds.has(entry.id)) {
         fail(path, `${featureId} requires unique check ids`)
       }
-      if (schemaVersion === 4)
+      if (schemaVersion === 4) {
         rejectUnknownFields(
           entry,
           ["id", "status", "attempt", "assertionRefs", "rawReplyRef", "reviewRef", "reason"],
           path,
           `${featureId}/${entry.id} test`,
         )
+      }
       checkIds.add(entry.id)
       if (!PROBE_STATUSES.includes(entry.status as ProbeTestResult["status"])) {
         fail(path, `invalid check status for ${featureId}/${entry.id}`)
@@ -1150,8 +1156,9 @@ export function parseRun(
     const subjectKey = schemaVersion === 4 ? "subject" : "target"
     const intendedKey = schemaVersion === 4 ? "intendedSubject" : "intendedContext"
     const displaced = schemaVersion === 4 ? ["target", "intendedContext"] : ["subject", "intendedSubject", "source"]
-    for (const key of displaced)
+    for (const key of displaced) {
       if (Object.hasOwn(raw, key)) fail(path, `schema ${schemaVersion} run cannot carry ${key}`)
+    }
     if (schemaVersion === 4) {
       rejectUnknownFields(
         raw,
@@ -1183,8 +1190,9 @@ export function parseRun(
       )
       if (!object(raw.source)) fail(path, "schema 4 requires source")
       if (raw.source.kind === "trace") fail(path, "trace probe source has no implementation at this source")
-      if (Object.keys(raw.source).join(",") !== "kind" || raw.source.kind !== "live")
+      if (Object.keys(raw.source).join(",") !== "kind" || raw.source.kind !== "live") {
         fail(path, "invalid source; schema 4 requires { kind: live }")
+      }
     }
     if (!current && Object.hasOwn(raw, "results")) fail(path, "v2 run cannot contain legacy boolean results")
     const target = parseSubject(raw[subjectKey], path, schemaVersion)
@@ -1242,13 +1250,14 @@ export function parseRun(
           schemaVersion === 4 ? "invalid assertion assertionType" : "historical assertion cannot carry assertionType",
         )
       }
-      if (schemaVersion === 4)
+      if (schemaVersion === 4) {
         rejectUnknownFields(
           assertion,
           ["featureId", "kind", "assertionType", "rawReplyRef", "expected", "observed", "action", "note"],
           path,
           "assertion",
         )
+      }
       if (Object.hasOwn(assertion, "evidence")) fail(path, "assertion cannot carry evidence")
       if (assertion.rawReplyRef && !Object.hasOwn(raw.rawReplies, assertion.rawReplyRef)) {
         fail(path, `missing assertion raw reply ${assertion.rawReplyRef}`)
@@ -1343,7 +1352,7 @@ export function parseRun(
           schemaVersion as 3 | 4,
         )
       : undefined
-    if (schemaVersion === 4)
+    if (schemaVersion === 4) {
       validateCurrentAssertions(
         assertions as ProbeAssertion[],
         raw.rawReplies as Record<string, string>,
@@ -1351,6 +1360,7 @@ export function parseRun(
         target.kind,
         path,
       )
+    }
     if (current && results) {
       if (
         raw.sealedAt !== undefined &&

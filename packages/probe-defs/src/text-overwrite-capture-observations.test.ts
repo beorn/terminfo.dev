@@ -64,7 +64,5 @@ test("text.cr never captures; it keeps the CR cursor-query decision", async () =
   const result = await find("text.cr")(context)
   expect(frames).toEqual([])
   expect(result.observation).toBeUndefined()
-  expect(result.tests).toMatchObject([
-    expect.objectContaining({ status: "test-failure", reason: expect.any(String) }),
-  ])
+  expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-failure", reason: expect.any(String) })])
 })

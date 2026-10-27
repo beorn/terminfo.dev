@@ -1068,9 +1068,7 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
     }
     const result = await byId("cursor.hide").term!(context)
     expect(result.observation).toBeUndefined()
-    expect(result.tests).toMatchObject([
-      expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-    ])
+    expect(result.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
     expect(writes).toEqual([])
   }
   expect(byId("cursor.hide").termNeedsGeometry).toBe(true)
@@ -1080,9 +1078,7 @@ test("app cursor hide refuses invalid geometry or absent capture before fixture 
   }
   const refused = await byId("cursor.hide").term!(context)
   expect(refused.observation).toBeUndefined()
-  expect(refused.tests).toMatchObject([
-    expect.objectContaining({ status: "test-todo", reason: expect.any(String) }),
-  ])
+  expect(refused.tests).toMatchObject([expect.objectContaining({ status: "test-todo", reason: expect.any(String) })])
 })
 
 test("cup-scroll-region capture refuses before painting when the grid or the pixel report cannot decide", async () => {
