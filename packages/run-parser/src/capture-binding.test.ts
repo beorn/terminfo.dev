@@ -5,9 +5,19 @@
  * @testonly none
  */
 import { describe, expect, it } from "vitest"
-import { initializeRunDraft, sealRunDraft, recordExecutedProbe, finalizeProbeResult } from "@terminfo/probe-defs"
+import {
+  initializeRunDraft,
+  sealRunDraft,
+  recordExecutedProbe,
+  finalizeProbeResult,
+  type RunDraft,
+} from "@terminfo/probe-defs"
 import { applyCaptureDecision, retainCaptureBinding, parseRun } from "./index.ts"
-const setup = (observed?: string, sourceNegative?: { runId: string; startedAt: string }) => {
+const setup = (
+  observed?: string,
+  sourceNegative?: { runId: string; startedAt: string },
+  beforeBinding?: (draft: RunDraft) => void,
+) => {
   const featureId = sourceNegative ? "sgr.faint" : "sgr.bold"
   const subject = sourceNegative
     ? { kind: "lib" as const, id: "vt100", version: "0.8.0", permissions: null }
@@ -57,19 +67,21 @@ const setup = (observed?: string, sourceNegative?: { runId: string; startedAt: s
     draft.assertions = [
       {
         featureId,
-        kind: "positive",
+        kind: sourceNegative ? "negative" : "positive",
         assertionType: sourceNegative ? "buffer_state" : "query_reply",
         expected: sourceNegative ? "changed faint=true; restored faint=false" : "ACK",
         observed,
         rawReplyRef: featureId,
       },
     ]
-    draft.results[0]!.tests.unshift({
-      id: "capture",
-      status: "supported",
-      attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
-      assertionRefs: [0],
-    })
+    if (!sourceNegative) {
+      draft.results[0]!.tests.unshift({
+        id: "capture",
+        status: "supported",
+        attempt: { scope: "probe", startedAt: "2026-10-21T05:00:00.000Z" },
+        assertionRefs: [0],
+      })
+    }
   }
   if (sourceNegative) {
     draft.results[0]!.criterionBranch = "source-negative-review"
@@ -93,22 +105,37 @@ const setup = (observed?: string, sourceNegative?: { runId: string; startedAt: s
         cleanTree: true,
       },
     }
-    draft.results[0] = finalizeProbeResult(draft.results[0]!)
+    draft.results[0] = recordExecutedProbe({
+      featureId,
+      attempt: { scope: "probe", startedAt: sourceNegative.startedAt },
+      observation: {
+        featureId,
+        outcome: "inconclusive",
+        reason: "insufficient-evidence",
+        assertionType: "buffer_state",
+        rawReplyRef: featureId,
+      },
+      assertions: draft.assertions,
+      tests: [{ id: "review", status: "test-failure", reason: "Required source-negative review pending" }],
+      criterionBranch: "source-negative-review",
+    })
   }
-  const artifact = retainCaptureBinding(draft, featureId)
+  beforeBinding?.(draft)
+  const capturedFeature = draft.results[0]!.featureId
+  const artifact = retainCaptureBinding(draft, capturedFeature)
   const decision = {
     id: "review-bold",
     runId: draft.runId,
-    featureId,
+    featureId: capturedFeature,
     captureSha256: artifact.sha256,
     decision: "untestable",
     reviewed: true,
     reviewer: "reviewer",
     reason: "This context has no pixel plane; the configured plain stream cannot display glyphs",
     scope: {
-      subject: { kind: subject.kind, id: subject.id },
-      versions: [subject.version, subject.version],
-      suites: ["capture-suite", "capture-suite"],
+      subject: { kind: draft.subject.kind, id: draft.subject.id },
+      versions: [draft.subject.version, draft.subject.version],
+      suites: [draft.probeHash, draft.probeHash],
     },
     sources: [artifact.rawReplyRef],
     supersedes: [],
@@ -146,6 +173,18 @@ describe("immutable pre-seal capture binding", () => {
     expect(origin.decision.runId).toBe("source-origin")
     expect(origin.artifact.source).toBe(originalCapture)
     expect(JSON.stringify(origin.decision)).toBe(decisionBytes)
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: current.draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.faint"],
+      probes: { term: [], lib: ["sgr.faint"], mux: [] },
+    }
+    const sealed = sealRunDraft(current.draft)
+    expect(
+      parseRun("reused.json", JSON.stringify(sealed), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]))
+        .results?.[0]?.status,
+    ).toBe("unsupported")
   })
   // FINAL B4: only the review's failure may be decided; a separate failed condition still wins.
   // Existing TODO reviews and finalizer-only tests do not cross this failed-review application boundary.
@@ -183,6 +222,331 @@ describe("immutable pre-seal capture binding", () => {
       /pending required review/,
     )
     expect(draft.results[0]!.status).toBe("test-failure")
+  })
+  // CTO branch-migration hold: CURRENT criterion owns matching; another branch keeps strict legacy binding.
+  it("rejects a source-negative decision on a current cell with another criterion", () => {
+    const observed = JSON.stringify({ faint: false })
+    const origin = setup(observed, { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup(observed, { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" }, (draft) => {
+      draft.results[0]!.criterionBranch = "visual-review"
+      draft.results[0]!.tests[0]!.status = "test-todo"
+      draft.results[0] = finalizeProbeResult(draft.results[0]!)
+    })
+    origin.decision.decision = "unsupported"
+    expect(() =>
+      applyCaptureDecision(current.draft, JSON.stringify(origin.decision), "2026-10-27T11:02:00.000Z"),
+    ).toThrow(/capture digest mismatch/)
+    expect(current.draft.results[0]!.status).toBe("test-todo")
+  })
+  // FINAL B3/Amendment2: each input is a genuinely fresh cohort, changed BEFORE its first binding.
+  // A hash-only mismatch test cannot name these components or preserve a failed attempted review.
+  it.each([
+    {
+      component: "bytes",
+      change: (draft: RunDraft) => {
+        const observed = JSON.stringify({ faint: true })
+        draft.rawReplies["sgr.faint"] = observed
+        draft.assertions[0]!.observed = observed
+      },
+    },
+    {
+      component: "feature",
+      change: (draft: RunDraft) => {
+        draft.results[0]!.featureId = "sgr.italic"
+        draft.results[0]!.rawReplyRef = "sgr.italic"
+        draft.results[0]!.tests[0]!.rawReplyRef = "sgr.italic"
+        draft.rawReplies["sgr.italic"] = draft.rawReplies["sgr.faint"]!
+        delete draft.rawReplies["sgr.faint"]
+        draft.assertions[0]!.featureId = "sgr.italic"
+        draft.assertions[0]!.rawReplyRef = "sgr.italic"
+      },
+    },
+    {
+      component: "subject",
+      change: (draft: RunDraft) => {
+        draft.subject!.id = "vt220"
+        draft.intendedSubject.id = "vt220"
+      },
+    },
+    {
+      component: "versions",
+      change: (draft: RunDraft) => {
+        draft.subject!.version = "0.9.0"
+        draft.intendedSubject.version = "0.9.0"
+        draft.runtimeIdentity!.engineVersion = "0.9.0"
+      },
+    },
+    {
+      component: "suite",
+      change: (draft: RunDraft) => {
+        draft.probeHash = "different-suite"
+        draft.suiteId = "different-suite"
+      },
+    },
+    {
+      component: "source revision",
+      change: (draft: RunDraft) => {
+        draft.sourceRevision = "5".repeat(40)
+      },
+    },
+  ])("lapses a fresh $component mismatch with the origin binding retained", ({ component, change }) => {
+    const observed = JSON.stringify({ faint: false })
+    const origin = setup(observed, { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup(observed, { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" }, change)
+    origin.decision.decision = "unsupported"
+    // A review offered for another frozen cell must lapse against the origin's actual feature.
+    if (component === "feature") origin.decision.featureId = current.draft.results[0]!.featureId
+    const decisionBytes = JSON.stringify(origin.decision)
+    const originKey = `collector.review.${origin.decision.id}.capture`
+    current.draft.rawReplies[originKey] = origin.artifact.source
+    expect(() => applyCaptureDecision(current.draft, decisionBytes, "2026-10-27T11:02:00.000Z")).not.toThrow()
+    expect(current.draft.results[0]!.status).toBe("test-failure")
+    expect(current.draft.results[0]!.reason).toContain(`capture decision ${origin.decision.id} lapsed:`)
+    expect(current.draft.results[0]!.reason).toContain(component)
+    expect(current.draft.rawReplies[`collector.review.${origin.decision.id}`]).toBe(decisionBytes)
+    expect(current.draft.rawReplies[originKey]).toBe(origin.artifact.source)
+  })
+  // B3/Amendment2: the parser must check attempted lapse custody too, without accepting a forged seal.
+  it("keeps a lapsed source review unsealed and verifies its origin bytes at the canonical reader", () => {
+    const origin = setup(JSON.stringify({ faint: false }), { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup(
+      JSON.stringify({ faint: false }),
+      { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" },
+      (draft) => {
+        draft.sourceRevision = "6".repeat(40)
+      },
+    )
+    origin.decision.decision = "unsupported"
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify(origin.decision),
+      "2026-10-27T11:02:00.000Z",
+      origin.artifact.source,
+    )
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: current.draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.faint"],
+      probes: { term: [], lib: ["sgr.faint"], mux: [] },
+    }
+    const read = (value: unknown) =>
+      parseRun("lapsed.json", JSON.stringify(value), manifest.catalogIds, new Map([[manifest.probeHash, manifest]]), {
+        mode: "capture",
+      })
+    expect(() => sealRunDraft(current.draft)).toThrow(/review pending/)
+    expect(read(current.draft).results?.[0]?.status).toBe("test-failure")
+    expect(() => read({ ...current.draft, sealedAt: "2026-10-27T11:03:00.000Z" })).toThrow(/review pending/)
+    const key = `collector.review.${origin.decision.id}.capture`
+    expect(() =>
+      read({ ...current.draft, rawReplies: { ...current.draft.rawReplies, [key]: origin.artifact.source + " " } }),
+    ).toThrow(/origin.*digest/)
+  })
+  // B3: no origin store is a named unavailable input, never a fabricated comparison or a throw.
+  it("names an unavailable origin binding when different fresh capture bytes cannot be compared", () => {
+    const origin = setup(JSON.stringify({ faint: false }), {
+      runId: "retired-origin",
+      startedAt: "2026-10-27T11:00:00.000Z",
+    })
+    const current = setup(JSON.stringify({ faint: true }), { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" })
+    origin.decision.decision = "unsupported"
+    expect(() =>
+      applyCaptureDecision(current.draft, JSON.stringify(origin.decision), "2026-10-27T11:02:00.000Z", undefined),
+    ).not.toThrow()
+    expect(current.draft.results[0]!.status).toBe("test-failure")
+    expect(current.draft.results[0]!.reason).toContain(
+      "binding differs (origin binding text unavailable: run retired-origin)",
+    )
+  })
+  // B2: a matching digest cannot authorize mislabeled intent or an unqualified library identity.
+  it.each(["intent", "identity"])(
+    "keeps a source review failed when its %s does not establish the actual subject",
+    (change) => {
+      const { draft, decision } = setup(
+        JSON.stringify({ faint: false }),
+        { runId: "current", startedAt: "2026-10-27T11:00:00.000Z" },
+        (draft) => {
+          if (change === "intent") draft.intendedSubject.id = "different-terminal"
+          else delete draft.runtimeIdentity
+        },
+      )
+      decision.decision = "unsupported"
+      applyCaptureDecision(draft, JSON.stringify(decision), "2026-10-27T11:01:00.000Z")
+      expect(draft.results[0]!.status).toBe("test-failure")
+      expect(draft.results[0]!.reason).toContain("subject differ")
+    },
+  )
+  // B1/B2: source identity changes lapse even when version labels and the captured state do not.
+  it("binds engine source identity independently of its version label", () => {
+    const origin = setup(JSON.stringify({ faint: false }), { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" })
+    const current = setup(
+      JSON.stringify({ faint: false }),
+      { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" },
+      (draft) => {
+        if (draft.runtimeIdentity?.kind !== "js" || draft.runtimeIdentity.integrity.kind !== "source")
+          throw Error("fixture source identity missing")
+        draft.runtimeIdentity.integrity.revision = "7".repeat(40)
+      },
+    )
+    origin.decision.decision = "unsupported"
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify(origin.decision),
+      "2026-10-27T11:02:00.000Z",
+      origin.artifact.source,
+    )
+    expect(current.draft.results[0]!.status).toBe("test-failure")
+    expect(current.draft.results[0]!.reason).toContain("bytes differ")
+  })
+  // B1/B2 and Amendment1: locators may move; duplicate deciding assertions and binary bytes may not.
+  it("reuses reordered assertion multisets and host paths without dropping deciding duplicates or binary identity", () => {
+    const prepare = (draft: RunDraft, current: boolean, mismatch?: "duplicate" | "binary") => {
+      const assertion = draft.assertions[0]!
+      draft.assertions.push({ ...assertion }, { ...assertion, expected: "restored faint=false" })
+      if (current) draft.assertions.reverse()
+      if (mismatch === "duplicate") draft.assertions.pop()
+      if (draft.runtimeIdentity?.kind !== "js") throw Error("fixture JS identity missing")
+      draft.runtimeIdentity = {
+        ...draft.runtimeIdentity,
+        runtimeFormat: "wasm",
+        resolvedPath: current ? "/current/adapter.ts" : "/origin/adapter.ts",
+        loadedBinary: {
+          path: current ? "/current/engine.wasm" : "/origin/engine.wasm",
+          sha256: (mismatch === "binary" ? "c" : "d").repeat(64),
+        },
+      }
+    }
+    const observed = JSON.stringify({ faint: false })
+    const origin = setup(observed, { runId: "origin", startedAt: "2026-10-27T11:00:00.000Z" }, (draft) =>
+      prepare(draft, false),
+    )
+    origin.decision.decision = "unsupported"
+    const current = setup(observed, { runId: "current", startedAt: "2026-10-27T11:01:00.000Z" }, (draft) =>
+      prepare(draft, true),
+    )
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify(origin.decision),
+      "2026-10-27T11:02:00.000Z",
+      origin.artifact.source,
+    )
+    expect(current.draft.results[0]!.status).toBe("unsupported")
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: current.draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.faint"],
+      probes: { term: [], lib: ["sgr.faint"], mux: [] },
+    }
+    expect(
+      parseRun(
+        "reordered.json",
+        JSON.stringify(sealRunDraft(current.draft)),
+        manifest.catalogIds,
+        new Map([[manifest.probeHash, manifest]]),
+      ).results?.[0]?.status,
+    ).toBe("unsupported")
+    for (const mismatch of ["duplicate", "binary"] as const) {
+      const changed = setup(
+        observed,
+        { runId: `changed-${mismatch}`, startedAt: "2026-10-27T11:01:00.000Z" },
+        (draft) => prepare(draft, true, mismatch),
+      )
+      applyCaptureDecision(
+        changed.draft,
+        JSON.stringify(origin.decision),
+        "2026-10-27T11:02:00.000Z",
+        origin.artifact.source,
+      )
+      expect(changed.draft.results[0]!.status).toBe("test-failure")
+      expect(changed.draft.results[0]!.reason).toContain("bytes differ")
+    }
+  })
+  // Amendment1: text-cell frame clocks are locators; canonical parsing still enforces the text-frame schema.
+  // Existing frame round-trip coverage does not cross source-negative cohorts or prove digest binding.
+  it("reuses source-negative review across frame times, reads the sealed run, and lapses on changed cell content", () => {
+    const cellDigest = `sha256:${"a".repeat(64)}`
+    const otherCellDigest = `sha256:${"b".repeat(64)}`
+    const frameDigest = `sha256:${"c".repeat(64)}`
+    const frameRef = `sha256:${"d".repeat(64)}`
+    const observed = JSON.stringify({
+      original: { faint: false },
+      changed: { faint: false },
+      restored: { faint: false },
+      cellDigest,
+    })
+    const prepare = (draft: RunDraft, current: boolean, changedContent = false) => {
+      draft.textSnapshotRefs = [frameRef]
+      draft.results[0]!.frames = [
+        {
+          kind: "text-cells",
+          role: "control",
+          label: "plain faint glyph",
+          ref: frameRef,
+          capturedAt: current ? 100 : 1,
+          cellDigest: otherCellDigest,
+          frameDigest,
+          cellRectangle: { top: 1, left: 1, bottom: 1, right: 4 },
+        },
+        {
+          kind: "text-cells",
+          role: "target",
+          label: "faint glyph",
+          ref: frameRef,
+          capturedAt: current ? 200 : 2,
+          cellDigest: changedContent ? otherCellDigest : cellDigest,
+          frameDigest,
+          cellRectangle: { top: 1, left: 1, bottom: 1, right: 4 },
+        },
+      ]
+      draft.results[0]!.tests.push({
+        id: "text-qualification",
+        status: "supported",
+        attempt: { scope: "probe", startedAt: "2026-10-27T11:00:00.000Z" },
+      })
+    }
+    const origin = setup(observed, { runId: "frame-origin", startedAt: "2026-10-27T11:00:00.000Z" }, (draft) =>
+      prepare(draft, false),
+    )
+    origin.decision.decision = "unsupported"
+    const current = setup(observed, { runId: "frame-current", startedAt: "2026-10-27T11:01:00.000Z" }, (draft) =>
+      prepare(draft, true),
+    )
+    applyCaptureDecision(
+      current.draft,
+      JSON.stringify(origin.decision),
+      "2026-10-27T11:02:00.000Z",
+      origin.artifact.source,
+    )
+    expect(current.draft.results[0]!.status).toBe("unsupported")
+    const manifest = {
+      schemaVersion: 4 as const,
+      probeHash: current.draft.probeHash,
+      adapterVersion: "3",
+      catalogIds: ["sgr.faint"],
+      probes: { term: [], lib: ["sgr.faint"], mux: [] },
+    }
+    const sealed = sealRunDraft(current.draft)
+    expect(
+      parseRun(
+        "frame-reused.json",
+        JSON.stringify(sealed),
+        manifest.catalogIds,
+        new Map([[manifest.probeHash, manifest]]),
+      ).results?.[0]?.status,
+    ).toBe("unsupported")
+
+    const changed = setup(observed, { runId: "frame-changed", startedAt: "2026-10-27T11:03:00.000Z" }, (draft) =>
+      prepare(draft, true, true),
+    )
+    applyCaptureDecision(
+      changed.draft,
+      JSON.stringify(origin.decision),
+      "2026-10-27T11:04:00.000Z",
+      origin.artifact.source,
+    )
+    expect(changed.draft.results[0]!.status).toBe("test-failure")
+    expect(changed.draft.results[0]!.reason).toContain("bytes differ")
   })
   it("keeps valid pending review unsealed, records the exact typed decision, then seals the same run", () => {
     const { draft, artifact, decision } = setup()

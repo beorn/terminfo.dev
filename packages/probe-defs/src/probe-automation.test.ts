@@ -238,11 +238,13 @@ describe("OSC 8 link metadata observation", () => {
     for (const links of [
       [null, uri, "https://wrong.example", uri, uri, null],
       [null, uri, uri, uri, uri, uri],
+      [null, null, null, null, null, null],
     ]) {
       const result = p.lib(linkedSource(links))
       expect(result.observation).toMatchObject({ outcome: "unsupported", assertionType: "buffer_state" })
       expect(result.assertions?.[0]).toMatchObject({ kind: "negative" })
       expect(result.assertions?.[0]?.observed).toBe(result.response)
+      expect(result.criterionBranch).toBeUndefined()
     }
   })
 
@@ -251,6 +253,15 @@ describe("OSC 8 link metadata observation", () => {
     if (!p.lib) throw new Error("OSC 8 needs headless callback")
     const unreported = p.lib(linkedSource(Array(6).fill(undefined), false))
     expect(unreported.observation).toMatchObject({ outcome: "inconclusive", reason: "insufficient-evidence" })
+    expect(unreported.criterionBranch).toBe("source-negative-review")
+    expect(unreported.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+    expect(unreported.assertions).toMatchObject([{ kind: "negative", observed: unreported.response }])
+    // A source review requires its fixture to exist; unrendered text cannot qualify by missing metadata.
+    const brokenFixture = linkedSource(Array(6).fill(undefined), false)
+    brokenFixture.getCell = () => ({ ...context({}).getCell(0, 0), char: "?" })
+    const malformed = p.lib(brokenFixture)
+    expect(malformed.criterionBranch).toBeUndefined()
+    expect(malformed.assertions).toBeUndefined()
     expect(() => p.lib?.(linkedSource(Array(6).fill(undefined), true))).toThrow(/declares OSC 8 metadata/i)
   })
 

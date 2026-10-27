@@ -5,7 +5,7 @@
  * @testonly none
  */
 import { expect, test } from "vitest"
-import { decrpmModeProbe, cursorProbe, sgrProbe, type DecrpmPs } from "./helpers.ts"
+import { decrpmModeProbe, cursorProbe, parserStateResult, sgrProbe, type DecrpmPs } from "./helpers.ts"
 import { sgrProbes } from "./sgr.ts"
 import { resetProbes } from "./reset.ts"
 import type { TermProbeSource, LibProbeSource } from "./types.ts"
@@ -208,6 +208,87 @@ test("headless reset.sgr grades the measured styles and reset.soft needs an expo
   expect(soft.notTested).toEqual({ reason: "no-semantic-observable", noObservable: expect.stringContaining("DECCKM") })
   // An exposed mode that stayed off is unmeasured, never a coverage record.
   expect(find("reset.soft")(headless()).observation).toMatchObject({ outcome: "inconclusive" })
+})
+
+// Carrier B: existing tests never exercised null/false state with an explicit source-review request.
+test("source review retains the negative state and leaves omitted-argument results unchanged", () => {
+  const state = { char: "X", dim: false }
+  const response = '{"char":"X","dim":false}'
+  const expected = "faint attribute applied"
+  expect(parserStateResult(null, expected, state)).toEqual({
+    pass: false,
+    response,
+    observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
+  })
+  expect(parserStateResult(false, expected, state)).toEqual({
+    pass: false,
+    response,
+    observation: { outcome: "unsupported", assertionType: "buffer_state" },
+    assertions: [{ assertionType: "buffer_state", kind: "negative", expected, observed: response }],
+  })
+  const reason = "Cell readback cannot distinguish an absent style from an unreported attribute"
+  for (const pass of [null, false]) {
+    expect(parserStateResult(pass, expected, state, undefined, reason)).toEqual({
+      pass: false,
+      response,
+      criterionBranch: "source-negative-review",
+      tests: [{ id: "review", status: "test-failure", reason }],
+      observation: { outcome: "inconclusive", reason: "insufficient-evidence", assertionType: "buffer_state" },
+      assertions: [{ assertionType: "buffer_state", kind: "negative", expected, observed: response }],
+    })
+  }
+  expect(() => parserStateResult(true, expected, state, undefined, reason)).toThrow(/positive.*source review/i)
+})
+
+// Producer eligibility is independent of matching/writer tests: an unrendered fixture cannot be reviewed.
+test("SGR source review applies only to a rendered nonpositive cell and preserves coverage", () => {
+  const reason = "Cell readback cannot distinguish unsupported faint styling from an unreported attribute"
+  const definition = sgrProbe("sgr.faint", "\x1b[2m", (cell) => cell.dim, undefined, undefined, reason)
+  if (!definition.lib) throw new Error("Missing faint parser callback")
+  const pending = definition.lib(headless())
+  expect(pending).toMatchObject({
+    criterionBranch: "source-negative-review",
+    tests: [{ id: "review", status: "test-failure", reason }],
+    assertions: [{ kind: "negative", observed: pending.response }],
+  })
+  expect(pending.note).toBeUndefined()
+  const missing = definition.lib(headless({ getCell: () => ({ ...baseCell, char: "" }) }))
+  expect(missing.criterionBranch).toBeUndefined()
+  expect(missing.assertions).toBeUndefined()
+  expect(missing.note).toBe("No rendered X cell to evaluate")
+  const positive = definition.lib(headless({ getCell: () => ({ ...baseCell, dim: true }) }))
+  expect(positive.criterionBranch).toBeUndefined()
+  expect(positive.observation?.outcome).toBe("supported")
+  const coverage = sgrProbe(
+    "sgr.faint",
+    "\x1b[2m",
+    () => null,
+    () => "No style observable",
+    undefined,
+    reason,
+  )
+  expect(coverage.lib?.(headless())).toMatchObject({
+    notTested: { reason: "no-semantic-observable", noObservable: "No style observable" },
+  })
+  expect(coverage.lib?.(headless()).criterionBranch).toBeUndefined()
+  for (const id of [
+    "sgr.faint",
+    "sgr.italic",
+    "sgr.hidden",
+    "sgr.strikethrough",
+    "sgr.underline.double",
+    "sgr.underline.curly",
+    "sgr.underline.dotted",
+    "sgr.underline.dashed",
+  ]) {
+    const definition = sgrProbes.find((probe) => probe.id === id)
+    if (!definition?.lib) throw new Error(`Missing source-review callback for ${id}`)
+    expect(definition.lib(headless()), id).toMatchObject({
+      criterionBranch: "source-negative-review",
+      tests: [{ id: "review", status: "test-failure" }],
+      assertions: [{ kind: "negative" }],
+    })
+  }
 })
 
 test("SGR consumption stays inconclusive while headless cell state supports an assertion", async () => {
@@ -437,7 +518,11 @@ test("unexposed overline and default conceal flags cannot establish negative sup
       })
     }
     expect(JSON.parse(result.response ?? ""), id).toMatchObject({ char: "X" })
-    expect(result.assertions, id).toBeUndefined()
+    if (id === "sgr.hidden") {
+      expect(result.criterionBranch).toBe("source-negative-review")
+      expect(result.tests).toMatchObject([{ id: "review", status: "test-failure" }])
+      expect(result.assertions, id).toMatchObject([{ kind: "negative", observed: result.response }])
+    } else expect(result.assertions, id).toBeUndefined()
     const measured = probe.lib(headless({ getCell: () => ({ ...baseCell, hidden: true, overline: true }) }))
     expect(measured.observation, id).toMatchObject({ outcome: "supported", assertionType: "buffer_state" })
     expect(measured.assertions, id).toMatchObject([{ kind: "positive" }])
