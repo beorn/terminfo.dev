@@ -2486,10 +2486,10 @@ export const extensionsProbes: ProbeDefinition[] = [
     "Complete OSC 1337 ReportCellSize reply with two positive dimensions and an optional scale",
   ),
 
-  // OSC 1337 RequestCapabilities — query terminal capabilities
+  // OSC 1337 Capabilities — query terminal capabilities
   oscSimpleQueryProbe(
     "extensions.osc1337-capabilities",
-    "\x1b]1337;RequestCapabilities\x07",
+    "\x1b]1337;Capabilities\x07",
     /\x1b\]1337;Capabilities=[^\x07\x1b]*(?:\x07|\x1b\\)/,
     /\x1b\]1337;Capabilities=/,
     "Complete OSC 1337 Capabilities reply",
@@ -2874,7 +2874,7 @@ export const extensionsProbes: ProbeDefinition[] = [
   // OSC 702 — rxvt-unicode version query
   oscSimpleQueryProbe(
     "extensions.osc702-version",
-    "\x1b]702\x07",
+    "\x1b]702;?\x07",
     /\x1b\]702;[^\x07\x1b]+(?:\x07|\x1b\\)/,
     /\x1b\]702;/,
     "Complete OSC 702 version reply",
