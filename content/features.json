@@ -1884,13 +1884,13 @@
     "probe": "Record whether TERM_FEATURES is advertised; without an authenticated terminal source, presence cannot be attributed to the terminal."
   },
   "device.xtwinops-14": {
-    "name": "Report window size in pixels (CSI 14 t)",
+    "name": "Report text-area size in pixels (CSI 14 t)",
     "slug": "xtwinops-14-window-size-pixels",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Functions-using-CSI-_-ordered-by-the-final-character-lparen-s-rparen",
     "tags": ["xterm-extensions"],
     "baseline": "rich",
-    "body": "XTWINOPS subcode 14 queries the terminal window size in pixels. The query is <code>CSI 14 t</code>; the response is <code>CSI 4 ; height ; width t</code>. Combined with the cell size query (CSI 16 t) or the text area size in characters (CSI 18 t), applications can compute pixel-accurate dimensions for image protocols (sixel, iTerm2 inline images, kitty graphics) without guessing.\n\nXTWINOPS is the umbrella spec for window operations defined by xterm. The query subset (14, 16, 18, 20, 21) is broadly considered safe — it only reports state and cannot be used to reposition or resize windows. The mutation subset (1-9) is disabled by default in many terminals because it allows remote escape sequences to manipulate the user's window. terminfo.dev only tracks the query subset.",
-    "probe": "Send <code>\\x1b[14t</code>, verify response matches <code>CSI 4 ; H ; W t</code>.",
+    "body": "XTWINOPS subcode 14 queries the text area size in pixels. The query is <code>CSI 14 t</code>; the response is <code>CSI 4 ; height ; width t</code>. The text area excludes window decorations and the scrollbar. The separate <code>CSI 14 ; 2 t</code> query reports the outer window size using the same response shape. Combined with the cell size query (CSI 16 t) or text area size in characters (CSI 18 t), the text-area dimensions describe the space available for terminal content.",
+    "probe": "Send <code>\\x1b[14t</code>, verify a complete <code>CSI 4 ; H ; W t</code> reply with positive text-area height and width in pixels.",
     "sequence": "ESC [ 14 t"
   },
   "device.xtwinops-16": {
@@ -1958,14 +1958,14 @@
   },
   "device.xtreportcolors": {
     "tier1": "included",
-    "name": "XTREPORTCOLORS — report color capabilities (CSI # R)",
+    "name": "XTREPORTCOLORS — report palette-stack state (CSI # R)",
     "slug": "xtreportcolors",
     "url": "https://invisible-island.net/xterm/ctlseqs/ctlseqs.html",
     "tags": ["xterm-extensions"],
     "baseline": "rich",
     "sequence": "CSI # R",
-    "body": "XTREPORTCOLORS queries xterm's color and graphics capabilities. The sequence is <code>CSI # R</code>, and the response is <code>CSI Pm # Q</code> where Pm describes the color change support level and graphics capabilities. The response values include: 0=dynamic color change allowed, 1=not allowed, 2=direct-color control, 3=color register control only, 4-5=sixel support, 6=sixel scrolling support, 8-9=ReGIS graphics support, 10=selected graphics read/write support. After the first Pm, the response may include color register count and sixel geometry. Added in xterm patch 400 and updated in patch 401 (2025) to report sixel scrolling support.\n\nThe selected Kitty app run also answers this query. Other implementations need their own versioned measurements.",
-    "probe": "Send <code>CSI # R</code>, verify response matches <code>CSI Pm # Q</code> pattern."
+    "body": "XTREPORTCOLORS queries the current entry on the palette stack and the number of palettes stored on it. Send <code>CSI # R</code>; the reply uses <code>CSI entry ; count # Q</code>, with nonnegative decimal fields. The existing xterm reply form includes an optional DEC-private <code>?</code> before the fields. This report describes palette-stack state; it does not report color-change permissions, sixel or ReGIS capabilities. The query does not push, pop or restore a palette.",
+    "probe": "Send <code>CSI # R</code>, verify a complete palette-stack reply with exactly two nonnegative decimal fields: current entry and stored palette count. Accept the existing optional DEC-private <code>?</code> prefix."
   },
   "device.xtgetxres": {
     "tier1": "included",
